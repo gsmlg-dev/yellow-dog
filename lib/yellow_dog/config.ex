@@ -11,7 +11,7 @@ defmodule YellowDog.Config do
   end
 
   def config(name) do
-    Agent.get(__MODULE__, fn state -> Map.get(List.first(state), name) end)
+    Agent.get(__MODULE__, fn state -> Map.get(state, name) end)
   end
 
   @default_config %{
