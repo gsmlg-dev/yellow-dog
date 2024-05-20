@@ -77,9 +77,23 @@ defmodule YellowDog.DNS.Message do
     >>
   end
 
-  def from_buffer(<<header::12, next>>) do
+  def from_buffer(<<header_bytes::binary-size(12), next>> = message) do
+    header = Header.from_buffer(header_bytes)
+    {qd_size, qdlist} = Question.list_from_message(message, header.qdcound)
+    {an_size, anlist} = Record.list_from_message(message, header.ancound, 12 + qd_size)
+
+    {ns_size, nslist} =
+      Record.list_from_message(message, header.nscount, 12 + qd_size + an_size)
+
+    {_, arlist} =
+      Record.list_from_message(message, header.arcount, 12 + qd_size + an_size + ns_size)
+
     %Message{
-      header: Header.from_buffer(header)
+      header: header,
+      qdlist: qdlist,
+      anlist: anlist,
+      nslist: nslist,
+      arlist: arlist
     }
   end
 
@@ -109,13 +123,13 @@ defmodule YellowDog.DNS.Message do
   end
 
   def name_from_buffer(buffer, message \\ <<>>)
-  def name_from_buffer(<<0>>, _), do: "."
+  def name_from_buffer(<<0>>, _), do: {1, "."}
 
   def name_from_buffer(buffer, message)
       when is_bitstring(buffer) and byte_size(buffer) > 0 do
     case buffer do
       <<0, _>> ->
-        "."
+        {1, "."}
 
       <<0xC0, pos::8, _::binary>> ->
         case message do
@@ -129,10 +143,11 @@ defmodule YellowDog.DNS.Message do
       <<size::8, rest::binary>> when size < 64 and size > 0 ->
         case rest do
           <<part::binary-size(size), 0::8, _::binary>> ->
-            part <> "."
+            {1 + size + 1, part <> "."}
 
           <<part::binary-size(size), next::8, next_buffer::binary>> ->
-            part <> "." <> name_from_buffer(<<next, next_buffer::binary>>, message)
+            {last_size, last_name} = name_from_buffer(<<next, next_buffer::binary>>, message)
+            {1 + size + last_size, part <> "." <> last_name}
 
           <<_::binary-size(size), _::binary>> ->
             throw(FormatError)

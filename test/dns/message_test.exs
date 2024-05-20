@@ -24,14 +24,16 @@ defmodule YellowDog.DNS.MessageTest do
   test "Test DNS message get name from buffer" do
     buffer_name = <<3, "com", 0>>
 
-    parsed_name = Message.name_from_buffer(buffer_name)
+    {name_size, parsed_name} = Message.name_from_buffer(buffer_name)
 
+    assert name_size == 5
     assert parsed_name == "com."
 
     buffer_name = <<0>>
 
-    parsed_name = Message.name_from_buffer(buffer_name)
+    {name_size, parsed_name} = Message.name_from_buffer(buffer_name)
 
+    assert name_size == 1
     assert parsed_name == "."
   end
 end

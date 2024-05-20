@@ -233,4 +233,6 @@ defmodule YellowDog.DNS.Message.Header do
       arcount: 0
     }
   end
+
+  def qdcount(<<_::32, count::16>> = _message), do: count
 end
