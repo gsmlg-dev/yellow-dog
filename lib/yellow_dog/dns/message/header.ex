@@ -1,4 +1,4 @@
-defmodule YellowDog.DNS.Header do
+defmodule YellowDog.DNS.Message.Header do
   @moduledoc """
   # DNS Header
 
@@ -127,23 +127,42 @@ defmodule YellowDog.DNS.Header do
   - [Domain Name System (DNS) IANA Considerations](https://tools.ietf.org/html/rfc6895)
   """
 
+  alias YellowDog.DNS.Message.Header
+  alias YellowDog.DNS.Message.OpCode
+  alias YellowDog.DNS.Message.RCode
+
   @type t :: %__MODULE__{
-    id: integer(), # ID: 16bit if 0 generate RandomID
-    qr: 0 | 1, # QR: 1bit  query (0), or a response (1)
-    opcode: integer(), # OPCode: 4bit YellowDog.DNS.OpCode.t(),
-    aa: 0 | 1, # AA: 1bit Authoritative Answer
-    tc: 0 | 1, # TC: 1bit TrunCation
-    rd: 0 | 1, # RD: 1bit Recursion Desired
-    ra: 0 | 1, # RA: 1bit Recursion Available
-    z: 0 | 1, # Z: 1bit Reserved for future use
-    ad: 0 | 1, # AD: 1bit Authenticated Data
-    cd: 0 | 1, # CD: 1bit Checking Disabled
-    rcode: integer(), # RCode: 4bit YellowDog.DNS.RCode.t(),
-    qdcount: integer(), # QDCOUNT: 16bit an unsigned integer specifying the number of entries in the question section.
-    ancount: integer(), # ANCOUNT: 16bit an unsigned integer specifying the number of resource records in the answer section.
-    nscount: integer(), # NSCOUNT: 16bit an unsigned integer specifying the number of name server resource records in the authority records section.
-    arcount: integer() # ARCOUNT: 16bit an unsigned integer specifying the number of resource records in the additional records section.
-  }
+          # ID: 16bit if 0 generate RandomID
+          id: integer(),
+          # QR: 1bit  query (0), or a response (1)
+          qr: 0 | 1,
+          # OPCode: 4bit YellowDog.DNS.OpCode.t(),
+          opcode: integer(),
+          # AA: 1bit Authoritative Answer
+          aa: 0 | 1,
+          # TC: 1bit TrunCation
+          tc: 0 | 1,
+          # RD: 1bit Recursion Desired
+          rd: 0 | 1,
+          # RA: 1bit Recursion Available
+          ra: 0 | 1,
+          # Z: 1bit Reserved for future use
+          z: 0 | 1,
+          # AD: 1bit Authenticated Data
+          ad: 0 | 1,
+          # CD: 1bit Checking Disabled
+          cd: 0 | 1,
+          # RCode: 4bit YellowDog.DNS.RCode.t(),
+          rcode: integer(),
+          # QDCOUNT: 16bit an unsigned integer specifying the number of entries in the question section.
+          qdcount: integer(),
+          # ANCOUNT: 16bit an unsigned integer specifying the number of resource records in the answer section.
+          ancount: integer(),
+          # NSCOUNT: 16bit an unsigned integer specifying the number of name server resource records in the authority records section.
+          nscount: integer(),
+          # ARCOUNT: 16bit an unsigned integer specifying the number of resource records in the additional records section.
+          arcount: integer()
+        }
 
   defstruct id: nil,
             qr: nil,
@@ -161,10 +180,12 @@ defmodule YellowDog.DNS.Header do
             nscount: 0,
             arcount: 0
 
+  def generate_id, do: Enum.random(0..0xFFFF)
+
   @doc """
   # build a DNS header
   """
-  def to_buffer(header = %YellowDog.DNS.Header{}) do
+  def to_buffer(header = %Header{}) do
     <<header.id::16, header.qr::1, header.opcode::4, header.aa::1, header.tc::1, header.rd::1,
       header.ra::1, header.z::1, header.ad::1, header.cd::1, header.rcode::4, header.qdcount::16,
       header.ancount::16, header.nscount::16, header.arcount::16>>
@@ -174,7 +195,7 @@ defmodule YellowDog.DNS.Header do
         <<id::16, qr::1, opcode::4, aa::1, tc::1, rd::1, ra::1, z::1, ad::1, cd::1, rcode::4,
           qdcount::16, ancount::16, nscount::16, arcount::16>> = _buffer
       ) do
-    %YellowDog.DNS.Header{
+    %Header{
       id: id,
       qr: qr,
       opcode: opcode,
@@ -190,6 +211,26 @@ defmodule YellowDog.DNS.Header do
       ancount: ancount,
       nscount: nscount,
       arcount: arcount
+    }
+  end
+
+  def new do
+    %Header{
+      id: generate_id(),
+      qr: 0,
+      opcode: OpCode.query(),
+      aa: 0,
+      tc: 0,
+      rd: 1,
+      ra: 0,
+      z: 0,
+      ad: 0,
+      cd: 0,
+      rcode: RCode.no_error(),
+      qdcount: 0,
+      ancount: 0,
+      nscount: 0,
+      arcount: 0
     }
   end
 end

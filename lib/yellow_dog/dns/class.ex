@@ -38,17 +38,16 @@ defmodule YellowDog.DNS.Class do
   - [Domain Name System (DNS) IANA Considerations](https://tools.ietf.org/html/rfc6895)
   - [YANG Types for DNS Classes and Resource Record Types](https://tools.ietf.org/html/rfc9108)
   """
-  @enforce true
 
-  defstruct value: << 0 :: 16 >>
+  defstruct value: <<0::16>>
 
   def validate!(value) when 0 <= value and value <= 65535 do
     %YellowDog.DNS.Class{value: value}
   end
+
   def validate!(_) do
     raise ArgumentError, "Value must be between 0 and 65535"
   end
-
 
   @doc """
   # Reserved

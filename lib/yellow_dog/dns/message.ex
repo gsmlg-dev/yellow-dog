@@ -1,4 +1,4 @@
-def YellowDog.DNS.Message do
+defmodule YellowDog.DNS.Message do
   @moduledoc """
   # DNS Message
 
@@ -36,34 +36,110 @@ def YellowDog.DNS.Message do
 
   """
 
+  alias YellowDog.DNS.Message
+  alias YellowDog.DNS.Message.Header
+  alias YellowDog.DNS.Message.Question
+  alias YellowDog.DNS.Message.Record
+
   @type t :: %__MODULE__{
-    id: integer(), # ID: 16bit if 0 generate RandomID
-    qr: 0 | 1, # QR: 1bit  query (0), or a response (1)
-    opcode: integer(), # OPCode: 4bit YellowDog.DNS.OpCode.t(),
-    aa: 0 | 1, # AA: 1bit Authoritative Answer
-    tc: 0 | 1, # TC: 1bit TrunCation
-    rd: 0 | 1, # RD: 1bit Recursion Desired
-    ra: 0 | 1, # RA: 1bit Recursion Available
-    z: 0 | 1, # Z: 1bit Reserved for future use
-    ad: 0 | 1, # AD: 1bit Authenticated Data
-    cd: 0 | 1, # CD: 1bit Checking Disabled
-    rcode: integer(), # RCode: 4bit YellowDog.DNS.RCode.t(),
-    qdcount: integer(), # QDCOUNT: 16bit an unsigned integer specifying the number of entries in the question section.
-    ancount: integer(), # ANCOUNT: 16bit an unsigned integer specifying the number of resource records in the answer section.
-    nscount: integer(), # NSCOUNT: 16bit an unsigned integer specifying the number of name server resource records in the authority records section.
-    arcount: integer() # ARCOUNT: 16bit an unsigned integer specifying the number of resource records in the additional records section.
-  }
+          header: %Header{},
+          # Question list
+          qdlist: list(%Question{}),
+          # Answer list
+          anlist: list(%Record{}),
+          # Authority list
+          nslist: list(%Record{}),
+          # Additional record list
+          arlist: list(%Record{})
+        }
 
-  defstruct header: %YellowDog.DNS.Header{},
-    qdlist: [],
-    anlist: [],
-    nslist: [],
-    arlist: []
+  defstruct header: %Header{},
+            qdlist: [],
+            anlist: [],
+            nslist: [],
+            arlist: []
 
-  def to_buffer(message = %YellowDog.DNS.Message{header: header, qdlist: qdlist, anlist: anlist, nslist: nslist, arlist: arlist}) do
+  def to_buffer(
+        _message = %Message{
+          header: header,
+          qdlist: qdlist,
+          anlist: anlist,
+          nslist: nslist,
+          arlist: arlist
+        }
+      ) do
     <<
-      YellowDog.DNS.Header.to_buffer(header)::binary(),
-      YellowDog.DNS.Question.to_buffer(qdlist)::binary()>>
+      Header.to_buffer(header)::binary,
+      Question.to_buffer(qdlist)::binary,
+      Record.list_to_buffer(anlist)::binary,
+      Record.list_to_buffer(nslist)::binary,
+      Record.list_to_buffer(arlist)::binary
+    >>
+  end
 
+  def from_buffer(<<header::12, next>>) do
+    %Message{
+      header: Header.from_buffer(header)
+    }
+  end
+
+  def new do
+    %Message{
+      header: Header.new(),
+      qdlist: [],
+      anlist: [],
+      nslist: [],
+      arlist: []
+    }
+  end
+
+  def name_to_buffer(name) do
+    case String.split(name, ".") |> Enum.filter(&(&1 != "")) do
+      [] ->
+        <<0>>
+
+      list ->
+        list
+        |> Enum.reverse()
+        |> Enum.reduce(<<0>>, fn part, acc ->
+          part_length = byte_size(part)
+          <<part_length::8, part::binary-size(part_length), acc::binary>>
+        end)
+    end
+  end
+
+  def name_from_buffer(buffer, message \\ <<>>)
+  def name_from_buffer(<<0>>, _), do: "."
+
+  def name_from_buffer(buffer, message)
+      when is_bitstring(buffer) and byte_size(buffer) > 0 do
+    case buffer do
+      <<0, _>> ->
+        "."
+
+      <<0xC0, pos::8, _::binary>> ->
+        case message do
+          <<_::binary-size(pos), next::8, next_buffer::binary>> ->
+            name_from_buffer(<<next::8, next_buffer::binary>>, message)
+
+          _ ->
+            throw(FormatError)
+        end
+
+      <<size::8, rest::binary>> when size < 64 and size > 0 ->
+        case rest do
+          <<part::binary-size(size), 0::8, _::binary>> ->
+            part <> "."
+
+          <<part::binary-size(size), next::8, next_buffer::binary>> ->
+            part <> "." <> name_from_buffer(<<next, next_buffer::binary>>, message)
+
+          <<_::binary-size(size), _::binary>> ->
+            throw(FormatError)
+        end
+
+      _ ->
+        throw(FormatError)
+    end
   end
 end

@@ -1,4 +1,4 @@
-defmodule YellowDog.DNS.OpCode do
+defmodule YellowDog.DNS.Message.OpCode do
   @moduledoc """
   # DNS OpCode
 

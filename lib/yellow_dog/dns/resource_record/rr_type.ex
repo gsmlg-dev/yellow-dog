@@ -1,4 +1,4 @@
-defmodule YellowDog.DNS.RRType do
+defmodule YellowDog.DNS.ResourceRecord.Type do
   @moduledoc """
   # DNS RRTypes
   DNS Resource Record Type

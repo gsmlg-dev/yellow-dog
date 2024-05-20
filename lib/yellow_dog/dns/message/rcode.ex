@@ -1,4 +1,4 @@
-defmodule YellowDog.DNS.RCode do
+defmodule YellowDog.DNS.Message.RCode do
   @moduledoc """
   # DNS RCode
   DNS return code
