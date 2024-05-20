@@ -23,19 +23,27 @@ defmodule YellowDog.DNS.Message.Question do
             class: Class.internet()
 
   def to_buffer(%__MODULE__{} = question) do
-    <<question.name::binary, 0x00, question.type::16, question.class::16>>
+    <<Message.name_to_buffer(question.name)::binary, question.type::16, question.class::16>>
   end
 
   def from_buffer(buffer, message \\ <<>>) do
-    {name, name_length} = Message.name_from_buffer(buffer, message)
-
-    cond do
-      <<_::binary-size(name_length), type::16, class::16>> = buffer ->
-        {name_length + 4, %__MODULE__{name: name, type: type, class: class}}
-
-      true ->
-        throw(:invalid_dns_message)
+    with {name_length, name} <- Message.name_from_buffer(buffer, message),
+         <<_::binary-size(name_length), type::16, class::16>> <- buffer do
+      {name_length + 4, %__MODULE__{name: name, type: type, class: class}}
+    else
+      _ ->
+        {0, %__MODULE__{}}
     end
+  end
+
+  def new(name, type, class) do
+    new_name = name |> Message.name_to_buffer() |> Message.name_from_buffer() |> elem(1)
+
+    %__MODULE__{
+      name: new_name,
+      type: type,
+      class: class
+    }
   end
 
   def list_to_buffer(list) when is_list(list) do
@@ -52,12 +60,9 @@ defmodule YellowDog.DNS.Message.Question do
 
   def list_from_message(<<_::binary-size(12), buffer::binary>> = message, qdcount)
       when byte_size(message) >= 12 and is_integer(qdcount) and qdcount > 0 do
-    {byte_length, questions} =
-      Enum.reduce(0..qdcount, {0, []}, fn _, {all_size, questions} ->
-        {size, question} = from_buffer(binary_part(buffer, all_size, byte_size(buffer)), message)
-        {all_size + size, [question | questions]}
-      end)
-
-    {byte_length, questions |> Enum.reverse()}
+    Enum.reduce(0..qdcount, {0, []}, fn _, {all_size, questions} ->
+      {size, question} = from_buffer(binary_part(buffer, all_size, byte_size(buffer)), message)
+      {all_size + size, questions ++ [question]}
+    end)
   end
 end

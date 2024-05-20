@@ -36,7 +36,7 @@ defmodule YellowDog.DNS.Message do
 
   """
 
-  alias YellowDog.DNS.Message
+  # alias YellowDog.DNS.Message
   alias YellowDog.DNS.Message.Header
   alias YellowDog.DNS.Message.Question
   alias YellowDog.DNS.Message.Record
@@ -60,7 +60,7 @@ defmodule YellowDog.DNS.Message do
             arlist: []
 
   def to_buffer(
-        _message = %Message{
+        _message = %__MODULE__{
           header: header,
           qdlist: qdlist,
           anlist: anlist,
@@ -70,14 +70,14 @@ defmodule YellowDog.DNS.Message do
       ) do
     <<
       Header.to_buffer(header)::binary,
-      Question.to_buffer(qdlist)::binary,
+      Question.list_to_buffer(qdlist)::binary,
       Record.list_to_buffer(anlist)::binary,
       Record.list_to_buffer(nslist)::binary,
       Record.list_to_buffer(arlist)::binary
     >>
   end
 
-  def from_buffer(<<header_bytes::binary-size(12), next>> = message) do
+  def from_buffer(<<header_bytes::binary-size(12), _>> = message) do
     header = Header.from_buffer(header_bytes)
     {qd_size, qdlist} = Question.list_from_message(message, header.qdcound)
     {an_size, anlist} = Record.list_from_message(message, header.ancound, 12 + qd_size)
@@ -88,7 +88,7 @@ defmodule YellowDog.DNS.Message do
     {_, arlist} =
       Record.list_from_message(message, header.arcount, 12 + qd_size + an_size + ns_size)
 
-    %Message{
+    %__MODULE__{
       header: header,
       qdlist: qdlist,
       anlist: anlist,
@@ -98,13 +98,37 @@ defmodule YellowDog.DNS.Message do
   end
 
   def new do
-    %Message{
+    %__MODULE__{
       header: Header.new(),
       qdlist: [],
       anlist: [],
       nslist: [],
       arlist: []
     }
+  end
+
+  def update_header_attr(message = %__MODULE__{}, name, value) do
+    %__MODULE__{message | header: Map.put(message.header, name, value)}
+  end
+
+  def update_header(message = %__MODULE__{}, header = %Header{}) do
+    %__MODULE__{message | header: Map.merge(message.header, header)}
+  end
+
+  def add_question(message = %__MODULE__{}, question = %Question{}) do
+    %__MODULE__{message | qdlist: message.qdlist ++ [question]}
+  end
+
+  def add_answer(message = %__MODULE__{}, record = %Record{}) do
+    %__MODULE__{message | anlist: message.anlist ++ [record]}
+  end
+
+  def add_authority(message = %__MODULE__{}, record = %Record{}) do
+    %__MODULE__{message | nslist: message.nslist ++ [record]}
+  end
+
+  def add_additional(message = %__MODULE__{}, record = %Record{}) do
+    %__MODULE__{message | arlist: message.arlist ++ [record]}
   end
 
   def name_to_buffer(name) do

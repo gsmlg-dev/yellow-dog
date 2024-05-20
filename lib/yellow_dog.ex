@@ -9,4 +9,15 @@ defmodule YellowDog do
   def banner do
     @banner_text
   end
+
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    children = [
+      {YellowDog.Config, [YellowDog.Config.default_config()]}
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one, name: YellowDog.Supervisor)
+  end
 end

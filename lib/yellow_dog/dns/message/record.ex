@@ -54,6 +54,7 @@ defmodule YellowDog.DNS.Message.Record do
   """
   alias YellowDog.DNS.Message
   alias YellowDog.DNS.Message.Record
+  alias YellowDog.DNS.ResourceRecord.Type, as: RType
 
   @type t :: %__MODULE__{
           name: String.t()
@@ -71,7 +72,13 @@ defmodule YellowDog.DNS.Message.Record do
            buffer,
          <<rdata::binary-size(rdlength), _rest::binary>> = rest do
       {name_length + rdlength + 10,
-       %Record{name: name, type: type, class: class, ttl: ttl, data: rdata}}
+       %Record{
+         name: name,
+         type: type,
+         class: class,
+         ttl: ttl,
+         data: _rdata_from_message(RType.get_name(type), rdata, message)
+       }}
     end
   end
 
@@ -79,15 +86,22 @@ defmodule YellowDog.DNS.Message.Record do
     Converts a Record struct to binary data.
   """
   def to_buffer(record = %__MODULE__{}) do
-    # TODO: Implement this function
+    rdata = _rdata_to_buffer(RType.get_name(record.type), record.data)
+
+    <<Message.name_to_buffer(record.name)::binary, record.type::16, record.class::16,
+      record.ttl::32, byte_size(rdata)::16, rdata::binary>>
   end
 
-  @spec list_to_buffer(maybe_improper_list()) :: binary()
+  def new(name, type, class, ttl, data) do
+    new_name = name |> Message.name_to_buffer() |> Message.name_from_buffer() |> elem(1)
+
+    %__MODULE__{name: new_name, type: type, class: class, ttl: ttl, data: data}
+  end
+
   def list_to_buffer(list) when is_list(list) do
-    list |> Enum.map(&Record.to_buffer/1) |> IO.iodata_to_binary()
+    list |> Enum.map(&Record.to_buffer/1) |> Enum.join()
   end
 
-  @spec list_from_message(any(), any(), any()) :: nil | {0, []}
   def list_from_message(count, _message, _offset) when count == 0 do
     {0, []}
   end
@@ -104,5 +118,90 @@ defmodule YellowDog.DNS.Message.Record do
       end)
 
     {size, records |> Enum.reverse()}
+  end
+
+  def _rdata_from_message(:a, data, _) do
+    <<a::8, b::8, c::8, d::8>> = data
+    {a, b, c, d}
+  end
+
+  def _rdata_from_message(:aaaa, data, _) do
+    <<a0::8, b0::8, c0::8, d0::8, a1::8, b1::8, c1::8, d1::8, a2::8, b2::8, c2::8, d2::8, a3::8,
+      b3::8, c3::8, d3::8>> = data
+
+    {a0, b0, c0, d0, a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3}
+  end
+
+  def _rdata_from_message(type, data, message) when type in [:cname, :ns, :ptr] do
+    Message.name_from_buffer(data, message) |> elem(1)
+  end
+
+  def _rdata_from_message(:mx, <<weight::16, data>>, message) do
+    {weight, Message.name_from_buffer(data, message)}
+  end
+
+  def _rdata_from_message(:soa, data, message) do
+    {ns_len, ns} = Message.name_from_buffer(data, message)
+    {rp_len, rp} = Message.name_from_buffer(binary_part(data, ns_len, byte_size(data) - ns_len))
+
+    <<serial::32, refresh::32, retry::32, expire::32, negative::32>> =
+      binary_part(data, ns_len + rp_len, byte_size(data) - ns_len - rp_len)
+
+    {ns, rp, serial, refresh, retry, expire, negative}
+  end
+
+  def _rdata_from_message(:srv, <<priority::16, weight::16, port::16, data::binary>>, message) do
+    {priority, weight, port, Message.name_from_buffer(data, message) |> elem(1)}
+  end
+
+  def _rdata_from_message(:txt, <<len::8, data>>, _) do
+    case data do
+      <<section::binary-size(len), next_len::8, next::binary>> ->
+        [section] ++ _rdata_from_message(:txt, <<next_len::8, next::binary>>, <<>>)
+
+      <<section::binary-size(len)>> ->
+        [section]
+    end
+  end
+
+  def _rdata_from_message(type, data, _) when is_atom(type) do
+    data
+  end
+
+  def _rdata_to_buffer(:a, {a, b, c, d}) do
+    <<a::8, b::8, c::8, d::8>>
+  end
+
+  def _rdata_to_buffer(:aaaa, {a0, b0, c0, d0, a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3}) do
+    <<a0::8, b0::8, c0::8, d0::8, a1::8, b1::8, c1::8, d1::8, a2::8, b2::8, c2::8, d2::8, a3::8,
+      b3::8, c3::8, d3::8>>
+  end
+
+  def _rdata_to_buffer(type, data) when type in [:cname, :ns, :ptr] do
+    Message.name_to_buffer(data)
+  end
+
+  def _rdata_to_buffer(:mx, {weight, data}) do
+    <<weight::16, data>>
+  end
+
+  def _rdata_to_buffer(:soa, {ns, rp, serial, refresh, retry, expire, negative}) do
+    <<Message.name_to_buffer(ns)::binary, Message.name_to_buffer(rp)::binary, serial::32,
+      refresh::32, retry::32, expire::32, negative::32>>
+  end
+
+  def _rdata_to_buffer(:srv, {priority, weight, port, data}) do
+    <<priority::16, weight::16, port::16, Message.name_to_buffer(data)::binary>>
+  end
+
+  def _rdata_to_buffer(:txt, data) do
+    for section <- data do
+      <<byte_size(section), section::binary>>
+    end
+    |> Enum.join()
+  end
+
+  def _rdata_to_buffer(type, data) when is_atom(type) do
+    data
   end
 end
