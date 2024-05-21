@@ -47,6 +47,8 @@ defmodule YellowDog.DNS.Message.RecordTest do
     cname = RType.cname()
     a = RType.a()
 
+    assert 59 = size
+
     assert %Record{
              name: "www.baidu.com.",
              type: cname,
@@ -70,5 +72,23 @@ defmodule YellowDog.DNS.Message.RecordTest do
              ttl: 54,
              data: {182, 61, 200, 6}
            } = third
+
+    {size, records} = Record.list_from_message(1, message, 31 + size)
+
+    assert 22 = size
+
+    first = hd(records)
+
+    opt = RType.opt()
+
+    assert %Record{
+             name: ".",
+             type: opt,
+             class: _,
+             ttl: _,
+             data: data
+           } = first
+
+    assert <<0, 8, 0, 7, 0, 1, 20, 0, 114, 249, 112>> = data
   end
 end

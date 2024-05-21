@@ -28,11 +28,11 @@ defmodule YellowDog.DNS.Message.Question do
 
   def from_buffer(buffer, message \\ <<>>) do
     with {name_length, name} <- Message.name_from_buffer(buffer, message),
-         <<_::binary-size(name_length), type::16, class::16>> <- buffer do
+         <<_::binary-size(name_length), type::16, class::16, _::binary>> <- buffer do
       {name_length + 4, %__MODULE__{name: name, type: type, class: class}}
     else
-      _ ->
-        {0, %__MODULE__{}}
+      error ->
+        throw({:format_error, :question, error})
     end
   end
 
@@ -59,9 +59,11 @@ defmodule YellowDog.DNS.Message.Question do
   end
 
   def list_from_message(<<_::binary-size(12), buffer::binary>> = message, qdcount)
-      when byte_size(message) >= 12 and is_integer(qdcount) and qdcount > 0 do
-    Enum.reduce(0..qdcount, {0, []}, fn _, {all_size, questions} ->
-      {size, question} = from_buffer(binary_part(buffer, all_size, byte_size(buffer)), message)
+      when byte_size(message) >= 12 + 5 and is_integer(qdcount) and qdcount > 0 do
+    Enum.reduce(1..qdcount, {0, []}, fn _, {all_size, questions} ->
+      {size, question} =
+        from_buffer(binary_part(buffer, all_size, byte_size(buffer) - all_size), message)
+
       {all_size + size, questions ++ [question]}
     end)
   end

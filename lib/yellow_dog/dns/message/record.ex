@@ -109,7 +109,9 @@ defmodule YellowDog.DNS.Message.Record do
     {0, []}
   end
 
-  def list_from_message(count, message, offset) when count > 0 do
+  def list_from_message(count, message, offset)
+      when count > 0 and is_bitstring(message) and
+             byte_size(message) >= offset + count * 11 do
     buffer = binary_part(message, offset, byte_size(message) - offset)
 
     {size, records} =

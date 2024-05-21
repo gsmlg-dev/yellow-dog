@@ -80,13 +80,13 @@ defmodule YellowDog.DNS.Message do
   def from_buffer(<<header_bytes::binary-size(12), _::binary>> = message) do
     header = Header.from_buffer(header_bytes)
     {qd_size, qdlist} = Question.list_from_message(message, header.qdcount)
-    {an_size, anlist} = Record.list_from_message(message, header.ancount, 12 + qd_size)
+    {an_size, anlist} = Record.list_from_message(header.ancount, message, 12 + qd_size)
 
     {ns_size, nslist} =
-      Record.list_from_message(message, header.nscount, 12 + qd_size + an_size)
+      Record.list_from_message(header.nscount, message, 12 + qd_size + an_size)
 
     {_, arlist} =
-      Record.list_from_message(message, header.arcount, 12 + qd_size + an_size + ns_size)
+      Record.list_from_message(header.arcount, message, 12 + qd_size + an_size + ns_size)
 
     %__MODULE__{
       header: header,
@@ -153,6 +153,11 @@ defmodule YellowDog.DNS.Message do
     case message do
       <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
         {_, name} = name_from_buffer(<<next::8, next_buffer::binary>>, message)
+        {2, name}
+
+      <<_::binary-size(pos), next::8, next_pos::8, next_buffer::binary>>
+      when next == 0xC0 and pos != next_pos ->
+        {_, name} = name_from_buffer(<<next::8, next_pos::8, next_buffer::binary>>, message)
         {2, name}
 
       _ ->

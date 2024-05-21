@@ -369,9 +369,17 @@ defmodule YellowDog.Server do
       YellowDog.Statistics.post(:protocols, protocol)
     end
 
-    YellowDog.DNS.Message.from_buffer(data)
-    |> make_response(protocol, bases, client, port)
-    |> write(protocol, socket, client, port)
+    case data do
+      data when is_bitstring(data) ->
+        Logger.debug("incomming message: #{data}")
+
+        YellowDog.DNS.Message.from_buffer(<<data::binary>>)
+        |> make_response(protocol, bases, client, port)
+        |> write(protocol, socket, client, port)
+
+      data ->
+        Logger.warning("Unexpected data #{inspect(data)} from #{a2s(client)}")
+    end
   end
 
   def make_response(%YellowDog.DNS.Message{} = message, protocol, bases, client, port) do
