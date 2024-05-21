@@ -60,4 +60,13 @@ defmodule YellowDog.Config do
   def default_config do
     @default_config
   end
+
+  def load_config() do
+    list =
+      config_files()
+      |> Enum.filter(&File.exists?(&1))
+      |> Enum.map(&File.read!(&1))
+
+    Map.merge(default_config(), %{})
+  end
 end

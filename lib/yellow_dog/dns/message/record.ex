@@ -67,10 +67,10 @@ defmodule YellowDog.DNS.Message.Record do
             data: <<>>
 
   def from_buffer(buffer, message \\ <<>>) do
-    with {name_length, name} = Message.name_from_buffer(buffer, message),
-         <<_::binary-size(name_length), type::16, class::16, ttl::32, rdlength::16, rest::binary>> =
+    with {name_length, name} <- Message.name_from_buffer(buffer, message),
+         <<_::binary-size(name_length), type::16, class::16, ttl::32, rdlength::16, rest::binary>> <-
            buffer,
-         <<rdata::binary-size(rdlength), _rest::binary>> = rest do
+         <<rdata::binary-size(rdlength), _rest::binary>> <- rest do
       {name_length + rdlength + 10,
        %Record{
          name: name,
@@ -79,6 +79,9 @@ defmodule YellowDog.DNS.Message.Record do
          ttl: ttl,
          data: _rdata_from_message(RType.get_name(type), rdata, message)
        }}
+    else
+      error ->
+        throw({:format_error, error})
     end
   end
 
@@ -111,9 +114,8 @@ defmodule YellowDog.DNS.Message.Record do
 
     {size, records} =
       Enum.reduce(1..count, {0, []}, fn _, {offset, rescord_list} ->
-        {size, record} =
-          from_buffer(binary_part(buffer, offset, byte_size(buffer) - offset), message)
-
+        sub_buffer = binary_part(buffer, offset, byte_size(buffer) - offset)
+        {size, record} = from_buffer(sub_buffer, message)
         {offset + size, [record | rescord_list]}
       end)
 

@@ -77,10 +77,10 @@ defmodule YellowDog.DNS.Message do
     >>
   end
 
-  def from_buffer(<<header_bytes::binary-size(12), _>> = message) do
+  def from_buffer(<<header_bytes::binary-size(12), _::binary>> = message) do
     header = Header.from_buffer(header_bytes)
-    {qd_size, qdlist} = Question.list_from_message(message, header.qdcound)
-    {an_size, anlist} = Record.list_from_message(message, header.ancound, 12 + qd_size)
+    {qd_size, qdlist} = Question.list_from_message(message, header.qdcount)
+    {an_size, anlist} = Record.list_from_message(message, header.ancount, 12 + qd_size)
 
     {ns_size, nslist} =
       Record.list_from_message(message, header.nscount, 12 + qd_size + an_size)
@@ -147,38 +147,41 @@ defmodule YellowDog.DNS.Message do
   end
 
   def name_from_buffer(buffer, message \\ <<>>)
-  def name_from_buffer(<<0>>, _), do: {1, "."}
+  def name_from_buffer(<<size::8, _::binary>>, _) when size == 0, do: {1, "."}
 
-  def name_from_buffer(buffer, message)
-      when is_bitstring(buffer) and byte_size(buffer) > 0 do
-    case buffer do
-      <<0, _>> ->
-        {1, "."}
-
-      <<0xC0, pos::8, _::binary>> ->
-        case message do
-          <<_::binary-size(pos), next::8, next_buffer::binary>> ->
-            name_from_buffer(<<next::8, next_buffer::binary>>, message)
-
-          _ ->
-            throw(FormatError)
-        end
-
-      <<size::8, rest::binary>> when size < 64 and size > 0 ->
-        case rest do
-          <<part::binary-size(size), 0::8, _::binary>> ->
-            {1 + size + 1, part <> "."}
-
-          <<part::binary-size(size), next::8, next_buffer::binary>> ->
-            {last_size, last_name} = name_from_buffer(<<next, next_buffer::binary>>, message)
-            {1 + size + last_size, part <> "." <> last_name}
-
-          <<_::binary-size(size), _::binary>> ->
-            throw(FormatError)
-        end
+  def name_from_buffer(<<size::8, pos::8, _::binary>>, message) when size == 0xC0 do
+    case message do
+      <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
+        {_, name} = name_from_buffer(<<next::8, next_buffer::binary>>, message)
+        {2, name}
 
       _ ->
         throw(FormatError)
     end
+  end
+
+  def name_from_buffer(<<size::8, rest::binary>>, message)
+      when size > 0 and size < 64 do
+    case rest do
+      <<part::binary-size(size), next::8, _::binary>> when next == 0 ->
+        {1 + size + 1, part <> "."}
+
+      <<part::binary-size(size), next::8, next_pos::8, last_buffer::binary>> when next == 0xC0 ->
+        {_, compressed_name} =
+          name_from_buffer(<<next::8, next_pos::8, last_buffer::binary>>, message)
+
+        {1 + size + 2, part <> "." <> compressed_name}
+
+      <<part::binary-size(size), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
+        {last_size, last_name} = name_from_buffer(<<next, next_buffer::binary>>, message)
+        {1 + size + last_size, part <> "." <> last_name}
+
+      <<_::binary-size(size), _::binary>> ->
+        throw(FormatError)
+    end
+  end
+
+  def name_from_buffer(buffer, message) do
+    throw({:invalid_format, buffer, message})
   end
 end
