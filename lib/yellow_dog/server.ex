@@ -445,10 +445,10 @@ defmodule YellowDog.Server do
         end
       end)
 
-    Binary.part(
+    binary_part(
       :crypto.hash(
         :sha256,
-        config("secret-salt-for-cookies") <> Binary.from_list(addr) <> client_cookie
+        config("secret-salt-for-cookies") <> <<addr::binary>> <> client_cookie
       ),
       0,
       8
