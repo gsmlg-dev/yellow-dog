@@ -159,7 +159,7 @@ defmodule YellowDog.Server do
       end
 
     # Logger.notice appeared only with Elixir 1.11
-    Logger.warn("Receiving requests on port #{config("port")}")
+    Logger.warning("Receiving requests on port #{config("port")}")
     stats_pid = spawn_link(YellowDog.Server, :stats_print, [])
     Process.register(stats_pid, YellowDog.Stats)
     # Block here forever while the servers (UDP and TCP) run
@@ -172,8 +172,13 @@ defmodule YellowDog.Server do
   end
 
   def stats() do
-    # https://www.erlang.org/doc/man/erlang.html#system_info-1 https://www.erlang.org/doc/man/erlang#memory-1
-    "[VM resources] Processes: #{:erlang.system_info(:process_count)}/#{:erlang.system_info(:process_limit)} Ports: #{:erlang.system_info(:port_count)}/#{:erlang.system_info(:port_limit)} Atoms: #{:erlang.system_info(:atom_count)}/#{:erlang.system_info(:atom_limit)} Memory: #{:erlang.memory(:total)} bytes"
+    # https://www.erlang.org/doc/man/erlang.html#system_info-1
+    # https://www.erlang.org/doc/man/erlang#memory-1
+    "[VM resources]" <>
+      " Processes: #{:erlang.system_info(:process_count)}/#{:erlang.system_info(:process_limit)}" <>
+      " Ports: #{:erlang.system_info(:port_count)}/#{:erlang.system_info(:port_limit)}" <>
+      " Atoms: #{:erlang.system_info(:atom_count)}/#{:erlang.system_info(:atom_limit)}" <>
+      " Memory: #{:erlang.memory(:total)} bytes"
   end
 
   def stats_print() do

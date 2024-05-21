@@ -18,6 +18,6 @@ defmodule YellowDog do
       {YellowDog.Config, YellowDog.Config.default_config()}
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: YellowDog.Supervisor)
+    Supervisor.start_link(children, strategy: :rest_for_one, name: YellowDog)
   end
 end
