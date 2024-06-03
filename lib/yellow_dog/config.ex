@@ -17,8 +17,6 @@ defmodule YellowDog.Config do
   @default_config %{
     "port" => 1053,
     "base" => "test",
-    "nameserver" => "ns1.test=::1",
-    "maintainer" => "root.invalid",
     "logging-facility" => "local0",
     "logging-level" => "warning",
     "console" => true,
@@ -27,28 +25,16 @@ defmodule YellowDog.Config do
     "server-bufsize" => 1440,
     "default-nonnull-ttl" => 30,
     "secret-salt-for-cookies" => "I hate wasabi",
-    "dnssec_key" => nil,
-    "dnssec_key_tag" => nil,
     "ipc-socket" => nil,
-    "services" => ["date", "random", "ip", "connection", "hello", "ecs", "unit", "op"],
     "ipv4-only" => false,
     "ipv6-only" => false,
     "max-random-value" => 1000,
-    # False by default since
-    "statistics" => false,
-    # they can probably
-    # seriously slow down the
-    # server
-    "dot-cert" => nil,
-    "dot-key" => nil,
-    "dot-port" => 853,
+    # False, until make Telemetry Module
+    "telemetry" => false,
     "padding" => true,
     # RFC 9567, DNS Error Reporting
     "reporting-agent" => nil,
-    "report-via-dns" => false,
-    # Now the IETF experimental stuff
-    # https://datatracker.ietf.org/doc/draft-ietf-dnsop-zoneversion/,
-    "zoneversion" => false
+    "report-via-dns" => false
   }
 
   @config_file_home System.get_env("HOME") <> "/.yellowdog.toml"
@@ -62,10 +48,10 @@ defmodule YellowDog.Config do
   end
 
   def load_config() do
-    list =
-      config_files()
-      |> Enum.filter(&File.exists?(&1))
-      |> Enum.map(&File.read!(&1))
+    # list =
+    #   config_files()
+    #   |> Enum.filter(&File.exists?(&1))
+    #   |> Enum.map(&File.read!(&1))
 
     Map.merge(default_config(), %{})
   end

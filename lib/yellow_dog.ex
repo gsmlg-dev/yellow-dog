@@ -15,7 +15,8 @@ defmodule YellowDog do
   @impl true
   def start(_type, _args) do
     children = [
-      {YellowDog.Config, YellowDog.Config.default_config()}
+      {YellowDog.Config, YellowDog.Config.default_config()},
+      {YellowDog.Server, []}
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: YellowDog)

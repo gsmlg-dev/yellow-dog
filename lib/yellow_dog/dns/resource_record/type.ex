@@ -599,4 +599,5 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
   def get_name(261), do: :resinfo
   def get_name(32768), do: :ta
   def get_name(32769), do: :dlv
+  def get_name(code), do: code
 end

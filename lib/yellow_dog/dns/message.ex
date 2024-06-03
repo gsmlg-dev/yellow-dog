@@ -116,7 +116,11 @@ defmodule YellowDog.DNS.Message do
   end
 
   def add_question(message = %__MODULE__{}, question = %Question{}) do
-    %__MODULE__{message | qdlist: message.qdlist ++ [question]}
+    %__MODULE__{
+      message
+      | qdlist: message.qdlist ++ [question],
+        header: Map.put(message.header, :qdcount, message.header.qdcount + 1)
+    }
   end
 
   def add_answer(message = %__MODULE__{}, record = %Record{}) do

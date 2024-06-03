@@ -91,4 +91,5 @@ defmodule YellowDog.DNS.Class do
   def get_name(4), do: :hesiod
   def get_name(254), do: :qclass_none
   def get_name(255), do: :qclass_any
+  def get_name(code), do: code
 end

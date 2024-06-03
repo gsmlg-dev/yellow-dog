@@ -15,5 +15,9 @@ config :logger, :console,
   metadata: [:user_id]
 
 config :yellow_dog, YellowDog.Server,
-  port: 4053,
-  default_forwarder: {"1.2.4.8", 53}
+  port: 53,
+  default_forwarder: {{8, 8, 8, 8}, 53}
+
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{config_env()}.exs"

@@ -1,7 +1,3 @@
-defmodule YellowDog.LocError do
-  defexception message: "Wrong values for a location"
-end
-
 defmodule YellowDog.Utils do
   @type address :: {integer}
 
@@ -80,35 +76,6 @@ defmodule YellowDog.Utils do
     now.year * 1_000_000 + now.month * 10000 + now.day * 100 + now.hour
     # perfect since we will keep the same serial for an entire
     # hour. But we have no choice since we don't want to keep state.
-  end
-
-  @doc """
-  The DNS library we use do not encode LOC
-  <https://github.com/erlang/otp/issues/6098>.  So, we do it
-  ourselves.
-  Latitude is between -90.0 (south) and +90.0 (north). Longitude is
-  between -180.0 (west) and +180.0 (east). Altitude must be in meters
-  from sea level.
-  """
-  @spec loc(float, float, float) :: binary
-  def loc(latitude, longitude, altitude) do
-    # RFC 1876, section 2. Units are thousandth of seconds of arc and
-    # the reference is 2**31, aka 2147483648.
-    if latitude < -90.0 or latitude > 90.0 or longitude < -180.0 or longitude > 180.0 do
-      raise YellowDog.LocError
-    end
-
-    longitude = round(longitude * 60 * 60 * 1000) + 2_147_483_648
-    latitude = round(latitude * 60 * 60 * 1000) + 2_147_483_648
-    # Altitude is encoded
-    altitude = round(altitude * 100 + 10_000_000)
-    # in centimeters, and
-    # start from *below*
-    # the sea level.
-    # RFC 1876, section 2. We hardwire the size to zero (a point) and
-    # the precisions.
-    <<0, 0, 0, 0, latitude::unsigned-integer-size(32), longitude::unsigned-integer-size(32),
-      altitude::unsigned-integer-size(32)>>
   end
 
   defmodule Convert do

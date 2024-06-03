@@ -1,6 +1,6 @@
 defmodule YellowDog.Server do
   @moduledoc """
-  Heart of the DNS server.
+  Start a GenServer to YellowDog DNS Server.
 
   uses directly the Erlang libraries
   - [gen_udp](https://www.erlang.org/doc/man/gen_udp.html)
@@ -8,33 +8,58 @@ defmodule YellowDog.Server do
 
   """
 
-  # https://hexdocs.pm/logger/
+  use GenServer
+
   require Logger
 
   import YellowDog.Utils
   import YellowDog.Config
 
   # alias YellowDog.DNS.Message.EdnsCode
-  # alias YellowDog.DNS.Message.RCode
-  # alias YellowDog.DNS.ResourceRecord.Type
+  alias YellowDog.DNS.Message.RCode
+  alias YellowDog.DNS.ResourceRecord.Type, as: RType
+  alias YellowDog.DNS.Class, as: QClass
 
   # alias YellowDog.DNS.Message.Record, as: MRecord
 
   # Milli-seconds
   @timeout 2000
+  # rfc 1035
+  @udp_max_size 512
   # Should be enough for DNS over UDP
   @read_length 4096
 
   # Milli-seconds
-  @stats_delay 600_000
+  @stats_interval 60_000
 
   # RFC 8467, section 4.1
   # @pad_block_size 468
 
   # @minimum_ttl 0
 
-  @spec start() :: no_return
-  def start() do
+  def start_link(args) do
+    GenServer.start_link(__MODULE__, args)
+  end
+
+  @impl true
+  def init(_) do
+    state = %{}
+    {:ok, state, {:continue, :start_listening}}
+  end
+
+  @impl true
+  def handle_continue(:start_listening, state) do
+    config_logger()
+
+    state =
+      state
+      |> setup_addresses()
+      |> start_listening()
+
+    {:noreply, state}
+  end
+
+  def config_logger() do
     Logger.configure(level: config("log-level"))
     Logger.add_backend({LoggerSyslogBackend, :default_logger})
 
@@ -48,44 +73,57 @@ defmodule YellowDog.Server do
     if not config("console") do
       Logger.remove_backend(Logger.Backends.Console)
     end
+  end
 
-    version =
-      if config("ipv4-only") do
-        :inet
-      else
-        :inet6
-        # Depending on the OS parameters (sysctl net.ipv6.bindv6only on
-        # Linux), it allows us to listen on IPv6 *and* IPv4.
-      end
+  def setup_addresses(state) do
+    state =
+      state
+      |> Map.put(
+        :version,
+        if config("ipv4-only") do
+          :inet
+        else
+          :inet6
+          # Depending on the OS parameters (sysctl net.ipv6.bindv6only on
+          # Linux), it allows us to listen on IPv6 *and* IPv4.
+        end
+      )
 
-    addresses =
-      case config("bind") do
-        [:any] ->
-          [:any]
+    state =
+      state
+      |> Map.put(
+        :addresses,
+        case config("bind") do
+          [:any] ->
+            [:any]
 
-        l ->
-          Enum.filter(
-            l,
-            fn address ->
-              (config("ipv4-only") and address_family(address) == :inet4) or
-                (config("ipv6-only") and address_family(address) == :inet6) or
-                (not config("ipv4-only") and not config("ipv6-only"))
-            end
-          )
-      end
+          l ->
+            Enum.filter(
+              l,
+              fn address ->
+                (config("ipv4-only") and address_family(address) == :inet4) or
+                  (config("ipv6-only") and address_family(address) == :inet6) or
+                  (not config("ipv4-only") and not config("ipv6-only"))
+              end
+            )
+        end
+      )
 
-    _udp_servers =
+    state
+  end
+
+  def start_listening(state) do
+    version = Map.get(state, :version)
+    addresses = Map.get(state, :addresses)
+
+    udp_servers =
       Enum.map(addresses, fn address ->
-        Logger.info("Starting UDP server for #{a2s(address)}")
+        Logger.info("Starting UDP server for #{a2s(address)}##{config("port")}")
         options = [version, :binary, {:ip, address}, active: false]
 
         options =
           if config("ipv6-only") do
-            # Warning: if you do NOT want
             options ++ [ipv6_v6only: true]
-            # the ipv6_v6only option, do
-            # not use it, even with value
-            # "false".
           else
             options
           end
@@ -98,9 +136,11 @@ defmodule YellowDog.Server do
         Process.monitor(udp_pid)
       end)
 
-    _tcp_servers =
+    state = state |> Map.put(:udp_servers, udp_servers)
+
+    tcp_servers =
       Enum.map(addresses, fn address ->
-        Logger.info("Starting TCP server for #{a2s(address)}")
+        Logger.info("Starting TCP server for #{a2s(address)}##{config("port")}")
 
         options = [
           version,
@@ -126,49 +166,9 @@ defmodule YellowDog.Server do
         Process.monitor(tcp_pid)
       end)
 
-    _tls_servers =
-      if config("dot") do
-        Enum.map(addresses, fn address ->
-          Logger.info("Starting DoT server for #{a2s(address)}")
+    state = state |> Map.put(:tcp_servers, tcp_servers)
 
-          options = [
-            version,
-            :binary,
-            {:ip, address},
-            active: false,
-            packet: 2,
-            certfile: config("dot-cert"),
-            keyfile: config("dot-key")
-          ]
-
-          # advertised_protocols: ["dot"]])
-          options =
-            if config("ipv6-only") do
-              options ++ [ipv6_v6only: true]
-            else
-              options
-            end
-
-          socket_result = :ssl.listen(config("dot-port"), options)
-          socket = socket_open(socket_result, config("dot-port"))
-          tls_pid = spawn_link(YellowDog.Server, :tls_loop_acceptor, [socket, config("bases")])
-          Process.monitor(tls_pid)
-        end)
-      else
-        []
-      end
-
-    # Logger.notice appeared only with Elixir 1.11
-    Logger.warning("Receiving requests on port #{config("port")}")
-    stats_pid = spawn_link(YellowDog.Server, :stats_print, [])
-    Process.register(stats_pid, YellowDog.Stats)
-    # Block here forever while the servers (UDP and TCP) run
-    receive do
-      {:DOWN, ref, type, proc, reason} ->
-        Logger.error(
-          "DNS server #{inspect(type)} #{inspect(proc)} (#{inspect(ref)}) ended, but it should never happen: #{inspect(reason)}"
-        )
-    end
+    state
   end
 
   def stats() do
@@ -183,7 +183,7 @@ defmodule YellowDog.Server do
 
   def stats_print() do
     Logger.info(stats())
-    :timer.sleep(@stats_delay)
+    :timer.sleep(@stats_interval)
     stats_print()
   end
 
@@ -250,49 +250,6 @@ defmodule YellowDog.Server do
     tcp_loop_acceptor(socket, bases)
   end
 
-  @spec tls_loop_acceptor(integer, charlist) :: no_return
-  def tls_loop_acceptor(socket, bases) do
-    result = :ssl.transport_accept(socket)
-
-    case result do
-      {:ok, client} ->
-        accepted = :ssl.handshake(client)
-
-        case accepted do
-          {:ok, client_socket} ->
-            remote_client = :ssl.peername(client)
-
-            case remote_client do
-              {:ok, {client, port}} ->
-                Logger.debug("Starting a new TCP session with #{inspect(a2s(client))}")
-
-                spawn(YellowDog.Server, :tls_request_acceptor, [
-                  client_socket,
-                  bases,
-                  client,
-                  port
-                ])
-
-              {:error, reason} ->
-                Logger.error("Cannot find remote client info: #{inspect(reason)}")
-            end
-
-          {:error, reason} ->
-            Logger.error("Cannot handshake TLS session #{inspect(reason)}")
-        end
-
-      {:error, :system_limit} ->
-        Logger.error("Accept error TLS: a limit was reached.")
-        # https://www.erlang.org/doc/efficiency_guide/advanced.html#system-limits
-        Logger.error(stats())
-
-      {:error, reason} ->
-        Logger.error("Accept error on TLS socket #{inspect(socket)}: #{inspect(reason)}")
-    end
-
-    tls_loop_acceptor(socket, bases)
-  end
-
   def tcp_request_acceptor(socket, bases, client, port) do
     result = :gen_tcp.recv(socket, 0, @timeout)
 
@@ -302,11 +259,7 @@ defmodule YellowDog.Server do
         tcp_request_acceptor(socket, bases, client, port)
 
       {:ok, request} ->
-        # We
         spawn(YellowDog.Server, :serve, [:tcp, socket, bases, client, port, request])
-        # spawn a new process for each request, so, we may send
-        # responses out-of-order (no problem, RFC 7766, section 7).
-        # Wait on the
         tcp_request_acceptor(socket, bases, client, port)
 
       # same TCP connection, to reuse it (you can test with dig's
@@ -336,49 +289,19 @@ defmodule YellowDog.Server do
     end
   end
 
-  def tls_request_acceptor(socket, bases, client, port) do
-    result = :ssl.recv(socket, 0, @timeout)
-
-    case result do
-      # No data yet
-      {:ok, nil} ->
-        tls_request_acceptor(socket, bases, client, port)
-
-      {:ok, request} ->
-        spawn(YellowDog.Server, :serve, [:tls, socket, bases, client, port, request])
-        tls_request_acceptor(socket, bases, client, port)
-
-      # Nothing to do
-      {:error, :closed} ->
-        Logger.debug("Normal end of TLS #{inspect(socket)}")
-
-      {:error, :timeout} ->
-        Logger.error("Timeout on TLS socket #{inspect(socket)} from client #{a2s(client)}")
-        :ssl.shutdown(socket, :read_write)
-
-      {:error, :enotconn} ->
-        Logger.debug("End of TLS #{inspect(socket)}")
-        :ssl.shutdown(socket, :read_write)
-
-      _ ->
-        Logger.error(
-          "Unexpected read on TLS socket #{inspect(socket)} from client #{a2s(client)}: #{inspect(result)}"
-        )
-    end
-  end
-
   def serve(protocol, socket, bases, client, port, data) do
     Logger.debug("Serving #{a2s(client)}")
 
-    if config("statistics") do
-      YellowDog.Statistics.post(:protocols, protocol)
+    if config("telemetry") do
+      # YellowDog.Telemetry.post(:protocols, protocol)
     end
 
     case data do
       data when is_bitstring(data) ->
-        Logger.debug("incomming message: #{data}")
+        Logger.debug("incomming message: #{inspect(data)}")
 
         YellowDog.DNS.Message.from_buffer(<<data::binary>>)
+        |> log_query(protocol, bases, client, port)
         |> make_response(protocol, bases, client, port)
         |> write(protocol, socket, client, port)
 
@@ -387,14 +310,32 @@ defmodule YellowDog.Server do
     end
   end
 
+  def log_query(%YellowDog.DNS.Message{} = message, protocol, _bases, client, port) do
+    message.qdlist
+    |> Enum.each(fn qn ->
+      Logger.info(
+        "Query in #{protocol} from #{a2s(client)}##{port} #{qn.name} #{RType.get_name(qn.type)} #{QClass.get_name(qn.class)}"
+      )
+    end)
+
+    message
+  end
+
   def make_response(%YellowDog.DNS.Message{} = message, protocol, bases, client, port) do
-    message = message |> YellowDog.DNS.Message.update_header_attr(:qr, 1)
-    {:ok, message}
+    resp_message =
+      message
+      |> forward_to_google_dns()
+
+    if protocol == :udp and byte_size(resp_message) > @udp_max_size do
+      {:problem, :truncat, resp_message}
+    else
+      {:ok, resp_message}
+    end
   end
 
   @spec write(
           {:ok, any},
-          :udp | :tcp | :tls,
+          :udp | :tcp,
           integer,
           YellowDog.Utils.address(),
           integer | {:error, any}
@@ -405,16 +346,23 @@ defmodule YellowDog.Server do
     :gen_udp.send(socket, client, port, data)
   end
 
-  def write({:ok, data}, :tls, socket, client, _port) do
-    length = byte_size(data)
-    Logger.debug("Sending answer of #{length} bytes to #{a2s(client)}")
-    :ssl.send(socket, data)
-  end
-
   def write({:ok, data}, :tcp, socket, client, _port) do
     length = byte_size(data)
     Logger.debug("Sending answer of #{length} bytes to #{a2s(client)}")
-    :gen_tcp.send(socket, data)
+    :gen_tcp.send(socket, <<length::16, data::binary>>)
+  end
+
+  def write({:problem, :truncate, data}, :udp, socket, client, port) do
+    Logger.debug("Sending answer to #{a2s(client)} and TC on")
+    <<part::8>> = binary_part(data, 2, 1)
+    part = part |> Bitwise.bor(0b00000010)
+
+    :gen_udp.send(
+      socket,
+      client,
+      port,
+      <<binary_part(data, 0, 2)::16, part::8, binary_part(data, 3, byte_size(data) - 3)::binary>>
+    )
   end
 
   def write({:problem, reason, data}, :udp, socket, client, port) do
@@ -431,37 +379,28 @@ defmodule YellowDog.Server do
     Logger.info("We ignore #{a2s(client)} because #{reason}")
   end
 
-  @spec gen_cookie(YellowDog.Utils.address(), binary) :: binary
-  def gen_cookie(client_address, client_cookie) do
-    # RFC 7873, section 4.2.
-    one_byte = tuple_size(client_address) == 4
-
-    addr =
-      Enum.reduce(Tuple.to_list(client_address), [], fn d, acc ->
-        if one_byte do
-          acc ++ [d]
-        else
-          if d >= 256 do
-            high = trunc(d / 256)
-            acc ++ [high, d - high * 256]
-          else
-            acc ++ [0, d]
-          end
-        end
-      end)
-
-    binary_part(
-      :crypto.hash(
-        :sha256,
-        config("secret-salt-for-cookies") <> <<addr::binary>> <> client_cookie
-      ),
-      0,
-      8
-    )
+  def forward_to_google_dns(message) do
+    forward_to(message, {8, 8, 8, 8}, 53)
   end
 
-  @spec legit_cookie(YellowDog.Utils.address(), binary, nil | binary) :: boolean
-  def legit_cookie(client_address, client_cookie, server_cookie) do
-    server_cookie == gen_cookie(client_address, client_cookie)
+  def forward_to(message, addr, port \\ 53) do
+    with {:ok, socket} <- :gen_tcp.connect(addr, port, active: false),
+         buffer <- YellowDog.DNS.Message.to_buffer(message),
+         :ok <- :gen_tcp.send(socket, <<byte_size(buffer)::16, buffer::binary>>),
+         {:ok, [a, b]} <- :gen_tcp.recv(socket, 2),
+         length <- Bitwise.<<<(a, 8) |> Bitwise.bor(b),
+         {:ok, data} <- :gen_tcp.recv(socket, length),
+         resp_msg <- for(byte <- data, into: <<>>, do: <<byte::8>>) do
+      Logger.debug("forwarder #{a2s(addr)}##{port} awnser #{inspect(resp_msg)} ")
+      resp_msg
+    else
+      e ->
+        Logger.error("serv_fail at forward to #{a2s(addr)}##{port} #{inspect(e)}")
+
+        message
+        |> YellowDog.DNS.Message.update_header_attr(:qr, 1)
+        |> YellowDog.DNS.Message.update_header_attr(:rcode, RCode.serv_fail())
+        |> YellowDog.DNS.Message.to_buffer()
+    end
   end
 end
