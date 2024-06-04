@@ -2,10 +2,10 @@ name: release
 on:
   push:
     branches:
-      - diabled
+      - main
 jobs:
   release:
-    name: Create semantic release
+    name: Create semantic release 
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.semantic.outputs.new_release_version }}
@@ -16,70 +16,15 @@ jobs:
           access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: 🚀 Release
-        uses: cycjimmy/semantic-release-action@v4
-        id: semantic
-        with:
-          extra_plugins: |
-            @semantic-release/exec
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v8
 
-      - name: Stop if NO NEW release
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Build Docker image
+        id: build
         run: |
-          cat <<EOF
-          Published: ${{ steps.semantic.outputs.new_release_published }}
-          New Release Version: ${{ steps.semantic.outputs.new_release_version }}
-          New Release Major Version: ${{ steps.semantic.outputs.new_release_major_version }}
-          New Release Minor Version: ${{ steps.semantic.outputs.new_release_minor_version }}
-          New Release Patch Version: ${{ steps.semantic.outputs.new_release_patch_version }}
-          New Release Channel: ${{ steps.semantic.outputs.new_release_channel }}
-          New Release Notes: 
-          ${{ steps.semantic.outputs.new_release_notes }}
-          EOF
-          test -z "${{ steps.semantic.outputs.new_release_version }}" && exit 1 || exit 0
-
-  build-docker-image:
-    name: Build docker image
-    runs-on: ubuntu-latest
-    needs: [release]
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      -
-        name: Login to DockerHub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_PASSWD }}
-      -
-        name: Login to ghcr.io
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      -
-        name: Build and push
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64
-          push: true
-          build-args: |
-            RELEASE_VERSION=${{ needs.release.outputs.version }}
-          tags: |
-            docker.io/gsmlg/yellowdogdns:v${{ needs.release.outputs.version }}
-            docker.io/gsmlg/yellowdogdns:latest
-            ghcr.io/gsmlg-dev/yellowdogdns:v${{ needs.release.outputs.version }}
-            ghcr.io/gsmlg-dev/yellowdogdns:latest
+          nix build

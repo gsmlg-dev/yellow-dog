@@ -14,7 +14,7 @@
       pkgs = import nixpkgs {inherit system;};
       app = pkgs.callPackage ./default.nix {inherit system;};
       img = pkgs.dockerTools.buildImage {
-        name = "ghcr.io/gsmlg-dev/yellowdogdns";
+        name = "yellowdogdns";
         tag = "latest";
         created = "now";
         copyToRoot = pkgs.buildEnv {

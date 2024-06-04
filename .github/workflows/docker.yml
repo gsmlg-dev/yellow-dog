@@ -1,0 +1,86 @@
+name: Docker
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build image
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v8
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Build Docker image
+        id: build
+        run: |
+          nix build --print-build-logs --accept-flake-config .#docker
+          [ ! -L result ] && exit 1
+          echo "path=$(realpath result)" >> "$GITHUB_OUTPUT"
+      - name: Upload image
+        uses: actions/upload-artifact@v3
+        with:
+          name: container-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
+
+  push:
+    name: Push image
+
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    env:
+      REGISTRY: ghcr.io
+      USERNAME: ${{ github.actor }}
+      IMAGE_NAME: ${{ github.repository }}
+
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download images
+        uses: actions/download-artifact@v3
+        with:
+          path: images
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ github.token }}
+
+      - name: Push to registry
+        env:
+          TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        run: |
+          set -eux
+          architectures=("x86_64" "aarch64")
+          for arch in "${architectures[@]}"; do
+            docker load < images/container-"$arch"/*.tar.gz
+            docker tag yellowdogdns:latest ${{ env.TAG }}-"$arch"
+            docker push ${{ env.TAG }}-"$arch"
+          done
+          docker manifest create ${{ env.TAG }} \
+            --amend ${{ env.TAG }}-x86_64 \
+            --amend ${{ env.TAG }}-aarch64
+          docker manifest push ${{ env.TAG }}
