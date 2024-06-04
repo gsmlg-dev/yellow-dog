@@ -63,6 +63,11 @@ jobs:
           version=$(cat mix.exs |grep version: | cut -d '"' -f 2)
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: lowercase github.repository
+        id: get_name
+        run: |
+          echo "IMAGE_NAME=`echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'`" >> "$GITHUB_OUTPUT"
+
       - name: Download images
         uses: actions/download-artifact@v3
         with:
@@ -77,8 +82,8 @@ jobs:
 
       - name: Push to registry
         env:
-          TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          VTAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
+          TAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:latest
+          VTAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
         run: |
           set -eux
           architectures=("x86_64" "aarch64")
