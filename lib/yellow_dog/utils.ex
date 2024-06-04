@@ -69,15 +69,6 @@ defmodule YellowDog.Utils do
     end
   end
 
-  @spec serial() :: integer
-  def serial() do
-    now = DateTime.utc_now()
-    # Not
-    now.year * 1_000_000 + now.month * 10000 + now.day * 100 + now.hour
-    # perfect since we will keep the same serial for an entire
-    # hour. But we have no choice since we don't want to keep state.
-  end
-
   defmodule Convert do
     @minute 60
     @hour @minute * 60

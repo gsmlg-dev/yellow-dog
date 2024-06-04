@@ -15,7 +15,7 @@ defmodule YellowDog do
   @impl true
   def start(_type, _args) do
     children = [
-      {YellowDog.Config, YellowDog.Config.default_config()},
+      {YellowDog.Config, YellowDog.Config.load_config()},
       {YellowDog.Server, []}
     ]
 

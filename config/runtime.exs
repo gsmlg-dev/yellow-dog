@@ -7,7 +7,7 @@ import Config
 # any compile-time configuration in here, as it won't be applied.
 # The block below contains prod specific runtime configuration.
 
-if config_env() != :dev do
+if config_env() == :prod do
   if System.get_env("YD_PORT") do
     port = System.get_env("YD_PORT") |> String.to_integer()
     config :yellow_dog, YellowDog.Server, port: port

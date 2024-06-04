@@ -27,6 +27,7 @@ defmodule YellowDog.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:toml, "~> 0.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

@@ -321,7 +321,7 @@ defmodule YellowDog.Server do
     message
   end
 
-  def make_response(%YellowDog.DNS.Message{} = message, protocol, bases, client, port) do
+  def make_response(%YellowDog.DNS.Message{} = message, protocol, _bases, _client, _port) do
     resp_message =
       message
       |> forward_to_google_dns()
