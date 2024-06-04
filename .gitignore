@@ -24,3 +24,6 @@ yellow_dog-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# nix build output
+/result
