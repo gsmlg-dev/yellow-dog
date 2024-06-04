@@ -57,6 +57,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get version
+        id: get_version
+        run: |
+          version=$(cat mix.exs |grep version: | cut -d '"' -f 2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Download images
         uses: actions/download-artifact@v3
         with:
@@ -72,6 +78,7 @@ jobs:
       - name: Push to registry
         env:
           TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          VTAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
         run: |
           set -eux
           architectures=("x86_64" "aarch64")
@@ -84,3 +91,7 @@ jobs:
             --amend ${{ env.TAG }}-x86_64 \
             --amend ${{ env.TAG }}-aarch64
           docker manifest push ${{ env.TAG }}
+          docker manifest create ${{ env.VTAG }} \
+            --amend ${{ env.TAG }}-x86_64 \
+            --amend ${{ env.TAG }}-aarch64
+          docker manifest push ${{ env.VTAG }}
