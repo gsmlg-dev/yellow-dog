@@ -5,10 +5,8 @@ on:
       - main
 jobs:
   release:
-    name: Create semantic release 
+    name: Build Nix Release
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.semantic.outputs.new_release_version }}
     steps:
       - name: 🛑 Cancel Previous Runs
         uses: styfle/cancel-workflow-action@0.12.1
@@ -24,7 +22,7 @@ jobs:
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v2
 
-      - name: Build Docker image
+      - name: Build Nix Package YellowDog DNS
         id: build
         run: |
           nix build

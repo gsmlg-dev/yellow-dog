@@ -1,6 +1,6 @@
 # Yellow Dog DNS
 
-![Yellow Dog DNS](./artwork/yellow_dog.png)
+![Yellow Dog DNS](./priv/yellow_dog.png)
 
 
 Yellow Dog DNS is a distribute DNS Server written by erlang/elixir.
