@@ -235,4 +235,12 @@ defmodule YellowDog.DNS.Message.Header do
   end
 
   def qdcount(<<_::32, count::16>> = _message), do: count
+
+  def to_print(header = %Header{}) do
+    """
+    ID: #{header.id}, qr: #{header.qr}, opcode: #{header.opcode}, status: #{header.rcode}
+    aa: #{header.aa}, tc: #{header.tc}, rd: #{header.rd}, ra: #{header.ra}, z: #{header.z}, ad: #{header.ad}, cd: #{header.cd}
+    QUERY: #{header.qdcount}, ANSWER: #{header.ancount}, AUTHORITY: #{header.nscount}, ADDITIONAL: #{header.arcount}
+    """
+  end
 end

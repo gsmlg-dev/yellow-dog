@@ -40,6 +40,8 @@ defmodule YellowDog.DNS.Message do
   alias YellowDog.DNS.Message.Header
   alias YellowDog.DNS.Message.Question
   alias YellowDog.DNS.Message.Record
+  alias YellowDog.DNS.ResourceRecord.Type, as: RType
+  alias YellowDog.DNS.Message.EDNS0
 
   @type t :: %__MODULE__{
           header: %Header{},
@@ -135,6 +137,75 @@ defmodule YellowDog.DNS.Message do
     %__MODULE__{message | arlist: message.arlist ++ [record]}
   end
 
+  def edns0?(message = %__MODULE__{}) do
+    with true <- length(message.arlist) > 0,
+         true <-
+           Enum.find_index(message.arlist, fn n -> n.type == RType.opt() end) |> is_integer() do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  def edns0(message = %__MODULE__{}) do
+    Enum.find(message.arlist, fn n -> n.type == RType.opt() end)
+    |> Record.to_buffer()
+    |> EDNS0.from_buffer()
+  end
+
+  def set_edns0(message = %__MODULE__{}, edns0 = %EDNS0{}) do
+    arlist =
+      message.arlist
+      |> Enum.filter(fn r -> r.type != RType.opt() end)
+
+    r = edns0 |> EDNS0.to_buffer() |> Record.from_buffer() |> elem(1)
+
+    %__MODULE__{message | arlist: [r | arlist]}
+  end
+
+  def to_print(message = %__MODULE__{}) do
+    anlist_str =
+      if length(message.anlist) > 0 do
+        "\n;; ANSWER SECTION\n#{message.anlist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    nslist_str =
+      if length(message.nslist) > 0 do
+        "\n;; AUTHORITY SECTION\n#{message.nslist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    arlist =
+      message.arlist
+      |> Enum.filter(fn
+        %Record{type: 41} ->
+          false
+
+        %Record{} ->
+          true
+      end)
+
+    arlist_str =
+      if length(arlist) > 0 do
+        "\n;; ADDITIONAL SECTION\n#{arlist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    """
+    ;; HEADER SECTION
+    #{message.header |> Header.to_print()}
+    #{if(edns0?(message), do: ";; OPT PSEUDOSECTION\n#{message |> edns0() |> EDNS0.to_print()}")}
+    ;; QUESTION SECTION
+    #{message.qdlist |> Enum.map(&Question.to_print(&1)) |> Enum.join("\n")}
+    #{anlist_str}#{nslist_str}#{arlist_str}
+    """
+  end
+
+  @spec name_to_buffer(binary()) :: any()
   def name_to_buffer(name) do
     case String.split(name, ".") |> Enum.filter(&(&1 != "")) do
       [] ->

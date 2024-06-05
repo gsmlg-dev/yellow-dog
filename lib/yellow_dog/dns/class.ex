@@ -92,4 +92,18 @@ defmodule YellowDog.DNS.Class do
   def get_name(254), do: :qclass_none
   def get_name(255), do: :qclass_any
   def get_name(code), do: code
+
+  def to_print(code)
+  def to_print(1), do: "IN"
+  def to_print(3), do: "CH"
+  def to_print(4), do: "HS"
+  def to_print(254), do: "NONE"
+  def to_print(255), do: "ANY"
+  def to_print(code) when code == 0 or code == 65535, do: "Reserved(#{code})"
+
+  def to_print(code)
+      when code == 2 or (code >= 5 and code <= 253) or (code >= 256 and code <= 65279),
+      do: "Unassigned(#{code})"
+
+  def to_print(code) when code >= 65280 and code <= 65280, do: "Reserved_for_Private_Use(#{code})"
 end

@@ -15,7 +15,8 @@ defmodule YellowDog.Server do
   import YellowDog.Utils
   import YellowDog.Config
 
-  # alias YellowDog.DNS.Message.EdnsCode
+  alias YellowDog.DNS.Message
+  alias YellowDog.DNS.Message.EDNS0
   alias YellowDog.DNS.Message.RCode
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
   alias YellowDog.DNS.Class, as: QClass
@@ -298,7 +299,7 @@ defmodule YellowDog.Server do
 
     case data do
       data when is_bitstring(data) ->
-        Logger.debug("incomming message: #{inspect(data)}")
+        Logger.debug("incomming message: #{inspect(data, limit: :infinity)}")
 
         YellowDog.DNS.Message.from_buffer(<<data::binary>>)
         |> log_query(protocol, bases, client, port)
@@ -321,10 +322,26 @@ defmodule YellowDog.Server do
     message
   end
 
-  def make_response(%YellowDog.DNS.Message{} = message, protocol, _bases, _client, _port) do
+  def make_response(%Message{} = message, protocol, _bases, _client, _port) do
+    Logger.debug(Message.to_print(message))
+    addr = ~c"114.249.114.18" |> :inet.parse_address() |> elem(1)
+
+    message =
+      if Message.edns0?(message) do
+        edns0 = Message.edns0(message) |> EDNS0.add_option(8, {addr, 24, 24})
+        message |> Message.set_edns0(edns0)
+      else
+        edns0 = EDNS0.new() |> EDNS0.add_option(8, {addr, 24, 24})
+        message |> Message.set_edns0(edns0)
+      end
+
+    Logger.debug("Add ECS source" <> Message.to_print(message))
+
     resp_message =
       message
       |> forward_to_google_dns()
+
+    Logger.debug(resp_message |> Message.from_buffer() |> Message.to_print())
 
     if protocol == :udp and byte_size(resp_message) > @udp_max_size do
       {:problem, :truncat, resp_message}
@@ -391,7 +408,10 @@ defmodule YellowDog.Server do
          length <- Bitwise.<<<(a, 8) |> Bitwise.bor(b),
          {:ok, data} <- :gen_tcp.recv(socket, length),
          resp_msg <- for(byte <- data, into: <<>>, do: <<byte::8>>) do
-      Logger.debug("forwarder #{a2s(addr)}##{port} awnser #{inspect(resp_msg)} ")
+      Logger.debug(
+        "forwarder #{a2s(addr)}##{port} awnser #{inspect(resp_msg, limit: :infinity)} "
+      )
+
       resp_msg
     else
       e ->

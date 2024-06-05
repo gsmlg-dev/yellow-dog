@@ -67,4 +67,8 @@ defmodule YellowDog.DNS.Message.Question do
       {all_size + size, questions ++ [question]}
     end)
   end
+
+  def to_print(question = %__MODULE__{}) do
+    "#{question.name} #{RType.get_name(question.type)} #{Class.to_print(question.class)}"
+  end
 end
