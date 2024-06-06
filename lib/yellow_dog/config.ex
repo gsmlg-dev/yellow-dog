@@ -33,7 +33,7 @@ defmodule YellowDog.Config do
     },
     "forwarder" => %{
       "server" => ["8.8.8.8"],
-      "override-ecs" => false,
+      "override-ecs" => true,
       "ecs-addr" => "114.249.114.18",
       "ecs-prefix" => 24
     }
