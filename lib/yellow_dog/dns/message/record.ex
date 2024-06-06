@@ -52,9 +52,11 @@ defmodule YellowDog.DNS.Message.Record do
                     resource.  The format of this information varies
                     according to the TYPE and CLASS of the resource record.
   """
-  alias YellowDog.DNS.Message
+  alias YellowDog.DNS.Class
   alias YellowDog.DNS.Message.Record
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
+
+  import YellowDog.DNS.Message.NameUtils
 
   @type t :: %__MODULE__{
           name: String.t()
@@ -67,7 +69,7 @@ defmodule YellowDog.DNS.Message.Record do
             data: <<>>
 
   def from_buffer(buffer, message \\ <<>>) do
-    with {name_length, name} <- Message.name_from_buffer(buffer, message),
+    with {name_length, name} <- name_from_buffer(buffer, message),
          <<_::binary-size(name_length), type::16, class::16, ttl::32, rdlength::16, rest::binary>> <-
            buffer,
          <<rdata::binary-size(rdlength), _rest::binary>> <- rest do
@@ -91,12 +93,12 @@ defmodule YellowDog.DNS.Message.Record do
   def to_buffer(record = %__MODULE__{}) do
     rdata = _rdata_to_buffer(RType.get_name(record.type), record.data)
 
-    <<Message.name_to_buffer(record.name)::binary, record.type::16, record.class::16,
-      record.ttl::32, byte_size(rdata)::16, rdata::binary>>
+    <<name_to_buffer(record.name)::binary, record.type::16, record.class::16, record.ttl::32,
+      byte_size(rdata)::16, rdata::binary>>
   end
 
   def new(name, type, class, ttl, data) do
-    new_name = name |> Message.name_to_buffer() |> Message.name_from_buffer() |> elem(1)
+    new_name = name |> name_to_buffer() |> name_from_buffer() |> elem(1)
 
     %__MODULE__{name: new_name, type: type, class: class, ttl: ttl, data: data}
   end
@@ -124,6 +126,8 @@ defmodule YellowDog.DNS.Message.Record do
     {size, records |> Enum.reverse()}
   end
 
+  def _rdata_from_message(type, rdata, message \\ <<>>)
+
   def _rdata_from_message(:a, data, _) do
     <<a::8, b::8, c::8, d::8>> = data
     {a, b, c, d}
@@ -136,17 +140,19 @@ defmodule YellowDog.DNS.Message.Record do
     {a0, b0, c0, d0, a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3}
   end
 
-  def _rdata_from_message(type, data, message) when type in [:cname, :ns, :ptr] do
-    Message.name_from_buffer(data, message) |> elem(1)
+  def _rdata_from_message(type, data, message) when type in [:cname, :ns, :ptr, :dname] do
+    name_from_buffer(data, message) |> elem(1)
   end
 
   def _rdata_from_message(:mx, <<weight::16, data>>, message) do
-    {weight, Message.name_from_buffer(data, message)}
+    {weight, name_from_buffer(data, message)}
   end
 
   def _rdata_from_message(:soa, data, message) do
-    {ns_len, ns} = Message.name_from_buffer(data, message)
-    {rp_len, rp} = Message.name_from_buffer(binary_part(data, ns_len, byte_size(data) - ns_len))
+    {ns_len, ns} = name_from_buffer(data, message)
+
+    {rp_len, rp} =
+      name_from_buffer(binary_part(data, ns_len, byte_size(data) - ns_len), message)
 
     <<serial::32, refresh::32, retry::32, expire::32, negative::32>> =
       binary_part(data, ns_len + rp_len, byte_size(data) - ns_len - rp_len)
@@ -155,13 +161,13 @@ defmodule YellowDog.DNS.Message.Record do
   end
 
   def _rdata_from_message(:srv, <<priority::16, weight::16, port::16, data::binary>>, message) do
-    {priority, weight, port, Message.name_from_buffer(data, message) |> elem(1)}
+    {priority, weight, port, name_from_buffer(data, message) |> elem(1)}
   end
 
   def _rdata_from_message(:txt, <<len::8, data>>, _) do
     case data do
       <<section::binary-size(len), next_len::8, next::binary>> ->
-        [section] ++ _rdata_from_message(:txt, <<next_len::8, next::binary>>, <<>>)
+        [section] ++ _rdata_from_message(:txt, <<next_len::8, next::binary>>)
 
       <<section::binary-size(len)>> ->
         [section]
@@ -181,8 +187,8 @@ defmodule YellowDog.DNS.Message.Record do
       b3::8, c3::8, d3::8>>
   end
 
-  def _rdata_to_buffer(type, data) when type in [:cname, :ns, :ptr] do
-    Message.name_to_buffer(data)
+  def _rdata_to_buffer(type, data) when type in [:cname, :ns, :ptr, :dname] do
+    name_to_buffer(data)
   end
 
   def _rdata_to_buffer(:mx, {weight, data}) do
@@ -190,22 +196,45 @@ defmodule YellowDog.DNS.Message.Record do
   end
 
   def _rdata_to_buffer(:soa, {ns, rp, serial, refresh, retry, expire, negative}) do
-    <<Message.name_to_buffer(ns)::binary, Message.name_to_buffer(rp)::binary, serial::32,
-      refresh::32, retry::32, expire::32, negative::32>>
+    <<name_to_buffer(ns)::binary, name_to_buffer(rp)::binary, serial::32, refresh::32, retry::32,
+      expire::32, negative::32>>
   end
 
   def _rdata_to_buffer(:srv, {priority, weight, port, data}) do
-    <<priority::16, weight::16, port::16, Message.name_to_buffer(data)::binary>>
+    <<priority::16, weight::16, port::16, name_to_buffer(data)::binary>>
   end
 
   def _rdata_to_buffer(:txt, data) do
     for section <- data do
       <<byte_size(section), section::binary>>
     end
-    |> Enum.join()
+    |> Enum.join(<<>>)
   end
 
   def _rdata_to_buffer(type, data) when is_atom(type) do
     data
+  end
+
+  def to_print(r = %__MODULE__{type: type}) do
+    case RType.get_name(type) do
+      t when t == :a or t == :aaaa ->
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{YellowDog.Utils.a2s(r.data)}"
+
+      t when t in [:cname, :ns, :ptr, :dname] ->
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data}"
+
+      t when t in [:mx, :soa, :srv] ->
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data |> print_tuple()}"
+
+      :txt ->
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data |> Enum.map(&inspect(&1)) |> Enum.join(" ")}"
+
+      t ->
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{t} #{inspect(r.data)}"
+    end
+  end
+
+  defp print_tuple(t) do
+    t |> Tuple.to_list() |> Enum.map(&"#{&1}") |> Enum.join(" ")
   end
 end

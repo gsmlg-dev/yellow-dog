@@ -51,7 +51,7 @@ defmodule YellowDog.DNS.Message.RecordTest do
 
     assert %Record{
              name: "www.baidu.com.",
-             type: cname,
+             type: ^cname,
              class: 1,
              ttl: 954,
              data: "www.a.shifen.com."
@@ -59,7 +59,7 @@ defmodule YellowDog.DNS.Message.RecordTest do
 
     assert %Record{
              name: "www.a.shifen.com.",
-             type: a,
+             type: ^a,
              class: 1,
              ttl: 54,
              data: {182, 61, 200, 7}
@@ -67,7 +67,7 @@ defmodule YellowDog.DNS.Message.RecordTest do
 
     assert %Record{
              name: "www.a.shifen.com.",
-             type: a,
+             type: ^a,
              class: 1,
              ttl: 54,
              data: {182, 61, 200, 6}
@@ -83,7 +83,7 @@ defmodule YellowDog.DNS.Message.RecordTest do
 
     assert %Record{
              name: ".",
-             type: opt,
+             type: ^opt,
              class: _,
              ttl: _,
              data: data

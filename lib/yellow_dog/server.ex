@@ -13,9 +13,9 @@ defmodule YellowDog.Server do
   require Logger
 
   import YellowDog.Utils
-  import YellowDog.Config
 
-  # alias YellowDog.DNS.Message.EdnsCode
+  alias YellowDog.DNS.Message
+  alias YellowDog.DNS.Message.EDNS0
   alias YellowDog.DNS.Message.RCode
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
   alias YellowDog.DNS.Class, as: QClass
@@ -25,7 +25,7 @@ defmodule YellowDog.Server do
   # Milli-seconds
   @timeout 2000
   # rfc 1035
-  @udp_max_size 512
+  @udp_max_size 1232
   # Should be enough for DNS over UDP
   @read_length 4096
 
@@ -36,6 +36,14 @@ defmodule YellowDog.Server do
   # @pad_block_size 468
 
   # @minimum_ttl 0
+
+  def config() do
+    YellowDog.Config.config("server")
+  end
+
+  def config(name) do
+    config() |> Map.get(name)
+  end
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -298,7 +306,7 @@ defmodule YellowDog.Server do
 
     case data do
       data when is_bitstring(data) ->
-        Logger.debug("incomming message: #{inspect(data)}")
+        Logger.debug("incomming message: #{inspect(data, limit: :infinity)}")
 
         YellowDog.DNS.Message.from_buffer(<<data::binary>>)
         |> log_query(protocol, bases, client, port)
@@ -321,16 +329,10 @@ defmodule YellowDog.Server do
     message
   end
 
-  def make_response(%YellowDog.DNS.Message{} = message, protocol, _bases, _client, _port) do
-    resp_message =
-      message
-      |> forward_to_google_dns()
+  def make_response(%Message{} = message, protocol, _bases, client, port) do
+    Logger.debug(Message.to_print(message))
 
-    if protocol == :udp and byte_size(resp_message) > @udp_max_size do
-      {:problem, :truncat, resp_message}
-    else
-      {:ok, resp_message}
-    end
+    YellowDog.Forwarder.resolve(message, protocol, client, port)
   end
 
   @spec write(
@@ -350,19 +352,6 @@ defmodule YellowDog.Server do
     length = byte_size(data)
     Logger.debug("Sending answer of #{length} bytes to #{a2s(client)}")
     :gen_tcp.send(socket, <<length::16, data::binary>>)
-  end
-
-  def write({:problem, :truncate, data}, :udp, socket, client, port) do
-    Logger.debug("Sending answer to #{a2s(client)} and TC on")
-    <<part::8>> = binary_part(data, 2, 1)
-    part = part |> Bitwise.bor(0b00000010)
-
-    :gen_udp.send(
-      socket,
-      client,
-      port,
-      <<binary_part(data, 0, 2)::16, part::8, binary_part(data, 3, byte_size(data) - 3)::binary>>
-    )
   end
 
   def write({:problem, reason, data}, :udp, socket, client, port) do
@@ -391,7 +380,10 @@ defmodule YellowDog.Server do
          length <- Bitwise.<<<(a, 8) |> Bitwise.bor(b),
          {:ok, data} <- :gen_tcp.recv(socket, length),
          resp_msg <- for(byte <- data, into: <<>>, do: <<byte::8>>) do
-      Logger.debug("forwarder #{a2s(addr)}##{port} awnser #{inspect(resp_msg)} ")
+      Logger.debug(
+        "forwarder #{a2s(addr)}##{port} awnser #{inspect(resp_msg, limit: :infinity)} "
+      )
+
       resp_msg
     else
       e ->

@@ -6,8 +6,9 @@ defmodule YellowDog.DNS.Message.Question do
 
   alias YellowDog.DNS.Class
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
-  alias YellowDog.DNS.Message
   alias YellowDog.DNS.Message.Header
+
+  import YellowDog.DNS.Message.NameUtils
 
   @type t :: %__MODULE__{
           # name: binary
@@ -23,11 +24,11 @@ defmodule YellowDog.DNS.Message.Question do
             class: Class.internet()
 
   def to_buffer(%__MODULE__{} = question) do
-    <<Message.name_to_buffer(question.name)::binary, question.type::16, question.class::16>>
+    <<name_to_buffer(question.name)::binary, question.type::16, question.class::16>>
   end
 
   def from_buffer(buffer, message \\ <<>>) do
-    with {name_length, name} <- Message.name_from_buffer(buffer, message),
+    with {name_length, name} <- name_from_buffer(buffer, message),
          <<_::binary-size(name_length), type::16, class::16, _::binary>> <- buffer do
       {name_length + 4, %__MODULE__{name: name, type: type, class: class}}
     else
@@ -37,7 +38,7 @@ defmodule YellowDog.DNS.Message.Question do
   end
 
   def new(name, type, class) do
-    new_name = name |> Message.name_to_buffer() |> Message.name_from_buffer() |> elem(1)
+    new_name = name |> name_to_buffer() |> name_from_buffer() |> elem(1)
 
     %__MODULE__{
       name: new_name,
@@ -50,11 +51,11 @@ defmodule YellowDog.DNS.Message.Question do
     list |> Enum.map(&to_buffer/1) |> Enum.join(<<>>)
   end
 
-  def list_from_message(<<header::binary-size(12), _>> = message) when byte_size(message) >= 12 do
+  def list_from_message(<<header::binary-size(12), _::binary>> = message) do
     list_from_message(message, Header.qdcount(header))
   end
 
-  def list_from_message(<<_::binary-size(12), _>> = message, 0) when byte_size(message) >= 12 do
+  def list_from_message(<<_::binary-size(12), _::binary>> = _message, 0) do
     {0, []}
   end
 
@@ -66,5 +67,9 @@ defmodule YellowDog.DNS.Message.Question do
 
       {all_size + size, questions ++ [question]}
     end)
+  end
+
+  def to_print(question = %__MODULE__{}) do
+    "#{question.name} #{RType.get_name(question.type)} #{Class.to_print(question.class)}"
   end
 end

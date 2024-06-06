@@ -40,6 +40,10 @@ defmodule YellowDog.DNS.Message do
   alias YellowDog.DNS.Message.Header
   alias YellowDog.DNS.Message.Question
   alias YellowDog.DNS.Message.Record
+  alias YellowDog.DNS.ResourceRecord.Type, as: RType
+  alias YellowDog.DNS.Message.EDNS0
+
+  # import YellowDog.DNS.Message.NameUtils
 
   @type t :: %__MODULE__{
           header: %Header{},
@@ -135,62 +139,95 @@ defmodule YellowDog.DNS.Message do
     %__MODULE__{message | arlist: message.arlist ++ [record]}
   end
 
-  def name_to_buffer(name) do
-    case String.split(name, ".") |> Enum.filter(&(&1 != "")) do
-      [] ->
-        <<0>>
-
-      list ->
-        list
-        |> Enum.reverse()
-        |> Enum.reduce(<<0>>, fn part, acc ->
-          part_length = byte_size(part)
-          <<part_length::8, part::binary-size(part_length), acc::binary>>
-        end)
+  def edns0?(message = %__MODULE__{}) do
+    with true <- length(message.arlist) > 0,
+         true <-
+           Enum.find_index(message.arlist, fn n -> n.type == RType.opt() end) |> is_integer() do
+      true
+    else
+      _ -> false
     end
   end
 
-  def name_from_buffer(buffer, message \\ <<>>)
-  def name_from_buffer(<<size::8, _::binary>>, _) when size == 0, do: {1, "."}
+  @spec edns0(YellowDog.DNS.Message.t()) :: nil | YellowDog.DNS.Message.EDNS0.t()
+  def edns0(message = %__MODULE__{}) do
+    case Enum.find(message.arlist, nil, fn n -> n.type == RType.opt() end) do
+      nil ->
+        nil
 
-  def name_from_buffer(<<size::8, pos::8, _::binary>>, message) when size == 0xC0 do
-    case message do
-      <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {_, name} = name_from_buffer(<<next::8, next_buffer::binary>>, message)
-        {2, name}
-
-      <<_::binary-size(pos), next::8, next_pos::8, next_buffer::binary>>
-      when next == 0xC0 and pos != next_pos ->
-        {_, name} = name_from_buffer(<<next::8, next_pos::8, next_buffer::binary>>, message)
-        {2, name}
-
-      _ ->
-        throw(FormatError)
+      record ->
+        record
+        |> Record.to_buffer()
+        |> EDNS0.from_buffer()
     end
   end
 
-  def name_from_buffer(<<size::8, rest::binary>>, message)
-      when size > 0 and size < 64 do
-    case rest do
-      <<part::binary-size(size), next::8, _::binary>> when next == 0 ->
-        {1 + size + 1, part <> "."}
+  @spec edns0_or_new(YellowDog.DNS.Message.t()) :: YellowDog.DNS.Message.EDNS0.t()
+  def edns0_or_new(message = %__MODULE__{}) do
+    case Enum.find(message.arlist, nil, fn n -> n.type == RType.opt() end) do
+      nil ->
+        EDNS0.new()
 
-      <<part::binary-size(size), next::8, next_pos::8, last_buffer::binary>> when next == 0xC0 ->
-        {_, compressed_name} =
-          name_from_buffer(<<next::8, next_pos::8, last_buffer::binary>>, message)
-
-        {1 + size + 2, part <> "." <> compressed_name}
-
-      <<part::binary-size(size), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {last_size, last_name} = name_from_buffer(<<next, next_buffer::binary>>, message)
-        {1 + size + last_size, part <> "." <> last_name}
-
-      <<_::binary-size(size), _::binary>> ->
-        throw(FormatError)
+      record ->
+        record
+        |> Record.to_buffer()
+        |> EDNS0.from_buffer()
     end
   end
 
-  def name_from_buffer(buffer, message) do
-    throw({:invalid_format, buffer, message})
+  def set_edns0(message = %__MODULE__{}, edns0 = %EDNS0{}) do
+    arlist =
+      message.arlist
+      |> Enum.filter(fn r -> r.type != RType.opt() end)
+
+    r = edns0 |> EDNS0.to_buffer() |> Record.from_buffer() |> elem(1)
+
+    %__MODULE__{message | arlist: [r | arlist]}
+  end
+
+  def set_edns0(message = %__MODULE__{}, _) do
+    message
+  end
+
+  def to_print(message = %__MODULE__{}) do
+    anlist_str =
+      if length(message.anlist) > 0 do
+        "\n;; ANSWER SECTION\n#{message.anlist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    nslist_str =
+      if length(message.nslist) > 0 do
+        "\n;; AUTHORITY SECTION\n#{message.nslist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    arlist =
+      message.arlist
+      |> Enum.filter(fn
+        %Record{type: 41} ->
+          false
+
+        %Record{} ->
+          true
+      end)
+
+    arlist_str =
+      if length(arlist) > 0 do
+        "\n;; ADDITIONAL SECTION\n#{arlist |> Enum.map(&Record.to_print(&1)) |> Enum.join("\n")}"
+      else
+        ""
+      end
+
+    """
+    ;; HEADER SECTION
+    #{message.header |> Header.to_print()}
+    #{if(edns0?(message), do: ";; OPT PSEUDOSECTION\n#{message |> edns0() |> EDNS0.to_print()}")}
+    ;; QUESTION SECTION
+    #{message.qdlist |> Enum.map(&Question.to_print(&1)) |> Enum.join("\n")}
+    #{anlist_str}#{nslist_str}#{arlist_str}
+    """
   end
 end

@@ -31,4 +31,20 @@ defmodule YellowDog.DNS.Message.HeaderTest do
     assert header.aa == parsed_header.aa
     assert header.tc == parsed_header.tc
   end
+
+  test "Test DNS message header opcode" do
+    header = %Header{Header.new() | opcode: OpCode.notify()}
+
+    assert header.opcode == 4
+
+    header = %Header{Header.new() | opcode: OpCode.update()}
+
+    assert header.opcode == 5
+  end
+
+  test "Test DNS message header rcode" do
+    header = %Header{Header.new() | rcode: RCode.nx_domain()}
+
+    assert header.rcode == 3
+  end
 end
