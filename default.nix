@@ -6,8 +6,14 @@
   nodejs,
   ...
 }: let
+  mix-file = builtins.readFile ./mix.exs;
+  lines = builtins.split "\n" mix-file;
+  lines_s = builtins.filter builtins.isString lines;
+  versionLine = builtins.elemAt (builtins.filter (line: builtins.match "[[:space:]]+version:.*" line != null) lines_s) 0; # Get the first matching line
+  version_in_mix = builtins.elemAt (builtins.split "\"" versionLine) 2; # Extract version between quotes
+
   pname = "yellow_dog";
-  version = "1.0.0";
+  version = version_in_mix;
 
   src = lib.fileset.toSource {
     root = ./.;
