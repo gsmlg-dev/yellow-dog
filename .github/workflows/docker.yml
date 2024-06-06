@@ -30,8 +30,9 @@ jobs:
           nix build --print-build-logs --accept-flake-config .#docker
           [ ! -L result ] && exit 1
           echo "path=$(realpath result)" >> "$GITHUB_OUTPUT"
+
       - name: Upload image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: container-${{ matrix.arch }}
           path: ${{ steps.build.outputs.path }}
@@ -69,7 +70,7 @@ jobs:
           echo "IMAGE_NAME=`echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'`" >> "$GITHUB_OUTPUT"
 
       - name: Download images
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: images
 
