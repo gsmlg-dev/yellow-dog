@@ -149,10 +149,30 @@ defmodule YellowDog.DNS.Message do
     end
   end
 
+  @spec edns0(YellowDog.DNS.Message.t()) :: nil | YellowDog.DNS.Message.EDNS0.t()
   def edns0(message = %__MODULE__{}) do
-    Enum.find(message.arlist, fn n -> n.type == RType.opt() end)
-    |> Record.to_buffer()
-    |> EDNS0.from_buffer()
+    case Enum.find(message.arlist, nil, fn n -> n.type == RType.opt() end) do
+      nil ->
+        nil
+
+      record ->
+        record
+        |> Record.to_buffer()
+        |> EDNS0.from_buffer()
+    end
+  end
+
+  @spec edns0_or_new(YellowDog.DNS.Message.t()) :: YellowDog.DNS.Message.EDNS0.t()
+  def edns0_or_new(message = %__MODULE__{}) do
+    case Enum.find(message.arlist, nil, fn n -> n.type == RType.opt() end) do
+      nil ->
+        EDNS0.new()
+
+      record ->
+        record
+        |> Record.to_buffer()
+        |> EDNS0.from_buffer()
+    end
   end
 
   def set_edns0(message = %__MODULE__{}, edns0 = %EDNS0{}) do
@@ -163,6 +183,10 @@ defmodule YellowDog.DNS.Message do
     r = edns0 |> EDNS0.to_buffer() |> Record.from_buffer() |> elem(1)
 
     %__MODULE__{message | arlist: [r | arlist]}
+  end
+
+  def set_edns0(message = %__MODULE__{}, _) do
+    message
   end
 
   def to_print(message = %__MODULE__{}) do

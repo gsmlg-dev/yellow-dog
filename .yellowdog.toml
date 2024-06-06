@@ -1,3 +1,4 @@
+[server]
 port = 53
 logging-facility = "local0"
 logging-level = "warning"
@@ -9,3 +10,11 @@ telemetry = false
 padding = true
 reporting-agent = ""
 report-via-dns = false
+
+[forwarder]
+server = "8.8.8.8"
+override-ecs = false
+ecs-addr = "114.249.114.18"
+ecs-prefix = 24
+
+

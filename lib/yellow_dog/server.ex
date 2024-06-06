@@ -13,7 +13,6 @@ defmodule YellowDog.Server do
   require Logger
 
   import YellowDog.Utils
-  import YellowDog.Config
 
   alias YellowDog.DNS.Message
   alias YellowDog.DNS.Message.EDNS0
@@ -26,7 +25,7 @@ defmodule YellowDog.Server do
   # Milli-seconds
   @timeout 2000
   # rfc 1035
-  @udp_max_size 512
+  @udp_max_size 1232
   # Should be enough for DNS over UDP
   @read_length 4096
 
@@ -37,6 +36,14 @@ defmodule YellowDog.Server do
   # @pad_block_size 468
 
   # @minimum_ttl 0
+
+  def config() do
+    YellowDog.Config.config("server")
+  end
+
+  def config(name) do
+    config() |> Map.get(name)
+  end
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -322,32 +329,10 @@ defmodule YellowDog.Server do
     message
   end
 
-  def make_response(%Message{} = message, protocol, _bases, _client, _port) do
+  def make_response(%Message{} = message, protocol, _bases, client, port) do
     Logger.debug(Message.to_print(message))
-    addr = ~c"114.249.114.18" |> :inet.parse_address() |> elem(1)
 
-    message =
-      if Message.edns0?(message) do
-        edns0 = Message.edns0(message) |> EDNS0.add_option(8, {addr, 24, 24})
-        message |> Message.set_edns0(edns0)
-      else
-        edns0 = EDNS0.new() |> EDNS0.add_option(8, {addr, 24, 24})
-        message |> Message.set_edns0(edns0)
-      end
-
-    Logger.debug("Add ECS source" <> Message.to_print(message))
-
-    resp_message =
-      message
-      |> forward_to_google_dns()
-
-    Logger.debug(resp_message |> Message.from_buffer() |> Message.to_print())
-
-    if protocol == :udp and byte_size(resp_message) > @udp_max_size do
-      {:problem, :truncat, resp_message}
-    else
-      {:ok, resp_message}
-    end
+    YellowDog.Forwarder.resolve(message, protocol, client, port)
   end
 
   @spec write(
@@ -367,19 +352,6 @@ defmodule YellowDog.Server do
     length = byte_size(data)
     Logger.debug("Sending answer of #{length} bytes to #{a2s(client)}")
     :gen_tcp.send(socket, <<length::16, data::binary>>)
-  end
-
-  def write({:problem, :truncate, data}, :udp, socket, client, port) do
-    Logger.debug("Sending answer to #{a2s(client)} and TC on")
-    <<part::8>> = binary_part(data, 2, 1)
-    part = part |> Bitwise.bor(0b00000010)
-
-    :gen_udp.send(
-      socket,
-      client,
-      port,
-      <<binary_part(data, 0, 2)::16, part::8, binary_part(data, 3, byte_size(data) - 3)::binary>>
-    )
   end
 
   def write({:problem, reason, data}, :udp, socket, client, port) do

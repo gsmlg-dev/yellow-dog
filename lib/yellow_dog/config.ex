@@ -16,19 +16,27 @@ defmodule YellowDog.Config do
   end
 
   @default_config %{
-    "port" => 53,
-    "logging-facility" => "local0",
-    "logging-level" => "warning",
-    "console" => true,
-    "bind" => [:any],
-    "ipv4-only" => false,
-    "ipv6-only" => false,
-    # False, until make Telemetry Module
-    "telemetry" => false,
-    "padding" => true,
-    # RFC 9567, DNS Error Reporting
-    "reporting-agent" => nil,
-    "report-via-dns" => false
+    "server" => %{
+      "port" => 53,
+      "logging-facility" => "local0",
+      "logging-level" => "warning",
+      "console" => true,
+      "bind" => [:any],
+      "ipv4-only" => false,
+      "ipv6-only" => false,
+      # False, until make Telemetry Module
+      "telemetry" => false,
+      "padding" => true,
+      # RFC 9567, DNS Error Reporting
+      "reporting-agent" => nil,
+      "report-via-dns" => false
+    },
+    "forwarder" => %{
+      "server" => ["8.8.8.8"],
+      "override-ecs" => false,
+      "ecs-addr" => "114.249.114.18",
+      "ecs-prefix" => 24
+    }
   }
 
   @config_file_home System.get_env("HOME") <> "/.yellowdog.toml"
@@ -57,21 +65,33 @@ defmodule YellowDog.Config do
       with {:ok, content} <- File.read(file),
            {:ok, config} <- Toml.decode(content) do
         Logger.info("Running from config file: `#{file}`:\n#{inspect(config, limit: :infinity)}")
+        server_config = Map.get(config, "server")
 
-        config
-        |> Map.update!("bind", fn bind ->
-          Enum.map(bind, fn
-            "any" ->
-              :any
+        conf =
+          if server_config == nil do
+            config
+          else
+            server_config
+          end
+          |> Map.update!("bind", fn bind ->
+            Enum.map(bind, fn
+              "any" ->
+                :any
 
-            addr ->
-              case :inet.parse_address(addr) do
-                {:ok, a} -> a
-                _ -> nil
-              end
+              addr ->
+                case :inet.parse_address(addr) do
+                  {:ok, a} -> a
+                  _ -> nil
+                end
+            end)
+            |> Enum.filter(&(&1 != nil))
           end)
-          |> Enum.filter(&(&1 != nil))
-        end)
+
+        if server_config == nil do
+          %{"server" => conf}
+        else
+          Map.put(config, "server", conf)
+        end
       else
         e ->
           exit("Configuration file invalid, #{inspect(e)}")
