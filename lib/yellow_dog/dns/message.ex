@@ -43,6 +43,8 @@ defmodule YellowDog.DNS.Message do
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
   alias YellowDog.DNS.Message.EDNS0
 
+  # import YellowDog.DNS.Message.NameUtils
+
   @type t :: %__MODULE__{
           header: %Header{},
           # Question list
@@ -203,65 +205,5 @@ defmodule YellowDog.DNS.Message do
     #{message.qdlist |> Enum.map(&Question.to_print(&1)) |> Enum.join("\n")}
     #{anlist_str}#{nslist_str}#{arlist_str}
     """
-  end
-
-  @spec name_to_buffer(binary()) :: any()
-  def name_to_buffer(name) do
-    case String.split(name, ".") |> Enum.filter(&(&1 != "")) do
-      [] ->
-        <<0>>
-
-      list ->
-        list
-        |> Enum.reverse()
-        |> Enum.reduce(<<0>>, fn part, acc ->
-          part_length = byte_size(part)
-          <<part_length::8, part::binary-size(part_length), acc::binary>>
-        end)
-    end
-  end
-
-  def name_from_buffer(buffer, message \\ <<>>)
-  def name_from_buffer(<<size::8, _::binary>>, _) when size == 0, do: {1, "."}
-
-  def name_from_buffer(<<size::8, pos::8, _::binary>>, message) when size == 0xC0 do
-    case message do
-      <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {_, name} = name_from_buffer(<<next::8, next_buffer::binary>>, message)
-        {2, name}
-
-      <<_::binary-size(pos), next::8, next_pos::8, next_buffer::binary>>
-      when next == 0xC0 and pos != next_pos ->
-        {_, name} = name_from_buffer(<<next::8, next_pos::8, next_buffer::binary>>, message)
-        {2, name}
-
-      _ ->
-        throw(FormatError)
-    end
-  end
-
-  def name_from_buffer(<<size::8, rest::binary>>, message)
-      when size > 0 and size < 64 do
-    case rest do
-      <<part::binary-size(size), next::8, _::binary>> when next == 0 ->
-        {1 + size + 1, part <> "."}
-
-      <<part::binary-size(size), next::8, next_pos::8, last_buffer::binary>> when next == 0xC0 ->
-        {_, compressed_name} =
-          name_from_buffer(<<next::8, next_pos::8, last_buffer::binary>>, message)
-
-        {1 + size + 2, part <> "." <> compressed_name}
-
-      <<part::binary-size(size), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
-        {last_size, last_name} = name_from_buffer(<<next, next_buffer::binary>>, message)
-        {1 + size + last_size, part <> "." <> last_name}
-
-      <<_::binary-size(size), _::binary>> ->
-        throw(FormatError)
-    end
-  end
-
-  def name_from_buffer(buffer, message) do
-    throw({:invalid_format, buffer, message})
   end
 end

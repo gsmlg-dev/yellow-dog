@@ -163,7 +163,7 @@ defmodule YellowDog.DNS.Message.EDNS0 do
   end
 
   @doc """
-    Converts a Record struct to binary data.
+  Converts a Record struct to binary data.
   """
   def to_buffer(edns0 = %__MODULE__{}) do
     <<0::8, 41::16, edns0.udp_payload::16, edns0.extended_rcode::8, edns0.version::8,

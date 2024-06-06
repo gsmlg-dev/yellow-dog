@@ -5,10 +5,12 @@ defmodule YellowDog.DNS.MessageTest do
   alias YellowDog.DNS.Message
   alias YellowDog.DNS.Message.Header
   alias YellowDog.DNS.Message.Question
-  alias YellowDog.DNS.Message.OpCode
-  alias YellowDog.DNS.Message.RCode
+  # alias YellowDog.DNS.Message.OpCode
+  # alias YellowDog.DNS.Message.RCode
   alias YellowDog.DNS.ResourceRecord.Type, as: RType
   alias YellowDog.DNS.Class
+
+  import YellowDog.DNS.Message.NameUtils
 
   test "Test DNS message creation" do
     message = Message.new()
@@ -46,28 +48,28 @@ defmodule YellowDog.DNS.MessageTest do
   test "Test DNS message parse name to buffer" do
     name = "root.com"
 
-    buffer_name = Message.name_to_buffer(name)
+    buffer_name = name_to_buffer(name)
 
     assert buffer_name == <<4, "root", 3, "com", 0>>
   end
 
   test "Test DNS message get name from buffer" do
     buffer_name = <<1, "a", 12, "root-servers", 3, "net", 0, RType.a()::16, Class.internet()::16>>
-    {name_size, parsed_name} = Message.name_from_buffer(buffer_name)
+    {name_size, parsed_name} = name_from_buffer(buffer_name)
 
     assert name_size == 20
     assert parsed_name == "a.root-servers.net."
 
     buffer_name = <<3, "com", 0>>
 
-    {name_size, parsed_name} = Message.name_from_buffer(buffer_name)
+    {name_size, parsed_name} = name_from_buffer(buffer_name)
 
     assert name_size == 5
     assert parsed_name == "com."
 
     buffer_name = <<0>>
 
-    {name_size, parsed_name} = Message.name_from_buffer(buffer_name)
+    {name_size, parsed_name} = name_from_buffer(buffer_name)
 
     assert name_size == 1
     assert parsed_name == "."

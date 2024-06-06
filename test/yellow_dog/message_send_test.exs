@@ -3,7 +3,7 @@ defmodule YellowDog.MessageSendTest do
   doctest YellowDog
 
   alias YellowDog.DNS.Message
-  alias YellowDog.DNS.Message.Header
+  # alias YellowDog.DNS.Message.Header
   alias YellowDog.DNS.Message.Question
   alias YellowDog.DNS.Message.OpCode
   alias YellowDog.DNS.Message.RCode
@@ -13,10 +13,12 @@ defmodule YellowDog.MessageSendTest do
   test "Test DNS message add Question" do
     message =
       Message.new()
+      |> Message.update_header_attr(:rcode, RCode.no_error())
+      |> Message.update_header_attr(:opcode, OpCode.status())
       |> Message.add_question(Question.new("a.root-servers.net", RType.a(), Class.internet()))
 
     {:ok, socket} = :gen_tcp.connect({8, 8, 8, 8}, 53, active: false)
-    buffer = YellowDog.DNS.Message.to_buffer(message)
+    buffer = Message.to_buffer(message)
     :ok = :gen_tcp.send(socket, <<byte_size(buffer)::16, buffer::binary>>)
     {:ok, [a, b]} = :gen_tcp.recv(socket, 2)
     length = Bitwise.<<<(a, 8) |> Bitwise.bor(b)
@@ -25,5 +27,8 @@ defmodule YellowDog.MessageSendTest do
     assert is_bitstring(str)
     assert is_binary(str)
     # assert <<str::binary>> == data
+    IO.inspect({data, str})
+    resp_message = str |> Message.from_buffer()
+    resp_message |> Message.to_print() |> IO.puts()
   end
 end

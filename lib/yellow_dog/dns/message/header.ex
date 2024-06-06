@@ -238,7 +238,7 @@ defmodule YellowDog.DNS.Message.Header do
 
   def to_print(header = %Header{}) do
     """
-    ID: #{header.id}, qr: #{header.qr}, opcode: #{header.opcode}, status: #{header.rcode}
+    ID: #{header.id}, qr: #{header.qr}, opcode: #{header.opcode |> OpCode.get_name()}, status: #{header.rcode |> RCode.get_name()}
     aa: #{header.aa}, tc: #{header.tc}, rd: #{header.rd}, ra: #{header.ra}, z: #{header.z}, ad: #{header.ad}, cd: #{header.cd}
     QUERY: #{header.qdcount}, ANSWER: #{header.ancount}, AUTHORITY: #{header.nscount}, ADDITIONAL: #{header.arcount}
     """
