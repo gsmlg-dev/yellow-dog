@@ -8,21 +8,11 @@ import Config
 # The block below contains prod specific runtime configuration.
 
 if config_env() == :prod do
-  if System.get_env("YD_PORT") do
-    port = System.get_env("YD_PORT") |> String.to_integer()
-    config :yellow_dog, YellowDog.Server, port: port
-  end
+  case System.fetch_env("LOG_LEVEL") do
+    {:ok, level} ->
+      config :logger, :console, level: String.to_atom(level)
 
-  if System.get_env("YD_FORWARDER") do
-    ip = System.get_env("YD_FORWARDER")
-
-    port =
-      if System.get_env("YD_FORWARDER_PORT") do
-        System.get_env("YD_FORWARDER_PORT") |> String.to_integer()
-      else
-        53
-      end
-
-    config :yellow_dog, YellowDog.Server, default_forwarder: {ip, port}
+    _ ->
+      nil
   end
 end

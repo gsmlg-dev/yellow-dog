@@ -14,10 +14,6 @@ config :logger, :console,
   format: "$date $time [$level] $metadata$message\n",
   metadata: [:user_id]
 
-config :yellow_dog, YellowDog.Server,
-  port: 53,
-  default_forwarder: {{8, 8, 8, 8}, 53}
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
