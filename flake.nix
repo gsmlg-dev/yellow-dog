@@ -2,18 +2,20 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    flake-docker-utils.url = "github.com:Gao-OS/flake-docker-utils";
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
+    flake-docker-utils,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
-      app = pkgs.callPackage ./default.nix {inherit system;};
-      img = pkgs.dockerTools.buildImage {
+      yellowdogdns = pkgs.callPackage ./default.nix {inherit system;};
+      dockerImage = pkgs.dockerTools.buildImage {
         name = "yellowdogdns";
         tag = "latest";
         created = "now";
@@ -25,7 +27,7 @@
             pkgs.dockerTools.binSh
             pkgs.dockerTools.caCertificates
             pkgs.dockerTools.fakeNss
-            app
+            yellowdogdns
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
         };
@@ -43,7 +45,12 @@
         };
       };
     in {
-      packages.docker = img;
-      defaultPackage = app;
+      packages.yellowdogdns = yellowdogdns;
+
+      packages.docker = dockerImage;
+
+      packages.allImages = flake-docker-utils.lib.allImages ["x86_64-linux" "aarch64-linux"] dockerImage;
+
+      defaultPackage = yellowdogdns;
     });
 }
