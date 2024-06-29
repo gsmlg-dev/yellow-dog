@@ -519,6 +519,8 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
   """
   def dlv(), do: 32769
 
+  @spec get_name(integer()) ::
+          atom() | {:private_use, integer()} | {:reserved, 0 | 65535} | {:unassigned, integer()}
   def get_name(1), do: :a
   def get_name(2), do: :ns
   def get_name(3), do: :md
@@ -584,6 +586,16 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
   def get_name(64), do: :svcb
   def get_name(65), do: :https
   def get_name(99), do: :spf
+  def get_name(100), do: :uinfo
+  def get_name(101), do: :uid
+  def get_name(102), do: :gid
+  def get_name(103), do: :unspec
+  def get_name(104), do: :nid
+  def get_name(105), do: :l32
+  def get_name(106), do: :l64
+  def get_name(107), do: :lp
+  def get_name(108), do: :eui48
+  def get_name(109), do: :eui64
   def get_name(249), do: :tkey
   def get_name(250), do: :tsig
   def get_name(251), do: :ixfr
@@ -599,5 +611,8 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
   def get_name(261), do: :resinfo
   def get_name(32768), do: :ta
   def get_name(32769), do: :dlv
-  def get_name(code), do: code
+  def get_name(0), do: {:reserved, 0}
+  def get_name(65535), do: {:reserved, 65535}
+  def get_name(code) when code == 54 or (code >= 66 and code <= 98) or (code >= 110 and code <= 248) or (code >= 262 and code <= 32767)  or (code >= 32770 and code <= 65279) , do: {:unassigned, code}
+  def get_name(code) when code >= 65280 and code <= 65534, do: {:private_use, code}
 end
