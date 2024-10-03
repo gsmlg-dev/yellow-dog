@@ -177,10 +177,11 @@ defmodule YellowDog.DNS.Message.Record do
   def _rdata_from_message(type, data, _) when is_atom(type) do
     data
   end
-  def _rdata_from_message({type, type_code}, data, _) when is_atom(type) and is_integer(type_code) do
+
+  def _rdata_from_message({type, type_code}, data, _)
+      when is_atom(type) and is_integer(type_code) do
     data
   end
-
 
   def _rdata_to_buffer(:a, {a, b, c, d}) do
     <<a::8, b::8, c::8, d::8>>

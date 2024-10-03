@@ -10,6 +10,15 @@ defmodule YellowDog.MixProject do
       releases: [
         yellow_dog: [
           applications: [yellow_dog: :permanent]
+        ],
+        yellow_dog_standalone: [
+          steps: [:assemble, &Burrito.wrap/1],
+          burrito: [
+            targets: [
+              linux_arm64: [os: :linux, cpu: :aarch64],
+              linux_amd64: [os: :linux, cpu: :x86_64]
+            ]
+          ]
         ]
       ],
       deps: deps()
@@ -28,7 +37,8 @@ defmodule YellowDog.MixProject do
   defp deps do
     [
       {:toml, "~> 0.7"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:burrito, "~> 1.0"}
     ]
   end
 end

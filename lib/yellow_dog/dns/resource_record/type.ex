@@ -613,6 +613,11 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
   def get_name(32769), do: :dlv
   def get_name(0), do: {:reserved, 0}
   def get_name(65535), do: {:reserved, 65535}
-  def get_name(code) when code == 54 or (code >= 66 and code <= 98) or (code >= 110 and code <= 248) or (code >= 262 and code <= 32767)  or (code >= 32770 and code <= 65279) , do: {:unassigned, code}
+
+  def get_name(code)
+      when code == 54 or (code >= 66 and code <= 98) or (code >= 110 and code <= 248) or
+             (code >= 262 and code <= 32767) or (code >= 32770 and code <= 65279),
+      do: {:unassigned, code}
+
   def get_name(code) when code >= 65280 and code <= 65534, do: {:private_use, code}
 end

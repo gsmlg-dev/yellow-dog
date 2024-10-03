@@ -52,5 +52,24 @@
       packages.allImages = flake-docker-utils.lib.allImages ["x86_64-linux" "aarch64-linux"] dockerImage;
 
       defaultPackage = yellowdogdns;
+
+      devShells.default = pkgs.mkShell {
+        name = "YellowDog NameServer Dev Shell";
+
+        buildInputs = [
+          pkgs.figlet
+          pkgs.elixir
+          pkgs.zig
+          pkgs.p7zip
+        ];
+
+        shellHook = ''
+          figlet -w 120 -f starwars YellowDog
+          figlet -w 120 -f starwars NameServer
+          figlet -w 120 -f starwars Dev Shell
+
+          export EDITOR=vim
+        '';
+      };
     });
 }
