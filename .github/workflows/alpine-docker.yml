@@ -1,4 +1,4 @@
-name: docker-build-yellowdog-alpine-image
+name: Manual Build YellowDog DNS alpine image
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       image-tag:
         required: true
         description: 'docker image tag'
-        default: "alpine"
+        default: "v1.1.1"
       release-version:
         required: true
         description: 'mix release version'
