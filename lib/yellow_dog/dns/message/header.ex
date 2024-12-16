@@ -242,5 +242,12 @@ defmodule YellowDog.DNS.Message.Header do
     aa: #{header.aa}, tc: #{header.tc}, rd: #{header.rd}, ra: #{header.ra}, z: #{header.z}, ad: #{header.ad}, cd: #{header.cd}
     QUERY: #{header.qdcount}, ANSWER: #{header.ancount}, AUTHORITY: #{header.nscount}, ADDITIONAL: #{header.arcount}
     """
+  rescue
+    e ->
+      """
+      HEADER Error:
+      #{inspect(e)}
+      #{inspect(header)}
+      """
   end
 end
