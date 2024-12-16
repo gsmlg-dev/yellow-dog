@@ -13,8 +13,8 @@
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
-      configFile =
-        pkgs.writeText "/etc/yellowdog.toml"
+      yellowdogdns_default_config =
+        pkgs.writeText "yellowdog.toml"
         ''
           [server]
           port = 53
@@ -53,7 +53,7 @@
             pkgs.tzdata
             pkgs.glibcLocales
             yellowdogdns
-            configFile
+            yellowdogdns_default_config
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
         };
@@ -62,9 +62,17 @@
           Entrypoint = ["/bin/yellow_dog"];
           Cmd = ["start"];
           WorkingDir = "/root";
+          Labels = {
+            "org.opencontainers.image.source" = "https://github.com/gsmlg-dev/YellowDogDNS";
+            "org.opencontainers.image.version" = "${yellowdogdns.version}";
+            "org.opencontainers.image.title" = "YellowDogDNS";
+            "org.opencontainers.image.description" = "A DNS Server write in Elixir";
+            "maintainer" = "Jonathan Gao <gsmlg.com@gmail.com>";
+            "volume.config" = "/etc/yellowdog.toml";
+          };
           Env = [
-            "LOCALE_ARCHIVE=${pkgs.glibcLocales}/lib/locale/locale-archive"
             # "TZ=Asia/Shanghai"
+            "LOCALE_ARCHIVE=${pkgs.glibcLocales}/lib/locale/locale-archive"
             "LANG=en_US.UTF-8"
             "LANGUAGE=en_US:en"
             "LC_ALL=en_US.UTF-8"
@@ -75,7 +83,7 @@
             "RELEASE_COOKIE=3swYaASXT0ARmMHUjiDsesPesG0hh/SMQbQx6kX4+Z6+9S9YA2lS6lVNdQiX93Wv"
           ];
           Volumes = {
-            "/etc/yellowdog.toml" = {};
+            # "/etc/yellowdog.toml" = {};
           };
         };
       };
