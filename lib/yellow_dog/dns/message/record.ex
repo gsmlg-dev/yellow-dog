@@ -237,6 +237,13 @@ defmodule YellowDog.DNS.Message.Record do
       t ->
         "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{t} #{inspect(r.data)}"
     end
+  rescue
+    e ->
+      """
+      Record Print Error:
+      #{inspect(e)}
+      #{inspect(r)}
+      """
   end
 
   defp print_tuple(t) do

@@ -71,5 +71,12 @@ defmodule YellowDog.DNS.Message.Question do
 
   def to_print(question = %__MODULE__{}) do
     "#{question.name} #{RType.get_name(question.type)} #{Class.to_print(question.class)}"
+  rescue
+    e ->
+      """
+      QUESTION Error:
+      #{inspect(e)}
+      #{inspect(question)}
+      """
   end
 end
