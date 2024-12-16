@@ -13,6 +13,8 @@ defmodule YellowDog.DNS.Message.NameUtils do
   TODO: Add method to compress domain name in message.
   """
 
+  require Logger
+
   @doc """
   Encode domain name to dns message in bitstring.
   """
@@ -39,7 +41,7 @@ defmodule YellowDog.DNS.Message.NameUtils do
   def name_from_buffer(buffer, message \\ <<>>)
   def name_from_buffer(<<size::8, _::binary>>, _) when size == 0, do: {1, "."}
 
-  def name_from_buffer(<<size::8, pos::8, _::binary>>, message) when size == 0xC0 do
+  def name_from_buffer(<<size::8, pos::8, rest::binary>>, message) when size == 0xC0 do
     case message do
       <<_::binary-size(pos), next::8, next_buffer::binary>> when next > 0 and next < 64 ->
         {_, name} = name_from_buffer(<<next::8, next_buffer::binary>>, message)
@@ -51,6 +53,7 @@ defmodule YellowDog.DNS.Message.NameUtils do
         {2, name}
 
       _ ->
+        Logger.error("Invalid name_from_buffer size: #{size} pos: #{pos} rest: #{rest} message: #{message}")
         throw(FormatError)
     end
   end
@@ -72,11 +75,13 @@ defmodule YellowDog.DNS.Message.NameUtils do
         {1 + size + last_size, part <> "." <> last_name}
 
       <<_::binary-size(size), _::binary>> ->
+        Logger.error("Invalid name_from_buffer size: #{size} rest: #{rest} message: #{message}")
         throw(FormatError)
     end
   end
 
   def name_from_buffer(buffer, message) do
+    Logger.error("Invalid Format name_from_buffer buffer: #{buffer} message: #{message}")
     throw({:invalid_format, buffer, message})
   end
 end
