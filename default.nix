@@ -24,7 +24,7 @@
     pname = "${pname}-mix-deps";
     inherit src version;
     # nix will complain and tell you the right value to replace this with
-    hash = "sha256-sZgrfqjP8ytzWE8YlnXddQve7eClmFOCb4nOy1Zl8Ro=";
+    hash = "sha256-WNdN6mDQb8rmLLplPZV4B6ACz4rz9RCMk3uzdC6Widk=";
     mixEnv = "prod"; # default is "prod", when empty includes all dependencies, such as "dev", "test".
     # if you have build time environment variables add them here
     RELEASE_COOKIE = "Best_in_the_World!";
