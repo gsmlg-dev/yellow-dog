@@ -2,15 +2,6 @@ name: Manual Build YellowDog DNS alpine image
 
 on:
   workflow_dispatch:
-    inputs:
-      image-tag:
-        required: true
-        description: 'docker image tag'
-        default: "v1.1.1"
-      release-version:
-        required: true
-        description: 'mix release version'
-        default: "1.1.1"
 
 jobs:
   build-image:
@@ -39,6 +30,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       -
+        name: Get version
+        id: version
+        run: |
+          VERSION=$(cat mix.exs |grep version: | cut -d'"' -f2)
+          echo "current version: $VERSION"
+          echo version=$VERSION >> $GITHUB_OUTPUT
+      -
         name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -47,9 +45,9 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            RELEASE_VERSION=${{ github.event.inputs.release-version }}
+            RELEASE_VERSION=${{ steps.version.outputs.version }}
           tags: |
-            docker.io/gsmlg/yellowdogdns:${{ github.event.inputs.image-tag }}
+            docker.io/gsmlg/yellowdogdns:v${{ steps.version.outputs.version }}
             docker.io/gsmlg/yellowdogdns:alpine
-            ghcr.io/gsmlg-dev/yellowdogdns:${{ github.event.inputs.image-tag }}
+            ghcr.io/gsmlg-dev/yellowdogdns:v${{ steps.version.outputs.version }}
             ghcr.io/gsmlg-dev/yellowdogdns:alpine
