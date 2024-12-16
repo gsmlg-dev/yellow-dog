@@ -1,4 +1,4 @@
-FROM docker.io/library/elixir:1.16-alpine as builder
+FROM docker.io/library/elixir:1.17-alpine as builder
 
 COPY . /app
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN mix local.hex --force && \
     mix deps.get && \
     mix release yellow_dog --version "${RELEASE_VERSION}"
 
-FROM docker.io/library/alpine:3.18
+FROM docker.io/library/alpine:3.20
 
 ARG RELEASE_VERSION=1.0.0
 ENV RELEASE_VERSION="${RELEASE_VERSION}"
@@ -24,7 +24,14 @@ ENV YD_PORT=53 \
     YD_FORWARDER="8.8.8.8" \
     YD_FORWARDER_PORT=53
 
-RUN apk add --update --no-cache libncursesw libstdc++
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+ENV TZ=Asia/Shanghai
+
+RUN apk add --update --no-cache libncursesw libstdc++ \
+    musl musl-utils musl-locales tzdata
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 
