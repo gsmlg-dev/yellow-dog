@@ -33,6 +33,8 @@ in
   beamPackages.mixRelease {
     inherit pname version src mixFodDeps;
 
+    mixReleaseName = "yellow_dog";
+
     nativeBuildInputs = [
     ];
 
