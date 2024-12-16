@@ -13,6 +13,28 @@
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
+      configFile =
+        pkgs.writeText "yellowdog.toml"
+        ''
+          [server]
+          port = 53
+          logging-facility = "local0"
+          logging-level = "warning"
+          console = true
+          bind = ["any"]
+          ipv4-only = false
+          ipv6-only = false
+          telemetry = false
+          padding = true
+          reporting-agent = ""
+          report-via-dns = false
+
+          [forwarder]
+          server = "8.8.8.8"
+          override-ecs = false
+          ecs-addr = "114.249.114.18"
+          ecs-prefix = 24
+        '';
       pkgs = import nixpkgs {inherit system;};
       yellowdogdns = pkgs.callPackage ./default.nix {inherit system;};
       dockerImage = pkgs.dockerTools.buildImage {
@@ -52,7 +74,7 @@
             "RELEASE_COOKIE=3swYaASXT0ARmMHUjiDsesPesG0hh/SMQbQx6kX4+Z6+9S9YA2lS6lVNdQiX93Wv"
           ];
           Volumes = {
-            "/etc/yellowdog.toml" = {};
+            "/etc/yellowdog.toml" = configFile;
           };
         };
       };
