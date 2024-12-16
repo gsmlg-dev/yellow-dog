@@ -1,4 +1,4 @@
-FROM docker.io/library/elixir:1.17-alpine as builder
+FROM docker.io/library/elixir:1.17-alpine AS builder
 
 COPY . /app
 WORKDIR /app
@@ -16,7 +16,7 @@ FROM docker.io/library/alpine:3.20
 ARG RELEASE_VERSION=1.1.1
 ENV RELEASE_VERSION="${RELEASE_VERSION}"
 
-LABEL org.opencontainers.image.source https://github.com/gsmlg-dev/YellowDogDNS
+LABEL org.opencontainers.image.source="https://github.com/gsmlg-dev/YellowDogDNS"
 LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
 LABEL org.opencontainers.image.title="YellowDogDNS"
 LABEL org.opencontainers.image.description="A DNS Server write in Elixir"
