@@ -24,10 +24,6 @@ LABEL org.opencontainers.image.description="A DNS Server write in Elixir"
 LABEL maintainer="Jonathan Gao <gsmlg.com@gmail.com>"
 LABEL RELEASE_VERSION="${RELEASE_VERSION}"
 
-ENV YD_PORT=53 \
-    YD_FORWARDER="8.8.8.8" \
-    YD_FORWARDER_PORT=53
-
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
@@ -40,6 +36,7 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
     musl musl-utils musl-locales tzdata
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
+COPY priv/yellowdogdns_default_config.toml /etc/yellowdog.toml
 
 EXPOSE 53
 
