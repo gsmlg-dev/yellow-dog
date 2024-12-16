@@ -86,7 +86,7 @@ defmodule YellowDog.DNS.Message.Question do
 
   @spec to_print(Question.t()) :: binary()
   def to_print(question = %__MODULE__{}) do
-    "#{question.name} #{RType.get_name(question.type)} #{Class.to_print(question.class)}"
+    "#{question.name} #{RType.to_print(question.type)} #{Class.to_print(question.class)}"
   rescue
     e ->
       """

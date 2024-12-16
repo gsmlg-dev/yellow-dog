@@ -322,7 +322,7 @@ defmodule YellowDog.Server do
     message.qdlist
     |> Enum.each(fn qn ->
       Logger.info(
-        "Query in #{protocol} from #{a2s(client)}##{port} #{qn.name} #{RType.get_name(qn.type)} #{QClass.get_name(qn.class)}"
+        "Query in #{protocol} from #{a2s(client)}##{port} #{qn.name} #{RType.to_print(qn.type)} #{QClass.to_print(qn.class)}"
       )
     end)
 

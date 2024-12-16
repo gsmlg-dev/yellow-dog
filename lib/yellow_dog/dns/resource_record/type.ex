@@ -620,4 +620,12 @@ defmodule YellowDog.DNS.ResourceRecord.Type do
       do: {:unassigned, code}
 
   def get_name(code) when code >= 65280 and code <= 65534, do: {:private_use, code}
+
+  @spec to_print(integer()) :: binary()
+  def to_print(code) do
+    case get_name(code) do
+      {name, code} -> "#{name}(#{code})"
+      name -> "#{name}"
+    end
+  end
 end

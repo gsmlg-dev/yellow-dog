@@ -223,16 +223,16 @@ defmodule YellowDog.DNS.Message.Record do
   def to_print(r = %__MODULE__{type: type}) do
     case RType.get_name(type) do
       t when t == :a or t == :aaaa ->
-        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{YellowDog.Utils.a2s(r.data)}"
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.to_print()} #{YellowDog.Utils.a2s(r.data)}"
 
       t when t in [:cname, :ns, :ptr, :dname] ->
-        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data}"
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.to_print()} #{r.data}"
 
       t when t in [:mx, :soa, :srv] ->
-        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data |> print_tuple()}"
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.to_print()} #{r.data |> print_tuple()}"
 
       :txt ->
-        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.get_name()} #{r.data |> Enum.map(&inspect/1) |> Enum.join(" ")}"
+        "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{r.type |> RType.to_print()} #{r.data |> Enum.map(&inspect/1) |> Enum.join(" ")}"
 
       t ->
         "#{r.name} #{r.ttl} #{r.class |> Class.to_print()} #{t} #{inspect(r.data)}"
