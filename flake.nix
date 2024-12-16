@@ -27,6 +27,8 @@
             pkgs.dockerTools.binSh
             pkgs.dockerTools.caCertificates
             pkgs.dockerTools.fakeNss
+            pkgs.locale
+            pkgs.tzdata
             yellowdogdns
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
@@ -35,13 +37,21 @@
         config = {
           Entrypoint = ["/bin/yellow_dog"];
           Cmd = ["start"];
+          WorkingDir = "/root";
           Env = [
+            "TZ=Asia/Shanghai"
+            "LANG=en_US.UTF-8"
+            "LANGUAGE=en_US:en"
+            "LC_ALL=en_US.UTF-8"
             "REPLACE_OS_VARS=true"
             "ERL_EPMD_PORT=4369"
             "ERLCOOKIE=96myjWoLCTZRko08UdngkxQo/SwP9vfga28/B6IL"
             "POOL_SIZE=10"
             "RELEASE_COOKIE=3swYaASXT0ARmMHUjiDsesPesG0hh/SMQbQx6kX4+Z6+9S9YA2lS6lVNdQiX93Wv"
           ];
+          Volumes = {
+            "/etc/yellowdog.toml" = {};
+          };
         };
       };
     in {
