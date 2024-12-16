@@ -53,7 +53,7 @@
             pkgs.tzdata
             pkgs.glibcLocales
             yellowdogdns
-            yellowdogdns_default_config
+            # yellowdogdns_default_config
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
         };
