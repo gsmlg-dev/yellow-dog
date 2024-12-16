@@ -14,7 +14,7 @@
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       configFile =
-        pkgs.writeText "yellowdog.toml"
+        pkgs.writeText "/etc/yellowdog.toml"
         ''
           [server]
           port = 53
@@ -53,6 +53,7 @@
             pkgs.tzdata
             pkgs.glibcLocales
             yellowdogdns
+            configFile
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
         };
@@ -63,7 +64,7 @@
           WorkingDir = "/root";
           Env = [
             "LOCALE_ARCHIVE=${pkgs.glibcLocales}/lib/locale/locale-archive"
-            "TZ=Asia/Shanghai"
+            # "TZ=Asia/Shanghai"
             "LANG=en_US.UTF-8"
             "LANGUAGE=en_US:en"
             "LC_ALL=en_US.UTF-8"
@@ -74,7 +75,7 @@
             "RELEASE_COOKIE=3swYaASXT0ARmMHUjiDsesPesG0hh/SMQbQx6kX4+Z6+9S9YA2lS6lVNdQiX93Wv"
           ];
           Volumes = {
-            "/etc/yellowdog.toml" = configFile;
+            "/etc/yellowdog.toml" = {};
           };
         };
       };
