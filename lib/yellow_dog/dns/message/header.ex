@@ -182,6 +182,7 @@ defmodule YellowDog.DNS.Message.Header do
 
   def generate_id, do: Enum.random(0..0xFFFF)
 
+  @spec to_buffer(YellowDog.DNS.Message.Header.t()) :: <<_::96>>
   @doc """
   # build a DNS header
   """
@@ -191,6 +192,7 @@ defmodule YellowDog.DNS.Message.Header do
       header.ancount::16, header.nscount::16, header.arcount::16>>
   end
 
+  @spec from_buffer(<<_::96>>) :: YellowDog.DNS.Message.Header.t()
   def from_buffer(
         <<id::16, qr::1, opcode::4, aa::1, tc::1, rd::1, ra::1, z::1, ad::1, cd::1, rcode::4,
           qdcount::16, ancount::16, nscount::16, arcount::16>> = _buffer
@@ -214,6 +216,7 @@ defmodule YellowDog.DNS.Message.Header do
     }
   end
 
+  @spec new() :: YellowDog.DNS.Message.Header.t()
   def new do
     %Header{
       id: generate_id(),
@@ -234,8 +237,10 @@ defmodule YellowDog.DNS.Message.Header do
     }
   end
 
-  def qdcount(<<_::32, count::16>> = _message), do: count
+  @spec qdcount(<<_::48, _::_*8>>) :: integer()
+  def qdcount(<<_::32, count::16, _::binary>> = _message), do: count
 
+  @spec to_print(YellowDog.DNS.Message.Header.t()) :: binary()
   def to_print(header = %Header{}) do
     """
     ID: #{header.id}, qr: #{header.qr}, opcode: #{header.opcode |> OpCode.get_name()}, status: #{header.rcode |> RCode.get_name()}
