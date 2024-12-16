@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.source https://github.com/gsmlg-dev/YellowDogDNS
 LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
 LABEL org.opencontainers.image.title="YellowDogDNS"
 LABEL org.opencontainers.image.description="A DNS Server write in Elixir"
-
+LABEL volume.config="/etc/yellowdog.toml"
 LABEL maintainer="Jonathan Gao <gsmlg.com@gmail.com>"
 LABEL RELEASE_VERSION="${RELEASE_VERSION}"
 
@@ -30,7 +30,7 @@ ENV LC_ALL=en_US.UTF-8
 
 ENV TZ=Asia/Shanghai
 
-VOLUME ["/etc/yellowdog.toml"]
+# VOLUME ["/etc/yellowdog.toml"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
     musl musl-utils musl-locales tzdata
