@@ -29,6 +29,7 @@
             pkgs.dockerTools.fakeNss
             pkgs.locale
             pkgs.tzdata
+            pkgs.glibcLocales
             yellowdogdns
           ];
           pathsToLink = ["/bin" "/etc" "/var"];
@@ -39,6 +40,7 @@
           Cmd = ["start"];
           WorkingDir = "/root";
           Env = [
+            "LOCALE_ARCHIVE=${pkgs.glibcLocales}/lib/locale/locale-archive"
             "TZ=Asia/Shanghai"
             "LANG=en_US.UTF-8"
             "LANGUAGE=en_US:en"
