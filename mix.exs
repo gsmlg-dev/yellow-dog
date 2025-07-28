@@ -44,39 +44,15 @@ defmodule YellowDog.MixProject do
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
-    if Path.expand("../ex_dns", __DIR__) |> File.exists?() do
-      [
-        {:ex_dns, path: "../ex_dns", override: true}
-      ]
-    else
-      [
-        {:ex_dns, "~> 0.1"}
-      ]
-    end ++
-      if Path.expand("../ex_dhcp", __DIR__) |> File.exists?() do
-        [
-          {:dhcp_ex, path: "../ex_dhcp", override: true}
-        ]
-      else
-        [
-          {:dhcp_ex, "~> 0.1"}
-        ]
-      end ++
-      if Path.expand("../abyss", __DIR__) |> File.exists?() do
-        [
-          {:abyss, path: "../abyss", override: true}
-        ]
-      else
-        [
-          {:abyss, "~> 0.2"}
-        ]
-      end ++
-      [
-        {:telemetry, "~> 1.0"},
-        {:toml, "~> 0.7"},
-        {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-        {:burrito, "~> 1.0"}
-      ]
+    [
+      {:abyss, "~> 0.4"},
+      {:ex_dns, "~> 0.3"},
+      {:dhcp_ex, "~> 0.4"},
+      {:telemetry, "~> 1.0"},
+      {:toml, "~> 0.7"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:burrito, "~> 1.0"}
+    ]
   end
 
   defp dialyzer do
