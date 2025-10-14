@@ -27,3 +27,7 @@ yellow_dog-*.tar
 
 # nix build output
 /result
+
+# devenv
+.devenv/
+.devenv.*
