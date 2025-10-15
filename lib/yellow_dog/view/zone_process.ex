@@ -1,6 +1,4 @@
 defmodule YellowDog.View.ZoneProcess do
-  alias YellowDog.View
-
   use GenServer
 
   def lookup(pid, name, type) do

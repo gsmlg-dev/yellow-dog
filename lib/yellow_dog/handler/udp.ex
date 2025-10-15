@@ -5,10 +5,10 @@ defmodule YellowDog.Handler.UDP do
   def handle_data(recv_data, %{socket: listener_socket} = state) do
     {ip, port, data} = recv_data
 
-    message =
-      DNS.Message.from_iodata(data)
-      |> DNS.Message.put_option(:client_ip, ip)
-      |> DNS.Message.put_option(:client_port, port)
+    message = DNS.Message.from_iodata(data)
+
+    # Store client info in the message for later use using Map.put
+    message = Map.put(message, :client_ip, ip) |> Map.put(:client_port, port)
 
     resp = YellowDog.NameResolver.resolve(message)
 

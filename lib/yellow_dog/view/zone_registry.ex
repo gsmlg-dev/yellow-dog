@@ -1,6 +1,4 @@
 defmodule YellowDog.View.ZoneRegistry do
-  alias DNS.Zone
-
   use Agent
 
   def start_link(zones) do

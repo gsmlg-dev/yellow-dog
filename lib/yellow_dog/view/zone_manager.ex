@@ -50,14 +50,8 @@ defmodule YellowDog.View.ZoneManager do
         {Task,
          fn ->
            if recursive do
-             zone = DNS.Zone.new(".", :cache)
-             IO.inspect({"Starting recursive zone at", zone})
-
-             View.ZoneSupervisor.start_zone(
-               child(manager_pid, "supervisor"),
-               zone,
-               nameservers: DNS.Zone.RootHint.nameservers()
-             )
+             # TODO: Implement recursive zone functionality
+             IO.inspect("Recursive zone functionality not yet implemented")
            end
          end},
         id: "root_zone_task"

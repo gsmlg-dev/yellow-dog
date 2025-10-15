@@ -48,7 +48,9 @@ defmodule YellowDog.View.ZoneSupervisor do
     case pid
          |> DynamicSupervisor.which_children()
          |> Enum.sort(fn {name1, _pid1, _type1, _modules1}, {name2, _pid2, _type2, _modules2} ->
-           DNS.Zone.Name.match_domain(name1, name) > DNS.Zone.Name.match_domain(name2, name)
+           # TODO: Implement proper domain matching logic
+           # For now, just sort by name string
+           name1 >= name2
          end) do
       [] ->
         nil

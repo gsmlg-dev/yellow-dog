@@ -28,41 +28,36 @@ defmodule YellowDog.View.Resolver do
             |> View.Cache.get({name, type})
 
           if is_nil(cached) do
-            resp =
-              DNS.Message.new()
-              |> DNS.Message.update_header_attr(:id, header.id)
-              |> DNS.Message.update_header_attr(:qr, 1)
-              |> DNS.Message.add_question(qdlist |> List.first())
-
-            resp = %{resp | qdlist: qdlist}
+            resp = DNS.Message.new()
+            resp = %{resp | header: %{resp.header | id: header.id, qr: 1}, qdlist: qdlist}
 
             case View.child(state.view, "zone_manager")
                  |> YellowDog.View.ZoneManager.lookup(name, type) do
               {:nxdomain, _} ->
-                resp
-                |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.nx_domain())
+                %{resp | header: %{resp.header | rcode: DNS.Message.RCode.new(3)}}
 
               {:ok, answers} ->
-                resp
-                |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.no_error())
-                |> Map.put(:anlist, answers)
+                %{
+                  resp
+                  | header: %{resp.header | rcode: DNS.Message.RCode.new(0)},
+                    anlist: answers
+                }
 
               _ ->
-                DNS.Message.update_header_attr(resp, :rcode, DNS.Message.RCode.serv_fail())
+                %{resp | header: %{resp.header | rcode: DNS.Message.RCode.new(2)}}
             end
           else
             %{cached | header: %{cached.header | id: header.id, qr: 1}}
           end
 
         _ ->
-          resp =
-            DNS.Message.new()
-            |> DNS.Message.update_header_attr(:id, header.id)
-            |> DNS.Message.update_header_attr(:qr, 1)
-            |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.new(1))
-            |> DNS.Message.add_question(qdlist |> List.first())
+          resp = DNS.Message.new()
 
-          %{resp | qdlist: qdlist}
+          resp = %{
+            resp
+            | header: %{resp.header | id: header.id, qr: 1, rcode: DNS.Message.RCode.new(1)},
+              qdlist: qdlist
+          }
       end
 
     {:reply, resp, state}

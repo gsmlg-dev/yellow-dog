@@ -6,7 +6,7 @@ defmodule YellowDog.NameResolver do
   use GenServer
 
   def resolve(query) do
-    client_ip = query |> DNS.Message.get_option(:client_ip)
+    client_ip = Map.get(query, :client_ip)
     view = YellowDog.ViewManager.find_view(client_ip)
 
     case view do
