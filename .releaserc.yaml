@@ -1,0 +1,31 @@
+repositoryUrl: https://gitlab.com/gsmlg-dev/YellowDogDNS.git
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - "@semantic-release/changelog"
+  - - "@semantic-release/git"
+    - "assets":
+        - "CHANGELOG.md"
+        - "mix.exs"
+      "message": |
+        chore(release): ${nextRelease.version} [skip ci] [ci skip]
+
+        ${nextRelease.notes}
+  - - "@semantic-release/exec"
+    - "prepareCmd": |
+        echo ${nextRelease.version};
+        sed -i 's%version: "[^"]\\+"%version: "${nextRelease.version}"%' mix.exs;
+      "publishCmd": |
+        echo -n "latest" > .tags;
+        if [[ "${nextRelease.version}" != "" ]];
+        then
+          echo -n ",v${nextRelease.version}" >> .tags;
+          echo "RELEASE_VERSION=${nextRelease.version}" >> .env;
+        fi
+branches:
+  - +([0-9])?(.{+([0-9]),x}).x
+  - main
+  - next
+  - next-major
+  - { name: "beta", prerelease: true }
+  - { name: "alpha", prerelease: true }
