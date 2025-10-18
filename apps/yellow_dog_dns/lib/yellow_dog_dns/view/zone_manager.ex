@@ -7,8 +7,6 @@ defmodule YellowDogDns.View.ZoneManager do
       |> child("supervisor")
       |> YellowDogDns.View.ZoneSupervisor.match_name(name)
 
-    IO.inspect({:lookup, pid, zone_pid, name, type})
-
     case zone_pid do
       nil ->
         {:nxdomain, []}
@@ -21,7 +19,6 @@ defmodule YellowDogDns.View.ZoneManager do
   def child(pid, id) do
     pid
     |> Supervisor.which_children()
-    |> IO.inspect()
     |> Enum.find_value(fn {child_id, pid, _, _} ->
       if child_id == id and is_pid(pid) do
         pid
@@ -50,7 +47,6 @@ defmodule YellowDogDns.View.ZoneManager do
          fn ->
            if recursive do
              # TODO: Implement recursive zone functionality
-             IO.inspect("Recursive zone functionality not yet implemented")
            end
          end},
         id: "root_zone_task"

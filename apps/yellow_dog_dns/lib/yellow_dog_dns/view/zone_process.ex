@@ -32,30 +32,26 @@ defmodule YellowDogDns.View.ZoneProcess do
     {:reply, {status, records}, state}
   end
 
-  defp lookup_authoritative(name, type, options) do
+  defp lookup_authoritative(_name, _type, _options) do
     # Implement authoritative zone lookup logic here
-    IO.inspect({:lookup, name, type, options}, label: "Authoritative Lookup")
     # Placeholder for actual implementation
     {:ok, []}
   end
 
-  defp lookup_stub(name, type, options) do
+  defp lookup_stub(_name, _type, _options) do
     # Implement stub zone lookup logic here
-    IO.inspect({:lookup, name, type, options}, label: "Stub Lookup")
     # Placeholder for actual implementation
     {:ok, []}
   end
 
-  defp lookup_forward(name, type, options) do
+  defp lookup_forward(_name, _type, _options) do
     # Implement forward zone lookup logic here
-    IO.inspect({:lookup, name, type, options}, label: "Forward Lookup")
     # Placeholder for actual implementation
     {:ok, []}
   end
 
-  defp lookup_default(name, type, options) do
+  defp lookup_default(_name, _type, _options) do
     # Implement default zone lookup logic here
-    IO.inspect({:lookup, name, type, options}, label: "Default Lookup")
     # Placeholder for actual implementation
     {:ok, []}
   end

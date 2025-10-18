@@ -17,13 +17,12 @@ defmodule YellowDogDns.View.ACL do
     {:ok, list}
   end
 
-  def handle_call({:match?, ip}, _from, state) do
+  def handle_call({:match?, _ip}, _from, state) do
     is_match =
       state
       |> Enum.find_value(fn acl ->
         case acl do
           :any ->
-            IO.inspect({:acl, :any, :match, ip})
             true
 
           _net ->
