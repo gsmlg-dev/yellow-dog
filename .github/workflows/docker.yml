@@ -1,0 +1,104 @@
+name: Docker
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build image
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v8
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Build Docker image
+        id: build
+        run: |
+          nix build --print-build-logs --accept-flake-config .#docker
+          [ ! -L result ] && exit 1
+          echo "path=$(realpath result)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
+
+  push:
+    name: Push image
+
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+
+    env:
+      REGISTRY: ghcr.io
+      USERNAME: ${{ github.actor }}
+      IMAGE_NAME: ${{ github.repository }}
+
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: get_version
+        run: |
+          version=$(cat mix.exs |grep version: | cut -d '"' -f 2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: lowercase github.repository
+        id: get_name
+        run: |
+          echo "IMAGE_NAME=`echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'`" >> "$GITHUB_OUTPUT"
+
+      - name: Download images
+        uses: actions/download-artifact@v4
+        with:
+          path: images
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.USERNAME }}
+          password: ${{ github.token }}
+
+      - name: Push to registry
+        env:
+          TAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:latest
+          VTAG: ${{ env.REGISTRY }}/${{ steps.get_name.outputs.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
+        run: |
+          set -eux
+          architectures=("x86_64" "aarch64")
+          for arch in "${architectures[@]}"; do
+            docker load < images/container-"$arch"/*.tar.gz
+            docker tag yellowdogdns:latest ${{ env.TAG }}-"$arch"
+            docker push ${{ env.TAG }}-"$arch"
+          done
+          docker manifest create ${{ env.TAG }} \
+            --amend ${{ env.TAG }}-x86_64 \
+            --amend ${{ env.TAG }}-aarch64
+          docker manifest push ${{ env.TAG }}
+          docker manifest create ${{ env.VTAG }} \
+            --amend ${{ env.TAG }}-x86_64 \
+            --amend ${{ env.TAG }}-aarch64
+          docker manifest push ${{ env.VTAG }}
