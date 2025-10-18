@@ -7,7 +7,13 @@ defmodule YellowDog.Application do
   def start(_type, _args) do
     children = [
       # Configuration manager
-      {YellowDog.Config, %{}}
+      {YellowDog.Config, %{}},
+
+      # Protocol supervisors
+      {YellowDog.Dns, []},
+      {YellowDog.Dhcpv4, []},
+      {YellowDog.Dhcpv6, []},
+      {YellowDog.Mdns, []}
     ]
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]

@@ -1,8 +1,13 @@
 defmodule YellowDog.Dhcpv6Test do
   use ExUnit.Case
-  doctest YellowDog.Dhcpv6
 
-  test "greets the world" do
-    assert YellowDog.Dhcpv6.hello() == :world
+  test "DHCPv6 supervisor is running" do
+    # Start the main application to ensure DHCPv6 supervisor is running
+    {:ok, _pid} = Application.ensure_all_started(:yellow_dog)
+
+    # Check that DHCPv6 supervisor is running
+    pid = Process.whereis(YellowDog.Dhcpv6)
+    assert pid != nil
+    assert Process.alive?(pid)
   end
 end

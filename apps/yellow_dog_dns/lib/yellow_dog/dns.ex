@@ -1,18 +1,25 @@
 defmodule YellowDog.Dns do
   @moduledoc """
-  Documentation for `YellowDog.Dns`.
+  DNS supervisor that manages DNS functionality including name resolution, zones, and views.
   """
 
-  @doc """
-  Hello world.
+  use Supervisor
 
-  ## Examples
+  def start_link(_opts) do
+    Supervisor.start_link(__MODULE__, :ok, name: __MODULE__)
+  end
 
-      iex> YellowDog.Dns.hello()
-      :world
+  @impl true
+  def init(:ok) do
+    children = [
+      # DNS View Manager
+      {YellowDog.Dns.ViewManager, []},
 
-  """
-  def hello do
-    :world
+      # DNS Name Resolver
+      {YellowDog.Dns.NameResolver, []}
+    ]
+
+    opts = [strategy: :one_for_one]
+    Supervisor.init(children, opts)
   end
 end

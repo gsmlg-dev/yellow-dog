@@ -1,18 +1,22 @@
 defmodule YellowDog.Dhcpv4 do
   @moduledoc """
-  Documentation for `YellowDog.Dhcpv4`.
+  DHCPv4 supervisor that manages DHCPv4 protocol implementation.
   """
 
-  @doc """
-  Hello world.
+  use Supervisor
 
-  ## Examples
+  def start_link(_opts) do
+    Supervisor.start_link(__MODULE__, :ok, name: __MODULE__)
+  end
 
-      iex> YellowDog.Dhcpv4.hello()
-      :world
+  @impl true
+  def init(:ok) do
+    children = [
+      # DHCPv4 functionality workers will be added here
+      # Placeholder for future DHCPv4 components
+    ]
 
-  """
-  def hello do
-    :world
+    opts = [strategy: :one_for_one]
+    Supervisor.init(children, opts)
   end
 end
