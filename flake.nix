@@ -63,7 +63,7 @@
           Cmd = ["start"];
           WorkingDir = "/root";
           Labels = {
-            "org.opencontainers.image.source" = "https://github.com/gsmlg-dev/YellowDogDNS";
+            "org.opencontainers.image.source" = "https://github.com/gsmlg-dev/yellow-dog";
             "org.opencontainers.image.version" = "${yellowdogdns.version}";
             "org.opencontainers.image.title" = "YellowDogDNS";
             "org.opencontainers.image.description" = "A DNS Server write in Elixir";
