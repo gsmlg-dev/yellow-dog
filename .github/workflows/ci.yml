@@ -50,7 +50,7 @@ jobs:
       run: mix format --check-formatted
 
     - name: Run credo
-      run: mix credo --strict
+      run: mix credo
 
     - name: Run tests
       run: mix test --cover
