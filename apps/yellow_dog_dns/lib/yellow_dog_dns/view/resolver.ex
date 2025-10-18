@@ -50,7 +50,11 @@ defmodule YellowDogDns.View.Resolver do
 
         _ ->
           DNS.Message.new()
-          |> (&%{&1 | header: %{&1.header | id: header.id, qr: 1, rcode: DNS.Message.RCode.new(1)}, qdlist: qdlist}).()
+          |> (&%{
+                &1
+                | header: %{&1.header | id: header.id, qr: 1, rcode: DNS.Message.RCode.new(1)},
+                  qdlist: qdlist
+              }).()
       end
 
     {:reply, resp, state}
