@@ -1,4 +1,4 @@
-defmodule YellowDogDhcpv6.MixProject do
+defmodule YellowDog.Dhcpv6.MixProject do
   use Mix.Project
 
   def project do
@@ -19,7 +19,7 @@ defmodule YellowDogDhcpv6.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {YellowDogDhcpv6.Application, []}
+      mod: {YellowDog.Dhcpv6.Application, []}
     ]
   end
 

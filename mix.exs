@@ -1,4 +1,4 @@
-defmodule YellowDog.MixProject do
+defmodule YellowDog.Umbrella.MixProject do
   use Mix.Project
 
   def project do
@@ -6,7 +6,6 @@ defmodule YellowDog.MixProject do
       apps_path: "apps",
       version: "1.1.1",
       start_permanent: Mix.env() == :prod,
-      name: "YellowDog",
       description: "YellowDog is a Domain Name Server and DHCP Server",
       releases: [
         yellow_dog: [

@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir using an umbrella project structure. The project has been refactored into 5 separate applications:
+Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir using an umbrella project structure. The project has been completely refactored to use dot-notation module naming across all applications:
 
-- **YellowDogCore** - Core application with configuration management and orchestration
-- **YellowDogDns** - DNS functionality including name resolution, zones, and views
-- **YellowDogDhcpv4** - DHCPv4 protocol implementation
-- **YellowDogDhcpv6** - DHCPv6 protocol implementation
-- **YellowDogMdns** - mDNS (multicast DNS) functionality
+- **YellowDog** - Core application with configuration management and orchestration
+- **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation
+- **YellowDog.Mdns** - mDNS (multicast DNS) functionality
+
+All modules follow the `YellowDog.<AppName>.ModuleName` pattern, and directory structures reflect the module hierarchy (e.g., `apps/yellow_dog_dns/lib/yellow_dog/dns/`).
 
 ## Development Environment Setup
 
@@ -95,63 +97,77 @@ nix build              # Build Elixir release
 nix build .#docker     # Build Docker image
 ```
 
+### Clean Build
+```bash
+# Clean all compiled artifacts
+mix clean
+
+# Clean and rebuild everything
+mix clean && mix compile
+```
+
 ## Architecture
 
 This is an Elixir umbrella project with 5 applications:
 
-### YellowDogCore (Core Application)
+### YellowDog (Core Application)
 - **Location**: `apps/yellow_dog_core/`
 - **Purpose**: Configuration management, orchestration, and public API
-- **Application Module**: `YellowDogCore.Application`
+- **Application Module**: `YellowDog.Application`
 - **Key Modules**:
-  - `YellowDogCore.Config` - Configuration management
-  - `YellowDogCore.ServerConfig` - Server configuration
-  - `YellowDogCore.Server` - Main server orchestration
-  - `YellowDogCore.Telemetry` - Metrics and observability
+  - `YellowDog.Config` - Configuration management
+  - `YellowDog.ServerConfig` - Server configuration
+  - `YellowDog.Server` - Main server orchestration
+  - `YellowDog.Telemetry` - Metrics and observability
   - `YellowDog` - Public API (exposed through `apps/yellow_dog_core/lib/yellow_dog.ex`)
 
-### YellowDogDns (DNS Application)
+### YellowDog.Dns (DNS Application)
 - **Location**: `apps/yellow_dog_dns/`
 - **Purpose**: DNS protocol handling and name resolution
-- **Application Module**: `YellowDogDns.Application`
+- **Application Module**: `YellowDog.Dns.Application`
 - **Dependencies**: `ex_dns`, `abyss`, `telemetry`
+- **Directory Structure**: `apps/yellow_dog_dns/lib/yellow_dog/dns/`
 - **Key Modules**:
-  - `YellowDogDns.NameResolver` - DNS name resolution
-  - `YellowDogDns.ViewManager` - DNS view management
-  - `YellowDogDns.View` - DNS views and zones
-  - `YellowDogDns.Handler.UDP` - UDP DNS packet handling
+  - `YellowDog.Dns.NameResolver` - DNS name resolution
+  - `YellowDog.Dns.ViewManager` - DNS view management
+  - `YellowDog.Dns.View` - DNS views and zones
+  - `YellowDog.Dns.Handler.UDP` - UDP DNS packet handling
+  - **View Submodules**: `YellowDog.Dns.View.ACL`, `YellowDog.Dns.View.Cache`, `YellowDog.Dns.View.Resolver`, `YellowDog.Dns.View.ZoneManager`, etc.
 
-### YellowDogDhcpv4 (DHCPv4 Application)
+### YellowDog.Dhcpv4 (DHCPv4 Application)
 - **Location**: `apps/yellow_dog_dhcpv4/`
 - **Purpose**: DHCPv4 protocol implementation
-- **Application Module**: `YellowDogDhcpv4.Application`
+- **Application Module**: `YellowDog.Dhcpv4.Application`
 - **Dependencies**: `dhcp_ex`, `abyss`, `telemetry`
+- **Directory Structure**: `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/`
 - **Status**: Basic structure created, implementation pending
 
-### YellowDogDhcpv6 (DHCPv6 Application)
+### YellowDog.Dhcpv6 (DHCPv6 Application)
 - **Location**: `apps/yellow_dog_dhcpv6/`
 - **Purpose**: DHCPv6 protocol implementation
-- **Application Module**: `YellowDogDhcpv6.Application`
+- **Application Module**: `YellowDog.Dhcpv6.Application`
 - **Dependencies**: `dhcp_ex`, `abyss`, `telemetry`
+- **Directory Structure**: `apps/yellow_dog_dhcpv6/lib/yellow_dog/dhcpv6/`
 - **Status**: Basic structure created, implementation pending
 
-### YellowDogMdns (mDNS Application)
+### YellowDog.Mdns (mDNS Application)
 - **Location**: `apps/yellow_dog_mdns/`
 - **Purpose**: Multicast DNS functionality
-- **Application Module**: `YellowDogMdns.Application`
+- **Application Module**: `YellowDog.Mdns.Application`
 - **Dependencies**: `ex_dns`, `abyss`, `telemetry`
+- **Directory Structure**: `apps/yellow_dog_mdns/lib/yellow_dog/mdns/`
 - **Status**: Basic structure created, implementation pending
 
 ### Inter-Application Dependencies
-- All applications depend on `YellowDogCore` for configuration
-- `YellowDogDns` and `YellowDogMdns` use `ex_dns` for DNS protocol handling
-- `YellowDogDhcpv4` and `YellowDogDhcpv6` use `dhcp_ex` for DHCP protocol handling
+- All applications depend on `YellowDog` for configuration
+- `YellowDog.Dns` and `YellowDog.Mdns` use `ex_dns` for DNS protocol handling
+- `YellowDog.Dhcpv4` and `YellowDog.Dhcpv6` use `dhcp_ex` for DHCP protocol handling
 - All applications use `abyss` as the UDP server
 - All applications use `telemetry` for observability
 
 ## Configuration
 
-Configuration is centralized in the core `YellowDogCore.Config` module:
+Configuration is centralized in the core `YellowDog.Config` module:
 
 ```elixir
 # Get configuration values
@@ -205,12 +221,31 @@ echo "www.helsinki.fi A" >> t.txt
 dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
 ```
 
-## Development Notes
+## Module Organization and Structure
 
+### Module Naming Convention
+All modules use the `YellowDog.<AppName>.ModuleName` pattern:
+- Core modules: `YellowDog.Config`, `YellowDog.Server`, `YellowDog.Telemetry`
+- Protocol modules: `YellowDog.Dns.*`, `YellowDog.Dhcpv4.*`, `YellowDog.Dhcpv6.*`, `YellowDog.Mdns.*`
+
+### Directory Structure
+Directory structure mirrors the module hierarchy:
+```
+apps/yellow_dog_dns/lib/yellow_dog/dns/
+├── dns.ex                 # YellowDog.Dns
+├── application.ex        # YellowDog.Dns.Application
+├── handler/udp.ex       # YellowDog.Dns.Handler.UDP
+└── view/                # YellowDog.Dns.View.* modules
+    ├── acl.ex
+    ├── cache.ex
+    ├── resolver.ex
+    └── zone_*.ex
+```
+
+### Development Notes
 - The project uses Git for version control
-- Configuration is centralized in the core `YellowDogCore` application
+- Configuration is centralized in the core `YellowDog` application
 - The project follows Elixir/OTP conventions for umbrella projects
-- Module names follow the pattern `YellowDog<AppName>.ModuleName`
 - Applications can be started independently for testing and development
 - Use `direnv allow` or `devenv shell` to activate the development environment
 - CI runs on all branch pushes, not just main/dev branches
@@ -220,7 +255,24 @@ dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
 
 The project uses several tools for maintaining code quality:
 
-- **Dialyzer**: Static type analysis with comprehensive warning flags
+- **Dialyzer**: Static type analysis with comprehensive warning flags (see `mix.exs`)
 - **Credo**: Code linting (currently disabled in CI, will be re-enabled)
 - **Formatter**: Automatic code formatting with `.formatter.exs`
 - **Warnings as Errors**: Compilation treats warnings as errors in CI
+- **Mix Aliases**: Available custom mix commands (see umbrella `mix.exs`)
+
+## Build System
+
+### Umbrella Configuration
+- Main mix file: `mix.exs` (umbrella level)
+- Application mix files: `apps/*/mix.exs` (individual applications)
+- Shared dependencies defined at umbrella level
+- Release configuration includes `yellow_dog_core` and `yellow_dog_dns` applications
+
+### Dependencies
+- **abyss**: High-performance UDP server (used across all applications)
+- **ex_dns**: DNS protocol handling (used by DNS and mDNS applications)
+- **dhcp_ex**: DHCP protocol implementation (used by DHCPv4/DHCPv6 applications)
+- **telemetry**: Metrics and observability (used across all applications)
+- **credo**: Code linting (development and test only)
+- **toml**: Configuration file parsing

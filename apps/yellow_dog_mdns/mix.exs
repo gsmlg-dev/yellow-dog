@@ -1,4 +1,4 @@
-defmodule YellowDogMdns.MixProject do
+defmodule YellowDog.Mdns.MixProject do
   use Mix.Project
 
   def project do
@@ -19,7 +19,7 @@ defmodule YellowDogMdns.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {YellowDogMdns.Application, []}
+      mod: {YellowDog.Mdns.Application, []}
     ]
   end
 

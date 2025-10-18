@@ -8,16 +8,16 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Elixir/Erlang.
 
 Yellow Dog DNS is organized as an Elixir umbrella project with the following applications:
 
-- **YellowDogCore** - Core application providing configuration management and orchestration
-- **YellowDogDns** - DNS functionality including name resolution, zones, and views
-- **YellowDogDhcpv4** - DHCPv4 protocol implementation (using dhcp_ex)
-- **YellowDogDhcpv6** - DHCPv6 protocol implementation (using dhcp_ex)
-- **YellowDogMdns** - mDNS (multicast DNS) functionality (using ex_dns)
+- **YellowDog** - Core application providing configuration management and orchestration
+- **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (using dhcp_ex)
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (using dhcp_ex)
+- **YellowDog.Mdns** - mDNS (multicast DNS) functionality (using ex_dns)
 
 ### Key Dependencies
 
-- **ex_dns** - DNS protocol handling (used by YellowDogDns and YellowDogMdns)
-- **dhcp_ex** - DHCP protocol implementation (used by YellowDogDhcpv4 and YellowDogDhcpv6)
+- **ex_dns** - DNS protocol handling (used by YellowDog.Dns and YellowDog.Mdns)
+- **dhcp_ex** - DHCP protocol implementation (used by YellowDog.Dhcpv4 and YellowDog.Dhcpv6)
 - **abyss** - High-performance UDP server (used across applications)
 - **telemetry** - Metrics and observability
 

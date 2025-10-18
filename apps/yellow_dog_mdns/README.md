@@ -1,4 +1,4 @@
-# YellowDogMdns
+# YellowDog.Mdns
 
 **TODO: Add description**
 

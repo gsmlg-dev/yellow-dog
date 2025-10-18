@@ -1,4 +1,4 @@
-# YellowDogDns
+# YellowDog.Dns
 
 **TODO: Add description**
 

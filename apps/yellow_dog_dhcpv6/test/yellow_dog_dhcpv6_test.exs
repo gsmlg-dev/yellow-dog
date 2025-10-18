@@ -1,8 +1,8 @@
-defmodule YellowDogDhcpv6Test do
+defmodule YellowDog.Dhcpv6Test do
   use ExUnit.Case
-  doctest YellowDogDhcpv6
+  doctest YellowDog.Dhcpv6
 
   test "greets the world" do
-    assert YellowDogDhcpv6.hello() == :world
+    assert YellowDog.Dhcpv6.hello() == :world
   end
 end

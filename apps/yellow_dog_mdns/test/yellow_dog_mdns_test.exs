@@ -1,8 +1,8 @@
-defmodule YellowDogMdnsTest do
+defmodule YellowDog.MdnsTest do
   use ExUnit.Case
-  doctest YellowDogMdns
+  doctest YellowDog.Mdns
 
   test "greets the world" do
-    assert YellowDogMdns.hello() == :world
+    assert YellowDog.Mdns.hello() == :world
   end
 end
