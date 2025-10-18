@@ -15,14 +15,17 @@ jobs:
   test:
     name: Build and test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        otp-version: ['27', '28']
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
     - name: Set up Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: '1.16.1' # Define the elixir version [required]
-        otp-version: '26' # Define the OTP version [required]
+        elixir-version: '1.18' # Define the elixir version [required]
+        otp-version: ${{ matrix.otp-version }} # Define the OTP version [required]
     - name: Restore dependencies cache
       uses: actions/cache@v3
       with:
@@ -45,7 +48,7 @@ jobs:
     needs: [test]
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v2
