@@ -2,27 +2,90 @@
 
 ![Yellow Dog DNS](./priv/yellow_dog.png)
 
-
-Yellow Dog DNS is a distribute DNS Server written by erlang/elixir.
-
+Yellow Dog DNS is a distributed DNS and DHCP server written in Elixir/Erlang.
 
 ## Architecture
 
+Yellow Dog DNS is organized as an Elixir umbrella project with the following applications:
 
-## Howto
+- **YellowDogCore** - Core application providing configuration management and orchestration
+- **YellowDogDns** - DNS functionality including name resolution, zones, and views
+- **YellowDogDhcpv4** - DHCPv4 protocol implementation (using dhcp_ex)
+- **YellowDogDhcpv6** - DHCPv6 protocol implementation (using dhcp_ex)
+- **YellowDogMdns** - mDNS (multicast DNS) functionality (using ex_dns)
 
-Run
+### Key Dependencies
+
+- **ex_dns** - DNS protocol handling (used by YellowDogDns and YellowDogMdns)
+- **dhcp_ex** - DHCP protocol implementation (used by YellowDogDhcpv4 and YellowDogDhcpv6)
+- **abyss** - High-performance UDP server (used across applications)
+- **telemetry** - Metrics and observability
+
+## Usage
+
+### Running the Server
 
 ```shell
+# Start all applications
 mix run --no-halt
+
+# Or start specific applications
+mix app.start yellow_dog_core
+mix app.start yellow_dog_dns
 ```
 
-Benchmark
+### Configuration
+
+Configuration is managed through the core YellowDog application:
+
+```elixir
+# Get configuration
+YellowDog.get_config(:key)
+YellowDog.get_all_config()
+
+# Start the system
+YellowDog.start_link()
+```
+
+### DNS Benchmarking
 
 ```shell
-dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 5454
+# Create test queries
+echo "www.turku.fi A" > t.txt
+echo "www.helsinki.fi A" >> t.txt
 
-cat t.txt
-  www.turku.fi A
-  www.helsinki.fi A
+# Run DNS performance test
+dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
+```
+
+## Development
+
+### Project Structure
+
+```
+yellow_dog/                 # Umbrella project root
+├── apps/                   # Application directory
+│   ├── yellow_dog_core/    # Core application
+│   ├── yellow_dog_dns/     # DNS functionality
+│   ├── yellow_dog_dhcpv4/  # DHCPv4 protocol
+│   ├── yellow_dog_dhcpv6/  # DHCPv6 protocol
+│   └── yellow_dog_mdns/    # mDNS functionality
+├── config/                 # Configuration files
+├── lib/                    # Umbrella-level modules
+└── mix.exs                 # Umbrella mix file
+```
+
+### Running Tests
+
+```shell
+mix test                    # Run all tests
+mix test apps/yellow_dog_dns # Run specific app tests
+```
+
+### Building
+
+```shell
+mix compile                 # Compile all applications
+mix format                  # Format code
+mix deps.get                # Get dependencies
 ```

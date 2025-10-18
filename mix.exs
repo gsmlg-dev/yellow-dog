@@ -11,7 +11,10 @@ defmodule YellowDog.MixProject do
       releases: [
         yellow_dog: [
           include_executables_for: [:unix],
-          applications: [yellow_dog: :permanent]
+          applications: [
+            yellow_dog_core: :permanent,
+            yellow_dog_dns: :permanent
+          ]
         ]
       ],
       dialyzer: dialyzer(),
@@ -27,7 +30,15 @@ defmodule YellowDog.MixProject do
   #
   # Run "mix help deps" for examples and options.
   defp deps do
-    []
+    [
+      # Shared dependencies for all apps
+      {:abyss, "~> 0.4"},
+      {:ex_dns, "~> 0.3"},
+      {:dhcp_ex, "~> 0.4"},
+      {:telemetry, "~> 1.0"},
+      {:toml, "~> 0.7"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+    ]
   end
 
   defp dialyzer do
