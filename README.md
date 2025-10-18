@@ -30,7 +30,7 @@ Yellow Dog DNS is organized as an Elixir umbrella project with the following app
 mix run --no-halt
 
 # Or start specific applications
-mix app.start yellow_dog_core
+mix app.start yellow_dog
 mix app.start yellow_dog_dns
 ```
 
@@ -65,7 +65,7 @@ dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
 ```
 yellow_dog/                 # Umbrella project root
 ├── apps/                   # Application directory
-│   ├── yellow_dog_core/    # Core application
+│   ├── yellow_dog/    # Core application
 │   ├── yellow_dog_dns/     # DNS functionality
 │   ├── yellow_dog_dhcpv4/  # DHCPv4 protocol
 │   ├── yellow_dog_dhcpv6/  # DHCPv6 protocol

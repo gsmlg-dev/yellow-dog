@@ -11,7 +11,7 @@ defmodule YellowDog.Umbrella.MixProject do
         yellow_dog: [
           include_executables_for: [:unix],
           applications: [
-            yellow_dog_core: :permanent,
+            yellow_dog: :permanent,
             yellow_dog_dns: :permanent
           ]
         ]

@@ -27,7 +27,6 @@ defmodule YellowDog.Dhcpv4.MixProject do
   defp deps do
     [
       # Core dependencies
-      {:yellow_dog_core, in_umbrella: true},
 
       # External dependencies for DHCPv4 functionality
       {:dhcp_ex, "~> 0.4"},

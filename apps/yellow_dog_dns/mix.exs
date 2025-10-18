@@ -27,7 +27,6 @@ defmodule YellowDog.Dns.MixProject do
   defp deps do
     [
       # Core dependencies
-      {:yellow_dog_core, in_umbrella: true},
 
       # External dependencies for DNS functionality
       {:abyss, "~> 0.4"},

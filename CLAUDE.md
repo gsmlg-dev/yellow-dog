@@ -42,7 +42,7 @@ nix shell    # Interactive development shell
 mix run --no-halt
 
 # Start specific applications
-mix app.start yellow_dog_core
+mix app.start yellow_dog
 mix app.start yellow_dog_dns
 ```
 
@@ -111,7 +111,7 @@ mix clean && mix compile
 This is an Elixir umbrella project with 5 applications:
 
 ### YellowDog (Core Application)
-- **Location**: `apps/yellow_dog_core/`
+- **Location**: `apps/yellow_dog/`
 - **Purpose**: Configuration management, orchestration, and public API
 - **Application Module**: `YellowDog.Application`
 - **Key Modules**:
@@ -119,7 +119,7 @@ This is an Elixir umbrella project with 5 applications:
   - `YellowDog.ServerConfig` - Server configuration
   - `YellowDog.Server` - Main server orchestration
   - `YellowDog.Telemetry` - Metrics and observability
-  - `YellowDog` - Public API (exposed through `apps/yellow_dog_core/lib/yellow_dog.ex`)
+  - `YellowDog` - Public API (exposed through `apps/yellow_dog/lib/yellow_dog.ex`)
 
 ### YellowDog.Dns (DNS Application)
 - **Location**: `apps/yellow_dog_dns/`
@@ -267,7 +267,7 @@ The project uses several tools for maintaining code quality:
 - Main mix file: `mix.exs` (umbrella level)
 - Application mix files: `apps/*/mix.exs` (individual applications)
 - Shared dependencies defined at umbrella level
-- Release configuration includes `yellow_dog_core` and `yellow_dog_dns` applications
+- Release configuration includes `yellow_dog` and `yellow_dog_dns` applications
 
 ### Dependencies
 - **abyss**: High-performance UDP server (used across all applications)

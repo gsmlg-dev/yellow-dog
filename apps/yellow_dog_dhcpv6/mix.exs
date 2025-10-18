@@ -26,9 +26,6 @@ defmodule YellowDog.Dhcpv6.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # Core dependencies
-      {:yellow_dog_core, in_umbrella: true},
-
       # External dependencies for DHCPv6 functionality
       {:dhcp_ex, "~> 0.4"},
       {:abyss, "~> 0.4"},
