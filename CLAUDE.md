@@ -108,7 +108,7 @@ mix clean && mix compile
 
 ## Architecture
 
-This is an Elixir umbrella project with 5 applications:
+This is an Elixir umbrella project with 6 applications:
 
 ### YellowDog (Core Application)
 - **Location**: `apps/yellow_dog/`
@@ -118,13 +118,19 @@ This is an Elixir umbrella project with 5 applications:
   - `YellowDog.Config` - Configuration management
   - `YellowDog.ServerConfig` - Server configuration
   - `YellowDog.Server` - Main server orchestration
-  - `YellowDog.Telemetry` - Metrics and observability
   - `YellowDog` - Public API (exposed through `apps/yellow_dog/lib/yellow_dog.ex`)
+
+### YellowDog.Telemetry (Telemetry Package)
+- **Location**: `apps/yellow_dog_telemetry/`
+- **Purpose**: Centralized telemetry and metrics functionality
+- **Application Module**: Standalone package
+- **Dependencies**: `telemetry`
+- **Key Modules**:
+  - `YellowDog.Telemetry` - Core telemetry functionality and span management
 
 ### YellowDog.Dns (DNS Application)
 - **Location**: `apps/yellow_dog_dns/`
 - **Purpose**: DNS protocol handling and name resolution
-- **Application Module**: `YellowDog.Dns.Application`
 - **Dependencies**: `ex_dns`, `abyss`, `telemetry`
 - **Directory Structure**: `apps/yellow_dog_dns/lib/yellow_dog/dns/`
 - **Key Modules**:
@@ -137,7 +143,6 @@ This is an Elixir umbrella project with 5 applications:
 ### YellowDog.Dhcpv4 (DHCPv4 Application)
 - **Location**: `apps/yellow_dog_dhcpv4/`
 - **Purpose**: DHCPv4 protocol implementation
-- **Application Module**: `YellowDog.Dhcpv4.Application`
 - **Dependencies**: `dhcp_ex`, `abyss`, `telemetry`
 - **Directory Structure**: `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/`
 - **Status**: Basic structure created, implementation pending
@@ -145,7 +150,6 @@ This is an Elixir umbrella project with 5 applications:
 ### YellowDog.Dhcpv6 (DHCPv6 Application)
 - **Location**: `apps/yellow_dog_dhcpv6/`
 - **Purpose**: DHCPv6 protocol implementation
-- **Application Module**: `YellowDog.Dhcpv6.Application`
 - **Dependencies**: `dhcp_ex`, `abyss`, `telemetry`
 - **Directory Structure**: `apps/yellow_dog_dhcpv6/lib/yellow_dog/dhcpv6/`
 - **Status**: Basic structure created, implementation pending
@@ -153,17 +157,17 @@ This is an Elixir umbrella project with 5 applications:
 ### YellowDog.Mdns (mDNS Application)
 - **Location**: `apps/yellow_dog_mdns/`
 - **Purpose**: Multicast DNS functionality
-- **Application Module**: `YellowDog.Mdns.Application`
 - **Dependencies**: `ex_dns`, `abyss`, `telemetry`
 - **Directory Structure**: `apps/yellow_dog_mdns/lib/yellow_dog/mdns/`
 - **Status**: Basic structure created, implementation pending
 
 ### Inter-Application Dependencies
 - All applications depend on `YellowDog` for configuration
+- All applications use `YellowDog.Telemetry` for centralized telemetry functionality
 - `YellowDog.Dns` and `YellowDog.Mdns` use `ex_dns` for DNS protocol handling
 - `YellowDog.Dhcpv4` and `YellowDog.Dhcpv6` use `dhcp_ex` for DHCP protocol handling
 - All applications use `abyss` as the UDP server
-- All applications use `telemetry` for observability
+- `YellowDog.Telemetry` uses `telemetry` as the underlying telemetry library
 
 ## Configuration
 
@@ -233,7 +237,6 @@ Directory structure mirrors the module hierarchy:
 ```
 apps/yellow_dog_dns/lib/yellow_dog/dns/
 ├── dns.ex                 # YellowDog.Dns
-├── application.ex        # YellowDog.Dns.Application
 ├── handler/udp.ex       # YellowDog.Dns.Handler.UDP
 └── view/                # YellowDog.Dns.View.* modules
     ├── acl.ex
@@ -241,6 +244,9 @@ apps/yellow_dog_dns/lib/yellow_dog/dns/
     ├── resolver.ex
     └── zone_*.ex
 ```
+
+### Application Architecture Note
+The protocol-specific applications (yellow_dog_dns, yellow_dog_dhcpv4, yellow_dog_dhcpv6, yellow_dog_mdns) are configured as libraries rather than standalone applications. They do not have Application modules and are started/managed by the core YellowDog application.
 
 ### Development Notes
 - The project uses Git for version control
@@ -267,12 +273,12 @@ The project uses several tools for maintaining code quality:
 - Main mix file: `mix.exs` (umbrella level)
 - Application mix files: `apps/*/mix.exs` (individual applications)
 - Shared dependencies defined at umbrella level
-- Release configuration includes `yellow_dog` and `yellow_dog_dns` applications
+- Release configuration includes `yellow_dog`, `yellow_dog_dns`, and `yellow_dog_telemetry` applications
 
 ### Dependencies
 - **abyss**: High-performance UDP server (used across all applications)
 - **ex_dns**: DNS protocol handling (used by DNS and mDNS applications)
 - **dhcp_ex**: DHCP protocol implementation (used by DHCPv4/DHCPv6 applications)
-- **telemetry**: Metrics and observability (used across all applications)
+- **telemetry**: Metrics and observability (used by yellow_dog_telemetry package)
 - **credo**: Code linting (development and test only)
 - **toml**: Configuration file parsing

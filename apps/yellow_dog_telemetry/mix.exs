@@ -1,9 +1,9 @@
-defmodule YellowDog.Mdns.MixProject do
+defmodule YellowDog.Telemetry.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :yellow_dog_mdns,
+      app: :yellow_dog_telemetry,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -18,20 +18,19 @@ defmodule YellowDog.Mdns.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :telemetry]
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # Core dependencies
-      {:yellow_dog_telemetry, in_umbrella: true},
+      # Core telemetry dependency
+      {:telemetry, "~> 1.2"},
 
-      # External dependencies for mDNS functionality
-      {:ex_dns, "~> 0.3"},
-      {:abyss, "~> 0.4"},
-      {:telemetry, "~> 1.0"}
+      # Development and test dependencies
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 end

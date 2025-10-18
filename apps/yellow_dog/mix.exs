@@ -26,6 +26,9 @@ defmodule YellowDog.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # Core dependencies
+      {:yellow_dog_telemetry, in_umbrella: true},
+
       # External dependencies for core functionality
       {:abyss, "~> 0.4"},
       {:telemetry, "~> 1.0"}

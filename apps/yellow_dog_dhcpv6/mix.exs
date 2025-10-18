@@ -18,14 +18,16 @@ defmodule YellowDog.Dhcpv6.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
-      mod: {YellowDog.Dhcpv6.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # Core dependencies
+      {:yellow_dog_telemetry, in_umbrella: true},
+
       # External dependencies for DHCPv6 functionality
       {:dhcp_ex, "~> 0.4"},
       {:abyss, "~> 0.4"},

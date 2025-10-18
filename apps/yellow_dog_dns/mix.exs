@@ -18,8 +18,7 @@ defmodule YellowDog.Dns.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
-      mod: {YellowDog.Dns.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
@@ -27,6 +26,7 @@ defmodule YellowDog.Dns.MixProject do
   defp deps do
     [
       # Core dependencies
+      {:yellow_dog_telemetry, in_umbrella: true},
 
       # External dependencies for DNS functionality
       {:abyss, "~> 0.4"},
