@@ -50,5 +50,5 @@ jobs:
           tags: |
             docker.io/gsmlg/yellowdogdns:v${{ steps.version.outputs.version }}
             docker.io/gsmlg/yellowdogdns:alpine
-            ghcr.io/gsmlg-dev/yellowdogdns:v${{ steps.version.outputs.version }}
-            ghcr.io/gsmlg-dev/yellowdogdns:alpine
+            ghcr.io/gsmlg-dev/yellow-dog:v${{ steps.version.outputs.version }}
+            ghcr.io/gsmlg-dev/yellow-dog:alpine

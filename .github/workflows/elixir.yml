@@ -83,4 +83,4 @@ jobs:
             RELEASE_VERSION=0.0.1
           tags: |
             docker.io/gsmlg/yellowdogdns:dev
-            ghcr.io/gsmlg-dev/yellowdogdns:dev
+            ghcr.io/gsmlg-dev/yellow-dog:dev

@@ -62,7 +62,7 @@ defmodule YellowDog.MixProject do
     [
       main: "readme",
       extras: ["README.md"],
-      source_url: "https://github.com/gsmlg-dev/YellowDogDNS.git",
+      source_url: "https://github.com/gsmlg-app/yellow-dog.git",
       source_ref: "v1.1.1"
     ]
   end

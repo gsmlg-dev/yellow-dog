@@ -148,8 +148,8 @@ YellowDog.banner()
    - Pushes to GitHub Container Registry
 
 ### Docker Images
-- **Development**: `docker.io/gsmlg/yellowdogdns:dev` and `ghcr.io/gsmlg-dev/yellowdogdns:dev`
-- **Production**: Multi-arch images pushed to `ghcr.io/gsmlg-dev/yellowdogdns`
+- **Development**: `docker.io/gsmlg/yellowdogdns:dev` and `ghcr.io/gsmlg-dev/yellow-dog:dev`
+- **Production**: Multi-arch images pushed to `ghcr.io/gsmlg-dev/yellow-dog`
 
 ## DNS Testing/Benchmarking
 
