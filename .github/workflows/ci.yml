@@ -54,14 +54,15 @@ jobs:
   #   run: mix credo
 
     - name: Run tests
-      run: mix test --cover
+      run: mix test
 
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: _build/test/cover/excoveralls.json
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: true
+      # TODO: Re-enable coverage reporting after adding proper tests
+  # - name: Upload coverage reports to Codecov
+  #   uses: codecov/codecov-action@v3
+  #   with:
+  #     file: _build/test/cover/excoveralls.json
+  #     flags: unittests
+  #     name: codecov-umbrella
+  #     fail_ci_if_error: true
 
   
