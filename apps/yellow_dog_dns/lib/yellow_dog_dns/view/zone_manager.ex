@@ -1,5 +1,4 @@
 defmodule YellowDogDns.View.ZoneManager do
-  alias YellowDog.View
   use Supervisor
 
   def lookup(pid, name, type) do
@@ -37,7 +36,7 @@ defmodule YellowDogDns.View.ZoneManager do
   end
 
   def init(%{recursive: recursive} = _config) do
-    manager_pid = self()
+    _manager_pid = self()
 
     [
       Supervisor.child_spec({YellowDogDns.View.ZoneSupervisor, []},

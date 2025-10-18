@@ -1,6 +1,4 @@
 defmodule YellowDogDns.View.Resolver do
-  alias YellowDog.View
-
   use GenServer
 
   def resolve(pid, query) do
@@ -32,7 +30,7 @@ defmodule YellowDogDns.View.Resolver do
             resp = %{resp | header: %{resp.header | id: header.id, qr: 1}, qdlist: qdlist}
 
             case YellowDogDns.View.child(state.view, "zone_manager")
-                 |> YellowDog.YellowDogDns.View.ZoneManager.lookup(name, type) do
+                 |> YellowDogDns.View.ZoneManager.lookup(name, type) do
               {:nxdomain, _} ->
                 %{resp | header: %{resp.header | rcode: DNS.Message.RCode.new(3)}}
 
@@ -51,13 +49,8 @@ defmodule YellowDogDns.View.Resolver do
           end
 
         _ ->
-          resp = DNS.Message.new()
-
-          resp = %{
-            resp
-            | header: %{resp.header | id: header.id, qr: 1, rcode: DNS.Message.RCode.new(1)},
-              qdlist: qdlist
-          }
+          DNS.Message.new()
+          |> (&%{&1 | header: %{&1.header | id: header.id, qr: 1, rcode: DNS.Message.RCode.new(1)}, qdlist: qdlist}).()
       end
 
     {:reply, resp, state}

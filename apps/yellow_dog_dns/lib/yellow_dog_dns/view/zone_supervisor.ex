@@ -1,5 +1,4 @@
 defmodule YellowDogDns.View.ZoneSupervisor do
-  alias YellowDog.View
   use DynamicSupervisor
 
   def start_link(config) do
@@ -44,7 +43,7 @@ defmodule YellowDogDns.View.ZoneSupervisor do
 
   def match_name(nil, _name), do: nil
 
-  def match_name(pid, name) do
+  def match_name(pid, _name) do
     case pid
          |> DynamicSupervisor.which_children()
          |> Enum.sort(fn {name1, _pid1, _type1, _modules1}, {name2, _pid2, _type2, _modules2} ->

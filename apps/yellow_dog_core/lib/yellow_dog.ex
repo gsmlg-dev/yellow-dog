@@ -28,6 +28,19 @@ defmodule YellowDog do
     @banner_text
   end
 
+  @doc """
+  Returns a greeting.
+
+  ## Examples
+
+      iex> YellowDog.hello()
+      :world
+
+  """
+  def hello do
+    :world
+  end
+
   @doc false
   @spec child_spec(options()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -45,21 +58,21 @@ defmodule YellowDog do
   @spec start_link(options()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     opts
-    |> YellowDog.ServerConfig.new()
-    |> YellowDog.Server.start_link()
+    |> YellowDogCore.ServerConfig.new()
+    |> YellowDogCore.Server.start_link()
   end
 
   @doc """
   Get configuration value
   """
   def get_config(name) do
-    YellowDog.Config.get(name)
+    YellowDogCore.Config.get(name)
   end
 
   @doc """
   Get all configuration
   """
   def get_all_config do
-    YellowDog.Config.get_all()
+    YellowDogCore.Config.get_all()
   end
 end

@@ -3,8 +3,6 @@ defmodule YellowDogDns.View do
   Start a GenServer as YellowDog DNS Name Resolver.
   """
 
-  alias YellowDogDns.View
-
   use Supervisor
 
   defstruct [

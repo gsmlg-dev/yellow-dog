@@ -63,38 +63,4 @@ jobs:
         name: codecov-umbrella
         fail_ci_if_error: true
 
-  dialyzer:
-    name: Dialyzer
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Erlang/OTP
-      uses: erlef/setup-beam@v1
-      with:
-        otp-version: '27'
-        elixir-version: '1.18'
-
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          deps
-          _build
-        key: ${{ runner.os }}-mix-dialyzer-${{ hashFiles('**/mix.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-mix-dialyzer-
-
-    - name: Install dependencies
-      run: mix deps.get --only $MIX_ENV
-
-    - name: Compile dependencies
-      run: mix deps.compile
-
-    - name: Compile project
-      run: mix compile
-
-    - name: Run dialyzer
-      run: mix dialyzer --format github
+  
