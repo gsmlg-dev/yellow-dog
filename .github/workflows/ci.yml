@@ -1,44 +1,100 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Elixir CI
+name: CI
 
 on:
   push:
+    branches: [ "*" ]
 
-permissions:
-  contents: read
+env:
+  MIX_ENV: test
 
 jobs:
   test:
-    name: Build and test
+    name: Test on Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        otp-version: ['27', '28']
+        elixir: ['1.18']
+        otp: ['27', '28']
 
     steps:
-    - uses: actions/checkout@v5
-    - name: Set up Elixir
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Erlang/OTP
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: '1.18' # Define the elixir version [required]
-        otp-version: ${{ matrix.otp-version }} # Define the OTP version [required]
-    - name: Restore dependencies cache
+        otp-version: ${{ matrix.otp }}
+        elixir-version: ${{ matrix.elixir }}
+
+    - name: Cache dependencies
       uses: actions/cache@v3
       with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-    - name: Install dependencies
-      env:
-        MIX_ENV: test
-      run: mix deps.get
-    - name: Run tests
-      env:
-        MIX_ENV: test
-      run: mix test
+        path: |
+          deps
+          _build
+        key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-
 
-  
+    - name: Install dependencies
+      run: mix deps.get --only $MIX_ENV
+
+    - name: Compile dependencies
+      run: mix deps.compile
+
+    - name: Compile project
+      run: mix compile --warnings-as-errors
+
+    - name: Check formatting
+      run: mix format --check-formatted
+
+    - name: Run credo
+      run: mix credo --strict
+
+    - name: Run tests
+      run: mix test --cover
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: _build/test/cover/excoveralls.json
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+
+  dialyzer:
+    name: Dialyzer
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Erlang/OTP
+      uses: erlef/setup-beam@v1
+      with:
+        otp-version: '27'
+        elixir-version: '1.18'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          deps
+          _build
+        key: ${{ runner.os }}-mix-dialyzer-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-mix-dialyzer-
+
+    - name: Install dependencies
+      run: mix deps.get --only $MIX_ENV
+
+    - name: Compile dependencies
+      run: mix deps.compile
+
+    - name: Compile project
+      run: mix compile
+
+    - name: Run dialyzer
+      run: mix dialyzer --format github
