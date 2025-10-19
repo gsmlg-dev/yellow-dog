@@ -12,8 +12,8 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir usi
 - **YellowDog** - Core application with configuration management and orchestration
 - **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
 - **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
-- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (basic structure)
-- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (basic structure)
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (complete with server and handler)
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (complete with server and handler)
 - **YellowDog.Mdns** - mDNS (multicast DNS) functionality (basic structure)
 
 **Infrastructure Libraries (now in apps/ directory):**
@@ -74,8 +74,11 @@ mix test apps/yellow_dog_dns
 # Run tests for specific path
 mix test path/to/test_file.exs
 
-# Batch fix test failures using the custom command
-/elixir-fix-tests-batch [test_path]
+# Run tests for specific app only
+MIX_ENV=test mix test apps/yellow_dog_dhcpv4
+
+# Run single test file
+mix test apps/yellow_dog_dhcpv4/test/yellow_dog/dhcpv4/handler_test.exs
 ```
 
 ### Code Formatting
@@ -182,17 +185,25 @@ This is an Elixir umbrella project with 9 applications. The infrastructure libra
 
 **YellowDog.Dhcpv4 (DHCPv4 Application)**
 - **Location**: `apps/yellow_dog_dhcpv4/`
-- **Purpose**: DHCPv4 protocol implementation
+- **Purpose**: DHCPv4 protocol implementation with full server functionality
 - **Dependencies**: `ex_dhcp`, `abyss`, `yellow_dog_telemetry`
 - **Directory Structure**: `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/`
-- **Status**: Basic structure created, implementation pending
+- **Key Modules**:
+  - `YellowDog.Dhcpv4.Server` - DHCPv4 server using Abyss UDP library
+  - `YellowDog.Dhcpv4.Handler` - DHCPv4 message handler implementing Abyss.Handler behaviour
+  - `YellowDog.Dhcpv4.Supervisor` - DHCPv4 supervisor with pre/post-start tasks
+- **Features**: Complete DHCPv4 protocol support (DISCOVER, OFFER, REQUEST, ACK, NAK), IPv4 broadcast handling, telemetry events
 
 **YellowDog.Dhcpv6 (DHCPv6 Application)**
 - **Location**: `apps/yellow_dog_dhcpv6/`
-- **Purpose**: DHCPv6 protocol implementation
+- **Purpose**: DHCPv6 protocol implementation with full server functionality
 - **Dependencies**: `ex_dhcp`, `abyss`, `yellow_dog_telemetry`
 - **Directory Structure**: `apps/yellow_dog_dhcpv6/lib/yellow_dog/dhcpv6/`
-- **Status**: Basic structure created, implementation pending
+- **Key Modules**:
+  - `YellowDog.Dhcpv6.Server` - DHCPv6 server using Abyss UDP library
+  - `YellowDog.Dhcpv6.Handler` - DHCPv6 message handler implementing Abyss.Handler behaviour
+  - `YellowDog.Dhcpv6.Supervisor` - DHCPv6 supervisor with pre/post-start tasks
+- **Features**: Complete DHCPv6 protocol support (SOLICIT, ADVERTISE, REQUEST, RENEW, REBIND), IPv6 multicast support, DUID-based client identification
 
 **YellowDog.Mdns (mDNS Application)**
 - **Location**: `apps/yellow_dog_mdns/`
@@ -245,6 +256,13 @@ YellowDog.banner()
 ```
 
 Configuration files are loaded via `YellowDog.Config.load/1` with fallback to defaults.
+
+### Test Environment Configuration
+In test environment (`Mix.env() == :test`), the configuration is automatically adjusted:
+- DNS service is disabled to avoid privileged port conflicts
+- DHCPv4 uses port 6767 instead of privileged port 67
+- DHCPv6 uses port 5667 instead of privileged port 547
+- IP address strings are automatically converted to tuple format for transport options
 
 ## CI/CD
 
@@ -315,22 +333,47 @@ The protocol-specific applications (yellow_dog_dns, yellow_dog_dhcpv4, yellow_do
 Infrastructure applications (abyss, ex_dns, ex_dhcp) are also configured as library applications within the umbrella.
 
 ### Development Notes
-- The project uses Git for version control
-- Configuration is centralized in the core `YellowDog` application with Agent-based storage
-- The project follows Elixir/OTP conventions for umbrella projects
-- Applications can be started independently for testing and development
+- The project uses Git for version control with semantic release commit messages
+- Configuration is centralized in the core `YellowDog` application with TOML file support
+- The project follows Elixir/OTP conventions for umbrella projects with dot-notation module naming
+- Protocol applications are configured as library applications started/managed by the core YellowDog application
+- Test environment automatically adjusts configuration to avoid privileged port conflicts
 - Use `direnv allow` or `devenv shell` to activate the development environment
-- CI runs on all branch pushes, not just main/dev branches
-- Several CI features are temporarily disabled (credo, coverage) but will be re-enabled
-- Infrastructure libraries are now integrated as umbrella applications with shared build/deps paths
+- CI runs on all branch pushes with matrix testing on Elixir 1.18 and OTP 27/28
+- Infrastructure libraries are integrated as umbrella applications with shared build paths
+- All servers use the Abyss UDP library with proper transport options configuration
+
+### Server Implementation Patterns
+All protocol servers (DNS, DHCPv4, DHCPv6, mDNS) follow a consistent architectural pattern:
+
+1. **Server Module** (`YellowDog.{App}.Server`)
+   - GenServer-based implementation using Abyss UDP library
+   - `start_link/1` with options parameter
+   - `get_config/0` returning default configuration map
+   - `build_server_config/1` handling transport options and service configuration
+   - Proper IP address conversion from strings to tuples
+
+2. **Handler Module** (`YellowDog.{App}.Handler`)
+   - Implements `Abyss.Handler` behaviour
+   - `handle_data/2`, `handle_error/2`, `handle_timeout/2` callbacks
+   - Message parsing using protocol libraries (ex_dns, ex_dhcp)
+   - Telemetry event emission for monitoring
+
+3. **Supervisor Module** (`YellowDog.{App}.Supervisor`)
+   - OTP supervisor with pre-start and post-start task support
+   - Conditional service starting based on configuration
+   - Proper child specifications for server processes
+   - Integration with core YellowDog application orchestration
 
 ### Conditional Service Architecture
 The core YellowDog application implements conditional service starting based on TOML configuration:
 - Services are started/stopped based on `YellowDog.Config.service_enabled?(:service_name)` checks
 - Each protocol application (DNS, DHCPv4, DHCPv6, mDNS) has a supervisor that's conditionally started
-- Configuration is loaded via `Application.get_env(:yellow_dog, :toml_config, %{})`
+- Configuration is loaded via TOML files with test environment adjustments
 - Services can be individually enabled/disabled without code changes
 - The configuration manager starts first, followed by enabled service supervisors
+- Test environment automatically disables services and uses non-privileged ports
+- IP address conversion functions handle string-to-tuple transformation for transport options
 
 ## Code Quality
 
@@ -358,3 +401,4 @@ The project uses several tools for maintaining code quality:
 - **telemetry**: Metrics and observability (used by yellow_dog_telemetry package)
 - **credo**: Code linting (development and test only)
 - **toml**: Configuration file parsing
+- **machete**: Testing utilities (development and test only)
