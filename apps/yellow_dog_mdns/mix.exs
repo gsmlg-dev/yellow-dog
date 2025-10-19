@@ -27,6 +27,7 @@ defmodule YellowDog.Mdns.MixProject do
     [
       # Core dependencies
       {:yellow_dog_telemetry, in_umbrella: true},
+      {:toml, "~> 0.7"},
 
       # External dependencies for mDNS functionality
       {:ex_dns, in_umbrella: true},

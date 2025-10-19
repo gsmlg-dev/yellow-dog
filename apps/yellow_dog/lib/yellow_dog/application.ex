@@ -11,8 +11,11 @@ defmodule YellowDog.Application do
 
   @impl true
   def start(_type, _args) do
-    # Load configuration from application config or use defaults
-    config = Application.get_env(:yellow_dog, :toml_config, %{})
+    # Load TOML configuration in the application
+    config = load_toml_config()
+
+    # Log which config file was loaded and enabled services
+    log_config_info(config)
 
     children = [
       # Configuration manager - must start first
@@ -24,6 +27,97 @@ defmodule YellowDog.Application do
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Loads TOML configuration from the file path specified in runtime.exs
+  defp load_toml_config do
+    # Get config file path from application config (set in runtime.exs)
+    config_file_path = Application.get_env(:yellow_dog, :config_file_path)
+
+    if config_file_path do
+      # Load and parse TOML configuration
+      case File.read(config_file_path) do
+        {:ok, content} ->
+          case Toml.decode(content) do
+            {:ok, config} ->
+              config
+
+            {:error, reason} ->
+              Logger.warning("Failed to parse TOML from #{config_file_path}: #{inspect(reason)}, using defaults")
+              get_default_config()
+          end
+
+        {:error, reason} ->
+          Logger.warning("Failed to read config file #{config_file_path}: #{inspect(reason)}, using defaults")
+          get_default_config()
+      end
+    else
+      Logger.warning("No config file path specified, using defaults")
+      get_default_config()
+    end
+  end
+
+  # Gets the default configuration
+  defp get_default_config do
+    %{
+      "core" => %{
+        "dns" => true,
+        "mdns" => true,
+        "dhcpv4" => true,
+        "dhcpv6" => true
+      },
+      "dns" => %{
+        "listen" => "0.0.0.0",
+        "port" => 53
+      },
+      "mdns" => %{
+        "listen" => "0.0.0.0",
+        "port" => 5353
+      },
+      "dhcpv4" => %{
+        "listen" => "0.0.0.0",
+        "port" => 67
+      },
+      "dhcpv6" => %{
+        "listen" => "::",
+        "port" => 547
+      }
+    }
+  end
+
+  # Logs configuration information
+  defp log_config_info(config) do
+    config_file_path = Application.get_env(:yellow_dog, :config_file_path)
+    default_config_path = Path.expand("../priv/yellowdogdns_default_config.toml", __DIR__)
+
+    if config_file_path && config_file_path == default_config_path do
+      Logger.info("Loaded default configuration from: #{config_file_path}")
+    else
+      Logger.info("Loaded custom configuration from: #{config_file_path}")
+    end
+
+    # Log enabled services
+    case Map.get(config, "core") do
+      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
+        enabled_services =
+          [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
+          |> Enum.filter(fn {_name, enabled} -> enabled end)
+          |> Enum.map(fn {name, _enabled} -> name end)
+
+        Logger.info("Enabled services: #{Enum.join(enabled_services, ", ")}")
+
+        disabled_services =
+          [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
+          |> Enum.filter(fn {_name, enabled} -> not enabled end)
+          |> Enum.map(fn {name, _enabled} -> name end)
+
+        if length(disabled_services) > 0 do
+          Logger.info("Disabled services: #{Enum.join(disabled_services, ", ")}")
+        end
+
+      _ ->
+        Logger.warning("No [core] configuration found, enabling all services")
+    end
   end
 
   # Gets the list of enabled service supervisors based on configuration.

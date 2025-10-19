@@ -14,31 +14,8 @@ defmodule YellowDog.Config do
   @type config_key :: atom()
   @type config_value :: term()
 
-  # Default configuration when no TOML file is available
-  @default_config %{
-    "core" => %{
-      "dns" => true,
-      "mdns" => true,
-      "dhcpv4" => true,
-      "dhcpv6" => true
-    },
-    "dns" => %{
-      "listen" => "0.0.0.0",
-      "port" => 53
-    },
-    "mdns" => %{
-      "listen" => "0.0.0.0",
-      "port" => 5353
-    },
-    "dhcpv4" => %{
-      "listen" => "0.0.0.0",
-      "port" => 67
-    },
-    "dhcpv6" => %{
-      "listen" => "::",
-      "port" => 547
-    }
-  }
+  # Default configuration fallback (now defined in application)
+  @default_config %{}
 
   @doc """
   Starts the configuration agent with the given config.

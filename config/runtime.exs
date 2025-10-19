@@ -42,38 +42,10 @@ get_config_path = fn ->
 end
 
 # Default configuration fallback
-default_config = %{
-  "core" => %{
-    "dns" => true,
-    "mdns" => true,
-    "dhcpv4" => true,
-    "dhcpv6" => true
-  },
-  "dns" => %{
-    "listen" => "0.0.0.0",
-    "port" => 53
-  },
-  "mdns" => %{
-    "listen" => "0.0.0.0",
-    "port" => 5353
-  },
-  "dhcpv4" => %{
-    "listen" => "0.0.0.0",
-    "port" => 67
-  },
-  "dhcpv6" => %{
-    "listen" => "::",
-    "port" => 547
-  }
-}
+default_config_path = Path.expand("../apps/yellow_dog/priv/yellowdogdns_default_config.toml", __DIR__)
 
-# Load TOML configuration
+# Determine which config file to use
 config_path = get_config_path.()
-
-default_config_path =
-  Path.join([Application.app_dir(:yellow_dog), "priv", "yellowdogdns_default_config.toml"])
-
-# Try to load custom config first, then fall back to default
 config_to_load =
   if config_path && File.exists?(config_path) do
     config_path
@@ -81,53 +53,5 @@ config_to_load =
     default_config_path
   end
 
-# Simple TOML loading
-config_to_use =
-  case File.read(config_to_load) do
-    {:ok, content} ->
-      case Toml.decode(content) do
-        {:ok, config} ->
-          config
-
-        {:error, _reason} ->
-          IO.puts("Warning: Failed to parse TOML from #{config_to_load}, using defaults")
-          default_config
-      end
-
-    {:error, _reason} ->
-      IO.puts("Warning: Failed to read config file #{config_to_load}, using defaults")
-      default_config
-  end
-
-# Store the loaded configuration in application config
-config :yellow_dog, :toml_config, config_to_use
-
-# Log which config file was loaded and enabled services
-if config_path && File.exists?(config_path) do
-  IO.puts("Loaded custom configuration from: #{config_path}")
-else
-  IO.puts("Loaded default configuration from: #{default_config_path}")
-end
-
-# Log enabled services
-case Map.get(config_to_use, "core") do
-  %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
-    enabled_services =
-      [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
-      |> Enum.filter(fn {_name, enabled} -> enabled end)
-      |> Enum.map(fn {name, _enabled} -> name end)
-
-    IO.puts("Enabled services: #{Enum.join(enabled_services, ", ")}")
-
-    disabled_services =
-      [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
-      |> Enum.filter(fn {_name, enabled} -> not enabled end)
-      |> Enum.map(fn {name, _enabled} -> name end)
-
-    if length(disabled_services) > 0 do
-      IO.puts("Disabled services: #{Enum.join(disabled_services, ", ")}")
-    end
-
-  _ ->
-    IO.puts("Warning: No [core] configuration found, enabling all services")
-end
+# Store config file path in application config (the actual TOML reading will be done in the application)
+config :yellow_dog, :config_file_path, config_to_load
