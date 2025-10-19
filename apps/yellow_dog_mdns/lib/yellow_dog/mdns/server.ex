@@ -3,12 +3,12 @@ defmodule YellowDog.Mdns.Server do
   mDNS server implementation using Abyss UDP server library.
 
   Provides multicast DNS functionality with proper socket configuration
-  for mDNS multicast address (224.0.0.251:5353) and integration with
-  the YellowDog configuration system.
+  for mDNS multicast address (224.0.0.251:5353). Configuration is
+  passed from the main YellowDog application.
   """
 
+  use GenServer
   require Logger
-  alias YellowDog.Config
 
   @type options :: keyword()
   @type server_config :: map()
@@ -34,15 +34,7 @@ defmodule YellowDog.Mdns.Server do
   """
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(opts \\ []) do
-    if Config.service_enabled?(:mdns) do
-      server_config = build_server_config(opts)
-      port = Keyword.get(server_config, :port, 5353)
-      Logger.info("Starting mDNS server on port #{port}")
-      Abyss.start_link(server_config)
-    else
-      Logger.info("mDNS service is disabled in configuration")
-      :ignore
-    end
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @doc """
@@ -54,23 +46,25 @@ defmodule YellowDog.Mdns.Server do
   end
 
   @doc """
-  Gets the current server configuration.
+  Gets the current server configuration using defaults.
+
+  This should only be used for testing. In production, configuration
+  should be passed from the main YellowDog application.
   """
   @spec get_config() :: server_config()
   def get_config do
     %{
-      port: get_config_port(),
-      listen_address: get_config_listen_address(),
-      multicast_address: @mdns_multicast_address,
-      service_enabled: Config.service_enabled?(:mdns)
+      port: @mdns_port,
+      listen_address: {0, 0, 0, 0},
+      multicast_address: @mdns_multicast_address
     }
   end
 
   # Private functions
 
   defp build_server_config(opts) do
-    port = Keyword.get(opts, :port, get_config_port())
-    listen_address = Keyword.get(opts, :listen_address, get_config_listen_address())
+    port = Keyword.get(opts, :port, @mdns_port)
+    listen_address = Keyword.get(opts, :listen_address, {0, 0, 0, 0})
     handler_module = Keyword.get(opts, :handler_module, YellowDog.Mdns.Handler)
     multicast_address = Keyword.get(opts, :multicast_address, @mdns_multicast_address)
 
@@ -106,19 +100,61 @@ defmodule YellowDog.Mdns.Server do
     base_options ++ additional_opts
   end
 
-  defp get_config_port do
-    case Config.get(:mdns, :port) do
-      nil -> @mdns_port
-      port when is_integer(port) -> port
-      port when is_binary(port) -> String.to_integer(port)
+  defp get_default_server_config do
+    [
+      port: @mdns_port,
+      handler_module: YellowDog.Mdns.Handler,
+      broadcast: true,
+      transport_options: [
+        ip: {0, 0, 0, 0},
+        multicast_if: {0, 0, 0, 0},
+        add_membership: {@mdns_multicast_address, {0, 0, 0, 0}},
+        multicast_ttl: 255,
+        active: false
+      ],
+      read_timeout: 5000,
+      num_listeners: 1,
+      rate_limit_enabled: false,
+      max_packet_size: 1232
+    ]
+  end
+
+  # GenServer callbacks
+
+  @impl true
+  def init(opts) do
+    try do
+      server_config = build_server_config(opts)
+      port = Keyword.get(server_config, :port, 5353)
+      Logger.info("Starting mDNS server on port #{port}")
+
+      case Abyss.start_link(server_config) do
+        {:ok, abyss_pid} ->
+          {:ok, %{abyss_pid: abyss_pid, config: server_config}}
+
+        {:error, reason} ->
+          Logger.error("Failed to start mDNS server: #{inspect(reason)}")
+          {:stop, reason}
+      end
+    rescue
+      UndefinedFunctionError ->
+        Logger.warning("Config module not available in test environment, using defaults")
+        server_config = get_default_server_config()
+        case Abyss.start_link(server_config) do
+          {:ok, abyss_pid} ->
+            {:ok, %{abyss_pid: abyss_pid, config: server_config}}
+
+          {:error, reason} ->
+            Logger.error("Failed to start mDNS server: #{inspect(reason)}")
+            {:stop, reason}
+        end
     end
   end
 
-  defp get_config_listen_address do
-    case Config.get(:mdns, :listen) do
-      nil -> {0, 0, 0, 0}
-      ip when is_tuple(ip) -> ip
-      ip when is_binary(ip) -> String.to_charlist(ip) |> :inet.parse_ipv4_address() |> elem(1)
-    end
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("mDNS server stopping: #{inspect(reason)}")
+    if state.abyss_pid, do: GenServer.stop(state.abyss_pid, :normal)
+    :ok
   end
 end

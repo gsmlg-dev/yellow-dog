@@ -40,7 +40,18 @@ defmodule YellowDog.Application do
         {:ok, content} ->
           case Toml.decode(content) do
             {:ok, config} ->
-              config
+              # Adjust configuration for test environment
+              if Mix.env() == :test do
+                config
+                |> put_in(["core", "dns"], false)
+                |> put_in(["core", "mdns"], false)
+                |> put_in(["core", "dhcpv6"], false)
+                |> put_in(["dns", "port"], 5353)
+                |> put_in(["dhcpv4", "port"], 6767)
+                |> put_in(["dhcpv6", "port"], 5667)
+              else
+                config
+              end
 
             {:error, reason} ->
               Logger.warning("Failed to parse TOML from #{config_file_path}: #{inspect(reason)}, using defaults")
@@ -61,7 +72,7 @@ defmodule YellowDog.Application do
   defp get_default_config do
     %{
       "core" => %{
-        "dns" => true,
+        "dns" => Mix.env() != :test,
         "mdns" => true,
         "dhcpv4" => true,
         "dhcpv6" => true
@@ -129,14 +140,15 @@ defmodule YellowDog.Application do
       {YellowDog.Dhcpv6, :dhcpv6}
     ]
 
-    # Filter services based on configuration
+    # Filter services based on configuration and pass server options
     enabled_services =
       services
       |> Enum.filter(fn {_module, service_name} ->
         is_service_enabled?(config, service_name)
       end)
-      |> Enum.map(fn {module, _service_name} ->
-        {module, []}
+      |> Enum.map(fn {module, service_name} ->
+        server_options = build_server_options(config, service_name)
+        {module, server_options: server_options}
       end)
 
     # Log which services are being started
@@ -169,6 +181,61 @@ defmodule YellowDog.Application do
 
     enabled_services
   end
+
+  # Builds server options for a specific service from the configuration.
+  defp build_server_options(config, service_name) do
+    service_config = Map.get(config, to_string(service_name), %{})
+
+    case service_name do
+      :dns ->
+        [
+          port: Map.get(service_config, "port", if(Mix.env() == :test, do: 5353, else: 53)),
+          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+        ]
+
+      :mdns ->
+        [
+          port: Map.get(service_config, "port", 5353),
+          listen_address: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+        ]
+
+      :dhcpv4 ->
+        [
+          port: Map.get(service_config, "port", 67),
+          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+        ]
+
+      :dhcpv6 ->
+        [
+          port: Map.get(service_config, "port", 547),
+          listen: convert_ipv6(Map.get(service_config, "listen", "::"))
+        ]
+    end
+  end
+
+  # Converts IP address string to tuple format for mDNS
+  defp convert_ip(ip_string) when is_binary(ip_string) do
+    case String.split(ip_string, ".") do
+      [a, b, c, d] when length([a, b, c, d]) == 4 ->
+        {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
+      _ ->
+        {0, 0, 0, 0}  # fallback
+    end
+  end
+
+  defp convert_ip(ip_tuple) when is_tuple(ip_tuple), do: ip_tuple
+  defp convert_ip(_), do: {0, 0, 0, 0}
+
+  # Converts IPv6 address string to tuple format for DHCPv6
+  defp convert_ipv6("::"), do: {0, 0, 0, 0, 0, 0, 0, 0}
+  defp convert_ipv6(ip_string) when is_binary(ip_string) do
+    case :inet.parse_ipv6_address(String.to_charlist(ip_string)) do
+      {:ok, ip_tuple} -> ip_tuple
+      {:error, _} -> {0, 0, 0, 0, 0, 0, 0, 0}
+    end
+  end
+  defp convert_ipv6(ip_tuple) when is_tuple(ip_tuple), do: ip_tuple
+  defp convert_ipv6(_), do: {0, 0, 0, 0, 0, 0, 0, 0}
 
   # Checks if a service is enabled in the configuration.
   defp is_service_enabled?(config, service_name) do

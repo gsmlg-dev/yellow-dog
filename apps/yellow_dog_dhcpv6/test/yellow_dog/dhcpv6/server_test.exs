@@ -1,7 +1,7 @@
-defmodule YellowDog.Mdns.ServerTest do
+defmodule YellowDog.Dhcpv6.ServerTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Mdns.Server
+  alias YellowDog.Dhcpv6.Server
 
   import ExUnit.CaptureLog
 
@@ -59,6 +59,21 @@ defmodule YellowDog.Mdns.ServerTest do
 
       assert child_spec.id == Server
       assert child_spec.start == {Server, :start_link, [[]]}
+    end
+
+    test "get_config returns dhcpv6 defaults when config unavailable" do
+      config = Server.get_config()
+
+      # Verify default DHCPv6 configuration
+      assert config.port == 547
+      assert config.broadcast == true
+      assert config.handler_module == YellowDog.Dhcpv6.Handler
+      assert config.max_packet_size == 1500
+
+      # Verify IPv6-specific transport options
+      assert Keyword.get(config.transport_options, :ip) == "::"
+      assert Keyword.get(config.transport_options, :ipv6_v6only) == true
+      assert Keyword.get(config.transport_options, :reuseaddr) == true
     end
   end
 end

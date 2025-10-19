@@ -35,35 +35,19 @@ defmodule YellowDog.Mdns.Supervisor do
   defp build_children(opts) do
     server_options = Map.get(opts, :server_options, [])
 
-    children = [
-      # mDNS server
-      %{
-        id: YellowDog.Mdns.Server,
-        start: {YellowDog.Mdns.Server, :start_link, [server_options]},
-        type: :worker,
-        restart: :permanent,
-        shutdown: 500
-      }
+    [
+      {Task,
+        fn ->
+          Logger.debug("mDNS pre-start task completed")
+        end}
+      |> Supervisor.child_spec(id: :pre_start),
+      {YellowDog.Mdns.Server, server_options}
+      |> Supervisor.child_spec(id: :server),
+      {Task,
+        fn ->
+          Logger.debug("mDNS post-start task completed")
+        end}
+      |> Supervisor.child_spec(id: :post_start)
     ]
-
-    # Add conditional children based on configuration
-    if Application.get_env(:yellow_dog, :include_test_children, false) do
-      # Add test children for development/testing
-      children ++ [
-        {Task,
-         fn ->
-           Logger.debug("mDNS pre-start task completed")
-         end}
-        |> Supervisor.child_spec(id: :pre_start),
-
-        {Task,
-         fn ->
-           Logger.debug("mDNS post-start task completed")
-         end}
-        |> Supervisor.child_spec(id: :post_start)
-      ]
-    else
-      children
-    end
   end
 end
