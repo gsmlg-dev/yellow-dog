@@ -29,8 +29,8 @@ defmodule YellowDog.Mdns.MixProject do
       {:yellow_dog_telemetry, in_umbrella: true},
 
       # External dependencies for mDNS functionality
-      {:ex_dns, "~> 0.3"},
-      {:abyss, "~> 0.4"},
+      {:ex_dns, in_umbrella: true},
+      {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"}
     ]
   end

@@ -11,14 +11,14 @@ Yellow Dog DNS is organized as an Elixir umbrella project with the following app
 - **YellowDog** - Core application providing configuration management and orchestration
 - **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
 - **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
-- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (using dhcp_ex)
-- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (using dhcp_ex)
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (using ex_dhcp)
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (using ex_dhcp)
 - **YellowDog.Mdns** - mDNS (multicast DNS) functionality (using ex_dns)
 
 ### Key Dependencies
 
 - **ex_dns** - DNS protocol handling (used by YellowDog.Dns and YellowDog.Mdns)
-- **dhcp_ex** - DHCP protocol implementation (used by YellowDog.Dhcpv4 and YellowDog.Dhcpv6)
+- **ex_dhcp** - DHCP protocol implementation (used by YellowDog.Dhcpv4 and YellowDog.Dhcpv6)
 - **abyss** - High-performance UDP server (used across applications)
 - **telemetry** - Metrics and observability
 

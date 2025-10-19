@@ -29,8 +29,8 @@ defmodule YellowDog.Dhcpv6.MixProject do
       {:yellow_dog_telemetry, in_umbrella: true},
 
       # External dependencies for DHCPv6 functionality
-      {:dhcp_ex, "~> 0.4"},
-      {:abyss, "~> 0.4"},
+      {:ex_dhcp, in_umbrella: true},
+      {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"}
     ]
   end

@@ -32,9 +32,6 @@ defmodule YellowDog.Umbrella.MixProject do
   defp deps do
     [
       # Shared dependencies for all apps
-      {:abyss, "~> 0.4"},
-      {:ex_dns, "~> 0.3"},
-      {:dhcp_ex, "~> 0.4"},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
