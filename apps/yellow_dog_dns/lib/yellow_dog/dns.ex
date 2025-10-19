@@ -3,23 +3,20 @@ defmodule YellowDog.Dns do
   DNS supervisor that manages DNS functionality including name resolution, zones, and views.
   """
 
-  use Supervisor
+  @doc """
+  Starts the socket client supervisor.
 
-  def start_link(_opts) do
-    Supervisor.start_link(__MODULE__, :ok, name: __MODULE__)
-  end
+  Delegates to `Phoenix.SocketClient.Supervisor.start_link/1`.
+  """
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  defdelegate start_link(options), to: Phoenix.SocketClient.Supervisor
 
-  @impl true
-  def init(:ok) do
-    children = [
-      # DNS View Manager
-      {YellowDog.Dns.ViewManager, []},
+  @doc """
+  Returns a child specification for the socket client supervisor.
 
-      # DNS Name Resolver
-      {YellowDog.Dns.NameResolver, []}
-    ]
+  Delegates to `Phoenix.SocketClient.Supervisor.child_spec/1`.
+  """
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  defdelegate child_spec(options), to: Phoenix.SocketClient.Supervisor
 
-    opts = [strategy: :one_for_one]
-    Supervisor.init(children, opts)
-  end
 end

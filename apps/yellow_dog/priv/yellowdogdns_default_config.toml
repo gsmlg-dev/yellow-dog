@@ -1,5 +1,27 @@
-[server]
+[core]
+# Service enable/disable flags
+dns = true
+mdns = true
+dhcpv4 = true
+dhcpv6 = true
+
+[dns]
+listen = "0.0.0.0"
 port = 53
+
+[mdns]
+listen = "0.0.0.0"
+port = 5353
+
+[dhcpv4]
+listen = "0.0.0.0"
+port = 67
+
+[dhcpv6]
+listen = "::"
+port = 547
+
+[server]
 logging-facility = "local0"
 logging-level = "warning"
 console = true
@@ -16,5 +38,3 @@ server = "8.8.8.8"
 override-ecs = false
 ecs-addr = "114.249.114.18"
 ecs-prefix = 24
-
-

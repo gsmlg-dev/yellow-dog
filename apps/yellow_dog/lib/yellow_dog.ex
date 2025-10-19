@@ -8,19 +8,6 @@ defmodule YellowDog do
   - Public API for the YellowDog system
   """
 
-  @type options :: [
-          handler_module: module(),
-          handler_options: term(),
-          port: :inet.port_number(),
-          num_acceptors: pos_integer(),
-          num_connections: non_neg_integer() | :infinity,
-          max_connections_retry_count: non_neg_integer(),
-          max_connections_retry_wait: timeout(),
-          read_timeout: timeout(),
-          shutdown_timeout: timeout(),
-          silent_terminate_on_error: boolean()
-        ]
-
   @banner_text "YellowDog DNS and DHCP Server"
 
   @doc false
@@ -28,38 +15,25 @@ defmodule YellowDog do
     @banner_text
   end
 
-  @doc """
-  Returns a greeting.
-
-  ## Examples
-
-      iex> YellowDog.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
-
   @doc false
-  @spec child_spec(options()) :: Supervisor.child_spec()
-  def child_spec(opts) do
+  @spec child_spec(any()) :: Supervisor.child_spec()
+  def child_spec(_opts) do
     %{
       id: {__MODULE__, make_ref()},
-      start: {__MODULE__, :start_link, [opts]},
+      start: {__MODULE__, :start_link, []},
       type: :supervisor,
       restart: :permanent
     }
   end
 
   @doc """
-  Starts a `YellowDog` instance with the given options.
+  Starts a `YellowDog` instance.
   """
-  @spec start_link(options()) :: Supervisor.on_start()
-  def start_link(opts \\ []) do
-    opts
-    |> YellowDog.ServerConfig.new()
-    |> YellowDog.Server.start_link()
+  @spec start_link(any()) :: Supervisor.on_start()
+  def start_link(_opts \\ []) do
+    # The YellowDog application is started via the Application module
+    # This function is provided for compatibility but doesn't start anything directly
+    {:ok, self()}
   end
 
   @doc """

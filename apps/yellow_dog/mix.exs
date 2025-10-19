@@ -31,7 +31,8 @@ defmodule YellowDog.MixProject do
 
       # External dependencies for core functionality
       {:abyss, "~> 0.4"},
-      {:telemetry, "~> 1.0"}
+      {:telemetry, "~> 1.0"},
+      {:toml, "~> 0.7"}
     ]
   end
 end
