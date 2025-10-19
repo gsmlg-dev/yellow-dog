@@ -1,4 +1,4 @@
-defmodule YellowDog.Dns.Supervisor do
+defmodule YellowDog.Mdns.Supervisor do
   @moduledoc """
   The main supervisor for the Phoenix Socket Client.
   """
@@ -6,7 +6,7 @@ defmodule YellowDog.Dns.Supervisor do
   use Supervisor
 
   @doc """
-  Starts the dns server supervisor.
+  Starts the Mdns server supervisor.
 
   ## Options
 
@@ -14,7 +14,7 @@ defmodule YellowDog.Dns.Supervisor do
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
     opts = Map.new(opts)
-    name = Map.get(opts, :name, YellowDog.Dns)
+    name = Map.get(opts, :name, YellowDog.Mdns)
     opts = Map.put(opts, :name, name)
 
     Supervisor.start_link(__MODULE__, opts, name: name)
@@ -28,10 +28,7 @@ defmodule YellowDog.Dns.Supervisor do
          nil
        end}
       |> Supervisor.child_spec(id: :pre_start),
-      # DNS View Manager
-      {YellowDog.Dns.ViewManager, []},
-      # DNS Name Resolver
-      {YellowDog.Dns.NameResolver, []},
+
       {Task,
        fn ->
          nil
