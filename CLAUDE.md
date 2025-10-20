@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir using an umbrella project structure. The project has been completely refactored to use dot-notation module naming across all applications and now includes 9 applications total - 6 core YellowDog applications and 3 infrastructure libraries.
+Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir using an umbrella project structure. The project has been completely refactored to use dot-notation module naming across all applications and now includes 10 applications total - 7 core YellowDog applications and 3 infrastructure libraries.
 
-### Applications (9 total)
+### Applications (10 total)
 
 **Core YellowDog Applications:**
 - **YellowDog** - Core application with configuration management and orchestration
@@ -15,6 +15,7 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir usi
 - **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (complete with server and handler)
 - **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (complete with server and handler)
 - **YellowDog.Mdns** - mDNS (multicast DNS) functionality (basic structure)
+- **YellowDogConsole** - Phoenix-based web console for management and monitoring
 
 **Infrastructure Libraries (now in apps/ directory):**
 - **abyss** - High-performance pure Elixir UDP server library
@@ -61,6 +62,11 @@ mix run --no-halt
 # Start specific applications
 mix app.start yellow_dog
 mix app.start yellow_dog_dns
+
+# Start the Phoenix web console (development mode)
+cd apps/yellow_dog_console
+mix phx.server
+# Then visit http://localhost:4000
 ```
 
 ### Testing
@@ -115,6 +121,12 @@ mix publish
 # Nix builds
 nix build              # Build Elixir release
 nix build .#docker     # Build Docker image
+
+# Build web console assets
+cd apps/yellow_dog_console
+mix setup              # Install dependencies and setup assets
+mix assets.build       # Build assets (tailwind + esbuild)
+mix assets.deploy      # Build minified assets for production
 ```
 
 ### Clean Build
@@ -128,7 +140,7 @@ mix clean && mix compile
 
 ## Architecture
 
-This is an Elixir umbrella project with 9 applications. The infrastructure libraries (abyss, ex_dns, ex_dhcp) are now integrated as umbrella applications.
+This is an Elixir umbrella project with 10 applications. The infrastructure libraries (abyss, ex_dns, ex_dhcp) are now integrated as umbrella applications, and a Phoenix-based web console provides management and monitoring capabilities.
 
 ### YellowDog (Core Application)
 - **Location**: `apps/yellow_dog/`
@@ -211,6 +223,20 @@ This is an Elixir umbrella project with 9 applications. The infrastructure libra
 - **Dependencies**: `ex_dns`, `abyss`, `yellow_dog_telemetry`
 - **Directory Structure**: `apps/yellow_dog_mdns/lib/yellow_dog/mdns/`
 - **Status**: Basic structure created, implementation pending
+
+**YellowDogConsole (Web Console)**
+- **Location**: `apps/yellow_dog_console/`
+- **Purpose**: Phoenix LiveView-based web console for management and monitoring
+- **Dependencies**: `phoenix`, `phoenix_live_dashboard`, `bandit`, `telemetry_metrics`, `gettext`
+- **Directory Structure**: `apps/yellow_dog_console/lib/yellow_dog_console/` and `apps/yellow_dog_console/lib/yellow_dog_console_web/`
+- **Key Modules**:
+  - `YellowDogConsole.Application` - Web application supervisor
+  - `YellowDogConsoleWeb.Endpoint` - Phoenix endpoint
+  - `YellowDogConsoleWeb.Router` - Web routes
+  - `YellowDogConsoleWeb.DashboardLive` - LiveView dashboard
+  - `YellowDogConsoleWeb.Telemetry` - Telemetry metrics for web interface
+- **Features**: Live dashboard, telemetry visualization, real-time monitoring
+- **Status**: Active development
 
 ### Inter-Application Dependencies
 - All applications depend on `YellowDog` for configuration
@@ -395,10 +421,26 @@ The project uses several tools for maintaining code quality:
 - Release configuration includes `yellow_dog`, `yellow_dog_dns`, and `yellow_dog_telemetry` applications
 
 ### Dependencies
-- **abyss**: High-performance UDP server (now in umbrella, used across all applications)
+
+**Core Dependencies:**
+- **abyss**: High-performance UDP server (now in umbrella, used across all protocol applications)
 - **ex_dns**: DNS protocol handling (now in umbrella, used by DNS and mDNS applications)
 - **ex_dhcp**: DHCP protocol implementation (now in umbrella, used by DHCPv4/DHCPv6 applications)
 - **telemetry**: Metrics and observability (used by yellow_dog_telemetry package)
-- **credo**: Code linting (development and test only)
 - **toml**: Configuration file parsing
+
+**Web Console Dependencies:**
+- **phoenix**: Web framework (~> 1.8.1)
+- **phoenix_live_dashboard**: LiveView dashboard for monitoring (~> 0.8.3)
+- **bandit**: HTTP server (~> 1.5)
+- **telemetry_metrics**: Metrics aggregation (~> 1.0)
+- **esbuild**: JavaScript bundler (dev only, ~> 0.10)
+- **tailwind**: CSS framework (dev only, ~> 0.3)
+- **heroicons**: Icon library (from GitHub)
+- **swoosh**: Email composition library (~> 1.16)
+- **gettext**: Internationalization (~> 0.20)
+
+**Development & Testing:**
+- **credo**: Code linting (development and test only)
 - **machete**: Testing utilities (development and test only)
+- **dialyxir**: Static type analysis (~> 1.0)
