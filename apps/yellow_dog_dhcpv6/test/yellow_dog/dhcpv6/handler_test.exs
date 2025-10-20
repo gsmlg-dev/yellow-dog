@@ -8,8 +8,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
   # Helper functions for creating DHCPv6 test messages
   defmodule TestHelper do
     def create_dhcpv6_solicit do
-      # Create a DHCPv6 SOLICIT message struct
-      %DHCPv6.Message{
+      # Create a DHCPv6 SOLICIT message and convert to binary
+      message = %DHCPv6.Message{
         # SOLICIT
         msg_type: 1,
         transaction_id: <<0x12, 0x34, 0x56>>,
@@ -20,11 +20,14 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
           DHCPv6.Message.Option.new(3, <<0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0>>)
         ]
       }
+
+      # Convert to binary for the handler
+      DHCPv6.Message.to_iodata(message)
     end
 
     def create_dhcpv6_request do
-      # Create a DHCPv6 REQUEST message struct
-      %DHCPv6.Message{
+      # Create a DHCPv6 REQUEST message and convert to binary
+      message = %DHCPv6.Message{
         # REQUEST
         msg_type: 3,
         transaction_id: <<0x12, 0x34, 0x57>>,
@@ -35,6 +38,9 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
           DHCPv6.Message.Option.new(2, <<2, 1, 6, 7, 8, 9>>)
         ]
       }
+
+      # Convert to binary for the handler
+      DHCPv6.Message.to_iodata(message)
     end
 
     def create_invalid_message do
@@ -102,8 +108,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
           assert result == {:continue, state}
         end)
 
-      # Should log error handling
-      assert log =~ "Error handling DHCPv6 message"
+      # Should log unknown message type warning for invalid message
+      assert log =~ "Unknown DHCPv6 message type"
     end
 
     test "handles malformed DHCPv6 message" do

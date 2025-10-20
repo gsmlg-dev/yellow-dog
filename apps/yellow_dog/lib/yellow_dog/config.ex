@@ -13,6 +13,8 @@ defmodule YellowDog.Config do
   @type service_name :: :dns | :mdns | :dhcpv4 | :dhcpv6
   @type config_key :: atom()
   @type config_value :: term()
+  @type zone_name :: String.t()
+  @type zone_type :: :authoritative | :stub | :forward | :cache
 
   # Default configuration fallback (now defined in application)
   @default_config %{}
@@ -163,5 +165,128 @@ defmodule YellowDog.Config do
   defp get_default_value(service, key) do
     service_config = get_default_service_config(service)
     Map.get(service_config, key)
+  end
+
+  @doc """
+  Gets all DNS zones from configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zones()
+      %{"example.com" => %{type: "authoritative", file: "zones/example.com.zone"}}
+  """
+  @spec get_dns_zones() :: map()
+  def get_dns_zones do
+    dns_config = get_service(:dns)
+    Map.get(dns_config, :zones, %{})
+  end
+
+  @doc """
+  Gets a specific DNS zone configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone("example.com")
+      {:ok, %{type: "authoritative", file: "zones/example.com.zone"}}
+
+      iex> YellowDog.Config.get_dns_zone("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone(zone_name()) :: {:ok, map()} | {:error, :not_found}
+  def get_dns_zone(zone_name) do
+    zones = get_dns_zones()
+
+    case Map.get(zones, zone_name) do
+      nil -> {:error, :not_found}
+      zone_config -> {:ok, zone_config}
+    end
+  end
+
+  @doc """
+  Lists all configured DNS zone names.
+
+  ## Examples
+
+      iex> YellowDog.Config.list_dns_zones()
+      ["example.com", "test.local"]
+  """
+  @spec list_dns_zones() :: [zone_name()]
+  def list_dns_zones do
+    zones = get_dns_zones()
+    Map.keys(zones)
+  end
+
+  @doc """
+  Checks if a zone is configured and enabled.
+
+  ## Examples
+
+      iex> YellowDog.Config.dns_zone_enabled?("example.com")
+      true
+
+      iex> YellowDog.Config.dns_zone_enabled?("nonexistent.com")
+      false
+  """
+  @spec dns_zone_enabled?(zone_name()) :: boolean()
+  def dns_zone_enabled?(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, _zone_config} -> true
+      {:error, :not_found} -> false
+    end
+  end
+
+  @doc """
+  Gets the type of a DNS zone.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone_type("example.com")
+      {:ok, :authoritative}
+
+      iex> YellowDog.Config.get_dns_zone_type("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone_type(zone_name()) :: {:ok, zone_type()} | {:error, :not_found}
+  def get_dns_zone_type(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, zone_config} ->
+        type_str = Map.get(zone_config, "type", "authoritative")
+        type = case type_str do
+          "authoritative" -> :authoritative
+          "stub" -> :stub
+          "forward" -> :forward
+          "cache" -> :cache
+          _ -> :authoritative
+        end
+        {:ok, type}
+
+      {:error, :not_found} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Gets the zone file path for a DNS zone.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone_file("example.com")
+      {:ok, "zones/example.com.zone"}
+
+      iex> YellowDog.Config.get_dns_zone_file("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone_file(zone_name()) :: {:ok, String.t()} | {:error, :not_found}
+  def get_dns_zone_file(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, zone_config} ->
+        case Map.get(zone_config, "file") do
+          nil -> {:error, :not_found}
+          file_path -> {:ok, file_path}
+        end
+
+      {:error, :not_found} = error ->
+        error
+    end
   end
 end

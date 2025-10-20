@@ -1,20 +1,27 @@
-[server]
-port = 53
-logging-facility = "local0"
-logging-level = "warning"
-console = true
-bind = ["any"]
-ipv4-only = false
-ipv6-only = false
-telemetry = false
-padding = true
-reporting-agent = ""
-report-via-dns = false
+[core]
+dns = false
+mdns = true
+dhcpv4 = true
+dhcpv6 = true
 
-[forwarder]
-server = "8.8.8.8"
-override-ecs = false
-ecs-addr = "114.249.114.18"
-ecs-prefix = 24
+[dns]
+listen = "0.0.0.0"
+port = 5353
+
+[dns.zones.example.com]
+type = "authoritative"
+file = "priv/zones/example.com.zone"
+
+[mdns]
+listen = "0.0.0.0"
+port = 5353
+
+[dhcpv4]
+listen = "0.0.0.0"
+port = 67
+
+[dhcpv6]
+listen = "::"
+port = 547
 
 

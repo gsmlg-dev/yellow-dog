@@ -17,6 +17,9 @@ defmodule YellowDog.Application do
     # Log which config file was loaded and enabled services
     log_config_info(config)
 
+    # Debug: print the actual config being loaded
+    Logger.debug("Loaded config: #{inspect(config)}")
+
     children = [
       # Configuration manager - must start first
       {YellowDog.Config, config}
@@ -79,7 +82,8 @@ defmodule YellowDog.Application do
       },
       "dns" => %{
         "listen" => "0.0.0.0",
-        "port" => 53
+        "port" => 53,
+        "zones" => %{}
       },
       "mdns" => %{
         "listen" => "0.0.0.0",

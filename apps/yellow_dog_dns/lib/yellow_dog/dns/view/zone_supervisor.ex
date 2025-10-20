@@ -1,5 +1,6 @@
 defmodule YellowDog.Dns.View.ZoneSupervisor do
   use DynamicSupervisor
+  require Logger
 
   def start_link(config) do
     DynamicSupervisor.start_link(__MODULE__, config)
@@ -43,19 +44,47 @@ defmodule YellowDog.Dns.View.ZoneSupervisor do
 
   def match_name(nil, _name), do: nil
 
-  def match_name(pid, _name) do
-    case pid
-         |> DynamicSupervisor.which_children()
-         |> Enum.sort(fn {name1, _pid1, _type1, _modules1}, {name2, _pid2, _type2, _modules2} ->
-           # TODO: Implement proper domain matching logic
-           # For now, just sort by name string
-           name1 >= name2
-         end) do
+  def match_name(pid, query_name) do
+    children = DynamicSupervisor.which_children(pid)
+
+    # Find the most specific zone that matches the query name
+    matching_zones =
+      children
+      |> Enum.filter(fn {zone_name, _zone_pid, _type, _modules} ->
+        is_binary(zone_name) and zone_matches_query?(zone_name, query_name)
+      end)
+      |> Enum.sort_by(fn {zone_name, _pid, _type, _modules} ->
+        # Sort by zone name length (longer = more specific)
+        -String.length(zone_name)
+      end)
+
+    case matching_zones do
       [] ->
+        Logger.debug("No zone found for query: #{query_name}")
         nil
 
-      [{_, zone_pid, _type, _modules} | _] ->
+      [{_zone_name, zone_pid, _type, _modules} | _] ->
+        Logger.debug("Found zone #{elem(hd(matching_zones), 0)} for query #{query_name}")
         zone_pid
+    end
+  end
+
+  # Check if a zone name matches a query name
+  defp zone_matches_query?(zone_name, query_name) do
+    # Normalize both names (ensure they end with .)
+    normalized_zone = normalize_zone_name(zone_name)
+    normalized_query = normalize_zone_name(query_name)
+
+    # Check if query name is within the zone
+    String.ends_with?(normalized_query, normalized_zone)
+  end
+
+  # Normalize zone name (ensure it ends with .)
+  defp normalize_zone_name(name) do
+    if String.ends_with?(name, ".") do
+      name
+    else
+      name <> "."
     end
   end
 end

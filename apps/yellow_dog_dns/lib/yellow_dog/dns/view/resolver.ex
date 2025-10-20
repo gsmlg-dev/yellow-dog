@@ -29,8 +29,9 @@ defmodule YellowDog.Dns.View.Resolver do
             resp = DNS.Message.new()
             resp = %{resp | header: %{resp.header | id: header.id, qr: 1}, qdlist: qdlist}
 
-            case YellowDog.Dns.View.child(state.view, "zone_manager")
-                 |> YellowDog.Dns.View.ZoneManager.lookup(name, type) do
+            zone_manager_pid = YellowDog.Dns.View.child(state.view, "zone_manager")
+
+            case YellowDog.Dns.View.ZoneManager.lookup(zone_manager_pid, name, type) do
               {:nxdomain, _} ->
                 %{resp | header: %{resp.header | rcode: DNS.Message.RCode.new(3)}}
 
