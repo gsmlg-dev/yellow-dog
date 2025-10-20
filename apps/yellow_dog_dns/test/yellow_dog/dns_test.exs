@@ -10,13 +10,6 @@ defmodule YellowDog.DnsTest do
       assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
     end
 
-    test "DNS supporting modules exist" do
-      # Test that supporting modules exist
-      assert Code.ensure_loaded?(YellowDog.Dns.ViewManager) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.NameResolver) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.View) == true
-    end
-
     test "DNS module exports required functions" do
       # Test that the main DNS module exports required functions
       # Ensure the module is loaded first
@@ -56,39 +49,48 @@ defmodule YellowDog.DnsTest do
       # Check that DNS supervisor is not running (service disabled in test env)
       pid = Process.whereis(YellowDog.Dns)
       assert pid == nil
-
-      # Check that ViewManager is not started
-      assert Process.whereis(YellowDog.Dns.ViewManager) == nil
-
-      # Check that NameResolver is not started
-      assert Process.whereis(YellowDog.Dns.NameResolver) == nil
     end
   end
 
-  test "DNS modules are available" do
-    # Test that DNS modules can be loaded and used
-    # Ensure the main DNS module is loaded first
-    assert Code.ensure_loaded?(YellowDog.Dns) == true
-    assert function_exported?(YellowDog.Dns, :start_link, 1)
-    assert function_exported?(YellowDog.Dns, :child_spec, 1)
+  describe "DNS handler" do
+    test "handler module is available" do
+      # Test that the handler module exists and can be loaded
+      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
+    end
 
-    # Test that ViewManager and NameResolver modules exist and can be loaded
-    view_manager_loaded = Code.ensure_loaded?(YellowDog.Dns.ViewManager)
-    name_resolver_loaded = Code.ensure_loaded?(YellowDog.Dns.NameResolver)
-
-    # Code.ensure_loaded? returns true if module is loaded, false otherwise
-    assert view_manager_loaded == true
-    assert name_resolver_loaded == true
+    test "handler implements Abyss.Handler behaviour" do
+      # Test that the handler implements the required callbacks
+      assert function_exported?(YellowDog.Dns.Handler.UDP, :init, 1)
+      assert function_exported?(YellowDog.Dns.Handler.UDP, :handle_data, 2)
+      assert function_exported?(YellowDog.Dns.Handler.UDP, :handle_error, 2)
+      assert function_exported?(YellowDog.Dns.Handler.UDP, :handle_timeout, 1)
+    end
   end
 
-  test "DNS server configuration is valid" do
-    # Test that DNS server configuration is properly formed
-    config = YellowDog.Dns.Server.get_config()
+  describe "DNS server configuration defaults" do
+    test "server configuration has expected defaults" do
+      config = YellowDog.Dns.Server.get_config()
 
-    assert is_map(config)
-    assert Map.has_key?(config, :port)
-    assert Map.has_key?(config, :handler_module)
-    assert Map.has_key?(config, :transport_options)
-    assert config.handler_module == YellowDog.Dns.Handler.UDP
+      # Check default values
+      assert config.port == 53
+      assert config.broadcast == false
+      assert config.handler_module == YellowDog.Dns.Handler.UDP
+      assert config.read_timeout == 5_000
+      assert config.shutdown_timeout == 5_000
+      assert config.num_listeners == 50
+      assert config.num_connections == 10_000
+      assert config.max_packet_size == 512  # DNS UDP limit
+      assert config.rate_limit_enabled == true
+    end
+
+    test "transport options include expected settings" do
+      config = YellowDog.Dns.Server.get_config()
+      transport_options = config.transport_options
+
+      assert is_list(transport_options)
+      assert Keyword.has_key?(transport_options, :ip)
+      assert Keyword.has_key?(transport_options, :reuseaddr)
+      assert transport_options[:reuseaddr] == true
+    end
   end
 end

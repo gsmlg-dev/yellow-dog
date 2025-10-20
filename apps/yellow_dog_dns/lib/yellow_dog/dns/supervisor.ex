@@ -2,8 +2,8 @@ defmodule YellowDog.Dns.Supervisor do
   @moduledoc """
   The main supervisor for the YellowDog DNS application.
 
-  Manages the DNS server and related components with proper
-  supervision strategy and child specifications.
+  Manages the DNS server with proper supervision strategy following
+  the same pattern as DHCPv4/v6 applications.
   """
 
   use Supervisor
@@ -41,22 +41,26 @@ defmodule YellowDog.Dns.Supervisor do
     server_options = Map.get(opts, :server_options, [])
 
     [
+      # Pre-start task (zone loading will happen in handler init)
       {Task,
         fn ->
+          Logger.debug("DNS pre-start task: zone management initialization")
+          # Initialize DNS zone store if needed
+          DNS.Zone.Store.ensure_initialized()
           Logger.debug("DNS pre-start task completed")
         end}
-      |> Supervisor.child_spec(id: :pre_start),
+      |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+
+      # DNS Server (wraps Abyss UDP server)
       {YellowDog.Dns.Server, server_options}
       |> Supervisor.child_spec(id: :server),
-      # DNS View Manager
-      {YellowDog.Dns.ViewManager, []},
-      # DNS Name Resolver
-      {YellowDog.Dns.NameResolver, []},
+
+      # Post-start task
       {Task,
         fn ->
           Logger.debug("DNS post-start task completed")
         end}
-      |> Supervisor.child_spec(id: :post_start)
+      |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end
 end
