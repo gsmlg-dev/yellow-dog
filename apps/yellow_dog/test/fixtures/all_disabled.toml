@@ -1,0 +1,7 @@
+# Configuration with all services disabled
+
+[core]
+dns = false
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
