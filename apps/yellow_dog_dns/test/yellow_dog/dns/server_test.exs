@@ -68,7 +68,7 @@ defmodule YellowDog.Dns.ServerTest do
 
       transport_opts = config.transport_options
 
-      assert transport_opts[:ip] == "0.0.0.0"
+      assert transport_opts[:ip] == {0, 0, 0, 0}
     end
   end
 

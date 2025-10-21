@@ -22,8 +22,8 @@ defmodule YellowDog.Dns.Handler.UDP do
   """
 
   use Abyss.Handler
-  require Logger
 
+  alias YellowDog.Telemetry
   alias DNS.Zone.Manager, as: ZoneManager
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
@@ -33,95 +33,107 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   @impl true
   def init(state) do
-    # Initialize handler state with DNS-specific data
-    Logger.info("Initializing DNS handler")
+    Telemetry.span("dns.handler.init", %{}, fn ->
+      # Initialize handler state with DNS-specific data
+      Telemetry.info("Initializing DNS handler")
 
-    # Get configuration from application config or defaults
-    mode = get_config(:mode, :authoritative)
-    upstream_servers = get_config(:upstream_servers, ["8.8.8.8", "1.1.1.1"])
-    cache_ttl = get_config(:cache_ttl, 300)
-    zone_files = get_config(:zone_files, [])
+      # Get configuration from application config or defaults
+      mode = get_config(:mode, :authoritative)
+      upstream_servers = get_config(:upstream_servers, ["8.8.8.8", "1.1.1.1"])
+      cache_ttl = get_config(:cache_ttl, 300)
+      zone_files = get_config(:zone_files, [])
 
-    # Load zones into the zone manager
-    loaded_zones = load_zones(zone_files)
-    Logger.info("Loaded #{length(loaded_zones)} DNS zones")
+      # Load zones into the zone manager
+      loaded_zones = load_zones(zone_files)
+      Telemetry.info("Loaded #{length(loaded_zones)} DNS zones", %{zone_count: length(loaded_zones)})
 
-    # Initialize cache (using a simple map for now - could be ETS for production)
-    cache = %{}
+      # Initialize cache (using a simple map for now - could be ETS for production)
+      cache = %{}
 
-    # Add DNS-specific state
-    dns_state = %{
-      mode: mode,
-      upstream_servers: parse_upstream_servers(upstream_servers),
-      cache: cache,
-      cache_ttl: cache_ttl,
-      loaded_zones: loaded_zones,
-      stats: %{
-        queries: 0,
-        cache_hits: 0,
-        authoritative: 0,
-        recursive: 0,
-        forwarded: 0,
-        errors: 0
+      # Add DNS-specific state
+      dns_state = %{
+        mode: mode,
+        upstream_servers: parse_upstream_servers(upstream_servers),
+        cache: cache,
+        cache_ttl: cache_ttl,
+        loaded_zones: loaded_zones,
+        stats: %{
+          queries: 0,
+          cache_hits: 0,
+          authoritative: 0,
+          recursive: 0,
+          forwarded: 0,
+          errors: 0
+        }
       }
-    }
 
-    {:ok, Map.merge(state, dns_state)}
+      {:ok, Map.merge(state, dns_state)}
+    end)
   end
 
   @impl true
   def handle_data({client_ip, client_port, data}, state) do
-    start_time = System.monotonic_time(:microsecond)
+    Telemetry.span("dns.query.handle", %{client_ip: format_ip(client_ip), client_port: client_port}, fn ->
+      start_time = System.monotonic_time(:microsecond)
 
-    # Update query counter
-    state = update_in(state, [:stats, :queries], &(&1 + 1))
+      # Update query counter
+      state = update_in(state, [:stats, :queries], &(&1 + 1))
 
-    try do
-      # Parse incoming DNS message
-      query = Message.from_iodata(data)
-      Logger.debug("Received DNS query from #{format_ip(client_ip)}:#{client_port} - #{inspect_query(query)}")
+      try do
+        # Parse incoming DNS message
+        query = Message.from_iodata(data)
+        Telemetry.debug("Received DNS query", %{
+          client_ip: format_ip(client_ip),
+          client_port: client_port,
+          query: inspect_query(query)
+        })
 
-      # Emit telemetry for query received
-      :telemetry.execute(
-        [:yellow_dog, :dns, :query_received],
-        %{duration: System.monotonic_time(:microsecond) - start_time},
-        %{client_ip: client_ip, client_port: client_port, query: inspect_query(query)}
-      )
-
-      # Process the DNS query
-      {response, new_state} = process_dns_query(query, client_ip, state, start_time)
-
-      # Send response back to client
-      send_response(response, client_ip, client_port, state.socket)
-
-      {:close, new_state}
-    rescue
-      error ->
-        Logger.error("Error handling DNS query from #{format_ip(client_ip)}:#{client_port}: #{inspect(error)}")
-
-        # Update error counter
-        state = update_in(state, [:stats, :errors], &(&1 + 1))
-
-        # Emit telemetry for error
+        # Emit telemetry for query received
         :telemetry.execute(
-          [:yellow_dog, :dns, :query_error],
+          [:yellow_dog, :dns, :query_received],
           %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_port: client_port, error: Exception.message(error)}
+          %{client_ip: client_ip, client_port: client_port, query: inspect_query(query)}
         )
 
-        {:close, state}
-    end
+        # Process the DNS query
+        {response, new_state} = process_dns_query(query, client_ip, state, start_time)
+
+        # Send response back to client
+        send_response(response, client_ip, client_port, state.socket)
+
+        {:close, new_state}
+      rescue
+        error ->
+          Telemetry.error("Error handling DNS query", %{
+            client_ip: format_ip(client_ip),
+            client_port: client_port,
+            error: inspect(error)
+          })
+
+          # Update error counter
+          state = update_in(state, [:stats, :errors], &(&1 + 1))
+
+          # Emit telemetry for error
+          :telemetry.execute(
+            [:yellow_dog, :dns, :query_error],
+            %{duration: System.monotonic_time(:microsecond) - start_time},
+            %{client_ip: client_ip, client_port: client_port, error: Exception.message(error)}
+          )
+
+          {:close, state}
+      end
+    end)
   end
 
   @impl true
   def handle_error(error, state) do
-    Logger.error("DNS handler error: #{inspect(error)}")
+    Telemetry.error("DNS handler error", %{error: inspect(error)})
     {:continue, state}
   end
 
   @impl true
   def handle_timeout(state) do
-    Logger.debug("DNS handler timeout")
+    Telemetry.debug("DNS handler timeout")
     {:continue, state}
   end
 
@@ -135,7 +147,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       _ ->
         # Unsupported query (multiple questions or malformed)
-        Logger.warning("Unsupported DNS query format from #{format_ip(client_ip)}")
+        Telemetry.warning("Unsupported DNS query format", %{client_ip: format_ip(client_ip)})
         response = create_error_response(query, :format_error)
         {response, state}
     end
@@ -149,7 +161,10 @@ defmodule YellowDog.Dns.Handler.UDP do
       {cached_response, cached_at} when is_map(cached_response) ->
         # Check if cache entry is still valid
         if System.monotonic_time(:second) - cached_at < state.cache_ttl do
-          Logger.debug("Cache hit for #{question.name.value} #{question.type}")
+          Telemetry.debug("Cache hit", %{
+            name: question.name.value,
+            type: to_string(question.type)
+          })
           state = update_in(state, [:stats, :cache_hits], &(&1 + 1))
 
           # Update query ID and emit telemetry
@@ -178,7 +193,11 @@ defmodule YellowDog.Dns.Handler.UDP do
     # 2. Check authoritative zones
     case lookup_in_zones(question.name.value, question.type, state.loaded_zones) do
       {:ok, records} ->
-        Logger.debug("Authoritative answer for #{question.name.value} #{question.type}")
+        Telemetry.debug("Authoritative answer", %{
+          name: question.name.value,
+          type: to_string(question.type),
+          record_count: length(records)
+        })
         state = update_in(state, [:stats, :authoritative], &(&1 + 1))
 
         response = create_response(query, question, records, :no_error)
@@ -214,66 +233,85 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       :authoritative ->
         # We're authoritative-only, return NXDOMAIN
-        Logger.debug("NXDOMAIN for #{question.name.value} #{question.type}")
+        Telemetry.debug("NXDOMAIN", %{
+          name: question.name.value,
+          type: to_string(question.type)
+        })
         response = create_response(query, question, [], :nxdomain)
         {response, state}
     end
   end
 
   defp perform_recursive_resolution(query, question, state, start_time) do
-    Logger.debug("Performing recursive resolution for #{question.name.value} #{question.type}")
-    state = update_in(state, [:stats, :recursive], &(&1 + 1))
+    Telemetry.span("dns.recursive.resolve", %{name: question.name.value, type: to_string(question.type)}, fn ->
+      Telemetry.debug("Performing recursive resolution", %{
+        name: question.name.value,
+        type: to_string(question.type)
+      })
+      state = update_in(state, [:stats, :recursive], &(&1 + 1))
 
-    # Use DNS.Zone.Recursive to resolve
-    case RecursiveDNS.resolve(question.name.value, question.type) do
-      {:ok, records} when is_list(records) ->
-        # Convert zone records to message records
-        dns_records = convert_recursive_records_to_message_records(records)
-        response = create_response(query, question, dns_records, :no_error)
-        state = cache_response(response, question, state)
+      # Use DNS.Zone.Recursive to resolve
+      case RecursiveDNS.resolve(question.name.value, question.type) do
+        {:ok, records} when is_list(records) ->
+          # Convert zone records to message records
+          dns_records = convert_recursive_records_to_message_records(records)
+          response = create_response(query, question, dns_records, :no_error)
+          state = cache_response(response, question, state)
 
-        :telemetry.execute(
-          [:yellow_dog, :dns, :recursive_response],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{name: question.name.value, type: to_string(question.type), record_count: length(dns_records)}
-        )
+          :telemetry.execute(
+            [:yellow_dog, :dns, :recursive_response],
+            %{duration: System.monotonic_time(:microsecond) - start_time},
+            %{name: question.name.value, type: to_string(question.type), record_count: length(dns_records)}
+          )
 
-        {response, state}
+          {response, state}
 
-      {:error, reason} ->
-        Logger.warning("Recursive resolution failed for #{question.name.value}: #{inspect(reason)}")
-        response = create_response(query, question, [], :servfail)
-        {response, state}
+        {:error, reason} ->
+          Telemetry.warning("Recursive resolution failed", %{
+            name: question.name.value,
+            reason: inspect(reason)
+          })
+          response = create_response(query, question, [], :servfail)
+          {response, state}
 
-      _ ->
-        Logger.warning("Unexpected recursive resolution result for #{question.name.value}")
-        response = create_response(query, question, [], :servfail)
-        {response, state}
-    end
+        _ ->
+          Telemetry.warning("Unexpected recursive resolution result", %{name: question.name.value})
+          response = create_response(query, question, [], :servfail)
+          {response, state}
+      end
+    end)
   end
 
   defp perform_forward(query, question, state, start_time) do
-    Logger.debug("Forwarding query for #{question.name.value} #{question.type} to upstream")
-    state = update_in(state, [:stats, :forwarded], &(&1 + 1))
+    Telemetry.span("dns.forward.query", %{name: question.name.value, type: to_string(question.type)}, fn ->
+      Telemetry.debug("Forwarding query to upstream", %{
+        name: question.name.value,
+        type: to_string(question.type)
+      })
+      state = update_in(state, [:stats, :forwarded], &(&1 + 1))
 
-    # Forward to upstream servers (try first available)
-    case forward_to_upstream(query, state.upstream_servers) do
-      {:ok, response} ->
-        state = cache_response(response, question, state)
+      # Forward to upstream servers (try first available)
+      case forward_to_upstream(query, state.upstream_servers) do
+        {:ok, response} ->
+          state = cache_response(response, question, state)
 
-        :telemetry.execute(
-          [:yellow_dog, :dns, :forward_response],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{name: question.name.value, type: to_string(question.type)}
-        )
+          :telemetry.execute(
+            [:yellow_dog, :dns, :forward_response],
+            %{duration: System.monotonic_time(:microsecond) - start_time},
+            %{name: question.name.value, type: to_string(question.type)}
+          )
 
-        {response, state}
+          {response, state}
 
-      {:error, reason} ->
-        Logger.warning("Forward failed for #{question.name.value}: #{inspect(reason)}")
-        response = create_response(query, question, [], :servfail)
-        {response, state}
-    end
+        {:error, reason} ->
+          Telemetry.warning("Forward failed", %{
+            name: question.name.value,
+            reason: inspect(reason)
+          })
+          response = create_response(query, question, [], :servfail)
+          {response, state}
+      end
+    end)
   end
 
   ## Private Functions - Zone Management
@@ -282,11 +320,17 @@ defmodule YellowDog.Dns.Handler.UDP do
     Enum.flat_map(zone_files, fn zone_file ->
       case ZoneManager.load_zone_from_file(zone_file, zone_file) do
         {:ok, zone} ->
-          Logger.info("Loaded zone: #{zone.name.value} from #{zone_file}")
+          Telemetry.info("Loaded zone", %{
+            zone_name: zone.name.value,
+            zone_file: zone_file
+          })
           [zone]
 
         {:error, reason} ->
-          Logger.error("Failed to load zone from #{zone_file}: #{inspect(reason)}")
+          Telemetry.error("Failed to load zone", %{
+            zone_file: zone_file,
+            reason: inspect(reason)
+          })
           []
       end
     end)
@@ -382,7 +426,9 @@ defmodule YellowDog.Dns.Handler.UDP do
 
         _ ->
           # Fallback for unexpected format
-          Logger.warning("Unexpected record format from recursive resolver: #{inspect(record)}")
+          Telemetry.warning("Unexpected record format from recursive resolver", %{
+            record: inspect(record)
+          })
           nil
       end
     end)
@@ -469,10 +515,15 @@ defmodule YellowDog.Dns.Handler.UDP do
 
     case Abyss.Transport.UDP.send(socket, client_ip, client_port, data) do
       :ok ->
-        Logger.debug("Sent DNS response to #{format_ip(client_ip)}:#{client_port}")
+        Telemetry.debug("Sent DNS response", %{
+          client_ip: format_ip(client_ip),
+          client_port: client_port
+        })
 
       {:error, reason} ->
-        Logger.error("Failed to send DNS response: #{inspect(reason)}")
+        Telemetry.error("Failed to send DNS response", %{
+          reason: inspect(reason)
+        })
     end
   end
 
