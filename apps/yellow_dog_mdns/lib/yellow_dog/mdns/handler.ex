@@ -2,17 +2,19 @@ defmodule YellowDog.Mdns.Handler do
   @moduledoc """
   mDNS message handler using Abyss.Handler behaviour.
 
-  Processes incoming mDNS packets, parses DNS messages, and generates
-  appropriate responses for multicast DNS operations.
+  Passively receives and caches mDNS broadcast messages for later retrieval.
+  This is a listener-only implementation that stores messages without responding.
   """
 
   use Abyss.Handler
   require Logger
 
+  alias YellowDog.Mdns.MessageCache
+
   @doc """
   Handles incoming mDNS data packets.
 
-  Parses the DNS message and processes mDNS queries for .local domains.
+  Parses DNS messages and stores them in the message cache for later retrieval.
   """
   @impl true
   def handle_data({ip, port, data}, state) do
@@ -37,7 +39,7 @@ defmodule YellowDog.Mdns.Handler do
           %{reason: inspect(e), source_ip: ip, source_port: port}
         )
 
-        Logger.debug("Failed to parse DNS message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}")
+        Logger.debug("Failed to parse mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
         {:continue, state}
     end
   rescue
@@ -49,7 +51,7 @@ defmodule YellowDog.Mdns.Handler do
         %{error: inspect(e), source_ip: ip, source_port: port}
       )
 
-      Logger.error("Error handling mDNS message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}")
+      Logger.error("Error handling mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
       {:continue, state}
   catch
     e ->
@@ -60,8 +62,17 @@ defmodule YellowDog.Mdns.Handler do
         %{error: inspect(e), source_ip: ip, source_port: port}
       )
 
-      Logger.error("Error handling mDNS message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}")
+      Logger.error("Error handling mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
       {:continue, state}
+  end
+
+  @doc """
+  Handles error events.
+  """
+  @impl true
+  def handle_error(error, state) do
+    Logger.error("mDNS handler error: #{inspect(error)}")
+    {:continue, state}
   end
 
   @doc """
@@ -73,144 +84,84 @@ defmodule YellowDog.Mdns.Handler do
     {:continue, state}
   end
 
-  @doc """
-  Handles connection close events.
-  """
-  @impl true
-  def handle_close(state) do
-    Logger.debug("mDNS handler connection closed")
-    {:close, state}
-  end
-
-  @doc """
-  Called when the handler process terminates.
-  """
-  @impl true
-  def terminate(_reason, _state) do
-    Logger.debug("mDNS handler terminating")
-    :ok
-  end
-
   # Private functions
 
   defp handle_dns_message(message, ip, port, state, start_time) do
-    Logger.debug("Received mDNS message from #{:inet.ntoa(ip)}:#{port}: #{message}")
+    # Log message type
+    message_type = if message.header.qr == 0, do: "query", else: "response"
+    question_count = length(message.qdlist)
+    answer_count = length(message.anlist)
 
-    # Process the DNS message
-    try do
-      response = process_message(message)
-      if response do
-        send_response(response, ip, port, state)
-      end
+    Logger.debug("Received mDNS #{message_type} from #{format_ip(ip)}:#{port} (#{question_count} questions, #{answer_count} answers)")
 
-      # Emit telemetry event for successful processing
+    # Check if this is a .local domain message
+    if has_local_domain?(message) do
+      # Cache the message
+      MessageCache.cache_message(message, ip, port)
+
+      # Emit telemetry event for successful caching
       end_time = System.monotonic_time(:microsecond)
       duration = end_time - start_time
 
       :telemetry.execute(
-        [:yellow_dog, :mdns, :message_processed],
-        %{duration: duration, bytes: byte_size(DNS.to_iodata(message))},
-        %{source_ip: ip, source_port: port, had_response: response != nil}
+        [:yellow_dog, :mdns, :message_cached],
+        %{
+          duration: duration,
+          question_count: question_count,
+          answer_count: answer_count,
+          authority_count: length(message.nslist),
+          additional_count: length(message.arlist)
+        },
+        %{source_ip: ip, source_port: port, message_type: message_type}
       )
-
-      {:continue, state}
-    rescue
-      e ->
-        Logger.debug("Failed to process mDNS message: #{inspect(e)}")
-
-        # Emit telemetry event for processing error
-        :telemetry.execute(
-          [:yellow_dog, :mdns, :process_error],
-          %{bytes: byte_size(DNS.to_iodata(message))},
-          %{reason: inspect(e), source_ip: ip, source_port: port}
-        )
-
-        {:continue, state}
-    end
-  end
-
-  defp process_message(%DNS.Message{header: header} = message) do
-    if header.qr == 0 do
-      # This is a query message
-      Logger.debug("Processing mDNS query with #{length(message.qdlist)} questions")
-      process_query(message)
     else
-      # This is a response message - in mDNS, we typically don't need to process responses
-      Logger.debug("Ignoring mDNS response message")
-      nil
+      Logger.debug("Ignoring non-.local mDNS message")
     end
+
+    {:continue, state}
   end
 
-  defp process_query(%DNS.Message{qdlist: []}) do
-    # No questions in the query
-    nil
+  defp has_local_domain?(message) do
+    # Check questions
+    local_in_questions =
+      Enum.any?(message.qdlist, fn question ->
+        is_local_domain?(to_string(question.name))
+      end)
+
+    # Check answers
+    local_in_answers =
+      Enum.any?(message.anlist, fn record ->
+        is_local_domain?(to_string(record.name))
+      end)
+
+    # Check authority records
+    local_in_authority =
+      Enum.any?(message.nslist, fn record ->
+        is_local_domain?(to_string(record.name))
+      end)
+
+    # Check additional records
+    local_in_additional =
+      Enum.any?(message.arlist, fn record ->
+        is_local_domain?(to_string(record.name))
+      end)
+
+    local_in_questions || local_in_answers || local_in_authority || local_in_additional
   end
 
-  defp process_query(%DNS.Message{qdlist: questions} = message) do
-    # Check if any questions are for .local domains
-    local_questions = Enum.filter(questions, &is_local_question?/1)
-
-    if local_questions == [] do
-      Logger.debug("No .local questions found, ignoring query")
-      nil
-    else
-      # For now, just acknowledge that we received a local query
-      # In a full implementation, we would look up records and generate responses
-      Logger.debug("Processing #{length(local_questions)} .local questions")
-      generate_query_response(local_questions, message)
-    end
+  defp is_local_domain?(domain) when is_binary(domain) do
+    String.ends_with?(domain, ".local") || String.ends_with?(domain, ".local.")
   end
 
-  defp is_local_question?(%DNS.Message.Question{name: domain}) do
-    to_string(domain)
-    |> String.ends_with?(".local")
+  defp is_local_domain?(_), do: false
+
+  defp format_ip({a, b, c, d}) do
+    "#{a}.#{b}.#{c}.#{d}"
   end
 
-  defp is_local_question?(_) do
-    false
-  end
-
-  defp generate_query_response(_questions, original_message) do
-    # For now, return a basic response
-    # In a full implementation, this would look up records and generate proper responses
-    response_header = DNS.Message.Header.new()
-    |> Map.put(:qr, 1)  # This is a response
-    |> Map.put(:aa, 1)  # Authoritative answer for mDNS
-    |> Map.put(:qdcount, length(original_message.qdlist))
-
-    response = %DNS.Message{
-      header: response_header,
-      qdlist: original_message.qdlist,  # Echo back questions
-      anlist: [],  # Would contain actual answers in full implementation
-      nslist: [],
-      arlist: []
-    }
-
-    response
-  end
-
-  defp send_response(response, ip, port, state) do
-    try do
-      iodata = DNS.to_iodata(response)
-      Abyss.Transport.UDP.send(state.socket, ip, port, iodata)
-      Logger.debug("Sent mDNS response to #{:inet.ntoa(ip)}:#{port}")
-
-      # Emit telemetry event for response sent
-      :telemetry.execute(
-        [:yellow_dog, :mdns, :response_sent],
-        %{bytes: IO.iodata_length(iodata)},
-        %{target_ip: ip, target_port: port}
-      )
-    rescue
-      e ->
-        Logger.error("Failed to encode mDNS response: #{inspect(e)}")
-
-        # Emit telemetry event for encoding error
-        :telemetry.execute(
-          [:yellow_dog, :mdns, :encode_error],
-          %{answers: length(response.anlist)},
-          %{reason: inspect(e), target_ip: ip, target_port: port}
-        )
-    end
+  defp format_ip({a, b, c, d, e, f, g, h}) do
+    parts = [a, b, c, d, e, f, g, h]
+    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
+    Enum.join(hex_parts, ":")
   end
 end

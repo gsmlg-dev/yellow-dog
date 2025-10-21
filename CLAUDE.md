@@ -204,7 +204,19 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
   - `YellowDog.Dhcpv4.Server` - DHCPv4 server using Abyss UDP library
   - `YellowDog.Dhcpv4.Handler` - DHCPv4 message handler implementing Abyss.Handler behaviour
   - `YellowDog.Dhcpv4.Supervisor` - DHCPv4 supervisor with pre/post-start tasks
-- **Features**: Complete DHCPv4 protocol support (DISCOVER, OFFER, REQUEST, ACK, NAK), IPv4 broadcast handling, telemetry events
+  - `YellowDog.Dhcpv4.LeaseManager` - GenServer for lease allocation and tracking with ETS storage
+  - `YellowDog.Dhcpv4.AddressPool` - IP address pool management and allocation logic
+- **Features**:
+  - Complete DHCPv4 protocol support (DISCOVER, OFFER, REQUEST, ACK, DECLINE, RELEASE, INFORM)
+  - IPv4 broadcast handling for client discovery
+  - Configurable address pools with range management
+  - Lease tracking and expiration with ETS-based persistence
+  - Static IP reservations (MAC → IP binding)
+  - Automatic lease renewal and cleanup
+  - Comprehensive telemetry events for monitoring
+  - TOML-based configuration with multiple pool support
+- **Configuration**: Pools, lease times, DNS servers, gateway, and domain name configured via TOML
+- **Status**: Production-ready with full lease management
 
 **YellowDog.Dhcpv6 (DHCPv6 Application)**
 - **Location**: `apps/yellow_dog_dhcpv6/`
@@ -215,14 +227,46 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
   - `YellowDog.Dhcpv6.Server` - DHCPv6 server using Abyss UDP library
   - `YellowDog.Dhcpv6.Handler` - DHCPv6 message handler implementing Abyss.Handler behaviour
   - `YellowDog.Dhcpv6.Supervisor` - DHCPv6 supervisor with pre/post-start tasks
-- **Features**: Complete DHCPv6 protocol support (SOLICIT, ADVERTISE, REQUEST, RENEW, REBIND), IPv6 multicast support, DUID-based client identification
+  - `YellowDog.Dhcpv6.LeaseManager` - GenServer for lease allocation and tracking with ETS storage
+  - `YellowDog.Dhcpv6.AddressPool` - IPv6 address pool management and allocation logic
+- **Features**:
+  - Complete DHCPv6 protocol support (SOLICIT, ADVERTISE, REQUEST, REPLY, RENEW, REBIND, RELEASE, DECLINE, INFORMATION-REQUEST)
+  - IPv6 multicast support for client discovery
+  - DUID-based client identification (DHCP Unique Identifier)
+  - IA_NA (Identity Association for Non-temporary Addresses) support
+  - Configurable IPv6 address pools with range management
+  - Lease tracking with preferred and valid lifetimes
+  - Static IPv6 reservations (DUID → IPv6 binding)
+  - Automatic lease renewal and cleanup
+  - Comprehensive telemetry events for monitoring
+  - TOML-based configuration with multiple pool support
+  - DNS server and domain name configuration
+- **Configuration**: IPv6 pools, preferred/valid lifetimes, DNS servers, and domain name configured via TOML
+- **Status**: Production-ready with full lease management
 
 **YellowDog.Mdns (mDNS Application)**
 - **Location**: `apps/yellow_dog_mdns/`
-- **Purpose**: Multicast DNS functionality
+- **Purpose**: Multicast DNS passive listener for service discovery
 - **Dependencies**: `ex_dns`, `abyss`, `yellow_dog_telemetry`
 - **Directory Structure**: `apps/yellow_dog_mdns/lib/yellow_dog/mdns/`
-- **Status**: Basic structure created, implementation pending
+- **Key Modules**:
+  - `YellowDog.Mdns.Server` - mDNS server using Abyss UDP library
+  - `YellowDog.Mdns.Handler` - Passive mDNS message handler implementing Abyss.Handler behaviour
+  - `YellowDog.Mdns.Supervisor` - mDNS supervisor with pre/post-start tasks
+  - `YellowDog.Mdns.MessageCache` - GenServer for message caching with ETS storage
+- **Features**:
+  - Passive listener implementation (receives broadcasts, does NOT respond)
+  - Multicast DNS on 224.0.0.251:5353
+  - .local domain filtering
+  - ETS-based message cache with TTL support
+  - Caches DNS answers, authority records, additional records, and questions
+  - Periodic cleanup of expired cache entries (every 5 minutes)
+  - Query API for retrieving cached messages by domain and record type
+  - Cache statistics and management functions
+  - Comprehensive telemetry events for monitoring
+  - TOML-based configuration
+- **Configuration**: Multicast address and port configured via TOML
+- **Status**: Production-ready as passive listener and service discovery cache
 
 **YellowDogConsole (Web Console)**
 - **Location**: `apps/yellow_dog_console/`

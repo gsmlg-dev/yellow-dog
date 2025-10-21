@@ -204,15 +204,25 @@ defmodule YellowDog.Application do
         ]
 
       :dhcpv4 ->
+        pools = parse_dhcpv4_pools(service_config)
+        static_reservations = Map.get(service_config, "static_reservations", %{})
+
         [
           port: Map.get(service_config, "port", 67),
-          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
+          pools: pools,
+          static_reservations: static_reservations
         ]
 
       :dhcpv6 ->
+        pools = parse_dhcpv6_pools(service_config)
+        static_reservations = Map.get(service_config, "static_reservations", %{})
+
         [
           port: Map.get(service_config, "port", 547),
-          listen: convert_ipv6(Map.get(service_config, "listen", "::"))
+          listen: convert_ipv6(Map.get(service_config, "listen", "::")),
+          pools: pools,
+          static_reservations: static_reservations
         ]
     end
   end
@@ -260,4 +270,64 @@ defmodule YellowDog.Application do
         true
     end
   end
+
+  # Parses DHCPv4 pool configuration from TOML
+  defp parse_dhcpv4_pools(service_config) do
+    pools = Map.get(service_config, "pools", [])
+
+    Enum.map(pools, fn pool_map ->
+      %{
+        name: Map.get(pool_map, "name", "default"),
+        range_start: parse_ip_or_tuple(Map.get(pool_map, "range_start", "192.168.1.100")),
+        range_end: parse_ip_or_tuple(Map.get(pool_map, "range_end", "192.168.1.200")),
+        subnet_mask: parse_ip_or_tuple(Map.get(pool_map, "subnet_mask", "255.255.255.0")),
+        gateway: parse_ip_or_tuple(Map.get(pool_map, "gateway", "192.168.1.1")),
+        dns_servers: parse_dns_servers(Map.get(pool_map, "dns_servers", ["192.168.1.1"])),
+        domain_name: Map.get(pool_map, "domain_name", "local"),
+        lease_time: Map.get(pool_map, "lease_time", 86400),
+        static_reservations: Map.get(pool_map, "static_reservations", %{})
+      }
+    end)
+  end
+
+  # Parses IP address from string or tuple
+  defp parse_ip_or_tuple(ip) when is_tuple(ip), do: ip
+  defp parse_ip_or_tuple(ip) when is_binary(ip), do: convert_ip(ip)
+  defp parse_ip_or_tuple(_), do: {0, 0, 0, 0}
+
+  # Parses DNS servers list
+  defp parse_dns_servers(servers) when is_list(servers) do
+    Enum.map(servers, &parse_ip_or_tuple/1)
+  end
+  defp parse_dns_servers(_), do: []
+
+  # Parses DHCPv6 pool configuration from TOML
+  defp parse_dhcpv6_pools(service_config) do
+    pools = Map.get(service_config, "pools", [])
+
+    Enum.map(pools, fn pool_map ->
+      %{
+        name: Map.get(pool_map, "name", "default"),
+        range_start: parse_ipv6_or_tuple(Map.get(pool_map, "range_start", "fd00::100")),
+        range_end: parse_ipv6_or_tuple(Map.get(pool_map, "range_end", "fd00::200")),
+        prefix_length: Map.get(pool_map, "prefix_length", 64),
+        dns_servers: parse_ipv6_dns_servers(Map.get(pool_map, "dns_servers", ["fd00::1"])),
+        domain_name: Map.get(pool_map, "domain_name", "local"),
+        preferred_lifetime: Map.get(pool_map, "preferred_lifetime", 3600),
+        valid_lifetime: Map.get(pool_map, "valid_lifetime", 7200),
+        static_reservations: Map.get(pool_map, "static_reservations", %{})
+      }
+    end)
+  end
+
+  # Parses IPv6 address from string or tuple
+  defp parse_ipv6_or_tuple(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: ip
+  defp parse_ipv6_or_tuple(ip) when is_binary(ip), do: convert_ipv6(ip)
+  defp parse_ipv6_or_tuple(_), do: {0, 0, 0, 0, 0, 0, 0, 0}
+
+  # Parses IPv6 DNS servers list
+  defp parse_ipv6_dns_servers(servers) when is_list(servers) do
+    Enum.map(servers, &parse_ipv6_or_tuple/1)
+  end
+  defp parse_ipv6_dns_servers(_), do: []
 end

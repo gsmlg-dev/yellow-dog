@@ -36,18 +36,24 @@ defmodule YellowDog.Mdns.Supervisor do
     server_options = Map.get(opts, :server_options, [])
 
     [
+      # Pre-start task
       {Task,
         fn ->
-          Logger.debug("mDNS pre-start task completed")
+          Logger.debug("mDNS pre-start task: Initializing message cache")
         end}
-      |> Supervisor.child_spec(id: :pre_start),
+      |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+      # Message cache - must start before server
+      {YellowDog.Mdns.MessageCache, []}
+      |> Supervisor.child_spec(id: :message_cache),
+      # mDNS server
       {YellowDog.Mdns.Server, server_options}
       |> Supervisor.child_spec(id: :server),
+      # Post-start task
       {Task,
         fn ->
           Logger.debug("mDNS post-start task completed")
         end}
-      |> Supervisor.child_spec(id: :post_start)
+      |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end
 end

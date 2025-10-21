@@ -2,8 +2,34 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Dhcpv4.Handler
+  alias YellowDog.Dhcpv4.LeaseManager
 
   import ExUnit.CaptureLog
+
+  setup do
+    # Start LeaseManager before each test
+    pool_config = %{
+      name: "default",
+      range_start: {192, 168, 1, 100},
+      range_end: {192, 168, 1, 200},
+      subnet_mask: {255, 255, 255, 0},
+      gateway: {192, 168, 1, 1},
+      dns_servers: [{192, 168, 1, 1}],
+      domain_name: "test.local",
+      lease_time: 86400
+    }
+
+    {:ok, lease_manager} = start_supervised({LeaseManager, pools: [pool_config]})
+
+    on_exit(fn ->
+      # Clean up lease manager
+      if Process.alive?(lease_manager) do
+        Process.exit(lease_manager, :normal)
+      end
+    end)
+
+    :ok
+  end
 
   # Helper functions for creating DHCP test messages
   defmodule TestHelper do

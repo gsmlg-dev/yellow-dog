@@ -39,20 +39,27 @@ defmodule YellowDog.Dhcpv6.Supervisor do
 
   defp build_children(opts) do
     server_options = Map.get(opts, :server_options, [])
+    pools = Keyword.get(server_options, :pools, [])
 
     [
+      # Pre-start task
       {Task,
         fn ->
-          Logger.debug("DHCPv6 pre-start task completed")
+          Logger.debug("DHCPv6 pre-start task: Initializing ETS tables")
         end}
-      |> Supervisor.child_spec(id: :pre_start),
+      |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+      # Lease manager - must start before server
+      {YellowDog.Dhcpv6.LeaseManager, [pools: pools]}
+      |> Supervisor.child_spec(id: :lease_manager),
+      # DHCPv6 server
       {YellowDog.Dhcpv6.Server, server_options}
       |> Supervisor.child_spec(id: :server),
+      # Post-start task
       {Task,
         fn ->
           Logger.debug("DHCPv6 post-start task completed")
         end}
-      |> Supervisor.child_spec(id: :post_start)
+      |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end
 end
