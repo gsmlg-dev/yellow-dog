@@ -41,3 +41,19 @@ config :logger, level: :info
 # of environment variables, is done on config/runtime.exs.
 
 config :logger, :console, level: :warning
+
+# YellowDog Telemetry Configuration for Production
+config :yellow_dog_telemetry,
+  level: :info,
+  format: :json,
+  console_colors: false,
+  show_spans: true,
+  show_span_start: false,
+  span_threshold_ms: 100,
+  filter_apps: nil,
+  exclude_apps: nil,
+  app_levels: %{
+    # Less verbose for web console in production
+    yellow_dog_console: :warn
+  },
+  span_thresholds: %{}

@@ -18,6 +18,7 @@ defmodule YellowDog.Telemetry.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
+      mod: {YellowDog.Telemetry.Application, []},
       extra_applications: [:logger, :telemetry]
     ]
   end
@@ -27,6 +28,9 @@ defmodule YellowDog.Telemetry.MixProject do
     [
       # Core telemetry dependency
       {:telemetry, "~> 1.2"},
+
+      # JSON encoding for production logs
+      {:jason, "~> 1.4", optional: true},
 
       # Development and test dependencies
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

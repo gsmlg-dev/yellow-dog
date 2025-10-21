@@ -56,3 +56,16 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 config :logger, :console, level: :debug
+
+# YellowDog Telemetry Configuration for Testing
+config :yellow_dog_telemetry,
+  level: :warning,
+  format: :minimal,
+  console_colors: false,
+  show_spans: false,
+  show_span_start: false,
+  span_threshold_ms: 0,
+  filter_apps: nil,
+  exclude_apps: nil,
+  app_levels: %{},
+  span_thresholds: %{}

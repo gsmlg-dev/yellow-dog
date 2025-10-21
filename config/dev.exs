@@ -145,3 +145,16 @@ config :phoenix_live_view,
 config :swoosh, :api_client, false
 
 config :logger, :console, level: :debug
+
+# YellowDog Telemetry Configuration for Development
+config :yellow_dog_telemetry,
+  level: :debug,
+  format: :pretty,
+  console_colors: true,
+  show_spans: true,
+  show_span_start: false,
+  span_threshold_ms: 0,
+  filter_apps: nil,
+  exclude_apps: nil,
+  app_levels: %{},
+  span_thresholds: %{}
