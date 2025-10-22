@@ -73,4 +73,42 @@ defmodule YellowDog.Dns do
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   defdelegate child_spec(options), to: YellowDog.Dns.Supervisor
 
+  @doc """
+  Gets the status of the DNS service.
+
+  ## Returns
+  - Map with service status information
+
+  ## Examples
+      iex> YellowDog.Dns.status()
+      %{
+        running: true,
+        info: "DNS service operational"
+      }
+  """
+  @spec status() :: map()
+  def status do
+    case Process.whereis(YellowDog.Dns.Supervisor) do
+      nil ->
+        %{running: false, info: "DNS service not running"}
+
+      _pid ->
+        %{
+          running: true,
+          info: "DNS service operational"
+        }
+    end
+  end
+
+  @doc """
+  Gets DNS statistics (placeholder for future implementation).
+
+  ## Returns
+  - Map with DNS statistics
+  """
+  @spec stats() :: map()
+  def stats do
+    %{info: "DNS statistics not yet implemented"}
+  end
+
 end

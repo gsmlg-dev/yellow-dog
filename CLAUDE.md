@@ -334,6 +334,157 @@ In test environment (`Mix.env() == :test`), the configuration is automatically a
 - DHCPv6 uses port 5667 instead of privileged port 547
 - IP address strings are automatically converted to tuple format for transport options
 
+## Service Control and Status
+
+The YellowDog system provides comprehensive service control and status monitoring through the `YellowDog.ServiceManager` module and public API functions.
+
+### Service Management API
+
+```elixir
+# List all available services
+YellowDog.list_services()
+# => [:dns, :mdns, :dhcpv4, :dhcpv6]
+
+# Get status of all services
+YellowDog.get_all_status()
+# => %{
+#   dns: %{enabled: true, running: true, uptime: "1h 23m", ...},
+#   mdns: %{enabled: true, running: true, ...},
+#   dhcpv4: %{enabled: false, running: false, ...},
+#   dhcpv6: %{enabled: false, running: false, ...}
+# }
+
+# Get status of a specific service
+YellowDog.get_service_status(:mdns)
+# => %{
+#   enabled: true,
+#   running: true,
+#   uptime: "45m 12s",
+#   config: %{port: 5353, listen: "0.0.0.0"},
+#   stats: %{total_entries: 150, active_entries: 120, expired_entries: 30}
+# }
+
+# Get service-specific statistics
+YellowDog.get_service_stats(:mdns)
+# => %{total_entries: 150, active_entries: 120, expired_entries: 30}
+
+YellowDog.get_service_stats(:dhcpv4)
+# => %{total_leases: 50, active_leases: 45, expired_leases: 5}
+
+# Format status for console display
+YellowDog.format_status(:all)
+# Displays formatted status of all services
+
+YellowDog.format_status(:mdns)
+# Displays formatted status of mDNS service only
+```
+
+### Service-Specific APIs
+
+Each protocol application provides its own public API for service-specific operations:
+
+**mDNS Service (YellowDog.Mdns)**
+```elixir
+# Query cached mDNS messages
+YellowDog.Mdns.query("printer.local")
+YellowDog.Mdns.query("_http._tcp.local", :PTR)
+
+# List all cached messages
+YellowDog.Mdns.list_all()
+
+# Get cache statistics
+YellowDog.Mdns.stats()
+# => %{total_entries: 150, active_entries: 120, expired_entries: 30}
+
+# Clear cache
+YellowDog.Mdns.clear_cache()
+
+# Get service status
+YellowDog.Mdns.status()
+```
+
+**DHCPv4 Service (YellowDog.Dhcpv4)**
+```elixir
+# List all leases
+YellowDog.Dhcpv4.list_leases()
+
+# Get a specific lease by MAC address
+YellowDog.Dhcpv4.get_lease("00:11:22:33:44:55")
+
+# Release a lease
+YellowDog.Dhcpv4.release_lease("00:11:22:33:44:55")
+
+# Get lease statistics
+YellowDog.Dhcpv4.stats()
+# => %{total_leases: 50, active_leases: 45, expired_leases: 5, pool_utilization: %{...}}
+
+# Get service status
+YellowDog.Dhcpv4.status()
+```
+
+**DHCPv6 Service (YellowDog.Dhcpv6)**
+```elixir
+# List all leases
+YellowDog.Dhcpv6.list_leases()
+
+# Get a specific lease by DUID and IAID
+YellowDog.Dhcpv6.get_lease(duid, iaid)
+
+# Release a lease
+YellowDog.Dhcpv6.release_lease(duid, iaid)
+
+# Get lease statistics
+YellowDog.Dhcpv6.stats()
+# => %{total_leases: 30, active_leases: 25, expired_leases: 5, pool_utilization: %{...}}
+
+# Get service status
+YellowDog.Dhcpv6.status()
+```
+
+**DNS Service (YellowDog.Dns)**
+```elixir
+# Get service status
+YellowDog.Dns.status()
+
+# Get DNS statistics (placeholder for future implementation)
+YellowDog.Dns.stats()
+```
+
+### Status Display Format
+
+When using `YellowDog.format_status(:all)`, the output is formatted as:
+
+```
+=== YellowDog Services Status ===
+
+DNS: ENABLED | RUNNING
+  Uptime: 1h 23m 45s
+  Children: 3/3
+  Memory: 12.5MB
+  Config: 0.0.0.0:53
+
+MDNS: ENABLED | RUNNING
+  Uptime: 45m 12s
+  Children: 2/2
+  Memory: 5.2MB
+  Cache: 120 active entries, 30 expired
+  Config: 0.0.0.0:5353
+
+DHCPV4: DISABLED | STOPPED
+  Config: 0.0.0.0:67 (1 pools)
+
+DHCPV6: DISABLED | STOPPED
+  Config: :::547 (1 pools)
+```
+
+### Key Features
+
+- **Real-time Status**: Check if services are enabled, running, and their uptime
+- **Service Statistics**: Get detailed statistics for each service (cache entries, lease counts, etc.)
+- **Configuration Display**: View active configuration for each service
+- **Resource Monitoring**: Track memory usage and child process counts
+- **Formatted Output**: Human-readable status display for console/logging
+
 ## CI/CD
 
 ### GitHub Actions Workflows
