@@ -34,8 +34,6 @@ jobs:
           deps
           _build
         key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-
 
     - name: Install dependencies
       run: mix deps.get --only $MIX_ENV
