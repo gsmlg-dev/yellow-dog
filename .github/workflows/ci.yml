@@ -52,7 +52,7 @@ jobs:
     # TODO: Re-enable credo after resolving CI environment issues
   # - name: Run credo
   #   run: mix credo
-i
+
     - name: Run tests
       run: mix test
 
