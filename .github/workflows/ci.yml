@@ -27,6 +27,11 @@ jobs:
         otp-version: ${{ matrix.otp }}
         elixir-version: ${{ matrix.elixir }}
 
+    - name: Setup Hex and Rebar
+      run: |
+        mix local.hex --force
+        mix local.rebar --force
+
     - name: Install dependencies
       run: mix deps.get --only $MIX_ENV
 
