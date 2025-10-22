@@ -33,7 +33,7 @@ jobs:
         path: |
           deps
           _build
-        key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+        key: ${{ runner.os }}-mix-v2-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
 
     - name: Install dependencies
       run: mix deps.get --only $MIX_ENV
