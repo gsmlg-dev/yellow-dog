@@ -27,7 +27,7 @@ defmodule YellowDog.Dns.Supervisor do
   @spec start_link(keyword()) :: Supervisor.on_start() | :ignore
   def start_link(opts) do
     # Check if DNS service is enabled
-    unless YellowDog.Config.service_enabled?(:dns) do
+    unless apply(YellowDog.Config, :service_enabled?, [:dns]) do
       Telemetry.info("DNS service is disabled, skipping startup")
       :ignore
     else

@@ -106,8 +106,8 @@ defmodule YellowDog.Dns.Server do
     config = get_config()
 
     # Get configuration from YellowDog.Config
-    port = YellowDog.Config.get(:dns, :port, config.port)
-    listen = YellowDog.Config.get(:dns, :listen, "0.0.0.0")
+    port = apply(YellowDog.Config, :get, [:dns, :port]) || config.port
+    listen = apply(YellowDog.Config, :get, [:dns, :listen]) || "0.0.0.0"
 
     # Convert listen IP string to tuple format
     listen_ip = case parse_ip(listen) do

@@ -7,7 +7,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   """
 
   require Logger
-  use Bitwise
+  import Bitwise
 
   @type ipv6_address :: {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
   @type duid :: binary()

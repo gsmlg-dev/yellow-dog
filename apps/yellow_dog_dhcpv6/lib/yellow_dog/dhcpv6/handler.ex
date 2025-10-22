@@ -15,13 +15,13 @@ defmodule YellowDog.Dhcpv6.Handler do
   @msg_type_solicit 1
   @msg_type_advertise 2
   @msg_type_request 3
-  @msg_type_confirm 4
+  # @msg_type_confirm 4
   @msg_type_renew 5
   @msg_type_rebind 6
   @msg_type_reply 7
   @msg_type_release 8
   @msg_type_decline 9
-  @msg_type_reconfigure 10
+  # @msg_type_reconfigure 10
   @msg_type_information_request 11
   @msg_type_relay_forw 12
   @msg_type_relay_repl 13
@@ -31,11 +31,11 @@ defmodule YellowDog.Dhcpv6.Handler do
   @option_server_id 2
   @option_ia_na 3
   @option_ia_addr 5
-  @option_oro 6
+  # @option_oro 6
   @option_preference 7
-  @option_elapsed_time 8
-  @option_status_code 13
-  @option_rapid_commit 14
+  # @option_elapsed_time 8
+  # @option_status_code 13
+  # @option_rapid_commit 14
   @option_dns_servers 23
   @option_domain_list 24
 
@@ -403,8 +403,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
   end
 
-  defp add_domain_list_option(options, nil), do: options
-  defp add_domain_list_option(options, ""), do: options
+  defp add_domain_list_option(options, domain) when domain in [nil, ""], do: options
   defp add_domain_list_option(options, domain) do
     # Encode domain name in DNS format (length-prefixed labels)
     domain_data = encode_domain_name(domain)

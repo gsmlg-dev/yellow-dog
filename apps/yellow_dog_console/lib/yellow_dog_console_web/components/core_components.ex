@@ -72,7 +72,7 @@ defmodule YellowDogConsoleWeb.CoreComponents do
   def flash_group(assigns) do
     ~H"""
     <div
-      :if={msg = live_flash(@flash, :info)}
+      :if={msg = Phoenix.Flash.get(@flash, :info)}
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: "info"}) |> hide("##{@id}")}
       role="alert"
@@ -82,7 +82,7 @@ defmodule YellowDogConsoleWeb.CoreComponents do
       ]}
     >
       <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-        <Phoenix.Component.core_components(:icon, name="hero-information-circle-mini") />
+        <Heroicons.information_circle mini class="h-5 w-5" />
         <%= @title %>
       </p>
       <p class="mt-2 text-sm leading-5"><%= msg %></p>
@@ -92,7 +92,7 @@ defmodule YellowDogConsoleWeb.CoreComponents do
     </div>
 
     <div
-      :if={msg = live_flash(@flash, :error)}
+      :if={msg = Phoenix.Flash.get(@flash, :error)}
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: "error"}) |> hide("##{@id}")}
       role="alert"
@@ -102,7 +102,7 @@ defmodule YellowDogConsoleWeb.CoreComponents do
       ]}
     >
       <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-        <Phoenix.Component.core_components(:icon, name="hero-exclamation-circle-mini") />
+        <Heroicons.exclamation_circle mini class="h-5 w-5" />
         <%= @title %>
       </p>
       <p class="mt-2 text-sm leading-5"><%= msg %></p>

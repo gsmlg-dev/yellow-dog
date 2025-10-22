@@ -146,6 +146,26 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     |> MapSet.new()
   end
 
+  @doc """
+  Gets lease statistics.
+
+  ## Returns
+  - Map with lease statistics
+  """
+  @spec stats() :: map()
+  def stats do
+    now = System.system_time(:second)
+    all_entries = :ets.tab2list(@table_name) |> Enum.map(fn {_mac, lease} -> lease end)
+    active_leases = Enum.filter(all_entries, fn lease -> lease.expires_at > now end)
+    expired_leases = Enum.filter(all_entries, fn lease -> lease.expires_at <= now end)
+
+    %{
+      total_leases: length(all_entries),
+      active_leases: length(active_leases),
+      expired_leases: length(expired_leases)
+    }
+  end
+
   # Server Callbacks
 
   @impl true

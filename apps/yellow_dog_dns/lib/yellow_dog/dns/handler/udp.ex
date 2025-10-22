@@ -545,7 +545,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   defp get_config(key, default) do
     # Try to get from YellowDog config, fall back to default
-    case YellowDog.Config.get(:dns, key) do
+    case apply(YellowDog.Config, :get, [:dns, key]) do
       nil -> default
       value -> value
     end

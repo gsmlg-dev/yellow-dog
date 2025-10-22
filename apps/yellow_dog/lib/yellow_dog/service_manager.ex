@@ -92,7 +92,7 @@ defmodule YellowDog.ServiceManager do
   def get_service_stats(:mdns) do
     if YellowDog.Config.service_enabled?(:mdns) do
       try do
-        YellowDog.Mdns.MessageCache.stats()
+        apply(YellowDog.Mdns.MessageCache, :stats, [])
       rescue
         _ -> %{error: "Service not running"}
       end
@@ -104,7 +104,7 @@ defmodule YellowDog.ServiceManager do
   def get_service_stats(:dhcpv4) do
     if YellowDog.Config.service_enabled?(:dhcpv4) do
       try do
-        YellowDog.Dhcpv4.LeaseManager.stats()
+        apply(YellowDog.Dhcpv4.LeaseManager, :stats, [])
       rescue
         _ -> %{error: "Service not running"}
       end
@@ -116,7 +116,7 @@ defmodule YellowDog.ServiceManager do
   def get_service_stats(:dhcpv6) do
     if YellowDog.Config.service_enabled?(:dhcpv6) do
       try do
-        YellowDog.Dhcpv6.LeaseManager.stats()
+        apply(YellowDog.Dhcpv6.LeaseManager, :stats, [])
       rescue
         _ -> %{error: "Service not running"}
       end
