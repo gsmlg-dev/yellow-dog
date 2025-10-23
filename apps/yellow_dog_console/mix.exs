@@ -23,7 +23,6 @@ defmodule YellowDogConsole.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {YellowDogConsole.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end

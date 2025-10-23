@@ -28,8 +28,19 @@ defmodule YellowDog.Application do
     # Add protocol supervisors conditionally based on configuration
     children = children ++ get_enabled_services(config)
 
+    # Add YellowDogConsole children
+    children = children ++ get_console_children()
+
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Tell Phoenix to update the endpoint configuration
+  # whenever the application is updated.
+  @impl true
+  def config_change(changed, _new, removed) do
+    apply(YellowDogConsoleWeb.Endpoint, :config_change, [changed, removed])
+    :ok
   end
 
   # Loads TOML configuration from the file path specified in runtime.exs
@@ -330,4 +341,14 @@ defmodule YellowDog.Application do
     Enum.map(servers, &parse_ipv6_or_tuple/1)
   end
   defp parse_ipv6_dns_servers(_), do: []
+
+  # Gets the YellowDogConsole children
+  defp get_console_children do
+    [
+      YellowDogConsoleWeb.Telemetry,
+      {DNSCluster, query: Application.get_env(:yellow_dog_console, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: YellowDogConsole.PubSub},
+      YellowDogConsoleWeb.Endpoint
+    ]
+  end
 end
