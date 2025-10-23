@@ -48,7 +48,6 @@ defmodule YellowDogConsole.MixProject do
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:heroicons, "~> 0.5.6"},
-      {:swoosh, "~> 1.16"},
       {:hackney, "~> 1.9"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
