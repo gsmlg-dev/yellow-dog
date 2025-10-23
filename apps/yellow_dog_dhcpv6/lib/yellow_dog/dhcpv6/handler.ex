@@ -538,7 +538,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   defp send_dhcpv6_response(response, client_ip, client_port, state) do
     data = DHCP.Parameter.to_iodata(response)
 
-    case Abyss.Transport.UDP.send(state.socket, client_ip, client_port, data) do
+    case :gen_udp.send(state.socket, client_ip, client_port, data) do
       :ok ->
         Logger.debug(
           "Sent DHCPv6 response type #{response.msg_type} to #{format_ip(client_ip)}:#{client_port}"

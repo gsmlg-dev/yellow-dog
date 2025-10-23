@@ -246,9 +246,10 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:hlen, discover.hlen)
     |> Map.put(:xid, discover.xid)
     |> Map.put(:flags, discover.flags)
-    |> Map.put(:yiaddr, lease.ip)
-    |> Map.put(:siaddr, pool.gateway)
-    |> Map.put(:giaddr, discover.giaddr)
+    |> Map.put(:ciaddr, 0)
+    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip))
+    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
+    |> Map.put(:giaddr, ip_tuple_to_integer(discover.giaddr))
     |> Map.put(:chaddr, discover.chaddr)
     |> Map.put(:options, build_dhcp_options(2, pool, lease))
   end
@@ -284,10 +285,10 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:hlen, request.hlen)
     |> Map.put(:xid, request.xid)
     |> Map.put(:flags, request.flags)
-    |> Map.put(:ciaddr, request.ciaddr)
-    |> Map.put(:yiaddr, lease.ip)
-    |> Map.put(:siaddr, pool.gateway)
-    |> Map.put(:giaddr, request.giaddr)
+    |> Map.put(:ciaddr, ip_tuple_to_integer(request.ciaddr))
+    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip))
+    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
+    |> Map.put(:giaddr, ip_tuple_to_integer(request.giaddr))
     |> Map.put(:chaddr, request.chaddr)
     |> Map.put(:options, build_dhcp_options(5, pool, lease))
   end
@@ -318,9 +319,9 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:hlen, inform.hlen)
     |> Map.put(:xid, inform.xid)
     |> Map.put(:flags, inform.flags)
-    |> Map.put(:ciaddr, client_ip)
-    |> Map.put(:siaddr, pool.gateway)
-    |> Map.put(:giaddr, inform.giaddr)
+    |> Map.put(:ciaddr, ip_tuple_to_integer(client_ip))
+    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
+    |> Map.put(:giaddr, ip_tuple_to_integer(inform.giaddr))
     |> Map.put(:chaddr, inform.chaddr)
     |> Map.put(:options, [
       # DHCPACK = 5
@@ -344,7 +345,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Send response to client (port 67 for broadcast, 68 for unicast)
     response_port = if client_port == 67, do: 68, else: client_port
 
-    case Abyss.Transport.UDP.send(state.socket, client_ip, response_port, data) do
+    case :gen_udp.send(state.socket, client_ip, response_port, data) do
       :ok ->
         Logger.debug("Sent DHCP response to #{:inet.ntoa(client_ip)}:#{response_port}")
 
@@ -459,6 +460,14 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
   defp ip_to_binary(_), do: <<192, 168, 1, 1>>
+
+  # Convert IP tuple to 32-bit integer for DHCPv4 message fields
+  defp ip_tuple_to_integer({a, b, c, d}) when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
+    <<integer::32>> = <<a, b, c, d>>
+    integer
+  end
+  defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
+  defp ip_tuple_to_integer(_), do: 0
 
   defp format_mac(<<mac::binary-size(6)>>) do
     mac

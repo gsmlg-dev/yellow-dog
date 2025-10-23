@@ -46,7 +46,7 @@ defmodule YellowDog.Dhcpv6.Server do
       transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Dhcpv6.Handler,
       transport_options: [
-        ip: "::",
+        ip: {0, 0, 0, 0, 0, 0, 0, 0},
         ipv6_v6only: true,
         reuseaddr: true
       ],

@@ -117,8 +117,9 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       client_ip = {192, 168, 1, 50}
       client_port = 68
 
-      # Mock state with socket
-      state = %{socket: self()}
+      # Create a real UDP socket for testing
+      {:ok, socket} = :gen_udp.open(0, [mode: :binary, active: false])
+      state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
       log =
@@ -126,6 +127,9 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
           result = Handler.handle_data({client_ip, client_port, data}, state)
           assert result == {:continue, state}
         end)
+
+      # Clean up socket
+      :gen_udp.close(socket)
 
       # Should log discovery handling
       assert log =~ "DHCPDISCOVER"
@@ -136,8 +140,9 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       client_ip = {192, 168, 1, 50}
       client_port = 68
 
-      # Mock state with socket
-      state = %{socket: self()}
+      # Create a real UDP socket for testing
+      {:ok, socket} = :gen_udp.open(0, [mode: :binary, active: false])
+      state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
       log =
@@ -145,6 +150,9 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
           result = Handler.handle_data({client_ip, client_port, data}, state)
           assert result == {:continue, state}
         end)
+
+      # Clean up socket
+      :gen_udp.close(socket)
 
       # Should log request handling
       assert log =~ "DHCPREQUEST"

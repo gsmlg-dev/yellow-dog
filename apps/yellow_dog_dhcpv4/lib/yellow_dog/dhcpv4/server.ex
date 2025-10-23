@@ -46,7 +46,7 @@ defmodule YellowDog.Dhcpv4.Server do
       transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Dhcpv4.Handler,
       transport_options: [
-        ip: "0.0.0.0",
+        ip: {0, 0, 0, 0},
         reuseaddr: true
       ],
       read_timeout: 60_000,
