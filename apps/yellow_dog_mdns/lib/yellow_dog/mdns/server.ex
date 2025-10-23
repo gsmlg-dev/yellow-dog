@@ -94,8 +94,7 @@ defmodule YellowDog.Mdns.Server do
       {:multicast_if, listen_address},
       {:add_membership, {multicast_address, listen_address}},
       # mDNS uses TTL 255
-      {:multicast_ttl, 255},
-      {:active, false}
+      {:multicast_ttl, 255}
     ]
 
     # Add any additional transport options from opts
