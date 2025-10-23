@@ -43,7 +43,8 @@ defmodule Abyss.Listener do
           listener_id: binary(),
           listener_socket: Abyss.Transport.socket(),
           listener_span: Abyss.Telemetry.t(),
-          local_info: Abyss.Transport.socket_info()
+          local_info: Abyss.Transport.socket_info(),
+          transport: module()
         }
 
   @doc """
@@ -117,15 +118,17 @@ defmodule Abyss.Listener do
         |> Keyword.put(:sndbuf, server_config.udp_buffer_size)
       end
 
+    transport = server_config.transport_module
+
     with {:ok, listener_socket} <-
-           Abyss.Transport.UDP.listen(
+           transport.listen(
              server_config.port,
              transport_options
            ),
          {:ok, {ip, port}} <-
            :inet.sockname(listener_socket) do
       active =
-        case Abyss.Transport.UDP.getopts(listener_socket, [:active]) do
+        case transport.getopts(listener_socket, [:active]) do
           {:ok, [active: true]} -> true
           _ -> false
         end
@@ -151,7 +154,8 @@ defmodule Abyss.Listener do
         listener_id: listener_id,
         listener_socket: listener_socket,
         listener_span: listener_span,
-        local_info: {ip, port}
+        local_info: {ip, port},
+        transport: transport
       }
 
       # Start listening immediately for non-broadcast mode
@@ -167,11 +171,11 @@ defmodule Abyss.Listener do
   end
 
   @impl GenServer
-  def handle_info(:start_listening, %{listener_socket: listener_socket} = state) do
+  def handle_info(:start_listening, %{listener_socket: listener_socket, transport: transport} = state) do
     if state.is_listening do
       {:noreply, state}
     else
-      case Abyss.Transport.UDP.getopts(listener_socket, [:active]) do
+      case transport.getopts(listener_socket, [:active]) do
         {:ok, [{:active, false}]} ->
           Abyss.Telemetry.span_event(state.listener_span, :ready, %{}, %{
             listener_id: state.listener_id,
@@ -240,7 +244,7 @@ defmodule Abyss.Listener do
 
   def handle_info(
         :do_recv,
-        %{listener_span: listener_span, listener_socket: listener_socket} = state
+        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} = state
       ) do
     Abyss.Telemetry.untimed_span_event(state.listener_span, :waiting, %{}, %{
       listener_id: state.listener_id,
@@ -248,7 +252,7 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    case Abyss.Transport.UDP.recv(listener_socket, 0, :infinity) do
+    case transport.recv(listener_socket, 0, :infinity) do
       {:ok, {ip, port, data}} ->
         Abyss.Telemetry.untimed_span_event(state.listener_span, :receiving, %{}, %{
           listener_id: state.listener_id,
@@ -390,7 +394,7 @@ defmodule Abyss.Listener do
   @impl GenServer
   def handle_continue(
         :listening,
-        %{listener_span: listener_span, listener_socket: listener_socket} = state
+        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} = state
       ) do
     Abyss.Telemetry.untimed_span_event(state.listener_span, :waiting, %{}, %{
       listener_id: state.listener_id,
@@ -398,7 +402,7 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    case Abyss.Transport.UDP.recv(listener_socket, 0, :infinity) do
+    case transport.recv(listener_socket, 0, :infinity) do
       {:ok, recv_data} ->
         {ip, port, anc_data} =
           case recv_data do
@@ -462,7 +466,7 @@ defmodule Abyss.Listener do
   @spec terminate(reason, state) :: :ok
         when reason: :normal | :shutdown | {:shutdown, term} | term
   def terminate(_reason, state) do
-    Abyss.Transport.UDP.close(state.listener_socket)
+    state.transport.close(state.listener_socket)
     Abyss.Telemetry.stop_span(state.listener_span)
   end
 end

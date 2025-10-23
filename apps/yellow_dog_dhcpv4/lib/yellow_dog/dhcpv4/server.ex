@@ -43,11 +43,10 @@ defmodule YellowDog.Dhcpv4.Server do
   def get_config do
     %{
       port: 67,
-      broadcast: true,
+      transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Dhcpv4.Handler,
       transport_options: [
         ip: "0.0.0.0",
-        broadcast: true,
         reuseaddr: true
       ],
       read_timeout: 60_000,
@@ -114,12 +113,8 @@ defmodule YellowDog.Dhcpv4.Server do
       config_keywords
       |> Keyword.merge(opts_with_transport)
       |> Keyword.put(:handler_module, YellowDog.Dhcpv4.Handler)
+      |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
 
-    # Ensure broadcast mode is enabled for DHCP
-    if Keyword.get(final_config, :broadcast, false) do
-      final_config
-    else
-      Keyword.put(final_config, :broadcast, true)
-    end
+    final_config
   end
 end

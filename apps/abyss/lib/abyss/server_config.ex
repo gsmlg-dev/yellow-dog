@@ -8,6 +8,7 @@ defmodule Abyss.ServerConfig do
   @typedoc "A set of configuration parameters for a Abyss server instance"
   @type t :: %__MODULE__{
           port: :inet.port_number(),
+          transport_module: module(),
           transport_options: Abyss.transport_options(),
           handler_module: module(),
           handler_options: term(),
@@ -33,6 +34,7 @@ defmodule Abyss.ServerConfig do
         }
 
   defstruct port: 4000,
+            transport_module: Abyss.Transport.UDP,
             transport_options: [],
             handler_module: nil,
             handler_options: [],

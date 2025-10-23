@@ -42,7 +42,7 @@ defmodule YellowDog.Dns.Server do
   def get_config do
     %{
       port: 53,
-      broadcast: false,
+      transport_module: Abyss.Transport.UDP.Unicast,
       handler_module: YellowDog.Dns.Handler.UDP,
       transport_options: [
         ip: {0, 0, 0, 0},

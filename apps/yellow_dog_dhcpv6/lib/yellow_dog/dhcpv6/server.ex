@@ -43,7 +43,7 @@ defmodule YellowDog.Dhcpv6.Server do
   def get_config do
     %{
       port: 547,
-      broadcast: true,
+      transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Dhcpv6.Handler,
       transport_options: [
         ip: "::",
@@ -113,12 +113,8 @@ defmodule YellowDog.Dhcpv6.Server do
       config_keywords
       |> Keyword.merge(opts_with_transport)
       |> Keyword.put(:handler_module, YellowDog.Dhcpv6.Handler)
+      |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
 
-    # Ensure broadcast mode is enabled for DHCPv6
-    if Keyword.get(final_config, :broadcast, false) do
-      final_config
-    else
-      Keyword.put(final_config, :broadcast, true)
-    end
+    final_config
   end
 end

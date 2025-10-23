@@ -74,8 +74,8 @@ defmodule YellowDog.Mdns.Server do
     # Base abyss configuration
     [
       port: port,
+      transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: handler_module,
-      broadcast: Keyword.get(opts, :broadcast, true),
       transport_options: transport_options,
       # mDNS-specific configuration
       read_timeout: Keyword.get(opts, :read_timeout, 5000),
@@ -103,14 +103,13 @@ defmodule YellowDog.Mdns.Server do
   defp get_default_server_config do
     [
       port: @mdns_port,
+      transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Mdns.Handler,
-      broadcast: true,
       transport_options: [
         ip: {0, 0, 0, 0},
         multicast_if: {0, 0, 0, 0},
         add_membership: {@mdns_multicast_address, {0, 0, 0, 0}},
-        multicast_ttl: 255,
-        active: false
+        multicast_ttl: 255
       ],
       read_timeout: 5000,
       num_listeners: 1,
