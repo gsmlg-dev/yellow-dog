@@ -44,9 +44,9 @@ defmodule YellowDog.Dhcpv4.Supervisor do
     [
       # Pre-start task
       {Task,
-        fn ->
-          Logger.debug("DHCPv4 pre-start task: Initializing ETS tables")
-        end}
+       fn ->
+         Logger.debug("DHCPv4 pre-start task: Initializing ETS tables")
+       end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
       # Lease manager - must start before server
       {YellowDog.Dhcpv4.LeaseManager, [pools: pools]}
@@ -56,9 +56,9 @@ defmodule YellowDog.Dhcpv4.Supervisor do
       |> Supervisor.child_spec(id: :server),
       # Post-start task
       {Task,
-        fn ->
-          Logger.debug("DHCPv4 post-start task completed")
-        end}
+       fn ->
+         Logger.debug("DHCPv4 post-start task completed")
+       end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end

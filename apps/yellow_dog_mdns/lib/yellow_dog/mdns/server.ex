@@ -79,9 +79,12 @@ defmodule YellowDog.Mdns.Server do
       transport_options: transport_options,
       # mDNS-specific configuration
       read_timeout: Keyword.get(opts, :read_timeout, 5000),
-      num_listeners: Keyword.get(opts, :num_listeners, 1),  # Single listener for broadcast mode
-      rate_limit_enabled: Keyword.get(opts, :rate_limit_enabled, false),  # Disabled for local mDNS
-      max_packet_size: Keyword.get(opts, :max_packet_size, 1232)  # mDNS MTU limit
+      # Single listener for broadcast mode
+      num_listeners: Keyword.get(opts, :num_listeners, 1),
+      # Disabled for local mDNS
+      rate_limit_enabled: Keyword.get(opts, :rate_limit_enabled, false),
+      # mDNS MTU limit
+      max_packet_size: Keyword.get(opts, :max_packet_size, 1232)
     ]
   end
 
@@ -90,7 +93,8 @@ defmodule YellowDog.Mdns.Server do
       {:ip, listen_address},
       {:multicast_if, listen_address},
       {:add_membership, {multicast_address, listen_address}},
-      {:multicast_ttl, 255},  # mDNS uses TTL 255
+      # mDNS uses TTL 255
+      {:multicast_ttl, 255},
       {:active, false}
     ]
 
@@ -139,6 +143,7 @@ defmodule YellowDog.Mdns.Server do
       UndefinedFunctionError ->
         Logger.warning("Config module not available in test environment, using defaults")
         server_config = get_default_server_config()
+
         case Abyss.start_link(server_config) do
           {:ok, abyss_pid} ->
             {:ok, %{abyss_pid: abyss_pid, config: server_config}}

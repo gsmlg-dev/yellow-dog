@@ -9,7 +9,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   require Logger
   import Bitwise
 
-  @type ipv6_address :: {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
+  @type ipv6_address ::
+          {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
   @type duid :: binary()
   @type pool_config :: %{
           name: String.t(),
@@ -154,13 +155,14 @@ defmodule YellowDog.Dhcpv6.AddressPool do
     # Instead, use a random approach with collision detection
     max_attempts = 100
 
-    result = Enum.find(1..max_attempts, fn _attempt ->
-      # Generate a random offset within the range
-      offset = :rand.uniform(end_int - start_int + 1) - 1
-      ip_int = start_int + offset
-      ip = integer_to_ipv6(ip_int)
-      not MapSet.member?(allocated_ips, ip)
-    end)
+    result =
+      Enum.find(1..max_attempts, fn _attempt ->
+        # Generate a random offset within the range
+        offset = :rand.uniform(end_int - start_int + 1) - 1
+        ip_int = start_int + offset
+        ip = integer_to_ipv6(ip_int)
+        not MapSet.member?(allocated_ips, ip)
+      end)
 
     case result do
       nil ->
@@ -174,23 +176,23 @@ defmodule YellowDog.Dhcpv6.AddressPool do
 
   defp ipv6_to_integer({a, b, c, d, e, f, g, h}) do
     a * (1 <<< 112) +
-    b * (1 <<< 96) +
-    c * (1 <<< 80) +
-    d * (1 <<< 64) +
-    e * (1 <<< 48) +
-    f * (1 <<< 32) +
-    g * (1 <<< 16) +
-    h
+      b * (1 <<< 96) +
+      c * (1 <<< 80) +
+      d * (1 <<< 64) +
+      e * (1 <<< 48) +
+      f * (1 <<< 32) +
+      g * (1 <<< 16) +
+      h
   end
 
   defp integer_to_ipv6(int) do
-    a = (int >>> 112) &&& 0xFFFF
-    b = (int >>> 96) &&& 0xFFFF
-    c = (int >>> 80) &&& 0xFFFF
-    d = (int >>> 64) &&& 0xFFFF
-    e = (int >>> 48) &&& 0xFFFF
-    f = (int >>> 32) &&& 0xFFFF
-    g = (int >>> 16) &&& 0xFFFF
+    a = int >>> 112 &&& 0xFFFF
+    b = int >>> 96 &&& 0xFFFF
+    c = int >>> 80 &&& 0xFFFF
+    d = int >>> 64 &&& 0xFFFF
+    e = int >>> 48 &&& 0xFFFF
+    f = int >>> 32 &&& 0xFFFF
+    g = int >>> 16 &&& 0xFFFF
     h = int &&& 0xFFFF
     {a, b, c, d, e, f, g, h}
   end

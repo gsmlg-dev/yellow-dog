@@ -6,16 +6,20 @@ defmodule YellowDog.ConfigTest do
   setup do
     # Ensure config agent is stopped before each test
     case Process.whereis(YellowDog.Config) do
-      nil -> :ok
+      nil ->
+        :ok
+
       pid ->
         Process.exit(pid, :kill)
         # Wait until the process is actually dead and name is unregistered
         ref = Process.monitor(pid)
+
         receive do
           {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
         after
           1000 -> :ok
         end
+
         # Additional polling to ensure name is unregistered
         wait_for_unregister(YellowDog.Config, 100)
     end
@@ -25,10 +29,13 @@ defmodule YellowDog.ConfigTest do
 
   defp wait_for_unregister(name, max_attempts) do
     case Process.whereis(name) do
-      nil -> :ok
+      nil ->
+        :ok
+
       _pid when max_attempts > 0 ->
         Process.sleep(10)
         wait_for_unregister(name, max_attempts - 1)
+
       _pid ->
         :timeout
     end
@@ -144,16 +151,20 @@ defmodule YellowDog.ConfigTest do
     setup do
       # Ensure config agent is stopped before starting
       case Process.whereis(YellowDog.Config) do
-        nil -> :ok
+        nil ->
+          :ok
+
         pid ->
           Process.exit(pid, :kill)
           # Wait until the process is actually dead
           ref = Process.monitor(pid)
+
           receive do
             {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
           after
             1000 -> :ok
           end
+
           # Additional polling to ensure name is unregistered
           wait_for_unregister(YellowDog.Config, 100)
       end
@@ -228,16 +239,20 @@ defmodule YellowDog.ConfigTest do
     setup do
       # Ensure config agent is stopped before starting
       case Process.whereis(YellowDog.Config) do
-        nil -> :ok
+        nil ->
+          :ok
+
         pid ->
           Process.exit(pid, :kill)
           # Wait until the process is actually dead
           ref = Process.monitor(pid)
+
           receive do
             {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
           after
             1000 -> :ok
           end
+
           # Additional polling to ensure name is unregistered
           wait_for_unregister(YellowDog.Config, 100)
       end
@@ -355,16 +370,20 @@ defmodule YellowDog.ConfigTest do
     test "get/1 returns nil for non-existent keys" do
       # Ensure config agent is stopped before starting
       case Process.whereis(YellowDog.Config) do
-        nil -> :ok
+        nil ->
+          :ok
+
         pid ->
           Process.exit(pid, :kill)
           # Wait until the process is actually dead
           ref = Process.monitor(pid)
+
           receive do
             {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
           after
             1000 -> :ok
           end
+
           # Additional polling to ensure name is unregistered
           wait_for_unregister(YellowDog.Config, 100)
       end

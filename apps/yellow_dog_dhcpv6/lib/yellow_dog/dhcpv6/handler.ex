@@ -48,7 +48,9 @@ defmodule YellowDog.Dhcpv6.Handler do
     try do
       case DHCPv6.Message.from_iodata(data) do
         {:ok, message} ->
-          Logger.debug("Received DHCPv6 message type #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}")
+          Logger.debug(
+            "Received DHCPv6 message type #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}"
+          )
 
           # Emit telemetry
           :telemetry.execute(
@@ -60,12 +62,17 @@ defmodule YellowDog.Dhcpv6.Handler do
           handle_dhcpv6_message(message, client_ip, client_port, state, start_time)
 
         {:error, reason} ->
-          Logger.warning("Failed to parse DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(reason)}")
+          Logger.warning(
+            "Failed to parse DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(reason)}"
+          )
+
           {:continue, state}
       end
     rescue
       error ->
-        Logger.error("Error handling DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(error)}")
+        Logger.error(
+          "Error handling DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(error)}"
+        )
 
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :message_error],
@@ -125,13 +132,18 @@ defmodule YellowDog.Dhcpv6.Handler do
         handle_relay_reply(message, client_ip, client_port, state)
 
       _ ->
-        Logger.warning("Unknown DHCPv6 message type: #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}")
+        Logger.warning(
+          "Unknown DHCPv6 message type: #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}"
+        )
+
         {:continue, state}
     end
   end
 
   defp handle_solicit(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 SOLICIT from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 SOLICIT from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
@@ -167,7 +179,9 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_request(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 REQUEST from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 REQUEST from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
@@ -203,7 +217,9 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_renew(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 RENEW from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 RENEW from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
@@ -235,14 +251,18 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_rebind(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 REBIND from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 REBIND from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     # Rebind is similar to renew
     handle_renew(message, client_ip, client_port, state, start_time)
   end
 
   defp handle_release(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 RELEASE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 RELEASE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
@@ -265,7 +285,9 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_decline(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 DECLINE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 DECLINE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
@@ -288,7 +310,9 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_inform(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPv6 INFORM from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})")
+    Logger.info(
+      "DHCPv6 INFORM from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    )
 
     # INFORMATION-REQUEST - provide configuration without address allocation
     reply = create_information_reply(message)
@@ -304,12 +328,18 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_relay_forward(_message, client_ip, client_port, state) do
-    Logger.info("DHCPv6 RELAY-FORWARD from #{format_ip(client_ip)}:#{client_port} (not implemented)")
+    Logger.info(
+      "DHCPv6 RELAY-FORWARD from #{format_ip(client_ip)}:#{client_port} (not implemented)"
+    )
+
     {:continue, state}
   end
 
   defp handle_relay_reply(_message, client_ip, client_port, state) do
-    Logger.info("DHCPv6 RELAY-REPLY from #{format_ip(client_ip)}:#{client_port} (not implemented)")
+    Logger.info(
+      "DHCPv6 RELAY-REPLY from #{format_ip(client_ip)}:#{client_port} (not implemented)"
+    )
+
     {:continue, state}
   end
 
@@ -323,7 +353,10 @@ defmodule YellowDog.Dhcpv6.Handler do
         # Server DUID
         %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
         # Client DUID (echo back)
-        %DHCPv6.Message.Option{option_code: @option_client_id, option_data: get_client_duid(solicit)},
+        %DHCPv6.Message.Option{
+          option_code: @option_client_id,
+          option_data: get_client_duid(solicit)
+        },
         # IA_NA with IA_ADDR
         create_ia_na_option(lease),
         # Preference
@@ -338,17 +371,21 @@ defmodule YellowDog.Dhcpv6.Handler do
     %DHCPv6.Message{
       msg_type: @msg_type_reply,
       transaction_id: request.transaction_id,
-      options: [
-        # Server DUID
-        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
-        # Client DUID (echo back)
-        %DHCPv6.Message.Option{option_code: @option_client_id, option_data: get_client_duid(request)},
-        # IA_NA with IA_ADDR
-        create_ia_na_option(lease),
-        # DNS servers
-        create_dns_servers_option(pool.dns_servers)
-      ]
-      |> add_domain_list_option(pool.domain_name)
+      options:
+        [
+          # Server DUID
+          %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+          # Client DUID (echo back)
+          %DHCPv6.Message.Option{
+            option_code: @option_client_id,
+            option_data: get_client_duid(request)
+          },
+          # IA_NA with IA_ADDR
+          create_ia_na_option(lease),
+          # DNS servers
+          create_dns_servers_option(pool.dns_servers)
+        ]
+        |> add_domain_list_option(pool.domain_name)
     }
   end
 
@@ -358,15 +395,19 @@ defmodule YellowDog.Dhcpv6.Handler do
     %DHCPv6.Message{
       msg_type: @msg_type_reply,
       transaction_id: request.transaction_id,
-      options: [
-        # Server DUID
-        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
-        # Client DUID (echo back)
-        %DHCPv6.Message.Option{option_code: @option_client_id, option_data: get_client_duid(request)},
-        # DNS servers
-        create_dns_servers_option(pool.dns_servers)
-      ]
-      |> add_domain_list_option(pool.domain_name)
+      options:
+        [
+          # Server DUID
+          %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+          # Client DUID (echo back)
+          %DHCPv6.Message.Option{
+            option_code: @option_client_id,
+            option_data: get_client_duid(request)
+          },
+          # DNS servers
+          create_dns_servers_option(pool.dns_servers)
+        ]
+        |> add_domain_list_option(pool.domain_name)
     }
   end
 
@@ -376,7 +417,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     # IA_ADDR option (option 5) - IPv6 address + lifetimes
     ia_addr_data =
       ipv6_to_binary(lease.ip) <>
-      <<lease.preferred_lifetime::32, lease.valid_lifetime::32>>
+        <<lease.preferred_lifetime::32, lease.valid_lifetime::32>>
 
     ia_addr_option = %DHCPv6.Message.Option{
       option_code: @option_ia_addr,
@@ -384,9 +425,10 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
 
     # IA_NA option (option 3) - contains IA_ADDR
+    # IAID + T1 + T2 (0 = server decides)
     ia_na_data =
-      <<lease.iaid::32, 0::32, 0::32>> <>  # IAID + T1 + T2 (0 = server decides)
-      DHCP.Parameter.to_iodata(ia_addr_option)
+      <<lease.iaid::32, 0::32, 0::32>> <>
+        DHCP.Parameter.to_iodata(ia_addr_option)
 
     %DHCPv6.Message.Option{
       option_code: @option_ia_na,
@@ -404,6 +446,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp add_domain_list_option(options, domain) when domain in [nil, ""], do: options
+
   defp add_domain_list_option(options, domain) do
     # Encode domain name in DNS format (length-prefixed labels)
     domain_data = encode_domain_name(domain)
@@ -422,7 +465,8 @@ defmodule YellowDog.Dhcpv6.Handler do
     |> Enum.map_join(fn label ->
       <<byte_size(label)::8, label::binary>>
     end)
-    |> Kernel.<>(<<0>>)  # Terminating zero
+    # Terminating zero
+    |> Kernel.<>(<<0>>)
   end
 
   # Helper functions for extracting information from messages
@@ -496,7 +540,9 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     case Abyss.Transport.UDP.send(state.socket, client_ip, client_port, data) do
       :ok ->
-        Logger.debug("Sent DHCPv6 response type #{response.msg_type} to #{format_ip(client_ip)}:#{client_port}")
+        Logger.debug(
+          "Sent DHCPv6 response type #{response.msg_type} to #{format_ip(client_ip)}:#{client_port}"
+        )
 
       {:error, reason} ->
         Logger.error("Failed to send DHCPv6 response: #{inspect(reason)}")

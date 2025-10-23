@@ -13,7 +13,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   @table_name :dhcpv6_leases
   @ets_options [:named_table, :public, :set, read_concurrency: true]
-  @cleanup_interval 60_000  # Run cleanup every minute
+  # Run cleanup every minute
+  @cleanup_interval 60_000
 
   @type ipv6_address :: AddressPool.ipv6_address()
   @type duid :: AddressPool.duid()
@@ -107,6 +108,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   @spec get_lease(duid(), non_neg_integer()) :: {:ok, lease()} | {:error, :not_found}
   def get_lease(duid, iaid) do
     lease_key = make_lease_key(duid, iaid)
+
     case :ets.lookup(@table_name, lease_key) do
       [{^lease_key, lease}] ->
         # Check if lease is expired
@@ -184,7 +186,9 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     parsed_pools =
       Enum.map(pools, fn pool_config ->
         case AddressPool.new(pool_config) do
-          {:ok, pool} -> pool
+          {:ok, pool} ->
+            pool
+
           {:error, reason} ->
             Logger.error("Failed to create DHCPv6 address pool: #{inspect(reason)}")
             nil
@@ -230,6 +234,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     # For now, just release any lease with this IP
     # In production, mark IP as temporarily unavailable
     leases = list_leases()
+
     Enum.each(leases, fn lease ->
       if lease.ip == ip do
         lease_key = make_lease_key(lease.duid, lease.iaid)
@@ -254,6 +259,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     if :ets.whereis(@table_name) == :undefined do
       :ets.new(@table_name, @ets_options)
     end
+
     :ok
   end
 
@@ -270,7 +276,11 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         # Renew existing lease
         renewed_lease = renew_lease(existing_lease)
         :ets.insert(@table_name, {lease_key, renewed_lease})
-        Logger.info("Renewed DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}")
+
+        Logger.info(
+          "Renewed DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}"
+        )
+
         {:ok, renewed_lease}
 
       [] ->
@@ -308,7 +318,10 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       }
 
       :ets.insert(@table_name, {lease_key, lease})
-      Logger.info("Allocated new DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(ip)}")
+
+      Logger.info(
+        "Allocated new DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(ip)}"
+      )
 
       # Emit telemetry event
       :telemetry.execute(
@@ -325,13 +338,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   defp renew_lease(lease) do
-    %{lease |
-      expires_at: System.system_time(:second) + lease.valid_lifetime
-    }
+    %{lease | expires_at: System.system_time(:second) + lease.valid_lifetime}
   end
 
   defp cleanup_expired_leases do
     now = System.system_time(:second)
+
     expired_leases =
       @table_name
       |> :ets.tab2list()

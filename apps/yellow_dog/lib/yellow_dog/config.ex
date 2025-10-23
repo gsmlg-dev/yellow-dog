@@ -255,13 +255,16 @@ defmodule YellowDog.Config do
     case get_dns_zone(zone_name) do
       {:ok, zone_config} ->
         type_str = Map.get(zone_config, "type", "authoritative")
-        type = case type_str do
-          "authoritative" -> :authoritative
-          "stub" -> :stub
-          "forward" -> :forward
-          "cache" -> :cache
-          _ -> :authoritative
-        end
+
+        type =
+          case type_str do
+            "authoritative" -> :authoritative
+            "stub" -> :stub
+            "forward" -> :forward
+            "cache" -> :cache
+            _ -> :authoritative
+          end
+
         {:ok, type}
 
       {:error, :not_found} = error ->

@@ -44,7 +44,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       handle_dhcp_message(message, ip, port, state, start_time)
     rescue
       e ->
-        Logger.error("Error handling DHCPv4 message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}")
+        Logger.error(
+          "Error handling DHCPv4 message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}"
+        )
 
         # Emit telemetry event for error
         :telemetry.execute(
@@ -73,10 +75,12 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp handle_dhcp_message(message, client_ip, client_port, state, start_time) do
     case message.op do
-      1 ->  # BOOTREQUEST
+      # BOOTREQUEST
+      1 ->
         handle_boot_request(message, client_ip, client_port, state, start_time)
 
-      2 ->  # BOOTREPLY
+      # BOOTREPLY
+      2 ->
         Logger.debug("Received BOOTREPLY (should not happen on server)")
         {:continue, state}
 
@@ -104,12 +108,15 @@ defmodule YellowDog.Dhcpv4.Handler do
         handle_dhcp_inform(message, client_ip, client_port, state, start_time)
 
       msg_type when msg_type in [:offer, :ack, :nak] ->
-        Logger.debug("Received DHCP server message type: #{msg_type} (should not happen on server)")
+        Logger.debug(
+          "Received DHCP server message type: #{msg_type} (should not happen on server)"
+        )
+
         {:continue, state}
 
       _ ->
-      Logger.warning("DHCP message missing or unsupported message type option")
-      {:continue, state}
+        Logger.warning("DHCP message missing or unsupported message type option")
+        {:continue, state}
     end
   end
 
@@ -196,7 +203,8 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     # Handle inform - provide configuration parameters only
     ack = create_dhcp_ack_inform(message, client_ip)
-    send_dhcp_response(ack, client_ip, 68, state)  # Send to client port 68
+    # Send to client port 68
+    send_dhcp_response(ack, client_ip, 68, state)
 
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :inform_handled],
@@ -232,16 +240,17 @@ defmodule YellowDog.Dhcpv4.Handler do
     pool = get_pool_for_lease(lease)
 
     DHCPv4.Message.new()
-      |> Map.put(:op, 2)  # BOOTREPLY = 2
-      |> Map.put(:htype, discover.htype)
-      |> Map.put(:hlen, discover.hlen)
-      |> Map.put(:xid, discover.xid)
-      |> Map.put(:flags, discover.flags)
-      |> Map.put(:yiaddr, lease.ip)
-      |> Map.put(:siaddr, pool.gateway)
-      |> Map.put(:giaddr, discover.giaddr)
-      |> Map.put(:chaddr, discover.chaddr)
-      |> Map.put(:options, build_dhcp_options(2, pool, lease))
+    # BOOTREPLY = 2
+    |> Map.put(:op, 2)
+    |> Map.put(:htype, discover.htype)
+    |> Map.put(:hlen, discover.hlen)
+    |> Map.put(:xid, discover.xid)
+    |> Map.put(:flags, discover.flags)
+    |> Map.put(:yiaddr, lease.ip)
+    |> Map.put(:siaddr, pool.gateway)
+    |> Map.put(:giaddr, discover.giaddr)
+    |> Map.put(:chaddr, discover.chaddr)
+    |> Map.put(:options, build_dhcp_options(2, pool, lease))
   end
 
   defp create_dhcp_ack(request, _client_ip) do
@@ -269,17 +278,18 @@ defmodule YellowDog.Dhcpv4.Handler do
     pool = get_pool_for_lease(lease)
 
     DHCPv4.Message.new()
-      |> Map.put(:op, 2)  # BOOTREPLY = 2
-      |> Map.put(:htype, request.htype)
-      |> Map.put(:hlen, request.hlen)
-      |> Map.put(:xid, request.xid)
-      |> Map.put(:flags, request.flags)
-      |> Map.put(:ciaddr, request.ciaddr)
-      |> Map.put(:yiaddr, lease.ip)
-      |> Map.put(:siaddr, pool.gateway)
-      |> Map.put(:giaddr, request.giaddr)
-      |> Map.put(:chaddr, request.chaddr)
-      |> Map.put(:options, build_dhcp_options(5, pool, lease))
+    # BOOTREPLY = 2
+    |> Map.put(:op, 2)
+    |> Map.put(:htype, request.htype)
+    |> Map.put(:hlen, request.hlen)
+    |> Map.put(:xid, request.xid)
+    |> Map.put(:flags, request.flags)
+    |> Map.put(:ciaddr, request.ciaddr)
+    |> Map.put(:yiaddr, lease.ip)
+    |> Map.put(:siaddr, pool.gateway)
+    |> Map.put(:giaddr, request.giaddr)
+    |> Map.put(:chaddr, request.chaddr)
+    |> Map.put(:options, build_dhcp_options(5, pool, lease))
   end
 
   # create_dhcp_nak function removed - unused in current implementation
@@ -302,23 +312,30 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp build_dhcp_ack_inform(inform, client_ip, pool) do
     DHCPv4.Message.new()
-      |> Map.put(:op, 2)  # BOOTREPLY = 2
-      |> Map.put(:htype, inform.htype)
-      |> Map.put(:hlen, inform.hlen)
-      |> Map.put(:xid, inform.xid)
-      |> Map.put(:flags, inform.flags)
-      |> Map.put(:ciaddr, client_ip)
-      |> Map.put(:siaddr, pool.gateway)
-      |> Map.put(:giaddr, inform.giaddr)
-      |> Map.put(:chaddr, inform.chaddr)
-      |> Map.put(:options, [
-          %DHCPv4.Message.Option{type: 53, length: 1, value: <<5>>},  # DHCPACK = 5
-          %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},  # server identifier
-          %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},  # subnet mask
-          %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},  # router
-          %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},  # DNS servers
-          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}  # :end
-        ])
+    # BOOTREPLY = 2
+    |> Map.put(:op, 2)
+    |> Map.put(:htype, inform.htype)
+    |> Map.put(:hlen, inform.hlen)
+    |> Map.put(:xid, inform.xid)
+    |> Map.put(:flags, inform.flags)
+    |> Map.put(:ciaddr, client_ip)
+    |> Map.put(:siaddr, pool.gateway)
+    |> Map.put(:giaddr, inform.giaddr)
+    |> Map.put(:chaddr, inform.chaddr)
+    |> Map.put(:options, [
+      # DHCPACK = 5
+      %DHCPv4.Message.Option{type: 53, length: 1, value: <<5>>},
+      # server identifier
+      %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
+      # subnet mask
+      %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
+      # router
+      %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
+      # DNS servers
+      %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
+      # :end
+      %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+    ])
   end
 
   defp send_dhcp_response(response, client_ip, client_port, state) do
@@ -343,21 +360,36 @@ defmodule YellowDog.Dhcpv4.Handler do
     dns_servers_binary = encode_dns_servers(pool.dns_servers)
 
     base_options = [
-      %DHCPv4.Message.Option{type: 53, length: 1, value: <<message_type>>},  # Message type
-      %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},  # Server identifier
-      %DHCPv4.Message.Option{type: 51, length: 4, value: lease_time_binary},  # Lease time
-      %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},  # Subnet mask
-      %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},  # Router
-      %DHCPv4.Message.Option{type: 6, length: byte_size(dns_servers_binary),
-                              value: dns_servers_binary}  # DNS servers
+      # Message type
+      %DHCPv4.Message.Option{type: 53, length: 1, value: <<message_type>>},
+      # Server identifier
+      %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
+      # Lease time
+      %DHCPv4.Message.Option{type: 51, length: 4, value: lease_time_binary},
+      # Subnet mask
+      %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
+      # Router
+      %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
+      %DHCPv4.Message.Option{
+        type: 6,
+        length: byte_size(dns_servers_binary),
+        # DNS servers
+        value: dns_servers_binary
+      }
     ]
 
     # Add domain name if present
     options_with_domain =
       case pool.domain_name do
-        nil -> base_options
-        "" -> base_options
-        domain -> base_options ++ [%DHCPv4.Message.Option{type: 15, length: byte_size(domain), value: domain}]
+        nil ->
+          base_options
+
+        "" ->
+          base_options
+
+        domain ->
+          base_options ++
+            [%DHCPv4.Message.Option{type: 15, length: byte_size(domain), value: domain}]
       end
 
     # Add end option

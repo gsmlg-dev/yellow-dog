@@ -68,12 +68,18 @@ defmodule YellowDog.Application do
               end
 
             {:error, reason} ->
-              Logger.warning("Failed to parse TOML from #{config_file_path}: #{inspect(reason)}, using defaults")
+              Logger.warning(
+                "Failed to parse TOML from #{config_file_path}: #{inspect(reason)}, using defaults"
+              )
+
               get_default_config()
           end
 
         {:error, reason} ->
-          Logger.warning("Failed to read config file #{config_file_path}: #{inspect(reason)}, using defaults")
+          Logger.warning(
+            "Failed to read config file #{config_file_path}: #{inspect(reason)}, using defaults"
+          )
+
           get_default_config()
       end
     else
@@ -243,8 +249,10 @@ defmodule YellowDog.Application do
     case String.split(ip_string, ".") do
       [a, b, c, d] when length([a, b, c, d]) == 4 ->
         {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
+
       _ ->
-        {0, 0, 0, 0}  # fallback
+        # fallback
+        {0, 0, 0, 0}
     end
   end
 
@@ -253,12 +261,14 @@ defmodule YellowDog.Application do
 
   # Converts IPv6 address string to tuple format for DHCPv6
   defp convert_ipv6("::"), do: {0, 0, 0, 0, 0, 0, 0, 0}
+
   defp convert_ipv6(ip_string) when is_binary(ip_string) do
     case :inet.parse_ipv6_address(String.to_charlist(ip_string)) do
       {:ok, ip_tuple} -> ip_tuple
       {:error, _} -> {0, 0, 0, 0, 0, 0, 0, 0}
     end
   end
+
   defp convert_ipv6(ip_tuple) when is_tuple(ip_tuple), do: ip_tuple
   defp convert_ipv6(_), do: {0, 0, 0, 0, 0, 0, 0, 0}
 
@@ -310,6 +320,7 @@ defmodule YellowDog.Application do
   defp parse_dns_servers(servers) when is_list(servers) do
     Enum.map(servers, &parse_ip_or_tuple/1)
   end
+
   defp parse_dns_servers(_), do: []
 
   # Parses DHCPv6 pool configuration from TOML
@@ -340,13 +351,15 @@ defmodule YellowDog.Application do
   defp parse_ipv6_dns_servers(servers) when is_list(servers) do
     Enum.map(servers, &parse_ipv6_or_tuple/1)
   end
+
   defp parse_ipv6_dns_servers(_), do: []
 
   # Gets the YellowDog.Console children
   defp get_console_children do
     [
       YellowDog.Console.Telemetry,
-      {DNSCluster, query: Application.get_env(:yellow_dog_console, :dns_cluster_query) || :ignore},
+      {DNSCluster,
+       query: Application.get_env(:yellow_dog_console, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: YellowDogConsole.PubSub},
       YellowDog.Console.Endpoint
     ]

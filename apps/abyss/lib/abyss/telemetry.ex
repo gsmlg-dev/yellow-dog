@@ -376,12 +376,13 @@ defmodule Abyss.Telemetry do
     # Use process dictionary to store table reference for tests
     case Process.get(@metrics_table) do
       nil ->
-        table_id = :ets.new(@metrics_table, [
-          :set,
-          :public,
-          {:read_concurrency, true},
-          {:write_concurrency, true}
-        ])
+        table_id =
+          :ets.new(@metrics_table, [
+            :set,
+            :public,
+            {:read_concurrency, true},
+            {:write_concurrency, true}
+          ])
 
         Process.put(@metrics_table, table_id)
 
@@ -411,22 +412,33 @@ defmodule Abyss.Telemetry do
         case :ets.whereis(@metrics_table) do
           :undefined ->
             # Create named table if it doesn't exist
-            table_id = :ets.new(@metrics_table, [
-              :set,
-              :public,
-              :named_table,
-              {:read_concurrency, true},
-              {:write_concurrency, true}
-            ])
+            table_id =
+              :ets.new(@metrics_table, [
+                :set,
+                :public,
+                :named_table,
+                {:read_concurrency, true},
+                {:write_concurrency, true}
+              ])
 
             # Initialize counters
             :ets.insert(table_id, {:connections_active, 0})
             :ets.insert(table_id, {:connections_total, 0})
             :ets.insert(table_id, {:accepts_total, 0})
             :ets.insert(table_id, {:responses_total, 0})
-            :ets.insert(table_id, {:accept_rate_window_start, System.monotonic_time(:millisecond)})
+
+            :ets.insert(
+              table_id,
+              {:accept_rate_window_start, System.monotonic_time(:millisecond)}
+            )
+
             :ets.insert(table_id, {:accepts_in_window, 0})
-            :ets.insert(table_id, {:response_rate_window_start, System.monotonic_time(:millisecond)})
+
+            :ets.insert(
+              table_id,
+              {:response_rate_window_start, System.monotonic_time(:millisecond)}
+            )
+
             :ets.insert(table_id, {:responses_in_window, 0})
 
             table_id
@@ -452,6 +464,7 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :accepts_total) do
       [{:accepts_total, count}] ->
         :ets.insert(table, {:accepts_total, count + 1})
+
       [] ->
         :ets.insert(table, {:accepts_total, 1})
     end
@@ -463,6 +476,7 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :connections_active) do
       [{:connections_active, count}] ->
         :ets.insert(table, {:connections_active, count + 1})
+
       [] ->
         :ets.insert(table, {:connections_active, 1})
     end
@@ -471,6 +485,7 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :connections_total) do
       [{:connections_total, count}] ->
         :ets.insert(table, {:connections_total, count + 1})
+
       [] ->
         :ets.insert(table, {:connections_total, 1})
     end
@@ -490,6 +505,7 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :connections_active) do
       [{:connections_active, count}] when count > 0 ->
         :ets.insert(table, {:connections_active, count - 1})
+
       _ ->
         :ok
     end
@@ -509,6 +525,7 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :responses_total) do
       [{:responses_total, count}] ->
         :ets.insert(table, {:responses_total, count + 1})
+
       [] ->
         :ets.insert(table, {:responses_total, 1})
     end
@@ -534,25 +551,29 @@ defmodule Abyss.Telemetry do
     init_metrics()
     table = get_metrics_table()
 
-    connections_active = case :ets.lookup(table, :connections_active) do
-      [{:connections_active, count}] -> count
-      [] -> 0
-    end
+    connections_active =
+      case :ets.lookup(table, :connections_active) do
+        [{:connections_active, count}] -> count
+        [] -> 0
+      end
 
-    connections_total = case :ets.lookup(table, :connections_total) do
-      [{:connections_total, count}] -> count
-      [] -> 0
-    end
+    connections_total =
+      case :ets.lookup(table, :connections_total) do
+        [{:connections_total, count}] -> count
+        [] -> 0
+      end
 
-    accepts_total = case :ets.lookup(table, :accepts_total) do
-      [{:accepts_total, count}] -> count
-      [] -> 0
-    end
+    accepts_total =
+      case :ets.lookup(table, :accepts_total) do
+        [{:accepts_total, count}] -> count
+        [] -> 0
+      end
 
-    responses_total = case :ets.lookup(table, :responses_total) do
-      [{:responses_total, count}] -> count
-      [] -> 0
-    end
+    responses_total =
+      case :ets.lookup(table, :responses_total) do
+        [{:responses_total, count}] -> count
+        [] -> 0
+      end
 
     accepts_per_sec = get_accept_rate()
     responses_per_sec = get_response_rate()
@@ -604,10 +625,12 @@ defmodule Abyss.Telemetry do
           case :ets.lookup(table, :accepts_in_window) do
             [{:accepts_in_window, count}] ->
               :ets.insert(table, {:accepts_in_window, count + 1})
+
             [] ->
               :ets.insert(table, {:accepts_in_window, 1})
           end
         end
+
       [] ->
         :ets.insert(table, {:accept_rate_window_start, current_time})
         :ets.insert(table, {:accepts_in_window, 1})
@@ -630,10 +653,12 @@ defmodule Abyss.Telemetry do
           case :ets.lookup(table, :responses_in_window) do
             [{:responses_in_window, count}] ->
               :ets.insert(table, {:responses_in_window, count + 1})
+
             [] ->
               :ets.insert(table, {:responses_in_window, 1})
           end
         end
+
       [] ->
         :ets.insert(table, {:response_rate_window_start, current_time})
         :ets.insert(table, {:responses_in_window, 1})
@@ -647,17 +672,20 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :accept_rate_window_start) do
       [{:accept_rate_window_start, window_start}] ->
         time_diff = current_time - window_start
+
         if time_diff > 0 do
           case :ets.lookup(table, :accepts_in_window) do
             [{:accepts_in_window, count}] ->
               # Calculate rate per second
               round(count * 1000 / time_diff)
+
             [] ->
               0
           end
         else
           0
         end
+
       [] ->
         0
     end
@@ -670,17 +698,20 @@ defmodule Abyss.Telemetry do
     case :ets.lookup(table, :response_rate_window_start) do
       [{:response_rate_window_start, window_start}] ->
         time_diff = current_time - window_start
+
         if time_diff > 0 do
           case :ets.lookup(table, :responses_in_window) do
             [{:responses_in_window, count}] ->
               # Calculate rate per second
               round(count * 1000 / time_diff)
+
             [] ->
               0
           end
         else
           0
         end
+
       [] ->
         0
     end

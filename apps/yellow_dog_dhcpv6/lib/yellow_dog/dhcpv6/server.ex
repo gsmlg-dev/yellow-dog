@@ -54,7 +54,8 @@ defmodule YellowDog.Dhcpv6.Server do
       shutdown_timeout: 15_000,
       num_listeners: 10,
       num_connections: 1000,
-      max_packet_size: 1500,  # DHCPv6 can use larger packets
+      # DHCPv6 can use larger packets
+      max_packet_size: 1500,
       rate_limit_enabled: true,
       rate_limit_max_packets: 100,
       rate_limit_window_ms: 1000
@@ -101,10 +102,14 @@ defmodule YellowDog.Dhcpv6.Server do
       case Keyword.get(opts, :listen) do
         nil ->
           {config_keywords, opts}
+
         listen_ip ->
           transport_opts = Keyword.get(config_keywords, :transport_options, [])
           updated_transport_opts = Keyword.put(transport_opts, :ip, listen_ip)
-          updated_keywords = Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
+          updated_keywords =
+            Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
           {updated_keywords, Keyword.delete(opts, :listen)}
       end
 

@@ -19,11 +19,15 @@ defmodule YellowDog.Mdns.TestHelper do
   def create_mdns_query(domain) do
     header = %DNS.Message.Header{
       id: 0x1234,
-      qr: 0,     # Query
-      opcode: DNS.Message.OpCode.new(0),  # Standard query
+      # Query
+      qr: 0,
+      # Standard query
+      opcode: DNS.Message.OpCode.new(0),
       aa: 0,
-      tc: 0,     # Truncation
-      rd: 1,     # Recursion desired
+      # Truncation
+      tc: 0,
+      # Recursion desired
+      rd: 1,
       ra: 0,
       z: 0,
       ad: 0,
@@ -53,9 +57,12 @@ defmodule YellowDog.Mdns.TestHelper do
   def create_mdns_response(domain, ip_address) do
     header = %DNS.Message.Header{
       id: 0x1234,
-      qr: 1,     # Response
-      opcode: DNS.Message.OpCode.new(0),  # Standard query
-      aa: 1,     # Authoritative answer
+      # Response
+      qr: 1,
+      # Standard query
+      opcode: DNS.Message.OpCode.new(0),
+      # Authoritative answer
+      aa: 1,
       tc: 0,
       rd: 0,
       ra: 0,
@@ -157,7 +164,8 @@ defmodule YellowDog.Mdns.TestHelper do
   @spec create_malformed_message() :: binary()
   def create_malformed_message do
     # This is not a valid DNS message - just random bytes
-    <<0x12, 0x34, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x74, 0x65, 0x73, 0x74>>
+    <<0x12, 0x34, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x74, 0x65,
+      0x73, 0x74>>
   end
 
   @doc """
@@ -219,7 +227,8 @@ defmodule YellowDog.Mdns.TestHelper do
   @spec create_test_state() :: map()
   def create_test_state do
     %{
-      socket: :test_socket,  # Mock socket atom instead of reference
+      # Mock socket atom instead of reference
+      socket: :test_socket,
       server_config: %{},
       connection_id: make_ref(),
       parent: self(),
@@ -242,7 +251,11 @@ defmodule YellowDog.Mdns.TestHelper do
   Asserts that a specific telemetry event was emitted.
   """
   @spec assert_telemetry_event([atom()], map(), map()) :: boolean()
-  def assert_telemetry_event(_event_name, _expected_measurements \\ %{}, _expected_metadata \\ %{}) do
+  def assert_telemetry_event(
+        _event_name,
+        _expected_measurements \\ %{},
+        _expected_metadata \\ %{}
+      ) do
     # Simplified assertion that always passes in test environment
     # since we can't capture real telemetry events
     true

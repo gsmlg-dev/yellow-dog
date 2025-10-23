@@ -16,10 +16,11 @@ defmodule Abyss.Transport.UDP.BroadcastTest do
     end
 
     test "allows user options for multicast configuration" do
-      assert {:ok, socket} = Broadcast.listen(0, [
-        ip: {0, 0, 0, 0},
-        multicast_ttl: 255
-      ])
+      assert {:ok, socket} =
+               Broadcast.listen(0,
+                 ip: {0, 0, 0, 0},
+                 multicast_ttl: 255
+               )
 
       {:ok, opts} = Broadcast.getopts(socket, [:multicast_ttl])
       assert opts[:multicast_ttl] == 255
@@ -42,7 +43,7 @@ defmodule Abyss.Transport.UDP.BroadcastTest do
 
   describe "send_broadcast/4" do
     test "sends broadcast messages" do
-      {:ok, socket} = Broadcast.open(0, [ip: {0, 0, 0, 0}])
+      {:ok, socket} = Broadcast.open(0, ip: {0, 0, 0, 0})
 
       # Send to localhost broadcast (won't actually broadcast on loopback)
       result = Broadcast.send_broadcast(socket, {127, 0, 0, 1}, 9999, "test message")
@@ -64,7 +65,7 @@ defmodule Abyss.Transport.UDP.BroadcastTest do
       assert {:ok, _opts} = Broadcast.getopts(socket, [:active])
 
       # Test setopts
-      assert :ok = Broadcast.setopts(socket, [active: true])
+      assert :ok = Broadcast.setopts(socket, active: true)
 
       # Test sockname
       assert {:ok, {_ip, _port}} = Broadcast.sockname(socket)

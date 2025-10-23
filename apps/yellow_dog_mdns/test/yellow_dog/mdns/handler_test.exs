@@ -88,7 +88,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       # Create a simple query with qr=1 (response) to test response handling
       header = %DNS.Message.Header{
         id: 0x1234,
-        qr: 1,     # Response
+        # Response
+        qr: 1,
         opcode: DNS.Message.OpCode.new(0),
         aa: 0,
         tc: 0,

@@ -40,7 +40,8 @@ defmodule Abyss.TelemetryMetricsTest do
       assert metrics.connections_active == 1
       assert metrics.connections_total == 1
       assert metrics.accepts_total == 1
-      assert metrics.accepts_per_second >= 0  # Could be 0 if window reset immediately
+      # Could be 0 if window reset immediately
+      assert metrics.accepts_per_second >= 0
     end
 
     test "tracks connection closure" do
@@ -98,7 +99,8 @@ defmodule Abyss.TelemetryMetricsTest do
     test "calculates response rate over time" do
       # Track multiple responses
       for i <- 1..5 do
-        Telemetry.track_response_sent(i * 10)  # Varying response times
+        # Varying response times
+        Telemetry.track_response_sent(i * 10)
       end
 
       metrics = Telemetry.get_metrics()

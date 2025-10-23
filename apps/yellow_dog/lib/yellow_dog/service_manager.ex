@@ -183,9 +183,11 @@ defmodule YellowDog.ServiceManager do
         try do
           # Get supervisor info
           children = Supervisor.which_children(pid)
-          running_children = Enum.count(children, fn {_id, child_pid, _type, _modules} ->
-            is_pid(child_pid) and Process.alive?(child_pid)
-          end)
+
+          running_children =
+            Enum.count(children, fn {_id, child_pid, _type, _modules} ->
+              is_pid(child_pid) and Process.alive?(child_pid)
+            end)
 
           # Get process info
           process_info = Process.info(pid)
@@ -194,15 +196,16 @@ defmodule YellowDog.ServiceManager do
 
           stats = get_service_stats(service)
 
-          {:ok, %{
-            running: true,
-            pid: pid,
-            uptime: uptime,
-            children_count: length(children),
-            running_children: running_children,
-            memory: Keyword.get(process_info, :memory, 0),
-            stats: stats
-          }}
+          {:ok,
+           %{
+             running: true,
+             pid: pid,
+             uptime: uptime,
+             children_count: length(children),
+             running_children: running_children,
+             memory: Keyword.get(process_info, :memory, 0),
+             stats: stats
+           }}
         rescue
           _ -> {:error, :info_unavailable}
         end
@@ -213,10 +216,12 @@ defmodule YellowDog.ServiceManager do
     # Estimate start time based on process dictionary
     # This is an approximation since Erlang doesn't track exact start time
     info = Process.info(pid, :reductions)
+
     case info do
       {:reductions, _} ->
         # Return current time minus estimated runtime
         System.system_time(:second)
+
       _ ->
         System.system_time(:second)
     end
@@ -250,58 +255,63 @@ defmodule YellowDog.ServiceManager do
 
     details = []
 
-    details = if status.running do
-      base_details = details ++ [
-        "  Uptime: #{status.uptime}",
-        "  Children: #{status.running_children}/#{status.children_count}",
-        "  Memory: #{format_bytes(status.memory)}"
-      ]
-
-      # Add service-specific stats
-      stats_details = case service do
-        :mdns ->
-          if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
+    details =
+      if status.running do
+        base_details =
+          details ++
             [
-              "  Cache: #{Map.get(status.stats, :active_entries, 0)} active entries, #{Map.get(status.stats, :expired_entries, 0)} expired"
+              "  Uptime: #{status.uptime}",
+              "  Children: #{status.running_children}/#{status.children_count}",
+              "  Memory: #{format_bytes(status.memory)}"
             ]
-          else
-            []
+
+        # Add service-specific stats
+        stats_details =
+          case service do
+            :mdns ->
+              if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
+                [
+                  "  Cache: #{Map.get(status.stats, :active_entries, 0)} active entries, #{Map.get(status.stats, :expired_entries, 0)} expired"
+                ]
+              else
+                []
+              end
+
+            :dhcpv4 ->
+              if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
+                [
+                  "  Leases: #{Map.get(status.stats, :active_leases, 0)} active, #{Map.get(status.stats, :total_leases, 0)} total"
+                ]
+              else
+                []
+              end
+
+            :dhcpv6 ->
+              if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
+                [
+                  "  Leases: #{Map.get(status.stats, :active_leases, 0)} active, #{Map.get(status.stats, :total_leases, 0)} total"
+                ]
+              else
+                []
+              end
+
+            :dns ->
+              # DNS stats to be implemented
+              []
           end
 
-        :dhcpv4 ->
-          if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
-            [
-              "  Leases: #{Map.get(status.stats, :active_leases, 0)} active, #{Map.get(status.stats, :total_leases, 0)} total"
-            ]
-          else
-            []
-          end
-
-        :dhcpv6 ->
-          if is_map(status.stats) and not Map.has_key?(status.stats, :error) do
-            [
-              "  Leases: #{Map.get(status.stats, :active_leases, 0)} active, #{Map.get(status.stats, :total_leases, 0)} total"
-            ]
-          else
-            []
-          end
-
-        :dns ->
-          # DNS stats to be implemented
-          []
+        base_details ++ stats_details
+      else
+        details
       end
 
-      base_details ++ stats_details
-    else
-      details
-    end
-
-    details = if status.config do
-      config_str = format_config(service, status.config)
-      if config_str, do: details ++ ["  Config: #{config_str}"], else: details
-    else
-      details
-    end
+    details =
+      if status.config do
+        config_str = format_config(service, status.config)
+        if config_str, do: details ++ ["  Config: #{config_str}"], else: details
+      else
+        details
+      end
 
     ([status_line] ++ details) |> Enum.join("\n")
   end
@@ -336,6 +346,9 @@ defmodule YellowDog.ServiceManager do
 
   defp format_bytes(bytes) when bytes < 1024, do: "#{bytes}B"
   defp format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 2)}KB"
-  defp format_bytes(bytes) when bytes < 1024 * 1024 * 1024, do: "#{Float.round(bytes / (1024 * 1024), 2)}MB"
+
+  defp format_bytes(bytes) when bytes < 1024 * 1024 * 1024,
+    do: "#{Float.round(bytes / (1024 * 1024), 2)}MB"
+
   defp format_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024 * 1024), 2)}GB"
 end

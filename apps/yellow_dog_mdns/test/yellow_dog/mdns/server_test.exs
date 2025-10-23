@@ -13,11 +13,12 @@ defmodule YellowDog.Mdns.ServerTest do
         capture_log(fn ->
           # This will try to start the server but may fail due to Config unavailability
           # That's expected behavior in test environment
-          result = try do
-            Server.start_link([])
-          rescue
-            UndefinedFunctionError -> {:error, :config_unavailable}
-          end
+          result =
+            try do
+              Server.start_link([])
+            rescue
+              UndefinedFunctionError -> {:error, :config_unavailable}
+            end
 
           # The server should attempt to start (and may fail due to Config)
           case result do

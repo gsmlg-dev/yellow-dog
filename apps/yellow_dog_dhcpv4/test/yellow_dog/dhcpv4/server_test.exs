@@ -11,11 +11,12 @@ defmodule YellowDog.Dhcpv4.ServerTest do
       _log =
         capture_log(fn ->
           # Direct test of the disabled case - this will return :ignore since Config is not available
-          result = try do
-            Server.start_link([])
-          rescue
-            UndefinedFunctionError -> :ignore
-          end
+          result =
+            try do
+              Server.start_link([])
+            rescue
+              UndefinedFunctionError -> :ignore
+            end
 
           assert result == :ignore
         end)

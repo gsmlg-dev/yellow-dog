@@ -36,7 +36,10 @@ defmodule YellowDog.DnsTest do
       child_spec = YellowDog.Dns.child_spec(server_options: [port: 5353])
 
       assert is_map(child_spec)
-      assert child_spec.start == {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 5353]]]}
+
+      assert child_spec.start ==
+               {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 5353]]]}
+
       assert is_tuple(child_spec.start)
     end
   end
@@ -75,7 +78,8 @@ defmodule YellowDog.DnsTest do
       assert config.shutdown_timeout == 5_000
       assert config.num_listeners == 50
       assert config.num_connections == 10_000
-      assert config.max_packet_size == 512  # DNS UDP limit
+      # DNS UDP limit
+      assert config.max_packet_size == 512
       assert config.rate_limit_enabled == true
     end
 

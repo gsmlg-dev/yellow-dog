@@ -135,8 +135,10 @@ defmodule YellowDog.Dns.ServerTest do
       config = Server.get_config()
 
       # DNS queries should be fast
-      assert config.read_timeout == 5_000  # 5 seconds
-      assert config.shutdown_timeout == 5_000  # 5 seconds
+      # 5 seconds
+      assert config.read_timeout == 5_000
+      # 5 seconds
+      assert config.shutdown_timeout == 5_000
     end
 
     test "listener pool size is appropriate for DNS traffic" do

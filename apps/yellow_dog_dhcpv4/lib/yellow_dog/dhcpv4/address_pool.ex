@@ -220,7 +220,9 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     case String.split(ip_string, ".") do
       [a, b, c, d] ->
         try do
-          {:ok, {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}}
+          {:ok,
+           {String.to_integer(a), String.to_integer(b), String.to_integer(c),
+            String.to_integer(d)}}
         rescue
           _ -> {:error, "Invalid IP address string: #{ip_string}"}
         end

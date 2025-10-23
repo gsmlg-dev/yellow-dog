@@ -13,7 +13,8 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   @table_name :dhcpv4_leases
   @ets_options [:named_table, :public, :set, read_concurrency: true]
-  @cleanup_interval 60_000  # Run cleanup every minute
+  # Run cleanup every minute
+  @cleanup_interval 60_000
 
   @type ip_address :: AddressPool.ip_address()
   @type mac_address :: AddressPool.mac_address()
@@ -180,7 +181,9 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     parsed_pools =
       Enum.map(pools, fn pool_config ->
         case AddressPool.new(pool_config) do
-          {:ok, pool} -> pool
+          {:ok, pool} ->
+            pool
+
           {:error, reason} ->
             Logger.error("Failed to create address pool: #{inspect(reason)}")
             nil
@@ -244,6 +247,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     if :ets.whereis(@table_name) == :undefined do
       :ets.new(@table_name, @ets_options)
     end
+
     :ok
   end
 
@@ -310,11 +314,16 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   defp renew_lease(lease, hostname) do
-    %{lease | expires_at: System.system_time(:second) + lease.lease_time, hostname: hostname || lease.hostname}
+    %{
+      lease
+      | expires_at: System.system_time(:second) + lease.lease_time,
+        hostname: hostname || lease.hostname
+    }
   end
 
   defp cleanup_expired_leases do
     now = System.system_time(:second)
+
     expired_count =
       @table_name
       |> :ets.tab2list()

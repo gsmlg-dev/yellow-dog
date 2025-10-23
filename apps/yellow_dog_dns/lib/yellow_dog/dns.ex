@@ -110,5 +110,4 @@ defmodule YellowDog.Dns do
   def stats do
     %{info: "DNS statistics not yet implemented"}
   end
-
 end

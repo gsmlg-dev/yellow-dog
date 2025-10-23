@@ -171,7 +171,10 @@ defmodule Abyss.Listener do
   end
 
   @impl GenServer
-  def handle_info(:start_listening, %{listener_socket: listener_socket, transport: transport} = state) do
+  def handle_info(
+        :start_listening,
+        %{listener_socket: listener_socket, transport: transport} = state
+      ) do
     if state.is_listening do
       {:noreply, state}
     else
@@ -244,7 +247,8 @@ defmodule Abyss.Listener do
 
   def handle_info(
         :do_recv,
-        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} = state
+        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} =
+          state
       ) do
     Abyss.Telemetry.untimed_span_event(state.listener_span, :waiting, %{}, %{
       listener_id: state.listener_id,
@@ -394,7 +398,8 @@ defmodule Abyss.Listener do
   @impl GenServer
   def handle_continue(
         :listening,
-        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} = state
+        %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} =
+          state
       ) do
     Abyss.Telemetry.untimed_span_event(state.listener_span, :waiting, %{}, %{
       listener_id: state.listener_id,

@@ -52,7 +52,8 @@ defmodule YellowDog.Dns.Server do
       shutdown_timeout: 5_000,
       num_listeners: 50,
       num_connections: 10_000,
-      max_packet_size: 512,  # DNS UDP limit
+      # DNS UDP limit
+      max_packet_size: 512,
       rate_limit_enabled: true,
       rate_limit_max_packets: 1000,
       rate_limit_window_ms: 1000
@@ -80,6 +81,7 @@ defmodule YellowDog.Dns.Server do
             port: port,
             pid: inspect(abyss_pid)
           })
+
           {:ok, %{abyss_pid: abyss_pid, config: server_config}}
 
         {:error, reason} ->
@@ -87,6 +89,7 @@ defmodule YellowDog.Dns.Server do
             error: inspect(reason),
             port: port
           })
+
           {:stop, reason}
       end
     end)
@@ -110,12 +113,15 @@ defmodule YellowDog.Dns.Server do
     listen = apply(YellowDog.Config, :get, [:dns, :listen]) || "0.0.0.0"
 
     # Convert listen IP string to tuple format
-    listen_ip = case parse_ip(listen) do
-      {:ok, ip} -> ip
-      {:error, _} ->
-        Telemetry.warning("Invalid listen IP, using default", %{listen: listen})
-        {0, 0, 0, 0}
-    end
+    listen_ip =
+      case parse_ip(listen) do
+        {:ok, ip} ->
+          ip
+
+        {:error, _} ->
+          Telemetry.warning("Invalid listen IP, using default", %{listen: listen})
+          {0, 0, 0, 0}
+      end
 
     # Build config with YellowDog config values
     config_keywords =
@@ -131,13 +137,18 @@ defmodule YellowDog.Dns.Server do
       case Keyword.get(opts, :listen) do
         nil ->
           {config_keywords, opts}
+
         listen_opt ->
           case parse_ip(listen_opt) do
             {:ok, ip} ->
               transport_opts = Keyword.get(config_keywords, :transport_options, [])
               updated_transport_opts = Keyword.put(transport_opts, :ip, ip)
-              updated_keywords = Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
+              updated_keywords =
+                Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
               {updated_keywords, Keyword.delete(opts, :listen)}
+
             {:error, _} ->
               Telemetry.warning("Invalid listen IP in opts, ignoring", %{listen: listen_opt})
               {config_keywords, Keyword.delete(opts, :listen)}
@@ -157,7 +168,9 @@ defmodule YellowDog.Dns.Server do
     charlist = String.to_charlist(ip_str)
 
     case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} -> {:ok, ip}
+      {:ok, ip} ->
+        {:ok, ip}
+
       {:error, _} ->
         case :inet.parse_ipv6_address(charlist) do
           {:ok, ip} -> {:ok, ip}
@@ -170,10 +183,12 @@ defmodule YellowDog.Dns.Server do
   defp parse_ip(_), do: {:error, :invalid_ip}
 
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
   defp format_ip({a, b, c, d, e, f, g, h}) do
     parts = [a, b, c, d, e, f, g, h]
     hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
     Enum.join(hex_parts, ":")
   end
+
   defp format_ip(other), do: inspect(other)
 end

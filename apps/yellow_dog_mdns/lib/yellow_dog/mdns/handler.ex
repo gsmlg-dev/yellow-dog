@@ -92,7 +92,9 @@ defmodule YellowDog.Mdns.Handler do
     question_count = length(message.qdlist)
     answer_count = length(message.anlist)
 
-    Logger.debug("Received mDNS #{message_type} from #{format_ip(ip)}:#{port} (#{question_count} questions, #{answer_count} answers)")
+    Logger.debug(
+      "Received mDNS #{message_type} from #{format_ip(ip)}:#{port} (#{question_count} questions, #{answer_count} answers)"
+    )
 
     # Check if this is a .local domain message
     if has_local_domain?(message) do

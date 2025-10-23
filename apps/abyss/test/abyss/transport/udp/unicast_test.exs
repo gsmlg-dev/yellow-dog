@@ -18,7 +18,7 @@ defmodule Abyss.Transport.UDP.UnicastTest do
     test "allows user options to override defaults" do
       # Note: active and broadcast are hardcoded, so user can't override them
       # But other options like buffer sizes can be customized
-      assert {:ok, socket} = Unicast.listen(0, [recbuf: 32768])
+      assert {:ok, socket} = Unicast.listen(0, recbuf: 32768)
 
       {:ok, opts} = Unicast.getopts(socket, [:recbuf, :active, :broadcast])
       # System may adjust buffer size, so just verify it was set to something
@@ -52,6 +52,7 @@ defmodule Abyss.Transport.UDP.UnicastTest do
 
       # Spawn a process to echo messages back
       parent = self()
+
       spawn(fn ->
         {:ok, {ip, client_port, data}} = Unicast.recv(server_socket, 0, 1000)
         send(parent, :server_received)
@@ -78,7 +79,7 @@ defmodule Abyss.Transport.UDP.UnicastTest do
       assert {:ok, _opts} = Unicast.getopts(socket, [:active])
 
       # Test setopts
-      assert :ok = Unicast.setopts(socket, [active: false])
+      assert :ok = Unicast.setopts(socket, active: false)
 
       # Test sockname
       assert {:ok, {_ip, _port}} = Unicast.sockname(socket)

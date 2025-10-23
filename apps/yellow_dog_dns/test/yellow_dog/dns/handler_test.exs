@@ -48,7 +48,7 @@ defmodule YellowDog.Dns.Handler.UDPTest do
 
     test "format_ip/1 formats IPv6 addresses correctly" do
       # Test indirectly through handle_error
-      assert Handler.handle_error({:test_error, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 1}}, %{}) ==
+      assert Handler.handle_error({:test_error, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}}, %{}) ==
                {:continue, %{}}
     end
   end

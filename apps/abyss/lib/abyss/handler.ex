@@ -355,6 +355,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -381,6 +382,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -406,6 +408,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -438,6 +441,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -464,6 +468,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -490,6 +495,7 @@ defmodule Abyss.Handler do
 
         # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
+
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
@@ -501,7 +507,9 @@ defmodule Abyss.Handler do
 
       # Private helper functions
 
-      defp calculate_response_time(%{connection_span: %{start_metadata: %{accept_start_time: start_time}}})
+      defp calculate_response_time(%{
+             connection_span: %{start_metadata: %{accept_start_time: start_time}}
+           })
            when is_integer(start_time) do
         end_time = System.monotonic_time()
         System.convert_time_unit(end_time - start_time, :native, :millisecond)

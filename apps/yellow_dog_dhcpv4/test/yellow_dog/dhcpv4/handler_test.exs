@@ -36,34 +36,46 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     def create_dhcp_discover do
       # Create a DHCPDISCOVER message struct directly
       message = %DHCPv4.Message{
-        op: 1,  # BOOTREQUEST
-        htype: 1,  # Ethernet
-        hlen: 6,  # MAC address length
+        # BOOTREQUEST
+        op: 1,
+        # Ethernet
+        htype: 1,
+        # MAC address length
+        hlen: 6,
         hops: 0,
         xid: 0x12345678,
         secs: 0,
-        flags: 0x8000,  # Broadcast flag
+        # Broadcast flag
+        flags: 0x8000,
         ciaddr: 0,
         yiaddr: 0,
         siaddr: 0,
         giaddr: 0,
         chaddr: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
-        sname: <<0::size(64*8)>>,  # 64 bytes of zeros
-        file: <<0::size(128*8)>>,   # 128 bytes of zeros
+        # 64 bytes of zeros
+        sname: <<0::size(64 * 8)>>,
+        # 128 bytes of zeros
+        file: <<0::size(128 * 8)>>,
         options: [
-          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},  # DHCPDISCOVER
-          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}   # End
+          # DHCPDISCOVER
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
+          # End
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
         ]
       }
+
       DHCP.Parameter.to_iodata(message)
     end
 
     def create_dhcp_request do
       # Create a DHCPREQUEST message struct directly
       message = %DHCPv4.Message{
-        op: 1,  # BOOTREQUEST
-        htype: 1,  # Ethernet
-        hlen: 6,  # MAC address length
+        # BOOTREQUEST
+        op: 1,
+        # Ethernet
+        htype: 1,
+        # MAC address length
+        hlen: 6,
         hops: 0,
         xid: 0x09AB99C8,
         secs: 0,
@@ -73,21 +85,29 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
         siaddr: 0,
         giaddr: 0,
         chaddr: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
-        sname: <<0::size(64*8)>>,  # 64 bytes of zeros
-        file: <<0::size(128*8)>>,   # 128 bytes of zeros
+        # 64 bytes of zeros
+        sname: <<0::size(64 * 8)>>,
+        # 128 bytes of zeros
+        file: <<0::size(128 * 8)>>,
         options: [
-          %DHCPv4.Message.Option{type: 53, length: 1, value: <<3>>},  # DHCPREQUEST
-          %DHCPv4.Message.Option{type: 50, length: 4, value: <<10, 100, 10, 85>>},  # Requested IP
-          %DHCPv4.Message.Option{type: 54, length: 4, value: <<10, 100, 0, 1>>},    # Server ID
-          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}   # End
+          # DHCPREQUEST
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<3>>},
+          # Requested IP
+          %DHCPv4.Message.Option{type: 50, length: 4, value: <<10, 100, 10, 85>>},
+          # Server ID
+          %DHCPv4.Message.Option{type: 54, length: 4, value: <<10, 100, 0, 1>>},
+          # End
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
         ]
       }
+
       DHCP.Parameter.to_iodata(message)
     end
 
     def create_invalid_message do
       # Create invalid binary data that will cause parsing errors
-      <<0xFF, 0xFF, 0xFF, 0xFF>>  # Invalid DHCP message
+      # Invalid DHCP message
+      <<0xFF, 0xFF, 0xFF, 0xFF>>
     end
   end
 
@@ -151,14 +171,64 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
 
     test "handles bootreply messages (should not happen on server)" do
       # Use raw binary data for bootreply message
-      data = <<2, 1, 6, 0, 0x12, 0x34, 0x56, 0x78, 0, 0, 0, 0,  # header (BOOTREPLY)
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # ciaddr, yiaddr, siaddr, giaddr
-        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # chaddr
-        0::size(64*8),  # sname
-        0::size(128*8),  # file
-        99, 130, 83, 99,  # magic cookie
-        255  # end option
-      >>
+      # header (BOOTREPLY)
+      data =
+        <<
+          2,
+          1,
+          6,
+          0,
+          0x12,
+          0x34,
+          0x56,
+          0x78,
+          0,
+          0,
+          0,
+          0,
+          # ciaddr, yiaddr, siaddr, giaddr
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          # chaddr
+          0x00,
+          0x11,
+          0x22,
+          0x33,
+          0x44,
+          0x55,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          # sname
+          0::size(64 * 8),
+          # file
+          0::size(128 * 8),
+          # magic cookie
+          99,
+          130,
+          83,
+          99,
+          # end option
+          255
+        >>
+
       client_ip = {192, 168, 1, 50}
       client_port = 68
 

@@ -38,9 +38,9 @@ defmodule YellowDog.Mdns.Supervisor do
     [
       # Pre-start task
       {Task,
-        fn ->
-          Logger.debug("mDNS pre-start task: Initializing message cache")
-        end}
+       fn ->
+         Logger.debug("mDNS pre-start task: Initializing message cache")
+       end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
       # Message cache - must start before server
       {YellowDog.Mdns.MessageCache, []}
@@ -50,9 +50,9 @@ defmodule YellowDog.Mdns.Supervisor do
       |> Supervisor.child_spec(id: :server),
       # Post-start task
       {Task,
-        fn ->
-          Logger.debug("mDNS post-start task completed")
-        end}
+       fn ->
+         Logger.debug("mDNS post-start task completed")
+       end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end

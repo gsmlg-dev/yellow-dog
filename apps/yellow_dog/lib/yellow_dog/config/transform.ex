@@ -250,7 +250,6 @@ defmodule YellowDog.Config.Transform do
     end
   end
 
-
   # IPv4 parsing helpers
   defp parse_ipv4(ip_string) when is_binary(ip_string) do
     case String.split(ip_string, ".") do

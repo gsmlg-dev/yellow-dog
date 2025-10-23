@@ -70,6 +70,7 @@ defmodule YellowDog.ConfigHelper do
     case Process.whereis(name) do
       nil ->
         elapsed = System.monotonic_time(:millisecond) - start_time
+
         if elapsed < timeout do
           Process.sleep(50)
           wait_for_process(name, timeout, start_time)
@@ -168,6 +169,7 @@ defmodule YellowDog.ConfigHelper do
     # Spawn a monitor process
     spawn(fn ->
       ref = Process.monitor(test_pid)
+
       receive do
         {:DOWN, ^ref, :process, ^test_pid, _reason} ->
           cleanup_fn.()

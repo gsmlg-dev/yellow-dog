@@ -45,7 +45,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
     def create_invalid_message do
       # Create invalid binary data that will cause parsing errors
-      <<0xFF, 0xFF, 0xFF, 0xFF>>  # Invalid DHCPv6 message
+      # Invalid DHCPv6 message
+      <<0xFF, 0xFF, 0xFF, 0xFF>>
     end
 
     def create_ipv6_client_address do
@@ -58,7 +59,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     test "handles DHCPv6 SOLICIT message" do
       message = TestHelper.create_dhcpv6_solicit()
       client_ip = TestHelper.create_ipv6_client_address()
-      client_port = 546  # DHCPv6 client port
+      # DHCPv6 client port
+      client_port = 546
 
       # Mock state with socket
       state = %{socket: self()}
@@ -95,7 +97,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
     test "handles invalid message gracefully" do
       data = TestHelper.create_invalid_message()
-      client_ip = {192, 168, 1, 50}  # IPv4 for testing error handling
+      # IPv4 for testing error handling
+      client_ip = {192, 168, 1, 50}
       client_port = 546
 
       # Mock state with socket
@@ -114,7 +117,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
     test "handles malformed DHCPv6 message" do
       # Create a message with valid start but incomplete data
-      malformed_data = <<1, 0x12, 0x34>>  # Type + partial transaction ID
+      # Type + partial transaction ID
+      malformed_data = <<1, 0x12, 0x34>>
       client_ip = TestHelper.create_ipv6_client_address()
       client_port = 546
 

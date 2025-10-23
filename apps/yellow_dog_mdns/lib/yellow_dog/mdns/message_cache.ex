@@ -11,8 +11,10 @@ defmodule YellowDog.Mdns.MessageCache do
 
   @table_name :mdns_message_cache
   @ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
-  @cleanup_interval 300_000  # Cleanup every 5 minutes
-  @default_ttl 120  # Default TTL for cached records (2 minutes)
+  # Cleanup every 5 minutes
+  @cleanup_interval 300_000
+  # Default TTL for cached records (2 minutes)
+  @default_ttl 120
 
   @type message_entry :: %{
           domain: String.t(),
@@ -80,6 +82,7 @@ defmodule YellowDog.Mdns.MessageCache do
 
     # Filter out expired entries
     now = System.system_time(:second)
+
     Enum.filter(entries, fn entry ->
       entry.received_at + entry.ttl > now
     end)
@@ -115,9 +118,11 @@ defmodule YellowDog.Mdns.MessageCache do
     now = System.system_time(:second)
 
     all_entries = :ets.tab2list(@table_name)
-    expired = Enum.count(all_entries, fn {_key, entry} ->
-      entry.received_at + entry.ttl <= now
-    end)
+
+    expired =
+      Enum.count(all_entries, fn {_key, entry} ->
+        entry.received_at + entry.ttl <= now
+      end)
 
     %{
       total_entries: total,
@@ -175,6 +180,7 @@ defmodule YellowDog.Mdns.MessageCache do
     if :ets.whereis(@table_name) == :undefined do
       :ets.new(@table_name, @ets_options)
     end
+
     :ok
   end
 
@@ -221,7 +227,9 @@ defmodule YellowDog.Mdns.MessageCache do
 
     :ets.insert(@table_name, {domain_key, entry})
 
-    Logger.debug("Cached mDNS #{section} record: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}")
+    Logger.debug(
+      "Cached mDNS #{section} record: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
+    )
   end
 
   defp cache_question(question, message, source_ip, source_port, received_at) do
@@ -241,16 +249,20 @@ defmodule YellowDog.Mdns.MessageCache do
 
     :ets.insert(@table_name, {domain_key, entry})
 
-    Logger.debug("Cached mDNS query: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}")
+    Logger.debug(
+      "Cached mDNS query: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
+    )
   end
 
   defp cleanup_expired_entries do
     now = System.system_time(:second)
 
     all_entries = :ets.tab2list(@table_name)
-    expired_entries = Enum.filter(all_entries, fn {_key, entry} ->
-      entry.received_at + entry.ttl <= now
-    end)
+
+    expired_entries =
+      Enum.filter(all_entries, fn {_key, entry} ->
+        entry.received_at + entry.ttl <= now
+      end)
 
     Enum.each(expired_entries, fn {key, entry} ->
       :ets.delete_object(@table_name, {key, entry})

@@ -54,12 +54,12 @@ defmodule YellowDog.Dns.Supervisor do
     [
       # Pre-start task (zone loading will happen in handler init)
       {Task,
-        fn ->
-          Telemetry.debug("DNS pre-start task: zone management initialization")
-          # Initialize DNS zone store if needed
-          DNS.Zone.Store.ensure_initialized()
-          Telemetry.debug("DNS pre-start task completed")
-        end}
+       fn ->
+         Telemetry.debug("DNS pre-start task: zone management initialization")
+         # Initialize DNS zone store if needed
+         DNS.Zone.Store.ensure_initialized()
+         Telemetry.debug("DNS pre-start task completed")
+       end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
 
       # DNS Server (wraps Abyss UDP server)
@@ -68,9 +68,9 @@ defmodule YellowDog.Dns.Supervisor do
 
       # Post-start task
       {Task,
-        fn ->
-          Telemetry.debug("DNS post-start task completed")
-        end}
+       fn ->
+         Telemetry.debug("DNS post-start task completed")
+       end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
   end

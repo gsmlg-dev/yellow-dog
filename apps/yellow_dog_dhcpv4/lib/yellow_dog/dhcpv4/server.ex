@@ -101,10 +101,14 @@ defmodule YellowDog.Dhcpv4.Server do
       case Keyword.get(opts, :listen) do
         nil ->
           {config_keywords, opts}
+
         listen_ip ->
           transport_opts = Keyword.get(config_keywords, :transport_options, [])
           updated_transport_opts = Keyword.put(transport_opts, :ip, listen_ip)
-          updated_keywords = Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
+          updated_keywords =
+            Keyword.put(config_keywords, :transport_options, updated_transport_opts)
+
           {updated_keywords, Keyword.delete(opts, :listen)}
       end
 
