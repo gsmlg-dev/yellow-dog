@@ -9,7 +9,7 @@ defmodule YellowDog.Dns.ServerTest do
 
       assert is_map(config)
       assert config.port == 53
-      assert config.broadcast == false
+      assert config.transport_module == Abyss.Transport.UDP.Unicast
       assert config.handler_module == YellowDog.Dns.Handler.UDP
       assert is_list(config.transport_options)
       assert is_integer(config.read_timeout)
@@ -26,10 +26,10 @@ defmodule YellowDog.Dns.ServerTest do
       assert config.port == 53
     end
 
-    test "broadcast is disabled by default" do
+    test "uses unicast transport by default" do
       config = Server.get_config()
 
-      assert config.broadcast == false
+      assert config.transport_module == Abyss.Transport.UDP.Unicast
     end
 
     test "handler module is set to UDP handler" do

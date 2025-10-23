@@ -72,7 +72,7 @@ defmodule YellowDog.DnsTest do
 
       # Check default values
       assert config.port == 53
-      assert config.broadcast == false
+      assert config.transport_module == Abyss.Transport.UDP.Unicast
       assert config.handler_module == YellowDog.Dns.Handler.UDP
       assert config.read_timeout == 5_000
       assert config.shutdown_timeout == 5_000
