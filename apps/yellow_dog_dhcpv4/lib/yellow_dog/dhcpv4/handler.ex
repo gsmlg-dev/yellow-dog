@@ -462,10 +462,12 @@ defmodule YellowDog.Dhcpv4.Handler do
   defp ip_to_binary(_), do: <<192, 168, 1, 1>>
 
   # Convert IP tuple to 32-bit integer for DHCPv4 message fields
-  defp ip_tuple_to_integer({a, b, c, d}) when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
+  defp ip_tuple_to_integer({a, b, c, d})
+       when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
     <<integer::32>> = <<a, b, c, d>>
     integer
   end
+
   defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
   defp ip_tuple_to_integer(_), do: 0
 

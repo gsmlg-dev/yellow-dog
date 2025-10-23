@@ -118,7 +118,7 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       client_port = 68
 
       # Create a real UDP socket for testing
-      {:ok, socket} = :gen_udp.open(0, [mode: :binary, active: false])
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
       state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
@@ -141,7 +141,7 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       client_port = 68
 
       # Create a real UDP socket for testing
-      {:ok, socket} = :gen_udp.open(0, [mode: :binary, active: false])
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
       state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
