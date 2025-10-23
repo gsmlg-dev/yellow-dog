@@ -1,11 +1,11 @@
 import Config
 
 # Configure Phoenix endpoint
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: YellowDogConsoleWeb.ErrorHTML, json: YellowDogConsoleWeb.ErrorJSON],
+    formats: [html: YellowDog.Console.ErrorHTML, json: YellowDog.Console.ErrorJSON],
     layout: false
   ],
   pubsub_server: [Phoenix.PubSub.PG2],

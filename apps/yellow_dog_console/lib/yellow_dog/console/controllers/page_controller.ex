@@ -1,5 +1,5 @@
-defmodule YellowDogConsoleWeb.PageController do
-  use YellowDogConsoleWeb, :controller
+defmodule YellowDog.Console.PageController do
+  use YellowDog.Console, :controller
 
   def home(conn, _params) do
     # The home page is often custom made,

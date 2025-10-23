@@ -1,11 +1,11 @@
-defmodule YellowDogConsoleWeb.Router do
-  use YellowDogConsoleWeb, :router
+defmodule YellowDog.Console.Router do
+  use YellowDog.Console, :router
 
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, {YellowDogConsoleWeb.Layouts, :root}
+    plug :put_root_layout, {YellowDog.Console.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
@@ -14,14 +14,14 @@ defmodule YellowDogConsoleWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", YellowDogConsoleWeb do
+  scope "/", YellowDog.Console do
     pipe_through :browser
 
     get "/", PageController, :home
     live "/dashboard", DashboardLive
   end
 
-  scope "/api", YellowDogConsoleWeb do
+  scope "/api", YellowDog.Console do
     pipe_through :api
   end
 
@@ -37,7 +37,7 @@ defmodule YellowDogConsoleWeb.Router do
     scope "/dev" do
       pipe_through [:fetch_session, :protect_from_forgery]
 
-      live_dashboard "/dashboard", metrics: YellowDogConsoleWeb.Telemetry
+      live_dashboard "/dashboard", metrics: YellowDog.Console.Telemetry
     end
   end
 end

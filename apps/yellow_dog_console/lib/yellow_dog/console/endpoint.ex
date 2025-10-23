@@ -1,4 +1,4 @@
-defmodule YellowDogConsoleWeb.Endpoint do
+defmodule YellowDog.Console.Endpoint do
   use Phoenix.Endpoint, otp_app: :yellow_dog_console
 
   # The session will be stored in the cookie and signed,
@@ -24,7 +24,7 @@ defmodule YellowDogConsoleWeb.Endpoint do
     at: "/",
     from: :yellow_dog_console,
     gzip: not code_reloading?,
-    only: YellowDogConsoleWeb.static_paths()
+    only: YellowDog.Console.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
@@ -47,5 +47,5 @@ defmodule YellowDogConsoleWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
-  plug YellowDogConsoleWeb.Router
+  plug YellowDog.Console.Router
 end

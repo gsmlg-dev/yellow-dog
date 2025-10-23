@@ -1,4 +1,4 @@
-defmodule YellowDogConsoleWeb.Telemetry do
+defmodule YellowDog.Console.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
@@ -64,7 +64,7 @@ defmodule YellowDogConsoleWeb.Telemetry do
     [
       # A module, function and arguments to be invoked periodically.
       # This function must call :telemetry.execute/3 and a metric must be added above.
-      # {YellowDogConsoleWeb, :count_users, []}
+      # {YellowDog.Console, :count_users, []}
     ]
   end
 end

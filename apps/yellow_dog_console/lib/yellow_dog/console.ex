@@ -1,12 +1,12 @@
-defmodule YellowDogConsoleWeb do
+defmodule YellowDog.Console do
   @moduledoc """
   The entrypoint for defining your web interface, such
   as controllers, components, channels, and so on.
 
   This can be used in your application as:
 
-      use YellowDogConsoleWeb, :controller
-      use YellowDogConsoleWeb, :html
+      use YellowDog.Console, :controller
+      use YellowDog.Console, :html
 
   The definitions below will be executed for every controller,
   component, etc, so keep them short and clean, focused
@@ -40,10 +40,10 @@ defmodule YellowDogConsoleWeb do
     quote do
       use Phoenix.Controller,
         formats: [:html, :json],
-        layouts: [html: YellowDogConsoleWeb.Layouts]
+        layouts: [html: YellowDog.Console.Layouts]
 
       import Plug.Conn
-      import YellowDogConsoleWeb.Gettext
+      import YellowDog.Console.Gettext
 
       unquote(verified_routes())
     end
@@ -63,7 +63,7 @@ defmodule YellowDogConsoleWeb do
   def live_view do
     quote do
       use Phoenix.LiveView,
-        layout: {YellowDogConsoleWeb.Layouts, :app}
+        layout: {YellowDog.Console.Layouts, :app}
 
       unquote(html_helpers())
     end
@@ -82,8 +82,8 @@ defmodule YellowDogConsoleWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components and translation
-      import YellowDogConsoleWeb.CoreComponents
-      import YellowDogConsoleWeb.Gettext
+      import YellowDog.Console.CoreComponents
+      import YellowDog.Console.Gettext
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
@@ -93,9 +93,9 @@ defmodule YellowDogConsoleWeb do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: YellowDogConsoleWeb.Endpoint,
-        router: YellowDogConsoleWeb.Router,
-        statics: YellowDogConsoleWeb.static_paths()
+        endpoint: YellowDog.Console.Endpoint,
+        router: YellowDog.Console.Router,
+        statics: YellowDog.Console.static_paths()
     end
   end
 

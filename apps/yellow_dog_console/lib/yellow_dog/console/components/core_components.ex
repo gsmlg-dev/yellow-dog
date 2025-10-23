@@ -1,4 +1,4 @@
-defmodule YellowDogConsoleWeb.CoreComponents do
+defmodule YellowDog.Console.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
@@ -50,9 +50,9 @@ defmodule YellowDogConsoleWeb.CoreComponents do
     # with our gettext backend as first argument. Translations are
     # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
-      Gettext.dngettext(YellowDogConsoleWeb.Gettext, "errors", msg, msg, count, opts)
+      Gettext.dngettext(YellowDog.Console.Gettext, "errors", msg, msg, count, opts)
     else
-      Gettext.dgettext(YellowDogConsoleWeb.Gettext, "errors", msg, opts)
+      Gettext.dgettext(YellowDog.Console.Gettext, "errors", msg, opts)
     end
   end
 

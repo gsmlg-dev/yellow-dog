@@ -1,5 +1,5 @@
-defmodule YellowDogConsoleWeb.DashboardLive do
-  use YellowDogConsoleWeb, :live_view
+defmodule YellowDog.Console.DashboardLive do
+  use YellowDog.Console, :live_view
 
   @impl true
   def mount(_params, _session, socket) do

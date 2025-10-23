@@ -39,7 +39,7 @@ defmodule YellowDog.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    apply(YellowDogConsoleWeb.Endpoint, :config_change, [changed, removed])
+    apply(YellowDog.Console.Endpoint, :config_change, [changed, removed])
     :ok
   end
 
@@ -342,13 +342,13 @@ defmodule YellowDog.Application do
   end
   defp parse_ipv6_dns_servers(_), do: []
 
-  # Gets the YellowDogConsole children
+  # Gets the YellowDog.Console children
   defp get_console_children do
     [
-      YellowDogConsoleWeb.Telemetry,
+      YellowDog.Console.Telemetry,
       {DNSCluster, query: Application.get_env(:yellow_dog_console, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: YellowDogConsole.PubSub},
-      YellowDogConsoleWeb.Endpoint
+      YellowDog.Console.Endpoint
     ]
   end
 end
