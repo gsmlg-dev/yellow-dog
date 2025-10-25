@@ -7,12 +7,6 @@ config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
   secret_key_base: "uUZt2Ta9p5DqwqmSNhQH5/S21duMx2BXfCxxwEXhzYdLAlGA/sXXpExoD62eacr6",
   server: false
 
-# In test we don't send emails
-config :yellow_dog_console, YellowDogConsole.Mailer, adapter: Swoosh.Adapters.Test
-
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
-
 # Print only warnings and errors during test
 config :logger, level: :warning
 
@@ -38,12 +32,6 @@ config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "BYWNrViPgoGfdU3ElxUAg5oZ1zzAu2RRVsZ5wjx+zMlmz4I0UioOFdKM3CsH1vtW",
   server: false
-
-# In test we don't send emails
-config :yellow_dog_console, YellowDogConsole.Mailer, adapter: Swoosh.Adapters.Test
-
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
 
 # Print only warnings and errors during test
 config :logger, level: :warning
