@@ -54,7 +54,11 @@ defmodule YellowDogConsole.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:gettext, "~> 0.20"}
+      {:gettext, "~> 0.20"},
+
+      # Development and test dependencies
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -66,6 +70,7 @@ defmodule YellowDogConsole.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
+      lint: ["credo --strict", "dialyzer"],
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind yellow_dog_console", "esbuild yellow_dog_console"],

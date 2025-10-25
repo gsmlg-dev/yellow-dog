@@ -84,6 +84,7 @@ defmodule DHCP.MixProject do
 
   defp aliases do
     [
+      lint: ["credo --strict", "dialyzer"],
       publish: [
         "format",
         "hex.publish --yes"

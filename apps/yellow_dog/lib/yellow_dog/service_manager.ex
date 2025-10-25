@@ -232,8 +232,8 @@ defmodule YellowDog.ServiceManager do
     uptime_seconds = now - start_time
 
     # Format as human-readable
-    days = div(uptime_seconds, 86400)
-    hours = div(rem(uptime_seconds, 86400), 3600)
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 

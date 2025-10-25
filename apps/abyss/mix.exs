@@ -93,6 +93,7 @@ defmodule Abyss.MixProject do
 
   defp aliases do
     [
+      lint: ["credo --strict", "dialyzer"],
       test: ["test --cover"],
       "test.all": ["test --include integration --include slow"],
       "test.unit": ["test --exclude integration --exclude slow"],

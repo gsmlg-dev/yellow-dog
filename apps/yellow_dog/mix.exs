@@ -11,7 +11,8 @@ defmodule YellowDog.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
@@ -31,7 +32,17 @@ defmodule YellowDog.MixProject do
 
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},
-      {:toml, "~> 0.7"}
+      {:toml, "~> 0.7"},
+
+      # Development and test dependencies
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      lint: ["credo --strict", "dialyzer"]
     ]
   end
 end

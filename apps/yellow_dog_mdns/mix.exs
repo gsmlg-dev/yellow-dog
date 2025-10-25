@@ -11,7 +11,8 @@ defmodule YellowDog.Mdns.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
@@ -31,7 +32,17 @@ defmodule YellowDog.Mdns.MixProject do
       # External dependencies for mDNS functionality
       {:ex_dns, in_umbrella: true},
       {:abyss, in_umbrella: true},
-      {:telemetry, "~> 1.0"}
+      {:telemetry, "~> 1.0"},
+
+      # Development and test dependencies
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      lint: ["credo --strict", "dialyzer"]
     ]
   end
 end

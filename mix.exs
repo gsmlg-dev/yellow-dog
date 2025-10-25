@@ -34,7 +34,8 @@ defmodule YellowDog.Umbrella.MixProject do
       # Shared dependencies for all apps
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -66,10 +67,9 @@ defmodule YellowDog.Umbrella.MixProject do
 
   defp aliases do
     [
-      publish: [
-        "format",
-        "hex.publish --yes"
-      ]
+      lint: ["cmd mix lint"],
+      credo: ["cmd mix credo --strict"],
+      dialyzer: ["cmd mix dialyzer"]
     ]
   end
 end

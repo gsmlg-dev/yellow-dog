@@ -165,7 +165,7 @@ defmodule YellowDog.Application do
     enabled_services =
       services
       |> Enum.filter(fn {_module, service_name} ->
-        is_service_enabled?(config, service_name)
+        service_enabled?(config, service_name)
       end)
       |> Enum.map(fn {module, service_name} ->
         server_options = build_server_options(config, service_name)
@@ -176,7 +176,7 @@ defmodule YellowDog.Application do
     service_names =
       services
       |> Enum.filter(fn {_module, service_name} ->
-        is_service_enabled?(config, service_name)
+        service_enabled?(config, service_name)
       end)
       |> Enum.map(fn {_module, service_name} ->
         service_name |> to_string() |> String.upcase()
@@ -190,7 +190,7 @@ defmodule YellowDog.Application do
     disabled_services =
       services
       |> Enum.filter(fn {_module, service_name} ->
-        not is_service_enabled?(config, service_name)
+        not service_enabled?(config, service_name)
       end)
       |> Enum.map(fn {_module, service_name} ->
         service_name |> to_string() |> String.upcase()
@@ -273,7 +273,7 @@ defmodule YellowDog.Application do
   defp convert_ipv6(_), do: {0, 0, 0, 0, 0, 0, 0, 0}
 
   # Checks if a service is enabled in the configuration.
-  defp is_service_enabled?(config, service_name) do
+  defp service_enabled?(config, service_name) do
     case Map.get(config, "core") do
       %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
         case service_name do
@@ -305,7 +305,7 @@ defmodule YellowDog.Application do
         gateway: parse_ip_or_tuple(Map.get(pool_map, "gateway", "192.168.1.1")),
         dns_servers: parse_dns_servers(Map.get(pool_map, "dns_servers", ["192.168.1.1"])),
         domain_name: Map.get(pool_map, "domain_name", "local"),
-        lease_time: Map.get(pool_map, "lease_time", 86400),
+        lease_time: Map.get(pool_map, "lease_time", 86_400),
         static_reservations: Map.get(pool_map, "static_reservations", %{})
       }
     end)

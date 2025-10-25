@@ -25,7 +25,6 @@ config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
   pubsub_server: YellowDogConsole.PubSub,
   live_view: [signing_salt: "dzie3W/v"]
 
-
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
