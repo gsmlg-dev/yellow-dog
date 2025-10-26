@@ -67,6 +67,7 @@ defmodule YellowDog.Umbrella.MixProject do
 
   defp aliases do
     [
+      test: ["cmd mix test"],
       lint: ["cmd mix lint"],
       credo: ["cmd mix credo --strict"],
       dialyzer: ["cmd mix dialyzer"]
