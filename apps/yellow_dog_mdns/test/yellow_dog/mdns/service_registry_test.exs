@@ -1,0 +1,358 @@
+defmodule YellowDog.Mdns.ServiceRegistryTest do
+  use ExUnit.Case, async: false
+
+  alias YellowDog.Mdns.ServiceRegistry
+
+  setup do
+    # Start the registry for each test
+    {:ok, pid} = start_supervised({ServiceRegistry, [load_on_start: false]})
+
+    # Clean up ETS table after each test
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        :ok
+      end
+    end)
+
+    %{registry: pid}
+  end
+
+  describe "register_service/2" do
+    test "registers a new service" do
+      service_def = %{
+        name: "Test Web Server",
+        type: "_http._tcp",
+        port: 8080
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      assert service_id =~ "Test Web Server"
+      assert service_id =~ "_http._tcp.local"
+
+      # Verify service can be retrieved
+      service = ServiceRegistry.get_service(service_id)
+      assert service != nil
+      assert service.name == "Test Web Server"
+      assert service.port == 8080
+    end
+
+    test "registers service with TXT records" do
+      service_def = %{
+        name: "API Server",
+        type: "_http._tcp",
+        port: 8080,
+        txt: %{"version" => "1.0", "path" => "/api"}
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+
+      assert service.txt_records == %{"version" => "1.0", "path" => "/api"}
+    end
+
+    test "registers service with addresses" do
+      service_def = %{
+        name: "Multi-address Service",
+        type: "_http._tcp",
+        port: 8080,
+        addresses: ["192.168.1.100", "fe80::1"]
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+
+      assert length(service.addresses) == 2
+      assert {192, 168, 1, 100} in service.addresses
+    end
+
+    test "normalizes service type" do
+      # Service type without protocol should get _tcp added
+      service_def = %{
+        name: "Test",
+        type: "_myapp",
+        port: 8080
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+
+      assert service.type == "_myapp._tcp"
+    end
+
+    test "sets source to :api by default" do
+      service_def = %{
+        name: "Test",
+        type: "_http._tcp",
+        port: 8080
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+
+      assert service.source == :api
+    end
+
+    test "can set source to :file" do
+      service_def = %{
+        name: "File Service",
+        type: "_http._tcp",
+        port: 8080
+      }
+
+      assert {:ok, service_id} = ServiceRegistry.register_service(service_def, source: :file)
+      service = ServiceRegistry.get_service(service_id)
+
+      assert service.source == :file
+    end
+
+    test "rejects invalid service" do
+      invalid_service = %{
+        name: "Invalid",
+        # Missing type and port
+        type: nil,
+        port: nil
+      }
+
+      assert {:error, _reason} = ServiceRegistry.register_service(invalid_service)
+    end
+  end
+
+  describe "unregister_service/2" do
+    test "unregisters an existing service" do
+      service_def = %{name: "Temp Service", type: "_http._tcp", port: 8080}
+
+      {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      assert ServiceRegistry.get_service(service_id) != nil
+
+      assert :ok = ServiceRegistry.unregister_service(service_id)
+      assert ServiceRegistry.get_service(service_id) == nil
+    end
+
+    test "returns error for non-existent service" do
+      assert {:error, :not_found} =
+               ServiceRegistry.unregister_service("nonexistent._http._tcp.local")
+    end
+  end
+
+  describe "update_service/3" do
+    test "updates service fields" do
+      service_def = %{name: "Update Test", type: "_http._tcp", port: 8080}
+
+      {:ok, service_id} = ServiceRegistry.register_service(service_def)
+
+      updates = %{port: 9090, txt_records: %{"new" => "value"}}
+      assert :ok = ServiceRegistry.update_service(service_id, updates)
+
+      service = ServiceRegistry.get_service(service_id)
+      assert service.port == 9090
+      assert service.txt_records == %{"new" => "value"}
+    end
+
+    test "returns error for non-existent service" do
+      assert {:error, :not_found} =
+               ServiceRegistry.update_service("nonexistent._http._tcp.local", %{port: 9090})
+    end
+  end
+
+  describe "toggle_service/1" do
+    test "toggles service enabled state" do
+      service_def = %{name: "Toggle Test", type: "_http._tcp", port: 8080}
+
+      {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+      initial_enabled = service.enabled
+
+      assert :ok = ServiceRegistry.toggle_service(service_id)
+      service = ServiceRegistry.get_service(service_id)
+      assert service.enabled == not initial_enabled
+
+      assert :ok = ServiceRegistry.toggle_service(service_id)
+      service = ServiceRegistry.get_service(service_id)
+      assert service.enabled == initial_enabled
+    end
+  end
+
+  describe "list_services/1" do
+    setup do
+      # Register a few test services
+      {:ok, _} =
+        ServiceRegistry.register_service(%{name: "Service 1", type: "_http._tcp", port: 8080})
+
+      {:ok, _} =
+        ServiceRegistry.register_service(%{
+          name: "Service 2",
+          type: "_ssh._tcp",
+          port: 22,
+          enabled: false
+        })
+
+      {:ok, _} =
+        ServiceRegistry.register_service(%{name: "Service 3", type: "_ftp._tcp", port: 21},
+          source: :file
+        )
+
+      :ok
+    end
+
+    test "lists all services by default" do
+      services = ServiceRegistry.list_services()
+      assert length(services) >= 3
+    end
+
+    test "filters enabled services" do
+      services = ServiceRegistry.list_services(filter: :enabled)
+      assert length(services) >= 2
+      assert Enum.all?(services, & &1.enabled)
+    end
+
+    test "filters disabled services" do
+      ServiceRegistry.register_service(%{
+        name: "Disabled",
+        type: "_test._tcp",
+        port: 9999,
+        enabled: false
+      })
+
+      services = ServiceRegistry.list_services(filter: :disabled)
+      assert length(services) >= 1
+      assert Enum.all?(services, &(not &1.enabled))
+    end
+
+    test "filters by source" do
+      file_services = ServiceRegistry.list_services(source: :file)
+      assert length(file_services) >= 1
+      assert Enum.all?(file_services, &(&1.source == :file))
+
+      api_services = ServiceRegistry.list_services(source: :api)
+      assert length(api_services) >= 2
+      assert Enum.all?(api_services, &(&1.source == :api))
+    end
+
+    test "sorts services by name" do
+      services = ServiceRegistry.list_services()
+      names = Enum.map(services, & &1.name)
+      assert names == Enum.sort(names)
+    end
+  end
+
+  describe "get_records_for_query/1" do
+    setup do
+      {:ok, _} =
+        ServiceRegistry.register_service(%{
+          name: "Web Server",
+          type: "_http._tcp",
+          port: 8080,
+          addresses: ["192.168.1.100"]
+        })
+
+      {:ok, _} =
+        ServiceRegistry.register_service(%{
+          name: "SSH Server",
+          type: "_ssh._tcp",
+          port: 22
+        })
+
+      :ok
+    end
+
+    test "finds services matching PTR query" do
+      question = %DNS.Question{
+        name: "_http._tcp.local",
+        type: :PTR,
+        class: :IN
+      }
+
+      services = ServiceRegistry.get_records_for_query([question])
+      assert length(services) == 1
+      assert hd(services).name == "Web Server"
+    end
+
+    test "finds services matching SRV query" do
+      question = %DNS.Question{
+        name: "Web Server._http._tcp.local",
+        type: :SRV,
+        class: :IN
+      }
+
+      services = ServiceRegistry.get_records_for_query([question])
+      assert length(services) == 1
+      assert hd(services).name == "Web Server"
+    end
+
+    test "returns empty list for non-matching query" do
+      question = %DNS.Question{
+        name: "_nonexistent._tcp.local",
+        type: :PTR,
+        class: :IN
+      }
+
+      services = ServiceRegistry.get_records_for_query([question])
+      assert services == []
+    end
+
+    test "handles multiple questions" do
+      questions = [
+        %DNS.Question{name: "_http._tcp.local", type: :PTR, class: :IN},
+        %DNS.Question{name: "_ssh._tcp.local", type: :PTR, class: :IN}
+      ]
+
+      services = ServiceRegistry.get_records_for_query(questions)
+      assert length(services) == 2
+    end
+  end
+
+  describe "stats/0" do
+    test "returns registry statistics" do
+      # Register various services
+      {:ok, _} =
+        ServiceRegistry.register_service(%{name: "S1", type: "_http._tcp", port: 8080})
+
+      {:ok, _} =
+        ServiceRegistry.register_service(%{
+          name: "S2",
+          type: "_ssh._tcp",
+          port: 22,
+          enabled: false
+        })
+
+      {:ok, _} =
+        ServiceRegistry.register_service(%{name: "S3", type: "_ftp._tcp", port: 21},
+          source: :file
+        )
+
+      stats = ServiceRegistry.stats()
+
+      assert stats.total >= 3
+      assert stats.enabled >= 2
+      assert stats.disabled >= 1
+      assert stats.from_file >= 1
+      assert stats.from_api >= 2
+    end
+  end
+
+  describe "persistence" do
+    @tag :tmp_dir
+    test "can save and load services", %{tmp_dir: tmp_dir} do
+      storage_file = Path.join(tmp_dir, "test_services.toml")
+
+      # Start registry with custom storage file
+      {:ok, _} =
+        start_supervised(
+          {ServiceRegistry, [storage_file: storage_file, load_on_start: false, auto_save: false]},
+          id: :persistent_registry
+        )
+
+      # Register services
+      {:ok, _} =
+        ServiceRegistry.register_service(%{name: "Persist Test", type: "_http._tcp", port: 8080})
+
+      # Save to file
+      assert :ok = ServiceRegistry.save_to_file()
+      assert File.exists?(storage_file)
+
+      # Verify file content
+      {:ok, services} = YellowDog.Mdns.ServiceStore.load_services(storage_file)
+      assert length(services) >= 1
+    end
+  end
+end

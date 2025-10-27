@@ -46,6 +46,21 @@ defmodule YellowDog.Mdns.Server do
   end
 
   @doc """
+  Sends a multicast mDNS response.
+
+  ## Parameters
+  - `data` - Binary DNS message data to send
+
+  ## Returns
+  - `:ok` on success
+  - `{:error, reason}` on failure
+  """
+  @spec send_multicast(binary()) :: :ok | {:error, term()}
+  def send_multicast(data) when is_binary(data) do
+    GenServer.call(__MODULE__, {:send_multicast, data})
+  end
+
+  @doc """
   Gets the current server configuration using defaults.
 
   This should only be used for testing. In production, configuration
@@ -67,6 +82,7 @@ defmodule YellowDog.Mdns.Server do
     listen_address = Keyword.get(opts, :listen_address, {0, 0, 0, 0})
     handler_module = Keyword.get(opts, :handler_module, YellowDog.Mdns.Handler)
     multicast_address = Keyword.get(opts, :multicast_address, @mdns_multicast_address)
+    mode = Keyword.get(opts, :mode, :hybrid)
 
     # Build transport options for multicast
     transport_options = build_transport_options(listen_address, multicast_address, opts)
@@ -77,6 +93,8 @@ defmodule YellowDog.Mdns.Server do
       transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: handler_module,
       transport_options: transport_options,
+      # Pass mode to handler
+      handler_state: %{mode: mode},
       # mDNS-specific configuration
       read_timeout: Keyword.get(opts, :read_timeout, 5000),
       # Single listener for broadcast mode
@@ -125,14 +143,30 @@ defmodule YellowDog.Mdns.Server do
 
   @impl true
   def init(opts) do
+    mode = Keyword.get(opts, :mode, :hybrid)
+
     try do
       server_config = build_server_config(opts)
       port = Keyword.get(server_config, :port, 5353)
-      Logger.info("Starting mDNS server on port #{port}")
+      multicast_address = Keyword.get(opts, :multicast_address, @mdns_multicast_address)
+
+      Logger.info("Starting mDNS server on port #{port} in #{mode} mode")
 
       case Abyss.start_link(server_config) do
         {:ok, abyss_pid} ->
-          {:ok, %{abyss_pid: abyss_pid, config: server_config}}
+          # Open a UDP socket for sending multicast responses
+          socket_opts = [:binary, {:active, false}, {:reuseaddr, true}]
+          {:ok, socket} = :gen_udp.open(0, socket_opts)
+
+          {:ok,
+           %{
+             abyss_pid: abyss_pid,
+             config: server_config,
+             socket: socket,
+             multicast_address: multicast_address,
+             port: port,
+             mode: mode
+           }}
 
         {:error, reason} ->
           Logger.error("Failed to start mDNS server: #{inspect(reason)}")
@@ -142,10 +176,21 @@ defmodule YellowDog.Mdns.Server do
       UndefinedFunctionError ->
         Logger.warning("Config module not available in test environment, using defaults")
         server_config = get_default_server_config()
+        multicast_address = @mdns_multicast_address
 
         case Abyss.start_link(server_config) do
           {:ok, abyss_pid} ->
-            {:ok, %{abyss_pid: abyss_pid, config: server_config}}
+            {:ok, socket} = :gen_udp.open(0, [:binary, {:active, false}, {:reuseaddr, true}])
+
+            {:ok,
+             %{
+               abyss_pid: abyss_pid,
+               config: server_config,
+               socket: socket,
+               multicast_address: multicast_address,
+               port: @mdns_port,
+               mode: mode
+             }}
 
           {:error, reason} ->
             Logger.error("Failed to start mDNS server: #{inspect(reason)}")
@@ -155,8 +200,33 @@ defmodule YellowDog.Mdns.Server do
   end
 
   @impl true
+  def handle_call({:send_multicast, data}, _from, state) do
+    result =
+      :gen_udp.send(
+        state.socket,
+        state.multicast_address,
+        state.port,
+        data
+      )
+
+    case result do
+      :ok ->
+        {:reply, :ok, state}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to send multicast: #{inspect(reason)}")
+        {:reply, error, state}
+    end
+  end
+
+  @impl true
   def terminate(reason, state) do
     Logger.info("mDNS server stopping: #{inspect(reason)}")
+
+    if state[:socket] do
+      :gen_udp.close(state.socket)
+    end
+
     if state.abyss_pid, do: GenServer.stop(state.abyss_pid, :normal)
     :ok
   end

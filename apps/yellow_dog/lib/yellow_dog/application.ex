@@ -104,7 +104,31 @@ defmodule YellowDog.Application do
       },
       "mdns" => %{
         "listen" => "0.0.0.0",
-        "port" => 5353
+        "port" => 5353,
+        "mode" => "hybrid",
+        "services" => %{
+          "file" => "data/mdns_services.toml",
+          "format" => "toml",
+          "auto_save" => true,
+          "watch_file" => true,
+          "load_on_start" => true
+        },
+        "responder" => %{
+          "enabled" => true,
+          "service_ttl" => 4500,
+          "host_ttl" => 120,
+          "enable_probing" => true,
+          "enable_announcements" => true,
+          "announcement_interval" => 3600
+        },
+        "monitor" => %{
+          "enabled" => true,
+          "cache_responses" => true,
+          "log_queries" => true,
+          "max_cache_size" => 10000,
+          "cleanup_interval" => 300,
+          "cache_ttl" => 120
+        }
       },
       "dhcpv4" => %{
         "listen" => "0.0.0.0",
@@ -215,9 +239,34 @@ defmodule YellowDog.Application do
         ]
 
       :mdns ->
+        services_config = Map.get(service_config, "services", %{})
+        responder_config = Map.get(service_config, "responder", %{})
+        monitor_config = Map.get(service_config, "monitor", %{})
+
         [
           port: Map.get(service_config, "port", 5353),
-          listen_address: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+          listen_address: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
+          mode: String.to_atom(Map.get(service_config, "mode", "hybrid")),
+          # Service registry options
+          storage_file: Map.get(services_config, "file", "data/mdns_services.toml"),
+          storage_format: String.to_atom(Map.get(services_config, "format", "toml")),
+          auto_save: Map.get(services_config, "auto_save", true),
+          watch_file: Map.get(services_config, "watch_file", true),
+          load_on_start: Map.get(services_config, "load_on_start", true),
+          # Responder options
+          responder_enabled: Map.get(responder_config, "enabled", true),
+          service_ttl: Map.get(responder_config, "service_ttl", 4500),
+          host_ttl: Map.get(responder_config, "host_ttl", 120),
+          enable_probing: Map.get(responder_config, "enable_probing", true),
+          enable_announcements: Map.get(responder_config, "enable_announcements", true),
+          announcement_interval: Map.get(responder_config, "announcement_interval", 3600),
+          # Monitor options
+          monitor_enabled: Map.get(monitor_config, "enabled", true),
+          cache_responses: Map.get(monitor_config, "cache_responses", true),
+          log_queries: Map.get(monitor_config, "log_queries", true),
+          max_cache_size: Map.get(monitor_config, "max_cache_size", 10000),
+          cleanup_interval: Map.get(monitor_config, "cleanup_interval", 300),
+          cache_ttl: Map.get(monitor_config, "cache_ttl", 120)
         ]
 
       :dhcpv4 ->

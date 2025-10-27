@@ -33,6 +33,9 @@ defmodule YellowDog.Mdns.MixProject do
       {:ex_dns, in_umbrella: true},
       {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"},
+      {:toml, "~> 0.7"},
+      {:jason, "~> 1.4"},
+      {:file_system, "~> 1.0"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

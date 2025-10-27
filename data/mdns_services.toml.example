@@ -1,0 +1,73 @@
+# YellowDog mDNS Services Configuration
+# This file defines local services to be advertised on the network via mDNS.
+# Copy this file to mdns_services.toml and customize for your needs.
+
+[[service]]
+name = "YellowDog DNS"
+type = "_dns._udp"
+port = 53
+enabled = true
+
+  [service.txt]
+  version = "1.1.1"
+  vendor = "YellowDog"
+  features = "recursion,caching"
+
+  [service.addresses]
+  ipv4 = ["192.168.1.1"]
+  ipv6 = ["fe80::1"]
+
+[[service]]
+name = "YellowDog Web Console"
+type = "_http._tcp"
+port = 4000
+enabled = true
+
+  [service.txt]
+  path = "/"
+  tls = "false"
+  version = "1.1.1"
+
+  [service.addresses]
+  ipv4 = ["192.168.1.1"]
+
+[[service]]
+name = "YellowDog DHCP"
+type = "_dhcp._udp"
+port = 67
+enabled = true
+
+  [service.txt]
+  version = "1.1.1"
+  protocol = "DHCPv4"
+
+  [service.addresses]
+  ipv4 = ["192.168.1.1"]
+
+[[service]]
+name = "YellowDog SSH"
+type = "_ssh._tcp"
+port = 22
+enabled = false
+
+  [service.txt]
+  version = "OpenSSH_8.9"
+
+  [service.addresses]
+  ipv4 = ["192.168.1.1"]
+  ipv6 = ["fe80::1"]
+
+# Example: Custom service
+[[service]]
+name = "My Custom Service"
+type = "_myapp._tcp"
+port = 8080
+enabled = false
+
+  [service.txt]
+  api = "rest"
+  version = "2.0"
+  description = "My custom application"
+
+  [service.addresses]
+  ipv4 = ["192.168.1.100"]
