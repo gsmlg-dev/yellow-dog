@@ -59,6 +59,9 @@ nix shell    # Interactive development shell
 # Start all applications
 mix run --no-halt
 
+# Start in interactive Elixir shell (IEx)
+iex -S mix
+
 # Start specific applications
 mix app.start yellow_dog
 mix app.start yellow_dog_dns
@@ -67,11 +70,15 @@ mix app.start yellow_dog_dns
 cd apps/yellow_dog_console
 mix phx.server
 # Then visit http://localhost:4000
+
+# Start Phoenix console with IEx
+cd apps/yellow_dog_console
+iex -S mix phx.server
 ```
 
 ### Testing
 ```bash
-# Run all tests
+# Run all tests (umbrella-level alias)
 mix test
 
 # Run tests for specific app
@@ -85,14 +92,34 @@ MIX_ENV=test mix test apps/yellow_dog_dhcpv4
 
 # Run single test file
 mix test apps/yellow_dog_dhcpv4/test/yellow_dog/dhcpv4/handler_test.exs
+
+# Special test commands for abyss library
+cd apps/abyss
+mix test                    # Run tests with coverage
+mix test.all                # Run all tests including integration and slow tests
+mix test.unit               # Run only unit tests (exclude integration/slow)
+mix test.integration        # Run integration tests only
 ```
 
-### Code Formatting
+### Code Formatting and Linting
 ```bash
 # Format all code according to .formatter.exs configuration
 mix format
 
+# Check code formatting without modifying files
+mix format --check-formatted
+
+# Run linting (umbrella-level alias runs across all apps)
+mix lint
+
+# Run Credo linting with strict mode
+mix credo
+
+# Run Dialyzer static type analysis
+mix dialyzer
+
 # The formatter covers mix.exs, config/*.exs, and all apps/* subdirectories
+# Each app also has its own 'lint' alias that runs 'credo --strict' and 'dialyzer'
 ```
 
 ### Dependencies
@@ -563,6 +590,14 @@ Infrastructure applications (abyss, ex_dns, ex_dhcp) are also configured as libr
 - CI runs on all branch pushes with matrix testing on Elixir 1.18 and OTP 27/28
 - Infrastructure libraries are integrated as umbrella applications with shared build paths
 - All servers use the Abyss UDP library with proper transport options configuration
+
+### Working with Umbrella Projects
+- Run commands at umbrella root to affect all apps (e.g., `mix test`, `mix format`)
+- Use `mix cmd` to run commands in each app directory: `mix cmd mix lint`
+- Individual apps can be worked on independently by `cd apps/app_name`
+- Mix aliases at umbrella level (test, lint, credo, dialyzer) use `mix cmd` to run across all apps
+- Dependencies are shared via umbrella-level `mix.exs` for common libraries
+- Infrastructure apps (abyss, ex_dns, ex_dhcp) use `in_umbrella: true` for cross-app dependencies
 
 ### Server Implementation Patterns
 All protocol servers (DNS, DHCPv4, DHCPv6, mDNS) follow a consistent architectural pattern:
