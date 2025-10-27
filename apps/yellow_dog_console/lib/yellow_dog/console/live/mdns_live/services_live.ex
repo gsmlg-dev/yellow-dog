@@ -152,313 +152,294 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     ~H"""
     <div class="space-y-6">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 class="text-3xl font-bold text-zinc-900">Registered Services</h1>
-          <p class="mt-2 text-zinc-600">Manage your mDNS service registrations</p>
+          <h1 class="text-4xl font-bold">Registered Services</h1>
+          <p class="mt-2 text-base-content/70">Manage your mDNS service registrations</p>
         </div>
         <button
           type="button"
           phx-click="show_new_form"
-          class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          class="btn btn-primary gap-2"
         >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           Register Service
         </button>
       </div>
       <!-- Filter Tabs -->
-      <div class="border-b border-zinc-200">
-        <nav class="flex space-x-8">
-          <button
-            phx-click="filter"
-            phx-value-filter="all"
-            class={[
-              "py-4 px-1 border-b-2 font-medium text-sm",
-              if(@filter == :all,
-                do: "border-blue-500 text-blue-600",
-                else: "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
-              )
-            ]}
-          >
-            All Services
-          </button>
-          <button
-            phx-click="filter"
-            phx-value-filter="enabled"
-            class={[
-              "py-4 px-1 border-b-2 font-medium text-sm",
-              if(@filter == :enabled,
-                do: "border-blue-500 text-blue-600",
-                else: "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
-              )
-            ]}
-          >
-            Enabled
-          </button>
-          <button
-            phx-click="filter"
-            phx-value-filter="disabled"
-            class={[
-              "py-4 px-1 border-b-2 font-medium text-sm",
-              if(@filter == :disabled,
-                do: "border-blue-500 text-blue-600",
-                else: "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
-              )
-            ]}
-          >
-            Disabled
-          </button>
-        </nav>
+      <div role="tablist" class="tabs tabs-boxed w-fit">
+        <button
+          role="tab"
+          phx-click="filter"
+          phx-value-filter="all"
+          class={["tab", @filter == :all && "tab-active"]}
+        >
+          All Services
+        </button>
+        <button
+          role="tab"
+          phx-click="filter"
+          phx-value-filter="enabled"
+          class={["tab", @filter == :enabled && "tab-active"]}
+        >
+          Enabled
+        </button>
+        <button
+          role="tab"
+          phx-click="filter"
+          phx-value-filter="disabled"
+          class={["tab", @filter == :disabled && "tab-active"]}
+        >
+          Disabled
+        </button>
       </div>
       <!-- Services List -->
-      <div class="space-y-4">
-        <%= if Enum.empty?(@services) do %>
-          <div class="bg-white rounded-lg shadow p-12 text-center">
-            <svg
-              class="mx-auto h-12 w-12 text-zinc-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      <%= if Enum.empty?(@services) do %>
+        <.card class="text-center py-12">
+          <svg
+            class="mx-auto h-16 w-16 text-base-content/30"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <h3 class="mt-4 text-lg font-medium">No services found</h3>
+          <p class="mt-2 text-base-content/70">Get started by registering your first mDNS service.</p>
+          <div class="mt-6">
+            <button type="button" phx-click="show_new_form" class="btn btn-primary gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              Register Service
+            </button>
+          </div>
+        </.card>
+      <% else %>
+        <.card>
+          <.table id="services-table" rows={@services} zebra hover>
+            <:col :let={service} label="Service Name">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold"><%= service.name %></span>
+                <.badge :if={service.enabled} color="success" size="sm">Enabled</.badge>
+                <.badge :if={!service.enabled} color="ghost" size="sm">Disabled</.badge>
+              </div>
+            </:col>
+            <:col :let={service} label="Type">
+              <code class="text-sm"><%= service.type %></code>
+            </:col>
+            <:col :let={service} label="Port">
+              <.badge color="info"><%= service.port %></.badge>
+            </:col>
+            <:col :let={service} label="Domain">
+              <span class="text-sm"><%= service.domain %></span>
+            </:col>
+            <:col :let={service} label="Source">
+              <.badge :if={service.source == :file} color="secondary" size="sm">File</.badge>
+              <.badge :if={service.source != :file} color="primary" size="sm">API</.badge>
+            </:col>
+            <:col :let={service} label="Status">
+              <.status_indicator
+                status={if service.enabled, do: "running", else: "stopped"}
+                pulse={service.enabled}
               />
-            </svg>
-            <h3 class="mt-2 text-sm font-medium text-zinc-900">No services</h3>
-            <p class="mt-1 text-sm text-zinc-500">Get started by registering a new service.</p>
-            <div class="mt-6">
-              <button
-                type="button"
-                phx-click="show_new_form"
-                class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Register Service
+            </:col>
+            <:action :let={service}>
+              <div class="flex gap-1">
+                <button
+                  type="button"
+                  phx-click="toggle_service"
+                  phx-value-id={service.id}
+                  class="btn btn-ghost btn-xs"
+                  title={if service.enabled, do: "Disable", else: "Enable"}
+                >
+                  <%= if service.enabled do %>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  <% else %>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  <% end %>
+                </button>
+                <button
+                  type="button"
+                  phx-click="show_edit_form"
+                  phx-value-id={service.id}
+                  class="btn btn-ghost btn-xs"
+                  title="Edit"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  phx-click="delete_service"
+                  phx-value-id={service.id}
+                  data-confirm="Are you sure you want to delete this service?"
+                  class="btn btn-ghost btn-xs text-error"
+                  title="Delete"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </:action>
+          </.table>
+        </.card>
+      <% end %>
+
+      <!-- Service Form Modal -->
+      <dialog :if={@show_form} id="service-modal" class="modal modal-open">
+        <div class="modal-box max-w-2xl">
+          <h3 class="font-bold text-2xl mb-4">
+            <%= if @form_mode == :new, do: "Register New Service", else: "Edit Service" %>
+          </h3>
+
+          <form phx-submit="save_service" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Service Name</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={@editing_service && @editing_service.name}
+                placeholder="My Service"
+                required
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Service Type</span>
+              </label>
+              <input
+                type="text"
+                name="type"
+                value={@editing_service && @editing_service.type}
+                placeholder="_http._tcp"
+                required
+                class="input input-bordered w-full"
+              />
+              <label class="label">
+                <span class="label-text-alt">Example: _http._tcp, _ssh._tcp, _printer._tcp</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Port</span>
+              </label>
+              <input
+                type="number"
+                name="port"
+                value={@editing_service && @editing_service.port}
+                placeholder="8080"
+                required
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">TXT Records</span>
+              </label>
+              <textarea
+                name="txt"
+                rows="3"
+                placeholder="version=1.0&#10;path=/api"
+                class="textarea textarea-bordered w-full"
+              ><%= if @editing_service && @editing_service.txt, do: format_txt_for_form(@editing_service.txt) %></textarea>
+              <label class="label">
+                <span class="label-text-alt">Enter key=value pairs, one per line</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">IP Addresses</span>
+              </label>
+              <textarea
+                name="addresses"
+                rows="2"
+                placeholder="192.168.1.100&#10;192.168.1.101"
+                class="textarea textarea-bordered w-full"
+              ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
+              <label class="label">
+                <span class="label-text-alt">Enter IP addresses, one per line</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label cursor-pointer justify-start gap-3">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  value="true"
+                  checked={!@editing_service || @editing_service.enabled}
+                  class="checkbox checkbox-primary"
+                />
+                <span class="label-text font-semibold">Enable service</span>
+              </label>
+            </div>
+
+            <div class="modal-action">
+              <button type="button" phx-click="hide_form" class="btn btn-ghost">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary">
+                <%= if @form_mode == :new, do: "Register", else: "Save Changes" %>
               </button>
             </div>
-          </div>
-        <% else %>
-          <div :for={service <- @services} class="bg-white rounded-lg shadow">
-            <div class="p-6">
-              <div class="flex items-start justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center space-x-3">
-                    <h3 class="text-lg font-medium text-zinc-900"><%= service.name %></h3>
-                    <span class={[
-                      "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                      if(service.enabled,
-                        do: "bg-green-100 text-green-800",
-                        else: "bg-zinc-100 text-zinc-800"
-                      )
-                    ]}>
-                      <%= if service.enabled, do: "Enabled", else: "Disabled" %>
-                    </span>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      <%= if service.source == :file, do: "From File", else: "Registered" %>
-                    </span>
-                  </div>
-                  <div class="mt-4 grid grid-cols-2 gap-4">
-                    <div>
-                      <p class="text-sm text-zinc-500">Service Type</p>
-                      <p class="mt-1 text-sm font-medium text-zinc-900"><%= service.type %></p>
-                    </div>
-                    <div>
-                      <p class="text-sm text-zinc-500">Port</p>
-                      <p class="mt-1 text-sm font-medium text-zinc-900"><%= service.port %></p>
-                    </div>
-                    <div>
-                      <p class="text-sm text-zinc-500">Domain</p>
-                      <p class="mt-1 text-sm font-medium text-zinc-900"><%= service.domain %></p>
-                    </div>
-                    <div>
-                      <p class="text-sm text-zinc-500">FQDN</p>
-                      <p class="mt-1 text-sm font-medium text-zinc-900 truncate"><%= service.fqdn %></p>
-                    </div>
-                  </div>
-
-                  <%= if service.txt && map_size(service.txt) > 0 do %>
-                    <div class="mt-4">
-                      <p class="text-sm text-zinc-500">TXT Records</p>
-                      <div class="mt-2 flex flex-wrap gap-2">
-                        <span
-                          :for={{key, value} <- service.txt}
-                          class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800"
-                        >
-                          <%= key %>=<%= value %>
-                        </span>
-                      </div>
-                    </div>
-                  <% end %>
-
-                  <%= if service.addresses && length(service.addresses) > 0 do %>
-                    <div class="mt-4">
-                      <p class="text-sm text-zinc-500">IP Addresses</p>
-                      <div class="mt-2 flex flex-wrap gap-2">
-                        <span
-                          :for={addr <- service.addresses}
-                          class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
-                        >
-                          <%= addr %>
-                        </span>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-                <!-- Actions -->
-                <div class="ml-6 flex flex-col space-y-2">
-                  <button
-                    type="button"
-                    phx-click="toggle_service"
-                    phx-value-id={service.id}
-                    class="inline-flex items-center px-3 py-1.5 border border-zinc-300 text-sm font-medium rounded text-zinc-700 bg-white hover:bg-zinc-50"
-                  >
-                    <%= if service.enabled, do: "Disable", else: "Enable" %>
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="show_edit_form"
-                    phx-value-id={service.id}
-                    class="inline-flex items-center px-3 py-1.5 border border-zinc-300 text-sm font-medium rounded text-zinc-700 bg-white hover:bg-zinc-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="delete_service"
-                    phx-value-id={service.id}
-                    data-confirm="Are you sure you want to delete this service?"
-                    class="inline-flex items-center px-3 py-1.5 border border-red-300 text-sm font-medium rounded text-red-700 bg-white hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-      </div>
-      <!-- Service Form Modal -->
-      <%= if @show_form do %>
-        <div class="fixed inset-0 z-50 overflow-y-auto">
-          <div class="flex items-center justify-center min-h-screen px-4">
-            <!-- Backdrop -->
-            <div
-              class="fixed inset-0 bg-zinc-500 bg-opacity-75 transition-opacity"
-              phx-click="hide_form"
-            >
-            </div>
-            <!-- Modal -->
-            <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full">
-              <div class="px-6 py-4 border-b border-zinc-200">
-                <h3 class="text-lg font-medium text-zinc-900">
-                  <%= if @form_mode == :new, do: "Register New Service", else: "Edit Service" %>
-                </h3>
-              </div>
-
-              <form phx-submit="save_service" class="p-6 space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-zinc-700">Service Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={@editing_service && @editing_service.name}
-                    required
-                    class="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-zinc-700">Service Type</label>
-                  <input
-                    type="text"
-                    name="type"
-                    value={@editing_service && @editing_service.type}
-                    placeholder="_http._tcp"
-                    required
-                    class="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-zinc-700">Port</label>
-                  <input
-                    type="number"
-                    name="port"
-                    value={@editing_service && @editing_service.port}
-                    required
-                    class="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-zinc-700">
-                    TXT Records (key=value, one per line)
-                  </label>
-                  <textarea
-                    name="txt"
-                    rows="3"
-                    placeholder="version=1.0&#10;path=/api"
-                    class="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  ><%= if @editing_service && @editing_service.txt, do: format_txt_for_form(@editing_service.txt) %></textarea>
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-zinc-700">
-                    IP Addresses (one per line)
-                  </label>
-                  <textarea
-                    name="addresses"
-                    rows="2"
-                    placeholder="192.168.1.100&#10;192.168.1.101"
-                    class="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
-                </div>
-
-                <div class="flex items-center">
-                  <input
-                    type="checkbox"
-                    name="enabled"
-                    value="true"
-                    checked={!@editing_service || @editing_service.enabled}
-                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-zinc-300 rounded"
-                  />
-                  <label class="ml-2 block text-sm text-zinc-900">
-                    Enable service
-                  </label>
-                </div>
-
-                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-zinc-200">
-                  <button
-                    type="button"
-                    phx-click="hide_form"
-                    class="px-4 py-2 border border-zinc-300 rounded-md text-sm font-medium text-zinc-700 bg-white hover:bg-zinc-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    <%= if @form_mode == :new, do: "Register", else: "Save Changes" %>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+          </form>
         </div>
-      <% end %>
+        <form method="dialog" class="modal-backdrop">
+          <button phx-click="hide_form">close</button>
+        </form>
+      </dialog>
     </div>
     """
   end

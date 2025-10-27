@@ -12,97 +12,235 @@ defmodule YellowDog.Console.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-8">
-      <div>
-        <h1 class="text-3xl font-bold text-zinc-900">Dashboard</h1>
-        <p class="mt-2 text-zinc-600">Monitor and manage your Yellow Dog services</p>
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-4xl font-bold">Service Dashboard</h1>
+          <p class="mt-2 text-base-content/70">Monitor and manage your Yellow Dog services</p>
+        </div>
+        <button class="btn btn-ghost btn-circle">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+        </button>
       </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div :for={service <- @services} class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-lg font-medium text-zinc-900"><%= service.name %></h3>
-              <p class="text-sm text-zinc-600"><%= service.description %></p>
-            </div>
-            <div class={"w-3 h-3 rounded-full #{service.status_class}"}></div>
+      <!-- Service Stats Grid -->
+      <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
+        <div :for={service <- @services} class="stat">
+          <div class="stat-figure">
+            <.status_indicator status={
+              if service.status == "Running", do: "running", else: "stopped"
+            } pulse />
           </div>
-          <div class="mt-4">
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-zinc-500">Status</span>
-              <span class={["font-medium", service.status_class]}>
-                <%= service.status %>
-              </span>
-            </div>
-            <div class="flex items-center justify-between text-sm mt-2">
-              <span class="text-zinc-500">Port</span>
-              <span class="font-medium text-zinc-900"><%= service.port %></span>
-            </div>
+          <div class="stat-title"><%= service.description %></div>
+          <div class="stat-value text-2xl">
+            <span class={
+              if service.status == "Running",
+                do: "text-success",
+                else: "text-error"
+            }>
+              <%= service.name %>
+            </span>
+          </div>
+          <div class="stat-desc">
+            Port <%= service.port %> · <%= service.status %>
           </div>
         </div>
       </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div class="bg-white rounded-lg shadow">
-          <div class="px-6 py-4 border-b border-zinc-200">
-            <h2 class="text-lg font-medium text-zinc-900">Service Status</h2>
-          </div>
-          <div class="p-6">
-            <div class="space-y-4">
-              <div :for={service <- @services} class="flex items-center justify-between">
-                <div class="flex items-center space-x-3">
-                  <div class={"w-2 h-2 rounded-full #{service.status_class}"}></div>
-                  <span class="text-sm font-medium text-zinc-900"><%= service.name %></span>
-                </div>
-                <span class={["text-sm", service.status_class]}><%= service.status %></span>
+      <!-- Main Content Grid -->
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <!-- Service Cards -->
+        <div class="xl:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <.card :for={service <- @services} class="hover:shadow-2xl transition-shadow">
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <h3 class="card-title text-lg mb-2">
+                  <%= service.name %>
+                  <.badge color={
+                    if service.status == "Running", do: "success", else: "error"
+                  } size="sm">
+                    <%= service.status %>
+                  </.badge>
+                </h3>
+                <p class="text-sm text-base-content/70 mb-4">
+                  <%= service.description %>
+                </p>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="bg-white rounded-lg shadow">
-          <div class="px-6 py-4 border-b border-zinc-200">
-            <h2 class="text-lg font-medium text-zinc-900">Quick Actions</h2>
-          </div>
-          <div class="p-6">
-            <div class="space-y-3">
-              <button class="w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-medium text-zinc-900">View DNS Zones</span>
-                  <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                  </svg>
-                </div>
+            <div class="divider my-2"></div>
+
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-base-content/60">Port</span>
+                <span class="font-mono font-semibold"><%= service.port %></span>
+              </div>
+
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-base-content/60">Status</span>
+                <.status_indicator status={
+                  if service.status == "Running", do: "running", else: "stopped"
+                } label={service.status} />
+              </div>
+
+              <.progress
+                value={if service.status == "Running", do: 100, else: 0}
+                color={if service.status == "Running", do: "success", else: "error"}
+                class="mt-2"
+              />
+            </div>
+
+            <:actions>
+              <button class="btn btn-sm btn-ghost gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                Configure
               </button>
-              <button class="w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-medium text-zinc-900">DHCP Leases</span>
-                  <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                  </svg>
-                </div>
+            </:actions>
+          </.card>
+        </div>
+        <!-- Sidebar - Quick Actions & Activity -->
+        <div class="space-y-6">
+          <!-- Quick Actions Card -->
+          <.card title="Quick Actions">
+            <div class="space-y-2">
+              <button class="btn btn-outline btn-block justify-start gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                  />
+                </svg>
+                DNS Zones
               </button>
-              <.link
-                navigate={~p"/mdns"}
-                class="block w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors"
-              >
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-medium text-zinc-900">mDNS Management</span>
-                  <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                  </svg>
-                </div>
+
+              <button class="btn btn-outline btn-block justify-start gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                DHCP Leases
+              </button>
+
+              <.link navigate={~p"/mdns"} class="btn btn-outline btn-block justify-start gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"
+                  />
+                </svg>
+                mDNS Discovery
               </.link>
-              <button class="w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-medium text-zinc-900">Configuration</span>
-                  <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                  </svg>
-                </div>
+
+              <button class="btn btn-outline btn-block justify-start gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                Configuration
               </button>
             </div>
-          </div>
+          </.card>
+          <!-- System Health Card -->
+          <.card title="System Health">
+            <div class="space-y-4">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm">CPU Usage</span>
+                  <span class="text-sm font-semibold">42%</span>
+                </div>
+                <.progress value={42} color="info" />
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm">Memory</span>
+                  <span class="text-sm font-semibold">68%</span>
+                </div>
+                <.progress value={68} color="warning" />
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm">Network</span>
+                  <span class="text-sm font-semibold">23%</span>
+                </div>
+                <.progress value={23} color="success" />
+              </div>
+            </div>
+          </.card>
         </div>
       </div>
     </div>
