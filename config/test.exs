@@ -2,7 +2,7 @@ import Config
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "uUZt2Ta9p5DqwqmSNhQH5/S21duMx2BXfCxxwEXhzYdLAlGA/sXXpExoD62eacr6",
   server: false
@@ -18,7 +18,7 @@ config :phoenix, :plug_init_mode, :runtime
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
-config :yellow_dog_console, YellowDogConsole.Repo,
+config :yellow_dog_console, YellowDog.Console.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
@@ -28,7 +28,7 @@ config :yellow_dog_console, YellowDogConsole.Repo,
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "BYWNrViPgoGfdU3ElxUAg5oZ1zzAu2RRVsZ5wjx+zMlmz4I0UioOFdKM3CsH1vtW",
   server: false
@@ -57,3 +57,6 @@ config :yellow_dog_telemetry,
   exclude_apps: nil,
   app_levels: %{},
   span_thresholds: %{}
+
+# Disable Swoosh API client during tests
+config :yellow_dog_console, :swoosh_api_client, false

@@ -24,7 +24,7 @@ defmodule YellowDog.Telemetry do
   - `YellowDog.Dhcpv4.*` → `:yellow_dog_dhcpv4`
   - `YellowDog.Dhcpv6.*` → `:yellow_dog_dhcpv6`
   - `YellowDog.Mdns.*` → `:yellow_dog_mdns`
-  - `YellowDogConsole.*` → `:yellow_dog_console`
+  - `YellowDog.Console.*` → `:yellow_dog_console`
   - `YellowDog.*` → `:yellow_dog`
 
   ## Span Tracking
@@ -778,7 +778,7 @@ defmodule YellowDog.Telemetry do
       String.starts_with?(module_str, "Elixir.YellowDog.Dhcpv4") -> :yellow_dog_dhcpv4
       String.starts_with?(module_str, "Elixir.YellowDog.Dhcpv6") -> :yellow_dog_dhcpv6
       String.starts_with?(module_str, "Elixir.YellowDog.Mdns") -> :yellow_dog_mdns
-      String.starts_with?(module_str, "Elixir.YellowDogConsole") -> :yellow_dog_console
+      String.starts_with?(module_str, "Elixir.YellowDog.Console") -> :yellow_dog_console
       String.starts_with?(module_str, "Elixir.YellowDog") -> :yellow_dog
       true -> :unknown
     end

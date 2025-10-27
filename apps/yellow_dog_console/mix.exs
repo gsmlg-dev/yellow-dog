@@ -1,4 +1,4 @@
-defmodule YellowDogConsole.MixProject do
+defmodule YellowDog.Console.MixProject do
   use Mix.Project
 
   def project do
@@ -6,7 +6,7 @@ defmodule YellowDogConsole.MixProject do
       app: :yellow_dog_console,
       version: "0.1.0",
       build_path: "../../_build",
-      config_path: "config/config.exs",
+      config_path: "../../config/config.exs",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.15",
@@ -23,6 +23,7 @@ defmodule YellowDogConsole.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
+      mod: {YellowDog.Console.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -43,6 +44,8 @@ defmodule YellowDogConsole.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.1"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:phoenix_live_view, "~> 1.0"},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
@@ -55,6 +58,9 @@ defmodule YellowDogConsole.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:gettext, "~> 0.20"},
+
+      # YellowDog dependencies
+      {:yellow_dog_mdns, in_umbrella: true},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

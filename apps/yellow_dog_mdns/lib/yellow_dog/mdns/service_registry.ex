@@ -528,7 +528,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   defp notify_service_change(event, service_id) do
     Phoenix.PubSub.broadcast(
-      YellowDogConsole.PubSub,
+      YellowDog.Console.PubSub,
       "mdns:services",
       {event, service_id}
     )

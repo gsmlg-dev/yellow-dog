@@ -28,20 +28,15 @@ defmodule YellowDog.Application do
     # Add protocol supervisors conditionally based on configuration
     children = children ++ get_enabled_services(config)
 
-    # Add YellowDogConsole children
-    children = children ++ get_console_children()
+    # Note: YellowDog.Console has its own Application module and starts separately
+    # It is configured in mix.exs as a dependency with `mod: {YellowDog.Console.Application, []}`
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
-  # Tell Phoenix to update the endpoint configuration
-  # whenever the application is updated.
-  @impl true
-  def config_change(changed, _new, removed) do
-    apply(YellowDog.Console.Endpoint, :config_change, [changed, removed])
-    :ok
-  end
+  # Note: config_change is not needed in the main YellowDog app
+  # The console app handles its own config changes through YellowDog.Console.Application
 
   # Loads TOML configuration from the file path specified in runtime.exs
   defp load_toml_config do
@@ -402,15 +397,4 @@ defmodule YellowDog.Application do
   end
 
   defp parse_ipv6_dns_servers(_), do: []
-
-  # Gets the YellowDog.Console children
-  defp get_console_children do
-    [
-      YellowDog.Console.Telemetry,
-      {DNSCluster,
-       query: Application.get_env(:yellow_dog_console, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: YellowDogConsole.PubSub},
-      YellowDog.Console.Endpoint
-    ]
-  end
 end

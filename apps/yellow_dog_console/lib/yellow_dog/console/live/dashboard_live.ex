@@ -82,6 +82,17 @@ defmodule YellowDog.Console.DashboardLive do
                   </svg>
                 </div>
               </button>
+              <.link
+                navigate={~p"/mdns"}
+                class="block w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-zinc-900">mDNS Management</span>
+                  <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                  </svg>
+                </div>
+              </.link>
               <button class="w-full text-left px-4 py-3 bg-zinc-50 hover:bg-zinc-100 rounded-lg transition-colors">
                 <div class="flex items-center justify-between">
                   <span class="text-sm font-medium text-zinc-900">Configuration</span>
@@ -99,13 +110,15 @@ defmodule YellowDog.Console.DashboardLive do
   end
 
   defp get_service_status do
+    mdns_status = get_mdns_status()
+
     [
       %{
         name: "DNS",
         description: "Domain Name Service",
         status: "Running",
         status_class: "bg-green-500 text-green-600",
-        port: "5353"
+        port: "53"
       },
       %{
         name: "DHCPv4",
@@ -124,10 +137,22 @@ defmodule YellowDog.Console.DashboardLive do
       %{
         name: "mDNS",
         description: "Multicast DNS",
-        status: "Stopped",
-        status_class: "bg-red-500 text-red-600",
+        status: if(mdns_status.running, do: "Running", else: "Stopped"),
+        status_class:
+          if(mdns_status.running,
+            do: "bg-green-500 text-green-600",
+            else: "bg-red-500 text-red-600"
+          ),
         port: "5353"
       }
     ]
+  end
+
+  defp get_mdns_status do
+    try do
+      YellowDog.Mdns.status()
+    rescue
+      _ -> %{running: false}
+    end
   end
 end

@@ -11,19 +11,19 @@
 import Config
 
 config :yellow_dog_console,
-  ecto_repos: [YellowDogConsole.Repo],
+  ecto_repos: [YellowDog.Console.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configures the endpoint
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: YellowDogConsoleWeb.ErrorHTML, json: YellowDogConsoleWeb.ErrorJSON],
+    formats: [html: YellowDog.Console.ErrorHTML, json: YellowDog.Console.ErrorJSON],
     layout: false
   ],
-  pubsub_server: YellowDogConsole.PubSub,
-  live_view: [signing_salt: "dzie3W/v"]
+  pubsub_server: YellowDog.Console.PubSub,
+  live_view: [signing_salt: "yellow_dog_console_secret"]
 
 # Configure esbuild (the version is required)
 config :esbuild,

@@ -4,11 +4,13 @@
 @import "tailwindcss" source(none);
 @source "../css";
 @source "../js";
-@source "../../lib/yellow_dog_console_web";
+@source "../../lib/yellow_dog/console";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
-   The heroicons installation itself is managed by your mix.exs */
-@plugin "../vendor/heroicons";
+   The heroicons installation itself is managed by your mix.exs
+   NOTE: Disabled because we use the Elixir heroicons package which provides components,
+   not SVG files. If you need icon classes, download the heroicons SVG files. */
+/* @plugin "../vendor/heroicons"; */
 
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
    curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js

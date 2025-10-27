@@ -20,7 +20,8 @@ defmodule YellowDog.Umbrella.MixProject do
       dialyzer: dialyzer(),
       aliases: aliases(),
       docs: docs(),
-      deps: deps()
+      deps: deps(),
+      listeners: [Phoenix.CodeReloader]
     ]
   end
 

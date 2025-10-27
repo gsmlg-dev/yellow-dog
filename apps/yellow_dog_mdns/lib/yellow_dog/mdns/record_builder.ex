@@ -6,7 +6,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
   (DNS-Based Service Discovery) and RFC 6762 (mDNS).
   """
 
-  alias DNS.{ResourceRecord, Question}
+  alias DNS.Message.{Record, Question}
 
   @type service :: YellowDog.Mdns.ServiceRegistry.service()
 
@@ -54,14 +54,14 @@ defmodule YellowDog.Mdns.RecordBuilder do
       # Query: _http._tcp.local
       # Answer: _http._tcp.local PTR My-Web-Server._http._tcp.local
   """
-  @spec build_ptr_record(service()) :: ResourceRecord.t()
+  @spec build_ptr_record(service()) :: Record.t()
   def build_ptr_record(service) do
     # PTR record name is the service type
     name = "#{service.type}.#{service.domain}"
     # PTR record data points to the service instance
     data = service.fqdn
 
-    %ResourceRecord{
+    %Record{
       name: name,
       type: :PTR,
       class: :IN,
@@ -79,9 +79,9 @@ defmodule YellowDog.Mdns.RecordBuilder do
   ## Example
       # My-Web-Server._http._tcp.local SRV 0 0 8080 myhost.local
   """
-  @spec build_srv_record(service()) :: ResourceRecord.t()
+  @spec build_srv_record(service()) :: Record.t()
   def build_srv_record(service) do
-    %ResourceRecord{
+    %Record{
       name: service.fqdn,
       type: :SRV,
       class: :IN,
@@ -104,7 +104,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
   ## Example
       # My-Web-Server._http._tcp.local TXT "path=/api" "version=1.0"
   """
-  @spec build_txt_record(service()) :: ResourceRecord.t()
+  @spec build_txt_record(service()) :: Record.t()
   def build_txt_record(service) do
     txt_data =
       if map_size(service.txt_records) > 0 do
@@ -117,7 +117,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         [""]
       end
 
-    %ResourceRecord{
+    %Record{
       name: service.fqdn,
       type: :TXT,
       class: :IN,
@@ -134,12 +134,12 @@ defmodule YellowDog.Mdns.RecordBuilder do
   ## Example
       # myhost.local A 192.168.1.100
   """
-  @spec build_a_records(service()) :: [ResourceRecord.t()]
+  @spec build_a_records(service()) :: [Record.t()]
   def build_a_records(service) do
     service.addresses
     |> Enum.filter(&is_ipv4?/1)
     |> Enum.map(fn ip ->
-      %ResourceRecord{
+      %Record{
         name: service.host,
         type: :A,
         class: :IN,
@@ -157,12 +157,12 @@ defmodule YellowDog.Mdns.RecordBuilder do
   ## Example
       # myhost.local AAAA fe80::1
   """
-  @spec build_aaaa_records(service()) :: [ResourceRecord.t()]
+  @spec build_aaaa_records(service()) :: [Record.t()]
   def build_aaaa_records(service) do
     service.addresses
     |> Enum.filter(&is_ipv6?/1)
     |> Enum.map(fn ip ->
-      %ResourceRecord{
+      %Record{
         name: service.host,
         type: :AAAA,
         class: :IN,
@@ -264,7 +264,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
   Goodbye records have TTL=0 to signal service removal (RFC 6762 §10.1).
   """
-  @spec build_goodbye_records(service()) :: [ResourceRecord.t()]
+  @spec build_goodbye_records(service()) :: [Record.t()]
   def build_goodbye_records(service) do
     ptr = %{build_ptr_record(service) | ttl: 0}
     srv = %{build_srv_record(service) | ttl: 0}
@@ -323,7 +323,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
     ptr_size + srv_size + txt_size + a_size + aaaa_size
   end
 
-  defp record_size(%ResourceRecord{name: name, data: data}) do
+  defp record_size(%Record{name: name, data: data}) do
     # Approximate size: name length + type (2) + class (2) + ttl (4) + rdlength (2) + data
     name_size = byte_size(to_string(name))
 

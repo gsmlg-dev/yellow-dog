@@ -6,7 +6,7 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
@@ -56,7 +56,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 # Configure your database
-config :yellow_dog_console, YellowDogConsole.Repo,
+config :yellow_dog_console, YellowDog.Console.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
@@ -71,7 +71,7 @@ config :yellow_dog_console, YellowDogConsole.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
@@ -108,12 +108,12 @@ config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :yellow_dog_console, YellowDogConsoleWeb.Endpoint,
+config :yellow_dog_console, YellowDog.Console.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"lib/yellow_dog_console_web/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
+      ~r"lib/yellow_dog/console/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
     ]
   ]
 

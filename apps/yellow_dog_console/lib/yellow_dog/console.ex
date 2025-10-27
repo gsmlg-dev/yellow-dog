@@ -87,6 +87,9 @@ defmodule YellowDog.Console do
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
+
+      # Verified routes for ~p sigil
+      unquote(verified_routes())
     end
   end
 

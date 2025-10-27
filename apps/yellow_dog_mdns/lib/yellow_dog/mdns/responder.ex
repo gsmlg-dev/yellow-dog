@@ -12,7 +12,8 @@ defmodule YellowDog.Mdns.Responder do
   require Logger
 
   alias YellowDog.Mdns.{ServiceRegistry, RecordBuilder}
-  alias DNS.{Message, Header, Question, ResourceRecord}
+  alias DNS.Message
+  alias DNS.Message.{Header, Question, Record}
 
   @doc """
   Checks if we should respond to a query.
@@ -211,7 +212,7 @@ defmodule YellowDog.Mdns.Responder do
     header_size + questions_size + records_size
   end
 
-  defp estimate_record_size(%ResourceRecord{name: name, type: type, data: data}) do
+  defp estimate_record_size(%Record{name: name, type: type, data: data}) do
     name_size = byte_size(to_string(name))
     # type (2) + class (2) + ttl (4) + rdlength (2)
     fixed_size = 10
