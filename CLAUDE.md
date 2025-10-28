@@ -12,10 +12,10 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir usi
 - **YellowDog** - Core application with configuration management and orchestration
 - **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
 - **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
-- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (complete with server and handler)
-- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (complete with server and handler)
-- **YellowDog.Mdns** - mDNS (multicast DNS) functionality (basic structure)
-- **YellowDogConsole** - Phoenix-based web console for management and monitoring
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (production-ready with full lease management)
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (production-ready with full lease management)
+- **YellowDog.Mdns** - mDNS responder with service discovery and registration (production-ready)
+- **YellowDogConsole** - Phoenix LiveView web console with DaisyUI (production-ready)
 
 **Infrastructure Libraries (now in apps/ directory):**
 - **abyss** - High-performance pure Elixir UDP server library
@@ -273,41 +273,105 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
 
 **YellowDog.Mdns (mDNS Application)**
 - **Location**: `apps/yellow_dog_mdns/`
-- **Purpose**: Multicast DNS passive listener for service discovery
+- **Purpose**: Multicast DNS responder with service discovery and registration
 - **Dependencies**: `ex_dns`, `abyss`, `yellow_dog_telemetry`
 - **Directory Structure**: `apps/yellow_dog_mdns/lib/yellow_dog/mdns/`
 - **Key Modules**:
   - `YellowDog.Mdns.Server` - mDNS server using Abyss UDP library
-  - `YellowDog.Mdns.Handler` - Passive mDNS message handler implementing Abyss.Handler behaviour
+  - `YellowDog.Mdns.Handler` - mDNS message handler implementing Abyss.Handler behaviour
   - `YellowDog.Mdns.Supervisor` - mDNS supervisor with pre/post-start tasks
-  - `YellowDog.Mdns.MessageCache` - GenServer for message caching with ETS storage
+  - `YellowDog.Mdns.ServiceRegistry` - GenServer for service registration with ETS storage
+  - `YellowDog.Mdns.Responder` - Query responder for registered services
+  - `YellowDog.Mdns.Monitor` - Network activity monitoring
 - **Features**:
-  - Passive listener implementation (receives broadcasts, does NOT respond)
+  - Full mDNS responder implementation (listens and responds to queries)
+  - Service registration and announcement with PTR, SRV, TXT, A/AAAA records
   - Multicast DNS on 224.0.0.251:5353
-  - .local domain filtering
-  - ETS-based message cache with TTL support
-  - Caches DNS answers, authority records, additional records, and questions
-  - Periodic cleanup of expired cache entries (every 5 minutes)
-  - Query API for retrieving cached messages by domain and record type
-  - Cache statistics and management functions
+  - .local domain support
+  - ETS-based service registry with TTL support
+  - API for service registration, updates, and removal
+  - Service discovery with query/response handling
+  - Network activity monitoring and statistics
+  - Periodic service announcements
+  - TOML-based configuration with services file support
   - Comprehensive telemetry events for monitoring
-  - TOML-based configuration
-- **Configuration**: Multicast address and port configured via TOML
-- **Status**: Production-ready as passive listener and service discovery cache
+- **Configuration**: Multicast address, port, and services configured via TOML
+- **Status**: Production-ready with full responder and service discovery
 
 **YellowDogConsole (Web Console)**
 - **Location**: `apps/yellow_dog_console/`
 - **Purpose**: Phoenix LiveView-based web console for management and monitoring
-- **Dependencies**: `phoenix`, `phoenix_live_dashboard`, `bandit`, `telemetry_metrics`, `gettext`
-- **Directory Structure**: `apps/yellow_dog_console/lib/yellow_dog_console/` and `apps/yellow_dog_console/lib/yellow_dog_console_web/`
+- **Dependencies**: `phoenix`, `phoenix_live_dashboard`, `bandit`, `telemetry_metrics`, `gettext`, DaisyUI 5.0.35, Tailwind CSS 4.1.7
+- **Directory Structure**: `apps/yellow_dog_console/lib/yellow_dog/console/`
 - **Key Modules**:
-  - `YellowDogConsole.Application` - Web application supervisor
-  - `YellowDogConsoleWeb.Endpoint` - Phoenix endpoint
-  - `YellowDogConsoleWeb.Router` - Web routes
-  - `YellowDogConsoleWeb.DashboardLive` - LiveView dashboard
-  - `YellowDogConsoleWeb.Telemetry` - Telemetry metrics for web interface
-- **Features**: Live dashboard, telemetry visualization, real-time monitoring
-- **Status**: Active development
+  - `YellowDog.Console.Application` - Web application supervisor
+  - `YellowDog.Console.Endpoint` - Phoenix endpoint
+  - `YellowDog.Console.Router` - Web routes
+  - `YellowDog.Console.Layouts` - Phoenix 1.8 function component layouts (root, app, navbar, sidebar)
+  - `YellowDog.Console.CoreComponents` - DaisyUI component library (12 reusable components)
+  - `YellowDog.Console.DashboardLive` - Service dashboard with real-time status
+  - `YellowDog.Console.MdnsLive.*` - mDNS management pages (index, services, discovery, monitor)
+  - `YellowDog.Console.Dhcpv4Live.*` - DHCPv4 management pages (index, leases, pools)
+  - `YellowDog.Console.Dhcpv6Live.*` - DHCPv6 management pages (index, leases, pools)
+  - `YellowDog.Console.Telemetry` - Telemetry metrics for web interface
+- **Features**:
+  - Modern DaisyUI component library with 12 reusable components (stat, badge, card, modal, table, progress, status indicators)
+  - Dark mode support with localStorage persistence
+  - Responsive design (mobile → tablet → desktop)
+  - Real-time service monitoring and status updates
+  - mDNS service discovery and management
+  - DHCPv4/DHCPv6 lease management and pool configuration
+  - Data tables with filtering, sorting, and actions
+  - Modal forms for service configuration
+  - Phoenix 1.8 function component architecture
+- **Status**: Production-ready with full UI transformation
+
+### Web Console Development Patterns
+
+The web console follows Phoenix 1.8 best practices with DaisyUI for UI components:
+
+**Component Architecture:**
+- Use `use YellowDog.Console, :html` for function components
+- Use `use YellowDog.Console, :live_view` for LiveView modules
+- All layouts are function components (not embed_templates)
+- Components defined in `YellowDog.Console.CoreComponents` are automatically imported
+
+**Available DaisyUI Components:**
+```elixir
+# Core components available in all views
+<.stat title="..." value="..." desc="..." />
+<.badge color="success|error|warning|info" size="sm|md|lg" />
+<.card title="..."></:actions></.card>
+<.modal id="..." title="...">form content</.modal>
+<.table id="..." rows={@items} zebra hover>
+  <:col :let={item} label="Name"><%= item.name %></:col>
+  <:action :let={item}><button>Edit</button></:action>
+</.table>
+<.progress value={50} color="success|error|warning|info" />
+<.progress_radial value={75} size="lg" color="primary" />
+<.status_indicator status="running|stopped|error" label="..." pulse />
+<.toast type="info|success|error|warning">Message</.toast>
+<.loading size="sm|md|lg" />
+```
+
+**Dark Mode Implementation:**
+- Theme toggle in navbar uses JavaScript hook with localStorage
+- Theme persists across page reloads
+- Attribute `data-theme="light"` or `data-theme="dark"` on `<body>`
+- Hook: `phx-hook="ThemeToggle"` in `assets/js/app.js`
+
+**LiveView Patterns:**
+- Subscribe to PubSub topics in `mount/3` when `connected?(socket)`
+- Use `handle_info/2` for real-time updates
+- Implement filtering with `phx-click` and socket assigns
+- Modal visibility controlled by `@show_form` assign
+- Use `<dialog>` element with `modal modal-open` classes
+
+**Responsive Design:**
+- Drawer pattern for sidebar: `<div class="drawer lg:drawer-open">`
+- Stats: `stats-vertical lg:stats-horizontal`
+- Grid: `grid-cols-1 md:grid-cols-2 xl:grid-cols-3`
+- Always test mobile → tablet → desktop breakpoints
 
 ### Inter-Application Dependencies
 - All applications depend on `YellowDog` for configuration
@@ -412,22 +476,41 @@ Each protocol application provides its own public API for service-specific opera
 
 **mDNS Service (YellowDog.Mdns)**
 ```elixir
-# Query cached mDNS messages
-YellowDog.Mdns.query("printer.local")
-YellowDog.Mdns.query("_http._tcp.local", :PTR)
+# Register a new service
+YellowDog.Mdns.register_service(%{
+  name: "My Web Server",
+  type: "_http._tcp",
+  port: 8080,
+  domain: "local",
+  txt: %{"path" => "/", "version" => "1.0"}
+})
 
-# List all cached messages
-YellowDog.Mdns.list_all()
+# Update service information
+YellowDog.Mdns.update_service(service_id, %{port: 8081})
 
-# Get cache statistics
+# Unregister a service
+YellowDog.Mdns.unregister_service(service_id)
+
+# List all registered services
+YellowDog.Mdns.list_services()
+
+# Get service by ID
+YellowDog.Mdns.get_service(service_id)
+
+# Query for services by type
+YellowDog.Mdns.query_services("_http._tcp.local")
+
+# Get registry statistics
 YellowDog.Mdns.stats()
-# => %{total_entries: 150, active_entries: 120, expired_entries: 30}
+# => %{total: 10, enabled: 8, disabled: 2, registered: 5, from_file: 3}
 
-# Clear cache
-YellowDog.Mdns.clear_cache()
+# Get network statistics
+YellowDog.Mdns.network_stats()
+# => %{total_responses: 150, total_queries: 200, active_services: 8, unique_hosts: 15}
 
 # Get service status
 YellowDog.Mdns.status()
+# => %{running: true, mode: :responder, registered_services: 8, discovered_services: 12}
 ```
 
 **DHCPv4 Service (YellowDog.Dhcpv4)**
