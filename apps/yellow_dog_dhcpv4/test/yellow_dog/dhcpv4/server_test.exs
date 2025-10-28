@@ -6,23 +6,21 @@ defmodule YellowDog.Dhcpv4.ServerTest do
   import ExUnit.CaptureLog
 
   describe "start_link/1" do
-    test "returns :ignore when DHCPv4 is disabled" do
-      # Test with mocked disabled service
-      _log =
+    test "starts server with default configuration" do
+      # Test that server can start with minimal config
+      log =
         capture_log(fn ->
-          # Direct test of the disabled case - this will return :ignore since Config is not available
-          result =
-            try do
-              Server.start_link([])
-            rescue
-              UndefinedFunctionError -> :ignore
-            end
+          # Start server with default configuration
+          {:ok, pid} = Server.start_link([])
+          assert Process.alive?(pid)
 
-          assert result == :ignore
+          # Stop the server
+          :ok = Server.stop(pid)
+          refute Process.alive?(pid)
         end)
 
-      # The log might not contain the message due to the undefined function error
-      # That's expected behavior in test environment
+      # Verify log contains startup message
+      assert log =~ "Starting DHCPv4 server on port"
     end
 
     test "builds server configuration correctly" do

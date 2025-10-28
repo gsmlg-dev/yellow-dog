@@ -1,31 +1,25 @@
 defmodule YellowDog.Dhcpv4.LeaseManager do
   @moduledoc """
-  Manages DHCP lease allocation and tracking using ETS storage.
+  Manages DHCP lease allocation and tracking using Mnesia persistent storage.
 
   Tracks active leases with MAC → IP bindings, handles lease expiration,
-  and provides persistence across server restarts.
+  and provides persistence across server restarts. Supports multiple lease
+  states (offered, active, released, expired, declined) for full DHCP
+  protocol compliance.
   """
 
   use GenServer
   require Logger
 
   alias YellowDog.Dhcpv4.AddressPool
+  alias YellowDog.Dhcpv4.LeaseStorage
 
-  @table_name :dhcpv4_leases
-  @ets_options [:named_table, :public, :set, read_concurrency: true]
   # Run cleanup every minute
   @cleanup_interval 60_000
 
   @type ip_address :: AddressPool.ip_address()
-  @type mac_address :: AddressPool.mac_address()
-  @type lease :: %{
-          ip: ip_address(),
-          mac: mac_address(),
-          hostname: String.t() | nil,
-          expires_at: integer(),
-          lease_time: pos_integer(),
-          pool_name: String.t()
-        }
+  @type mac_address :: binary()
+  @type lease :: LeaseStorage.lease()
 
   # Client API
 
@@ -52,15 +46,22 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   - `requested_ip` - Optional requested IP address
   - `hostname` - Optional client hostname
   - `pool_name` - Pool name to allocate from (default: "default")
+  - `client_id` - Optional client identifier (option 61)
 
   ## Returns
   - `{:ok, lease}` - Successfully allocated/renewed lease
   - `{:error, reason}` - Failed to allocate lease
   """
-  @spec allocate_lease(mac_address(), ip_address() | nil, String.t() | nil, String.t()) ::
+  @spec allocate_lease(
+          mac_address(),
+          ip_address() | nil,
+          String.t() | nil,
+          String.t(),
+          binary() | nil
+        ) ::
           {:ok, lease()} | {:error, term()}
-  def allocate_lease(mac, requested_ip \\ nil, hostname \\ nil, pool_name \\ "default") do
-    GenServer.call(__MODULE__, {:allocate_lease, mac, requested_ip, hostname, pool_name})
+  def allocate_lease(mac, requested_ip \\ nil, hostname \\ nil, pool_name \\ "default", client_id \\ nil) do
+    GenServer.call(__MODULE__, {:allocate_lease, mac, requested_ip, hostname, pool_name, client_id})
   end
 
   @doc """
@@ -104,16 +105,18 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   """
   @spec get_lease(mac_address()) :: {:ok, lease()} | {:error, :not_found}
   def get_lease(mac) do
-    case :ets.lookup(@table_name, format_mac(mac)) do
-      [{_mac, lease}] ->
-        # Check if lease is expired
-        if lease.expires_at > System.system_time(:second) do
+    mac_key = normalize_mac(mac)
+
+    case LeaseStorage.get(mac_key) do
+      {:ok, lease} ->
+        # Check if lease is active and not expired
+        if lease.state == :active && lease.expires_at > System.system_time(:second) do
           {:ok, lease}
         else
           {:error, :not_found}
         end
 
-      [] ->
+      {:error, :not_found} ->
         {:error, :not_found}
     end
   end
@@ -126,12 +129,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   """
   @spec list_leases() :: [lease()]
   def list_leases do
-    now = System.system_time(:second)
-
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.map(fn {_mac, lease} -> lease end)
-    |> Enum.filter(fn lease -> lease.expires_at > now end)
+    LeaseStorage.list_active()
   end
 
   @doc """
@@ -142,9 +140,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   """
   @spec get_allocated_ips() :: MapSet.t(ip_address())
   def get_allocated_ips do
-    list_leases()
-    |> Enum.map(& &1.ip)
-    |> MapSet.new()
+    LeaseStorage.get_allocated_ips()
   end
 
   @doc """
@@ -155,24 +151,60 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   """
   @spec stats() :: map()
   def stats do
-    now = System.system_time(:second)
-    all_entries = :ets.tab2list(@table_name) |> Enum.map(fn {_mac, lease} -> lease end)
-    active_leases = Enum.filter(all_entries, fn lease -> lease.expires_at > now end)
-    expired_leases = Enum.filter(all_entries, fn lease -> lease.expires_at <= now end)
+    LeaseStorage.stats()
+  end
 
-    %{
-      total_leases: length(all_entries),
-      active_leases: length(active_leases),
-      expired_leases: length(expired_leases)
-    }
+  @doc """
+  Gets all configured pools.
+
+  ## Returns
+  - List of pool configurations
+  """
+  @spec get_pools() :: [AddressPool.pool_config()]
+  def get_pools do
+    GenServer.call(__MODULE__, :get_pools)
+  end
+
+  @doc """
+  Gets statistics for a specific pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool
+
+  ## Returns
+  - `{:ok, stats}` - Pool statistics
+  - `{:error, :pool_not_found}` - Pool does not exist
+  """
+  @spec get_pool_stats(String.t()) :: {:ok, map()} | {:error, :pool_not_found}
+  def get_pool_stats(pool_name) do
+    GenServer.call(__MODULE__, {:get_pool_stats, pool_name})
+  end
+
+  @doc """
+  Gets statistics for all pools.
+
+  ## Returns
+  - Map with pool names as keys and statistics as values
+  """
+  @spec get_all_pool_stats() :: map()
+  def get_all_pool_stats do
+    GenServer.call(__MODULE__, :get_all_pool_stats)
   end
 
   # Server Callbacks
 
   @impl true
   def init(opts) do
-    # Initialize ETS table
-    init_table()
+    # Initialize Mnesia storage
+    storage_type = if Mix.env() == :test, do: :ram_copies, else: :disc_copies
+
+    case LeaseStorage.init(storage_type: storage_type) do
+      :ok ->
+        Logger.info("Mnesia storage initialized with #{storage_type}")
+
+      {:error, reason} ->
+        Logger.error("Failed to initialize Mnesia storage: #{inspect(reason)}")
+    end
 
     # Extract pools from options
     pools = Keyword.get(opts, :pools, [])
@@ -204,12 +236,12 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   @impl true
-  def handle_call({:allocate_lease, mac, requested_ip, hostname, pool_name}, _from, state) do
+  def handle_call({:allocate_lease, mac, requested_ip, hostname, pool_name, client_id}, _from, state) do
     # Find the pool
     pool = Enum.find(state.pools, fn p -> p.name == pool_name end)
 
     if pool do
-      result = do_allocate_lease(mac, requested_ip, hostname, pool)
+      result = do_allocate_lease(mac, requested_ip, hostname, pool, client_id)
       {:reply, result, state}
     else
       {:reply, {:error, :pool_not_found}, state}
@@ -218,58 +250,107 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   @impl true
   def handle_call({:release_lease, mac}, _from, state) do
-    mac_key = format_mac(mac)
-    :ets.delete(@table_name, mac_key)
-    Logger.info("Released lease for MAC #{mac_key}")
-    {:reply, :ok, state}
+    mac_key = normalize_mac(mac)
+
+    case LeaseStorage.update_state(mac_key, :released) do
+      {:ok, _lease} ->
+        Logger.info("Released lease for MAC #{format_mac_display(mac_key)}")
+        {:reply, :ok, state}
+
+      {:error, :not_found} ->
+        Logger.warning("Attempted to release non-existent lease for MAC #{format_mac_display(mac_key)}")
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to release lease: #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:decline_ip, ip, mac}, _from, state) do
-    # For now, just release the lease
-    # In a production system, you might want to mark this IP as temporarily unavailable
-    mac_key = format_mac(mac)
-    :ets.delete(@table_name, mac_key)
-    Logger.warning("IP #{inspect(ip)} declined by MAC #{mac_key}")
-    {:reply, :ok, state}
+    mac_key = normalize_mac(mac)
+
+    case LeaseStorage.update_state(mac_key, :declined) do
+      {:ok, _lease} ->
+        Logger.warning("IP #{inspect(ip)} declined by MAC #{format_mac_display(mac_key)}")
+        {:reply, :ok, state}
+
+      {:error, :not_found} ->
+        Logger.warning("Attempted to decline non-existent lease for MAC #{format_mac_display(mac_key)}")
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to decline IP: #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:get_pools, _from, state) do
+    {:reply, state.pools, state}
+  end
+
+  @impl true
+  def handle_call({:get_pool_stats, pool_name}, _from, state) do
+    pool = Enum.find(state.pools, fn p -> p.name == pool_name end)
+
+    if pool do
+      stats = YellowDog.Dhcpv4.PoolStats.get_pool_stats(pool)
+      {:reply, {:ok, stats}, state}
+    else
+      {:reply, {:error, :pool_not_found}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:get_all_pool_stats, _from, state) do
+    stats = YellowDog.Dhcpv4.PoolStats.get_all_pool_stats(state.pools)
+    {:reply, stats, state}
   end
 
   @impl true
   def handle_info(:cleanup_expired_leases, state) do
-    cleanup_expired_leases()
+    case LeaseStorage.cleanup_expired() do
+      {:ok, _count} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to cleanup expired leases: #{inspect(reason)}")
+    end
+
     schedule_cleanup()
     {:noreply, state}
   end
 
   # Private helper functions
 
-  defp init_table do
-    if :ets.whereis(@table_name) == :undefined do
-      :ets.new(@table_name, @ets_options)
-    end
-
-    :ok
-  end
-
-  defp do_allocate_lease(mac, requested_ip, hostname, pool) do
-    mac_key = format_mac(mac)
+  defp do_allocate_lease(mac, requested_ip, hostname, pool, client_id) do
+    mac_key = normalize_mac(mac)
 
     # Check for existing lease
-    case :ets.lookup(@table_name, mac_key) do
-      [{^mac_key, existing_lease}] ->
+    case LeaseStorage.get(mac_key) do
+      {:ok, existing_lease} ->
         # Renew existing lease
-        renewed_lease = renew_lease(existing_lease, hostname)
-        :ets.insert(@table_name, {mac_key, renewed_lease})
-        Logger.info("Renewed lease for MAC #{mac_key}: #{inspect(renewed_lease.ip)}")
-        {:ok, renewed_lease}
+        renewed_lease = renew_lease(existing_lease, hostname, client_id)
 
-      [] ->
+        case LeaseStorage.put(renewed_lease) do
+          {:ok, lease} ->
+            Logger.info("Renewed lease for MAC #{format_mac_display(mac_key)}: #{inspect(lease.ip_address)}")
+            {:ok, lease}
+
+          {:error, reason} ->
+            Logger.error("Failed to renew lease: #{inspect(reason)}")
+            {:error, reason}
+        end
+
+      {:error, :not_found} ->
         # Allocate new lease
-        allocate_new_lease(mac, mac_key, requested_ip, hostname, pool)
+        allocate_new_lease(mac, mac_key, requested_ip, hostname, pool, client_id)
     end
   end
 
-  defp allocate_new_lease(mac, mac_key, requested_ip, hostname, pool) do
+  defp allocate_new_lease(mac, mac_key, requested_ip, hostname, pool, client_id) do
     allocated_ips = get_allocated_ips()
 
     # Try to honor requested IP if provided and available
@@ -287,62 +368,74 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
       end
 
     if ip do
+      now = System.system_time(:second)
+
       lease = %{
-        ip: ip,
-        mac: mac,
-        hostname: hostname,
-        expires_at: System.system_time(:second) + pool.lease_time,
+        mac_address: mac_key,
+        ip_address: ip,
+        pool_name: pool.name,
+        state: :active,
         lease_time: pool.lease_time,
-        pool_name: pool.name
+        expires_at: now + pool.lease_time,
+        hostname: hostname,
+        client_id: client_id,
+        created_at: now,
+        updated_at: now
       }
 
-      :ets.insert(@table_name, {mac_key, lease})
-      Logger.info("Allocated new lease for MAC #{mac_key}: #{inspect(ip)}")
+      case LeaseStorage.put(lease) do
+        {:ok, stored_lease} ->
+          Logger.info("Allocated new lease for MAC #{format_mac_display(mac_key)}: #{inspect(ip)}")
 
-      # Emit telemetry event
-      :telemetry.execute(
-        [:yellow_dog, :dhcpv4, :lease_allocated],
-        %{count: 1},
-        %{mac: mac_key, ip: ip, pool: pool.name}
-      )
+          # Emit telemetry event
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_allocated],
+            %{count: 1},
+            %{mac: mac_key, ip: ip, pool: pool.name}
+          )
 
-      {:ok, lease}
+          {:ok, stored_lease}
+
+        {:error, reason} ->
+          Logger.error("Failed to store new lease: #{inspect(reason)}")
+          {:error, reason}
+      end
     else
       Logger.error("Pool exhausted for #{pool.name}")
       {:error, :pool_exhausted}
     end
   end
 
-  defp renew_lease(lease, hostname) do
-    %{
-      lease
-      | expires_at: System.system_time(:second) + lease.lease_time,
-        hostname: hostname || lease.hostname
-    }
-  end
-
-  defp cleanup_expired_leases do
+  defp renew_lease(lease, hostname, client_id) do
     now = System.system_time(:second)
 
-    expired_count =
-      @table_name
-      |> :ets.tab2list()
-      |> Enum.filter(fn {_mac, lease} -> lease.expires_at <= now end)
-      |> Enum.each(fn {mac, _lease} ->
-        :ets.delete(@table_name, mac)
-      end)
-      |> length()
-
-    if expired_count > 0 do
-      Logger.info("Cleaned up #{expired_count} expired leases")
-    end
+    %{
+      lease
+      | state: :active,
+        expires_at: now + lease.lease_time,
+        hostname: hostname || lease.hostname,
+        client_id: client_id || lease.client_id,
+        updated_at: now
+    }
   end
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup_expired_leases, @cleanup_interval)
   end
 
-  defp format_mac(<<mac::binary-size(6)>>) do
+  # Normalize MAC address to consistent binary format
+  defp normalize_mac(<<mac::binary-size(6)>>), do: mac
+
+  defp normalize_mac(mac) when is_binary(mac) and byte_size(mac) == 16 do
+    # Handle padded MAC address from DHCP message (16 bytes with trailing zeros)
+    <<actual_mac::binary-size(6), _rest::binary>> = mac
+    actual_mac
+  end
+
+  defp normalize_mac(mac) when is_binary(mac), do: mac
+
+  # Format MAC address for display in logs
+  defp format_mac_display(<<mac::binary-size(6)>>) do
     mac
     |> :binary.bin_to_list()
     |> Enum.map(&Integer.to_string(&1, 16))
@@ -351,11 +444,6 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     |> String.upcase()
   end
 
-  defp format_mac(mac) when is_binary(mac) and byte_size(mac) == 16 do
-    # Handle padded MAC address from DHCP message (16 bytes with trailing zeros)
-    <<actual_mac::binary-size(6), _rest::binary>> = mac
-    format_mac(actual_mac)
-  end
-
-  defp format_mac(_), do: "UNKNOWN"
+  defp format_mac_display(mac) when is_binary(mac), do: Base.encode16(mac)
+  defp format_mac_display(_), do: "UNKNOWN"
 end

@@ -19,7 +19,7 @@ defmodule YellowDog.Dhcpv4.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :mnesia]
     ]
   end
 
@@ -33,6 +33,7 @@ defmodule YellowDog.Dhcpv4.MixProject do
       {:ex_dhcp, in_umbrella: true},
       {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"},
+      {:file_system, "~> 1.0"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

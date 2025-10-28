@@ -143,22 +143,35 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp handle_dhcp_request(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPREQUEST from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})")
+    # Determine REQUEST state: SELECTING, INIT-REBOOT, RENEWING, or REBINDING
+    request_state = determine_request_state(message)
 
-    # Generate a DHCPACK or DHCPNAK response
-    case create_dhcp_ack(message, client_ip) do
-      nil ->
-        Logger.warning("Failed to create DHCPACK for #{format_mac(message.chaddr)}")
-
-      ack ->
-        send_dhcp_response(ack, client_ip, client_port, state)
-    end
-
-    :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :request_ack],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
-      %{client_ip: client_ip, client_mac: message.chaddr}
+    Logger.info(
+      "DHCPREQUEST (#{request_state}) from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})"
     )
+
+    # Generate a DHCPACK or DHCPNAK response based on state
+    case create_dhcp_ack(message, client_ip, request_state) do
+      {:ok, ack} ->
+        send_dhcp_response(ack, client_ip, client_port, state)
+
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :request_ack],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr, state: request_state}
+        )
+
+      {:nak, reason} ->
+        Logger.warning("Sending DHCPNAK to #{format_mac(message.chaddr)}: #{reason}")
+        nak = build_dhcp_nak(message, reason)
+        send_dhcp_response(nak, client_ip, client_port, state)
+
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :request_nak],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr, reason: reason, state: request_state}
+        )
+    end
 
     {:continue, state}
   end
@@ -216,11 +229,12 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp create_dhcp_offer(discover, _client_ip) do
-    # Extract hostname from options if present
+    # Extract hostname and client identifier from options if present
     hostname = get_hostname_from_options(discover.options)
+    client_id = get_client_id_from_options(discover.options)
 
     # Try to allocate a lease from LeaseManager
-    case LeaseManager.allocate_lease(discover.chaddr, nil, hostname) do
+    case LeaseManager.allocate_lease(discover.chaddr, nil, hostname, "default", client_id) do
       {:ok, lease} ->
         # Build DHCPOFFER with lease information
         build_dhcp_offer(discover, lease)
@@ -247,30 +261,67 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:xid, discover.xid)
     |> Map.put(:flags, discover.flags)
     |> Map.put(:ciaddr, 0)
-    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip))
+    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip_address))
     |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
     |> Map.put(:giaddr, ip_tuple_to_integer(discover.giaddr))
     |> Map.put(:chaddr, discover.chaddr)
     |> Map.put(:options, build_dhcp_options(2, pool, lease))
   end
 
-  defp create_dhcp_ack(request, _client_ip) do
-    # Extract hostname and requested IP
+  defp create_dhcp_ack(request, _client_ip, request_state) do
+    # Extract hostname, requested IP, and client identifier
     hostname = get_hostname_from_options(request.options)
-    requested_ip = get_requested_ip(request)
+    client_id = get_client_id_from_options(request.options)
+    server_id = get_server_id_from_options(request.options)
 
+    # Get requested IP based on state
+    requested_ip =
+      case request_state do
+        :renewing ->
+          # For RENEWING, use ciaddr (client's current IP)
+          integer_to_ip_tuple(request.ciaddr)
+
+        :rebinding ->
+          # For REBINDING, use ciaddr (client's current IP)
+          integer_to_ip_tuple(request.ciaddr)
+
+        _ ->
+          # For SELECTING and INIT-REBOOT, use Requested IP Address option
+          get_requested_ip(request)
+      end
+
+    # Validate server identifier if present (RFC 2131 Section 4.3.2)
+    # For SELECTING state, server identifier is required and must match
+    case validate_server_identifier(server_id, request_state) do
+      :ok ->
+        # Server ID is valid, proceed with lease allocation
+        allocate_and_respond(request, requested_ip, hostname, client_id)
+
+      {:error, :wrong_server} ->
+        # Client is requesting from a different server, silently ignore
+        Logger.debug("Ignoring REQUEST with non-matching server identifier")
+        {:nak, "Wrong server identifier"}
+    end
+  end
+
+  defp allocate_and_respond(request, requested_ip, hostname, client_id) do
     # Try to allocate/renew lease
-    case LeaseManager.allocate_lease(request.chaddr, requested_ip, hostname) do
+    case LeaseManager.allocate_lease(request.chaddr, requested_ip, hostname, "default", client_id) do
       {:ok, lease} ->
-        build_dhcp_ack(request, lease)
+        ack = build_dhcp_ack(request, lease)
+        {:ok, ack}
 
       {:error, :pool_exhausted} ->
         Logger.error("Cannot create DHCPACK: address pool exhausted")
-        nil
+        {:nak, "Address pool exhausted"}
+
+      {:error, :pool_not_found} ->
+        Logger.error("Cannot create DHCPACK: pool not found")
+        {:nak, "Invalid network or pool"}
 
       {:error, reason} ->
         Logger.error("Cannot create DHCPACK: #{inspect(reason)}")
-        nil
+        {:nak, "Lease allocation failed: #{inspect(reason)}"}
     end
   end
 
@@ -286,14 +337,56 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:xid, request.xid)
     |> Map.put(:flags, request.flags)
     |> Map.put(:ciaddr, ip_tuple_to_integer(request.ciaddr))
-    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip))
+    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip_address))
     |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
     |> Map.put(:giaddr, ip_tuple_to_integer(request.giaddr))
     |> Map.put(:chaddr, request.chaddr)
     |> Map.put(:options, build_dhcp_options(5, pool, lease))
   end
 
-  # create_dhcp_nak function removed - unused in current implementation
+  defp build_dhcp_nak(request, reason) do
+    # Get default pool for server identifier
+    pool = get_default_pool()
+
+    # Build DHCPNAK message according to RFC 2131
+    DHCPv4.Message.new()
+    # BOOTREPLY = 2
+    |> Map.put(:op, 2)
+    |> Map.put(:htype, request.htype)
+    |> Map.put(:hlen, request.hlen)
+    |> Map.put(:xid, request.xid)
+    |> Map.put(:flags, request.flags)
+    # RFC 2131: ciaddr, yiaddr, siaddr, and giaddr are set to 0
+    |> Map.put(:ciaddr, 0)
+    |> Map.put(:yiaddr, 0)
+    |> Map.put(:siaddr, 0)
+    |> Map.put(:giaddr, 0)
+    |> Map.put(:chaddr, request.chaddr)
+    |> Map.put(:options, build_dhcp_nak_options(pool, reason))
+  end
+
+  defp build_dhcp_nak_options(pool, reason) do
+    # DHCPNAK options per RFC 2131
+    base_options = [
+      # Message type = 6 (DHCPNAK)
+      %DHCPv4.Message.Option{type: 53, length: 1, value: <<6>>},
+      # Server identifier
+      %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)}
+    ]
+
+    # Add message option if reason is provided
+    options_with_message =
+      if reason && is_binary(reason) && byte_size(reason) > 0 do
+        message_value = :binary.copy(reason)
+        base_options ++
+          [%DHCPv4.Message.Option{type: 56, length: byte_size(message_value), value: message_value}]
+      else
+        base_options
+      end
+
+    # Add end option
+    options_with_message ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
+  end
 
   defp create_dhcp_ack_inform(inform, client_ip) do
     # Build a DHCPACK response for DHCPINFORM (no address allocation)
@@ -431,7 +524,79 @@ defmodule YellowDog.Dhcpv4.Handler do
     end)
   end
 
-  # should_ack_request? function removed - unused in current implementation
+  defp get_client_id_from_options(options) do
+    Enum.find_value(options, fn option ->
+      # Option 61 is client identifier
+      if option.type == 61, do: option.value, else: nil
+    end)
+  end
+
+  defp get_server_id_from_options(options) do
+    Enum.find_value(options, fn option ->
+      # Option 54 is server identifier
+      if option.type == 54, do: option.value, else: nil
+    end)
+  end
+
+  defp validate_server_identifier(nil, :renewing), do: :ok
+  defp validate_server_identifier(nil, :rebinding), do: :ok
+  defp validate_server_identifier(nil, _), do: :ok
+
+  defp validate_server_identifier(server_id, _request_state) when is_binary(server_id) do
+    # Get our server identifier (gateway IP from default pool)
+    our_server_id = get_server_identifier()
+
+    if server_id == our_server_id do
+      :ok
+    else
+      {:error, :wrong_server}
+    end
+  end
+
+  defp determine_request_state(request) do
+    # Determine REQUEST state based on RFC 2131 Section 4.3.2
+    server_id = get_server_id_from_options(request.options)
+    requested_ip = get_requested_ip(request)
+    ciaddr = request.ciaddr
+
+    cond do
+      # SELECTING: Server Identifier and Requested IP present, ciaddr is 0
+      server_id != nil && requested_ip != nil && ciaddr == 0 ->
+        :selecting
+
+      # INIT-REBOOT: Requested IP present, no Server Identifier, ciaddr is 0
+      requested_ip != nil && server_id == nil && ciaddr == 0 ->
+        :init_reboot
+
+      # RENEWING: ciaddr filled in, no Requested IP or Server Identifier
+      ciaddr != 0 && requested_ip == nil && server_id == nil ->
+        :renewing
+
+      # REBINDING: ciaddr filled in, may have Requested IP but no Server Identifier
+      ciaddr != 0 && server_id == nil ->
+        :rebinding
+
+      # Default to selecting if we can't determine
+      true ->
+        :selecting
+    end
+  end
+
+  defp integer_to_ip_tuple(0), do: nil
+
+  defp integer_to_ip_tuple(ip_int) when is_integer(ip_int) do
+    a = div(ip_int, 256 * 256 * 256)
+    b = div(rem(ip_int, 256 * 256 * 256), 256 * 256)
+    c = div(rem(ip_int, 256 * 256), 256)
+    d = rem(ip_int, 256)
+    {a, b, c, d}
+  end
+
+  defp get_server_identifier do
+    # Get the gateway IP from the default pool as our server identifier
+    pool = get_default_pool()
+    ip_to_binary(pool.gateway)
+  end
 
   defp get_requested_ip(request) do
     Enum.find_value(request.options, fn option ->

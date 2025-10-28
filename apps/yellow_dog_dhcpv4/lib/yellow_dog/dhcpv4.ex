@@ -28,11 +28,34 @@ defmodule YellowDog.Dhcpv4 do
   Gets all active leases.
 
   ## Returns
-  - List of active lease entries
+  - List of active lease entries with the following structure:
+    - `mac_address` - Binary MAC address
+    - `ip_address` - IP address tuple (e.g., {192, 168, 1, 100})
+    - `pool_name` - Pool name string
+    - `state` - Lease state (`:active`, `:offered`, `:released`, `:expired`, `:declined`)
+    - `lease_time` - Lease duration in seconds
+    - `expires_at` - Unix timestamp when lease expires
+    - `hostname` - Optional client hostname
+    - `client_id` - Optional DHCP client identifier (option 61)
+    - `created_at` - Unix timestamp when lease was created
+    - `updated_at` - Unix timestamp when lease was last updated
 
   ## Examples
       iex> YellowDog.Dhcpv4.list_leases()
-      [%{ip: {192, 168, 1, 100}, mac: "00:11:22:33:44:55", ...}]
+      [
+        %{
+          mac_address: <<0, 17, 34, 51, 68, 85>>,
+          ip_address: {192, 168, 1, 100},
+          pool_name: "default",
+          state: :active,
+          lease_time: 86400,
+          expires_at: 1735286400,
+          hostname: "laptop-01",
+          client_id: nil,
+          created_at: 1735200000,
+          updated_at: 1735200000
+        }
+      ]
   """
   @spec list_leases() :: [map()]
   defdelegate list_leases(), to: LeaseManager
@@ -66,15 +89,24 @@ defmodule YellowDog.Dhcpv4 do
   Gets lease statistics.
 
   ## Returns
-  - Map with lease statistics
+  - Map with lease statistics including:
+    - `total_leases` - Total number of leases in storage
+    - `active_leases` - Number of currently active (non-expired) leases
+    - `expired_leases` - Number of expired leases
+    - `by_state` - Breakdown of leases by state (`:offered`, `:active`, `:released`, `:expired`, `:declined`)
 
   ## Examples
       iex> YellowDog.Dhcpv4.stats()
       %{
-        total_leases: 50,
+        total_leases: 52,
         active_leases: 45,
         expired_leases: 5,
-        pool_utilization: %{"default" => 45}
+        by_state: %{
+          active: 45,
+          offered: 2,
+          released: 3,
+          expired: 2
+        }
       }
   """
   @spec stats() :: map()
@@ -99,4 +131,45 @@ defmodule YellowDog.Dhcpv4 do
         }
     end
   end
+
+  @doc """
+  Gets statistics for a specific pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool
+
+  ## Returns
+  - `{:ok, stats}` - Pool statistics including utilization, available addresses, etc.
+  - `{:error, :pool_not_found}` - Pool does not exist
+
+  ## Examples
+      iex> YellowDog.Dhcpv4.get_pool_stats("default")
+      {:ok, %{
+        pool_name: "default",
+        total_addresses: 101,
+        allocated_addresses: 45,
+        available_addresses: 56,
+        utilization_percent: 44.55,
+        static_reservations: 2,
+        leases_by_state: %{active: 40, offered: 3, released: 2}
+      }}
+  """
+  @spec get_pool_stats(String.t()) :: {:ok, map()} | {:error, :pool_not_found}
+  defdelegate get_pool_stats(pool_name), to: LeaseManager
+
+  @doc """
+  Gets statistics for all pools.
+
+  ## Returns
+  - Map with pool names as keys and statistics as values
+
+  ## Examples
+      iex> YellowDog.Dhcpv4.get_all_pool_stats()
+      %{
+        "default" => %{pool_name: "default", total_addresses: 101, ...},
+        "office" => %{pool_name: "office", total_addresses: 200, ...}
+      }
+  """
+  @spec get_all_pool_stats() :: map()
+  defdelegate get_all_pool_stats(), to: LeaseManager
 end
