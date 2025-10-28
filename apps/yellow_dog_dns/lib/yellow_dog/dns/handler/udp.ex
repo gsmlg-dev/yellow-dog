@@ -24,7 +24,8 @@ defmodule YellowDog.Dns.Handler.UDP do
   use Abyss.Handler
 
   alias YellowDog.Telemetry
-  alias DNS.Zone.Manager, as: ZoneManager
+  alias YellowDog.Dns.Query.Resolver
+  alias YellowDog.Dns.Zone.Manager, as: ZoneManager
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
   alias DNS.Message.Record
@@ -199,35 +200,76 @@ defmodule YellowDog.Dns.Handler.UDP do
   end
 
   defp resolve_question(query, question, state, start_time) do
-    # 2. Check authoritative zones
-    case lookup_in_zones(question.name.value, question.type, state.loaded_zones) do
-      {:ok, records} ->
-        Telemetry.debug("Authoritative answer", %{
-          name: question.name.value,
-          type: to_string(question.type),
-          record_count: length(records)
-        })
+    # 2. Check authoritative zones using Query.Resolver
+    query_name = question.name.value
+    query_type = question.type
 
-        state = update_in(state, [:stats, :authoritative], &(&1 + 1))
+    # Find matching zone for this query
+    case find_matching_zone_name(query_name) do
+      {:ok, zone_name} ->
+        # Resolve using Query.Resolver with CNAME following
+        case Resolver.resolve_with_cname(zone_name, query_name, query_type) do
+          {:ok, answers, _authority} ->
+            # Convert resolver records to DNS.Message.Record format
+            dns_records = convert_resolver_records_to_message_records(answers)
 
-        response = create_response(query, question, records, :no_error)
-        state = cache_response(response, question, state)
+            Telemetry.debug("Authoritative answer", %{
+              name: query_name,
+              type: to_string(query_type),
+              record_count: length(dns_records)
+            })
 
-        :telemetry.execute(
-          [:yellow_dog, :dns, :authoritative_response],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{
-            name: question.name.value,
-            type: to_string(question.type),
-            record_count: length(records)
-          }
-        )
+            state = update_in(state, [:stats, :authoritative], &(&1 + 1))
 
-        {response, state}
+            response = create_response(query, question, dns_records, :no_error)
+            state = cache_response(response, question, state)
 
-      {:nxdomain, _} ->
-        # Name exists in our zone but no records of this type
-        handle_not_found(query, question, state, start_time)
+            :telemetry.execute(
+              [:yellow_dog, :dns, :authoritative_response],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{
+                name: query_name,
+                type: to_string(query_type),
+                record_count: length(dns_records)
+              }
+            )
+
+            {response, state}
+
+          {:nxdomain, _answers, authority} ->
+            # Name doesn't exist - return NXDOMAIN with SOA authority
+            dns_authority = convert_soa_to_message_records(authority)
+
+            Telemetry.debug("NXDOMAIN with authority", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            response = create_response_with_authority(query, question, [], dns_authority, :nxdomain)
+            {response, state}
+
+          {:nodata, _answers, authority} ->
+            # Name exists but no records of this type - return NODATA with SOA authority
+            dns_authority = convert_soa_to_message_records(authority)
+
+            Telemetry.debug("NODATA with authority", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            response = create_response_with_authority(query, question, [], dns_authority, :no_error)
+            {response, state}
+
+          {:servfail, _, _} ->
+            # Server failure
+            Telemetry.warning("SERVFAIL", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            response = create_response(query, question, [], :servfail)
+            {response, state}
+        end
 
       {:error, :not_found} ->
         # Not in our zones, try recursive/forward
@@ -350,104 +392,88 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   ## Private Functions - Zone Management
 
-  defp load_zones(zone_files) when is_list(zone_files) do
-    Enum.flat_map(zone_files, fn zone_file ->
-      case ZoneManager.load_zone_from_file(zone_file, zone_file) do
-        {:ok, zone} ->
-          Telemetry.info("Loaded zone", %{
-            zone_name: zone.name.value,
-            zone_file: zone_file
-          })
-
-          [zone]
-
-        {:error, reason} ->
-          Telemetry.error("Failed to load zone", %{
-            zone_file: zone_file,
-            reason: inspect(reason)
-          })
-
-          []
-      end
-    end)
+  defp load_zones(_zone_files) do
+    # Zones are now managed by Zone.Manager and stored in ETS
+    # No need to load them here, just return empty list for compatibility
+    []
   end
 
-  defp load_zones(_), do: []
+  defp find_matching_zone_name(query_name) do
+    # Get list of loaded zones from Zone.Manager
+    case ZoneManager.list_zones() do
+      {:ok, zones} ->
+        # Find the most specific zone that matches the query name
+        normalized_query = String.downcase(query_name) |> String.trim_trailing(".")
 
-  defp lookup_in_zones(name, type, zones) do
-    # Find the most specific zone that matches the query name
-    matching_zone = find_matching_zone(name, zones)
+        matching_zone =
+          zones
+          |> Enum.filter(fn zone_name ->
+            normalized_zone = String.downcase(zone_name) |> String.trim_trailing(".")
+            normalized_query == normalized_zone or String.ends_with?(normalized_query, "." <> normalized_zone)
+          end)
+          |> Enum.sort_by(&(-String.length(&1)))
+          |> List.first()
 
-    case matching_zone do
-      nil ->
-        {:error, :not_found}
-
-      zone ->
-        # Search for records in the zone
-        case search_zone_records(zone, name, type) do
-          [] ->
-            {:nxdomain, []}
-
-          records ->
-            {:ok, records}
+        case matching_zone do
+          nil -> {:error, :not_found}
+          zone_name -> {:ok, zone_name}
         end
+
+      {:error, _} ->
+        {:error, :not_found}
     end
   end
 
-  defp find_matching_zone(name, zones) do
-    zones
-    |> Enum.filter(fn zone ->
-      zone_name = zone.name.value
-      String.ends_with?(name, zone_name) or name == String.trim_trailing(zone_name, ".")
-    end)
-    |> Enum.sort_by(fn zone -> -String.length(zone.name.value) end)
-    |> List.first()
-  end
+  defp convert_resolver_records_to_message_records(records) do
+    # Convert YellowDog.Dns.Zone.Record to DNS.Message.Record format
+    Enum.map(records, fn record ->
+      # Convert record type and rdata to ex_dns format
+      {dns_type, dns_data} = convert_record_type_and_data(record.type, record.rdata)
 
-  defp search_zone_records(zone, name, type) do
-    # Search through zone records for matching name and type
-    zone.records
-    |> Enum.filter(fn rr_set ->
-      matches_name?(rr_set, name, zone.name.value) and matches_type?(rr_set, type)
-    end)
-    |> Enum.flat_map(fn rr_set ->
-      # Convert RRSet to Message.Record format
-      convert_rrset_to_records(rr_set, zone.name.value)
-    end)
-  end
-
-  defp matches_name?(rr_set, query_name, zone_name) do
-    # Handle relative vs absolute names
-    rr_name = normalize_record_name(rr_set.name, zone_name)
-    normalized_query = String.trim_trailing(query_name, ".")
-
-    rr_name == normalized_query or rr_name == query_name
-  end
-
-  defp normalize_record_name(name, zone_name) do
-    cond do
-      name == "@" -> String.trim_trailing(zone_name, ".")
-      String.ends_with?(name, ".") -> String.trim_trailing(name, ".")
-      true -> String.trim_trailing("#{name}.#{zone_name}", ".")
-    end
-  end
-
-  defp matches_type?(rr_set, type) do
-    type_atom = if is_atom(type), do: type, else: String.to_atom(to_string(type))
-    rr_set.type == type_atom
-  end
-
-  defp convert_rrset_to_records(rr_set, zone_name) do
-    Enum.map(rr_set.data, fn data ->
       Record.new(
-        normalize_record_name(rr_set.name, zone_name),
-        rr_set.type,
+        record.owner,
+        dns_type,
         :in,
-        rr_set.ttl,
-        data
+        record.ttl,
+        dns_data
       )
     end)
   end
+
+  defp convert_soa_to_message_records(authority) do
+    # Convert Zone.SOA structs to DNS.Message.Record format
+    Enum.map(authority, fn soa ->
+      # SOA record format for ex_dns
+      dns_data = %{
+        mname: soa.mname,
+        rname: soa.rname,
+        serial: soa.serial,
+        refresh: soa.refresh,
+        retry: soa.retry,
+        expire: soa.expire,
+        minimum: soa.minimum
+      }
+
+      Record.new(
+        "@",
+        :soa,
+        :in,
+        3600,
+        dns_data
+      )
+    end)
+  end
+
+  defp convert_record_type_and_data(:A, rdata), do: {:a, rdata}
+  defp convert_record_type_and_data(:AAAA, rdata), do: {:aaaa, rdata}
+  defp convert_record_type_and_data(:NS, rdata), do: {:ns, rdata}
+  defp convert_record_type_and_data(:CNAME, rdata), do: {:cname, rdata}
+  defp convert_record_type_and_data(:MX, {priority, exchange}), do: {:mx, %{preference: priority, exchange: exchange}}
+  defp convert_record_type_and_data(:TXT, rdata), do: {:txt, [rdata]}
+  defp convert_record_type_and_data(:PTR, rdata), do: {:ptr, rdata}
+  defp convert_record_type_and_data(:SRV, {priority, weight, port, target}), do: {:srv, %{priority: priority, weight: weight, port: port, target: target}}
+  defp convert_record_type_and_data(:SOA, soa), do: {:soa, %{mname: soa.mname, rname: soa.rname, serial: soa.serial, refresh: soa.refresh, retry: soa.retry, expire: soa.expire, minimum: soa.minimum}}
+  defp convert_record_type_and_data(type, rdata), do: {type, rdata}
 
   defp convert_recursive_records_to_message_records(records) do
     # The recursive resolver returns records in a specific format
@@ -534,6 +560,34 @@ defmodule YellowDog.Dns.Handler.UDP do
       },
       qdlist: [question],
       anlist: records
+    }
+  end
+
+  defp create_response_with_authority(query, question, records, authority, rcode_atom) do
+    rcode =
+      case rcode_atom do
+        :no_error -> DNS.Message.RCode.new(0)
+        :format_error -> DNS.Message.RCode.new(1)
+        :servfail -> DNS.Message.RCode.new(2)
+        :nxdomain -> DNS.Message.RCode.new(3)
+        _ -> DNS.Message.RCode.new(2)
+      end
+
+    %Message{
+      header: %{
+        query.header
+        | id: query.header.id,
+          # Response
+          qr: 1,
+          # Authoritative answer
+          aa: 1,
+          rcode: rcode,
+          ancount: length(records),
+          nscount: length(authority)
+      },
+      qdlist: [question],
+      anlist: records,
+      nslist: authority
     }
   end
 
