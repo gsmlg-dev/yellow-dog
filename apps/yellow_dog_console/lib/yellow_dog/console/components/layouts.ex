@@ -248,9 +248,9 @@ defmodule YellowDog.Console.Layouts do
               <div class="badge badge-success badge-sm">Running</div>
             </summary>
             <ul>
-              <li><a>Zones</a></li>
-              <li><a>Records</a></li>
-              <li><a>Views</a></li>
+              <li><a href="/dns/zones">Zones</a></li>
+              <li><a href="/dns/records">Records</a></li>
+              <li><a href="/dns/views">Views</a></li>
             </ul>
           </details>
         </li>
@@ -277,9 +277,9 @@ defmodule YellowDog.Console.Layouts do
               <div class="badge badge-success badge-sm">Running</div>
             </summary>
             <ul>
-              <li><a>Leases</a></li>
-              <li><a>Pools</a></li>
-              <li><a>Reservations</a></li>
+              <li><a href="/dhcpv4">Overview</a></li>
+              <li><a href="/dhcpv4/leases">Leases</a></li>
+              <li><a href="/dhcpv4">Pools</a></li>
             </ul>
           </details>
         </li>
@@ -306,9 +306,9 @@ defmodule YellowDog.Console.Layouts do
               <div class="badge badge-error badge-sm">Stopped</div>
             </summary>
             <ul>
-              <li><a>Leases</a></li>
-              <li><a>Pools</a></li>
-              <li><a>Reservations</a></li>
+              <li><a href="/dhcpv6">Overview</a></li>
+              <li><a href="/dhcpv6/leases">Leases</a></li>
+              <li><a href="/dhcpv6">Pools</a></li>
             </ul>
           </details>
         </li>
@@ -348,7 +348,7 @@ defmodule YellowDog.Console.Layouts do
           <span>System</span>
         </li>
         <li>
-          <a class="gap-3">
+          <a href="/settings" class="gap-3">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-5 w-5"
@@ -373,7 +373,7 @@ defmodule YellowDog.Console.Layouts do
           </a>
         </li>
         <li>
-          <a class="gap-3">
+          <a href="/logs" class="gap-3">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-5 w-5"

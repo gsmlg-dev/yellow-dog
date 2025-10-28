@@ -191,6 +191,35 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     GenServer.call(__MODULE__, :get_all_pool_stats)
   end
 
+  @doc """
+  Gets the configuration for a specific pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool
+
+  ## Returns
+  - `{:ok, config}` - Pool configuration
+  - `{:error, :pool_not_found}` - Pool does not exist
+  """
+  @spec get_pool_config(String.t()) :: {:ok, map()} | {:error, :pool_not_found}
+  def get_pool_config(pool_name) do
+    GenServer.call(__MODULE__, {:get_pool_config, pool_name})
+  end
+
+  @doc """
+  Gets static reservations for a specific pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool
+
+  ## Returns
+  - List of static reservations
+  """
+  @spec get_static_reservations(String.t()) :: [map()]
+  def get_static_reservations(pool_name) do
+    GenServer.call(__MODULE__, {:get_static_reservations, pool_name})
+  end
+
   # Server Callbacks
 
   @impl true
@@ -307,6 +336,49 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   def handle_call(:get_all_pool_stats, _from, state) do
     stats = YellowDog.Dhcpv4.PoolStats.get_all_pool_stats(state.pools)
     {:reply, stats, state}
+  end
+
+  @impl true
+  def handle_call({:get_pool_config, pool_name}, _from, state) do
+    case Map.get(state.pools, pool_name) do
+      nil ->
+        {:reply, {:error, :pool_not_found}, state}
+
+      pool ->
+        config = %{
+          name: pool.name,
+          range_start: pool.range_start,
+          range_end: pool.range_end,
+          subnet_mask: pool.subnet_mask,
+          gateway: pool.gateway,
+          dns_servers: pool.dns_servers,
+          domain_name: pool.domain_name,
+          lease_time: pool.lease_time,
+          excluded_ranges: pool.excluded_ranges
+        }
+        {:reply, {:ok, config}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:get_static_reservations, pool_name}, _from, state) do
+    case Map.get(state.pools, pool_name) do
+      nil ->
+        {:reply, [], state}
+
+      pool ->
+        reservations =
+          pool.static_reservations
+          |> Enum.map(fn {mac, ip} ->
+            %{
+              mac_address: mac,
+              ip_address: ip,
+              description: nil
+            }
+          end)
+
+        {:reply, reservations, state}
+    end
   end
 
   @impl true

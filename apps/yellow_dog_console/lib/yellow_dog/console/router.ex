@@ -25,6 +25,11 @@ defmodule YellowDog.Console.Router do
     live "/mdns/services", MdnsLive.ServicesLive
     live "/mdns/discovery", MdnsLive.DiscoveryLive
     live "/mdns/monitor", MdnsLive.MonitorLive
+
+    # DHCPv4 Management Routes
+    live "/dhcpv4", Dhcpv4Live.Index
+    live "/dhcpv4/leases", Dhcpv4Live.LeasesLive
+    live "/dhcpv4/pools/:pool_name", Dhcpv4Live.PoolLive
   end
 
   scope "/api", YellowDog.Console do
