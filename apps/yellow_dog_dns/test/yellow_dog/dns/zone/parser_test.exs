@@ -434,4 +434,118 @@ defmodule YellowDog.Dns.Zone.ParserTest do
       assert {:error, :zone_name_required} = Parser.parse_string(content, [])
     end
   end
+
+  describe "wildcard records" do
+    test "parses wildcard A record" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      *.test.com.  IN  A  192.168.1.200
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.test.com.", :A)
+      assert length(records) == 1
+      assert hd(records).owner == "*.test.com."
+      assert hd(records).rdata == {192, 168, 1, 200}
+    end
+
+    test "parses wildcard with relative name" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      *  IN  A  192.168.1.200
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.test.com.", :A)
+      assert length(records) == 1
+      assert hd(records).owner == "*.test.com."
+    end
+
+    test "parses more specific wildcard" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      *.sub  IN  A  192.168.1.201
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.sub.test.com.", :A)
+      assert length(records) == 1
+      assert hd(records).owner == "*.sub.test.com."
+      assert hd(records).rdata == {192, 168, 1, 201}
+    end
+
+    test "parses wildcard AAAA record" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      *  IN  AAAA  2001:db8::200
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.test.com.", :AAAA)
+      assert length(records) == 1
+      assert hd(records).rdata == {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0x200}
+    end
+
+    test "parses wildcard CNAME record" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      www  IN  A    192.168.1.100
+      *.alias  IN  CNAME  www.test.com.
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.alias.test.com.", :CNAME)
+      assert length(records) == 1
+      assert hd(records).rdata == "www.test.com."
+    end
+
+    test "parses wildcard TXT record" do
+      content = """
+      $ORIGIN test.com.
+      $TTL 300
+      @  IN  SOA ns1.test.com. admin.test.com. 2024010101 3600 1800 604800 300
+      *.app  IN  TXT  "app subdomain"
+      """
+
+      assert {:ok, zone} = Parser.parse_string(content, zone_name: "test.com")
+
+      records = Zone.find_records(zone, "*.app.test.com.", :TXT)
+      assert length(records) == 1
+      assert hd(records).rdata == "app subdomain"
+    end
+
+    test "parses wildcard from file" do
+      assert {:ok, zone} = Parser.parse_file("test/fixtures/zones/wildcard.zone", zone_name: "wildcard.test")
+
+      # Check wildcard A record
+      wildcard_records = Zone.find_records(zone, "*.wildcard.test.", :A)
+      assert length(wildcard_records) == 1
+      assert hd(wildcard_records).rdata == {192, 168, 1, 200}
+
+      # Check more specific wildcard
+      sub_wildcard_records = Zone.find_records(zone, "*.sub.wildcard.test.", :A)
+      assert length(sub_wildcard_records) == 1
+      assert hd(sub_wildcard_records).rdata == {192, 168, 1, 201}
+
+      # Check exact match records also exist
+      exact_records = Zone.find_records(zone, "exact.wildcard.test.", :A)
+      assert length(exact_records) == 1
+      assert hd(exact_records).rdata == {192, 168, 1, 50}
+    end
+  end
 end

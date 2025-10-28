@@ -319,8 +319,8 @@ defmodule YellowDog.Dns.Zone.Parser do
       first == "@" ->
         {"@", rest}
 
-      # Owner is a domain name (starts with letter, digit, underscore, or hyphen)
-      String.match?(first, ~r/^[a-zA-Z0-9_-]/) and not is_ttl?(first) and
+      # Owner is a domain name (starts with letter, digit, underscore, hyphen, or wildcard asterisk)
+      String.match?(first, ~r/^[a-zA-Z0-9_\-\*]/) and not is_ttl?(first) and
           first not in ["IN", "CH", "HS"] and not is_record_type?(first) ->
         {first, rest}
 

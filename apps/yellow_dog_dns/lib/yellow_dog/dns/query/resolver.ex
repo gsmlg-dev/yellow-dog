@@ -112,17 +112,24 @@ defmodule YellowDog.Dns.Query.Resolver do
         {:ok, answers, []}
 
       {:error, :not_found} ->
-        # Check if the name exists with other types
-        case check_name_exists(zone_name, normalized_owner) do
-          true ->
-            # Name exists but no records of this type (NODATA)
-            authority = get_soa_authority(zone_name)
-            {:nodata, [], authority}
+        # Try wildcard matching before NXDOMAIN
+        case try_wildcard_match(zone_name, normalized_owner, qtype) do
+          {:ok, records} ->
+            {:ok, records, []}
 
-          false ->
-            # Name doesn't exist (NXDOMAIN)
-            authority = get_soa_authority(zone_name)
-            {:nxdomain, [], authority}
+          {:error, :not_found} ->
+            # Check if the name exists with other types
+            case check_name_exists(zone_name, normalized_owner) do
+              true ->
+                # Name exists but no records of this type (NODATA)
+                authority = get_soa_authority(zone_name)
+                {:nodata, [], authority}
+
+              false ->
+                # Name doesn't exist (NXDOMAIN)
+                authority = get_soa_authority(zone_name)
+                {:nxdomain, [], authority}
+            end
         end
     end
     end
@@ -132,12 +139,29 @@ defmodule YellowDog.Dns.Query.Resolver do
     # First check for direct answer
     case do_resolve(zone_name, owner, qtype) do
       {:ok, answers, authority} ->
-        # Got direct answer
-        {:ok, chain ++ answers, authority}
+        # Check if we got a CNAME instead of the requested type
+        case answers do
+          [%{type: :CNAME, rdata: target} | _] when qtype != :CNAME ->
+            # Got CNAME, follow it
+            do_resolve_with_cname(zone_name, target, qtype, depth - 1, chain ++ answers)
+
+          _ ->
+            # Got direct answer of requested type
+            {:ok, chain ++ answers, authority}
+        end
 
       {:nxdomain, _, authority} ->
-        # Name doesn't exist - return any CNAME chain we've collected
-        {:nxdomain, chain, authority}
+        # Name doesn't exist for requested type - check for CNAME (including wildcards)
+        case do_resolve(zone_name, owner, :CNAME) do
+          {:ok, [cname_record | _], _} ->
+            # Found CNAME, follow it
+            target = cname_record.rdata
+            do_resolve_with_cname(zone_name, target, qtype, depth - 1, chain ++ [cname_record])
+
+          _ ->
+            # No CNAME either, return NXDOMAIN with chain
+            {:nxdomain, chain, authority}
+        end
 
       {:nodata, [], authority} ->
         # No direct answer, check for CNAME
@@ -174,6 +198,72 @@ defmodule YellowDog.Dns.Query.Resolver do
         {:error, :not_found} -> false
       end
     end)
+  end
+
+  defp try_wildcard_match(zone_name, owner, qtype) do
+    # Generate wildcard candidates from the owner name
+    # For example, for "foo.bar.example.com.", generate:
+    # ["*.bar.example.com.", "*.example.com.", "*.com."]
+    wildcard_candidates = generate_wildcard_candidates(owner, zone_name)
+
+    # Try each wildcard candidate, most specific first
+    # According to RFC 4592, we should find the closest enclosing wildcard regardless of type
+    Enum.reduce_while(wildcard_candidates, {:error, :not_found}, fn wildcard_owner, _acc ->
+      # First try the requested type
+      case Storage.lookup_record(zone_name, wildcard_owner, qtype) do
+        {:ok, records} ->
+          # Found a match! Convert records but use the original query name as owner
+          answers = Enum.map(records, fn storage_data ->
+            # Wildcard expansion: use the original queried name as the owner
+            storage_to_record(owner, qtype, storage_data)
+          end)
+
+          {:halt, {:ok, answers}}
+
+        {:error, :not_found} ->
+          # No match for requested type, check for CNAME at this specificity level
+          case Storage.lookup_record(zone_name, wildcard_owner, :CNAME) do
+            {:ok, records} ->
+              # Found wildcard CNAME! Convert and return it
+              # The caller (do_resolve_with_cname) will follow the CNAME
+              answers = Enum.map(records, fn storage_data ->
+                storage_to_record(owner, :CNAME, storage_data)
+              end)
+
+              {:halt, {:ok, answers}}
+
+            {:error, :not_found} ->
+              # No match at this level, continue to next (less specific) wildcard
+              {:cont, {:error, :not_found}}
+          end
+      end
+    end)
+  end
+
+  defp generate_wildcard_candidates(owner, zone_name) do
+    # Normalize names
+    normalized_owner = String.downcase(owner) |> String.trim_trailing(".")
+    normalized_zone = String.downcase(zone_name) |> String.trim_trailing(".")
+
+    # Split the owner into labels
+    labels = String.split(normalized_owner, ".")
+
+    # Generate wildcard candidates from most specific to least specific
+    # For "foo.bar.example.com" with zone "example.com", generate:
+    # ["*.bar.example.com.", "*.example.com."]
+    # We skip the first label (foo) and start from the second
+    1..(length(labels) - 1)
+    |> Enum.map(fn skip_count ->
+      remaining_labels = Enum.drop(labels, skip_count)
+      wildcard_name = ["*" | remaining_labels] |> Enum.join(".")
+      wildcard_name <> "."
+    end)
+    |> Enum.filter(fn wildcard_name ->
+      # Only include wildcards that are within our zone
+      wildcard_base = String.trim_leading(wildcard_name, "*.")
+      wildcard_base == normalized_zone <> "." or String.ends_with?(wildcard_base, "." <> normalized_zone <> ".")
+    end)
+    |> Enum.sort_by(&(-String.length(&1)))  # Sort by length descending (most specific first)
   end
 
   defp get_soa_authority(zone_name) do
