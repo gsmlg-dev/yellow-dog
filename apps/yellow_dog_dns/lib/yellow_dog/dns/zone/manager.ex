@@ -332,27 +332,40 @@ defmodule YellowDog.Dns.Zone.Manager do
   end
 
   defp load_zone_from_file(zone_name, file, zone_type, ttl) do
-    # For now, create a simple zone structure
-    # Will be replaced with actual parser in next phase
-    zone = Zone.new(zone_name, zone_type, ttl: ttl, file: file)
+    # Parse zone file using Zone.Parser
+    case Zone.Parser.parse_file(file, zone_name: zone_name, zone_type: zone_type, default_ttl: ttl) do
+      {:ok, zone} ->
+        # Store zone records in storage
+        store_zone_records(zone_name, zone)
 
-    # Store metadata
-    metadata = %{
-      type: zone_type,
-      file: file,
-      serial: nil,
-      loaded_at: System.system_time(:second)
-    }
+        # Store metadata
+        metadata = %{
+          type: zone_type,
+          file: file,
+          serial: Zone.get_serial(zone),
+          loaded_at: System.system_time(:second)
+        }
 
-    Storage.put_zone_metadata(zone_name, metadata)
+        Storage.put_zone_metadata(zone_name, metadata)
 
-    Logger.info("Zone loaded from file",
-      zone: zone_name,
-      file: file,
-      type: zone_type
-    )
+        Logger.info("Zone loaded from file",
+          zone: zone_name,
+          file: file,
+          type: zone_type,
+          record_count: length(zone.records)
+        )
 
-    {:ok, zone_name}
+        {:ok, zone_name}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to parse zone file",
+          zone: zone_name,
+          file: file,
+          error: inspect(reason)
+        )
+
+        error
+    end
   end
 
   defp do_load_zone_struct(zone_name, %Zone{} = zone) do

@@ -290,7 +290,7 @@ defmodule YellowDog.Dns.Zone do
   """
   def validate(%__MODULE__{soa: nil}), do: {:error, :missing_soa}
 
-  def validate(%__MODULE__{records: records} = zone) do
+  def validate(%__MODULE__{records: records}) do
     has_ns? = Enum.any?(records, fn record -> record.type == :NS end)
 
     if has_ns? do

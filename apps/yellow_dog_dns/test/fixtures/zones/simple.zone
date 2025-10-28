@@ -1,0 +1,10 @@
+; Simple zone file
+$ORIGIN simple.test.
+$TTL 300
+
+@  IN  SOA ns1.simple.test. admin.simple.test. 2024010101 3600 1800 604800 300
+
+@  IN  NS  ns1.simple.test.
+
+ns1  IN  A  10.0.0.1
+www  IN  A  10.0.0.10

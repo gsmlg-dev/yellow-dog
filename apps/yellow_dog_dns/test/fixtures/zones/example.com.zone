@@ -1,0 +1,41 @@
+; Example zone file for testing
+$ORIGIN example.com.
+$TTL 3600
+
+; SOA record
+@  IN  SOA ns1.example.com. admin.example.com. (
+           2024102801  ; Serial
+           7200        ; Refresh
+           3600        ; Retry
+           1209600     ; Expire
+           3600 )      ; Minimum TTL
+
+; Name servers
+@       IN  NS  ns1.example.com.
+@       IN  NS  ns2.example.com.
+
+; A records
+ns1     IN  A    192.168.1.10
+ns2     IN  A    192.168.1.11
+www     IN  A    192.168.1.100
+mail    IN  A    192.168.1.20
+
+; AAAA record
+www     IN  AAAA 2001:db8::1
+
+; MX records
+@       IN  MX   10 mail.example.com.
+@       IN  MX   20 backup.example.com.
+
+; TXT records
+@       IN  TXT  "v=spf1 mx a -all"
+_dmarc  IN  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
+
+; CNAME record
+ftp     IN  CNAME www.example.com.
+
+; SRV record
+_http._tcp  IN  SRV  10 60 80 www.example.com.
+
+; CAA record
+@       IN  CAA  0 issue "letsencrypt.org"

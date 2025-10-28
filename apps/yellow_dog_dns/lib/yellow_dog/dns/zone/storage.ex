@@ -23,7 +23,6 @@ defmodule YellowDog.Dns.Zone.Storage do
   """
 
   require Logger
-  alias YellowDog.Telemetry
 
   @zone_data_table :dns_zone_data
   @zone_metadata_table :dns_zone_metadata
