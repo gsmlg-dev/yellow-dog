@@ -30,6 +30,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @option_client_id 1
   @option_server_id 2
   @option_ia_na 3
+  @option_ia_ta 4
   @option_ia_addr 5
   # @option_oro 6
   @option_preference 7
@@ -38,6 +39,10 @@ defmodule YellowDog.Dhcpv6.Handler do
   # @option_rapid_commit 14
   @option_dns_servers 23
   @option_domain_list 24
+  @option_ia_pd 25
+  @option_ia_prefix 26
+  @option_ntp_server 56
+  @option_info_refresh_time 32
 
   @doc """
   Handles incoming DHCPv6 data from clients.
@@ -147,31 +152,71 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     client_duid = get_client_duid(message)
     ia_na = get_ia_na(message)
+    ia_ta = get_ia_ta(message)
+    ia_pd = get_ia_pd(message)
 
-    case {client_duid, ia_na} do
-      {nil, _} ->
+    # Check if any IA type is present
+    case {client_duid, ia_na, ia_ta, ia_pd} do
+      {nil, _, _, _} ->
         Logger.warning("SOLICIT missing client DUID")
         {:continue, state}
 
-      {_, nil} ->
-        Logger.warning("SOLICIT missing IA_NA option")
+      {_, nil, nil, nil} ->
+        Logger.warning("SOLICIT missing all IA options (IA_NA, IA_TA, IA_PD)")
         {:continue, state}
 
-      {duid, %{iaid: iaid}} ->
-        # Try to allocate lease
-        case LeaseManager.allocate_lease(duid, iaid) do
-          {:ok, lease} ->
-            advertise = create_advertise(message, lease)
-            send_dhcpv6_response(advertise, client_ip, client_port, state)
+      {duid, _, _, _} ->
+        # Process each IA type
+        leases = []
 
-            :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :solicit_handled],
-              %{duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, duid: format_duid(duid)}
-            )
+        # Handle IA_NA if present
+        leases =
+          if ia_na do
+            case LeaseManager.allocate_lease(duid, ia_na.iaid) do
+              {:ok, lease} -> [lease | leases]
+              {:error, reason} ->
+                Logger.error("Failed to allocate IA_NA lease: #{inspect(reason)}")
+                leases
+            end
+          else
+            leases
+          end
 
-          {:error, reason} ->
-            Logger.error("Failed to allocate lease for SOLICIT: #{inspect(reason)}")
+        # Handle IA_TA if present
+        leases =
+          if ia_ta do
+            case allocate_temporary_address(duid, ia_ta.iaid) do
+              {:ok, ta_lease} -> [ta_lease | leases]
+              {:error, reason} ->
+                Logger.error("Failed to allocate IA_TA lease: #{inspect(reason)}")
+                leases
+            end
+          else
+            leases
+          end
+
+        # Handle IA_PD if present
+        leases =
+          if ia_pd do
+            case allocate_prefix_delegation(duid, ia_pd.iaid) do
+              {:ok, pd_lease} -> [pd_lease | leases]
+              {:error, reason} ->
+                Logger.error("Failed to allocate IA_PD lease: #{inspect(reason)}")
+                leases
+            end
+          else
+            leases
+          end
+
+        if length(leases) > 0 do
+          advertise = create_advertise_multi(message, leases)
+          send_dhcpv6_response(advertise, client_ip, client_port, state)
+
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv6, :solicit_handled],
+            %{duration: System.monotonic_time(:microsecond) - start_time},
+            %{client_ip: client_ip, duid: format_duid(duid), ia_count: length(leases)}
+          )
         end
 
         {:continue, state}
@@ -345,26 +390,6 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   # Message creation functions
 
-  defp create_advertise(solicit, lease) do
-    %DHCPv6.Message{
-      msg_type: @msg_type_advertise,
-      transaction_id: solicit.transaction_id,
-      options: [
-        # Server DUID
-        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
-        # Client DUID (echo back)
-        %DHCPv6.Message.Option{
-          option_code: @option_client_id,
-          option_data: get_client_duid(solicit)
-        },
-        # IA_NA with IA_ADDR
-        create_ia_na_option(lease),
-        # Preference
-        %DHCPv6.Message.Option{option_code: @option_preference, option_data: <<255>>}
-      ]
-    }
-  end
-
   defp create_reply(request, lease) do
     pool = get_pool_for_lease(lease)
 
@@ -489,7 +514,43 @@ defmodule YellowDog.Dhcpv6.Handler do
           <<iaid::32, _t1::32, _t2::32, rest::binary>> ->
             # Try to extract IA_ADDR if present
             ia_addr = extract_ia_addr(rest)
-            %{iaid: iaid, ia_addr: ia_addr}
+            %{iaid: iaid, ia_addr: ia_addr, type: :ia_na}
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp get_ia_ta(message) do
+    case Enum.find(message.options, fn opt -> opt.option_code == @option_ia_ta end) do
+      nil ->
+        nil
+
+      option ->
+        # Parse IA_TA: IAID (4 bytes) + options (no T1/T2)
+        case option.option_data do
+          <<iaid::32, rest::binary>> ->
+            ia_addr = extract_ia_addr(rest)
+            %{iaid: iaid, ia_addr: ia_addr, type: :ia_ta}
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp get_ia_pd(message) do
+    case Enum.find(message.options, fn opt -> opt.option_code == @option_ia_pd end) do
+      nil ->
+        nil
+
+      option ->
+        # Parse IA_PD: IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + options
+        case option.option_data do
+          <<iaid::32, _t1::32, _t2::32, rest::binary>> ->
+            ia_prefix = extract_ia_prefix(rest)
+            %{iaid: iaid, ia_prefix: ia_prefix, type: :ia_pd}
 
           _ ->
             nil
@@ -508,6 +569,165 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp extract_ia_addr(_), do: nil
+
+  defp extract_ia_prefix(<<@option_ia_prefix::16, len::16, data::binary-size(len), _rest::binary>>) do
+    case data do
+      <<_preferred::32, _valid::32, prefix_len::8, a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>> ->
+        {{a, b, c, d, e, f, g, h}, prefix_len}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp extract_ia_prefix(_), do: nil
+
+  # Allocation helper functions
+
+  defp allocate_temporary_address(duid, iaid) do
+    # Temporary addresses use a separate pool with shorter lifetimes
+    # For now, delegate to LeaseManager with IA_TA type marker
+    case LeaseManager.allocate_lease(duid, iaid, nil, "default-ta") do
+      {:ok, lease} ->
+        # Mark as temporary address with shorter lifetime
+        ta_lease = %{
+          lease
+          | ia_type: :ia_ta,
+            preferred_lifetime: 600,
+            # 10 minutes
+            valid_lifetime: 1200
+            # 20 minutes
+        }
+
+        {:ok, ta_lease}
+
+      error ->
+        error
+    end
+  end
+
+  defp allocate_prefix_delegation(duid, iaid) do
+    # For now, return a placeholder
+    # Full implementation would use PrefixPool module
+    Logger.debug("IA_PD allocation requested for DUID #{format_duid(duid)} IAID #{iaid}")
+
+    # TODO: Integrate with PrefixPool module
+    # Example placeholder prefix: 2001:db8:1000::/56
+    {:ok,
+     %{
+       duid: duid,
+       iaid: iaid,
+       ia_type: :ia_pd,
+       delegated_prefix: {{0x2001, 0x0DB8, 0x1000, 0, 0, 0, 0, 0}, 56},
+       preferred_lifetime: 3600,
+       valid_lifetime: 7200,
+       pool_name: "default-pd"
+     }}
+  end
+
+  # Message creation functions with multi-IA support
+
+  defp create_advertise_multi(solicit, leases) do
+    pool = get_default_pool()
+
+    options = [
+      # Server DUID
+      %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+      # Client DUID (echo back)
+      %DHCPv6.Message.Option{
+        option_code: @option_client_id,
+        option_data: get_client_duid(solicit)
+      },
+      # Preference
+      %DHCPv6.Message.Option{option_code: @option_preference, option_data: <<255>>}
+    ]
+
+    # Add IA options for each lease
+    ia_options =
+      Enum.flat_map(leases, fn lease ->
+        case lease.ia_type do
+          :ia_na -> [create_ia_na_option(lease)]
+          :ia_ta -> [create_ia_ta_option(lease)]
+          :ia_pd -> [create_ia_pd_option(lease)]
+          _ -> []
+        end
+      end)
+
+    # Add configuration options (DNS, etc.)
+    config_options = [
+      create_dns_servers_option(pool.dns_servers)
+    ] ++ add_domain_list_option([], pool.domain_name)
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_advertise,
+      transaction_id: solicit.transaction_id,
+      options: options ++ ia_options ++ config_options
+    }
+  end
+
+  defp create_ia_ta_option(lease) do
+    # IA_ADDR option (option 5) - IPv6 address + lifetimes
+    ia_addr_data =
+      ipv6_to_binary(lease.ip) <>
+        <<lease.preferred_lifetime::32, lease.valid_lifetime::32>>
+
+    ia_addr_option = %DHCPv6.Message.Option{
+      option_code: @option_ia_addr,
+      option_data: ia_addr_data
+    }
+
+    # IA_TA option (option 4) - contains IA_ADDR (no T1/T2)
+    ia_ta_data =
+      <<lease.iaid::32>> <>
+        DHCP.Parameter.to_iodata(ia_addr_option)
+
+    %DHCPv6.Message.Option{
+      option_code: @option_ia_ta,
+      option_data: ia_ta_data
+    }
+  end
+
+  defp create_ia_pd_option(lease) do
+    {prefix_addr, prefix_len} = lease.delegated_prefix
+
+    # IA_PREFIX option (option 26)
+    ia_prefix_data =
+      <<lease.preferred_lifetime::32, lease.valid_lifetime::32, prefix_len::8>> <>
+        ipv6_to_binary(prefix_addr)
+
+    ia_prefix_option = %DHCPv6.Message.Option{
+      option_code: @option_ia_prefix,
+      option_data: ia_prefix_data
+    }
+
+    # IA_PD option (option 25)
+    ia_pd_data =
+      <<lease.iaid::32, 0::32, 0::32>> <>
+        DHCP.Parameter.to_iodata(ia_prefix_option)
+
+    %DHCPv6.Message.Option{
+      option_code: @option_ia_pd,
+      option_data: ia_pd_data
+    }
+  end
+
+  # Reserved for future use - NTP server support
+  defp _create_ntp_servers_option(ntp_servers) when is_list(ntp_servers) do
+    ntp_data = Enum.map_join(ntp_servers, &ipv6_to_binary/1)
+
+    %DHCPv6.Message.Option{
+      option_code: @option_ntp_server,
+      option_data: ntp_data
+    }
+  end
+
+  # Reserved for future use - Information refresh time support
+  defp _create_info_refresh_time_option(seconds) when is_integer(seconds) do
+    %DHCPv6.Message.Option{
+      option_code: @option_info_refresh_time,
+      option_data: <<seconds::32>>
+    }
+  end
 
   defp get_server_duid do
     # Generate a simple DUID-LL (Link-Layer) based on server

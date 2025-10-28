@@ -83,6 +83,35 @@ defmodule YellowDog.Dhcpv6 do
   defdelegate stats(), to: LeaseManager
 
   @doc """
+  Gets pool statistics for all configured pools.
+
+  ## Returns
+  - Map of pool_name => pool_stats
+
+  ## Examples
+      iex> YellowDog.Dhcpv6.get_all_pool_stats()
+      %{
+        "default" => %{total_count: 100, allocated_count: 25, ...}
+      }
+  """
+  @spec get_all_pool_stats() :: %{String.t() => map()}
+  defdelegate get_all_pool_stats(), to: LeaseManager
+
+  @doc """
+  Gets the list of configured pools.
+
+  ## Returns
+  - List of pool configurations
+  """
+  @spec get_pools() :: [map()]
+  def get_pools do
+    case Process.whereis(LeaseManager) do
+      nil -> []
+      _pid -> LeaseManager.get_pools()
+    end
+  end
+
+  @doc """
   Gets the status of the DHCPv6 service.
 
   ## Returns

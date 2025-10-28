@@ -1,0 +1,445 @@
+defmodule YellowDog.Console.Dhcpv6Live.Index do
+  use YellowDog.Console, :live_view
+
+  @impl true
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      # Subscribe to DHCPv6 telemetry events for real-time updates
+      :telemetry.attach(
+        "dhcpv6-live-#{inspect(self())}",
+        [:yellow_dog, :dhcpv6, :lease_allocated],
+        &handle_telemetry_event/4,
+        %{pid: self()}
+      )
+    end
+
+    {:ok,
+     socket
+     |> assign(:page_title, "DHCPv6 Overview")
+     |> assign(:last_event, nil)
+     |> load_dhcp_data()}
+  end
+
+  @impl true
+  def handle_info({:telemetry_event, event, _measurements, metadata}, socket) do
+    {:noreply,
+     socket
+     |> assign(:last_event, %{event: event, time: DateTime.utc_now(), metadata: metadata})
+     |> load_dhcp_data()}
+  end
+
+  @impl true
+  def terminate(_reason, _socket) do
+    :telemetry.detach("dhcpv6-live-#{inspect(self())}")
+    :ok
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-4xl font-bold">DHCPv6 Server</h1>
+          <p class="mt-2 text-base-content/70">
+            Monitor IPv6 leases, prefix delegations, and client activity
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <.link navigate={~p"/dhcpv6/leases"} class="btn btn-primary">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            View All Leases
+          </.link>
+        </div>
+      </div>
+      <!-- Global Statistics -->
+      <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
+        <div class="stat">
+          <div class="stat-figure text-primary">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-12 w-12"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Total Leases</div>
+          <div class="stat-value text-primary"><%= @stats.total_leases %></div>
+          <div class="stat-desc">All time allocations</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-success">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-12 w-12"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Active Leases</div>
+          <div class="stat-value text-success"><%= @stats.active_leases %></div>
+          <div class="stat-desc">Currently allocated</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-warning">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-12 w-12"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Expired</div>
+          <div class="stat-value text-warning"><%= @stats.expired_leases %></div>
+          <div class="stat-desc">Need renewal</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-info">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-12 w-12"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Pools</div>
+          <div class="stat-value text-info"><%= length(@pools) %></div>
+          <div class="stat-desc">Configured</div>
+        </div>
+      </div>
+      <!-- Last Event (Real-time) -->
+      <%= if @last_event do %>
+        <div class="alert alert-success shadow-lg">
+          <div class="flex items-center gap-2 w-full">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6 shrink-0 stroke-current"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div class="flex-1">
+              <strong>Lease Allocated:</strong>
+              DUID <%= format_duid(@last_event.metadata.duid) %>
+              → IPv6 <%= format_ipv6(@last_event.metadata.ip) %>
+            </div>
+            <span class="text-xs opacity-70">
+              <%= Calendar.strftime(@last_event.time, "%H:%M:%S") %>
+            </span>
+          </div>
+        </div>
+      <% end %>
+      <!-- IA Type Distribution -->
+      <%= if map_size(@stats.by_ia_type) > 0 do %>
+        <.card title="Lease Distribution by IA Type">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <%= for {ia_type, count} <- @stats.by_ia_type do %>
+              <div class="text-center p-4 bg-base-200 rounded-lg">
+                <div class={"text-3xl font-bold " <> get_ia_type_color(ia_type)}>
+                  <%= count %>
+                </div>
+                <div class="text-sm text-base-content/70 mt-1">
+                  <%= format_ia_type(ia_type) %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </.card>
+      <% end %>
+      <!-- Address Pools -->
+      <div class="space-y-4">
+        <h2 class="text-2xl font-bold">Address & Prefix Pools</h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <%= for {pool_name, pool_stats} <- @pool_stats do %>
+            <.card class="hover:shadow-2xl transition-shadow">
+              <div class="flex items-start justify-between mb-4">
+                <div class="flex-1">
+                  <h3 class="card-title text-xl">
+                    <%= pool_name %>
+                    <.badge color={get_utilization_color(pool_stats.utilization_percent)} size="lg">
+                      <%= Float.round(pool_stats.utilization_percent, 1) %>%
+                    </.badge>
+                  </h3>
+                  <p class="text-sm text-base-content/70 mt-2">
+                    <%= pool_stats.allocated_count %> of <%= pool_stats.total_count %> allocated
+                  </p>
+                </div>
+              </div>
+
+              <div class="divider my-2"></div>
+              <!-- Pool Statistics -->
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-base-content/70">Total</span>
+                  <span class="font-mono font-semibold"><%= pool_stats.total_count %></span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-base-content/70">Allocated</span>
+                  <span class="font-mono font-semibold text-success">
+                    <%= pool_stats.allocated_count %>
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-base-content/70">Available</span>
+                  <span class="font-mono font-semibold text-info">
+                    <%= pool_stats.available_count %>
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-base-content/70">Static Reservations</span>
+                  <span class="font-mono font-semibold"><%= pool_stats.static_reservations %></span>
+                </div>
+              </div>
+              <!-- Utilization Bar -->
+              <div class="mt-4">
+                <.progress
+                  value={pool_stats.utilization_percent}
+                  color={get_utilization_color(pool_stats.utilization_percent)}
+                />
+              </div>
+              <!-- Lease States -->
+              <%= if map_size(pool_stats.leases_by_state) > 0 do %>
+                <div class="divider my-2"></div>
+                <div class="flex flex-wrap gap-2">
+                  <%= for {state, count} <- pool_stats.leases_by_state do %>
+                    <.badge color={get_state_color(state)} size="sm">
+                      <%= state %>: <%= count %>
+                    </.badge>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <:actions>
+                <.link navigate={~p"/dhcpv6/pools/#{pool_name}"} class="btn btn-sm btn-ghost gap-2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                  View Details
+                </.link>
+              </:actions>
+            </.card>
+          <% end %>
+        </div>
+      </div>
+      <!-- Lease State Distribution -->
+      <%= if map_size(@stats.by_state) > 0 do %>
+        <.card title="Lease Distribution by State">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <%= for {state, count} <- @stats.by_state do %>
+              <div class="text-center p-4 bg-base-200 rounded-lg">
+                <div class={"text-3xl font-bold " <> get_state_text_color(state)}>
+                  <%= count %>
+                </div>
+                <div class="text-sm text-base-content/70 mt-1 capitalize">
+                  <%= state %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </.card>
+      <% end %>
+    </div>
+    """
+  end
+
+  # Private Functions
+
+  defp load_dhcp_data(socket) do
+    stats = get_dhcp_stats()
+    pool_stats = get_pool_stats()
+    pools = get_pools()
+
+    socket
+    |> assign(:stats, stats)
+    |> assign(:pool_stats, pool_stats)
+    |> assign(:pools, pools)
+  end
+
+  defp get_dhcp_stats do
+    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
+      true ->
+        try do
+          YellowDog.Dhcpv6.stats()
+        rescue
+          _ ->
+            default_stats()
+        catch
+          :exit, _ -> default_stats()
+        end
+
+      false ->
+        default_stats()
+    end
+  end
+
+  defp default_stats do
+    %{
+      total_leases: 0,
+      active_leases: 0,
+      expired_leases: 0,
+      by_state: %{},
+      by_ia_type: %{}
+    }
+  end
+
+  defp get_pool_stats do
+    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
+      true ->
+        try do
+          YellowDog.Dhcpv6.get_all_pool_stats()
+        rescue
+          _ -> %{}
+        catch
+          :exit, _ -> %{}
+        end
+
+      false ->
+        %{}
+    end
+  end
+
+  defp get_pools do
+    case Code.ensure_loaded?(YellowDog.Dhcpv6.LeaseManager) do
+      true ->
+        try do
+          YellowDog.Dhcpv6.LeaseManager.get_pools()
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      false ->
+        []
+    end
+  end
+
+  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
+    send(pid, {:telemetry_event, event, measurements, metadata})
+  end
+
+  defp format_duid(duid) when is_binary(duid) do
+    duid
+    |> :binary.bin_to_list()
+    |> Enum.map(&Integer.to_string(&1, 16))
+    |> Enum.map(&String.pad_leading(&1, 2, "0"))
+    |> Enum.join(":")
+    |> String.upcase()
+  end
+
+  defp format_duid(_), do: "Unknown"
+
+  defp format_ipv6({a, b, c, d, e, f, g, h}) do
+    [a, b, c, d, e, f, g, h]
+    |> Enum.map(&Integer.to_string(&1, 16))
+    |> Enum.map(&String.downcase/1)
+    |> Enum.join(":")
+  end
+
+  defp format_ipv6(_), do: "Unknown"
+
+  defp format_ia_type(:ia_na), do: "IA_NA (Non-temporary)"
+  defp format_ia_type(:ia_ta), do: "IA_TA (Temporary)"
+  defp format_ia_type(:ia_pd), do: "IA_PD (Prefix Delegation)"
+  defp format_ia_type(type), do: to_string(type)
+
+  defp get_ia_type_color(:ia_na), do: "text-primary"
+  defp get_ia_type_color(:ia_ta), do: "text-secondary"
+  defp get_ia_type_color(:ia_pd), do: "text-accent"
+  defp get_ia_type_color(_), do: "text-base-content"
+
+  defp get_utilization_color(percent) when percent >= 90, do: "error"
+  defp get_utilization_color(percent) when percent >= 75, do: "warning"
+  defp get_utilization_color(percent) when percent >= 50, do: "info"
+  defp get_utilization_color(_), do: "success"
+
+  defp get_state_color(:active), do: "success"
+  defp get_state_color(:offered), do: "info"
+  defp get_state_color(:released), do: "warning"
+  defp get_state_color(:expired), do: "error"
+  defp get_state_color(:declined), do: "error"
+  defp get_state_color(_), do: "ghost"
+
+  defp get_state_text_color(:active), do: "text-success"
+  defp get_state_text_color(:offered), do: "text-info"
+  defp get_state_text_color(:released), do: "text-warning"
+  defp get_state_text_color(:expired), do: "text-error"
+  defp get_state_text_color(:declined), do: "text-error"
+  defp get_state_text_color(_), do: "text-base-content"
+end

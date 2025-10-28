@@ -1,7 +1,8 @@
 defmodule YellowDog.Dhcpv6.LeaseManager do
   @moduledoc """
-  Manages DHCPv6 lease allocation and tracking using ETS storage.
+  Manages DHCPv6 lease allocation and tracking using hybrid ETS+Mnesia storage.
 
+  Uses ETS for fast lookups (hot cache) and Mnesia for durability (persistent storage).
   Tracks active leases with DUID → IPv6 bindings, handles lease expiration,
   and provides persistence across server restarts.
   """
@@ -9,9 +10,9 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   use GenServer
   require Logger
 
-  alias YellowDog.Dhcpv6.AddressPool
+  alias YellowDog.Dhcpv6.{AddressPool, LeaseStorage}
 
-  @table_name :dhcpv6_leases
+  @table_name :dhcpv6_leases_cache
   @ets_options [:named_table, :public, :set, read_concurrency: true]
   # Run cleanup every minute
   @cleanup_interval 60_000
@@ -165,19 +166,71 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     active_leases = Enum.filter(all_entries, fn lease -> lease.expires_at > now end)
     expired_leases = Enum.filter(all_entries, fn lease -> lease.expires_at <= now end)
 
+    # Group by state
+    by_state =
+      all_entries
+      |> Enum.group_by(& &1.state)
+      |> Enum.map(fn {state, leases} -> {state, length(leases)} end)
+      |> Map.new()
+
+    # Group by IA type
+    by_ia_type =
+      all_entries
+      |> Enum.group_by(& &1.ia_type)
+      |> Enum.map(fn {ia_type, leases} -> {ia_type, length(leases)} end)
+      |> Map.new()
+
     %{
       total_leases: length(all_entries),
       active_leases: length(active_leases),
-      expired_leases: length(expired_leases)
+      expired_leases: length(expired_leases),
+      by_state: by_state,
+      by_ia_type: by_ia_type
     }
+  end
+
+  @doc """
+  Gets pool statistics for all configured pools.
+
+  ## Returns
+  - Map of pool_name => pool_stats
+  """
+  @spec get_all_pool_stats() :: %{String.t() => map()}
+  def get_all_pool_stats do
+    GenServer.call(__MODULE__, :get_all_pool_stats)
+  end
+
+  @doc """
+  Gets the list of configured pools.
+
+  ## Returns
+  - List of pool structs
+  """
+  @spec get_pools() :: [map()]
+  def get_pools do
+    GenServer.call(__MODULE__, :get_pools)
   end
 
   # Server Callbacks
 
   @impl true
   def init(opts) do
-    # Initialize ETS table
+    # Initialize ETS table for hot cache
     init_table()
+
+    # Initialize Mnesia storage for persistence
+    storage_type = Keyword.get(opts, :storage_type, :disc_copies)
+
+    case LeaseStorage.init(storage_type: storage_type) do
+      :ok ->
+        Logger.info("DHCPv6 Mnesia storage initialized")
+
+      {:error, reason} ->
+        Logger.error("Failed to initialize DHCPv6 Mnesia storage: #{inspect(reason)}")
+    end
+
+    # Load existing leases from Mnesia into ETS cache
+    load_leases_from_storage()
 
     # Extract pools from options
     pools = Keyword.get(opts, :pools, [])
@@ -224,8 +277,19 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   @impl true
   def handle_call({:release_lease, duid, iaid}, _from, state) do
     lease_key = make_lease_key(duid, iaid)
+
+    # Delete from ETS cache
     :ets.delete(@table_name, lease_key)
-    Logger.info("Released DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}")
+
+    # Update state in Mnesia (mark as released instead of deleting)
+    case LeaseStorage.update_state(duid, iaid, :released) do
+      {:ok, _lease} ->
+        Logger.info("Released DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}")
+
+      {:error, reason} ->
+        Logger.warning("Failed to update lease state in Mnesia: #{inspect(reason)}")
+    end
+
     {:reply, :ok, state}
   end
 
@@ -244,6 +308,24 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
     Logger.warning("IPv6 address #{inspect(ip)} declined by DUID #{format_duid(duid)}")
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:get_all_pool_stats, _from, state) do
+    pool_stats =
+      state.pools
+      |> Enum.map(fn pool ->
+        stats = calculate_pool_stats(pool)
+        {pool.name, stats}
+      end)
+      |> Map.new()
+
+    {:reply, pool_stats, state}
+  end
+
+  @impl true
+  def handle_call(:get_pools, _from, state) do
+    {:reply, state.pools, state}
   end
 
   @impl true
@@ -270,12 +352,17 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   defp do_allocate_lease(duid, iaid, requested_ip, pool) do
     lease_key = make_lease_key(duid, iaid)
 
-    # Check for existing lease
+    # Check for existing lease in ETS cache first
     case :ets.lookup(@table_name, lease_key) do
       [{^lease_key, existing_lease}] ->
         # Renew existing lease
         renewed_lease = renew_lease(existing_lease)
+
+        # Update in ETS cache
         :ets.insert(@table_name, {lease_key, renewed_lease})
+
+        # Update in Mnesia
+        store_lease_to_mnesia(renewed_lease)
 
         Logger.info(
           "Renewed DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}"
@@ -284,8 +371,24 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         {:ok, renewed_lease}
 
       [] ->
-        # Allocate new lease
-        allocate_new_lease(duid, iaid, lease_key, requested_ip, pool)
+        # Check Mnesia for existing lease (may not be in ETS cache)
+        case LeaseStorage.get(duid, iaid) do
+          {:ok, stored_lease} ->
+            # Lease exists in Mnesia but not in cache, renew it
+            renewed_lease = renew_lease(stored_lease)
+            :ets.insert(@table_name, {lease_key, renewed_lease})
+            store_lease_to_mnesia(renewed_lease)
+
+            Logger.info(
+              "Renewed DHCPv6 lease from storage for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}"
+            )
+
+            {:ok, renewed_lease}
+
+          {:error, :not_found} ->
+            # Allocate new lease
+            allocate_new_lease(duid, iaid, lease_key, requested_ip, pool)
+        end
     end
   end
 
@@ -308,16 +411,24 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
     if ip do
       lease = %{
-        ip: ip,
         duid: duid,
         iaid: iaid,
+        ip_address: ip,
+        # Legacy compatibility
+        ip: ip,
+        pool_name: pool.name,
+        ia_type: :ia_na,
+        state: :active,
         preferred_lifetime: pool.preferred_lifetime,
         valid_lifetime: pool.valid_lifetime,
-        expires_at: System.system_time(:second) + pool.valid_lifetime,
-        pool_name: pool.name
+        expires_at: System.system_time(:second) + pool.valid_lifetime
       }
 
+      # Store in ETS cache
       :ets.insert(@table_name, {lease_key, lease})
+
+      # Store in Mnesia for persistence
+      store_lease_to_mnesia(lease)
 
       Logger.info(
         "Allocated new DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(ip)}"
@@ -344,6 +455,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   defp cleanup_expired_leases do
     now = System.system_time(:second)
 
+    # Clean up ETS cache
     expired_leases =
       @table_name
       |> :ets.tab2list()
@@ -353,15 +465,60 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       :ets.delete(@table_name, key)
     end)
 
-    expired_count = length(expired_leases)
+    ets_expired_count = length(expired_leases)
 
-    if expired_count > 0 do
-      Logger.info("Cleaned up #{expired_count} expired DHCPv6 leases")
+    # Clean up Mnesia (mark as expired)
+    case LeaseStorage.cleanup_expired() do
+      {:ok, mnesia_expired_count} ->
+        if ets_expired_count > 0 || mnesia_expired_count > 0 do
+          Logger.info(
+            "Cleaned up #{ets_expired_count} expired DHCPv6 leases from cache, #{mnesia_expired_count} from storage"
+          )
+        end
+
+      {:error, reason} ->
+        Logger.error("Failed to cleanup expired leases from Mnesia: #{inspect(reason)}")
     end
   end
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup_expired_leases, @cleanup_interval)
+  end
+
+  defp store_lease_to_mnesia(lease) do
+    case LeaseStorage.put(lease) do
+      {:ok, _stored_lease} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to store lease to Mnesia: #{inspect(reason)}")
+        :error
+    end
+  end
+
+  defp load_leases_from_storage do
+    # Load all active leases from Mnesia into ETS cache
+    active_leases = LeaseStorage.list_active()
+
+    loaded_count =
+      Enum.reduce(active_leases, 0, fn lease, count ->
+        lease_key = make_lease_key(lease.duid, lease.iaid)
+
+        # Ensure lease has both ip and ip_address for compatibility
+        lease_with_compat =
+          lease
+          |> Map.put(:ip, lease[:ip_address] || lease[:ip])
+          |> Map.put(:ip_address, lease[:ip_address] || lease[:ip])
+
+        :ets.insert(@table_name, {lease_key, lease_with_compat})
+        count + 1
+      end)
+
+    if loaded_count > 0 do
+      Logger.info("Loaded #{loaded_count} active DHCPv6 leases from storage into cache")
+    end
+
+    :ok
   end
 
   defp format_duid(duid) when is_binary(duid) do
@@ -374,4 +531,67 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   defp format_duid(_), do: "UNKNOWN"
+
+  defp calculate_pool_stats(pool) do
+    # Get all leases for this pool
+    all_leases = list_leases() |> Enum.filter(fn l -> l.pool_name == pool.name end)
+    now = System.system_time(:second)
+    active_leases = Enum.filter(all_leases, fn l -> l.expires_at > now end)
+
+    # Group leases by state
+    leases_by_state =
+      all_leases
+      |> Enum.group_by(& &1.state)
+      |> Enum.map(fn {state, leases} -> {state, length(leases)} end)
+      |> Map.new()
+
+    # Calculate pool size based on pool type
+    total_count =
+      cond do
+        # Address pool (has range_start/range_end or ranges)
+        Map.has_key?(pool, :range_start) ->
+          AddressPool.pool_size(pool)
+
+        # Prefix delegation pool (has prefix/prefix_length)
+        Map.has_key?(pool, :prefix) ->
+          # Calculate prefix pool size
+          prefix_bits = pool.delegated_length - pool.prefix_length
+          :math.pow(2, prefix_bits) |> trunc()
+
+        true ->
+          0
+      end
+
+    allocated_count = length(active_leases)
+    available_count = max(0, total_count - allocated_count)
+
+    utilization_percent =
+      if total_count > 0 do
+        allocated_count / total_count * 100.0
+      else
+        0.0
+      end
+
+    # Count static reservations
+    static_count =
+      cond do
+        Map.has_key?(pool, :static_reservations) and is_map(pool.static_reservations) ->
+          map_size(pool.static_reservations)
+
+        Map.has_key?(pool, :static_reservations) and is_list(pool.static_reservations) ->
+          length(pool.static_reservations)
+
+        true ->
+          0
+      end
+
+    %{
+      total_count: total_count,
+      allocated_count: allocated_count,
+      available_count: available_count,
+      utilization_percent: utilization_percent,
+      leases_by_state: leases_by_state,
+      static_reservations: static_count
+    }
+  end
 end

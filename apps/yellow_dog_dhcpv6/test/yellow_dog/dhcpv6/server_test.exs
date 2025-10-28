@@ -3,8 +3,6 @@ defmodule YellowDog.Dhcpv6.ServerTest do
 
   alias YellowDog.Dhcpv6.Server
 
-  import ExUnit.CaptureLog
-
   describe "start_link/1" do
     test "starts server without service_enabled check" do
       # Test that the server starts without checking service_enabled?
@@ -55,12 +53,13 @@ defmodule YellowDog.Dhcpv6.ServerTest do
 
       # Verify default DHCPv6 configuration
       assert config.port == 547
-      assert config.broadcast == true
+      # DHCPv6 uses multicast, not broadcast like DHCPv4
       assert config.handler_module == YellowDog.Dhcpv6.Handler
       assert config.max_packet_size == 1500
 
       # Verify IPv6-specific transport options
-      assert Keyword.get(config.transport_options, :ip) == "::"
+      # IP is converted to tuple format: "::" becomes {0,0,0,0,0,0,0,0}
+      assert Keyword.get(config.transport_options, :ip) == {0, 0, 0, 0, 0, 0, 0, 0}
       assert Keyword.get(config.transport_options, :ipv6_v6only) == true
       assert Keyword.get(config.transport_options, :reuseaddr) == true
     end
