@@ -52,23 +52,23 @@ defmodule YellowDog.Dns.Supervisor do
     server_options = Map.get(opts, :server_options, [])
 
     [
-      # Pre-start task (zone loading will happen in handler init)
-      {Task,
-       fn ->
-         Telemetry.debug("DNS pre-start task: zone management initialization")
-         # Initialize DNS zone store if needed
-         DNS.Zone.Store.ensure_initialized()
-         Telemetry.debug("DNS pre-start task completed")
-       end}
-      |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+      # Zone Manager - manages zone lifecycle and storage
+      {YellowDog.Dns.Zone.Manager, []}
+      |> Supervisor.child_spec(id: :zone_manager, restart: :permanent),
 
       # DNS Server (wraps Abyss UDP server)
       {YellowDog.Dns.Server, server_options}
-      |> Supervisor.child_spec(id: :server),
+      |> Supervisor.child_spec(id: :server, restart: :permanent),
 
-      # Post-start task
+      # Post-start task - load configured zones
       {Task,
        fn ->
+         Telemetry.debug("DNS post-start task: loading configured zones")
+         # TODO: Load zones from configuration
+         # zones = YellowDog.Config.get(:dns, :zones) || []
+         # Enum.each(zones, fn zone_config ->
+         #   YellowDog.Dns.Zone.Manager.load_zone(zone_config.name, zone_config)
+         # end)
          Telemetry.debug("DNS post-start task completed")
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
