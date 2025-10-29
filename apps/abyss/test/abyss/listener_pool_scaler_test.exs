@@ -55,26 +55,6 @@ defmodule Abyss.ListenerPoolScalerTest do
     end
   end
 
-  describe "start_link/1" do
-    @tag :skip
-    test "requires server_supervisor option" do
-      opts = [server_config: %ServerConfig{}]
-
-      assert_raise KeyError, fn ->
-        ListenerPoolScaler.start_link(opts)
-      end
-    end
-
-    @tag :skip
-    test "requires server_config option" do
-      opts = [server_supervisor: self()]
-
-      assert_raise KeyError, fn ->
-        ListenerPoolScaler.start_link(opts)
-      end
-    end
-  end
-
   describe "basic functionality" do
     test "can be started with valid configuration" do
       # Skip this test as it requires a real server supervisor

@@ -145,13 +145,6 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "connection retry with exponential backoff" do
-    @tag :skip
-    test "emits telemetry event when connection limit exceeded", %{config: config} do
-      # This test requires complex mocking of server components that's difficult to set up
-      # The telemetry functionality is tested in integration tests
-      :ok
-    end
-
     test "uses exponential backoff calculation", %{config: config} do
       config = %{
         config

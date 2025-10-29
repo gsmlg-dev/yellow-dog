@@ -383,13 +383,6 @@ defmodule Abyss.HandlerTest do
       GenServer.stop(handler_pid)
     end
 
-    @tag :skip
-    test "handles timeout gracefully" do
-      # Timeout testing is unreliable in unit test environments due to adaptive timeouts
-      # The timeout functionality is tested in integration tests
-      :ok
-    end
-
     test "handles close gracefully" do
       config =
         ServerConfig.new(
@@ -412,15 +405,6 @@ defmodule Abyss.HandlerTest do
 
       # Handler should have terminated cleanly
       refute Process.alive?(handler_pid)
-    end
-  end
-
-  describe "error handling" do
-    @tag :skip
-    test "handles handler process crashes gracefully" do
-      # Handler crash testing is complex in unit test environment
-      # The crash behavior is tested in integration tests
-      :ok
     end
   end
 
