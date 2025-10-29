@@ -179,8 +179,12 @@ defmodule Abyss.Transport.UDP.Unicast do
   def send_recv({ip, port}, data, timeout \\ 5000) do
     case open(0, mode: :binary, active: false) do
       {:ok, socket} ->
-        :ok = Core.send(socket, ip, port, data)
-        Core.recv(socket, 0, timeout)
+        try do
+          :ok = Core.send(socket, ip, port, data)
+          Core.recv(socket, 0, timeout)
+        after
+          Core.close(socket)
+        end
 
       {:error, reason} ->
         {:error, reason}

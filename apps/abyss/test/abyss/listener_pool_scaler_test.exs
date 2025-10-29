@@ -20,20 +20,23 @@ defmodule Abyss.ListenerPoolScalerTest do
   describe "calculate_optimal_listeners/2" do
     test "calculates optimal listeners based on current connections" do
       # Test with 1000 connections and 100ms average processing time
+      # base=10, factor=1, result=10
       result = Abyss.ServerConfig.calculate_optimal_listeners(1000, 100.0)
-      assert result == 1
+      assert result == 10
 
       # Test with 5000 connections and 100ms average processing time
+      # base=50, factor=1, result=50
       result = Abyss.ServerConfig.calculate_optimal_listeners(5000, 100.0)
-      assert result == 5
+      assert result == 50
 
       # Test with 1000 connections and 200ms average processing time (slower)
+      # base=10, factor=2, result=20
       result = Abyss.ServerConfig.calculate_optimal_listeners(1000, 200.0)
-      assert result == 2
+      assert result == 20
 
       # Test with 100 connections and 50ms average processing time (faster)
+      # base=1, factor=0.5, result=1 (capped at minimum)
       result = Abyss.ServerConfig.calculate_optimal_listeners(100, 50.0)
-      # minimum 1 listener
       assert result == 1
     end
 
@@ -46,9 +49,9 @@ defmodule Abyss.ListenerPoolScalerTest do
     end
 
     test "handles high processing times" do
+      # base=10, factor=5, result=50
       result = Abyss.ServerConfig.calculate_optimal_listeners(1000, 500.0)
-      # 1000/1000 * (500/100) = 5
-      assert result == 5
+      assert result == 50
     end
   end
 

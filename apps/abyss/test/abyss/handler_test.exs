@@ -100,10 +100,10 @@ defmodule Abyss.HandlerTest do
     end
 
     test "respects minimum and maximum timeout bounds" do
-      # Use native time units consistently
-      base_timeout = System.convert_time_unit(5000, :millisecond, :native)
+      # Base timeout in milliseconds (function returns milliseconds now)
+      base_timeout = 5000
 
-      # Very fast processing times
+      # Very fast processing times (in native units)
       fast_times = [
         System.convert_time_unit(1, :millisecond, :native),
         System.convert_time_unit(2, :millisecond, :native),
@@ -111,14 +111,14 @@ defmodule Abyss.HandlerTest do
       ]
 
       result = Handler.calculate_adaptive_timeout(base_timeout, fast_times)
-      # Result should be at minimum bound or close to it
+      # Result should be at minimum bound or close to it (in milliseconds)
       expected_min = div(base_timeout, 2)
       # Since the calculation uses 3x average time, for 1-3ms avg, that's 3-9ms
-      # which should be closer to the minimum bound (2500ms native)
+      # which should be closer to the minimum bound (2500ms)
       assert result >= expected_min
       assert result <= base_timeout
 
-      # Very slow processing times
+      # Very slow processing times (in native units)
       slow_times = [
         System.convert_time_unit(1000, :millisecond, :native),
         System.convert_time_unit(2000, :millisecond, :native),
@@ -126,15 +126,15 @@ defmodule Abyss.HandlerTest do
       ]
 
       result = Handler.calculate_adaptive_timeout(base_timeout, slow_times)
-      # Result should be at maximum bound or close to it
+      # Result should be at maximum bound or close to it (in milliseconds)
       expected_max = base_timeout * 2
-      # Since 2000ms avg * 3 = 6000ms, which exceeds max of 10000ms (2x base)
+      # Since 2000ms avg * 3 = 6000ms, which is capped at max of 10000ms (2x base)
       assert result <= expected_max
       assert result >= base_timeout
     end
 
     test "handles edge cases" do
-      base_timeout = System.convert_time_unit(5000, :millisecond, :native)
+      base_timeout = 5000
 
       # Empty processing times
       assert Handler.calculate_adaptive_timeout(base_timeout, []) == base_timeout

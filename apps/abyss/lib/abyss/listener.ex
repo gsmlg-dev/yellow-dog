@@ -227,8 +227,7 @@ defmodule Abyss.Listener do
             :connection,
             %{monotonic_time: start_time},
             %{remote_address: ip, remote_port: port, accept_start_time: start_time},
-            # 5% sampling for connections to reduce overhead
-            sample_rate: 0.05
+            sample_rate: state.server_config.connection_telemetry_sample_rate
           )
 
         Abyss.Connection.start_active(
@@ -292,11 +291,12 @@ defmodule Abyss.Listener do
             Abyss.Telemetry.track_connection_accepted()
 
             connection_span =
-              Abyss.Telemetry.start_child_span(
+              Abyss.Telemetry.start_child_span_with_sampling(
                 listener_span,
                 :connection,
                 %{monotonic_time: start_time},
-                %{remote_address: ip, remote_port: port, accept_start_time: start_time}
+                %{remote_address: ip, remote_port: port, accept_start_time: start_time},
+                sample_rate: state.server_config.connection_telemetry_sample_rate
               )
 
             Abyss.Connection.start(
@@ -349,11 +349,12 @@ defmodule Abyss.Listener do
             Abyss.Telemetry.track_connection_accepted()
 
             connection_span =
-              Abyss.Telemetry.start_child_span(
+              Abyss.Telemetry.start_child_span_with_sampling(
                 listener_span,
                 :connection,
                 %{monotonic_time: start_time},
-                %{remote_address: ip, remote_port: port, accept_start_time: start_time}
+                %{remote_address: ip, remote_port: port, accept_start_time: start_time},
+                sample_rate: state.server_config.connection_telemetry_sample_rate
               )
 
             Abyss.Connection.start(

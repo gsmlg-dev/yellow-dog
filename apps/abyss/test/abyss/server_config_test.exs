@@ -136,29 +136,34 @@ defmodule Abyss.ServerConfigTest do
 
   describe "calculate_optimal_listeners/2" do
     test "calculates optimal listeners based on connection count" do
-      # Basic calculation: connections / 1000
+      # New algorithm: connections / 100 (1 listener per 100 connections)
       assert Abyss.ServerConfig.calculate_optimal_listeners(0, 100.0) == 1
-      assert Abyss.ServerConfig.calculate_optimal_listeners(500, 100.0) == 1
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 100.0) == 1
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 100.0) == 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(5000, 100.0) == 5
-      assert Abyss.ServerConfig.calculate_optimal_listeners(10000, 100.0) == 10
+      # base=5, factor=1, result=5
+      assert Abyss.ServerConfig.calculate_optimal_listeners(500, 100.0) == 5
+      # base=10, factor=1, result=10
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 100.0) == 10
+      # base=20, factor=1, result=20
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 100.0) == 20
+      # base=50, factor=1, result=50
+      assert Abyss.ServerConfig.calculate_optimal_listeners(5000, 100.0) == 50
+      # base=100, factor=1, result=100
+      assert Abyss.ServerConfig.calculate_optimal_listeners(10000, 100.0) == 100
     end
 
     test "adjusts for processing time" do
       # Faster processing should require fewer listeners
-      # 2000/1000 = 2, max(50.0/100, 1) = 1, so 2 * 1 = 2, round(2) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 50.0) == 2
-      # 2000/1000 = 2, max(25.0/100, 1) = 1, so 2 * 1 = 2, round(2) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 25.0) == 2
+      # base=20, factor=max(50.0/100, 0.5)=0.5, 20*0.5=10
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 50.0) == 10
+      # base=20, factor=max(25.0/100, 0.5)=0.5, 20*0.5=10
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 25.0) == 10
 
       # Slower processing should require more listeners
-      # 1 * 2 = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 200.0) == 2
-      # 1 * 5 = 5
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 500.0) == 5
-      # 1 * 10 = 10
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 1000.0) == 10
+      # base=10, factor=2, 10*2=20
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 200.0) == 20
+      # base=10, factor=5, 10*5=50
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 500.0) == 50
+      # base=10, factor=10, 10*10=100
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 1000.0) == 100
     end
 
     test "always returns at least 1 listener" do
@@ -170,51 +175,52 @@ defmodule Abyss.ServerConfigTest do
     end
 
     test "handles edge cases" do
-      # Zero processing time (very fast)
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 0.1) == 1
+      # Very fast processing time
+      # base=10, factor=max(0.1/100, 0.5)=0.5, 10*0.5=5
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 0.1) == 5
 
       # Very high processing time
-      # 100/1000 = 0, max(10000.0/100, 1) = 100, so 0 * 100 = 0, round(0) = 0, max(0, 1) = 1
-      assert Abyss.ServerConfig.calculate_optimal_listeners(100, 10000.0) == 1
+      # base=1, factor=max(10000/100, 0.5)=100, 1*100=100
+      assert Abyss.ServerConfig.calculate_optimal_listeners(100, 10000.0) == 100
 
       # Large connection count
       result = Abyss.ServerConfig.calculate_optimal_listeners(100_000, 100.0)
-      # 100000/1000 = 100
-      assert result == 100
+      # base=1000, factor=1, 1000*1=1000
+      assert result == 1000
 
       # Combined high connections and slow processing
       result = Abyss.ServerConfig.calculate_optimal_listeners(10000, 500.0)
-      # 10000/1000 = 10, 10 * 5 = 50, round(50) = 50
-      assert result == 50
+      # base=100, factor=5, 100*5=500
+      assert result == 500
     end
 
     test "handles floating point processing times" do
-      # 1 * 1.2345 = 1.2345 -> round(1.2345) = 1
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 123.45) == 1
-      # 2 * 0.873 = 1.746 -> round(1.746) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2500, 87.3) == 2
-      # 1 * 2.337 = 2.337 -> round(2.337) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(1500, 233.7) == 2
+      # base=10, factor=1.2345, 10 * 1.2345 = 12.345 -> round(12.345) = 12
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1000, 123.45) == 12
+      # base=25, factor=0.873, 25 * 0.873 = 21.825 -> round(21.825) = 22
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2500, 87.3) == 22
+      # base=15, factor=2.337, 15 * 2.337 = 35.055 -> round(35.055) = 35
+      assert Abyss.ServerConfig.calculate_optimal_listeners(1500, 233.7) == 35
     end
 
     test "verifies processing factor calculation" do
-      # Test the processing factor: max(avg_processing_time / 100, 1)
+      # Test the processing factor: max(avg_processing_time / 100, 0.5)
 
       # Below 100ms baseline
-      # factor = max(0.5, 1) = 1, 2*1 = 2 -> round(2) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 50.0) == 2
-      # factor = max(0.999, 1) = 1, 2*1 = 2 -> round(2) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 99.9) == 2
+      # base=20, factor = max(0.5, 0.5) = 0.5, 20*0.5 = 10 -> round(10) = 10
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 50.0) == 10
+      # base=20, factor = max(0.999, 0.5) = 0.999, 20*0.999 = 19.98 -> round(19.98) = 20
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 99.9) == 20
 
       # At 100ms baseline
-      # factor = max(1, 1) = 1, 2*1 = 2 -> round(2) = 2
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 100.0) == 2
+      # base=20, factor = max(1, 0.5) = 1, 20*1 = 20 -> round(20) = 20
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 100.0) == 20
 
       # Above 100ms baseline
-      # factor = max(1.5, 1) = 1.5, 2*1.5 = 3 -> round(3) = 3
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 150.0) == 3
-      # factor = max(2, 1) = 2, 2*2 = 4 -> round(4) = 4
-      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 200.0) == 4
+      # base=20, factor = max(1.5, 0.5) = 1.5, 20*1.5 = 30 -> round(30) = 30
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 150.0) == 30
+      # base=20, factor = max(2, 0.5) = 2, 20*2 = 40 -> round(40) = 40
+      assert Abyss.ServerConfig.calculate_optimal_listeners(2000, 200.0) == 40
     end
   end
 
@@ -259,26 +265,53 @@ defmodule Abyss.ServerConfigTest do
       assert config.listener_scale_threshold == 0.75
     end
 
-    test "invalid configuration values are accepted" do
-      # ServerConfig accepts any values (no validation)
-      config =
+    test "invalid configuration values are rejected" do
+      # Test min_listeners validation
+      assert_raise ArgumentError, ~r/min_listeners must be positive/, fn ->
         Abyss.ServerConfig.new(
           handler_module: Abyss.TestHandler,
           port: 1234,
-          # Invalid but accepted
-          udp_buffer_size: -1000,
-          # Invalid but accepted
-          min_listeners: 0,
-          # Invalid but accepted
-          max_listeners: -1,
-          # Invalid but accepted
+          min_listeners: 0
+        )
+      end
+
+      # Test min/max listeners relationship
+      assert_raise ArgumentError, ~r/min_listeners must be positive and <= max_listeners/, fn ->
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          port: 1234,
+          min_listeners: 100,
+          max_listeners: 50
+        )
+      end
+
+      # Test listener_scale_threshold bounds
+      assert_raise ArgumentError, ~r/listener_scale_threshold must be between 0.0 and 1.0/, fn ->
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          port: 1234,
           listener_scale_threshold: 2.0
         )
+      end
 
-      assert config.udp_buffer_size == -1000
-      assert config.min_listeners == 0
-      assert config.max_listeners == -1
-      assert config.listener_scale_threshold == 2.0
+      # Test connection_telemetry_sample_rate bounds
+      assert_raise ArgumentError, ~r/connection_telemetry_sample_rate must be between 0.0 and 1.0/, fn ->
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          port: 1234,
+          connection_telemetry_sample_rate: 1.5
+        )
+      end
+
+      # Test memory thresholds
+      assert_raise ArgumentError, ~r/handler_memory_warning_threshold must be positive/, fn ->
+        Abyss.ServerConfig.new(
+          handler_module: Abyss.TestHandler,
+          port: 1234,
+          handler_memory_warning_threshold: 200,
+          handler_memory_hard_limit: 150
+        )
+      end
     end
   end
 

@@ -242,8 +242,7 @@ defmodule Abyss.Handler do
            # Track last 10 processing times for adaptive timeout
            processing_times: [],
            adaptive_timeout: server_config.read_timeout,
-           # 10 seconds
-           memory_check_interval: 10_000
+           memory_check_interval: server_config.handler_memory_check_interval
          }}
       end
 
@@ -275,14 +274,15 @@ defmodule Abyss.Handler do
         case :erlang.process_info(self(), :memory) do
           {:memory, memory_words} ->
             memory_mb = memory_words * :erlang.system_info(:wordsize) / (1024 * 1024)
+            warning_threshold = state.server_config.handler_memory_warning_threshold
+            hard_limit = state.server_config.handler_memory_hard_limit
 
-            # 100MB threshold
-            if memory_mb > 100 do
+            if memory_mb > warning_threshold do
               # Log memory warning via telemetry
               :telemetry.execute(
                 [:abyss, :handler, :memory_warning],
                 %{memory_mb: memory_mb},
-                %{handler_pid: self(), threshold: 100}
+                %{handler_pid: self(), threshold: warning_threshold}
               )
 
               # Trigger garbage collection
@@ -294,8 +294,7 @@ defmodule Abyss.Handler do
                   new_memory_mb =
                     new_memory_words * :erlang.system_info(:wordsize) / (1024 * 1024)
 
-                  # 150MB hard limit
-                  if new_memory_mb > 150 do
+                  if new_memory_mb > hard_limit do
                     {:stop, {:shutdown, :memory_limit_exceeded}, state}
                   else
                     Process.send_after(self(), :memory_check, interval)
@@ -565,6 +564,7 @@ defmodule Abyss.Handler do
 
   @doc false
   # Add adaptive timeout calculation helper function
+  # Returns timeout in milliseconds
   def calculate_adaptive_timeout(base_timeout, processing_times) do
     case processing_times do
       [] ->
@@ -577,19 +577,17 @@ defmodule Abyss.Handler do
         # Convert to milliseconds for calculation
         avg_time_ms = System.convert_time_unit(round(avg_time_native), :native, :millisecond)
 
-        # Set timeout to 3x average processing time, with reasonable bounds
+        # Set timeout to 3x average processing time
         timeout_ms = round(avg_time_ms * 3)
 
-        # Convert back to native time units for GenServer timeout
-        timeout_native = System.convert_time_unit(timeout_ms, :millisecond, :native)
+        # Ensure timeout is between 50% and 200% of base timeout (all in milliseconds)
+        min_timeout_ms = div(base_timeout, 2)
+        max_timeout_ms = base_timeout * 2
 
-        # Ensure timeout is between 50% and 200% of base timeout
-        min_timeout = div(base_timeout, 2)
-        max_timeout = base_timeout * 2
-
-        timeout_native
-        |> max(min_timeout)
-        |> min(max_timeout)
+        # Apply bounds and return timeout in milliseconds
+        timeout_ms
+        |> max(min_timeout_ms)
+        |> min(max_timeout_ms)
     end
   end
 end
