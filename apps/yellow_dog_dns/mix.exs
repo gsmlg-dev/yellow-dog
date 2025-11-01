@@ -34,7 +34,11 @@ defmodule YellowDog.Dns.MixProject do
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
 
+      # HTTP client for root zone fetching
+      {:req, "~> 0.5"},
+
       # Development and test dependencies
+      {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

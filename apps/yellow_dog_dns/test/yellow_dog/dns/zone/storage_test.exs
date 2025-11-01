@@ -144,7 +144,7 @@ defmodule YellowDog.Dns.Zone.StorageTest do
       metadata = %{
         type: :master,
         file: "zones/example.com.zone",
-        serial: 2024102801,
+        serial: 2_024_102_801,
         loaded_at: System.system_time(:second)
       }
 
@@ -266,7 +266,7 @@ defmodule YellowDog.Dns.Zone.StorageTest do
 
       Storage.put_zone_metadata("example.com", %{
         type: :master,
-        serial: 2024102801,
+        serial: 2_024_102_801,
         loaded_at: 1_234_567_890
       })
 
@@ -281,7 +281,7 @@ defmodule YellowDog.Dns.Zone.StorageTest do
 
       assert stats.zone == "example.com"
       assert stats.type == :master
-      assert stats.serial == 2024102801
+      assert stats.serial == 2_024_102_801
       assert stats.record_count == 2
       assert stats.loaded_at == 1_234_567_890
     end

@@ -340,10 +340,8 @@ defmodule YellowDog.Mdns.ServiceStore do
         base =
           if service[:addresses] && length(service.addresses) > 0 do
             Map.put(base, "addresses", %{
-              "ipv4" =>
-                Enum.filter(service.addresses, &is_valid_ipv4?/1),
-              "ipv6" =>
-                Enum.filter(service.addresses, &is_valid_ipv6?/1)
+              "ipv4" => Enum.filter(service.addresses, &is_valid_ipv4?/1),
+              "ipv6" => Enum.filter(service.addresses, &is_valid_ipv6?/1)
             })
           else
             base

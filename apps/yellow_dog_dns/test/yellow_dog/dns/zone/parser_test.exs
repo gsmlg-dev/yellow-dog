@@ -18,7 +18,7 @@ defmodule YellowDog.Dns.Zone.ParserTest do
       assert zone.soa != nil
       assert zone.soa.mname == "ns1.simple.test."
       assert zone.soa.rname == "admin.simple.test."
-      assert zone.soa.serial == 2024010101
+      assert zone.soa.serial == 2_024_010_101
     end
 
     test "parses a complex zone file with multiple record types" do
@@ -33,7 +33,7 @@ defmodule YellowDog.Dns.Zone.ParserTest do
       assert zone.soa != nil
       assert zone.soa.mname == "ns1.example.com."
       assert zone.soa.rname == "admin.example.com."
-      assert zone.soa.serial == 2024102801
+      assert zone.soa.serial == 2_024_102_801
       assert zone.soa.refresh == 7200
       assert zone.soa.retry == 3600
       assert zone.soa.expire == 1_209_600
@@ -94,7 +94,7 @@ defmodule YellowDog.Dns.Zone.ParserTest do
       assert zone.name == "test.com"
       assert zone.ttl == 300
       assert zone.soa != nil
-      assert zone.soa.serial == 2024010101
+      assert zone.soa.serial == 2_024_010_101
 
       # Check records
       ns_records = Zone.find_records(zone, "@", :NS)
@@ -139,7 +139,7 @@ defmodule YellowDog.Dns.Zone.ParserTest do
       assert {:ok, zone} = Parser.parse_string(content, zone_name: "example.com")
 
       assert zone.soa != nil
-      assert zone.soa.serial == 2024102801
+      assert zone.soa.serial == 2_024_102_801
       assert zone.soa.refresh == 7200
       assert zone.soa.retry == 3600
       assert zone.soa.expire == 1_209_600
@@ -530,7 +530,8 @@ defmodule YellowDog.Dns.Zone.ParserTest do
     end
 
     test "parses wildcard from file" do
-      assert {:ok, zone} = Parser.parse_file("test/fixtures/zones/wildcard.zone", zone_name: "wildcard.test")
+      assert {:ok, zone} =
+               Parser.parse_file("test/fixtures/zones/wildcard.zone", zone_name: "wildcard.test")
 
       # Check wildcard A record
       wildcard_records = Zone.find_records(zone, "*.wildcard.test.", :A)

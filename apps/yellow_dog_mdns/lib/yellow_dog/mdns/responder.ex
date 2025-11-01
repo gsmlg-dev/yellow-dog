@@ -178,7 +178,8 @@ defmodule YellowDog.Mdns.Responder do
   RFC 6762 §17: mDNS messages should fit in a single packet (1232 bytes).
   Returns {:ok, message} or {:error, :too_large, size}
   """
-  @spec validate_response_size(Message.t()) :: {:ok, Message.t()} | {:error, :too_large, integer()}
+  @spec validate_response_size(Message.t()) ::
+          {:ok, Message.t()} | {:error, :too_large, integer()}
   def validate_response_size(message) do
     # Rough estimate of message size
     estimated_size = estimate_message_size(message)

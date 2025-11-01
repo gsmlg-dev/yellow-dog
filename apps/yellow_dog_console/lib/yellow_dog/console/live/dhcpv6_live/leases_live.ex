@@ -339,7 +339,14 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
     Enum.filter(leases, fn lease ->
       duid_str = format_duid(lease.duid) |> String.downcase()
-      ip_str = (if lease.ia_type == :ia_pd, do: format_prefix(lease.delegated_prefix), else: format_ipv6(lease.ip_address)) |> String.downcase()
+
+      ip_str =
+        if(lease.ia_type == :ia_pd,
+          do: format_prefix(lease.delegated_prefix),
+          else: format_ipv6(lease.ip_address)
+        )
+        |> String.downcase()
+
       hostname_str = (lease[:hostname] || "") |> String.downcase()
 
       String.contains?(duid_str, query_lower) or
@@ -349,10 +356,14 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   end
 
   defp filter_by_state(leases, "all"), do: leases
-  defp filter_by_state(leases, state), do: Enum.filter(leases, fn l -> to_string(l.state) == state end)
+
+  defp filter_by_state(leases, state),
+    do: Enum.filter(leases, fn l -> to_string(l.state) == state end)
 
   defp filter_by_ia_type(leases, "all"), do: leases
-  defp filter_by_ia_type(leases, ia_type), do: Enum.filter(leases, fn l -> to_string(l.ia_type) == ia_type end)
+
+  defp filter_by_ia_type(leases, ia_type),
+    do: Enum.filter(leases, fn l -> to_string(l.ia_type) == ia_type end)
 
   defp filter_by_pool(leases, "all"), do: leases
   defp filter_by_pool(leases, pool), do: Enum.filter(leases, fn l -> l.pool_name == pool end)

@@ -144,6 +144,10 @@ defmodule YellowDog.Dns.Zone do
     end
   end
 
+  # Use the standalone YellowDog.Dns.Zone.Forward module
+  # (defined in lib/yellow_dog/dns/zone/forward.ex)
+  alias YellowDog.Dns.Zone.Forward
+
   @type t :: %__MODULE__{
           name: String.t(),
           type: zone_type(),
@@ -152,6 +156,7 @@ defmodule YellowDog.Dns.Zone do
           origin: String.t(),
           records: [Record.t()],
           soa: SOA.t() | nil,
+          forward: Forward.t() | nil,
           file: String.t() | nil,
           loaded_at: integer() | nil,
           serial: non_neg_integer() | nil
@@ -165,6 +170,7 @@ defmodule YellowDog.Dns.Zone do
     :origin,
     :records,
     :soa,
+    :forward,
     :file,
     :loaded_at,
     :serial
@@ -231,6 +237,20 @@ defmodule YellowDog.Dns.Zone do
   """
   def set_soa(%__MODULE__{} = zone, %SOA{} = soa) do
     %{zone | soa: soa, serial: soa.serial}
+  end
+
+  @doc """
+  Sets the Forward configuration for the zone.
+
+  ## Examples
+
+      iex> zone = Zone.new("external.com", :forward)
+      iex> forward = Forward.new("external.com", [{8, 8, 8, 8}, {1, 1, 1, 1}])
+      iex> Zone.set_forward(zone, forward)
+      %Zone{forward: %Forward{...}, ...}
+  """
+  def set_forward(%__MODULE__{} = zone, %Forward{} = forward) do
+    %{zone | forward: forward}
   end
 
   @doc """
@@ -330,7 +350,8 @@ defmodule YellowDog.Dns.Zone do
     %{
       metadata: metadata,
       records: records,
-      soa: zone.soa
+      soa: zone.soa,
+      forward: zone.forward
     }
   end
 

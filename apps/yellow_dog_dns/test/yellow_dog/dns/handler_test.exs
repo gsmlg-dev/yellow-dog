@@ -14,15 +14,11 @@ defmodule YellowDog.Dns.Handler.UDPTest do
       # Check that DNS-specific state is added
       assert Map.has_key?(state, :mode)
       assert Map.has_key?(state, :upstream_servers)
-      assert Map.has_key?(state, :cache)
-      assert Map.has_key?(state, :cache_ttl)
       assert Map.has_key?(state, :loaded_zones)
       assert Map.has_key?(state, :stats)
 
       # Check default values
       assert state.mode == :authoritative
-      assert is_map(state.cache)
-      assert is_integer(state.cache_ttl)
       assert is_list(state.loaded_zones)
       assert is_list(state.upstream_servers)
 
@@ -145,14 +141,14 @@ defmodule YellowDog.Dns.Handler.UDPTest do
   end
 
   describe "Cache operations" do
-    test "cache is initialized as empty map" do
+    test "cache is managed by CacheManager (not in handler state)" do
       initial_state = %{socket: :fake_socket}
 
       {:ok, state} = Handler.init(initial_state)
 
-      assert state.cache == %{}
-      assert is_integer(state.cache_ttl)
-      assert state.cache_ttl > 0
+      # Cache is now managed by Cache.Manager, not in handler state
+      refute Map.has_key?(state, :cache)
+      refute Map.has_key?(state, :cache_ttl)
     end
   end
 

@@ -318,7 +318,9 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     query_lower = String.downcase(query)
 
     Enum.filter(leases, fn lease ->
-      mac_match = format_mac(lease.mac_address) |> String.downcase() |> String.contains?(query_lower)
+      mac_match =
+        format_mac(lease.mac_address) |> String.downcase() |> String.contains?(query_lower)
+
       ip_match = format_ip(lease.ip_address) |> String.contains?(query_lower)
 
       hostname_match =

@@ -21,12 +21,69 @@ defmodule YellowDog.Dns.Query.Resolver do
   require Logger
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Storage
+  alias YellowDog.Dns.Query.Forwarder
+  alias YellowDog.Dns.Query.Recursive
+  alias YellowDog.Dns.Query.Delegation
+  alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
+  alias YellowDog.Dns.RPZ
 
   @type resolve_result ::
           {:ok, [Zone.Record.t()], [Zone.Record.t()]}
           | {:nxdomain, [], [Zone.SOA.t()]}
           | {:nodata, [], [Zone.SOA.t()]}
+          | {:delegation, [Zone.Record.t()], [Zone.Record.t()]}
+          | {:rpz_block, atom(), []}
+          | {:rpz_rewrite, [Zone.Record.t()], []}
           | {:servfail, [], []}
+
+  @doc """
+  Resolves a DNS query with RPZ policy checking.
+
+  Checks RPZ policies before performing normal resolution.
+
+  ## Parameters
+  - `zone_name` - The zone to query (e.g., "example.com")
+  - `owner` - The record owner/name (e.g., "www", "@")
+  - `qtype` - The query type atom (e.g., :A, :AAAA, :MX)
+  - `client_ip` - Client IP address for RPZ checking
+  - `opts` - Options:
+    - `:skip_rpz` - Skip RPZ checking (default: false)
+
+  ## Returns
+  Same as `resolve/3` with additional RPZ results
+
+  ## Examples
+
+      iex> Resolver.resolve_with_rpz("example.com", "malware.example.com.", :A, {192, 0, 2, 1})
+      {:rpz_block, :nxdomain, []}
+  """
+  @spec resolve_with_rpz(String.t(), String.t(), atom(), tuple(), keyword()) :: resolve_result()
+  def resolve_with_rpz(zone_name, owner, qtype, client_ip, opts \\ []) do
+    skip_rpz = Keyword.get(opts, :skip_rpz, false)
+
+    if skip_rpz do
+      resolve(zone_name, owner, qtype)
+    else
+      # Check RPZ policies first
+      case check_rpz_policy(owner, qtype, client_ip) do
+        :passthru ->
+          # No RPZ match, proceed with normal resolution
+          resolve(zone_name, owner, qtype)
+
+        {:passthru, _} ->
+          # Explicit passthru
+          resolve(zone_name, owner, qtype)
+
+        {:block, action, _} ->
+          # RPZ block
+          {:rpz_block, action, []}
+
+        {:rewrite, records, _} ->
+          # RPZ rewrite with local data
+          {:rpz_rewrite, records, []}
+      end
+    end
+  end
 
   @doc """
   Resolves a DNS query for a specific zone, owner, and record type.
@@ -73,6 +130,60 @@ defmodule YellowDog.Dns.Query.Resolver do
   end
 
   @doc """
+  Resolves a query with caching support.
+
+  Checks the cache first, and if not found or expired, performs resolution
+  and caches the result. Uses the same resolution logic as `resolve/3` but
+  with caching layer.
+
+  ## Parameters
+  - `zone_name` - The zone to query (e.g., "example.com")
+  - `owner` - The record owner/name (e.g., "www", "@")
+  - `qtype` - The query type atom (e.g., :A, :AAAA, :MX)
+  - `opts` - Options:
+    - `:cache` - Enable/disable cache for this query (default: true)
+    - `:query_class` - Query class (default: :IN)
+
+  ## Returns
+  Same as `resolve/3`
+
+  ## Examples
+
+      iex> Resolver.resolve_cached("example.com", "www.example.com.", :A)
+      {:ok, [%Record{...}], []}
+  """
+  @spec resolve_cached(String.t(), String.t(), atom(), keyword()) :: resolve_result()
+  def resolve_cached(zone_name, owner, qtype, opts \\ []) do
+    use_cache = Keyword.get(opts, :cache, true)
+    query_class = Keyword.get(opts, :query_class, :IN)
+
+    if use_cache and cache_enabled?() do
+      # Try cache first
+      case CacheManager.get(owner, qtype, query_class) do
+        {:ok, records, authority} ->
+          # Cache hit
+          {:ok, records, authority}
+
+        {:error, :not_found} ->
+          # Cache miss, perform resolution
+          result = resolve(zone_name, owner, qtype)
+
+          # Cache the result
+          cache_result(owner, qtype, query_class, result)
+
+          result
+
+        {:error, :disabled} ->
+          # Cache disabled, fall back to regular resolution
+          resolve(zone_name, owner, qtype)
+      end
+    else
+      # Cache not enabled, use regular resolution
+      resolve(zone_name, owner, qtype)
+    end
+  end
+
+  @doc """
   Resolves a query with CNAME chain following.
 
   Follows CNAME records up to a maximum depth to prevent loops.
@@ -94,16 +205,68 @@ defmodule YellowDog.Dns.Query.Resolver do
 
   # Private functions
 
+  defp check_rpz_policy(qname, qtype, client_ip) do
+    # Check if RPZ Manager is available
+    case Process.whereis(YellowDog.Dns.RPZ.Manager) do
+      nil ->
+        :passthru
+
+      _pid ->
+        try do
+          YellowDog.Dns.RPZ.Manager.check_policy(qname, qtype, client_ip)
+        rescue
+          _ -> :passthru
+        catch
+          :exit, _ -> :passthru
+        end
+    end
+  end
+
   defp do_resolve(zone_name, owner, qtype) do
     # Check if zone exists
     unless Storage.zone_exists?(zone_name) do
       Logger.debug("Zone not found", zone: zone_name)
       {:servfail, [], []}
     else
+      # Check zone type - forward and hint zones use different resolution
+      case Storage.get_zone_metadata(zone_name) do
+        {:ok, %{type: :forward} = metadata} ->
+          # This is a forward zone
+          resolve_forward(zone_name, owner, qtype, metadata)
 
+        {:ok, %{type: :hint} = metadata} ->
+          # This is a hint/recursive zone - perform recursive resolution
+          resolve_recursive(owner, qtype, metadata)
+
+        {:ok, _metadata} ->
+          # This is an authoritative zone (master, slave, etc.)
+          resolve_authoritative(zone_name, owner, qtype)
+
+        {:error, _} ->
+          {:servfail, [], []}
+      end
+    end
+  end
+
+  defp resolve_authoritative(zone_name, owner, qtype) do
     # Normalize owner name
     normalized_owner = normalize_owner(owner, zone_name)
 
+    # Check for delegation first (before looking up records)
+    case Delegation.check_delegation(zone_name, normalized_owner, qtype) do
+      {:delegated, _delegation_point, ns_records, glue_records} ->
+        # This query is for a delegated sub-zone
+        # Return referral with NS records in authority and glue in additional
+        Logger.debug("Delegation found for #{normalized_owner}", zone: zone_name)
+        {:delegation, ns_records, glue_records}
+
+      :not_delegated ->
+        # No delegation, proceed with normal authoritative resolution
+        resolve_authoritative_without_delegation(zone_name, normalized_owner, qtype)
+    end
+  end
+
+  defp resolve_authoritative_without_delegation(zone_name, normalized_owner, qtype) do
     # Look up records
     case Storage.lookup_record(zone_name, normalized_owner, qtype) do
       {:ok, records} ->
@@ -132,8 +295,134 @@ defmodule YellowDog.Dns.Query.Resolver do
             end
         end
     end
+  end
+
+  defp resolve_forward(zone_name, owner, qtype, metadata) do
+    # Extract forward configuration from metadata
+    forwarders = Map.get(metadata, :forwarders, [])
+    forward_mode = Map.get(metadata, :forward_mode, :only)
+    timeout_ms = Map.get(metadata, :timeout_ms, 5000)
+    max_retries = Map.get(metadata, :max_retries, 2)
+
+    case forward_mode do
+      :only ->
+        # Always forward, never try local resolution
+        forward_to_upstream(owner, qtype, forwarders, timeout_ms, max_retries)
+
+      :first ->
+        # Try local authoritative first, forward on NXDOMAIN
+        case resolve_authoritative(zone_name, owner, qtype) do
+          {:nxdomain, _, _} ->
+            # Name not found locally, try forwarding
+            forward_to_upstream(owner, qtype, forwarders, timeout_ms, max_retries)
+
+          other_result ->
+            # Return local result (could be :ok, :nodata, or :servfail)
+            other_result
+        end
     end
   end
+
+  defp forward_to_upstream(query_name, query_type, forwarders, timeout_ms, max_retries) do
+    opts = [timeout_ms: timeout_ms, max_retries: max_retries]
+
+    case Forwarder.forward_query(query_name, query_type, forwarders, opts) do
+      {:ok, dns_records} ->
+        # Convert DNS.Message.Record to Zone.Record format
+        zone_records = convert_dns_records_to_zone_records(dns_records)
+        {:ok, zone_records, []}
+
+      {:nxdomain, _} ->
+        {:nxdomain, [], []}
+
+      {:servfail, _} ->
+        {:servfail, [], []}
+
+      {:error, reason} ->
+        Logger.warning("Forward query failed", reason: inspect(reason))
+        {:servfail, [], []}
+    end
+  end
+
+  defp resolve_recursive(query_name, query_type, metadata) do
+    # Extract configuration from metadata
+    timeout_ms = Map.get(metadata, :timeout_ms, 10000)
+    max_depth = Map.get(metadata, :max_recursion_depth, 16)
+    ip_version = Map.get(metadata, :ip_version, :ipv4)
+
+    opts = [
+      timeout_ms: timeout_ms,
+      max_depth: max_depth,
+      ip_version: ip_version
+    ]
+
+    case Recursive.resolve(query_name, query_type, opts) do
+      {:ok, dns_records, authority} ->
+        # Convert DNS.Message.Record to Zone.Record format
+        zone_records = convert_dns_records_to_zone_records(dns_records)
+        authority_records = convert_dns_records_to_zone_records(authority)
+        {:ok, zone_records, authority_records}
+
+      {:nxdomain, [], authority} ->
+        authority_records = convert_dns_records_to_zone_records(authority)
+        {:nxdomain, [], authority_records}
+
+      {:error, reason} ->
+        Logger.warning("Recursive resolution failed", reason: inspect(reason))
+        {:servfail, [], []}
+    end
+  end
+
+  defp convert_dns_records_to_zone_records(dns_records) do
+    Enum.map(dns_records, fn dns_record ->
+      # Extract fields from DNS.Message.Record
+      owner = dns_record.name.value
+      type = convert_dns_type_to_zone_type(dns_record.type)
+      ttl = dns_record.ttl
+      class = convert_dns_class(dns_record.class)
+      rdata = convert_dns_rdata(dns_record.type, dns_record.data)
+
+      Zone.Record.new(owner, type, rdata, ttl: ttl, class: class)
+    end)
+  end
+
+  defp convert_dns_type_to_zone_type(type) when is_atom(type) do
+    # Convert lowercase atom to uppercase (e.g., :a -> :A)
+    type
+    |> Atom.to_string()
+    |> String.upcase()
+    |> String.to_atom()
+  end
+
+  defp convert_dns_class(:in), do: :IN
+  defp convert_dns_class(:ch), do: :CH
+  defp convert_dns_class(:hs), do: :HS
+  defp convert_dns_class(other), do: other
+
+  defp convert_dns_rdata(:a, data) when is_tuple(data), do: data
+  defp convert_dns_rdata(:aaaa, data) when is_tuple(data), do: data
+  defp convert_dns_rdata(:ns, data) when is_binary(data), do: data
+  defp convert_dns_rdata(:cname, data) when is_binary(data), do: data
+  defp convert_dns_rdata(:ptr, data) when is_binary(data), do: data
+  defp convert_dns_rdata(:txt, data) when is_list(data), do: Enum.join(data, "")
+  defp convert_dns_rdata(:mx, %{preference: pref, exchange: exch}), do: {pref, exch}
+
+  defp convert_dns_rdata(:srv, %{priority: pri, weight: w, port: p, target: t}),
+    do: {pri, w, p, t}
+
+  defp convert_dns_rdata(:soa, %{} = soa_map) do
+    %Zone.SOA{
+      mname: Map.get(soa_map, :mname),
+      rname: Map.get(soa_map, :rname),
+      serial: Map.get(soa_map, :serial),
+      refresh: Map.get(soa_map, :refresh),
+      retry: Map.get(soa_map, :retry),
+      expire: Map.get(soa_map, :expire),
+      minimum: Map.get(soa_map, :minimum)
+    }
+  end
+
+  defp convert_dns_rdata(_type, data), do: data
 
   defp do_resolve_with_cname(zone_name, owner, qtype, depth, chain) when depth > 0 do
     # First check for direct answer
@@ -213,10 +502,11 @@ defmodule YellowDog.Dns.Query.Resolver do
       case Storage.lookup_record(zone_name, wildcard_owner, qtype) do
         {:ok, records} ->
           # Found a match! Convert records but use the original query name as owner
-          answers = Enum.map(records, fn storage_data ->
-            # Wildcard expansion: use the original queried name as the owner
-            storage_to_record(owner, qtype, storage_data)
-          end)
+          answers =
+            Enum.map(records, fn storage_data ->
+              # Wildcard expansion: use the original queried name as the owner
+              storage_to_record(owner, qtype, storage_data)
+            end)
 
           {:halt, {:ok, answers}}
 
@@ -226,9 +516,10 @@ defmodule YellowDog.Dns.Query.Resolver do
             {:ok, records} ->
               # Found wildcard CNAME! Convert and return it
               # The caller (do_resolve_with_cname) will follow the CNAME
-              answers = Enum.map(records, fn storage_data ->
-                storage_to_record(owner, :CNAME, storage_data)
-              end)
+              answers =
+                Enum.map(records, fn storage_data ->
+                  storage_to_record(owner, :CNAME, storage_data)
+                end)
 
               {:halt, {:ok, answers}}
 
@@ -261,9 +552,12 @@ defmodule YellowDog.Dns.Query.Resolver do
     |> Enum.filter(fn wildcard_name ->
       # Only include wildcards that are within our zone
       wildcard_base = String.trim_leading(wildcard_name, "*.")
-      wildcard_base == normalized_zone <> "." or String.ends_with?(wildcard_base, "." <> normalized_zone <> ".")
+
+      wildcard_base == normalized_zone <> "." or
+        String.ends_with?(wildcard_base, "." <> normalized_zone <> ".")
     end)
-    |> Enum.sort_by(&(-String.length(&1)))  # Sort by length descending (most specific first)
+    # Sort by length descending (most specific first)
+    |> Enum.sort_by(&(-String.length(&1)))
   end
 
   defp get_soa_authority(zone_name) do
@@ -317,5 +611,70 @@ defmodule YellowDog.Dns.Query.Resolver do
       ttl: storage_data.ttl,
       class: storage_data.class
     )
+  end
+
+  # Cache-related helper functions
+
+  defp cache_enabled? do
+    # Check if CacheManager is running
+    Process.whereis(CacheManager) != nil and CacheManager.enabled?()
+  rescue
+    _ -> false
+  end
+
+  defp cache_result(query_name, query_type, query_class, result) do
+    case result do
+      {:ok, records, authority} ->
+        # Cache successful answer
+        ttl = extract_min_ttl(records)
+
+        CacheManager.put(query_name, query_type, records, authority, ttl,
+          query_class: query_class
+        )
+
+      {:nxdomain, [], authority} ->
+        # Cache negative response (NXDOMAIN)
+        ttl = extract_soa_minimum(authority)
+
+        CacheManager.put(query_name, query_type, [], authority, ttl,
+          query_class: query_class,
+          response_type: :nxdomain
+        )
+
+      {:nodata, [], authority} ->
+        # Cache negative response (NODATA)
+        ttl = extract_soa_minimum(authority)
+
+        CacheManager.put(query_name, query_type, [], authority, ttl,
+          query_class: query_class,
+          response_type: :nodata
+        )
+
+      _ ->
+        # Don't cache errors
+        :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp extract_min_ttl([]), do: 300
+
+  defp extract_min_ttl(records) do
+    records
+    |> Enum.map(fn
+      %Zone.Record{ttl: ttl} -> ttl
+      _ -> 300
+    end)
+    |> Enum.min(fn -> 300 end)
+  end
+
+  defp extract_soa_minimum([]), do: 300
+
+  defp extract_soa_minimum(authority) do
+    Enum.find_value(authority, 300, fn
+      %Zone.SOA{minimum: minimum} -> minimum
+      _ -> nil
+    end)
   end
 end

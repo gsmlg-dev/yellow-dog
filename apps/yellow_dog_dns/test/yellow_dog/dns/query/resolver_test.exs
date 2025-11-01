@@ -16,12 +16,14 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     zone_name = "test.com"
 
     # Store SOA
-    soa = Zone.SOA.new("ns1.test.com.", "admin.test.com.", 2024010101,
-      refresh: 3600,
-      retry: 1800,
-      expire: 604_800,
-      minimum: 300
-    )
+    soa =
+      Zone.SOA.new("ns1.test.com.", "admin.test.com.", 2_024_010_101,
+        refresh: 3600,
+        retry: 1800,
+        expire: 604_800,
+        minimum: 300
+      )
+
     Storage.insert_record(zone_name, "@", :SOA, soa, 3600)
 
     # Store NS records
@@ -34,7 +36,13 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     Storage.insert_record(zone_name, "ns1.test.com.", :A, {192, 168, 1, 10}, 3600)
 
     # Store AAAA record
-    Storage.insert_record(zone_name, "www.test.com.", :AAAA, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}, 300)
+    Storage.insert_record(
+      zone_name,
+      "www.test.com.",
+      :AAAA,
+      {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1},
+      300
+    )
 
     # Store MX record
     Storage.insert_record(zone_name, "@", :MX, {10, "mail.test.com."}, 600)
@@ -48,7 +56,7 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     # Store zone metadata
     Storage.put_zone_metadata(zone_name, %{
       type: :master,
-      serial: 2024010101,
+      serial: 2_024_010_101,
       loaded_at: System.system_time(:second)
     })
 
@@ -109,7 +117,8 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     end
 
     test "returns NXDOMAIN for non-existent name" do
-      assert {:nxdomain, [], authority} = Resolver.resolve("test.com", "nonexistent.test.com.", :A)
+      assert {:nxdomain, [], authority} =
+               Resolver.resolve("test.com", "nonexistent.test.com.", :A)
 
       assert length(authority) == 1
       assert hd(authority).__struct__ == Zone.SOA
@@ -161,7 +170,8 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     end
 
     test "returns CNAME without target when querying for CNAME type" do
-      assert {:ok, [record], []} = Resolver.resolve_with_cname("test.com", "ftp.test.com.", :CNAME)
+      assert {:ok, [record], []} =
+               Resolver.resolve_with_cname("test.com", "ftp.test.com.", :CNAME)
 
       assert record.type == :CNAME
       assert record.rdata == "www.test.com."
@@ -236,12 +246,13 @@ defmodule YellowDog.Dns.Query.ResolverTest do
     test "handles zone with only SOA" do
       Storage.put_zone_metadata("minimal.com", %{type: :master})
 
-      soa = Zone.SOA.new("ns1.minimal.com.", "admin.minimal.com.", 1,
-        refresh: 3600,
-        retry: 1800,
-        expire: 604_800,
-        minimum: 300
-      )
+      soa =
+        Zone.SOA.new("ns1.minimal.com.", "admin.minimal.com.", 1,
+          refresh: 3600,
+          retry: 1800,
+          expire: 604_800,
+          minimum: 300
+        )
 
       Storage.insert_record("minimal.com", "@", :SOA, soa, 3600)
 
@@ -258,12 +269,14 @@ defmodule YellowDog.Dns.Query.ResolverTest do
       zone_name = "wildcard.test"
 
       # Store SOA
-      soa = Zone.SOA.new("ns1.wildcard.test.", "admin.wildcard.test.", 2024102901,
-        refresh: 7200,
-        retry: 3600,
-        expire: 1_209_600,
-        minimum: 3600
-      )
+      soa =
+        Zone.SOA.new("ns1.wildcard.test.", "admin.wildcard.test.", 2_024_102_901,
+          refresh: 7200,
+          retry: 3600,
+          expire: 1_209_600,
+          minimum: 3600
+        )
+
       Storage.insert_record(zone_name, "@", :SOA, soa, 3600)
 
       # Store exact match records
@@ -273,7 +286,14 @@ defmodule YellowDog.Dns.Query.ResolverTest do
 
       # Store wildcard records
       Storage.insert_record(zone_name, "*.wildcard.test.", :A, {192, 168, 1, 200}, 3600)
-      Storage.insert_record(zone_name, "*.wildcard.test.", :AAAA, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0x200}, 3600)
+
+      Storage.insert_record(
+        zone_name,
+        "*.wildcard.test.",
+        :AAAA,
+        {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0x200},
+        3600
+      )
 
       # Store more specific wildcard
       Storage.insert_record(zone_name, "*.sub.wildcard.test.", :A, {192, 168, 1, 201}, 3600)
@@ -286,12 +306,18 @@ defmodule YellowDog.Dns.Query.ResolverTest do
       Storage.insert_record(zone_name, "special.sub.wildcard.test.", :A, {192, 168, 1, 210}, 3600)
 
       # Store wildcard CNAME
-      Storage.insert_record(zone_name, "*.alias.wildcard.test.", :CNAME, "www.wildcard.test.", 300)
+      Storage.insert_record(
+        zone_name,
+        "*.alias.wildcard.test.",
+        :CNAME,
+        "www.wildcard.test.",
+        300
+      )
 
       # Store zone metadata
       Storage.put_zone_metadata(zone_name, %{
         type: :master,
-        serial: 2024102901,
+        serial: 2_024_102_901,
         loaded_at: System.system_time(:second)
       })
 
@@ -308,7 +334,8 @@ defmodule YellowDog.Dns.Query.ResolverTest do
 
     test "resolves wildcard match for non-existent name" do
       # "anything.wildcard.test" should match "*.wildcard.test"
-      assert {:ok, [record], []} = Resolver.resolve("wildcard.test", "anything.wildcard.test.", :A)
+      assert {:ok, [record], []} =
+               Resolver.resolve("wildcard.test", "anything.wildcard.test.", :A)
 
       assert record.owner == "anything.wildcard.test."
       assert record.type == :A
@@ -341,14 +368,16 @@ defmodule YellowDog.Dns.Query.ResolverTest do
 
     test "exact match overrides more specific wildcard" do
       # "special.sub.wildcard.test" has exact match
-      assert {:ok, [record], []} = Resolver.resolve("wildcard.test", "special.sub.wildcard.test.", :A)
+      assert {:ok, [record], []} =
+               Resolver.resolve("wildcard.test", "special.sub.wildcard.test.", :A)
 
       assert record.owner == "special.sub.wildcard.test."
       assert record.rdata == {192, 168, 1, 210}
     end
 
     test "resolves wildcard TXT record" do
-      assert {:ok, [record], []} = Resolver.resolve("wildcard.test", "bar.app.wildcard.test.", :TXT)
+      assert {:ok, [record], []} =
+               Resolver.resolve("wildcard.test", "bar.app.wildcard.test.", :TXT)
 
       assert record.owner == "bar.app.wildcard.test."
       assert record.type == :TXT
@@ -372,21 +401,27 @@ defmodule YellowDog.Dns.Query.ResolverTest do
       # Query for a name that doesn't match any wildcard or exact record
       # Let's query a different zone
       Storage.put_zone_metadata("other.test", %{type: :master})
-      soa = Zone.SOA.new("ns1.other.test.", "admin.other.test.", 1,
-        refresh: 3600,
-        retry: 1800,
-        expire: 604_800,
-        minimum: 300
-      )
+
+      soa =
+        Zone.SOA.new("ns1.other.test.", "admin.other.test.", 1,
+          refresh: 3600,
+          retry: 1800,
+          expire: 604_800,
+          minimum: 300
+        )
+
       Storage.insert_record("other.test", "@", :SOA, soa, 3600)
 
-      assert {:nxdomain, [], authority} = Resolver.resolve("other.test", "anything.other.test.", :A)
+      assert {:nxdomain, [], authority} =
+               Resolver.resolve("other.test", "anything.other.test.", :A)
+
       assert length(authority) == 1
     end
 
     test "wildcard CNAME can be resolved directly" do
       # First check that we can resolve the wildcard CNAME itself
-      assert {:ok, [record], []} = Resolver.resolve("wildcard.test", "test.alias.wildcard.test.", :CNAME)
+      assert {:ok, [record], []} =
+               Resolver.resolve("wildcard.test", "test.alias.wildcard.test.", :CNAME)
 
       assert record.owner == "test.alias.wildcard.test."
       assert record.type == :CNAME
@@ -395,7 +430,8 @@ defmodule YellowDog.Dns.Query.ResolverTest do
 
     test "wildcard with CNAME follows chain" do
       # Query for "anything.alias.wildcard.test" should match wildcard CNAME
-      assert {:ok, answers, []} = Resolver.resolve_with_cname("wildcard.test", "test.alias.wildcard.test.", :A)
+      assert {:ok, answers, []} =
+               Resolver.resolve_with_cname("wildcard.test", "test.alias.wildcard.test.", :A)
 
       # Should have CNAME + A record
       assert length(answers) == 2

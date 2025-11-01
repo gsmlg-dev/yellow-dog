@@ -454,7 +454,10 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   defp matches_query?(service, qname, qtype) do
     # Match service FQDN or type enumeration
     service_fqdn = String.downcase(service.fqdn) |> String.trim_trailing(".")
-    service_type = String.downcase("#{service.type}.#{service.domain}") |> String.trim_trailing(".")
+
+    service_type =
+      String.downcase("#{service.type}.#{service.domain}") |> String.trim_trailing(".")
+
     service_host = String.downcase(service.host) |> String.trim_trailing(".")
 
     cond do

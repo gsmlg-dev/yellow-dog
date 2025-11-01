@@ -60,8 +60,17 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
           binary() | nil
         ) ::
           {:ok, lease()} | {:error, term()}
-  def allocate_lease(mac, requested_ip \\ nil, hostname \\ nil, pool_name \\ "default", client_id \\ nil) do
-    GenServer.call(__MODULE__, {:allocate_lease, mac, requested_ip, hostname, pool_name, client_id})
+  def allocate_lease(
+        mac,
+        requested_ip \\ nil,
+        hostname \\ nil,
+        pool_name \\ "default",
+        client_id \\ nil
+      ) do
+    GenServer.call(
+      __MODULE__,
+      {:allocate_lease, mac, requested_ip, hostname, pool_name, client_id}
+    )
   end
 
   @doc """
@@ -265,7 +274,11 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   @impl true
-  def handle_call({:allocate_lease, mac, requested_ip, hostname, pool_name, client_id}, _from, state) do
+  def handle_call(
+        {:allocate_lease, mac, requested_ip, hostname, pool_name, client_id},
+        _from,
+        state
+      ) do
     # Find the pool
     pool = Enum.find(state.pools, fn p -> p.name == pool_name end)
 
@@ -287,7 +300,10 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         {:reply, :ok, state}
 
       {:error, :not_found} ->
-        Logger.warning("Attempted to release non-existent lease for MAC #{format_mac_display(mac_key)}")
+        Logger.warning(
+          "Attempted to release non-existent lease for MAC #{format_mac_display(mac_key)}"
+        )
+
         {:reply, :ok, state}
 
       {:error, reason} ->
@@ -306,7 +322,10 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         {:reply, :ok, state}
 
       {:error, :not_found} ->
-        Logger.warning("Attempted to decline non-existent lease for MAC #{format_mac_display(mac_key)}")
+        Logger.warning(
+          "Attempted to decline non-existent lease for MAC #{format_mac_display(mac_key)}"
+        )
+
         {:reply, :ok, state}
 
       {:error, reason} ->
@@ -356,6 +375,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
           lease_time: pool.lease_time,
           excluded_ranges: pool.excluded_ranges
         }
+
         {:reply, {:ok, config}, state}
     end
   end
@@ -408,7 +428,10 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
         case LeaseStorage.put(renewed_lease) do
           {:ok, lease} ->
-            Logger.info("Renewed lease for MAC #{format_mac_display(mac_key)}: #{inspect(lease.ip_address)}")
+            Logger.info(
+              "Renewed lease for MAC #{format_mac_display(mac_key)}: #{inspect(lease.ip_address)}"
+            )
+
             {:ok, lease}
 
           {:error, reason} ->
@@ -457,7 +480,9 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
       case LeaseStorage.put(lease) do
         {:ok, stored_lease} ->
-          Logger.info("Allocated new lease for MAC #{format_mac_display(mac_key)}: #{inspect(ip)}")
+          Logger.info(
+            "Allocated new lease for MAC #{format_mac_display(mac_key)}: #{inspect(ip)}"
+          )
 
           # Emit telemetry event
           :telemetry.execute(

@@ -51,10 +51,35 @@ defmodule YellowDog.Dns.Supervisor do
   defp build_children(opts) do
     server_options = Map.get(opts, :server_options, [])
 
+    # Get cache configuration from YellowDog.Config
+    cache_config =
+      case apply(YellowDog.Config, :get, [:dns, :cache]) do
+        nil ->
+          []
+
+        config when is_map(config) ->
+          Enum.into(config, [])
+
+        _ ->
+          []
+      end
+
     [
       # Zone Manager - manages zone lifecycle and storage
       {YellowDog.Dns.Zone.Manager, []}
       |> Supervisor.child_spec(id: :zone_manager, restart: :permanent),
+
+      # Query Cache Manager - manages DNS query cache
+      {YellowDog.Dns.Query.Cache.Manager, cache_config}
+      |> Supervisor.child_spec(id: :cache_manager, restart: :permanent),
+
+      # Query Cache Cleaner - periodic cleanup of expired entries
+      {YellowDog.Dns.Query.Cache.Cleaner, cache_config}
+      |> Supervisor.child_spec(id: :cache_cleaner, restart: :permanent),
+
+      # Root Zone Manager - manages root zone for recursive resolution
+      {YellowDog.Dns.RootZone.Manager, strategy: :hints}
+      |> Supervisor.child_spec(id: :root_zone_manager, restart: :permanent),
 
       # DNS Server (wraps Abyss UDP server)
       {YellowDog.Dns.Server, server_options}

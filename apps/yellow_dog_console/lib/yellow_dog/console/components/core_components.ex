@@ -101,7 +101,17 @@ defmodule YellowDog.Console.CoreComponents do
   """
   attr :color, :string,
     default: nil,
-    values: ["primary", "secondary", "accent", "info", "success", "warning", "error", "ghost", nil]
+    values: [
+      "primary",
+      "secondary",
+      "accent",
+      "info",
+      "success",
+      "warning",
+      "error",
+      "ghost",
+      nil
+    ]
 
   attr :size, :string, default: nil, values: ["xs", "sm", "md", "lg", nil]
   attr :outline, :boolean, default: false
@@ -272,6 +282,7 @@ defmodule YellowDog.Console.CoreComponents do
   """
   attr :type, :string, default: "spinner", values: ["spinner", "dots", "ring", "ball", "bars"]
   attr :size, :string, default: "md", values: ["xs", "sm", "md", "lg"]
+
   attr :color, :string,
     default: nil,
     values: ["primary", "secondary", "accent", "info", "success", "warning", "error", nil]
@@ -298,6 +309,7 @@ defmodule YellowDog.Console.CoreComponents do
   """
   attr :value, :integer, default: 0
   attr :max, :integer, default: 100
+
   attr :color, :string,
     default: nil,
     values: ["primary", "secondary", "accent", "info", "success", "warning", "error", nil]
@@ -325,6 +337,7 @@ defmodule YellowDog.Console.CoreComponents do
   """
   attr :value, :integer, required: true
   attr :size, :string, default: "md", values: ["xs", "sm", "md", "lg", "xl"]
+
   attr :color, :string,
     default: nil,
     values: ["primary", "secondary", "accent", "info", "success", "warning", "error", nil]
@@ -333,7 +346,8 @@ defmodule YellowDog.Console.CoreComponents do
   slot :inner_block
 
   def radial_progress(assigns) do
-    assigns = assign(assigns, :style, "--value:#{assigns.value}; --thickness: #{assigns.thickness}px;")
+    assigns =
+      assign(assigns, :style, "--value:#{assigns.value}; --thickness: #{assigns.thickness}px;")
 
     ~H"""
     <div
@@ -359,6 +373,7 @@ defmodule YellowDog.Console.CoreComponents do
       <.toast id="error-toast" type="error">Something went wrong</.toast>
   """
   attr :id, :string, required: true
+
   attr :type, :string,
     default: "info",
     values: ["info", "success", "warning", "error"]

@@ -169,7 +169,12 @@ defmodule YellowDog.Dhcpv4.Handler do
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :request_nak],
           %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_mac: message.chaddr, reason: reason, state: request_state}
+          %{
+            client_ip: client_ip,
+            client_mac: message.chaddr,
+            reason: reason,
+            state: request_state
+          }
         )
     end
 
@@ -378,8 +383,15 @@ defmodule YellowDog.Dhcpv4.Handler do
     options_with_message =
       if reason && is_binary(reason) && byte_size(reason) > 0 do
         message_value = :binary.copy(reason)
+
         base_options ++
-          [%DHCPv4.Message.Option{type: 56, length: byte_size(message_value), value: message_value}]
+          [
+            %DHCPv4.Message.Option{
+              type: 56,
+              length: byte_size(message_value),
+              value: message_value
+            }
+          ]
       else
         base_options
       end

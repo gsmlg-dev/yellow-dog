@@ -141,7 +141,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   @spec list_discovered_services() :: [discovered_service()]
   def list_discovered_services do
     now = System.system_time(:second)
-    stale_threshold = now - 300  # 5 minutes
+    # 5 minutes
+    stale_threshold = now - 300
 
     @services_table
     |> :ets.tab2list()

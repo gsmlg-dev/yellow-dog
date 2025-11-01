@@ -173,7 +173,9 @@ defmodule YellowDog.Dhcpv6.Handler do
         leases =
           if ia_na do
             case LeaseManager.allocate_lease(duid, ia_na.iaid) do
-              {:ok, lease} -> [lease | leases]
+              {:ok, lease} ->
+                [lease | leases]
+
               {:error, reason} ->
                 Logger.error("Failed to allocate IA_NA lease: #{inspect(reason)}")
                 leases
@@ -186,7 +188,9 @@ defmodule YellowDog.Dhcpv6.Handler do
         leases =
           if ia_ta do
             case allocate_temporary_address(duid, ia_ta.iaid) do
-              {:ok, ta_lease} -> [ta_lease | leases]
+              {:ok, ta_lease} ->
+                [ta_lease | leases]
+
               {:error, reason} ->
                 Logger.error("Failed to allocate IA_TA lease: #{inspect(reason)}")
                 leases
@@ -199,7 +203,9 @@ defmodule YellowDog.Dhcpv6.Handler do
         leases =
           if ia_pd do
             case allocate_prefix_delegation(duid, ia_pd.iaid) do
-              {:ok, pd_lease} -> [pd_lease | leases]
+              {:ok, pd_lease} ->
+                [pd_lease | leases]
+
               {:error, reason} ->
                 Logger.error("Failed to allocate IA_PD lease: #{inspect(reason)}")
                 leases
@@ -570,9 +576,12 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   defp extract_ia_addr(_), do: nil
 
-  defp extract_ia_prefix(<<@option_ia_prefix::16, len::16, data::binary-size(len), _rest::binary>>) do
+  defp extract_ia_prefix(
+         <<@option_ia_prefix::16, len::16, data::binary-size(len), _rest::binary>>
+       ) do
     case data do
-      <<_preferred::32, _valid::32, prefix_len::8, a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>> ->
+      <<_preferred::32, _valid::32, prefix_len::8, a::16, b::16, c::16, d::16, e::16, f::16,
+        g::16, h::16>> ->
         {{a, b, c, d, e, f, g, h}, prefix_len}
 
       _ ->
@@ -654,9 +663,10 @@ defmodule YellowDog.Dhcpv6.Handler do
       end)
 
     # Add configuration options (DNS, etc.)
-    config_options = [
-      create_dns_servers_option(pool.dns_servers)
-    ] ++ add_domain_list_option([], pool.domain_name)
+    config_options =
+      [
+        create_dns_servers_option(pool.dns_servers)
+      ] ++ add_domain_list_option([], pool.domain_name)
 
     %DHCPv6.Message{
       msg_type: @msg_type_advertise,

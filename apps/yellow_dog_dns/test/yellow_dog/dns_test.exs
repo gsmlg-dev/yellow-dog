@@ -93,4 +93,64 @@ defmodule YellowDog.DnsTest do
       assert transport_options[:reuseaddr] == true
     end
   end
+
+  describe "DNS statistics" do
+    test "stats/0 returns a properly structured map" do
+      stats = YellowDog.Dns.stats()
+
+      # Verify top-level structure
+      assert is_map(stats)
+      assert Map.has_key?(stats, :zones)
+      assert Map.has_key?(stats, :storage)
+      assert Map.has_key?(stats, :service)
+
+      # Verify storage stats structure (may be error if not initialized)
+      storage = stats.storage
+      assert is_map(storage)
+
+      if Map.has_key?(storage, :error) do
+        # Storage not initialized - this is expected in test environment
+        assert storage.error == "Storage not initialized"
+      else
+        # Storage initialized - verify structure
+        assert Map.has_key?(storage, :total_zones)
+        assert Map.has_key?(storage, :total_records)
+        assert Map.has_key?(storage, :memory_bytes)
+        assert Map.has_key?(storage, :memory_mb)
+        assert is_integer(storage.total_zones)
+        assert is_integer(storage.total_records)
+        assert is_integer(storage.memory_bytes)
+        assert is_float(storage.memory_mb)
+      end
+
+      # Verify service status structure
+      service = stats.service
+      assert is_map(service)
+      assert Map.has_key?(service, :running)
+      assert Map.has_key?(service, :info)
+      assert is_boolean(service.running)
+      assert is_binary(service.info)
+
+      # Verify zones stats structure (either error or valid stats)
+      zones = stats.zones
+      assert is_map(zones)
+
+      # In test environment, zone manager is not running
+      if Map.has_key?(zones, :error) do
+        assert zones.error in ["Zone manager not running", "Zone manager not available"]
+      else
+        # If running, verify structure
+        assert Map.has_key?(zones, :loaded_zones)
+        assert is_integer(zones.loaded_zones)
+      end
+    end
+
+    test "status/0 returns service status" do
+      status = YellowDog.Dns.status()
+
+      assert is_map(status)
+      assert Map.has_key?(status, :running)
+      assert is_boolean(status.running)
+    end
+  end
 end

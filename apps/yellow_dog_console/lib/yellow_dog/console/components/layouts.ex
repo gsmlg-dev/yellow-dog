@@ -491,5 +491,4 @@ defmodule YellowDog.Console.Layouts do
     </div>
     """
   end
-
 end

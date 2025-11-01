@@ -192,7 +192,10 @@ defmodule YellowDog.Dns.Zone.Storage do
         }
       ])
 
-    {:ok, Enum.map(records, fn {owner, type, data} -> Map.put(data, :owner, owner) |> Map.put(:type, type) end)}
+    {:ok,
+     Enum.map(records, fn {owner, type, data} ->
+       Map.put(data, :owner, owner) |> Map.put(:type, type)
+     end)}
   end
 
   @doc """

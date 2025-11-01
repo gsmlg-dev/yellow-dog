@@ -25,6 +25,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   alias YellowDog.Telemetry
   alias YellowDog.Dns.Query.Resolver
+  alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
   alias YellowDog.Dns.Zone.Manager, as: ZoneManager
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
@@ -41,7 +42,6 @@ defmodule YellowDog.Dns.Handler.UDP do
       # Get configuration from application config or defaults
       mode = get_config(:mode, :authoritative)
       upstream_servers = get_config(:upstream_servers, ["8.8.8.8", "1.1.1.1"])
-      cache_ttl = get_config(:cache_ttl, 300)
       zone_files = get_config(:zone_files, [])
 
       # Load zones into the zone manager
@@ -51,15 +51,10 @@ defmodule YellowDog.Dns.Handler.UDP do
         zone_count: length(loaded_zones)
       })
 
-      # Initialize cache (using a simple map for now - could be ETS for production)
-      cache = %{}
-
-      # Add DNS-specific state
+      # Add DNS-specific state (cache is now managed by CacheManager)
       dns_state = %{
         mode: mode,
         upstream_servers: parse_upstream_servers(upstream_servers),
-        cache: cache,
-        cache_ttl: cache_ttl,
         loaded_zones: loaded_zones,
         stats: %{
           queries: 0,
@@ -163,38 +158,53 @@ defmodule YellowDog.Dns.Handler.UDP do
   end
 
   defp process_single_question(query, question, _client_ip, state, start_time) do
-    cache_key = {question.name.value, question.type}
+    query_name = question.name.value
+    query_type = question.type
+    query_class = question.class
 
-    # 1. Check cache first
-    case Map.get(state.cache, cache_key) do
-      {cached_response, cached_at} when is_map(cached_response) ->
-        # Check if cache entry is still valid
-        if System.monotonic_time(:second) - cached_at < state.cache_ttl do
-          Telemetry.debug("Cache hit", %{
-            name: question.name.value,
-            type: to_string(question.type)
-          })
+    # 1. Check cache first using CacheManager
+    case CacheManager.get(query_name, query_type, query_class) do
+      {:ok, cached_records, cached_authority} ->
+        # Cache hit - create response from cached data
+        Telemetry.debug("Cache hit", %{
+          name: query_name,
+          type: to_string(query_type)
+        })
 
-          state = update_in(state, [:stats, :cache_hits], &(&1 + 1))
+        state = update_in(state, [:stats, :cache_hits], &(&1 + 1))
 
-          # Update query ID and emit telemetry
-          response = %{cached_response | header: %{cached_response.header | id: query.header.id}}
+        # Convert cached records to DNS message format
+        dns_records = convert_resolver_records_to_message_records(cached_records)
+        dns_authority = convert_resolver_records_to_message_records(cached_authority)
 
-          :telemetry.execute(
-            [:yellow_dog, :dns, :cache_hit],
-            %{duration: System.monotonic_time(:microsecond) - start_time},
-            %{name: question.name.value, type: to_string(question.type)}
-          )
+        # Create response with cached data
+        response =
+          if cached_authority == [] do
+            create_response(query, question, dns_records, :no_error)
+          else
+            create_response_with_authority(
+              query,
+              question,
+              dns_records,
+              dns_authority,
+              :no_error
+            )
+          end
 
-          {response, state}
-        else
-          # Cache expired, remove and continue
-          state = update_in(state, [:cache], &Map.delete(&1, cache_key))
-          resolve_question(query, question, state, start_time)
-        end
+        :telemetry.execute(
+          [:yellow_dog, :dns, :cache_hit],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{name: query_name, type: to_string(query_type)}
+        )
 
-      _ ->
-        # Not in cache, resolve
+        {response, state}
+
+      {:error, :not_found} ->
+        # Not in cache, resolve normally
+        resolve_question(query, question, state, start_time)
+
+      {:error, :disabled} ->
+        # Caching disabled, resolve without cache
         resolve_question(query, question, state, start_time)
     end
   end
@@ -245,7 +255,23 @@ defmodule YellowDog.Dns.Handler.UDP do
               type: to_string(query_type)
             })
 
-            response = create_response_with_authority(query, question, [], dns_authority, :nxdomain)
+            response =
+              create_response_with_authority(query, question, [], dns_authority, :nxdomain)
+
+            # Cache negative response
+            query_class = question.class
+            authority_records = convert_message_records_to_resolver_records(dns_authority)
+
+            CacheManager.put(
+              query_name,
+              query_type,
+              [],
+              authority_records,
+              300,
+              query_class: query_class,
+              response_type: :nxdomain
+            )
+
             {response, state}
 
           {:nodata, _answers, authority} ->
@@ -257,7 +283,128 @@ defmodule YellowDog.Dns.Handler.UDP do
               type: to_string(query_type)
             })
 
-            response = create_response_with_authority(query, question, [], dns_authority, :no_error)
+            response =
+              create_response_with_authority(query, question, [], dns_authority, :no_error)
+
+            # Cache negative response
+            query_class = question.class
+            authority_records = convert_message_records_to_resolver_records(dns_authority)
+
+            CacheManager.put(
+              query_name,
+              query_type,
+              [],
+              authority_records,
+              300,
+              query_class: query_class,
+              response_type: :nodata
+            )
+
+            {response, state}
+
+          {:delegation, ns_records, glue_records} ->
+            # Delegation to sub-zone - return referral response
+            dns_ns_records = convert_resolver_records_to_message_records(ns_records)
+            dns_glue_records = convert_resolver_records_to_message_records(glue_records)
+
+            Telemetry.debug("Delegation response", %{
+              name: query_name,
+              type: to_string(query_type),
+              ns_count: length(dns_ns_records),
+              glue_count: length(dns_glue_records)
+            })
+
+            # Delegation response: empty answers, NS in authority, glue in additional
+            response =
+              create_delegation_response(
+                query,
+                question,
+                dns_ns_records,
+                dns_glue_records
+              )
+
+            :telemetry.execute(
+              [:yellow_dog, :dns, :delegation_response],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{
+                name: query_name,
+                type: to_string(query_type),
+                ns_count: length(dns_ns_records),
+                glue_count: length(dns_glue_records)
+              }
+            )
+
+            {response, state}
+
+          {:rpz_block, :nxdomain, _} ->
+            # RPZ blocked with NXDOMAIN
+            Telemetry.debug("RPZ block: NXDOMAIN", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            response = create_response(query, question, [], :nxdomain)
+
+            :telemetry.execute(
+              [:yellow_dog, :dns, :rpz_block],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{name: query_name, type: to_string(query_type), action: :nxdomain}
+            )
+
+            {response, state}
+
+          {:rpz_block, :nodata, _} ->
+            # RPZ blocked with NODATA
+            Telemetry.debug("RPZ block: NODATA", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            response = create_response(query, question, [], :no_error)
+
+            :telemetry.execute(
+              [:yellow_dog, :dns, :rpz_block],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{name: query_name, type: to_string(query_type), action: :nodata}
+            )
+
+            {response, state}
+
+          {:rpz_block, :drop, _} ->
+            # RPZ drop - don't send response
+            Telemetry.debug("RPZ block: DROP", %{
+              name: query_name,
+              type: to_string(query_type)
+            })
+
+            :telemetry.execute(
+              [:yellow_dog, :dns, :rpz_block],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{name: query_name, type: to_string(query_type), action: :drop}
+            )
+
+            # Return empty response (will be ignored)
+            response = create_response(query, question, [], :servfail)
+            {response, state}
+
+          {:rpz_rewrite, records, _} ->
+            # RPZ rewrite with local data
+            dns_records = convert_resolver_records_to_message_records(records)
+
+            Telemetry.debug("RPZ rewrite", %{
+              name: query_name,
+              type: to_string(query_type),
+              record_count: length(dns_records)
+            })
+
+            response = create_response(query, question, dns_records, :no_error)
+
+            :telemetry.execute(
+              [:yellow_dog, :dns, :rpz_rewrite],
+              %{duration: System.monotonic_time(:microsecond) - start_time},
+              %{name: query_name, type: to_string(query_type), record_count: length(dns_records)}
+            )
+
             {response, state}
 
           {:servfail, _, _} ->
@@ -409,7 +556,9 @@ defmodule YellowDog.Dns.Handler.UDP do
           zones
           |> Enum.filter(fn zone_name ->
             normalized_zone = String.downcase(zone_name) |> String.trim_trailing(".")
-            normalized_query == normalized_zone or String.ends_with?(normalized_query, "." <> normalized_zone)
+
+            normalized_query == normalized_zone or
+              String.ends_with?(normalized_query, "." <> normalized_zone)
           end)
           |> Enum.sort_by(&(-String.length(&1)))
           |> List.first()
@@ -468,12 +617,82 @@ defmodule YellowDog.Dns.Handler.UDP do
   defp convert_record_type_and_data(:AAAA, rdata), do: {:aaaa, rdata}
   defp convert_record_type_and_data(:NS, rdata), do: {:ns, rdata}
   defp convert_record_type_and_data(:CNAME, rdata), do: {:cname, rdata}
-  defp convert_record_type_and_data(:MX, {priority, exchange}), do: {:mx, %{preference: priority, exchange: exchange}}
+
+  defp convert_record_type_and_data(:MX, {priority, exchange}),
+    do: {:mx, %{preference: priority, exchange: exchange}}
+
   defp convert_record_type_and_data(:TXT, rdata), do: {:txt, [rdata]}
   defp convert_record_type_and_data(:PTR, rdata), do: {:ptr, rdata}
-  defp convert_record_type_and_data(:SRV, {priority, weight, port, target}), do: {:srv, %{priority: priority, weight: weight, port: port, target: target}}
-  defp convert_record_type_and_data(:SOA, soa), do: {:soa, %{mname: soa.mname, rname: soa.rname, serial: soa.serial, refresh: soa.refresh, retry: soa.retry, expire: soa.expire, minimum: soa.minimum}}
+
+  defp convert_record_type_and_data(:SRV, {priority, weight, port, target}),
+    do: {:srv, %{priority: priority, weight: weight, port: port, target: target}}
+
+  defp convert_record_type_and_data(:SOA, soa),
+    do:
+      {:soa,
+       %{
+         mname: soa.mname,
+         rname: soa.rname,
+         serial: soa.serial,
+         refresh: soa.refresh,
+         retry: soa.retry,
+         expire: soa.expire,
+         minimum: soa.minimum
+       }}
+
   defp convert_record_type_and_data(type, rdata), do: {type, rdata}
+
+  defp convert_message_records_to_resolver_records(records) when is_list(records) do
+    # Convert DNS.Message.Record to YellowDog.Dns.Zone.Record format
+    Enum.map(records, fn record ->
+      %YellowDog.Dns.Zone.Record{
+        owner: record.domain,
+        type: normalize_record_type(record.type),
+        class: record.class,
+        ttl: record.ttl,
+        rdata: normalize_rdata(record.type, record.data)
+      }
+    end)
+  end
+
+  defp convert_message_records_to_resolver_records(_), do: []
+
+  defp normalize_record_type(type) when is_atom(type), do: type |> to_string() |> String.upcase() |> String.to_atom()
+  defp normalize_record_type(type), do: type
+
+  defp normalize_rdata(:a, ip_tuple), do: ip_tuple
+  defp normalize_rdata(:aaaa, ip_tuple), do: ip_tuple
+  defp normalize_rdata(:ns, domain), do: domain
+  defp normalize_rdata(:cname, domain), do: domain
+  defp normalize_rdata(:ptr, domain), do: domain
+  defp normalize_rdata(:mx, %{preference: pref, exchange: exch}), do: {pref, exch}
+  defp normalize_rdata(:txt, txt_list) when is_list(txt_list), do: Enum.join(txt_list, "")
+  defp normalize_rdata(:txt, txt_string), do: txt_string
+
+  defp normalize_rdata(:srv, %{priority: pri, weight: wgt, port: prt, target: tgt}),
+    do: {pri, wgt, prt, tgt}
+
+  defp normalize_rdata(:soa, %{
+         mname: mname,
+         rname: rname,
+         serial: serial,
+         refresh: refresh,
+         retry: retry,
+         expire: expire,
+         minimum: minimum
+       }) do
+    %YellowDog.Dns.Zone.SOA{
+      mname: mname,
+      rname: rname,
+      serial: serial,
+      refresh: refresh,
+      retry: retry,
+      expire: expire,
+      minimum: minimum
+    }
+  end
+
+  defp normalize_rdata(_type, rdata), do: rdata
 
   defp convert_recursive_records_to_message_records(records) do
     # The recursive resolver returns records in a specific format
@@ -591,6 +810,34 @@ defmodule YellowDog.Dns.Handler.UDP do
     }
   end
 
+  defp create_delegation_response(query, question, ns_records, glue_records) do
+    %Message{
+      header: %{
+        query.header
+        | id: query.header.id,
+          # Response
+          qr: 1,
+          # NOT authoritative for delegated sub-zone
+          aa: 0,
+          # NOERROR
+          rcode: DNS.Message.RCode.new(0),
+          # No answers
+          ancount: 0,
+          # NS records in authority
+          nscount: length(ns_records),
+          # Glue records in additional
+          arcount: length(glue_records)
+      },
+      qdlist: [question],
+      # Empty answers for delegation
+      anlist: [],
+      # NS records
+      nslist: ns_records,
+      # Glue records
+      arlist: glue_records
+    }
+  end
+
   defp create_error_response(query, error_type) do
     rcode =
       case error_type do
@@ -628,13 +875,26 @@ defmodule YellowDog.Dns.Handler.UDP do
   defp cache_response(response, question, state) do
     # Only cache successful responses
     if response.header.rcode.value == <<0>> do
-      cache_key = {question.name.value, question.type}
-      cached_at = System.monotonic_time(:second)
+      query_name = question.name.value
+      query_type = question.type
+      query_class = question.class
 
-      update_in(state, [:cache], &Map.put(&1, cache_key, {response, cached_at}))
-    else
-      state
+      # Extract records and authority from response
+      records = convert_message_records_to_resolver_records(response.anlist)
+      authority = convert_message_records_to_resolver_records(response.nslist)
+
+      # Calculate TTL from answer records (use minimum TTL)
+      ttl =
+        case records do
+          [] -> 300
+          _ -> Enum.map(records, & &1.ttl) |> Enum.min()
+        end
+
+      # Store in cache using CacheManager
+      CacheManager.put(query_name, query_type, records, authority, ttl, query_class: query_class)
     end
+
+    state
   end
 
   ## Private Functions - Helpers

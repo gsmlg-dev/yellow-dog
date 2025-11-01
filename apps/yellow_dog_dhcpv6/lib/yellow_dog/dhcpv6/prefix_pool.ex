@@ -334,7 +334,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
       0
     else
       # Create a mask with 'prefix_length' ones, followed by zeros
-      (((1 <<< prefix_length) - 1) <<< (128 - prefix_length))
+      ((1 <<< prefix_length) - 1) <<< (128 - prefix_length)
     end
   end
 

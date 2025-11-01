@@ -1,0 +1,25 @@
+# Root Zone Configuration - Fetch Strategy
+#
+# This strategy periodically downloads the root zone from IANA.
+# Useful when you need the full root zone data or want automatic updates.
+# Requires internet connectivity.
+
+[dns.root_zone]
+strategy = "fetch"
+
+# URL to fetch root zone from (default: IANA InterNIC)
+fetch_url = "https://www.internic.net/domain/root.zone"
+
+# How often to fetch the root zone (in hours)
+# Default: 24 hours (once per day)
+fetch_interval_hours = 24
+
+# Whether to fallback to embedded hints if fetch fails
+# Recommended: true (ensures service continuity)
+fallback_to_hints = true
+
+# Example: Fetch every 12 hours
+# fetch_interval_hours = 12
+
+# Example: Use a mirror
+# fetch_url = "https://mirror.example.com/root.zone"

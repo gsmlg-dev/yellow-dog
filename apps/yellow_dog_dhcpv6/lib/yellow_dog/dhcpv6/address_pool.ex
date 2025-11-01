@@ -161,7 +161,13 @@ defmodule YellowDog.Dhcpv6.AddressPool do
       validated when is_list(validated) ->
         # Take first range as primary for backward compatibility
         first_range = List.first(validated)
-        {:ok, %{ranges: Enum.reverse(validated), range_start: first_range.start, range_end: first_range.end}}
+
+        {:ok,
+         %{
+           ranges: Enum.reverse(validated),
+           range_start: first_range.start,
+           range_end: first_range.end
+         }}
     end
   end
 

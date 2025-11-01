@@ -190,7 +190,10 @@ defmodule YellowDog.Mdns.RecordBuilder do
     qtype = question.type
 
     service_fqdn = String.downcase(service.fqdn) |> String.trim_trailing(".")
-    service_type = String.downcase("#{service.type}.#{service.domain}") |> String.trim_trailing(".")
+
+    service_type =
+      String.downcase("#{service.type}.#{service.domain}") |> String.trim_trailing(".")
+
     service_host = String.downcase(service.host) |> String.trim_trailing(".")
 
     cond do

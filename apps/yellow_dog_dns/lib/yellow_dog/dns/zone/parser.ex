@@ -321,7 +321,7 @@ defmodule YellowDog.Dns.Zone.Parser do
 
       # Owner is a domain name (starts with letter, digit, underscore, hyphen, or wildcard asterisk)
       String.match?(first, ~r/^[a-zA-Z0-9_\-\*]/) and not is_ttl?(first) and
-          first not in ["IN", "CH", "HS"] and not is_record_type?(first) ->
+        first not in ["IN", "CH", "HS"] and not is_record_type?(first) ->
         {first, rest}
 
       # No owner specified, use last_owner
@@ -538,10 +538,11 @@ defmodule YellowDog.Dns.Zone.Parser do
   end
 
   defp build_zone(zone_name, zone_type, records, final_state, opts) do
-    zone = Zone.new(zone_name, zone_type,
-      ttl: final_state.default_ttl,
-      file: Keyword.get(opts, :file)
-    )
+    zone =
+      Zone.new(zone_name, zone_type,
+        ttl: final_state.default_ttl,
+        file: Keyword.get(opts, :file)
+      )
 
     # Separate SOA from other records
     {soa_records, other_records} =

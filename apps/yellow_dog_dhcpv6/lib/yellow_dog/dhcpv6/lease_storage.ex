@@ -593,27 +593,28 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
     # Start Mnesia if not already started
     :mnesia.start()
 
-    table_opts = [
-      attributes: [
-        :lease_key,
-        :duid,
-        :iaid,
-        :ip_address,
-        :delegated_prefix,
-        :pool_name,
-        :ia_type,
-        :state,
-        :preferred_lifetime,
-        :valid_lifetime,
-        :expires_at,
-        :hostname,
-        :created_at,
-        :updated_at
-      ],
-      record_name: :lease_record,
-      type: :set,
-      index: [:ip_address, :duid, :state, :pool_name, :ia_type]
-    ] ++ [{storage_type, nodes}]
+    table_opts =
+      [
+        attributes: [
+          :lease_key,
+          :duid,
+          :iaid,
+          :ip_address,
+          :delegated_prefix,
+          :pool_name,
+          :ia_type,
+          :state,
+          :preferred_lifetime,
+          :valid_lifetime,
+          :expires_at,
+          :hostname,
+          :created_at,
+          :updated_at
+        ],
+        record_name: :lease_record,
+        type: :set,
+        index: [:ip_address, :duid, :state, :pool_name, :ia_type]
+      ] ++ [{storage_type, nodes}]
 
     case :mnesia.create_table(@table_name, table_opts) do
       {:atomic, :ok} ->

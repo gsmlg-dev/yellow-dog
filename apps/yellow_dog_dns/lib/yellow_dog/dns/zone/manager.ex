@@ -33,6 +33,7 @@ defmodule YellowDog.Dns.Zone.Manager do
 
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Storage
+  alias YellowDog.Dns.Zone.Forward
   alias YellowDog.Telemetry
 
   @type load_opts :: [
@@ -152,6 +153,35 @@ defmodule YellowDog.Dns.Zone.Manager do
   end
 
   @doc """
+  Loads a forward zone with upstream forwarders.
+
+  ## Parameters
+  - `zone_name` - The zone name (e.g., "external.com")
+  - `forwarders` - List of IP addresses to forward to
+  - `opts` - Forward zone options
+
+  ## Options
+  - `:forward_mode` - Forward mode (:first or :only, default: :only)
+  - `:timeout_ms` - Timeout in milliseconds (default: 5000)
+  - `:max_retries` - Maximum retry attempts (default: 2)
+
+  ## Returns
+  - `{:ok, zone_name}` - Forward zone loaded successfully
+  - `{:error, reason}` - Failed to load forward zone
+
+  ## Examples
+
+      iex> forwarders = [{8, 8, 8, 8}, {1, 1, 1, 1}]
+      iex> Zone.Manager.load_forward_zone("external.com", forwarders, forward_mode: :only)
+      {:ok, "external.com"}
+  """
+  @spec load_forward_zone(String.t(), [:inet.ip_address()], keyword()) ::
+          {:ok, String.t()} | {:error, any()}
+  def load_forward_zone(zone_name, forwarders, opts \\ []) do
+    GenServer.call(__MODULE__, {:load_forward_zone, zone_name, forwarders, opts})
+  end
+
+  @doc """
   Gets statistics for all zones or a specific zone.
 
   ## Parameters
@@ -194,30 +224,28 @@ defmodule YellowDog.Dns.Zone.Manager do
 
   @impl true
   def handle_call({:load_zone, zone_name, opts}, _from, state) do
-    Telemetry.span("dns.zone.load", %{zone: zone_name}, fn ->
-      result = do_load_zone(zone_name, opts)
+    span_id = Telemetry.start_span("dns.zone.load", %{zone: zone_name})
+    result = do_load_zone(zone_name, opts)
 
-      case result do
-        {:ok, _} = success ->
-          # Store zone info in state
-          zone_info = %{
-            name: zone_name,
-            file: Keyword.get(opts, :file),
-            type: Keyword.get(opts, :type, :master),
-            loaded_at: System.system_time(:second)
-          }
+    case result do
+      {:ok, _} = success ->
+        # Store zone info in state
+        zone_info = %{
+          name: zone_name,
+          file: Keyword.get(opts, :file),
+          type: Keyword.get(opts, :type, :master),
+          loaded_at: System.system_time(:second)
+        }
 
-          new_state = put_in(state, [:zones, zone_name], zone_info)
+        new_state = put_in(state, [:zones, zone_name], zone_info)
+        Telemetry.end_span(span_id, %{status: :success, record_count: count_zone_records(zone_name)})
+        {:reply, success, new_state}
 
-          {success, %{record_count: count_zone_records(zone_name)}}
-          {{:reply, success, new_state}, %{}}
-
-        {:error, reason} = error ->
-          Logger.error("Failed to load zone #{zone_name}: #{inspect(reason)}")
-          {error, %{reason: reason}}
-          {{:reply, error, state}, %{}}
-      end
-    end)
+      {:error, reason} = error ->
+        Logger.error("Failed to load zone #{zone_name}: #{inspect(reason)}")
+        Telemetry.end_span(span_id, %{status: :failed, reason: reason})
+        {:reply, error, state}
+    end
   end
 
   @impl true
@@ -237,6 +265,43 @@ defmodule YellowDog.Dns.Zone.Manager do
         {:reply, success, new_state}
 
       {:error, _} = error ->
+        {:reply, error, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:load_forward_zone, zone_name, forwarders, opts}, _from, state) do
+    # Create forward zone configuration
+    forward = Forward.new(zone_name, forwarders, opts)
+
+    case Forward.validate(forward) do
+      :ok ->
+        # Store forward zone metadata in storage
+        metadata = Forward.to_storage_metadata(forward)
+        Storage.put_zone_metadata(zone_name, metadata)
+
+        # Track in state
+        zone_info = %{
+          name: zone_name,
+          type: :forward,
+          loaded_at: System.system_time(:second),
+          source: :forward,
+          forwarders: forwarders,
+          forward_mode: forward.forward_mode
+        }
+
+        new_state = put_in(state, [:zones, zone_name], zone_info)
+
+        Logger.info("Forward zone loaded",
+          zone: zone_name,
+          forwarders: length(forwarders),
+          mode: forward.forward_mode
+        )
+
+        {:reply, {:ok, zone_name}, new_state}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to load forward zone #{zone_name}: #{inspect(reason)}")
         {:reply, error, state}
     end
   end
@@ -333,7 +398,11 @@ defmodule YellowDog.Dns.Zone.Manager do
 
   defp load_zone_from_file(zone_name, file, zone_type, ttl) do
     # Parse zone file using Zone.Parser
-    case Zone.Parser.parse_file(file, zone_name: zone_name, zone_type: zone_type, default_ttl: ttl) do
+    case Zone.Parser.parse_file(file,
+           zone_name: zone_name,
+           zone_type: zone_type,
+           default_ttl: ttl
+         ) do
       {:ok, zone} ->
         # Store zone records in storage
         store_zone_records(zone_name, zone)
