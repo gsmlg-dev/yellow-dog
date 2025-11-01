@@ -221,24 +221,31 @@ defmodule YellowDog.Dns.RPZ do
   @spec lookup_rpz_record(String.t(), String.t(), atom()) ::
           {:ok, map()} | {:error, :not_found}
   def lookup_rpz_record(zone_name, rpz_name, qtype) do
-    case Storage.lookup_record(zone_name, rpz_name, :CNAME) do
-      {:ok, [cname_target]} ->
+    # Construct the full qualified name by appending zone origin
+    # e.g., "badsite.example.com" + "malware.rpz." = "badsite.example.com.malware.rpz."
+    full_name = construct_rpz_name(rpz_name, zone_name)
+
+    case Storage.lookup_record(zone_name, full_name, :CNAME) do
+      {:ok, [cname_record]} when is_map(cname_record) ->
+        # Extract CNAME target from record map
+        cname_target = Map.get(cname_record, :rdata)
         # Decode RPZ action from CNAME target
         {:ok, decode_rpz_action(cname_target, qtype)}
 
       {:error, :not_found} ->
         # Check for local data records
-        case Storage.lookup_record(zone_name, rpz_name, qtype) do
+        case Storage.lookup_record(zone_name, full_name, qtype) do
           {:ok, records} when records != [] ->
             # Local data override
+            # Storage.lookup_record returns maps with :rdata, :ttl, :class fields
             local_data =
-              Enum.map(records, fn rdata ->
+              Enum.map(records, fn record_map ->
                 %Zone.Record{
-                  owner: rpz_name,
+                  owner: full_name,
                   type: qtype,
-                  class: :IN,
-                  ttl: 300,
-                  rdata: rdata
+                  class: Map.get(record_map, :class, :IN),
+                  ttl: Map.get(record_map, :ttl, 300),
+                  rdata: Map.get(record_map, :rdata)
                 }
               end)
 
@@ -288,6 +295,25 @@ defmodule YellowDog.Dns.RPZ do
   end
 
   defp normalize_name(name), do: name
+
+  defp construct_rpz_name(rpz_name, zone_name) do
+    # Construct the full qualified name by appending zone origin
+    # e.g., "badsite.example.com" + "malware.rpz" = "badsite.example.com.malware.rpz."
+    normalized_name = normalize_name(rpz_name)
+    normalized_zone = normalize_name(zone_name)
+
+    # Add trailing dot if not present
+    zone_with_dot =
+      if String.ends_with?(normalized_zone, ".") do
+        normalized_zone
+      else
+        normalized_zone <> "."
+      end
+
+    # Construct full name
+    full_name = normalized_name <> "." <> zone_with_dot
+    full_name
+  end
 
   defp get_rpz_zones do
     # Get list of RPZ zones from configuration
