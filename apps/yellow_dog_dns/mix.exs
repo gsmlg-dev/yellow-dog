@@ -40,6 +40,9 @@ defmodule YellowDog.Dns.MixProject do
       # TOML configuration parsing
       {:toml, "~> 0.7"},
 
+      # File system watching for hot-reload
+      {:file_system, "~> 1.0"},
+
       # Development and test dependencies
       {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
