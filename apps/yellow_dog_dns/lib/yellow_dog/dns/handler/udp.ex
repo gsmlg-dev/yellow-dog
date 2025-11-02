@@ -27,6 +27,7 @@ defmodule YellowDog.Dns.Handler.UDP do
   alias YellowDog.Dns.Query.Resolver
   alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
   alias YellowDog.Dns.Zone.Manager, as: ZoneManager
+  alias YellowDog.Dns.View
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
   alias DNS.Message.Record
@@ -51,18 +52,28 @@ defmodule YellowDog.Dns.Handler.UDP do
         zone_count: length(loaded_zones)
       })
 
+      # Initialize views for split-horizon DNS
+      views = initialize_views(loaded_zones)
+
+      Telemetry.info("Initialized #{length(views)} DNS view(s)", %{
+        view_count: length(views),
+        view_names: Enum.map(views, & &1.name)
+      })
+
       # Add DNS-specific state (cache is now managed by CacheManager)
       dns_state = %{
         mode: mode,
         upstream_servers: parse_upstream_servers(upstream_servers),
         loaded_zones: loaded_zones,
+        views: views,
         stats: %{
           queries: 0,
           cache_hits: 0,
           authoritative: 0,
           recursive: 0,
           forwarded: 0,
-          errors: 0
+          errors: 0,
+          view_matches: 0
         }
       }
 
@@ -157,10 +168,19 @@ defmodule YellowDog.Dns.Handler.UDP do
     end
   end
 
-  defp process_single_question(query, question, _client_ip, state, start_time) do
+  defp process_single_question(query, question, client_ip, state, start_time) do
     query_name = question.name.value
     query_type = question.type
     query_class = question.class
+
+    # Match client to view for split-horizon DNS
+    view = match_client_to_view(client_ip, state.views)
+
+    Telemetry.debug("Matched client to view", %{
+      client_ip: format_ip(client_ip),
+      view_name: view.name,
+      recursion_enabled: view.recursion_enabled
+    })
 
     # 1. Check cache first using CacheManager
     case CacheManager.get(query_name, query_type, query_class) do
@@ -201,21 +221,21 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       {:error, :not_found} ->
         # Not in cache, resolve normally
-        resolve_question(query, question, state, start_time)
+        resolve_question(query, question, view, state, start_time)
 
       {:error, :disabled} ->
         # Caching disabled, resolve without cache
-        resolve_question(query, question, state, start_time)
+        resolve_question(query, question, view, state, start_time)
     end
   end
 
-  defp resolve_question(query, question, state, start_time) do
+  defp resolve_question(query, question, view, state, start_time) do
     # 2. Check authoritative zones using Query.Resolver
     query_name = question.name.value
     query_type = question.type
 
-    # Find matching zone for this query
-    case find_matching_zone_name(query_name) do
+    # Find matching zone for this query within the view's accessible zones
+    case find_matching_zone_name_in_view(query_name, view) do
       {:ok, zone_name} ->
         # Resolve using Query.Resolver with CNAME following
         case Resolver.resolve_with_cname(zone_name, query_name, query_type) do
@@ -419,30 +439,44 @@ defmodule YellowDog.Dns.Handler.UDP do
         end
 
       {:error, :not_found} ->
-        # Not in our zones, try recursive/forward
-        handle_not_found(query, question, state, start_time)
+        # Not in our zones, try recursive/forward (if view allows)
+        handle_not_found(query, question, view, state, start_time)
     end
   end
 
-  defp handle_not_found(query, question, state, start_time) do
-    case state.mode do
-      :recursive ->
-        # Perform recursive DNS resolution
-        perform_recursive_resolution(query, question, state, start_time)
+  defp handle_not_found(query, question, view, state, start_time) do
+    # Check if view allows recursion
+    if view.recursion_enabled do
+      # View allows recursion - check mode
+      case state.mode do
+        :recursive ->
+          # Perform recursive DNS resolution
+          perform_recursive_resolution(query, question, state, start_time)
 
-      :forward ->
-        # Forward to upstream DNS servers
-        perform_forward(query, question, state, start_time)
+        :forward ->
+          # Forward to upstream DNS servers
+          perform_forward(query, question, state, start_time)
 
-      :authoritative ->
-        # We're authoritative-only, return NXDOMAIN
-        Telemetry.debug("NXDOMAIN", %{
-          name: question.name.value,
-          type: to_string(question.type)
-        })
+        :authoritative ->
+          # We're authoritative-only, return NXDOMAIN
+          Telemetry.debug("NXDOMAIN (authoritative mode)", %{
+            name: question.name.value,
+            type: to_string(question.type)
+          })
 
-        response = create_response(query, question, [], :nxdomain)
-        {response, state}
+          response = create_response(query, question, [], :nxdomain)
+          {response, state}
+      end
+    else
+      # View disables recursion - return NXDOMAIN
+      Telemetry.debug("NXDOMAIN (recursion disabled by view)", %{
+        name: question.name.value,
+        type: to_string(question.type),
+        view_name: view.name
+      })
+
+      response = create_response(query, question, [], :nxdomain)
+      {response, state}
     end
   end
 
@@ -976,6 +1010,68 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       _ ->
         "empty query"
+    end
+  end
+
+  ## View-related private functions
+
+  defp initialize_views(loaded_zones) do
+    # For now, create a default view that matches all clients
+    # In the future, this will load views from configuration
+    default_view = View.new("default", :all, loaded_zones, true)
+    [default_view]
+  end
+
+  defp match_client_to_view(client_ip, views) do
+    case View.match_client(client_ip, views) do
+      {:ok, view} ->
+        view
+
+      {:error, :no_match} ->
+        # Fallback to default view if no match
+        # This should not happen if views include an "any" catch-all
+        Telemetry.warning("No view matched client IP, using default", %{
+          client_ip: format_ip(client_ip)
+        })
+
+        View.default()
+    end
+  end
+
+  defp find_matching_zone_name_in_view(query_name, view) do
+    # If view has no zone restrictions (empty list), allow all zones
+    # Otherwise, only search within view's accessible zones
+    accessible_zones =
+      case view.zones do
+        [] ->
+          # Empty zone list means all zones are accessible
+          case ZoneManager.list_zones() do
+            {:ok, zones} -> zones
+            {:error, _} -> []
+          end
+
+        zones ->
+          # Only these specific zones are accessible
+          zones
+      end
+
+    # Find the most specific zone that matches the query name
+    normalized_query = String.downcase(query_name) |> String.trim_trailing(".")
+
+    matching_zone =
+      accessible_zones
+      |> Enum.filter(fn zone_name ->
+        normalized_zone = String.downcase(zone_name) |> String.trim_trailing(".")
+
+        normalized_query == normalized_zone or
+          String.ends_with?(normalized_query, "." <> normalized_zone)
+      end)
+      |> Enum.sort_by(&(-String.length(&1)))
+      |> List.first()
+
+    case matching_zone do
+      nil -> {:error, :not_found}
+      zone_name -> {:ok, zone_name}
     end
   end
 end

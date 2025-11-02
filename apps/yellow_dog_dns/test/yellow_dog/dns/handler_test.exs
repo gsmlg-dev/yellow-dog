@@ -164,7 +164,8 @@ defmodule YellowDog.Dns.Handler.UDPTest do
                authoritative: 0,
                recursive: 0,
                forwarded: 0,
-               errors: 0
+               errors: 0,
+               view_matches: 0
              }
     end
   end
