@@ -28,6 +28,7 @@ defmodule YellowDog.Dns.Handler.UDP do
   alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
   alias YellowDog.Dns.Zone.Manager, as: ZoneManager
   alias YellowDog.Dns.View
+  alias YellowDog.Dns.View.Config, as: ViewConfig
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
   alias DNS.Message.Record
@@ -1016,8 +1017,47 @@ defmodule YellowDog.Dns.Handler.UDP do
   ## View-related private functions
 
   defp initialize_views(loaded_zones) do
-    # For now, create a default view that matches all clients
-    # In the future, this will load views from configuration
+    # Try to load views from configuration file
+    config_path = Application.get_env(:yellow_dog_dns, :views_config_path)
+
+    case load_views_from_config(config_path) do
+      {:ok, views} when is_list(views) and length(views) > 0 ->
+        Telemetry.info("Loaded #{length(views)} views from configuration", %{
+          path: config_path,
+          view_names: Enum.map(views, & &1.name)
+        })
+
+        views
+
+      {:ok, []} ->
+        Telemetry.info("No views defined in configuration, using default view", %{
+          path: config_path
+        })
+
+        create_default_view(loaded_zones)
+
+      {:error, reason} ->
+        Telemetry.warning("Failed to load views from configuration, using default view", %{
+          path: config_path,
+          reason: inspect(reason)
+        })
+
+        create_default_view(loaded_zones)
+
+      nil ->
+        # No configuration path specified
+        create_default_view(loaded_zones)
+    end
+  end
+
+  defp load_views_from_config(nil), do: nil
+
+  defp load_views_from_config(path) when is_binary(path) do
+    ViewConfig.load_file(path)
+  end
+
+  defp create_default_view(loaded_zones) do
+    # Create a default view that matches all clients and has access to all zones
     default_view = View.new("default", :all, loaded_zones, true)
     [default_view]
   end

@@ -37,6 +37,9 @@ defmodule YellowDog.Dns.MixProject do
       # HTTP client for root zone fetching
       {:req, "~> 0.5"},
 
+      # TOML configuration parsing
+      {:toml, "~> 0.7"},
+
       # Development and test dependencies
       {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -1,0 +1,71 @@
+# DNS Views Configuration
+#
+# Views enable split-horizon DNS - different answers for different clients
+# based on their IP addresses. Views are evaluated in order; the first
+# matching view is used.
+
+# Internal View - for corporate network
+[[view]]
+name = "internal"
+match_clients = "localnets"  # Built-in ACL: 10/8, 172.16/12, 192.168/16
+recursion = true
+zones = [
+    "corp.example.com",
+    "internal.example.com",
+    "dev.example.com"
+]
+
+# DMZ View - for DMZ network with custom ACL
+[[view]]
+name = "dmz"
+recursion = true
+zones = [
+    "dmz.example.com",
+    "public.example.com"
+]
+
+# Custom ACL for DMZ view
+[[view.acl]]
+action = "allow"
+network = "10.0.0.0/8"
+
+# External View - for internet clients
+[[view]]
+name = "external"
+match_clients = "any"  # Matches all clients (catch-all)
+recursion = false  # No recursion for external clients
+zones = [
+    "public.example.com"
+]
+
+# Example: Complex ACL with exceptions
+# Uncomment to use:
+#
+# [[view]]
+# name = "complex"
+# recursion = true
+# zones = ["special.example.com"]
+#
+# # Allow specific subnet (exception)
+# [[view.acl]]
+# action = "allow"
+# network = "10.1.1.0/24"
+#
+# # Deny broader range
+# [[view.acl]]
+# action = "deny"
+# network = "10.1.0.0/16"
+#
+# # Allow even broader range
+# [[view.acl]]
+# action = "allow"
+# network = "10.0.0.0/8"
+
+# Built-in ACLs available:
+# - "any" - Matches all clients
+# - "none" - Matches no clients
+# - "localhost" - Matches 127.0.0.1 and ::1
+# - "localnets" - Matches RFC 1918 private networks (10/8, 172.16/12, 192.168/16)
+#
+# Custom ACLs can be defined inline using [[view.acl]] sections
+# ACL rules are evaluated in order; first match wins
