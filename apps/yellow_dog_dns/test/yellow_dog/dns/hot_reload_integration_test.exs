@@ -114,6 +114,7 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
         reload_callback: fn views ->
           ViewManager.update_views(manager_pid, views)
         end,
+        debounce_ms: 50,
         name: nil
       ]
 
@@ -323,7 +324,7 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
     end
 
     @tag :integration
-    test "hot-reload handles rapid configuration changes with debouncing" do
+    test "hot-reload handles rapid manual reload requests" do
       config_path = Path.join(@test_config_dir, "rapid.toml")
 
       File.write!(config_path, """
@@ -355,7 +356,7 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
 
       initial_count = :counters.get(reload_count, 1)
 
-      # Rapid updates within debounce window
+      # Rapid manual reloads (immediate, not debounced)
       for i <- 2..6 do
         File.write!(config_path, """
         [[view]]
@@ -368,15 +369,15 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
         Process.sleep(30)
       end
 
-      # Wait for debounce to settle
-      Process.sleep(300)
+      # Wait for any pending reloads
+      Process.sleep(100)
 
-      # Should have debounced rapid changes
+      # Manual reloads are immediate, so all 5 should have happened
       final_count = :counters.get(reload_count, 1)
       reload_diff = final_count - initial_count
 
-      # With debouncing, should have significantly fewer reloads than attempts
-      assert reload_diff < 5
+      # Should have all 5 manual reloads
+      assert reload_diff == 5
 
       # Final config should be loaded
       views = ViewManager.get_views(manager_pid)
@@ -408,6 +409,7 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
         reload_callback: fn views ->
           ViewManager.update_views(manager_pid, views)
         end,
+        debounce_ms: 50,
         name: nil
       ]
 

@@ -145,6 +145,7 @@ defmodule YellowDog.Dns.View.ConfigWatcher do
 
   @impl true
   def handle_call(:reload, _from, state) do
+    # Manual reload is immediate (operator explicitly requesting)
     case perform_reload(state) do
       {:ok, new_state} ->
         {:reply, :ok, new_state}
