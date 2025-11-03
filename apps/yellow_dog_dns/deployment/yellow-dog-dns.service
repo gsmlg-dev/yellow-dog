@@ -1,0 +1,48 @@
+[Unit]
+Description=Yellow Dog DNS Server
+Documentation=https://github.com/gsmlg-dev/yellow-dog
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=yellow-dog
+Group=yellow-dog
+WorkingDirectory=/opt/yellow-dog
+Environment="MIX_ENV=prod"
+Environment="LANG=en_US.UTF-8"
+Environment="LC_ALL=en_US.UTF-8"
+
+# Start the application
+ExecStart=/opt/yellow-dog/bin/yellow_dog start
+
+# Graceful shutdown
+ExecStop=/opt/yellow-dog/bin/yellow_dog stop
+TimeoutStopSec=30
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/yellow-dog/data /opt/yellow-dog/logs /opt/yellow-dog/config
+
+# Network settings - DNS requires binding to privileged ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Resource limits
+LimitNOFILE=65536
+TasksMax=512
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yellow-dog-dns
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,209 @@
+# DNS Views Configuration Example
+# Copy this file to views.toml and customize for your network
+
+# ============================================================================
+# Example 1: Basic Split-Horizon DNS
+# ============================================================================
+# Internal users see internal resources, external users see public resources
+
+[[view]]
+name = "internal"
+match_clients = "localnets"
+zones = [
+    "corp.example.com",
+    "internal.example.com",
+    "dev.example.com"
+]
+recursion_enabled = true
+
+[[view]]
+name = "external"
+match_clients = "any"
+zones = [
+    "example.com",
+    "www.example.com",
+    "public.example.com"
+]
+recursion_enabled = false
+
+# ============================================================================
+# Example 2: Three-Tier Network Architecture
+# ============================================================================
+# Corporate, DMZ, and public networks with different access levels
+
+# [[view]]
+# name = "corporate"
+# match_clients = "10.0.0.0/8"
+# zones = [
+#     "corp.example.com",
+#     "internal.example.com",
+#     "apps.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "dmz"
+# match_clients = "172.16.0.0/12"
+# zones = [
+#     "dmz.example.com",
+#     "api.example.com",
+#     "services.example.com"
+# ]
+# recursion_enabled = false
+
+# [[view]]
+# name = "public"
+# match_clients = "any"
+# zones = [
+#     "example.com",
+#     "www.example.com"
+# ]
+# recursion_enabled = false
+
+# ============================================================================
+# Example 3: Office-Specific Views
+# ============================================================================
+# Different offices see different internal resources
+
+# [[view]]
+# name = "newyork_office"
+# match_clients = "192.168.1.0/24"
+# zones = [
+#     "ny.corp.example.com",
+#     "corp.example.com",
+#     "shared.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "london_office"
+# match_clients = "192.168.2.0/24"
+# zones = [
+#     "london.corp.example.com",
+#     "corp.example.com",
+#     "shared.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "tokyo_office"
+# match_clients = "192.168.3.0/24"
+# zones = [
+#     "tokyo.corp.example.com",
+#     "corp.example.com",
+#     "shared.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "default_external"
+# match_clients = "any"
+# zones = ["example.com"]
+# recursion_enabled = false
+
+# ============================================================================
+# Example 4: Guest Network with Restrictions
+# ============================================================================
+# Guest network with limited access and enabled recursion
+
+# [[view]]
+# name = "guest_network"
+# match_clients = "10.99.0.0/16"
+# zones = [
+#     "guest.example.com",
+#     "wifi.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "employee_network"
+# match_clients = "localnets"
+# zones = [
+#     "corp.example.com",
+#     "internal.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "internet"
+# match_clients = "any"
+# zones = ["example.com"]
+# recursion_enabled = false
+
+# ============================================================================
+# Example 5: Development, Staging, Production
+# ============================================================================
+# Different views for different environments
+
+# [[view]]
+# name = "development"
+# match_clients = "10.10.0.0/16"
+# zones = [
+#     "dev.example.com",
+#     "dev-api.example.com",
+#     "dev-db.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "staging"
+# match_clients = "10.20.0.0/16"
+# zones = [
+#     "staging.example.com",
+#     "staging-api.example.com",
+#     "staging-db.example.com"
+# ]
+# recursion_enabled = true
+
+# [[view]]
+# name = "production"
+# match_clients = "10.30.0.0/16"
+# zones = [
+#     "prod.example.com",
+#     "api.example.com",
+#     "db.example.com"
+# ]
+# recursion_enabled = false
+
+# [[view]]
+# name = "external"
+# match_clients = "any"
+# zones = ["example.com"]
+# recursion_enabled = false
+
+# ============================================================================
+# Configuration Notes
+# ============================================================================
+
+# match_clients options:
+#   - "any" or "all": Matches all clients (catch-all)
+#   - "localhost": Matches 127.0.0.1 and ::1
+#   - "localnets": Matches RFC1918 private networks
+#   - "192.168.1.0/24": Matches specific CIDR range
+#   - Multiple CIDRs: "192.168.1.0/24,10.0.0.0/8"
+
+# zones:
+#   - List of zone names this view can access
+#   - Empty list [] means access to all zones
+#   - Zone names should match loaded zone files
+
+# recursion_enabled:
+#   - true: Allow recursive DNS queries for non-authoritative domains
+#   - false: Only answer for authoritative zones (more secure for public)
+
+# View Matching Order:
+#   - Views are evaluated in order from top to bottom
+#   - First matching view is used
+#   - Always include a catch-all view with "any" at the end
+
+# Hot-Reload:
+#   - Changes to this file are automatically detected (if hot-reload enabled)
+#   - Invalid configurations are rejected, old config remains active
+#   - Check logs for reload success/failure messages
+
+# Best Practices:
+#   - Put most specific views first (e.g., localhost before localnets)
+#   - Always include a catch-all view at the end
+#   - Use descriptive view names for easier management
+#   - Limit recursion to trusted networks only
+#   - Test configuration with Operations.test_client_match/1

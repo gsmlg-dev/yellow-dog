@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+README*
+
+# Development
+.devenv
+.direnv
+.envrc
+devenv.nix
+devenv.lock
+devenv.yaml
+flake.nix
+flake.lock
+.nix-*
+
+# Build artifacts
+_build/
+deps/
+erl_crash.dump
+*.ez
+
+# Test files
+test/
+cover/
+.coverage/
+
+# Development config
+config/dev.exs
+config/test.exs
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Mix
+.fetch
+.mix
+.hex
+
+# Release builds
+*.tar.gz
+releases/
+
+# Elixir LS
+.elixir_ls/
+
+# Dialyzer
+dialyzer/

@@ -1,0 +1,237 @@
+# Yellow Dog DNS - Production Configuration Example
+# Copy this file to /opt/yellow-dog/config/prod.toml and customize for your environment
+
+# ============================================================================
+# Core Configuration
+# ============================================================================
+
+[core]
+# Service environment
+environment = "production"
+
+# Enable/disable services
+dns_enabled = true
+mdns_enabled = false  # Usually disabled in production
+dhcpv4_enabled = true
+dhcpv6_enabled = true
+
+# ============================================================================
+# DNS Configuration
+# ============================================================================
+
+[dns]
+# Listen address and port
+listen = "0.0.0.0"
+port = 53
+
+# Hot-reload configuration
+hot_reload_enabled = true
+views_config_path = "/opt/yellow-dog/config/views.toml"
+debounce_ms = 500
+
+# Upstream DNS servers for recursion
+upstream_servers = [
+    "8.8.8.8:53",      # Google DNS
+    "8.8.4.4:53",      # Google DNS Secondary
+    "1.1.1.1:53",      # Cloudflare DNS
+    "1.0.0.1:53"       # Cloudflare DNS Secondary
+]
+
+# Zone files directory
+zones_dir = "/opt/yellow-dog/zones"
+
+# Cache settings
+cache_enabled = true
+cache_ttl = 300
+cache_max_entries = 10000
+
+# Rate limiting
+rate_limit_enabled = true
+rate_limit_requests = 100
+rate_limit_window_seconds = 1
+
+# Telemetry
+telemetry_enabled = true
+
+# ============================================================================
+# DHCPv4 Configuration
+# ============================================================================
+
+[dhcpv4]
+# Listen address and port
+listen = "0.0.0.0"
+port = 67
+
+# Default lease time (in seconds)
+default_lease_time = 86400      # 24 hours
+max_lease_time = 604800         # 7 days
+
+# DNS servers to provide to clients
+dns_servers = ["10.0.0.1", "10.0.0.2"]
+
+# Default gateway
+gateway = "10.0.0.1"
+
+# Domain name
+domain_name = "corp.example.com"
+
+# Pool configuration
+[[dhcpv4.pool]]
+name = "corporate"
+network = "10.0.0.0/16"
+range_start = "10.0.10.0"
+range_end = "10.0.20.255"
+lease_time = 86400
+
+# Static reservations
+[[dhcpv4.pool.reservation]]
+mac = "00:11:22:33:44:55"
+ip = "10.0.5.10"
+hostname = "server01"
+
+[[dhcpv4.pool.reservation]]
+mac = "aa:bb:cc:dd:ee:ff"
+ip = "10.0.5.20"
+hostname = "server02"
+
+# ============================================================================
+# DHCPv6 Configuration
+# ============================================================================
+
+[dhcpv6]
+# Listen address and port
+listen = "::"
+port = 547
+
+# Default preferred/valid lifetimes (in seconds)
+preferred_lifetime = 43200      # 12 hours
+valid_lifetime = 86400          # 24 hours
+
+# DNS servers to provide to clients
+dns_servers = ["2001:db8::1", "2001:db8::2"]
+
+# Domain name
+domain_name = "corp.example.com"
+
+# Pool configuration
+[[dhcpv6.pool]]
+name = "corporate_v6"
+network = "2001:db8::/32"
+range_start = "2001:db8::1000"
+range_end = "2001:db8::2000"
+preferred_lifetime = 43200
+valid_lifetime = 86400
+
+# ============================================================================
+# Telemetry and Monitoring
+# ============================================================================
+
+[telemetry]
+# Enable metrics collection
+enabled = true
+
+# Prometheus exporter
+prometheus_enabled = true
+prometheus_port = 9090
+
+# StatsD integration
+statsd_enabled = false
+statsd_host = "localhost"
+statsd_port = 8125
+
+# ============================================================================
+# Logging
+# ============================================================================
+
+[logging]
+# Log level: debug, info, warning, error
+level = "info"
+
+# Log format: json, console
+format = "json"
+
+# Log output: stdout, file, both
+output = "both"
+
+# Log file path (when output includes file)
+log_file = "/opt/yellow-dog/logs/yellow-dog.log"
+
+# Log rotation
+rotation_enabled = true
+rotation_max_size_mb = 100
+rotation_max_files = 10
+
+# ============================================================================
+# Performance Tuning
+# ============================================================================
+
+[performance]
+# Worker pool sizes
+dns_workers = 4
+dhcpv4_workers = 2
+dhcpv6_workers = 2
+
+# Connection pool settings
+max_connections = 1000
+connection_timeout_ms = 5000
+
+# Memory limits
+max_memory_mb = 2048
+
+# ============================================================================
+# Security
+# ============================================================================
+
+[security]
+# Enable DNSSEC validation
+dnssec_enabled = false
+
+# Response Rate Limiting (RRL)
+rrl_enabled = true
+rrl_responses_per_second = 5
+rrl_errors_per_second = 1
+
+# ACL for management interface
+management_allowed_ips = ["127.0.0.1", "10.0.0.0/16"]
+
+# ============================================================================
+# High Availability (Optional)
+# ============================================================================
+
+# [ha]
+# enabled = false
+# mode = "active-passive"  # or "active-active"
+# peer_nodes = ["10.0.0.2:5353", "10.0.0.3:5353"]
+# heartbeat_interval_seconds = 5
+# failover_timeout_seconds = 15
+
+# ============================================================================
+# Notes
+# ============================================================================
+
+# Production Checklist:
+# - [ ] Update all IP addresses and networks for your environment
+# - [ ] Configure proper DNS upstream servers
+# - [ ] Set appropriate lease times
+# - [ ] Configure static reservations
+# - [ ] Enable rate limiting
+# - [ ] Configure telemetry/monitoring
+# - [ ] Set proper log levels
+# - [ ] Review security settings
+# - [ ] Configure DNSSEC if needed
+# - [ ] Set up log rotation
+# - [ ] Configure backups for zone files and lease data
+# - [ ] Test failover if using HA mode
+
+# File Locations:
+# - Config: /opt/yellow-dog/config/
+# - Zones: /opt/yellow-dog/zones/
+# - Data: /opt/yellow-dog/data/
+# - Logs: /opt/yellow-dog/logs/
+
+# Management:
+# - Start: systemctl start yellow-dog-dns
+# - Stop: systemctl stop yellow-dog-dns
+# - Status: systemctl status yellow-dog-dns
+# - Logs: journalctl -u yellow-dog-dns -f
+# - Reload config: mix dns.reload

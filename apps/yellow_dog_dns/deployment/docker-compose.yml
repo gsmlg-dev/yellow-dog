@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  yellow-dog-dns:
+    image: yellow-dog-dns:latest
+    container_name: yellow-dog-dns
+    restart: unless-stopped
+
+    # Network mode: host is recommended for DNS/DHCP servers
+    # This allows binding to privileged ports and proper DHCP broadcast handling
+    network_mode: host
+
+    # Alternative: bridge mode with port mappings (may have limitations with DHCP)
+    # ports:
+    #   - "53:53/udp"      # DNS
+    #   - "53:53/tcp"      # DNS over TCP
+    #   - "67:67/udp"      # DHCPv4
+    #   - "547:547/udp"    # DHCPv6
+    #   - "9090:9090/tcp"  # Prometheus metrics
+
+    # Capabilities for binding to privileged ports
+    cap_add:
+      - NET_BIND_SERVICE
+
+    # Drop unnecessary capabilities for security
+    cap_drop:
+      - ALL
+
+    # Read-only root filesystem for security
+    read_only: true
+
+    # Temporary filesystem for runtime data
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100M
+
+    # Volume mounts for persistent data
+    volumes:
+      # Configuration files
+      - ./config:/opt/yellow-dog/config:ro
+      # Zone files
+      - ./zones:/opt/yellow-dog/zones:ro
+      # Persistent data (leases, cache)
+      - yellow-dog-data:/opt/yellow-dog/data
+      # Logs
+      - yellow-dog-logs:/opt/yellow-dog/logs
+
+    # Environment variables
+    environment:
+      - MIX_ENV=prod
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+      # Override configuration via environment
+      - DNS_LISTEN=0.0.0.0
+      - DNS_PORT=53
+      - DHCPV4_ENABLED=true
+      - DHCPV6_ENABLED=true
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "bin/yellow_dog", "rpc", "YellowDog.Dns.status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# Named volumes
+volumes:
+  yellow-dog-data:
+    driver: local
+  yellow-dog-logs:
+    driver: local
+
+# Networks (if not using host mode)
+# networks:
+#   yellow-dog-net:
+#     driver: bridge
+#     ipam:
+#       config:
+#         - subnet: 172.20.0.0/16
