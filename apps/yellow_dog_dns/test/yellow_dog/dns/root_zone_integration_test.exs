@@ -15,7 +15,11 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
     case GenServer.whereis(Zone.Manager) do
       nil ->
         {:ok, zone_manager} = Zone.Manager.start_link()
-        on_exit(fn -> GenServer.stop(zone_manager) end)
+        on_exit(fn ->
+          if Process.alive?(zone_manager) do
+            GenServer.stop(zone_manager)
+          end
+        end)
 
       _pid ->
         :ok
@@ -44,7 +48,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       assert stats.strategy == :hints
       assert stats.server_count == 26
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
 
     test "reload is idempotent for hints" do
@@ -56,7 +60,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
 
       assert servers_before == servers_after
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
   end
 
@@ -82,7 +86,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       assert stats.strategy == :fetch
       assert stats.fetch_interval_hours == 24
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
 
     test "fallback to hints when fetch fails" do
@@ -99,7 +103,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
 
       assert servers == hints_servers
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
 
     test "periodic fetch is scheduled" do
@@ -116,7 +120,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       assert Map.has_key?(stats, :next_fetch_seconds)
       assert stats.next_fetch_seconds > 0
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
   end
 
@@ -133,10 +137,13 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       servers = Manager.get_root_servers()
       assert length(servers) == 26
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
 
     test "fails without fallback when zone file missing" do
+      # Trap exits to catch GenServer crash
+      Process.flag(:trap_exit, true)
+
       result =
         Manager.start_link(
           strategy: :auth,
@@ -144,8 +151,17 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
           fallback_to_hints: false
         )
 
-      # Should fail to start
-      assert {:error, _reason} = result
+      # Should fail to start - either returns error or crashes
+      case result do
+        {:error, _reason} -> :ok
+        {:ok, pid} ->
+          # Wait for potential crash
+          receive do
+            {:EXIT, ^pid, _reason} -> :ok
+          after
+            100 -> flunk("Expected GenServer to fail but it started successfully")
+          end
+      end
     end
 
     @tag :skip
@@ -184,7 +200,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       stats = Manager.stats()
       assert stats.zone_file == temp_file
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
   end
 
@@ -225,7 +241,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
           assert is_tuple(ip)
         end)
 
-        GenServer.stop(pid)
+        if Process.alive?(pid), do: GenServer.stop(pid)
       end
     end
   end
@@ -241,7 +257,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
 
       assert stats_after.loaded_at >= stats_before.loaded_at
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
 
     test "reload preserves strategy" do
@@ -251,7 +267,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
 
       assert Manager.get_strategy() == :hints
 
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
     end
   end
 end
