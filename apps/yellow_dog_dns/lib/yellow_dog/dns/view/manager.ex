@@ -153,7 +153,7 @@ defmodule YellowDog.Dns.View.Manager do
         # Log changes
         log_view_changes(old_views, new_views)
 
-        Telemetry.emit(
+        :telemetry.execute(
           [:yellow_dog, :dns, :view, :manager, :update],
           %{view_count: length(new_views)},
           %{
@@ -229,7 +229,6 @@ defmodule YellowDog.Dns.View.Manager do
         new_view = Enum.find(new_views, &(&1.name == name))
         old_view != new_view
       end)
-      |> MapSet.to_list()
 
     changes = %{
       added: added,

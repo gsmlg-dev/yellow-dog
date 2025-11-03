@@ -222,7 +222,7 @@ defmodule YellowDog.Dns.View.ConfigWatcher do
   defp perform_reload(state) do
     start_time = System.monotonic_time(:millisecond)
 
-    Telemetry.emit(
+    :telemetry.execute(
       [:yellow_dog, :dns, :view, :config_reload, :start],
       %{},
       %{config_path: state.config_path}
@@ -236,7 +236,7 @@ defmodule YellowDog.Dns.View.ConfigWatcher do
           :ok ->
             duration = System.monotonic_time(:millisecond) - start_time
 
-            Telemetry.emit(
+            :telemetry.execute(
               [:yellow_dog, :dns, :view, :config_reload, :success],
               %{duration_ms: duration},
               %{
@@ -262,7 +262,7 @@ defmodule YellowDog.Dns.View.ConfigWatcher do
           {:error, reason} ->
             duration = System.monotonic_time(:millisecond) - start_time
 
-            Telemetry.emit(
+            :telemetry.execute(
               [:yellow_dog, :dns, :view, :config_reload, :error],
               %{duration_ms: duration},
               %{
@@ -283,7 +283,7 @@ defmodule YellowDog.Dns.View.ConfigWatcher do
       {:error, reason} ->
         duration = System.monotonic_time(:millisecond) - start_time
 
-        Telemetry.emit(
+        :telemetry.execute(
           [:yellow_dog, :dns, :view, :config_reload, :error],
           %{duration_ms: duration},
           %{
