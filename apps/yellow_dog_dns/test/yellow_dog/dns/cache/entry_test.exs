@@ -14,15 +14,15 @@ defmodule YellowDog.Dns.Cache.EntryTest do
 
       entry = Entry.new(name, type, records, authority, ttl)
 
-      assert entry.name == name
-      assert entry.type == type
+      assert entry.query_name == "example.com."
+      assert entry.query_type == type
+      assert entry.query_class == :IN
       assert entry.records == records
       assert entry.authority == authority
       assert entry.ttl == ttl
       assert entry.hit_count == 0
-      assert is_integer(entry.created_at)
+      assert is_integer(entry.inserted_at)
       assert is_integer(entry.expires_at)
-      assert is_integer(entry.last_accessed)
     end
 
     test "sets expiration time correctly" do
@@ -31,9 +31,9 @@ defmodule YellowDog.Dns.Cache.EntryTest do
       records = [Zone.Record.new(name, type, {192, 168, 1, 1}, ttl: 300, class: :IN)]
       ttl = 300
 
-      before = System.system_time(:second)
+      before = System.monotonic_time(:second)
       entry = Entry.new(name, type, records, [], ttl)
-      after_time = System.system_time(:second)
+      after_time = System.monotonic_time(:second)
 
       # Expiration should be now + ttl
       expected_min = before + ttl
@@ -102,24 +102,7 @@ defmodule YellowDog.Dns.Cache.EntryTest do
     end
   end
 
-  describe "mark_accessed/1" do
-    test "updates last_accessed timestamp" do
-      name = "example.com"
-      type = :A
-      records = [Zone.Record.new(name, type, {192, 168, 1, 1}, ttl: 300, class: :IN)]
-      ttl = 300
-
-      entry = Entry.new(name, type, records, [], ttl)
-      original_accessed = entry.last_accessed
-
-      # Wait a bit
-      Process.sleep(100)
-
-      updated_entry = Entry.mark_accessed(entry)
-
-      assert updated_entry.last_accessed > original_accessed
-    end
-
+  describe "record_hit/1" do
     test "increments hit count" do
       name = "example.com"
       type = :A
@@ -130,49 +113,26 @@ defmodule YellowDog.Dns.Cache.EntryTest do
 
       assert entry.hit_count == 0
 
-      entry = Entry.mark_accessed(entry)
+      entry = Entry.record_hit(entry)
       assert entry.hit_count == 1
 
-      entry = Entry.mark_accessed(entry)
+      entry = Entry.record_hit(entry)
       assert entry.hit_count == 2
     end
-  end
 
-  describe "size_bytes/1" do
-    test "returns approximate size for entry" do
+    test "returns updated entry" do
       name = "example.com"
       type = :A
       records = [Zone.Record.new(name, type, {192, 168, 1, 1}, ttl: 300, class: :IN)]
       ttl = 300
 
       entry = Entry.new(name, type, records, [], ttl)
+      updated_entry = Entry.record_hit(entry)
 
-      size = Entry.size_bytes(entry)
-
-      # Should be at least the name size + overhead
-      assert size > byte_size(name)
-      # Should be reasonable (not massive)
-      assert size < 10_000
-    end
-
-    test "larger entries have larger size" do
-      name = "example.com"
-      type = :TXT
-
-      small_record = Zone.Record.new(name, type, "small", ttl: 300, class: :IN)
-      large_record = Zone.Record.new(name, type, String.duplicate("large", 100), ttl: 300, class: :IN)
-
-      small_entry = Entry.new(name, type, [small_record], [], 300)
-      large_entry = Entry.new(name, type, [large_record], [], 300)
-
-      # Note: Current implementation uses fixed size per record, so they'll be similar
-      # This test documents current behavior
-      small_size = Entry.size_bytes(small_entry)
-      large_size = Entry.size_bytes(large_entry)
-
-      # Both should have reasonable sizes
-      assert small_size > 0
-      assert large_size > 0
+      # Should return a new entry struct
+      assert updated_entry.hit_count == entry.hit_count + 1
+      assert updated_entry.query_name == entry.query_name
     end
   end
+
 end
