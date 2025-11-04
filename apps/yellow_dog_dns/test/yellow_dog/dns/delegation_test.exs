@@ -7,10 +7,10 @@ defmodule YellowDog.Dns.Query.DelegationTest do
   alias YellowDog.Dns.Zone.Parser
 
   setup do
-    # Initialize Zone Storage ETS table if needed
-    case :ets.whereis(:dns_zone_storage) do
-      :undefined -> YellowDog.Dns.Zone.Storage.init()
-      _ -> :ok
+    # Initialize Zone Storage ETS tables if needed
+    case YellowDog.Dns.Zone.Storage.init() do
+      :ok -> :ok
+      {:error, :already_exists} -> :ok
     end
 
     # Start Zone Manager for testing
@@ -61,7 +61,7 @@ defmodule YellowDog.Dns.Query.DelegationTest do
   describe "check_delegation/3" do
     test "detects delegation for sub-zone query" do
       # Debug: Check what records are in the zone
-      all_records = :ets.tab2list(:dns_zone_storage)
+      all_records = :ets.tab2list(:dns_zone_data)
 
       zone_records =
         Enum.filter(all_records, fn

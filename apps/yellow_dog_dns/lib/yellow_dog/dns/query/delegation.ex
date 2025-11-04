@@ -111,20 +111,21 @@ defmodule YellowDog.Dns.Query.Delegation do
   """
   @spec get_ns_records(String.t(), String.t()) :: {:ok, [Zone.Record.t()]} | {:error, term()}
   def get_ns_records(zone_name, delegation_point) do
-    normalized_point = normalize_name(delegation_point)
+    # Zone records are stored with fully qualified owners (with trailing dot)
+    # Ensure delegation_point has trailing dot
+    owner = ensure_trailing_dot(delegation_point)
 
-    case Storage.lookup_record(zone_name, normalized_point, :NS) do
+    case Storage.lookup_record(zone_name, owner, :NS) do
       {:ok, records} ->
         # Convert storage records to Zone.Record format
         ns_records =
-          Enum.map(records, fn ns_hostname ->
+          Enum.map(records, fn record ->
             %Zone.Record{
               owner: delegation_point,
               type: :NS,
               class: :IN,
-              ttl: 172_800,
-              # 2 days for NS records
-              rdata: ns_hostname
+              ttl: Map.get(record, :ttl, 172_800),
+              rdata: Map.get(record, :rdata)
             }
           end)
 
@@ -181,6 +182,16 @@ defmodule YellowDog.Dns.Query.Delegation do
 
   defp normalize_name(name), do: name
 
+  defp ensure_trailing_dot(name) when is_binary(name) do
+    if String.ends_with?(name, ".") do
+      name
+    else
+      name <> "."
+    end
+  end
+
+  defp ensure_trailing_dot(name), do: name
+
   defp get_possible_delegation_points(qname, zone_name) do
     qname_labels = String.split(qname, ".")
     zone_labels = String.split(zone_name, ".")
@@ -202,9 +213,19 @@ defmodule YellowDog.Dns.Query.Delegation do
   end
 
   defp has_ns_records?(zone_name, delegation_point) do
-    case Storage.lookup_record(zone_name, delegation_point, :NS) do
-      {:ok, records} when is_list(records) and records != [] -> true
-      _ -> false
+    normalized_zone = normalize_name(zone_name)
+    normalized_point = normalize_name(delegation_point)
+
+    # Zone apex is not a delegation
+    if normalized_point == normalized_zone do
+      false
+    else
+      owner = ensure_trailing_dot(delegation_point)
+
+      case Storage.lookup_record(zone_name, owner, :NS) do
+        {:ok, records} when is_list(records) and records != [] -> true
+        _ -> false
+      end
     end
   end
 
@@ -214,16 +235,17 @@ defmodule YellowDog.Dns.Query.Delegation do
   end
 
   defp get_address_records(zone_name, hostname, type) when type in [:A, :AAAA] do
-    case Storage.lookup_record(zone_name, hostname, type) do
+    owner = ensure_trailing_dot(hostname)
+
+    case Storage.lookup_record(zone_name, owner, type) do
       {:ok, addresses} when is_list(addresses) ->
         Enum.map(addresses, fn address ->
           %Zone.Record{
             owner: hostname,
             type: type,
             class: :IN,
-            ttl: 172_800,
-            # Match NS TTL
-            rdata: address
+            ttl: Map.get(address, :ttl, 172_800),
+            rdata: Map.get(address, :rdata)
           }
         end)
 
