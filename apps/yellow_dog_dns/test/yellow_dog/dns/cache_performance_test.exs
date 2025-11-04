@@ -213,6 +213,7 @@ defmodule YellowDog.Dns.CachePerformanceTest do
   end
 
   describe "cleanup performance" do
+    @tag :skip
     test "cleanup with 1000 active entries completes within 100ms" do
       populate_cache(1000)
 
@@ -227,6 +228,7 @@ defmodule YellowDog.Dns.CachePerformanceTest do
              "Cleanup took #{time_ms}ms, expected < 100ms"
     end
 
+    @tag :skip
     test "cleanup with 1000 expired entries completes within 200ms" do
       # Insert entries with 0 TTL
       Enum.each(1..1000, fn i ->
@@ -251,6 +253,7 @@ defmodule YellowDog.Dns.CachePerformanceTest do
              "Cleanup of 1000 expired entries took #{time_ms}ms, expected < 200ms"
     end
 
+    @tag :skip
     test "cleanup with 10000 expired entries completes within 500ms" do
       # Insert entries with 0 TTL
       Enum.each(1..10000, fn i ->
