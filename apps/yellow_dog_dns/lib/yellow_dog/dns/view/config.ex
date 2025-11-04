@@ -253,7 +253,10 @@ defmodule YellowDog.Dns.View.Config do
   end
 
   defp get_recursion(config) do
-    case Map.get(config, "recursion_enabled") do
+    # Support both 'recursion' and 'recursion_enabled' for backward compatibility
+    value = Map.get(config, "recursion_enabled") || Map.get(config, "recursion")
+
+    case value do
       true -> {:ok, true}
       false -> {:ok, false}
       nil -> {:ok, true}
