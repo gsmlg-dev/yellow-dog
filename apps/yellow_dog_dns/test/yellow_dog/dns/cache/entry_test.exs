@@ -1,7 +1,7 @@
 defmodule YellowDog.Dns.Cache.EntryTest do
   use ExUnit.Case, async: true
 
-  alias YellowDog.Dns.Cache.Entry
+  alias YellowDog.Dns.Query.Cache.Entry
   alias YellowDog.Dns.Zone
 
   describe "new/5" do
