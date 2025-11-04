@@ -3,6 +3,12 @@ defmodule YellowDog.Dns.Query.ForwarderTest do
 
   alias YellowDog.Dns.Query.Forwarder
 
+  setup do
+    # Start Cache.Manager for forwarder tests
+    {:ok, _pid} = start_supervised(YellowDog.Dns.Query.Cache.Manager)
+    :ok
+  end
+
   describe "forward_query/4" do
     test "returns error when no forwarders provided" do
       result = Forwarder.forward_query("example.com", :A, [])
