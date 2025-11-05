@@ -35,6 +35,12 @@ defmodule YellowDog.Console.Router do
     live "/dhcpv6", Dhcpv6Live.Index
     live "/dhcpv6/leases", Dhcpv6Live.LeasesLive
     live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
+
+    # DNS Management Routes
+    live "/dns", DnsLive.Index
+    live "/dns/zones", DnsLive.ZonesLive
+    live "/dns/cache", DnsLive.CacheLive
+    live "/dns/views", DnsLive.ViewsLive
   end
 
   scope "/api", YellowDog.Console do

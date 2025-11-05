@@ -1,0 +1,295 @@
+defmodule YellowDog.Console.DnsLive.CacheLive do
+  @moduledoc """
+  DNS cache statistics and management page.
+  """
+  use YellowDog.Console, :live_view
+
+  @impl true
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:cache")
+      # Schedule periodic refresh
+      :timer.send_interval(5_000, self(), :refresh_stats)
+    end
+
+    {:ok,
+     socket
+     |> assign(:page_title, "DNS Cache")
+     |> assign(:stats, get_cache_stats())}
+  end
+
+  @impl true
+  def handle_info(:refresh_stats, socket) do
+    {:noreply, assign(socket, :stats, get_cache_stats())}
+  end
+
+  @impl true
+  def handle_info({:cache_updated, _entry}, socket) do
+    {:noreply, assign(socket, :stats, get_cache_stats())}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply, assign(socket, :stats, get_cache_stats())}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-4xl font-bold">DNS Cache</h1>
+          <p class="mt-2 text-base-content/70">Query cache statistics and performance metrics</p>
+        </div>
+        <button phx-click="refresh" class="btn btn-primary gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Refresh
+        </button>
+      </div>
+      <!-- Cache Statistics Cards -->
+      <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
+        <div class="stat">
+          <div class="stat-figure text-primary">
+            <svg
+              class="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Total Entries</div>
+          <div class="stat-value text-primary"><%= @stats.total_entries %></div>
+          <div class="stat-desc">Cached queries</div>
+        </div>
+        <div class="stat">
+          <div class="stat-figure text-success">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Cache Hits</div>
+          <div class="stat-value text-success"><%= @stats.hit_count %></div>
+          <div class="stat-desc">Successful lookups</div>
+        </div>
+        <div class="stat">
+          <div class="stat-figure text-error">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Cache Misses</div>
+          <div class="stat-value text-error"><%= @stats.miss_count %></div>
+          <div class="stat-desc">Failed lookups</div>
+        </div>
+        <div class="stat">
+          <div class="stat-figure text-info">
+            <.progress_radial value={calculate_hit_rate(@stats)} size="lg" color="info" />
+          </div>
+          <div class="stat-title">Hit Rate</div>
+          <div class="stat-value text-info"><%= calculate_hit_rate(@stats) %>%</div>
+          <div class="stat-desc">Cache efficiency</div>
+        </div>
+      </div>
+      <!-- Performance Metrics -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Hit Rate Chart -->
+        <.card title="Cache Performance" class="xl:col-span-1">
+          <div class="space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium">Hit Rate</span>
+                <span class="text-sm font-semibold"><%= calculate_hit_rate(@stats) %>%</span>
+              </div>
+              <.progress value={calculate_hit_rate(@stats)} color="success" />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium">Memory Usage</span>
+                <span class="text-sm font-semibold">
+                  <%= format_memory(@stats.memory_bytes) %>
+                </span>
+              </div>
+              <.progress
+                value={calculate_memory_percentage(@stats.memory_bytes)}
+                color="info"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium">Cache Utilization</span>
+                <span class="text-sm font-semibold">
+                  <%= @stats.total_entries %> / <%= @stats.max_entries %>
+                </span>
+              </div>
+              <.progress
+                value={calculate_utilization(@stats.total_entries, @stats.max_entries)}
+                color="primary"
+              />
+            </div>
+          </div>
+        </.card>
+        <!-- Cache Statistics -->
+        <.card title="Cache Statistics" class="xl:col-span-1">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Total Entries</span>
+              <.badge size="lg"><%= @stats.total_entries %></.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Max Entries</span>
+              <.badge color="info" size="lg"><%= @stats.max_entries %></.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Memory Limit</span>
+              <.badge color="warning" size="lg">
+                <%= format_memory(@stats.max_memory_bytes) %>
+              </.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Current Memory</span>
+              <.badge color="success" size="lg">
+                <%= format_memory(@stats.memory_bytes) %>
+              </.badge>
+            </div>
+          </div>
+        </.card>
+      </div>
+      <!-- Query Statistics -->
+      <.card title="Query Statistics">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="stat bg-base-200 rounded-lg">
+            <div class="stat-title">Total Hits</div>
+            <div class="stat-value text-success text-3xl"><%= @stats.hit_count %></div>
+          </div>
+          <div class="stat bg-base-200 rounded-lg">
+            <div class="stat-title">Total Misses</div>
+            <div class="stat-value text-error text-3xl"><%= @stats.miss_count %></div>
+          </div>
+          <div class="stat bg-base-200 rounded-lg">
+            <div class="stat-title">Total Queries</div>
+            <div class="stat-value text-primary text-3xl">
+              <%= @stats.hit_count + @stats.miss_count %>
+            </div>
+          </div>
+          <div class="stat bg-base-200 rounded-lg">
+            <div class="stat-title">Hit Rate</div>
+            <div class="stat-value text-info text-3xl"><%= calculate_hit_rate(@stats) %>%</div>
+          </div>
+        </div>
+      </.card>
+      <!-- Cache Info -->
+      <.card title="Cache Information">
+        <div class="prose max-w-none">
+          <p>
+            The DNS cache stores query results to improve response times and reduce load on authoritative nameservers.
+            Cached entries are automatically expired based on their TTL (Time To Live) values.
+          </p>
+          <div class="stats stats-vertical lg:stats-horizontal shadow mt-4 w-full">
+            <div class="stat">
+              <div class="stat-title">Cache Status</div>
+              <div class="stat-value text-sm">
+                <.status_indicator status="running" label="Active" />
+              </div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Automatic Cleanup</div>
+              <div class="stat-value text-sm">
+                <.status_indicator status="running" label="Enabled" />
+              </div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Eviction Policy</div>
+              <div class="stat-value text-sm">LRU + TTL</div>
+            </div>
+          </div>
+        </div>
+      </.card>
+    </div>
+    """
+  end
+
+  defp get_cache_stats do
+    try do
+      YellowDog.Dns.Query.Cache.Manager.stats()
+    rescue
+      _ ->
+        %{
+          total_entries: 0,
+          hit_count: 0,
+          miss_count: 0,
+          memory_bytes: 0,
+          max_entries: 10_000,
+          max_memory_bytes: 100 * 1024 * 1024
+        }
+    end
+  end
+
+  defp calculate_hit_rate(%{hit_count: hits, miss_count: misses}) do
+    total = hits + misses
+
+    if total > 0 do
+      round(hits / total * 100)
+    else
+      0
+    end
+  end
+
+  defp calculate_utilization(current, max) when max > 0 do
+    round(current / max * 100)
+  end
+
+  defp calculate_utilization(_, _), do: 0
+
+  defp calculate_memory_percentage(memory_bytes) do
+    # Assuming 100MB limit for visualization
+    max_bytes = 100 * 1024 * 1024
+    min(round(memory_bytes / max_bytes * 100), 100)
+  end
+
+  defp format_memory(bytes) when is_integer(bytes) do
+    mb = bytes / 1024 / 1024
+
+    if mb >= 1 do
+      "#{:erlang.float_to_binary(mb, decimals: 2)} MB"
+    else
+      kb = bytes / 1024
+      "#{:erlang.float_to_binary(kb, decimals: 2)} KB"
+    end
+  end
+
+  defp format_memory(_), do: "0 KB"
+end

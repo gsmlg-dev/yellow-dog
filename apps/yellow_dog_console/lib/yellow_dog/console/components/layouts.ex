@@ -248,8 +248,9 @@ defmodule YellowDog.Console.Layouts do
               <div class="badge badge-success badge-sm">Running</div>
             </summary>
             <ul>
+              <li><a href="/dns">Overview</a></li>
               <li><a href="/dns/zones">Zones</a></li>
-              <li><a href="/dns/records">Records</a></li>
+              <li><a href="/dns/cache">Cache</a></li>
               <li><a href="/dns/views">Views</a></li>
             </ul>
           </details>
