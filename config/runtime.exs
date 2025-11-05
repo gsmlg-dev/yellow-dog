@@ -143,30 +143,10 @@ config :yellow_dog, :config_file_path, config_to_load
 
 # Configure Tailwind CSS binary path from environment variable
 if tailwind_bin = System.get_env("TAILWINDCSS_BIN") do
-  config :tailwind,
-    version: "4.1.11",
-    yellow_dog_console: [
-      args: ~w(
-        --input=assets/css/app.css
-        --output=priv/static/assets/app.css
-      ),
-      cd: Path.expand("../apps/yellow_dog_console", __DIR__)
-    ],
-    path: tailwind_bin
+  config :tailwind, path: tailwind_bin
 end
 
 # Configure Bun binary path from environment variable
 if bun_bin = System.get_env("BUN_BIN") do
-  config :bun,
-    version: "1.2.2",
-    yellow_dog_console: [
-      args: ~w(
-        build assets/js/app.js
-        --outdir=priv/static/assets
-        --target=browser
-        --sourcemap=external
-      ),
-      cd: Path.expand("../apps/yellow_dog_console", __DIR__)
-    ],
-    path: bun_bin
+  config :bun, path: bun_bin
 end
