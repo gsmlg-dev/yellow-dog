@@ -38,7 +38,7 @@ config :tailwind,
 
 # Configure bun (the version is required)
 config :bun,
-  version: "1.2.2",
+  version: "1.2.13",
   yellow_dog_console: [
     args: ~w(
       build assets/js/app.js

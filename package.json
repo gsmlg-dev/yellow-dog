@@ -1,0 +1,9 @@
+{
+  "name": "yellow_dog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*"],
+  "dependencies": {},
+  "devDependencies": {}
+}

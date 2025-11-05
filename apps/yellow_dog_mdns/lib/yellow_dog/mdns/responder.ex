@@ -315,7 +315,7 @@ defmodule YellowDog.Mdns.Responder do
         arlist: [records.srv, records.txt] ++ records.a ++ records.aaaa
       }
 
-      DNS.Message.to_iodata(message) |> IO.iodata_to_binary()
+      DNS.to_iodata(message) |> IO.iodata_to_binary()
     end
   end
 end

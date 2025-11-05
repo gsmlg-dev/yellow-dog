@@ -3,11 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "bun build assets/js/app.js --outdir=priv/static/assets --target=browser --sourcemap=external",
-    "build:prod": "bun build assets/js/app.js --outdir=priv/static/assets --target=browser --minify",
-    "watch": "bun build assets/js/app.js --outdir=priv/static/assets --target=browser --sourcemap=inline --watch"
-  },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "daisyui": "^5.4.4"
+  }
 }

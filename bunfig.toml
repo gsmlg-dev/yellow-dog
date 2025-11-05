@@ -4,4 +4,4 @@ auto = "disable"
 
 [module]
 # Tell Bun how to resolve Phoenix packages
-paths = ["../../deps"]
+paths = ["./deps"]

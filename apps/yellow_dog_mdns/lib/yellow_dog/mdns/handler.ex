@@ -193,7 +193,7 @@ defmodule YellowDog.Mdns.Handler do
 
   defp send_multicast_response(message, _state) do
     # Convert DNS message to binary
-    response_data = DNS.Message.to_iodata(message) |> IO.iodata_to_binary()
+    response_data = DNS.to_iodata(message) |> IO.iodata_to_binary()
 
     # Send via Server module
     YellowDog.Mdns.Server.send_multicast(response_data)
