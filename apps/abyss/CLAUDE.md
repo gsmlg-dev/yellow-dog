@@ -6,13 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Abyss is a pure Elixir UDP server library that provides a modern, high-performance foundation for building UDP-based services like DNS servers, DHCP servers, or custom UDP applications. It implements a supervisor-based architecture with connection pooling, pluggable transport modules, and built-in security features including rate limiting and packet size validation.
 
+**Important**: Abyss is part of the Yellow Dog umbrella project and uses shared build paths configured in mix.exs:
+- `build_path: "../../_build"`
+- `deps_path: "../../deps"`
+- `lockfile: "../../mix.lock"`
+- `config_path: "../../config/config.exs"`
+
+This means dependencies and build artifacts are shared across the entire Yellow Dog project.
+
 ## Key Architecture
 
 - **Core Module**: `Abyss` - Main API entry point
 - **Server**: `Abyss.Server` - Supervisor that manages listener pools and connection supervisors
 - **Server Config**: `Abyss.ServerConfig` - Configuration management and validation with security options
-- **Transport**: `Abyss.Transport` - Behaviour for UDP transport layer (currently uses `Abyss.Transport.UDP`)
+- **Transport**: `Abyss.Transport` - Behaviour for UDP transport layer
+  - `Abyss.Transport.UDP` - Main UDP transport module
+  - `Abyss.Transport.UDP.Core` - Core UDP socket operations
+  - `Abyss.Transport.UDP.Unicast` - Unicast-specific implementation
+  - `Abyss.Transport.UDP.Broadcast` - Broadcast/multicast-specific implementation
 - **Listener Pool**: `Abyss.ListenerPool` - Manages UDP listener processes with supervisor strategies
+- **Listener Pool Scaler**: `Abyss.ListenerPoolScaler` - Dynamic scaling of listener pool based on load
 - **Connection Handling**: `Abyss.Connection` - Handles individual UDP connections/clients via DynamicSupervisor with non-blocking retry logic
 - **Handler**: `Abyss.Handler` - Behaviour for implementing custom request/response logic
 - **Rate Limiter**: `Abyss.RateLimiter` - Token bucket rate limiting for DoS protection (GenServer-based)
@@ -23,7 +36,7 @@ Abyss is a pure Elixir UDP server library that provides a modern, high-performan
 
 ### Build & Test
 ```bash
-# Install dependencies
+# Install dependencies (from umbrella root or app directory)
 mix deps.get
 
 # Run tests (includes coverage by default)
@@ -37,8 +50,17 @@ mix test.all              # All tests including slow ones
 # Run tests with coverage explicitly
 mix test --cover
 
+# Run specific test file
+mix test test/abyss/server_test.exs
+
+# Run tests matching a pattern
+mix test --only unit
+
 # Format code
 mix format
+
+# Check code formatting without modifying files
+mix format --check-formatted
 
 # Run dialyzer for type checking
 mix dialyzer
@@ -49,6 +71,9 @@ mix credo
 # Run credo with strict checks (used in CI)
 mix credo --strict
 
+# Run linting (combines credo and dialyzer)
+mix lint
+
 # Generate documentation
 mix docs
 
@@ -57,6 +82,24 @@ mix publish  # Runs format + hex.publish
 
 # Full CI pipeline check
 mix ci  # Runs format check, credo strict, and integration tests
+```
+
+### Working in Umbrella Context
+Since Abyss is part of the Yellow Dog umbrella project:
+
+```bash
+# From umbrella root - affects all apps
+cd /path/to/yellow-dog
+mix test                   # Run all tests across all apps
+mix format                 # Format all apps
+
+# From abyss directory - affects only abyss
+cd apps/abyss
+mix test                   # Run only abyss tests
+mix format                 # Format only abyss code
+
+# Clean shared build artifacts (from umbrella root)
+mix clean
 ```
 
 ### Running Examples
@@ -222,14 +265,19 @@ lib/
 │   ├── server.ex         # Main supervisor managing all components
 │   ├── server_config.ex  # Configuration validation and defaults
 │   ├── listener_pool.ex  # Pool of listener processes (supervisor)
+│   ├── listener_pool_scaler.ex # Dynamic scaling of listener pool
 │   ├── listener.ex       # Individual listener process with security checks
 │   ├── connection.ex     # Connection lifecycle management with non-blocking retry
 │   ├── handler.ex        # Handler behaviour and GenServer implementation
 │   ├── rate_limiter.ex   # Token bucket rate limiting for DoS protection
 │   ├── transport.ex      # Transport behaviour definition
 │   ├── transport/
-│   │   └── udp.ex        # UDP transport implementation
-│   ├── telemetry.ex      # Telemetry event handling
+│   │   ├── udp.ex        # Main UDP transport module
+│   │   └── udp/
+│   │       ├── core.ex       # Core UDP socket operations
+│   │       ├── unicast.ex    # Unicast implementation
+│   │       └── broadcast.ex  # Broadcast/multicast implementation
+│   ├── telemetry.ex      # Telemetry event handling and metrics
 │   ├── logger.ex         # Structured logging utilities
 │   └── shutdown_listener.ex # Graceful shutdown coordination
 example/                  # Usage examples and demos
@@ -241,30 +289,46 @@ example/                  # Usage examples and demos
 └── dump.ex              # Generic packet dumping
 test/
 ├── abyss/               # Unit tests for core modules
-│   ├── rate_limiter_test.exs              # Rate limiter functionality tests
-│   ├── logger_test.exs                    # Logger functionality tests
-│   ├── transport_udp_comprehensive_test.exs # UDP transport tests
-│   ├── listener_comprehensive_test.exs    # Listener functionality tests
-│   └── listener_rate_limiting_test.exs    # Rate limiting integration tests
+│   ├── server_test.exs
+│   ├── server_config_test.exs
+│   ├── listener_pool_test.exs
+│   ├── listener_pool_scaler_test.exs
+│   ├── listener_test.exs
+│   ├── listener_comprehensive_test.exs
+│   ├── listener_rate_limiting_test.exs
+│   ├── connection_test.exs
+│   ├── handler_test.exs
+│   ├── rate_limiter_test.exs
+│   ├── telemetry_test.exs
+│   ├── telemetry_metrics_test.exs
+│   ├── telemetry_integration_test.exs
+│   ├── logger_test.exs
+│   ├── transport_udp_comprehensive_test.exs
+│   └── transport/
+│       ├── udp_test.exs
+│       └── udp/
+│           ├── unicast_test.exs
+│           └── broadcast_test.exs
 ├── integration/         # Integration tests
-└── support/             # Test utilities and helpers
-doc/                     # Generated documentation
+│   └── echo_test.exs
+├── support/             # Test utilities and helpers
+└── abyss_test.exs       # Main API tests
 ```
 
 ## Dependencies
 
 - **Core**: Elixir ~> 1.13
 - **Runtime**:
-  - `telemetry` - Metrics and monitoring
-  - `telemetry_metrics` - Telemetry metric aggregation
-- **Optional Dev Dependencies**:
-  - `ex_dns` - DNS protocol handling (for examples)
-  - `ex_dhcp` - DHCP protocol handling (for examples)
-- **Development Tools**:
-  - `dialyxir` - Static type analysis via Dialyzer
-  - `credo` - Code quality and style analysis
-  - `ex_doc` - Documentation generation
-  - `machete` - Test utilities and assertions
+  - `telemetry` (~> 1.0) - Metrics and monitoring
+  - `telemetry_metrics` (~> 1.0) - Telemetry metric aggregation
+- **Development & Testing**:
+  - `dialyxir` (~> 1.0) - Static type analysis via Dialyzer
+  - `credo` (~> 1.5) - Code quality and style analysis
+  - `ex_doc` (>= 0.0.0) - Documentation generation
+  - `machete` (>= 0.0.0) - Test utilities and assertions
+  - `mox` (~> 1.0) - Mocks and stubs for testing
+
+**Note**: Dependencies are managed at the umbrella level and shared across all Yellow Dog applications.
 
 ## Testing Strategy
 
@@ -309,7 +373,8 @@ Abyss (main supervisor)
 ├── Abyss.ListenerPool (supervisor)
 │   ├── Abyss.Listener (listener process 1)
 │   ├── Abyss.Listener (listener process 2)
-│   └── ... (up to num_listeners processes)
+│   └── ... (up to num_listeners processes, dynamically scalable)
+├── Abyss.ListenerPoolScaler (monitors and scales listener pool)
 ├── DynamicSupervisor (connection supervisor)
 │   ├── Handler process 1 (per UDP packet)
 │   ├── Handler process 2 (per UDP packet)
@@ -329,8 +394,19 @@ Abyss (main supervisor)
 ### Broadcast Mode
 When `broadcast: true` is set:
 - Only one listener process is created (regardless of `num_listeners`)
+- Uses `Abyss.Transport.UDP.Broadcast` for broadcast/multicast handling
 - Packets are processed in broadcast mode (useful for DHCP/mDNS)
 - Handler processes terminate after processing each packet
+
+### UDP Transport Architecture
+The UDP transport layer is modular and organized into specialized modules:
+
+1. **`Abyss.Transport.UDP`**: Main transport module that delegates to appropriate implementations
+2. **`Abyss.Transport.UDP.Core`**: Core UDP socket operations shared by all implementations
+3. **`Abyss.Transport.UDP.Unicast`**: Standard unicast UDP communication
+4. **`Abyss.Transport.UDP.Broadcast`**: Broadcast and multicast UDP communication with special socket options
+
+This modular design allows for clean separation of concerns and easier testing/maintenance of different UDP modes.
 
 ### Non-Blocking Connection Retry
 Connection retry logic uses `Process.send_after/3` instead of blocking `Process.sleep/1`:
@@ -476,6 +552,48 @@ mix run --no-halt -e 'Abyss.Logger.attach_logger(:debug); # your server code'
 - **max_packet_size**: Set based on protocol requirements
 - **read_timeout**: Adjust based on expected protocol timing
 - **transport_options**: Tune UDP buffer sizes as needed
+
+## Working with Yellow Dog Umbrella
+
+### Umbrella-Specific Considerations
+
+Since Abyss is part of the Yellow Dog umbrella project:
+
+1. **Shared Dependencies**: All dependencies are resolved at the umbrella level in `../../deps/`
+2. **Shared Build Artifacts**: Build outputs go to `../../_build/`
+3. **Shared Lock File**: The `../../mix.lock` is used for dependency locking
+4. **Shared Configuration**: Application config in `../../config/config.exs`
+
+### Cross-App Dependencies
+
+Abyss is used by several Yellow Dog applications:
+- `yellow_dog_dns` - DNS server using Abyss UDP transport
+- `yellow_dog_dhcpv4` - DHCPv4 server using Abyss
+- `yellow_dog_dhcpv6` - DHCPv6 server using Abyss
+- `yellow_dog_mdns` - mDNS responder using Abyss
+
+When making changes to Abyss:
+1. Consider impact on dependent applications
+2. Run tests across the entire umbrella: `cd ../.. && mix test`
+3. Check that examples still work in dependent apps
+
+### Development Workflow
+
+```bash
+# Work on Abyss in isolation
+cd apps/abyss
+mix test
+mix format
+
+# Test impact on entire umbrella
+cd ../..
+mix test                  # Run all tests
+mix format                # Format all apps
+
+# Test specific dependent app
+cd apps/yellow_dog_dns
+mix test
+```
 
 ## Key Patterns
 

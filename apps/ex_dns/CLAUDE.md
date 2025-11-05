@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is `ex_dns`, a pure Elixir DNS library that provides DNS protocol message parsing, zone management, and resource record handling. The library implements DNS message formats, resource records, and zone operations according to DNS RFC standards.
 
+**Important**: This library is part of the YellowDog umbrella project and is configured as a library application with shared build paths (`build_path: "../../_build"`, `config_path: "../../config/config.exs"`, `deps_path: "../../deps"`, `lockfile: "../../mix.lock"`).
+
 ## Architecture
 
 The codebase follows a modular structure with these key components:
@@ -58,6 +60,10 @@ DNS/
 - `DNS.Zone.FileParser` - BIND format zone file parsing
 - `DNS.Zone.Validator` - Zone validation and diagnostics
 - `DNS.Zone.DNSSEC` - DNSSEC signing and validation (basic implementation)
+- `DNS.Zone.Editor` - High-level API for zone record manipulation
+- `DNS.Zone.Parser` - Advanced zone file parsing
+- `DNS.Zone.Transfer` - Zone transfer (AXFR/IXFR) functionality
+- `DNS.Zone.Recursive` - Recursive DNS resolution support
 
 ### Key Implementation Patterns
 
@@ -78,8 +84,13 @@ Comprehensive use of `@type` specifications throughout the codebase with proper 
 **Domain Name Compression**
 Located in `DNS.Message.Domain.parse_domain_from_message/2` - handles DNS message compression with pointer dereferencing. This is a performance-critical path and security-sensitive area.
 
-**Record Data Dispatch**
-`DNS.Message.Record.Data` uses pattern matching on record type integers to dispatch to appropriate record type modules. New record types require adding entries in multiple places.
+**Record Data Dispatch and Registry**
+`DNS.Message.Record.Data` uses a registry-based dispatch system via `DNS.Message.Record.Data.Registry`. The registry is a GenServer with ETS-based storage that maps DNS record type integers to their implementation modules. When parsing or creating records:
+- `DNS.Message.Record.Data.from_iodata/3` looks up the type in the registry
+- If found, delegates to the specific module's `from_iodata/2` function
+- If not found, stores raw binary data in generic `DNS.Message.Record.Data` struct
+- New record types must implement `DNS.Message.Record.Data.Behaviour` and be registered in the registry
+- All record type modules (22+ implementations in `lib/dns/message/record/data/`) follow this pattern
 
 **Zone Manager Store Integration**
 `DNS.Zone.Manager` coordinates with `DNS.Zone.Store` for persistence and `DNS.Zone.Cache` for temporary storage, with automatic initialization and cleanup.
@@ -136,25 +147,56 @@ mix publish                             # Format and publish to hex.pm (custom a
 mix hex.publish --yes                   # Direct publish to hex.pm
 ```
 
-### Manual Testing Scripts
+### Mix Aliases
 ```bash
-elixir test_all_string_chars.exs        # Test all record type String.Chars implementations
-elixir test_zone_system.exs            # Test zone management functionality
+mix lint                                 # Run credo --strict and dialyzer
+mix publish                             # Format code and publish to hex.pm
 ```
 
-## Key Patterns
+## Key Development Patterns
 
-- **Protocol Implementation**: Uses `DNS.Parameter` protocol for binary serialization
-- **String Representation**: Uses `String.Chars` protocol for human-readable output
-- **Data Structures**: Immutable structs for all DNS entities
-- **Error Handling**: Returns structured data with validation
-- **Zone Types**: Supports :authoritative, :stub, :forward, :cache zone types
+### Protocol Implementation
+All DNS entities implement two key protocols:
+- **`DNS.Parameter`**: Binary serialization for network transmission via `DNS.Parameter.to_iodata/1`
+- **`String.Chars`**: Human-readable output via `to_string/1`
+
+This dual-protocol approach ensures consistent behavior across the library. When adding new record types or DNS entities, both protocols must be implemented.
+
+### Record Type Implementation
+To add a new DNS record type:
+1. Create module in `lib/dns/message/record/data/` implementing `DNS.Message.Record.Data.Behaviour`
+2. Implement `new/1`, `from_iodata/2` functions
+3. Implement `DNS.Parameter` protocol for binary serialization
+4. Implement `String.Chars` protocol for display
+5. Register the type in `DNS.Message.Record.Data.Registry` initialization
+6. Add type definition to `DNS.ResourceRecordType` if needed
+
+### Zone Types
+Four zone types are supported, each with different behaviors:
+- **`:authoritative`** - Primary authoritative zone with full record management
+- **`:stub`** - Stub zone containing only NS records for delegation
+- **`:forward`** - Forward zone redirecting queries to specified servers
+- **`:cache`** - Cache zone for temporary DNS response caching with TTL expiration
+
+### Error Handling
+The codebase uses mixed error handling patterns:
+- `throw/1` for parsing errors in binary parsing paths (legacy pattern)
+- `{:ok, result}` or `{:error, reason}` tuples for validation and high-level operations (preferred pattern)
+- Ongoing refactoring to standardize on `{:ok, result}` / `{:error, reason}` pattern
+
+## Working with Umbrella Projects
+
+Since this is an umbrella application:
+- Run tests from umbrella root: `cd ../.. && mix test apps/ex_dns`
+- Or run from this directory: `mix test` (uses shared build paths)
+- Dependencies are managed at umbrella level when possible
+- Dialyzer PLT files stored in `priv/plts/` to avoid conflicts
 
 ## File Organization
 
-- `lib/dns/` - Core DNS implementation
+- `lib/dns/` - Core DNS implementation (71 source files)
   - `message/` - DNS protocol message handling
-  - `zone/` - Zone management operations
+    - `record/data/` - 22+ record type implementations
+  - `zone/` - Zone management operations (15 modules)
 - `test/dns/` - Comprehensive test suite matching lib structure
 - `priv/data/` - DNS root hints and zone data files
-- `test_*_string_chars.exs` - Manual testing scripts for protocol implementations

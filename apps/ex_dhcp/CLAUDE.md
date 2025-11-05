@@ -13,6 +13,12 @@ This is `ex_dhcp`, a pure Elixir implementation of DHCP (Dynamic Host Configurat
 - Type-safe structs for DHCP messages and options
 - Binary protocol implementation for network communication
 
+**Umbrella Context**: This library is part of the YellowDog umbrella project but can also be used standalone. When used within the umbrella, it shares build paths:
+- `build_path: "../../_build"`
+- `config_path: "../../config/config.exs"`
+- `deps_path: "../../deps"`
+- `lockfile: "../../mix.lock"`
+
 ## Architecture
 
 ### Core Components
@@ -87,15 +93,19 @@ mix test.coverage           # Run tests with coverage report
 ### Code Quality
 ```bash
 mix format                  # Format code
+mix format --check-formatted # Check if code is formatted
 mix credo                   # Run static analysis
+mix credo --strict          # Run strict static analysis
 mix dialyzer                # Run type checking (requires plt build)
 mix dialyzer.build          # Build dialyzer PLT files
+mix lint                    # Run both credo --strict and dialyzer
 ```
 
-### Documentation
+### Documentation and Publishing
 ```bash
 mix docs                    # Generate documentation
 mix hex.publish             # Publish to hex.pm (includes format check)
+mix publish                 # Format code then publish to hex.pm
 ```
 
 ### Common Tasks
@@ -177,8 +187,40 @@ This codebase uses functional error handling patterns:
 
 - `DHCPv4.Message.Option.parse/1` returns `{:ok, options} | {:error, reason}`
 - Legacy `DHCPv4.Message.Option.parse!/1` raises on error (for backward compatibility)
+- `DHCPv6.Message.from_iodata/1` returns `{:ok, message} | {:error, reason}`
 - Most parsing functions follow the `{:ok, result} | {:error, reason}` pattern
 - Error tuples provide descriptive error messages for debugging
+
+## Key Architectural Patterns
+
+### DHCPv4 Option Module Organization
+The DHCPv4 option handling is split into specialized modules for maintainability:
+
+- **DHCPv4.Message.Option**: Public interface, delegates to specialized modules
+- **DHCPv4.Message.Option.Decoder**: Option parsing logic with magic cookie handling
+- **DHCPv4.Message.Option.Types**: Type-specific decoders for 50+ option types (subnet mask, router, DNS, etc.)
+- **DHCPv4.Message.Option.Serializer**: Binary serialization with magic cookie (99.130.83.99)
+- **DHCPv4.Message.Option.Formatter**: Human-readable option formatting for debugging
+- **DHCPv4.Message.Option.Helpers**: Common utilities (creation, conversion, etc.)
+
+This separation allows for easy extension when adding new DHCP option types.
+
+### Protocol Implementation
+Both DHCPv4 and DHCPv6 implement the `DHCP.Parameter` protocol for consistent serialization:
+
+```elixir
+defprotocol DHCP.Parameter do
+  def to_iodata(value)
+end
+```
+
+This allows any DHCP struct (messages, options) to be converted to binary format using `DHCP.Parameter.to_iodata/1`.
+
+### Testing Strategy
+- Tests organized by protocol (dhcpv4/, dhcpv6/)
+- Uses ExUnit with machete for advanced pattern matching
+- Focus on RFC compliance and binary format correctness
+- Test files mirror source structure (message_test.exs, option_test.exs)
 
 ## RFC Compliance
 
