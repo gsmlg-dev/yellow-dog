@@ -1,0 +1,236 @@
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-4xl font-bold">DNS Service</h1>
+          <p class="mt-2 text-base-content/70">
+            Domain Name System server with views and caching
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <.status_indicator
+            status={if @status.running, do: "running", else: "stopped"}
+            label={if @status.running, do: "Running", else: "Stopped"}
+            pulse
+          />
+          <button class="btn btn-ghost btn-circle btn-sm">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <!-- Status Cards -->
+      <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
+        <!-- Zones Stat -->
+        <div class="stat">
+          <div class="stat-figure text-primary">
+            <svg
+              class="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Loaded Zones</div>
+          <div class="stat-value text-primary">
+            <%= Map.get(@stats.zones, :loaded_zones, 0) %>
+          </div>
+          <div class="stat-actions">
+            <.link navigate={~p"/dns/zones"} class="btn btn-sm btn-primary">
+              Manage
+            </.link>
+          </div>
+        </div>
+        <!-- Records Stat -->
+        <div class="stat">
+          <div class="stat-figure text-success">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Total Records</div>
+          <div class="stat-value text-success">
+            <%= Map.get(@stats.zones, :total_records, 0) %>
+          </div>
+          <div class="stat-desc">Across all zones</div>
+        </div>
+        <!-- Cache Stat -->
+        <div class="stat">
+          <div class="stat-figure text-secondary">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Cache Entries</div>
+          <div class="stat-value text-secondary">
+            <%= get_cache_entries(@stats) %>
+          </div>
+          <div class="stat-actions">
+            <.link navigate={~p"/dns/cache"} class="btn btn-sm btn-secondary">
+              View
+            </.link>
+          </div>
+        </div>
+        <!-- Memory Stat -->
+        <div class="stat">
+          <div class="stat-figure text-accent">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Memory Usage</div>
+          <div class="stat-value text-accent">
+            <%= format_memory(@stats.storage[:memory_mb] || 0) %>
+          </div>
+          <div class="stat-desc">Storage + Cache</div>
+        </div>
+      </div>
+      <!-- Statistics Grid -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Zone Statistics -->
+        <.card title="Zone Statistics" class="xl:col-span-1">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Loaded Zones</span>
+              <.badge size="lg"><%= Map.get(@stats.zones, :loaded_zones, 0) %></.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Total Records</span>
+              <.badge color="success" size="lg">
+                <%= Map.get(@stats.zones, :total_records, 0) %>
+              </.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Zone Memory</span>
+              <.badge color="info" size="lg">
+                <%= format_memory(Map.get(@stats.zones, :memory_mb, 0)) %>
+              </.badge>
+            </div>
+          </div>
+        </.card>
+        <!-- Storage Statistics -->
+        <.card title="Storage & Cache" class="xl:col-span-1">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Total Storage</span>
+              <.badge size="lg">
+                <%= format_memory(@stats.storage[:memory_mb] || 0) %>
+              </.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Cache Entries</span>
+              <.badge color="secondary" size="lg">
+                <%= get_cache_entries(@stats) %>
+              </.badge>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+              <span class="text-sm font-medium">Total Zones</span>
+              <.badge color="accent" size="lg">
+                <%= @stats.storage[:total_zones] || 0 %>
+              </.badge>
+            </div>
+          </div>
+        </.card>
+      </div>
+      <!-- Service Info -->
+      <.card title="Service Information">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-2">
+            <p class="text-sm text-base-content/60">Status</p>
+            <p class="font-semibold"><%= @status.info %></p>
+          </div>
+          <div class="space-y-2">
+            <p class="text-sm text-base-content/60">Service State</p>
+            <div class="flex items-center gap-2">
+              <.status_indicator
+                status={if @status.running, do: "running", else: "stopped"}
+                label=""
+              />
+              <span class="font-semibold">
+                <%= if @status.running, do: "Running", else: "Stopped" %>
+              </span>
+            </div>
+          </div>
+        </div>
+      </.card>
+      <!-- Quick Actions -->
+      <.card title="Quick Actions">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <.link navigate={~p"/dns/zones"} class="btn btn-primary btn-lg gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+            Manage Zones
+          </.link>
+
+          <.link navigate={~p"/dns/cache"} class="btn btn-secondary btn-lg gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+            View Cache
+          </.link>
+
+          <.link navigate={~p"/dns/views"} class="btn btn-accent btn-lg gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
+            </svg>
+            Configure Views
+          </.link>
+        </div>
+      </.card>
+    </div>
