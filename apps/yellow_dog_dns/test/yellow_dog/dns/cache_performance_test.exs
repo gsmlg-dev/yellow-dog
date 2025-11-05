@@ -283,17 +283,19 @@ defmodule YellowDog.Dns.CachePerformanceTest do
     test "1000 entries use < 10MB" do
       populate_cache(1000)
       stats = Manager.stats()
+      memory_mb = stats.memory_bytes / (1024 * 1024)
 
-      assert stats.memory_mb < 10,
-             "1000 entries used #{stats.memory_mb}MB, expected < 10MB"
+      assert memory_mb < 10,
+             "1000 entries used #{:erlang.float_to_binary(memory_mb, decimals: 2)}MB, expected < 10MB"
     end
 
     test "10000 entries use < 100MB" do
       populate_cache(10000)
       stats = Manager.stats()
+      memory_mb = stats.memory_bytes / (1024 * 1024)
 
-      assert stats.memory_mb < 100,
-             "10000 entries used #{stats.memory_mb}MB, expected < 100MB"
+      assert memory_mb < 100,
+             "10000 entries used #{:erlang.float_to_binary(memory_mb, decimals: 2)}MB, expected < 100MB"
     end
   end
 
@@ -316,12 +318,20 @@ defmodule YellowDog.Dns.CachePerformanceTest do
 
       stats = Manager.stats()
 
-      # Hit rate should be ~70%
-      assert stats.hit_rate >= 65.0 and stats.hit_rate <= 75.0,
-             "Hit rate is #{stats.hit_rate}%, expected ~70%"
+      # Calculate hit rate
+      total_requests = stats.hit_count + stats.miss_count
+      hit_rate = if total_requests > 0 do
+        stats.hit_count / total_requests * 100
+      else
+        0.0
+      end
 
-      assert stats.hits >= 700, "Expected >= 700 hits, got #{stats.hits}"
-      assert stats.misses >= 300, "Expected >= 300 misses, got #{stats.misses}"
+      # Hit rate should be ~70%
+      assert hit_rate >= 65.0 and hit_rate <= 75.0,
+             "Hit rate is #{:erlang.float_to_binary(hit_rate, decimals: 2)}%, expected ~70%"
+
+      assert stats.hit_count >= 700, "Expected >= 700 hits, got #{stats.hit_count}"
+      assert stats.miss_count >= 300, "Expected >= 300 misses, got #{stats.miss_count}"
     end
   end
 

@@ -46,7 +46,7 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
     test "cache can handle 10000 rapid insertions" do
       IO.puts("\n=== Cache Insertion Performance ===")
 
-      {time_us, :ok} = :timer.tc(fn ->
+      {time_us, _} = :timer.tc(fn ->
         for i <- 1..10_000 do
           key = "test#{i}.example.com"
           records = [
@@ -59,7 +59,7 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
             }
           ]
 
-          CacheManager.put(key, :A, :IN, records, [], 300)
+          CacheManager.put(key, :A, records, [], 300)
         end
       end)
 
@@ -93,7 +93,7 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
           }
         ]
 
-        CacheManager.put(key, :A, :IN, records, [], 300)
+        CacheManager.put(key, :A, records, [], 300)
       end
 
       # Measure lookup performance
@@ -266,7 +266,7 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
             }
           ]
 
-          CacheManager.put(qname, :A, :IN, records, [], 300)
+          CacheManager.put(qname, :A, records, [], 300)
         end
       end)
 
