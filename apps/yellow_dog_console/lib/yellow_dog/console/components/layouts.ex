@@ -11,51 +11,7 @@ defmodule YellowDog.Console.Layouts do
 
   alias Phoenix.LiveView.JS
 
-  @doc """
-  Root layout with navbar + sidebar structure using DaisyUI.
-  """
-  attr :current_user, :any, default: nil
-
-  def root(assigns) do
-    ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="h-full">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="csrf-token" content={get_csrf_token()} />
-        <.live_title suffix=" · Yellow Dog Console">
-          <%= assigns[:page_title] || "Yellow Dog Console" %>
-        </.live_title>
-        <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-        <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
-        </script>
-      </head>
-      <body class="h-full" data-theme="light">
-        <div class="drawer lg:drawer-open">
-          <input id="main-drawer" type="checkbox" class="drawer-toggle" />
-
-          <div class="drawer-content flex flex-col">
-            <!-- Navbar -->
-            <.navbar />
-
-            <!-- Main content -->
-            <main class="flex-1 overflow-y-auto bg-base-200">
-              <%= @inner_content %>
-            </main>
-          </div>
-
-          <!-- Sidebar -->
-          <.sidebar />
-        </div>
-
-        <!-- Toast container for notifications -->
-        <div id="toast-container" class="toast toast-top toast-end z-50" phx-update="stream">
-        </div>
-      </body>
-    </html>
-    """
-  end
+  embed_templates "layouts/*"
 
   @doc """
   App layout for pages that need additional wrapping.

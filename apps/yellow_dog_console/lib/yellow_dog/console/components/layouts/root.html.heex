@@ -1,29 +1,28 @@
 <!DOCTYPE html>
-<html lang="en" class="[scrollbar-gutter:stable]">
+<html lang="en" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title suffix=" · Yellow Dog Console">
-      <%= assigns[:page_title] || "Yellow Dog Console" %>
+    <.live_title suffix=" · YellowDog">
+      <%= assigns[:page_title] || "YellowDog Console" %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href="/assets/app.css" />
-    <script defer phx-track-static type="text/javascript" src="/assets/app.js">
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
   </head>
-  <body class="bg-white antialiased">
-    <ul class="relative flex items-center gap-4 p-6 sm:gap-6 sm:p-8">
-      <li>
-        <a href="/" class="text-[#111827] text-lg font-bold leading-tight">
-          Yellow Dog Console
-        </a>
-      </li>
-      <li>
-        <a href="/dashboard" class="text-[#6b7280] text-base font-medium leading-tight hover:text-[#111827]">
-          Dashboard
-        </a>
-      </li>
-    </ul>
-    <%= @inner_content %>
+  <body class="h-full" data-theme="light">
+    <div class="drawer lg:drawer-open h-full">
+      <input id="main-drawer" type="checkbox" class="drawer-toggle" />
+
+      <div class="drawer-content flex flex-col h-full">
+        <.navbar current_user={assigns[:current_user]} />
+        <div class="flex-1 overflow-auto">
+          <%= @inner_content %>
+        </div>
+      </div>
+
+      <.sidebar />
+    </div>
   </body>
 </html>

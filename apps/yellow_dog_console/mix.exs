@@ -34,13 +34,9 @@ defmodule YellowDog.Console.MixProject do
     ]
   end
 
-  # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
-  # Specifies your project dependencies.
-  #
-  # Type `mix help deps` for examples and options.
   defp deps do
     [
       {:phoenix, "~> 1.8.1"},
@@ -68,23 +64,13 @@ defmodule YellowDog.Console.MixProject do
     ]
   end
 
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to install project dependencies and perform other setup tasks, run:
-  #
-  #     $ mix setup
-  #
-  # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
       lint: ["credo --strict", "dialyzer"],
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": [
         "tailwind.install --if-missing",
-        "bun.install --if-missing",
-        "cmd mkdir -p apps/yellow_dog_console/node_modules",
-        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix phoenix 2>/dev/null || true\"",
-        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix_html phoenix_html 2>/dev/null || true\"",
-        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix_live_view phoenix_live_view 2>/dev/null || true\""
+        "bun.install --if-missing"
       ],
       "assets.build": ["compile", "tailwind yellow_dog_console", "bun yellow_dog_console"],
       "assets.deploy": [
