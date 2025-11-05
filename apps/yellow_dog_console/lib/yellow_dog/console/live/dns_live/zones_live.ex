@@ -153,10 +153,10 @@ defmodule YellowDog.Console.DnsLive.ZonesLive do
           <:col :let={zone} label="Memory">
             <.badge size="lg" color="info"><%= format_memory(zone.memory_mb) %></.badge>
           </:col>
-          <:col :let={zone} label="Status">
+          <:col :let={_zone} label="Status">
             <.status_indicator status="running" label="Loaded" />
           </:col>
-          <:action :let={zone}>
+          <:action :let={_zone}>
             <button class="btn btn-ghost btn-sm gap-2" title="View Details">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path

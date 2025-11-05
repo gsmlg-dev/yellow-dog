@@ -300,7 +300,7 @@ defmodule YellowDog.Console.DnsLive.Index do
     end
   end
 
-  defp get_cache_entries(stats) do
+  defp get_cache_entries(_stats) do
     # Try to get cache stats
     try do
       case YellowDog.Dns.Query.Cache.Manager.stats() do

@@ -161,7 +161,7 @@ defmodule YellowDog.Console.DnsLive.ViewsLive do
               if view.enabled, do: "Enabled", else: "Disabled"
             } />
           </:col>
-          <:action :let={view}>
+          <:action :let={_view}>
             <button class="btn btn-ghost btn-sm gap-2" title="View Details">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
