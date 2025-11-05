@@ -32,7 +32,6 @@ defmodule YellowDog.Console.DnsLive.ViewsLive do
     {:noreply, assign(socket, :views, list_views())}
   end
 
-
   defp list_views do
     try do
       case YellowDog.Dns.View.Manager.get_views() do

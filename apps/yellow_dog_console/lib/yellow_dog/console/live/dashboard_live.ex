@@ -19,7 +19,6 @@ defmodule YellowDog.Console.DashboardLive do
     {:noreply, assign(socket, :services, get_service_status())}
   end
 
-
   # Service configuration
   @service_info %{
     dns: %{name: "DNS", description: "Domain Name Service", default_port: "53"},

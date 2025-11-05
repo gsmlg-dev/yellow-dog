@@ -122,7 +122,7 @@ defmodule YellowDog.Dns.ViewTest do
 
       assert View.matches?(view, {8, 8, 8, 8})
       assert View.matches?(view, {192, 168, 1, 1})
-      assert View.matches?(view, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 1})
+      assert View.matches?(view, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
     end
 
     test "matches built-in ACL by name" do
@@ -197,11 +197,13 @@ defmodule YellowDog.Dns.ViewTest do
 
     test "handles complex ACL rules" do
       # Create view with exception rules (allow specific subnet within denied range)
-      acl = ACL.new("complex", [
-        {:allow, {10, 1, 1, 0}, 24},
-        {:deny, {10, 1, 0, 0}, 16},
-        {:allow, {10, 0, 0, 0}, 8}
-      ])
+      acl =
+        ACL.new("complex", [
+          {:allow, {10, 1, 1, 0}, 24},
+          {:deny, {10, 1, 0, 0}, 16},
+          {:allow, {10, 0, 0, 0}, 8}
+        ])
+
       view = View.new("complex", acl)
 
       # Should match specific allow

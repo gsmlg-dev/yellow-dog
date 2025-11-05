@@ -708,7 +708,9 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   defp convert_message_records_to_resolver_records(_), do: []
 
-  defp normalize_record_type(type) when is_atom(type), do: type |> to_string() |> String.upcase() |> String.to_atom()
+  defp normalize_record_type(type) when is_atom(type),
+    do: type |> to_string() |> String.upcase() |> String.to_atom()
+
   defp normalize_record_type(type), do: type
 
   defp normalize_rdata(:a, ip_tuple), do: ip_tuple

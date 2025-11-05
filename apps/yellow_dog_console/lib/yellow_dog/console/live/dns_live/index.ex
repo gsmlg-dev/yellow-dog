@@ -37,7 +37,6 @@ defmodule YellowDog.Console.DnsLive.Index do
     {:noreply, assign(socket, :stats, get_dns_stats())}
   end
 
-
   defp get_dns_status do
     try do
       YellowDog.Dns.status()

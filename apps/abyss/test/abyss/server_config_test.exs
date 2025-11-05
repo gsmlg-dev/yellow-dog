@@ -295,13 +295,15 @@ defmodule Abyss.ServerConfigTest do
       end
 
       # Test connection_telemetry_sample_rate bounds
-      assert_raise ArgumentError, ~r/connection_telemetry_sample_rate must be between 0.0 and 1.0/, fn ->
-        Abyss.ServerConfig.new(
-          handler_module: Abyss.TestHandler,
-          port: 1234,
-          connection_telemetry_sample_rate: 1.5
-        )
-      end
+      assert_raise ArgumentError,
+                   ~r/connection_telemetry_sample_rate must be between 0.0 and 1.0/,
+                   fn ->
+                     Abyss.ServerConfig.new(
+                       handler_module: Abyss.TestHandler,
+                       port: 1234,
+                       connection_telemetry_sample_rate: 1.5
+                     )
+                   end
 
       # Test memory thresholds
       assert_raise ArgumentError, ~r/handler_memory_warning_threshold must be positive/, fn ->

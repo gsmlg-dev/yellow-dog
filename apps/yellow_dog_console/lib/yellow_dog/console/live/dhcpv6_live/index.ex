@@ -34,7 +34,6 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
     :ok
   end
 
-
   # Private Functions
 
   defp load_dhcp_data(socket) do

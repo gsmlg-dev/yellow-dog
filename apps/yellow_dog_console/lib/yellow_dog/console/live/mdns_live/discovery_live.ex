@@ -60,7 +60,6 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
      assign(socket, :services, filter_services(socket.assigns.search, socket.assigns.type_filter))}
   end
 
-
   defp list_discovered_services do
     try do
       YellowDog.Mdns.list_discovered_services()

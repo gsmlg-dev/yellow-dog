@@ -87,7 +87,10 @@ defmodule Mix.Tasks.Dns.Status do
             Mix.shell().info("  Status: Not Running (hot-reload disabled)")
 
           watcher_status ->
-            Mix.shell().info("  Status: #{if watcher_status.watching, do: "Active", else: "Inactive"}")
+            Mix.shell().info(
+              "  Status: #{if watcher_status.watching, do: "Active", else: "Inactive"}"
+            )
+
             Mix.shell().info("  Config: #{watcher_status.config_path}")
             Mix.shell().info("  Reloads: #{watcher_status.reload_count}")
             Mix.shell().info("  Errors: #{watcher_status.error_count}")
@@ -291,7 +294,10 @@ defmodule Mix.Tasks.Dns.Views do
         Mix.shell().info("    - #{Enum.join(view.zones, "\n    - ")}")
       end
 
-      Mix.shell().info("  Recursion: #{if view.recursion_enabled, do: "Enabled", else: "Disabled"}")
+      Mix.shell().info(
+        "  Recursion: #{if view.recursion_enabled, do: "Enabled", else: "Disabled"}"
+      )
+
       Mix.shell().info("")
     end)
   end
@@ -329,7 +335,9 @@ defmodule Mix.Tasks.Dns.View do
           Mix.shell().info("  - #{Enum.join(info.zones, "\n  - ")}")
         end
 
-        Mix.shell().info("\nRecursion: #{if info.recursion_enabled, do: "Enabled", else: "Disabled"}")
+        Mix.shell().info(
+          "\nRecursion: #{if info.recursion_enabled, do: "Enabled", else: "Disabled"}"
+        )
 
         Mix.shell().info("\nMatch Clients Details:")
         Mix.shell().info("  Type: #{info.match_clients_details.type}")
@@ -378,7 +386,11 @@ defmodule Mix.Tasks.Dns.Test do
             Mix.shell().info("\n=== Client Match Test ===\n")
             Mix.shell().info("Client IP: #{result.client_ip}")
             Mix.shell().info("Matched View: #{result.matched_view}")
-            Mix.shell().info("Recursion: #{if result.recursion_enabled, do: "Enabled", else: "Disabled"}")
+
+            Mix.shell().info(
+              "Recursion: #{if result.recursion_enabled, do: "Enabled", else: "Disabled"}"
+            )
+
             Mix.shell().info("Accessible Zones: #{length(result.accessible_zones)}")
 
             if length(result.accessible_zones) > 0 do

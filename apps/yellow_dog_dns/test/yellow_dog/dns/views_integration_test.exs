@@ -55,7 +55,9 @@ defmodule YellowDog.Dns.ViewsIntegrationTest do
     """
 
     # Load internal zone
-    {:ok, internal_zone} = Zone.Parser.parse_string(internal_zone_data, zone_name: "internal.example.com")
+    {:ok, internal_zone} =
+      Zone.Parser.parse_string(internal_zone_data, zone_name: "internal.example.com")
+
     ZoneManager.load_zone_data("internal.example.com", internal_zone)
 
     # Load external zone
@@ -276,7 +278,9 @@ defmodule YellowDog.Dns.ViewsIntegrationTest do
       assert external_view.recursion_enabled == false
 
       # This allows different recursion policies for different clients
-      {:ok, internal_matched} = View.match_client({192, 168, 1, 1}, [internal_view, external_view])
+      {:ok, internal_matched} =
+        View.match_client({192, 168, 1, 1}, [internal_view, external_view])
+
       assert internal_matched.recursion_enabled == true
 
       {:ok, external_matched} = View.match_client({8, 8, 8, 8}, [internal_view, external_view])
@@ -295,11 +299,12 @@ defmodule YellowDog.Dns.ViewsIntegrationTest do
 
     test "custom ACL structs work with views" do
       # Create complex ACL with exceptions
-      acl = ACL.new("complex", [
-        {:allow, {10, 1, 1, 0}, 24},
-        {:deny, {10, 1, 0, 0}, 16},
-        {:allow, {10, 0, 0, 0}, 8}
-      ])
+      acl =
+        ACL.new("complex", [
+          {:allow, {10, 1, 1, 0}, 24},
+          {:deny, {10, 1, 0, 0}, 16},
+          {:allow, {10, 0, 0, 0}, 8}
+        ])
 
       view = View.new("complex", acl, ["test.example.com"])
 

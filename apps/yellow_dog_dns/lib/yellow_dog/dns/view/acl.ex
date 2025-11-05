@@ -41,7 +41,9 @@ defmodule YellowDog.Dns.View.ACL do
 
   @type ip_address :: :inet.ip_address()
   @type cidr :: {ip_address(), non_neg_integer()}
-  @type rule :: {:allow, ip_address() | cidr() | String.t()} | {:deny, ip_address() | cidr() | String.t()}
+  @type rule ::
+          {:allow, ip_address() | cidr() | String.t()}
+          | {:deny, ip_address() | cidr() | String.t()}
   @type t :: %__MODULE__{
           name: String.t(),
           rules: [rule()]

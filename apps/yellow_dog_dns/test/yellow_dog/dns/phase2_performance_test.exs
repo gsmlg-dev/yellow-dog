@@ -46,22 +46,24 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
     test "cache can handle 10000 rapid insertions" do
       IO.puts("\n=== Cache Insertion Performance ===")
 
-      {time_us, _} = :timer.tc(fn ->
-        for i <- 1..10_000 do
-          key = "test#{i}.example.com"
-          records = [
-            %Record{
-              owner: key,
-              type: :A,
-              class: :IN,
-              ttl: 300,
-              rdata: {192, 0, 2, div(i, 256) + 1}
-            }
-          ]
+      {time_us, _} =
+        :timer.tc(fn ->
+          for i <- 1..10_000 do
+            key = "test#{i}.example.com"
 
-          CacheManager.put(key, :A, records, [], 300)
-        end
-      end)
+            records = [
+              %Record{
+                owner: key,
+                type: :A,
+                class: :IN,
+                ttl: 300,
+                rdata: {192, 0, 2, div(i, 256) + 1}
+              }
+            ]
+
+            CacheManager.put(key, :A, records, [], 300)
+          end
+        end)
 
       time_ms = time_us / 1000
       qps = 10_000 / (time_us / 1_000_000)
@@ -83,6 +85,7 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
       # Pre-populate cache
       for i <- 1..1000 do
         key = "lookup#{i}.example.com"
+
         records = [
           %Record{
             owner: key,
@@ -97,12 +100,13 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
       end
 
       # Measure lookup performance
-      {time_us, _results} = :timer.tc(fn ->
-        for i <- 1..1000 do
-          key = "lookup#{i}.example.com"
-          CacheManager.get(key, :A, :IN)
-        end
-      end)
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for i <- 1..1000 do
+            key = "lookup#{i}.example.com"
+            CacheManager.get(key, :A, :IN)
+          end
+        end)
 
       time_ms = time_us / 1000
       qps = 1000 / (time_us / 1_000_000)
@@ -125,13 +129,14 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
       IO.puts("\n=== Delegation Performance ===")
 
       # Test delegation checking without zone data (tests the logic speed)
-      {time_us, _results} = :timer.tc(fn ->
-        for i <- 1..10_000 do
-          zone = "example.com"
-          qname = "test#{i}.sub.example.com"
-          Delegation.check_delegation(zone, qname, :A)
-        end
-      end)
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for i <- 1..10_000 do
+            zone = "example.com"
+            qname = "test#{i}.sub.example.com"
+            Delegation.check_delegation(zone, qname, :A)
+          end
+        end)
 
       time_ms = time_us / 1000
       qps = 10_000 / (time_us / 1_000_000)
@@ -154,13 +159,14 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
         {"example.com", "very.deep.test.sub.example.com"}
       ]
 
-      {time_us, _results} = :timer.tc(fn ->
-        for _i <- 1..5000 do
-          Enum.each(test_cases, fn {zone, qname} ->
-            Delegation.find_delegation_point(zone, qname)
-          end)
-        end
-      end)
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for _i <- 1..5000 do
+            Enum.each(test_cases, fn {zone, qname} ->
+              Delegation.find_delegation_point(zone, qname)
+            end)
+          end
+        end)
 
       time_ms = time_us / 1000
       total_checks = 5000 * length(test_cases)
@@ -180,13 +186,14 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
 
       actions = [".", "*.", "rpz-passthru.", "rpz-drop.", "rpz-tcp-only."]
 
-      {time_us, _results} = :timer.tc(fn ->
-        for _i <- 1..50_000 do
-          Enum.each(actions, fn action ->
-            RPZ.decode_rpz_action(action, :A)
-          end)
-        end
-      end)
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for _i <- 1..50_000 do
+            Enum.each(actions, fn action ->
+              RPZ.decode_rpz_action(action, :A)
+            end)
+          end
+        end)
 
       time_ms = time_us / 1000
       total_decodes = 50_000 * length(actions)
@@ -212,14 +219,15 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
         "*.example.com"
       ]
 
-      {time_us, _results} = :timer.tc(fn ->
-        for _i <- 1..20_000 do
-          Enum.each(names, fn _name ->
-            # Normalization happens inside decode_rpz_action
-            RPZ.decode_rpz_action("rpz-drop.", :A)
-          end)
-        end
-      end)
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for _i <- 1..20_000 do
+            Enum.each(names, fn _name ->
+              # Normalization happens inside decode_rpz_action
+              RPZ.decode_rpz_action("rpz-drop.", :A)
+            end)
+          end
+        end)
 
       time_ms = time_us / 1000
       total_ops = 20_000 * length(names)
@@ -242,33 +250,34 @@ defmodule YellowDog.Dns.Phase2PerformanceTest do
       # 3. Check delegation
       # 4. Cache result
 
-      {time_us, _results} = :timer.tc(fn ->
-        for i <- 1..5000 do
-          qname = "test#{i}.example.com"
+      {time_us, _results} =
+        :timer.tc(fn ->
+          for i <- 1..5000 do
+            qname = "test#{i}.example.com"
 
-          # 1. RPZ check (action decoding)
-          RPZ.decode_rpz_action("rpz-passthru.", :A)
+            # 1. RPZ check (action decoding)
+            RPZ.decode_rpz_action("rpz-passthru.", :A)
 
-          # 2. Cache lookup
-          CacheManager.get(qname, :A, :IN)
+            # 2. Cache lookup
+            CacheManager.get(qname, :A, :IN)
 
-          # 3. Delegation check
-          Delegation.check_delegation("example.com", qname, :A)
+            # 3. Delegation check
+            Delegation.check_delegation("example.com", qname, :A)
 
-          # 4. Cache insertion (on miss)
-          records = [
-            %Record{
-              owner: qname,
-              type: :A,
-              class: :IN,
-              ttl: 300,
-              rdata: {192, 0, 2, rem(i, 254) + 1}
-            }
-          ]
+            # 4. Cache insertion (on miss)
+            records = [
+              %Record{
+                owner: qname,
+                type: :A,
+                class: :IN,
+                ttl: 300,
+                rdata: {192, 0, 2, rem(i, 254) + 1}
+              }
+            ]
 
-          CacheManager.put(qname, :A, records, [], 300)
-        end
-      end)
+            CacheManager.put(qname, :A, records, [], 300)
+          end
+        end)
 
       time_ms = time_us / 1000
       qps = 5000 / (time_us / 1_000_000)

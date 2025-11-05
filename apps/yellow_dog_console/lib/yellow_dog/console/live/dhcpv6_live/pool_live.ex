@@ -10,7 +10,6 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
      |> load_pool_data()}
   end
 
-
   # Private Functions
 
   defp load_pool_data(socket) do

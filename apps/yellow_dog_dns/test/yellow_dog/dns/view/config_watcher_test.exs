@@ -1,5 +1,6 @@
 defmodule YellowDog.Dns.View.ConfigWatcherTest do
-  use ExUnit.Case, async: false  # File system operations require sequential execution
+  # File system operations require sequential execution
+  use ExUnit.Case, async: false
 
   alias YellowDog.Dns.View
   alias YellowDog.Dns.View.ConfigWatcher

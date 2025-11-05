@@ -181,7 +181,8 @@ defmodule YellowDog.Dns.RPZUnitTest do
 
       # The RPZ module should handle Client-IP formatting
       # This test documents the expected format
-      assert true  # Placeholder - Client-IP implementation is future work
+      # Placeholder - Client-IP implementation is future work
+      assert true
     end
 
     test "NSDNAME trigger format" do
@@ -189,7 +190,8 @@ defmodule YellowDog.Dns.RPZUnitTest do
       # Example: ns1.badhost.example.com.rpz-nsdname IN CNAME .
 
       # This would block any domain using ns1.badhost.example.com as NS
-      assert true  # Placeholder - NSDNAME implementation is future work
+      # Placeholder - NSDNAME implementation is future work
+      assert true
     end
 
     test "NSIP trigger format" do
@@ -197,7 +199,8 @@ defmodule YellowDog.Dns.RPZUnitTest do
       # Example: 32.1.2.0.192.rpz-nsip IN CNAME .
 
       # This would block any domain using nameserver at 192.0.2.1
-      assert true  # Placeholder - NSIP implementation is future work
+      # Placeholder - NSIP implementation is future work
+      assert true
     end
   end
 
@@ -252,7 +255,8 @@ defmodule YellowDog.Dns.RPZUnitTest do
     test "wildcard should not match zone apex" do
       # *.badzone.example.com should NOT match badzone.example.com
       # Only subdomain queries should match
-      assert true  # Documented behavior
+      # Documented behavior
+      assert true
     end
   end
 
@@ -270,11 +274,12 @@ defmodule YellowDog.Dns.RPZUnitTest do
       ]
 
       sorted = Enum.sort_by(priorities, fn {_name, prio} -> prio end)
+
       assert Enum.map(sorted, &elem(&1, 0)) == [
-        "high-priority.rpz",
-        "medium-priority.rpz",
-        "low-priority.rpz"
-      ]
+               "high-priority.rpz",
+               "medium-priority.rpz",
+               "low-priority.rpz"
+             ]
     end
 
     test "passthru in higher priority zone stops checking" do

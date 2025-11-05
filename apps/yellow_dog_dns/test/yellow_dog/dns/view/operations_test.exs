@@ -82,7 +82,8 @@ defmodule YellowDog.Dns.View.OperationsTest do
 
     test "prevents removing last view", %{manager_pid: _pid} do
       # Create manager with single view
-      {:ok, single_pid} = ViewManager.start_link(views: [View.new("only", "any", [], true)], name: nil)
+      {:ok, single_pid} =
+        ViewManager.start_link(views: [View.new("only", "any", [], true)], name: nil)
 
       assert {:error, :cannot_remove_last_view} =
                Operations.remove_view("only", manager_pid: single_pid)
@@ -103,9 +104,12 @@ defmodule YellowDog.Dns.View.OperationsTest do
     end
 
     test "updates an existing view", %{manager_pid: manager_pid} do
-      updated_view = View.new("internal", "localnets", ["new.example.com", "corp.example.com"], true)
+      updated_view =
+        View.new("internal", "localnets", ["new.example.com", "corp.example.com"], true)
 
-      assert {:ok, result} = Operations.update_view("internal", updated_view, manager_pid: manager_pid)
+      assert {:ok, result} =
+               Operations.update_view("internal", updated_view, manager_pid: manager_pid)
+
       assert result.updated == ["internal"]
       assert result.total_views == 2
 
@@ -365,7 +369,8 @@ defmodule YellowDog.Dns.View.OperationsTest do
     end
 
     test "matches localhost IP to localhost view", %{manager_pid: manager_pid} do
-      assert {:ok, result} = Operations.test_client_match({127, 0, 0, 1}, manager_pid: manager_pid)
+      assert {:ok, result} =
+               Operations.test_client_match({127, 0, 0, 1}, manager_pid: manager_pid)
 
       assert result.matched_view == "localhost"
       assert result.client_ip == "127.0.0.1"
@@ -375,7 +380,8 @@ defmodule YellowDog.Dns.View.OperationsTest do
     end
 
     test "matches private IP to internal view", %{manager_pid: manager_pid} do
-      assert {:ok, result} = Operations.test_client_match({192, 168, 1, 100}, manager_pid: manager_pid)
+      assert {:ok, result} =
+               Operations.test_client_match({192, 168, 1, 100}, manager_pid: manager_pid)
 
       assert result.matched_view == "internal"
       assert result.client_ip == "192.168.1.100"
@@ -396,12 +402,15 @@ defmodule YellowDog.Dns.View.OperationsTest do
 
     test "returns error when no views match", %{manager_pid: _pid} do
       # Create manager with only localhost view
-      {:ok, localhost_pid} = ViewManager.start_link(
-        views: [View.new("localhost", "localhost", [], true)],
-        name: nil
-      )
+      {:ok, localhost_pid} =
+        ViewManager.start_link(
+          views: [View.new("localhost", "localhost", [], true)],
+          name: nil
+        )
 
-      assert {:error, error} = Operations.test_client_match({8, 8, 8, 8}, manager_pid: localhost_pid)
+      assert {:error, error} =
+               Operations.test_client_match({8, 8, 8, 8}, manager_pid: localhost_pid)
+
       assert error.reason == :no_match
       assert error.client_ip == "8.8.8.8"
 
@@ -428,12 +437,14 @@ defmodule YellowDog.Dns.View.OperationsTest do
     test "gracefully handles manager unavailability" do
       # Use invalid PID
       fake_pid = spawn(fn -> :ok end)
-      Process.sleep(10)  # Ensure process is dead
+      # Ensure process is dead
+      Process.sleep(10)
 
-      assert {:error, _} = Operations.add_view(
-        View.new("test", "any", [], true),
-        manager_pid: fake_pid
-      )
+      assert {:error, _} =
+               Operations.add_view(
+                 View.new("test", "any", [], true),
+                 manager_pid: fake_pid
+               )
     end
   end
 
@@ -445,35 +456,37 @@ defmodule YellowDog.Dns.View.OperationsTest do
     end
 
     test "handles concurrent status requests", %{manager_pid: manager_pid} do
-      tasks = for _ <- 1..50 do
-        Task.async(fn ->
-          Operations.status(manager_pid: manager_pid)
-        end)
-      end
+      tasks =
+        for _ <- 1..50 do
+          Task.async(fn ->
+            Operations.status(manager_pid: manager_pid)
+          end)
+        end
 
       results = Task.await_many(tasks)
 
       assert Enum.all?(results, fn
-        {:ok, _status} -> true
-        _ -> false
-      end)
+               {:ok, _status} -> true
+               _ -> false
+             end)
 
       GenServer.stop(manager_pid)
     end
 
     test "handles concurrent list_views requests", %{manager_pid: manager_pid} do
-      tasks = for _ <- 1..50 do
-        Task.async(fn ->
-          Operations.list_views(manager_pid: manager_pid)
-        end)
-      end
+      tasks =
+        for _ <- 1..50 do
+          Task.async(fn ->
+            Operations.list_views(manager_pid: manager_pid)
+          end)
+        end
 
       results = Task.await_many(tasks)
 
       assert Enum.all?(results, fn
-        {:ok, views} when is_list(views) -> true
-        _ -> false
-      end)
+               {:ok, views} when is_list(views) -> true
+               _ -> false
+             end)
 
       GenServer.stop(manager_pid)
     end

@@ -67,7 +67,6 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     end
   end
 
-
   defp get_recent_queries(limit) do
     try do
       YellowDog.Mdns.get_recent_queries(limit: limit)

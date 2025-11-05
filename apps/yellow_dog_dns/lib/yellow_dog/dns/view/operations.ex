@@ -644,7 +644,9 @@ defmodule YellowDog.Dns.View.Operations do
   defp find_watcher_pid(pid) when is_pid(pid), do: {:ok, pid}
   defp find_watcher_pid(_), do: {:error, :not_found}
 
-  defp format_match_clients(match_clients) when is_atom(match_clients), do: to_string(match_clients)
+  defp format_match_clients(match_clients) when is_atom(match_clients),
+    do: to_string(match_clients)
+
   defp format_match_clients(match_clients) when is_binary(match_clients), do: match_clients
   defp format_match_clients(match_clients), do: inspect(match_clients)
 

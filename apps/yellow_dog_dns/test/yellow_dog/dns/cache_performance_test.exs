@@ -176,7 +176,12 @@ defmodule YellowDog.Dns.CachePerformanceTest do
       time_ms = div(time_ms, 1000)
 
       # Verify most lookups succeeded
-      successes = Enum.count(results, fn {:ok, _records, _authority} -> true; _ -> false end)
+      successes =
+        Enum.count(results, fn
+          {:ok, _records, _authority} -> true
+          _ -> false
+        end)
+
       assert successes > 9000, "Expected > 9000 successful lookups, got #{successes}"
 
       assert time_ms < 2000,
@@ -320,11 +325,13 @@ defmodule YellowDog.Dns.CachePerformanceTest do
 
       # Calculate hit rate
       total_requests = stats.hit_count + stats.miss_count
-      hit_rate = if total_requests > 0 do
-        stats.hit_count / total_requests * 100
-      else
-        0.0
-      end
+
+      hit_rate =
+        if total_requests > 0 do
+          stats.hit_count / total_requests * 100
+        else
+          0.0
+        end
 
       # Hit rate should be ~70%
       assert hit_rate >= 65.0 and hit_rate <= 75.0,

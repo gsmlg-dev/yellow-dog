@@ -15,6 +15,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
     case GenServer.whereis(Zone.Manager) do
       nil ->
         {:ok, zone_manager} = Zone.Manager.start_link()
+
         on_exit(fn ->
           if Process.alive?(zone_manager) do
             GenServer.stop(zone_manager)
@@ -36,6 +37,7 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
       servers = Manager.get_root_servers()
 
       assert length(servers) == 26
+
       assert Enum.all?(servers, fn {name, ip} ->
                is_binary(name) and is_tuple(ip)
              end)
@@ -153,7 +155,9 @@ defmodule YellowDog.Dns.RootZoneIntegrationTest do
 
       # Should fail to start - either returns error or crashes
       case result do
-        {:error, _reason} -> :ok
+        {:error, _reason} ->
+          :ok
+
         {:ok, pid} ->
           # Wait for potential crash
           receive do

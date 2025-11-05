@@ -148,7 +148,14 @@ defmodule YellowDog.Dns.Query.Forwarder do
 
           {:error, :disabled} ->
             # Cache disabled, forward directly
-            forward_upstream(normalized_name, query_type, forwarders, timeout_ms, max_retries, opts)
+            forward_upstream(
+              normalized_name,
+              query_type,
+              forwarders,
+              timeout_ms,
+              max_retries,
+              opts
+            )
         end
       else
         # Cache disabled via option, forward directly

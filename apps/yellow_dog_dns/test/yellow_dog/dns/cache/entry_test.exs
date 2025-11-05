@@ -134,5 +134,4 @@ defmodule YellowDog.Dns.Cache.EntryTest do
       assert updated_entry.query_name == entry.query_name
     end
   end
-
 end

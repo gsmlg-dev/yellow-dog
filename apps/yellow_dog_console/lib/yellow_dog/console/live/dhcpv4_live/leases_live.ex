@@ -75,7 +75,6 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     :ok
   end
 
-
   # Private Functions
 
   defp load_leases(socket) do

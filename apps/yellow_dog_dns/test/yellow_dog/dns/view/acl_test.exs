@@ -124,26 +124,26 @@ defmodule YellowDog.Dns.View.ACLTest do
 
   describe "IPv6 matching" do
     test "matches exact IPv6 address" do
-      acl = ACL.new("ipv6-exact", [{:allow, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 1}}])
+      acl = ACL.new("ipv6-exact", [{:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}}])
 
-      assert ACL.matches?(acl, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 1})
-      refute ACL.matches?(acl, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 2})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
+      refute ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 2})
     end
 
     test "matches IPv6 /64 subnet" do
-      acl = ACL.new("ipv6-subnet", [{:allow, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 64}])
+      acl = ACL.new("ipv6-subnet", [{:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 64}])
 
-      assert ACL.matches?(acl, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 1})
-      assert ACL.matches?(acl, {0x2001, 0xdb8, 0, 0, 0xffff, 0xffff, 0xffff, 0xffff})
-      refute ACL.matches?(acl, {0x2001, 0xdb8, 0, 1, 0, 0, 0, 0})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF})
+      refute ACL.matches?(acl, {0x2001, 0xDB8, 0, 1, 0, 0, 0, 0})
     end
 
     test "matches IPv6 /32 subnet" do
-      acl = ACL.new("ipv6-large", [{:allow, {0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}])
+      acl = ACL.new("ipv6-large", [{:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 32}])
 
-      assert ACL.matches?(acl, {0x2001, 0xdb8, 1, 2, 3, 4, 5, 6})
-      assert ACL.matches?(acl, {0x2001, 0xdb8, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff})
-      refute ACL.matches?(acl, {0x2001, 0xdb9, 0, 0, 0, 0, 0, 0})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 1, 2, 3, 4, 5, 6})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF})
+      refute ACL.matches?(acl, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 0})
     end
   end
 
@@ -155,8 +155,8 @@ defmodule YellowDog.Dns.View.ACLTest do
     end
 
     test "parses IPv6 CIDR notation" do
-      assert {:ok, {{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}} = ACL.parse_cidr("2001:db8::/32")
-      assert {:ok, {{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 64}} = ACL.parse_cidr("2001:db8::/64")
+      assert {:ok, {{0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 32}} = ACL.parse_cidr("2001:db8::/32")
+      assert {:ok, {{0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 64}} = ACL.parse_cidr("2001:db8::/64")
     end
 
     test "rejects invalid CIDR notation" do

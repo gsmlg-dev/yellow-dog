@@ -72,7 +72,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
     :ok
   end
 
-
   # Private Functions
 
   defp load_pool_data(socket) do

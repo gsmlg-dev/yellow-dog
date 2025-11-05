@@ -40,7 +40,6 @@ defmodule YellowDog.Console.DnsLive.ZonesLive do
     {:noreply, assign(socket, :zones, list_zones())}
   end
 
-
   defp list_zones do
     try do
       case YellowDog.Dns.Zone.Manager.list_zones() do

@@ -33,7 +33,6 @@ defmodule YellowDog.Console.DnsLive.CacheLive do
     {:noreply, assign(socket, :stats, get_cache_stats())}
   end
 
-
   defp get_cache_stats do
     try do
       YellowDog.Dns.Query.Cache.Manager.stats()

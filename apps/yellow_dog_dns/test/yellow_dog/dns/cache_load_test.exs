@@ -90,8 +90,17 @@ defmodule YellowDog.Dns.CacheLoadTest do
       duration_ms = end_time - start_time
 
       # Analyze results
-      hits = Enum.count(results, fn {:ok, _records, _authority} -> true; _ -> false end)
-      misses = Enum.count(results, fn {:error, :not_found} -> true; _ -> false end)
+      hits =
+        Enum.count(results, fn
+          {:ok, _records, _authority} -> true
+          _ -> false
+        end)
+
+      misses =
+        Enum.count(results, fn
+          {:error, :not_found} -> true
+          _ -> false
+        end)
 
       stats = Manager.stats()
 
@@ -194,7 +203,12 @@ defmodule YellowDog.Dns.CacheLoadTest do
       duration_ms = end_time - start_time
 
       total_queries = client_count * queries_per_client
-      hits = Enum.count(results, fn {:ok, _records, _authority} -> true; _ -> false end)
+
+      hits =
+        Enum.count(results, fn
+          {:ok, _records, _authority} -> true
+          _ -> false
+        end)
 
       stats = Manager.stats()
 
@@ -227,7 +241,11 @@ defmodule YellowDog.Dns.CacheLoadTest do
 
       Enum.each(1..entry_count, fn i ->
         name = "stress-test-#{i}.example.com"
-        records = [generate_record(name, :A, {10, div(i, 65536), div(rem(i, 65536), 256), rem(i, 256)})]
+
+        records = [
+          generate_record(name, :A, {10, div(i, 65536), div(rem(i, 65536), 256), rem(i, 256)})
+        ]
+
         Manager.put(name, :A, records, [], 300)
 
         # Print progress every 10000 entries
@@ -257,7 +275,11 @@ defmodule YellowDog.Dns.CacheLoadTest do
 
       lookup_duration = System.monotonic_time(:millisecond) - lookup_start
 
-      hits = Enum.count(results, fn {:ok, _records, _authority} -> true; _ -> false end)
+      hits =
+        Enum.count(results, fn
+          {:ok, _records, _authority} -> true
+          _ -> false
+        end)
 
       IO.puts("\nLookup results:")
       IO.puts("  Duration: #{lookup_duration}ms")
@@ -329,7 +351,8 @@ defmodule YellowDog.Dns.CacheLoadTest do
         Manager.start_link(
           name: :load_test_cache,
           max_entries: 10_000,
-          max_memory_bytes: 10 * 1024 * 1024,  # 10MB limit
+          # 10MB limit
+          max_memory_bytes: 10 * 1024 * 1024,
           cleanup_interval_ms: 60_000
         )
 
@@ -343,7 +366,11 @@ defmodule YellowDog.Dns.CacheLoadTest do
         Stream.iterate(1, &(&1 + 1))
         |> Enum.reduce_while(0, fn i, count ->
           name = "memory-test-#{i}.example.com"
-          records = [generate_record(name, :A, {10, div(i, 65536), div(rem(i, 65536), 256), rem(i, 256)})]
+
+          records = [
+            generate_record(name, :A, {10, div(i, 65536), div(rem(i, 65536), 256), rem(i, 256)})
+          ]
+
           Manager.put(name, :A, records, [], 300)
 
           stats = Manager.stats()

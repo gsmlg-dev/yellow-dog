@@ -71,7 +71,8 @@ defmodule YellowDog.Dns.Query.UpstreamPool do
         }
 
   @default_max_failures 3
-  @default_failure_timeout 30_000  # 30 seconds
+  # 30 seconds
+  @default_failure_timeout 30_000
 
   @doc """
   Creates a new upstream server pool.
@@ -170,11 +171,12 @@ defmodule YellowDog.Dns.Query.UpstreamPool do
           new_failures = state.failures + 1
           new_status = if new_failures >= max_failures, do: :down, else: state.status
 
-          %{state |
-            failures: new_failures,
-            status: new_status,
-            last_failure: now,
-            last_check: now
+          %{
+            state
+            | failures: new_failures,
+              status: new_status,
+              last_failure: now,
+              last_check: now
           }
         else
           state
@@ -200,11 +202,7 @@ defmodule YellowDog.Dns.Query.UpstreamPool do
     updated_servers =
       Enum.map(servers, fn state ->
         if state.server == server do
-          %{state |
-            failures: 0,
-            status: :up,
-            last_check: now
-          }
+          %{state | failures: 0, status: :up, last_check: now}
         else
           state
         end

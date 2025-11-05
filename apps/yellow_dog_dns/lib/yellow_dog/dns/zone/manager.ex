@@ -238,7 +238,12 @@ defmodule YellowDog.Dns.Zone.Manager do
         }
 
         new_state = put_in(state, [:zones, zone_name], zone_info)
-        Telemetry.end_span(span_id, %{status: :success, record_count: count_zone_records(zone_name)})
+
+        Telemetry.end_span(span_id, %{
+          status: :success,
+          record_count: count_zone_records(zone_name)
+        })
+
         {:reply, success, new_state}
 
       {:error, reason} = error ->

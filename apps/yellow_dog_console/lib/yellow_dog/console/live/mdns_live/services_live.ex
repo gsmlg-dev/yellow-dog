@@ -147,7 +147,6 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
   end
 
-
   defp list_services(opts \\ []) do
     try do
       YellowDog.Mdns.list_registered_services(opts)

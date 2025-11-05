@@ -46,7 +46,6 @@ defmodule YellowDog.Console.MdnsLive.Index do
     {:noreply, assign(socket, :network_stats, get_network_stats())}
   end
 
-
   defp get_mdns_status do
     try do
       YellowDog.Mdns.status()
