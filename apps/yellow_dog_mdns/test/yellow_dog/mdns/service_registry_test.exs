@@ -2,6 +2,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Mdns.ServiceRegistry
+  alias DNS.Question
 
   setup do
     # Start the registry for each test
@@ -256,7 +257,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
     end
 
     test "finds services matching PTR query" do
-      question = %DNS.Question{
+      question = %Question{
         name: "_http._tcp.local",
         type: :PTR,
         class: :IN
@@ -268,7 +269,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
     end
 
     test "finds services matching SRV query" do
-      question = %DNS.Question{
+      question = %Question{
         name: "Web Server._http._tcp.local",
         type: :SRV,
         class: :IN
@@ -280,7 +281,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
     end
 
     test "returns empty list for non-matching query" do
-      question = %DNS.Question{
+      question = %Question{
         name: "_nonexistent._tcp.local",
         type: :PTR,
         class: :IN
@@ -292,8 +293,8 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
 
     test "handles multiple questions" do
       questions = [
-        %DNS.Question{name: "_http._tcp.local", type: :PTR, class: :IN},
-        %DNS.Question{name: "_ssh._tcp.local", type: :PTR, class: :IN}
+        %Question{name: "_http._tcp.local", type: :PTR, class: :IN},
+        %Question{name: "_ssh._tcp.local", type: :PTR, class: :IN}
       ]
 
       services = ServiceRegistry.get_records_for_query(questions)
