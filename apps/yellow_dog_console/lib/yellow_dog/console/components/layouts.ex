@@ -18,9 +18,19 @@ defmodule YellowDog.Console.Layouts do
   """
   def app(assigns) do
     ~H"""
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <.flash_group flash={@flash} />
-      <%= render_slot @inner_block %>
+    <div class="drawer lg:drawer-open h-full">
+      <input id="main-drawer" type="checkbox" class="drawer-toggle" />
+
+      <div class="drawer-content flex flex-col h-full">
+        <.navbar current_user={assigns[:current_user]} />
+        <div class="flex-1 overflow-auto">
+          <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <.flash_group flash={@flash} />
+            <%= render_slot @inner_block %>
+          </div>
+        </div>
+      </div>
+      <.sidebar />
     </div>
     """
   end
@@ -184,7 +194,7 @@ defmodule YellowDog.Console.Layouts do
 
         <!-- DNS -->
         <li>
-          <details>
+          <details open>
             <summary class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -214,7 +224,7 @@ defmodule YellowDog.Console.Layouts do
 
         <!-- DHCPv4 -->
         <li>
-          <details>
+          <details open>
             <summary class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -243,7 +253,7 @@ defmodule YellowDog.Console.Layouts do
 
         <!-- DHCPv6 -->
         <li>
-          <details>
+          <details open>
             <summary class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
