@@ -1,187 +1,188 @@
 <Layouts.app flash={@flash}>
-    <div class="space-y-6">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-4xl font-bold">DHCPv6 Leases</h1>
-          <p class="mt-2 text-base-content/70">
-            View and manage all DHCPv6 lease allocations
-          </p>
-        </div>
-        <.link navigate={~p"/dhcpv6"} class="btn btn-ghost">
-          ← Back to Overview
-        </.link>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-4xl font-bold">DHCPv6 Leases</h1>
+        <p class="mt-2 text-base-content/70">
+          View and manage all DHCPv6 lease allocations
+        </p>
       </div>
-      <!-- Summary Stats -->
-      <div class="stats shadow">
-        <div class="stat">
-          <div class="stat-title">Total Leases</div>
-          <div class="stat-value text-sm"><%= length(@leases) %></div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Active</div>
-          <div class="stat-value text-sm text-success">
-            <%= Enum.count(@leases, fn l -> l.state == :active end) %>
-          </div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Expired</div>
-          <div class="stat-value text-sm text-warning">
-            <%= Enum.count(@leases, fn l -> l.state == :expired end) %>
-          </div>
+      <.link navigate={~p"/dhcpv6"} class="btn btn-ghost">
+        ← Back to Overview
+      </.link>
+    </div>
+    <!-- Summary Stats -->
+    <div class="stats shadow">
+      <div class="stat">
+        <div class="stat-title">Total Leases</div>
+        <div class="stat-value text-sm">{length(@leases)}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Active</div>
+        <div class="stat-value text-sm text-success">
+          {Enum.count(@leases, fn l -> l.state == :active end)}
         </div>
       </div>
-      <!-- Search and Filters -->
-      <.card>
-        <div class="flex flex-col md:flex-row gap-4">
-          <!-- Search -->
-          <div class="flex-1">
-            <label class="input input-bordered flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 opacity-70"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              <input
-                type="text"
-                class="grow"
-                placeholder="Search by DUID, IPv6, or hostname"
-                value={@search_query}
-                phx-change="search"
-                name="search"
+      <div class="stat">
+        <div class="stat-title">Expired</div>
+        <div class="stat-value text-sm text-warning">
+          {Enum.count(@leases, fn l -> l.state == :expired end)}
+        </div>
+      </div>
+    </div>
+    <!-- Search and Filters -->
+    <.card>
+      <div class="flex flex-col md:flex-row gap-4">
+        <!-- Search -->
+        <div class="flex-1">
+          <label class="input input-bordered flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 opacity-70"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
-            </label>
-          </div>
-          <!-- State Filter -->
-          <div class="form-control w-full md:w-48">
-            <select
-              class="select select-bordered"
-              phx-change="filter_state"
-              name="state"
-              value={@filter_state}
-            >
-              <option value="all">All States</option>
-              <option value="active">Active</option>
-              <option value="offered">Offered</option>
-              <option value="released">Released</option>
-              <option value="expired">Expired</option>
-              <option value="declined">Declined</option>
-            </select>
-          </div>
-          <!-- IA Type Filter -->
-          <div class="form-control w-full md:w-48">
-            <select
-              class="select select-bordered"
-              phx-change="filter_ia_type"
-              name="ia_type"
-              value={@filter_ia_type}
-            >
-              <option value="all">All IA Types</option>
-              <option value="ia_na">IA_NA (Address)</option>
-              <option value="ia_ta">IA_TA (Temporary)</option>
-              <option value="ia_pd">IA_PD (Prefix)</option>
-            </select>
-          </div>
-          <!-- Pool Filter -->
-          <div class="form-control w-full md:w-48">
-            <select
-              class="select select-bordered"
-              phx-change="filter_pool"
-              name="pool"
-              value={@filter_pool}
-            >
-              <option value="all">All Pools</option>
-              <%= for pool <- @pools do %>
-                <option value={pool}><%= pool %></option>
-              <% end %>
-            </select>
-          </div>
+            </svg>
+            <input
+              type="text"
+              class="grow"
+              placeholder="Search by DUID, IPv6, or hostname"
+              value={@search_query}
+              phx-change="search"
+              name="search"
+            />
+          </label>
         </div>
-      </.card>
-      <!-- Leases Table -->
-      <.card>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
+        <!-- State Filter -->
+        <div class="form-control w-full md:w-48">
+          <select
+            class="select select-bordered"
+            phx-change="filter_state"
+            name="state"
+            value={@filter_state}
+          >
+            <option value="all">All States</option>
+            <option value="active">Active</option>
+            <option value="offered">Offered</option>
+            <option value="released">Released</option>
+            <option value="expired">Expired</option>
+            <option value="declined">Declined</option>
+          </select>
+        </div>
+        <!-- IA Type Filter -->
+        <div class="form-control w-full md:w-48">
+          <select
+            class="select select-bordered"
+            phx-change="filter_ia_type"
+            name="ia_type"
+            value={@filter_ia_type}
+          >
+            <option value="all">All IA Types</option>
+            <option value="ia_na">IA_NA (Address)</option>
+            <option value="ia_ta">IA_TA (Temporary)</option>
+            <option value="ia_pd">IA_PD (Prefix)</option>
+          </select>
+        </div>
+        <!-- Pool Filter -->
+        <div class="form-control w-full md:w-48">
+          <select
+            class="select select-bordered"
+            phx-change="filter_pool"
+            name="pool"
+            value={@filter_pool}
+          >
+            <option value="all">All Pools</option>
+            <%= for pool <- @pools do %>
+              <option value={pool}>{pool}</option>
+            <% end %>
+          </select>
+        </div>
+      </div>
+    </.card>
+    <!-- Leases Table -->
+    <.card>
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>DUID</th>
+              <th>IAID</th>
+              <th>IPv6 / Prefix</th>
+              <th>IA Type</th>
+              <th>Pool</th>
+              <th>State</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= if Enum.empty?(@leases) do %>
               <tr>
-                <th>DUID</th>
-                <th>IAID</th>
-                <th>IPv6 / Prefix</th>
-                <th>IA Type</th>
-                <th>Pool</th>
-                <th>State</th>
-                <th>Expires</th>
-                <th>Actions</th>
+                <td colspan="8" class="text-center py-8 text-base-content/70">
+                  No leases found matching your filters
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              <%= if Enum.empty?(@leases) do %>
+            <% else %>
+              <%= for lease <- @leases do %>
                 <tr>
-                  <td colspan="8" class="text-center py-8 text-base-content/70">
-                    No leases found matching your filters
+                  <td>
+                    <code class="text-xs">{format_duid(lease.duid)}</code>
+                  </td>
+                  <td>{lease.iaid}</td>
+                  <td>
+                    <code class="text-xs">
+                      <%= if lease.ia_type == :ia_pd do %>
+                        {format_prefix(lease.delegated_prefix)}
+                      <% else %>
+                        {format_ipv6(lease.ip_address)}
+                      <% end %>
+                    </code>
+                  </td>
+                  <td>
+                    <.badge color={get_ia_type_color(lease.ia_type)} size="sm">
+                      {format_ia_type(lease.ia_type)}
+                    </.badge>
+                  </td>
+                  <td>{lease.pool_name}</td>
+                  <td>
+                    <.badge color={get_state_color(lease.state)} size="sm">
+                      {lease.state}
+                    </.badge>
+                  </td>
+                  <td class="text-xs">
+                    <%= if lease.expires_at do %>
+                      {format_expires(lease.expires_at)}
+                    <% else %>
+                      N/A
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= if lease.state == :active do %>
+                      <button
+                        class="btn btn-xs btn-error"
+                        phx-click="release_lease"
+                        phx-value-duid={format_duid(lease.duid)}
+                        phx-value-iaid={lease.iaid}
+                        data-confirm="Are you sure you want to release this lease?"
+                      >
+                        Release
+                      </button>
+                    <% end %>
                   </td>
                 </tr>
-              <% else %>
-                <%= for lease <- @leases do %>
-                  <tr>
-                    <td>
-                      <code class="text-xs"><%= format_duid(lease.duid) %></code>
-                    </td>
-                    <td><%= lease.iaid %></td>
-                    <td>
-                      <code class="text-xs">
-                        <%= if lease.ia_type == :ia_pd do %>
-                          <%= format_prefix(lease.delegated_prefix) %>
-                        <% else %>
-                          <%= format_ipv6(lease.ip_address) %>
-                        <% end %>
-                      </code>
-                    </td>
-                    <td>
-                      <.badge color={get_ia_type_color(lease.ia_type)} size="sm">
-                        <%= format_ia_type(lease.ia_type) %>
-                      </.badge>
-                    </td>
-                    <td><%= lease.pool_name %></td>
-                    <td>
-                      <.badge color={get_state_color(lease.state)} size="sm">
-                        <%= lease.state %>
-                      </.badge>
-                    </td>
-                    <td class="text-xs">
-                      <%= if lease.expires_at do %>
-                        <%= format_expires(lease.expires_at) %>
-                      <% else %>
-                        N/A
-                      <% end %>
-                    </td>
-                    <td>
-                      <%= if lease.state == :active do %>
-                        <button
-                          class="btn btn-xs btn-error"
-                          phx-click="release_lease"
-                          phx-value-duid={format_duid(lease.duid)}
-                          phx-value-iaid={lease.iaid}
-                          data-confirm="Are you sure you want to release this lease?"
-                        >
-                          Release
-                        </button>
-                      <% end %>
-                    </td>
-                  </tr>
-                <% end %>
               <% end %>
-            </tbody>
-          </table>
-        </div>
-      </.card>
-    </div></Layouts.app>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </.card>
+  </div>
+</Layouts.app>

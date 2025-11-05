@@ -26,11 +26,14 @@ defmodule YellowDog.Console.Layouts do
         <div class="flex-1 overflow-auto">
           <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <.flash_group flash={@flash} />
-            <%= render_slot @inner_block %>
+            {render_slot(@inner_block)}
           </div>
         </div>
       </div>
-      <%= live_render(assigns[:conn] || assigns[:socket], YellowDog.Console.SidebarLive, id: "sidebar", sticky: true) %>
+      {live_render(assigns[:conn] || assigns[:socket], YellowDog.Console.SidebarLive,
+        id: "sidebar",
+        sticky: true
+      )}
     </div>
     """
   end
@@ -74,8 +77,8 @@ defmodule YellowDog.Console.Layouts do
             class="input input-bordered input-sm w-full max-w-xs"
           />
         </div>
-
-        <!-- Theme Toggle -->
+        
+    <!-- Theme Toggle -->
         <label class="swap swap-rotate btn btn-ghost btn-circle">
           <input
             type="checkbox"
@@ -100,8 +103,8 @@ defmodule YellowDog.Console.Layouts do
             <path d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Zm-9.5,6.69A8.14,8.14,0,0,1,7.08,5.22v.27A10.15,10.15,0,0,0,17.22,15.63a9.79,9.79,0,0,0,2.1-.22A8.11,8.11,0,0,1,12.14,19.73Z" />
           </svg>
         </label>
-
-        <!-- Notifications -->
+        
+    <!-- Notifications -->
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-circle">
             <div class="indicator">
@@ -226,8 +229,8 @@ defmodule YellowDog.Console.Layouts do
         />
       </svg>
       <div>
-        <h3 :if={@title} class="font-bold"><%= @title %></h3>
-        <div class="text-sm"><%= msg %></div>
+        <h3 :if={@title} class="font-bold">{@title}</h3>
+        <div class="text-sm">{msg}</div>
       </div>
     </div>
     """

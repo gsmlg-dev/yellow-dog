@@ -80,11 +80,14 @@ defmodule YellowDog.Console.CoreComponents do
   def stat(assigns) do
     ~H"""
     <div class={["stat", @class]}>
-      <div class="stat-title"><%= @title %></div>
-      <div class="stat-value"><%= @value %></div>
-      <div :if={@desc} class="stat-desc"><%= @desc %></div>
-      <div :if={@trend} class={["stat-desc", @trend == "up" && "text-success", @trend == "down" && "text-error"]}>
-        <%= @trend_value %>
+      <div class="stat-title">{@title}</div>
+      <div class="stat-value">{@value}</div>
+      <div :if={@desc} class="stat-desc">{@desc}</div>
+      <div
+        :if={@trend}
+        class={["stat-desc", @trend == "up" && "text-success", @trend == "down" && "text-error"]}
+      >
+        {@trend_value}
       </div>
     </div>
     """
@@ -127,7 +130,7 @@ defmodule YellowDog.Console.CoreComponents do
       @outline && "badge-outline",
       @class
     ]}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </span>
     """
   end
@@ -159,10 +162,10 @@ defmodule YellowDog.Console.CoreComponents do
         <img src={@image} alt={@title} />
       </figure>
       <div class="card-body">
-        <h2 :if={@title} class="card-title"><%= @title %></h2>
-        <%= render_slot(@inner_block) %>
+        <h2 :if={@title} class="card-title">{@title}</h2>
+        {render_slot(@inner_block)}
         <div :if={@actions != []} class="card-actions justify-end">
-          <%= render_slot(@actions) %>
+          {render_slot(@actions)}
         </div>
       </div>
     </div>
@@ -199,10 +202,10 @@ defmodule YellowDog.Console.CoreComponents do
       phx-remove={hide_modal(@id)}
     >
       <div class="modal-box">
-        <h3 :if={@title} class="font-bold text-lg mb-4"><%= @title %></h3>
-        <%= render_slot(@inner_block) %>
+        <h3 :if={@title} class="font-bold text-lg mb-4">{@title}</h3>
+        {render_slot(@inner_block)}
         <div :if={@actions != []} class="modal-action">
-          <%= render_slot(@actions) %>
+          {render_slot(@actions)}
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">
@@ -251,18 +254,18 @@ defmodule YellowDog.Console.CoreComponents do
       ]}>
         <thead>
           <tr>
-            <th :for={col <- @col} class={col[:class]}><%= col[:label] %></th>
+            <th :for={col <- @col} class={col[:class]}>{col[:label]}</th>
             <th :if={@action != []}>Actions</th>
           </tr>
         </thead>
         <tbody id={@id}>
           <tr :for={row <- @rows} class="hover">
             <td :for={col <- @col} class={col[:class]}>
-              <%= render_slot(col, row) %>
+              {render_slot(col, row)}
             </td>
             <td :if={@action != []}>
               <div class="flex gap-2">
-                <%= render_slot(@action, row) %>
+                {render_slot(@action, row)}
               </div>
             </td>
           </tr>
@@ -359,7 +362,7 @@ defmodule YellowDog.Console.CoreComponents do
       style={@style}
       role="progressbar"
     >
-      <%= if @inner_block != [], do: render_slot(@inner_block), else: "#{@value}%" %>
+      {if @inner_block != [], do: render_slot(@inner_block), else: "#{@value}%"}
     </div>
     """
   end
@@ -419,7 +422,7 @@ defmodule YellowDog.Console.CoreComponents do
           d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
         />
       </svg>
-      <span><%= render_slot(@inner_block) %></span>
+      <span>{render_slot(@inner_block)}</span>
     </div>
     """
   end
@@ -455,7 +458,7 @@ defmodule YellowDog.Console.CoreComponents do
         </span>
       </span>
       <span :if={@label} class="text-sm font-medium">
-        <%= @label %>
+        {@label}
       </span>
     </div>
     """

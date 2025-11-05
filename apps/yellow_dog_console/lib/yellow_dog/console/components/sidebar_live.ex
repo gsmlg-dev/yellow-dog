@@ -2,6 +2,7 @@ defmodule YellowDog.Console.SidebarLive do
   @moduledoc """
   Sidebar navigation LiveView with sticky persistence across navigation.
   """
+  # use Phoenix.LiveView, container: {:aside, id: "left-menu-container"}
   use YellowDog.Console, :live_view
 
   @impl true
@@ -59,13 +60,13 @@ defmodule YellowDog.Console.SidebarLive do
               <span>Services</span>
             </a>
           </li>
-
-          <!-- Services Section -->
+          
+    <!-- Services Section -->
           <li class="menu-title mt-4">
             <span>Services</span>
           </li>
-
-          <!-- DNS -->
+          
+    <!-- DNS -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -94,8 +95,8 @@ defmodule YellowDog.Console.SidebarLive do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv4 -->
+          
+    <!-- DHCPv4 -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -123,8 +124,8 @@ defmodule YellowDog.Console.SidebarLive do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv6 -->
+          
+    <!-- DHCPv6 -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -152,8 +153,8 @@ defmodule YellowDog.Console.SidebarLive do
               </ul>
             </details>
           </li>
-
-          <!-- mDNS -->
+          
+    <!-- mDNS -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -182,8 +183,8 @@ defmodule YellowDog.Console.SidebarLive do
               </ul>
             </details>
           </li>
-
-          <!-- Settings -->
+          
+    <!-- Settings -->
           <li class="menu-title mt-4">
             <span>System</span>
           </li>
