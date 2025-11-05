@@ -268,14 +268,18 @@ defmodule YellowDog.Dns.Query.ForwarderTest do
 
       # Wait for telemetry events
       assert_receive {:telemetry, [:yellow_dog, :dns, :forward, :start], _measurements, metadata}
-      assert metadata.name == "example.com"
-      assert metadata.type == :A
+      # Name is normalized with trailing dot
+      assert metadata.name == "example.com."
+      # Type is normalized to lowercase by ex_dns
+      assert metadata.type == :a
 
       assert_receive {:telemetry, [:yellow_dog, :dns, :forward, :complete], measurements,
                       metadata}
 
-      assert metadata.name == "example.com"
-      assert metadata.type == :A
+      # Name is normalized with trailing dot
+      assert metadata.name == "example.com."
+      # Type is normalized to lowercase by ex_dns
+      assert metadata.type == :a
       assert metadata.result == :error
       assert is_integer(measurements.duration)
 

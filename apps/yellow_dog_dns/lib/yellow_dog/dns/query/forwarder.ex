@@ -288,12 +288,12 @@ defmodule YellowDog.Dns.Query.Forwarder do
          timeout_ms,
          max_retries,
          opts,
-         last_error
+         _last_error
        ) do
     case remaining do
       [] ->
-        # No more forwarders, return last error
-        last_error
+        # No more forwarders, all have failed
+        {:error, :all_forwarders_failed}
 
       _ ->
         # Try next forwarder
@@ -408,25 +408,30 @@ defmodule YellowDog.Dns.Query.Forwarder do
       {:ok, socket} ->
         try do
           # Send query
-          :ok = :gen_udp.send(socket, ip, port, query_data)
+          case :gen_udp.send(socket, ip, port, query_data) do
+            :ok ->
+              # Receive response with timeout
+              case :gen_udp.recv(socket, 0, timeout_ms) do
+                {:ok, {^ip, ^port, response_data}} ->
+                  {:ok, response_data}
 
-          # Receive response with timeout
-          case :gen_udp.recv(socket, 0, timeout_ms) do
-            {:ok, {^ip, ^port, response_data}} ->
-              {:ok, response_data}
+                {:ok, {other_ip, other_port, _data}} ->
+                  # Unexpected source, ignore
+                  Logger.warning(
+                    "Received response from unexpected source: #{format_ip(other_ip)}:#{other_port}"
+                  )
 
-            {:ok, {other_ip, other_port, _data}} ->
-              # Unexpected source, ignore
-              Logger.warning(
-                "Received response from unexpected source: #{format_ip(other_ip)}:#{other_port}"
-              )
+                  {:error, :unexpected_source}
 
-              {:error, :unexpected_source}
+                {:error, :timeout} ->
+                  {:error, :timeout}
 
-            {:error, :timeout} ->
-              {:error, :timeout}
+                {:error, reason} ->
+                  {:error, reason}
+              end
 
             {:error, reason} ->
+              # Send failed (e.g., :eafnosupport for IPv6 on IPv4-only systems)
               {:error, reason}
           end
         after
@@ -489,6 +494,10 @@ defmodule YellowDog.Dns.Query.Forwarder do
       error ->
         Logger.error("Failed to decode DNS response: #{inspect(error)}")
         {:error, :decode_failed}
+    catch
+      :throw, error ->
+        Logger.error("Failed to parse DNS response: #{inspect(error)}")
+        {:error, :parse_failed}
     end
   end
 
