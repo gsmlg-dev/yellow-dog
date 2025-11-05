@@ -6,6 +6,8 @@ let
 in
 {
   env.GREET = "YellowDog";
+  env.TAILWINDCSS_BIN = "${pkgs-stable.tailwindcss_4}/bin/tailwindcss";
+  env.BUN_BIN = "${pkgs-stable.bun}/bin/bun";
 
   packages = [
     pkgs-stable.git

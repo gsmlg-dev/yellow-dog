@@ -140,3 +140,20 @@ config_to_load =
 
 # Store config file path in application config (the actual TOML reading will be done in the application)
 config :yellow_dog, :config_file_path, config_to_load
+
+# Configure Tailwind CSS binary path from environment variable
+if tailwind_bin = System.get_env("TAILWINDCSS_BIN") do
+  config :tailwind,
+    version: "4.1.11",
+    yellow_dog_console: [
+      args: ~w(
+        --input=assets/css/app.css
+        --output=priv/static/assets/app.css
+      ),
+      cd: Path.expand("../apps/yellow_dog_console", __DIR__)
+    ],
+    path: tailwind_bin
+end
+
+# Note: BUN_BIN environment variable is checked directly in dev.exs
+# No runtime configuration needed for Bun since we call it directly (not via Hex package)

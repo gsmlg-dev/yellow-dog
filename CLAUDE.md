@@ -152,8 +152,13 @@ nix build .#docker     # Build Docker image
 # Build web console assets
 cd apps/yellow_dog_console
 mix setup              # Install dependencies and setup assets
-mix assets.build       # Build assets (tailwind + esbuild)
+mix assets.build       # Build assets (tailwind + bun)
 mix assets.deploy      # Build minified assets for production
+
+# Or use Bun directly
+bun run build          # Development build with sourcemaps
+bun run build:prod     # Production build (minified)
+bun run watch          # Watch mode for development
 ```
 
 ### Clean Build
@@ -301,7 +306,7 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
 **YellowDogConsole (Web Console)**
 - **Location**: `apps/yellow_dog_console/`
 - **Purpose**: Phoenix LiveView-based web console for management and monitoring
-- **Dependencies**: `phoenix`, `phoenix_live_dashboard`, `bandit`, `telemetry_metrics`, `gettext`, DaisyUI 5.0.35, Tailwind CSS 4.1.7
+- **Dependencies**: `phoenix`, `phoenix_live_dashboard`, `bandit`, `telemetry_metrics`, `gettext`, DaisyUI 5.0.35, Tailwind CSS 4.1.11, Bun (JavaScript bundler)
 - **Directory Structure**: `apps/yellow_dog_console/lib/yellow_dog/console/`
 - **Key Modules**:
   - `YellowDog.Console.Application` - Web application supervisor
@@ -325,6 +330,42 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
   - Modal forms for service configuration
   - Phoenix 1.8 function component architecture
 - **Status**: Production-ready with full UI transformation
+
+### Web Console Asset Building
+
+The web console uses **Bun** for JavaScript bundling (migrated from esbuild):
+
+**Build System:**
+- JavaScript assets are built using Bun (fast, all-in-one JavaScript runtime)
+- Phoenix dependencies (phoenix, phoenix_html, phoenix_live_view) are symlinked from `deps/` to `node_modules/`
+- Build outputs go to `priv/static/assets/`
+- Development builds include sourcemaps for debugging
+- Production builds are minified and optimized
+
+**Key Files:**
+- `package.json` - Bun build scripts and configuration
+- `bunfig.toml` - Bun-specific configuration
+- `node_modules/` - Symlinks to Phoenix deps (auto-created by `mix assets.setup`)
+- `assets/js/app.js` - Entry point for JavaScript bundle
+
+**Build Commands:**
+```bash
+# From apps/yellow_dog_console
+bun run build       # Development: 255KB with sourcemaps
+bun run build:prod  # Production: 136KB minified
+bun run watch       # Watch mode with hot reload
+
+# Via Mix aliases (from project root)
+mix assets.setup    # Create symlinks to Phoenix deps
+mix assets.build    # Tailwind + Bun build
+mix assets.deploy   # Production build + phx.digest
+```
+
+**How It Works:**
+1. `mix assets.setup` creates `node_modules/` with symlinks to Phoenix packages in `deps/`
+2. Bun resolves imports from symlinked packages (no npm install needed)
+3. Assets are bundled as ESM modules targeting modern browsers
+4. Phoenix serves built assets from `priv/static/assets/`
 
 ### Web Console Development Patterns
 
@@ -747,7 +788,7 @@ The project uses several tools for maintaining code quality:
 - **phoenix_live_dashboard**: LiveView dashboard for monitoring (~> 0.8.3)
 - **bandit**: HTTP server (~> 1.5)
 - **telemetry_metrics**: Metrics aggregation (~> 1.0)
-- **esbuild**: JavaScript bundler (dev only, ~> 0.10)
+- **bun**: JavaScript bundler and runtime (for asset building)
 - **tailwind**: CSS framework (dev only, ~> 0.3)
 - **heroicons**: Icon library (from GitHub)
 - **swoosh**: Email composition library (~> 1.16)

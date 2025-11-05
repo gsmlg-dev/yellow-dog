@@ -25,23 +25,26 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   pubsub_server: YellowDog.Console.PubSub,
   live_view: [signing_salt: "yellow_dog_console_secret"]
 
-# Configure esbuild (the version is required)
-config :esbuild,
-  version: "0.25.4",
-  yellow_dog_console: [
-    args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../apps/yellow_dog_console/assets", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
-
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.7",
+  version: "4.1.11",
   yellow_dog_console: [
     args: ~w(
       --input=assets/css/app.css
       --output=priv/static/assets/app.css
+    ),
+    cd: Path.expand("../apps/yellow_dog_console", __DIR__)
+  ]
+
+# Configure bun (the version is required)
+config :bun,
+  version: "1.2.2",
+  yellow_dog_console: [
+    args: ~w(
+      build assets/js/app.js
+      --outdir=priv/static/assets
+      --target=browser
+      --sourcemap=external
     ),
     cd: Path.expand("../apps/yellow_dog_console", __DIR__)
   ]

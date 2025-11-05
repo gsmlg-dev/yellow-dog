@@ -47,8 +47,8 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_live_view, "~> 1.0"},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:bun, "~> 1.3", runtime: Mix.env() == :dev},
       {:heroicons, "~> 0.5.6"},
       {:hackney, "~> 1.9"},
       {:req, "~> 0.5"},
@@ -78,11 +78,18 @@ defmodule YellowDog.Console.MixProject do
     [
       lint: ["credo --strict", "dialyzer"],
       setup: ["deps.get", "assets.setup", "assets.build"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind yellow_dog_console", "esbuild yellow_dog_console"],
+      "assets.setup": [
+        "tailwind.install --if-missing",
+        "bun.install --if-missing",
+        "cmd mkdir -p apps/yellow_dog_console/node_modules",
+        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix phoenix 2>/dev/null || true\"",
+        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix_html phoenix_html 2>/dev/null || true\"",
+        "cmd --cd apps/yellow_dog_console/node_modules bash -c \"ln -sf ../../../deps/phoenix_live_view phoenix_live_view 2>/dev/null || true\""
+      ],
+      "assets.build": ["compile", "tailwind yellow_dog_console", "bun yellow_dog_console"],
       "assets.deploy": [
         "tailwind yellow_dog_console --minify",
-        "esbuild yellow_dog_console --minify",
+        "bun yellow_dog_console --minify",
         "phx.digest"
       ],
       precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]

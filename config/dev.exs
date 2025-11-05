@@ -15,7 +15,11 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   debug_errors: true,
   secret_key_base: "jQkwCvzZR5mEffvg07aPkTgiQe3cEZGRwG7zxPMAM9avriVmgUbX32zbISUWmQmJ",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:yellow_dog_console, ~w(--sourcemap=inline --watch)]},
+    bun: {
+      System.get_env("BUN_BIN") || System.find_executable("bun"),
+      ~w(run watch),
+      cd: Path.expand("../apps/yellow_dog_console", __DIR__)
+    },
     tailwind: {Tailwind, :install_and_run, [:yellow_dog_console, ~w(--watch)]}
   ]
 
@@ -80,7 +84,11 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
   debug_errors: true,
   secret_key_base: "xsqEOmOqmfV082AmjacS5DWwWUPmGhzmBaRFKrW0swiqprhSDd0qU39W6GkVZBCX",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:yellow_dog_console, ~w(--sourcemap=inline --watch)]},
+    bun: {
+      System.get_env("BUN_BIN") || System.find_executable("bun"),
+      ~w(run watch),
+      cd: Path.expand("../apps/yellow_dog_console", __DIR__)
+    },
     tailwind: {Tailwind, :install_and_run, [:yellow_dog_console, ~w(--watch)]}
   ]
 
