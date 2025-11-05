@@ -13,6 +13,7 @@ defmodule YellowDog.Dhcpv4.IntegrationTest do
   alias YellowDog.Dhcpv4.{LeaseStorage, Supervisor}
 
   @moduletag :integration
+  @moduletag :privileged_port
   @moduletag timeout: 30_000
 
   # Test configuration
