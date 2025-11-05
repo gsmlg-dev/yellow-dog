@@ -1,8 +1,13 @@
 defmodule YellowDog.Console.SidebarLive do
   @moduledoc """
-  Sidebar navigation LiveComponent with sticky positioning.
+  Sidebar navigation LiveView with sticky persistence across navigation.
   """
-  use YellowDog.Console, :live_component
+  use YellowDog.Console, :live_view
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, socket, layout: false}
+  end
 
   @impl true
   def render(assigns) do

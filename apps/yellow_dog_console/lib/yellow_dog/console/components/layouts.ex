@@ -30,7 +30,7 @@ defmodule YellowDog.Console.Layouts do
           </div>
         </div>
       </div>
-      <.live_component module={YellowDog.Console.SidebarLive} id="sidebar" />
+      <%= live_render(assigns[:conn] || assigns[:socket], YellowDog.Console.SidebarLive, id: "sidebar", sticky: true) %>
     </div>
     """
   end
