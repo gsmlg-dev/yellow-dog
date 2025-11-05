@@ -39,8 +39,7 @@ defmodule YellowDog.Console do
   def controller do
     quote do
       use Phoenix.Controller,
-        formats: [:html, :json],
-        layouts: [html: YellowDog.Console.Layouts]
+        formats: [:html, :json]
 
       import Plug.Conn
       import YellowDog.Console.Gettext
@@ -62,8 +61,7 @@ defmodule YellowDog.Console do
 
   def live_view do
     quote do
-      use Phoenix.LiveView,
-        layout: {YellowDog.Console.Layouts, :app}
+      use Phoenix.LiveView
 
       unquote(html_helpers())
     end
@@ -87,6 +85,9 @@ defmodule YellowDog.Console do
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
+
+      # Layouts for easy access in templates
+      alias YellowDog.Console.Layouts
 
       # Verified routes for ~p sigil
       unquote(verified_routes())

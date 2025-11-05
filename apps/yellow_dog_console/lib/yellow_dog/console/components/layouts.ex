@@ -20,7 +20,7 @@ defmodule YellowDog.Console.Layouts do
     ~H"""
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <.flash_group flash={@flash} />
-      <%= @inner_content %>
+      <%= render_slot @inner_block %>
     </div>
     """
   end
