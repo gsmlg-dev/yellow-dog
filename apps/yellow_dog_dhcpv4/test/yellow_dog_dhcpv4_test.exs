@@ -1,6 +1,7 @@
 defmodule YellowDog.Dhcpv4Test do
   use ExUnit.Case
 
+  @tag :privileged_port
   test "DHCPv4 supervisor can start and stop" do
     # Start the DHCPv4 supervisor directly with test configuration
     config = [

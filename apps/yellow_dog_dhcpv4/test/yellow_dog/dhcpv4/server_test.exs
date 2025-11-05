@@ -6,6 +6,7 @@ defmodule YellowDog.Dhcpv4.ServerTest do
   import ExUnit.CaptureLog
 
   describe "start_link/1" do
+    @tag :privileged_port
     test "starts server with default configuration" do
       # Test that server can start with minimal config
       log =
