@@ -2,7 +2,7 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Mdns.ServiceRegistry
-  alias DNS.Question
+  alias DNS.Message.Question
 
   setup do
     # Start the registry for each test
