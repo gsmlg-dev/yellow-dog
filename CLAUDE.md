@@ -205,6 +205,7 @@ This is an Elixir umbrella project with 10 applications. The infrastructure libr
 - **Purpose**: DNS protocol handling, resource records, and zone management
 - **Key Modules**: `DNS.Message`, `DNS.Zone`, `DNS.ResourceRecordType`, `DNS.Parameter` protocol
 - **Features**: Complete DNS message parsing, zone management, 20+ record types, DNSSEC support
+- **Important**: Use `DNS.to_iodata/1` for serialization (not `DNS.Message.to_iodata/1`)
 
 **ex_dhcp (DHCP Protocol Library)**
 - **Location**: `apps/ex_dhcp/`
@@ -374,7 +375,8 @@ The web console follows Phoenix 1.8 best practices with DaisyUI for UI component
 **Component Architecture:**
 - Use `use YellowDog.Console, :html` for function components
 - Use `use YellowDog.Console, :live_view` for LiveView modules
-- All layouts are function components (not embed_templates)
+- Phoenix 1.8 layout system: Single `root.html.heex` template in `layouts/` directory, loaded via `embed_templates "layouts/*"` in `layouts.ex`
+- Function components (app, navbar, sidebar, flash) defined in `layouts.ex`
 - Components defined in `YellowDog.Console.CoreComponents` are automatically imported
 
 **Available DaisyUI Components:**
