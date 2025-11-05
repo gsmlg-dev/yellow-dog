@@ -1,14 +1,8 @@
 defmodule YellowDog.Console.SidebarLive do
   @moduledoc """
-  Sidebar navigation LiveView with sticky persistence across navigation.
+  Sidebar navigation LiveComponent with CSS sticky positioning.
   """
-  # use Phoenix.LiveView, container: {:aside, id: "left-menu-container"}
-  use YellowDog.Console, :live_view
-
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok, socket, layout: false}
-  end
+  use YellowDog.Console, :live_component
 
   @impl true
   def render(assigns) do
