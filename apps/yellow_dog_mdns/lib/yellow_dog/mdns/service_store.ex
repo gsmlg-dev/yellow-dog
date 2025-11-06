@@ -312,50 +312,10 @@ defmodule YellowDog.Mdns.ServiceStore do
     end
   end
 
-  defp format_services(services, :toml) do
-    # Build TOML structure
-    toml_services =
-      Enum.map(services, fn service ->
-        base = %{
-          "name" => service.name,
-          "type" => service.type,
-          "port" => service.port,
-          "enabled" => Map.get(service, :enabled, true)
-        }
-
-        base =
-          if service[:host] do
-            Map.put(base, "host", service.host)
-          else
-            base
-          end
-
-        base =
-          if service[:txt] && map_size(service.txt) > 0 do
-            Map.put(base, "txt", service.txt)
-          else
-            base
-          end
-
-        base =
-          if service[:addresses] && length(service.addresses) > 0 do
-            Map.put(base, "addresses", %{
-              "ipv4" => Enum.filter(service.addresses, &is_valid_ipv4?/1),
-              "ipv6" => Enum.filter(service.addresses, &is_valid_ipv6?/1)
-            })
-          else
-            base
-          end
-
-        base
-      end)
-
-    toml_data = %{"service" => toml_services}
-
-    case Toml.encode(toml_data) do
-      {:ok, content} -> {:ok, content}
-      error -> error
-    end
+  defp format_services(_services, :toml) do
+    # The toml library (v0.7) is decode-only and does not support encoding
+    # Services should be edited manually in TOML files or use JSON format for programmatic saves
+    {:error, :toml_encoding_not_supported}
   end
 
   defp format_services(services, :json) do

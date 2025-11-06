@@ -125,11 +125,8 @@ defmodule YellowDog.Mdns.FileWatcher do
   end
 
   @impl true
-  def terminate(_reason, state) do
-    if state.watcher_pid do
-      FileSystem.stop(state.watcher_pid)
-    end
-
+  def terminate(_reason, _state) do
+    # FileSystem process cleanup is handled automatically
     :ok
   end
 

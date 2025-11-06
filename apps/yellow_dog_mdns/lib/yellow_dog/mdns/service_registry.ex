@@ -40,8 +40,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   # Default TTLs per RFC 6762
   @default_service_ttl 4500
   # 75 minutes
-  @default_host_ttl 120
-  # 2 minutes
 
   # Client API
 
@@ -530,10 +528,21 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   end
 
   defp notify_service_change(event, service_id) do
-    Phoenix.PubSub.broadcast(
-      YellowDog.Console.PubSub,
-      "mdns:services",
-      {event, service_id}
-    )
+    # Notify web console if available
+    case Process.whereis(YellowDog.Console.PubSub) do
+      nil ->
+        :ok
+
+      _pid ->
+        try do
+          apply(Phoenix.PubSub, :broadcast, [
+            YellowDog.Console.PubSub,
+            "mdns:services",
+            {event, service_id}
+          ])
+        rescue
+          _ -> :ok
+        end
+    end
   end
 end

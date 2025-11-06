@@ -74,7 +74,7 @@ defmodule YellowDog.Console.Layouts do
             class="input input-bordered input-sm w-full max-w-xs"
           />
         </div>
-
+        
     <!-- Theme Toggle -->
         <label class="swap swap-rotate btn btn-ghost btn-circle">
           <input
@@ -100,7 +100,7 @@ defmodule YellowDog.Console.Layouts do
             <path d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Zm-9.5,6.69A8.14,8.14,0,0,1,7.08,5.22v.27A10.15,10.15,0,0,0,17.22,15.63a9.79,9.79,0,0,0,2.1-.22A8.11,8.11,0,0,1,12.14,19.73Z" />
           </svg>
         </label>
-
+        
     <!-- Notifications -->
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-circle">
@@ -187,13 +187,13 @@ defmodule YellowDog.Console.Layouts do
               <span>Services</span>
             </a>
           </li>
-
-          <!-- Services Section -->
+          
+    <!-- Services Section -->
           <li class="menu-title mt-4">
             <span>Services</span>
           </li>
-
-          <!-- DNS -->
+          
+    <!-- DNS -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -222,8 +222,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv4 -->
+          
+    <!-- DHCPv4 -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -251,8 +251,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- DHCPv6 -->
+          
+    <!-- DHCPv6 -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -280,8 +280,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- mDNS -->
+          
+    <!-- mDNS -->
           <li>
             <details open>
               <summary class="gap-3">
@@ -310,8 +310,8 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
-          <!-- Settings -->
+          
+    <!-- Settings -->
           <li class="menu-title mt-4">
             <span>System</span>
           </li>

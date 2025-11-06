@@ -596,34 +596,6 @@ defmodule YellowDog.Dns.Handler.UDP do
     []
   end
 
-  defp find_matching_zone_name(query_name) do
-    # Get list of loaded zones from Zone.Manager
-    case ZoneManager.list_zones() do
-      {:ok, zones} ->
-        # Find the most specific zone that matches the query name
-        normalized_query = String.downcase(query_name) |> String.trim_trailing(".")
-
-        matching_zone =
-          zones
-          |> Enum.filter(fn zone_name ->
-            normalized_zone = String.downcase(zone_name) |> String.trim_trailing(".")
-
-            normalized_query == normalized_zone or
-              String.ends_with?(normalized_query, "." <> normalized_zone)
-          end)
-          |> Enum.sort_by(&(-String.length(&1)))
-          |> List.first()
-
-        case matching_zone do
-          nil -> {:error, :not_found}
-          zone_name -> {:ok, zone_name}
-        end
-
-      {:error, _} ->
-        {:error, :not_found}
-    end
-  end
-
   defp convert_resolver_records_to_message_records(records) do
     # Convert YellowDog.Dns.Zone.Record to DNS.Message.Record format
     Enum.map(records, fn record ->

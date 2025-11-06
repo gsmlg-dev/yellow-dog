@@ -25,7 +25,6 @@ defmodule YellowDog.Dns.Query.Resolver do
   alias YellowDog.Dns.Query.Recursive
   alias YellowDog.Dns.Query.Delegation
   alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
-  alias YellowDog.Dns.RPZ
 
   @type resolve_result ::
           {:ok, [Zone.Record.t()], [Zone.Record.t()]}

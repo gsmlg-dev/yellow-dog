@@ -143,7 +143,7 @@ defmodule YellowDog.Dns.Query.UpstreamPool do
       [] ->
         {:error, :no_servers_available}
 
-      [server_state | _] = available ->
+      [_server_state | _] = available ->
         selected = select_server(available, strategy, pool.current_index)
         new_index = update_index(pool.servers, selected, pool.current_index, strategy)
 

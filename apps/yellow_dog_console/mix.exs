@@ -56,7 +56,11 @@ defmodule YellowDog.Console.MixProject do
       {:gettext, "~> 0.20"},
 
       # YellowDog dependencies
+      {:yellow_dog, in_umbrella: true},
       {:yellow_dog_mdns, in_umbrella: true},
+      {:yellow_dog_dhcpv4, in_umbrella: true},
+      {:yellow_dog_dhcpv6, in_umbrella: true},
+      {:yellow_dog_dns, in_umbrella: true},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -387,7 +387,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
       {:ok, response_data} ->
         # Decode and check for truncation
         case decode_response(response_data, expected_id) do
-          {:ok, records, truncated: true} ->
+          {:ok, _records, truncated: true} ->
             # Response was truncated, retry over TCP
             Logger.debug("Response truncated, retrying over TCP for #{format_ip(ip)}")
 
@@ -409,7 +409,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
     end
   end
 
-  defp query_upstream_udp(ip, port, query_data, expected_id, timeout_ms) do
+  defp query_upstream_udp(ip, port, query_data, _expected_id, timeout_ms) do
     # Open UDP socket
     case :gen_udp.open(0, [:binary, active: false]) do
       {:ok, socket} ->

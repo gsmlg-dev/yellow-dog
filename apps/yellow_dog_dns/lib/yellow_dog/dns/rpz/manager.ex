@@ -32,7 +32,6 @@ defmodule YellowDog.Dns.RPZ.Manager do
   require Logger
 
   alias YellowDog.Dns.RPZ
-  alias YellowDog.Dns.Zone.Manager, as: ZoneManager
 
   defmodule State do
     @moduledoc false

@@ -41,8 +41,6 @@ defmodule YellowDog.Dhcpv6.Handler do
   @option_domain_list 24
   @option_ia_pd 25
   @option_ia_prefix 26
-  @option_ntp_server 56
-  @option_info_refresh_time 32
 
   @doc """
   Handles incoming DHCPv6 data from clients.
@@ -202,14 +200,8 @@ defmodule YellowDog.Dhcpv6.Handler do
         # Handle IA_PD if present
         leases =
           if ia_pd do
-            case allocate_prefix_delegation(duid, ia_pd.iaid) do
-              {:ok, pd_lease} ->
-                [pd_lease | leases]
-
-              {:error, reason} ->
-                Logger.error("Failed to allocate IA_PD lease: #{inspect(reason)}")
-                leases
-            end
+            {:ok, pd_lease} = allocate_prefix_delegation(duid, ia_pd.iaid)
+            [pd_lease | leases]
           else
             leases
           end
@@ -718,24 +710,6 @@ defmodule YellowDog.Dhcpv6.Handler do
     %DHCPv6.Message.Option{
       option_code: @option_ia_pd,
       option_data: ia_pd_data
-    }
-  end
-
-  # Reserved for future use - NTP server support
-  defp _create_ntp_servers_option(ntp_servers) when is_list(ntp_servers) do
-    ntp_data = Enum.map_join(ntp_servers, &ipv6_to_binary/1)
-
-    %DHCPv6.Message.Option{
-      option_code: @option_ntp_server,
-      option_data: ntp_data
-    }
-  end
-
-  # Reserved for future use - Information refresh time support
-  defp _create_info_refresh_time_option(seconds) when is_integer(seconds) do
-    %DHCPv6.Message.Option{
-      option_code: @option_info_refresh_time,
-      option_data: <<seconds::32>>
     }
   end
 
