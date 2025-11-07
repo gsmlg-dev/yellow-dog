@@ -800,3 +800,4 @@ The project uses several tools for maintaining code quality:
 - **credo**: Code linting (development and test only)
 - **machete**: Testing utilities (development and test only)
 - **dialyxir**: Static type analysis (~> 1.0)
+- Never disable any job in ci.yml

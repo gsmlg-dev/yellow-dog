@@ -331,9 +331,12 @@ defmodule YellowDog.Mdns.ServiceStore do
 
     lines =
       if service[:txt] && map_size(service.txt) > 0 do
-        txt_lines = ["", "  [service.txt]"] ++ Enum.map(service.txt, fn {k, v} ->
-          "  #{k} = #{encode_toml_string(v)}"
-        end)
+        txt_lines =
+          ["", "  [service.txt]"] ++
+            Enum.map(service.txt, fn {k, v} ->
+              "  #{k} = #{encode_toml_string(v)}"
+            end)
+
         lines ++ txt_lines
       else
         lines
@@ -345,9 +348,21 @@ defmodule YellowDog.Mdns.ServiceStore do
         ipv6 = Enum.filter(service.addresses, &is_valid_ipv6?/1)
 
         addr_lines = []
-        addr_lines = if Enum.any?(ipv4) || Enum.any?(ipv6), do: addr_lines ++ ["", "  [service.addresses]"], else: addr_lines
-        addr_lines = if Enum.any?(ipv4), do: addr_lines ++ ["  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]"], else: addr_lines
-        addr_lines = if Enum.any?(ipv6), do: addr_lines ++ ["  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"], else: addr_lines
+
+        addr_lines =
+          if Enum.any?(ipv4) || Enum.any?(ipv6),
+            do: addr_lines ++ ["", "  [service.addresses]"],
+            else: addr_lines
+
+        addr_lines =
+          if Enum.any?(ipv4),
+            do: addr_lines ++ ["  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]"],
+            else: addr_lines
+
+        addr_lines =
+          if Enum.any?(ipv6),
+            do: addr_lines ++ ["  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"],
+            else: addr_lines
 
         lines ++ addr_lines
       else
