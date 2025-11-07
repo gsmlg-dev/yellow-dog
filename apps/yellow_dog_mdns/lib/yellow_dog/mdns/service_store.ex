@@ -218,20 +218,10 @@ defmodule YellowDog.Mdns.ServiceStore do
 
   defp get_addresses(service) do
     # Try different key formats
-    addresses =
-      Enum.find_value(
-        [
-          Map.get(service, :addresses),
-          Map.get(service, "addresses"),
-          get_nested_addresses(service)
-        ],
-        []
-      )
-
-    case addresses do
-      list when is_list(list) -> list
-      _ -> []
-    end
+    Map.get(service, :addresses) ||
+      Map.get(service, "addresses") ||
+      get_nested_addresses(service) ||
+      []
   end
 
   defp get_nested_addresses(service) do
@@ -312,11 +302,66 @@ defmodule YellowDog.Mdns.ServiceStore do
     end
   end
 
-  defp format_services(_services, :toml) do
-    # The toml library (v0.7) is decode-only and does not support encoding
-    # Services should be edited manually in TOML files or use JSON format for programmatic saves
-    {:error, :toml_encoding_not_supported}
+  defp format_services(services, :toml) do
+    # The toml library (v0.7) is decode-only, so we implement basic TOML encoding
+    # for the limited structure we need (array of tables)
+    toml_content =
+      services
+      |> Enum.map(&service_to_toml/1)
+      |> Enum.join("\n")
+
+    {:ok, toml_content}
   end
+
+  defp service_to_toml(service) do
+    lines = [
+      "[[service]]",
+      "name = #{encode_toml_string(service.name)}",
+      "type = #{encode_toml_string(service.type)}",
+      "port = #{service.port}",
+      "enabled = #{service[:enabled] || true}"
+    ]
+
+    lines =
+      if service[:host] do
+        lines ++ ["host = #{encode_toml_string(service.host)}"]
+      else
+        lines
+      end
+
+    lines =
+      if service[:txt] && map_size(service.txt) > 0 do
+        txt_lines = ["", "  [service.txt]"] ++ Enum.map(service.txt, fn {k, v} ->
+          "  #{k} = #{encode_toml_string(v)}"
+        end)
+        lines ++ txt_lines
+      else
+        lines
+      end
+
+    lines =
+      if service[:addresses] && length(service.addresses) > 0 do
+        ipv4 = Enum.filter(service.addresses, &is_valid_ipv4?/1)
+        ipv6 = Enum.filter(service.addresses, &is_valid_ipv6?/1)
+
+        addr_lines = []
+        addr_lines = if Enum.any?(ipv4) || Enum.any?(ipv6), do: addr_lines ++ ["", "  [service.addresses]"], else: addr_lines
+        addr_lines = if Enum.any?(ipv4), do: addr_lines ++ ["  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]"], else: addr_lines
+        addr_lines = if Enum.any?(ipv6), do: addr_lines ++ ["  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"], else: addr_lines
+
+        lines ++ addr_lines
+      else
+        lines
+      end
+
+    Enum.join(lines, "\n")
+  end
+
+  defp encode_toml_string(value) when is_binary(value) do
+    "\"#{String.replace(value, "\"", "\\\"")}\""
+  end
+
+  defp encode_toml_string(value), do: inspect(value)
 
   defp format_services(services, :json) do
     json_data = %{services: services}
