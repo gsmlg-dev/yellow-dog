@@ -336,11 +336,13 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
     test "can save and load services", %{tmp_dir: tmp_dir} do
       storage_file = Path.join(tmp_dir, "test_services.toml")
 
+      # Stop the default registry started in setup
+      stop_supervised(ServiceRegistry)
+
       # Start registry with custom storage file
       {:ok, _} =
         start_supervised(
-          {ServiceRegistry, [storage_file: storage_file, load_on_start: false, auto_save: false]},
-          id: :persistent_registry
+          {ServiceRegistry, [storage_file: storage_file, load_on_start: false, auto_save: false]}
         )
 
       # Register services

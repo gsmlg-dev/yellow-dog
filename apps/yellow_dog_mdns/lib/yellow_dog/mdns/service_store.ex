@@ -218,17 +218,16 @@ defmodule YellowDog.Mdns.ServiceStore do
 
   defp get_addresses(service) do
     # Try different key formats
-    Map.get(service, :addresses) ||
-      Map.get(service, "addresses") ||
-      get_nested_addresses(service) ||
-      []
+    case Map.get(service, :addresses) || Map.get(service, "addresses") do
+      nil -> []
+      addresses when is_list(addresses) -> addresses
+      addresses when is_map(addresses) -> flatten_addresses(addresses)
+      _ -> []
+    end
   end
 
-  defp get_nested_addresses(service) do
-    # Handle nested structure like {addresses: {ipv4: [...], ipv6: [...]}}
-    addresses_map =
-      Map.get(service, :addresses) || Map.get(service, "addresses") || %{}
-
+  defp flatten_addresses(addresses_map) when is_map(addresses_map) do
+    # Handle nested structure like %{ipv4: [...], ipv6: [...]}
     ipv4 = Map.get(addresses_map, :ipv4) || Map.get(addresses_map, "ipv4") || []
     ipv6 = Map.get(addresses_map, :ipv6) || Map.get(addresses_map, "ipv6") || []
 
@@ -272,7 +271,7 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp validate_addresses(addresses) when is_list(addresses) do
     invalid =
       Enum.reject(addresses, fn addr ->
-        is_binary(addr) and (is_valid_ipv4?(addr) or is_valid_ipv6?(addr))
+        is_binary(addr) and (valid_ipv4?(addr) or valid_ipv6?(addr))
       end)
 
     if Enum.empty?(invalid) do
@@ -288,14 +287,14 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp validate_txt_records(txt) when is_map(txt), do: :ok
   defp validate_txt_records(_), do: {:error, "TXT records must be a map"}
 
-  defp is_valid_ipv4?(addr) do
+  defp valid_ipv4?(addr) do
     case :inet.parse_address(String.to_charlist(addr)) do
       {:ok, {_, _, _, _}} -> true
       _ -> false
     end
   end
 
-  defp is_valid_ipv6?(addr) do
+  defp valid_ipv6?(addr) do
     case :inet.parse_address(String.to_charlist(addr)) do
       {:ok, {_, _, _, _, _, _, _, _}} -> true
       _ -> false
@@ -311,6 +310,15 @@ defmodule YellowDog.Mdns.ServiceStore do
       |> Enum.join("\n")
 
     {:ok, toml_content}
+  end
+
+  defp format_services(services, :json) do
+    json_data = %{services: services}
+
+    case Jason.encode(json_data, pretty: true) do
+      {:ok, content} -> {:ok, content}
+      error -> error
+    end
   end
 
   defp service_to_toml(service) do
@@ -344,8 +352,8 @@ defmodule YellowDog.Mdns.ServiceStore do
 
     lines =
       if service[:addresses] && length(service.addresses) > 0 do
-        ipv4 = Enum.filter(service.addresses, &is_valid_ipv4?/1)
-        ipv6 = Enum.filter(service.addresses, &is_valid_ipv6?/1)
+        ipv4 = Enum.filter(service.addresses, &valid_ipv4?/1)
+        ipv6 = Enum.filter(service.addresses, &valid_ipv6?/1)
 
         addr_lines = []
 
@@ -377,15 +385,6 @@ defmodule YellowDog.Mdns.ServiceStore do
   end
 
   defp encode_toml_string(value), do: inspect(value)
-
-  defp format_services(services, :json) do
-    json_data = %{services: services}
-
-    case Jason.encode(json_data, pretty: true) do
-      {:ok, content} -> {:ok, content}
-      error -> error
-    end
-  end
 
   defp ensure_directory(file_path) do
     dir = Path.dirname(file_path)

@@ -94,7 +94,7 @@ defmodule YellowDog.Mdns.Server do
       handler_module: handler_module,
       transport_options: transport_options,
       # Pass mode to handler
-      handler_state: %{mode: mode},
+      handler_options: %{mode: mode},
       # mDNS-specific configuration
       read_timeout: Keyword.get(opts, :read_timeout, 5000),
       # Single listener for broadcast mode
@@ -126,6 +126,7 @@ defmodule YellowDog.Mdns.Server do
       port: @mdns_port,
       transport_module: Abyss.Transport.UDP.Broadcast,
       handler_module: YellowDog.Mdns.Handler,
+      handler_options: %{mode: :hybrid},
       transport_options: [
         ip: {0, 0, 0, 0},
         multicast_if: {0, 0, 0, 0},
