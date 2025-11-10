@@ -1,3 +1,36 @@
+<!--
+Sync Impact Report - Constitution v1.1.0
+========================================
+Version Change: 1.0.0 → 1.1.0 (MINOR bump)
+
+Reason: Added new mandatory testing principle for infrastructure libraries requiring 100% unit test coverage.
+
+Modified Principles:
+- Testing Standards: Enhanced with infrastructure library requirements
+
+Added Sections:
+- ## Testing Standards > ### Infrastructure Library Test Coverage (NEW)
+  - MANDATORY 100% unit test coverage for abyss, ex_dns, ex_dhcp
+
+Changes Summary:
+- Added explicit requirement for 100% unit test pass rate in infrastructure libraries
+- Clarified that core YellowDog apps have target coverage (not mandatory 100%)
+- Specified rationale: infrastructure libs are dependencies for multiple protocol apps
+
+Templates Requiring Updates:
+⚠ .specify/templates/plan-template.md - Does not exist yet
+⚠ .specify/templates/spec-template.md - Does not exist yet
+⚠ .specify/templates/tasks-template.md - Does not exist yet
+⚠ .specify/templates/commands/*.md - Does not exist yet
+
+Follow-up TODOs:
+- Create template files when speckit workflow is implemented
+- Ensure CI enforces 100% test pass rate for infrastructure libraries
+
+Ratification Date: 2025-11-07 (original)
+Last Amended: 2025-11-10
+-->
+
 # Yellow Dog DNS - Project Constitution
 
 ## Project Overview
@@ -406,9 +439,39 @@ mix dialyzer --halt-exit-status  # CI check
 mix test --exclude privileged_port
 ```
 
-### Test Coverage
+### Infrastructure Library Test Coverage
 
-**TARGET:** Maintain high test coverage for:
+**MANDATORY:** Infrastructure libraries MUST achieve 100% unit test pass rate:
+
+**Scope:** This requirement applies to:
+- `apps/abyss` - UDP server library
+- `apps/ex_dns` - DNS protocol library
+- `apps/ex_dhcp` - DHCP protocol library
+
+**Rationale:** These libraries are critical dependencies for multiple protocol applications. High reliability through comprehensive testing is non-negotiable. Any failing tests indicate bugs that could affect all dependent services.
+
+**Enforcement:**
+```bash
+# All unit tests must pass (exit code 0)
+cd apps/abyss && mix test
+cd apps/ex_dns && mix test
+cd apps/ex_dhcp && mix test
+```
+
+**CI Requirements:**
+- Separate CI job per infrastructure library
+- Exit on first test failure
+- NO test exclusions or skips allowed
+- Integration/slow tests are separate (not subject to 100% requirement)
+
+**Coverage vs Pass Rate:**
+- **Pass Rate (MANDATORY 100%)**: All existing unit tests must pass
+- **Coverage (Target)**: Aim for high coverage but not mandatory 100%
+- Core YellowDog apps have coverage targets (not mandatory 100%)
+
+### Test Coverage Targets
+
+**TARGET:** Maintain high test coverage for core applications:
 - Protocol message parsing/encoding
 - Lease/service management
 - Zone resolution
@@ -621,6 +684,7 @@ devenv shell        # Manual activation
 8. **Create circular dependencies** - Maintain clean dependency tree
 9. **Use deprecated functions** - Keep code up to date
 10. **Ignore telemetry** - All services must emit events
+11. **Commit failing infrastructure library tests** - 100% pass rate required for abyss, ex_dns, ex_dhcp
 
 ## Migration History
 
@@ -646,8 +710,13 @@ This constitution is a living document. Changes require:
 3. **Approval** - Consensus from maintainers
 4. **Documentation** - Update CLAUDE.md accordingly
 
+**Amendment History:**
+- **v1.1.0 (2025-11-10)**: Added mandatory 100% unit test pass rate for infrastructure libraries (abyss, ex_dns, ex_dhcp)
+- **v1.0.0 (2025-11-07)**: Initial constitution ratified
+
 ---
 
-**Last Updated:** 2025-11-07
-**Version:** 1.0.0
+**Ratification Date:** 2025-11-07
+**Last Amended:** 2025-11-10
+**Version:** 1.1.0
 **Maintainers:** Yellow Dog DNS Team
