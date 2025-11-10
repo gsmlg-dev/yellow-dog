@@ -26,14 +26,22 @@ defmodule Mix.Tasks.Dns.FetchRoot do
 
   defp fetch(url) do
     uri = URI.parse(url)
-    headers = [{"User-Agent", @user_agent}, {"Host", uri.host}]
 
-    case Tesla.get(url, headers: headers) do
-      {:ok, %{status: 200, body: data}} ->
-        {:ok, data}
+    headers = %{
+      "User-Agent" => @user_agent,
+      "Host" => uri.host
+    }
 
-      {:ok, %{status: status, body: data}} ->
-        {:error, "fetch error: #{status}: #{data}"}
+    case HTTP.fetch(url, [method: "GET", headers: headers]) |> HTTP.Promise.await() do
+      {:ok, %{ok: true, status: 200} = response} ->
+        case HTTP.Response.text(response) do
+          {:ok, data} -> {:ok, data}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, %{status: status} = response} ->
+        {:ok, body} = HTTP.Response.text(response)
+        {:error, "fetch error: #{status}: #{body}"}
 
       {:error, reason} ->
         {:error, reason}
