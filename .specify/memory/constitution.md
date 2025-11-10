@@ -184,7 +184,7 @@ end
 - ❌ Tesla HTTP client
 - ❌ HTTPoison
 - ❌ Finch
-- ❌ Mint (use via http_fetch)
+- ❌ Mint (directly)
 - ❌ Direct `:httpc` usage
 - ❌ Other HTTP client libraries
 
@@ -194,40 +194,84 @@ end
 - Webhook requests
 - DNS-over-HTTPS (DoH) queries
 - DHCP vendor option retrieval
+- File uploads/downloads
 
-**Implementation Pattern:**
+**Implementation Patterns:**
+
 ```elixir
-# Basic HTTP GET request
-{:ok, response} = HttpFetch.get("https://api.example.com/endpoint")
+# Basic GET request (promise-based)
+{:ok, response} =
+  HTTP.fetch("https://api.example.com/endpoint")
+  |> HTTP.Promise.await()
 
-# With headers and options
-{:ok, response} = HttpFetch.get(
-  "https://api.example.com/data",
-  headers: [{"authorization", "Bearer token"}],
-  timeout: 5000
-)
+# GET with headers and timeout
+{:ok, response} =
+  HTTP.fetch("https://api.example.com/data", [
+    method: "GET",
+    headers: %{"Authorization" => "Bearer token"},
+    options: [timeout: 5000]
+  ])
+  |> HTTP.Promise.await()
 
 # POST with JSON body
-{:ok, response} = HttpFetch.post(
-  "https://api.example.com/resource",
-  Jason.encode!(%{data: "value"}),
-  headers: [{"content-type", "application/json"}]
-)
+{:ok, response} =
+  HTTP.fetch("https://api.example.com/resource", [
+    method: "POST",
+    headers: %{"Content-Type" => "application/json"},
+    body: Jason.encode!(%{data: "value"})
+  ])
+  |> HTTP.Promise.await()
 
-# Handle responses
+# Handle responses using browser-like API
 case response do
-  %{status: 200, body: body} -> {:ok, Jason.decode!(body)}
-  %{status: status} -> {:error, {:http_error, status}}
+  %{ok: true, status: 200} ->
+    {:ok, data} = HTTP.Response.json(response)
+    {:ok, data}
+  %{status: status} ->
+    {:error, {:http_error, status}}
 end
+
+# PUT/DELETE/PATCH
+HTTP.fetch(url, [method: "PUT", body: payload])
+HTTP.fetch(url, [method: "DELETE"])
+HTTP.fetch(url, [method: "PATCH", body: patch_data])
+
+# Form data with file upload
+form = HTTP.FormData.new()
+       |> HTTP.FormData.append_field("name", "value")
+       |> HTTP.FormData.append_file("file", "doc.pdf", File.stream!("doc.pdf"))
+
+HTTP.fetch("https://api.example.com/upload", [
+  method: "POST",
+  body: form
+])
+
+# Unix domain socket (Docker API, systemd)
+HTTP.fetch("http://localhost/containers/json", [
+  unix_socket: "/var/run/docker.sock"
+])
 ```
 
+**Response Methods:**
+- `HTTP.Response.text(response)` - Get response as text string
+- `HTTP.Response.json(response)` - Parse JSON: `{:ok, data} | {:error, reason}`
+- `HTTP.Response.arrayBuffer(response)` - Get raw binary
+- `HTTP.Response.write_to(response, path)` - Save to file
+
+**Advanced Features:**
+- **Request Cancellation**: Use `HTTP.AbortController` for cancellable requests
+- **Promise Chaining**: Use `.then()` for transformations before awaiting
+- **Telemetry**: Automatic `:http_fetch` events for monitoring
+- **Streaming**: Efficient file uploads via streams
+
 **Rationale:**
-- Lightweight, minimal dependencies
-- Built on `:mint` for HTTP/2 support
-- Simple, consistent API
-- Good error handling
-- No adapter complexity like Tesla
-- Lower maintenance overhead
+- **Zero dependencies** - Only OTP built-in modules (`:httpc`, `:ssl`, `:public_key`)
+- **Browser-like API** - Familiar Fetch API pattern (~85% compatibility)
+- **Telemetry built-in** - Automatic request monitoring
+- **Promise-based** - Clean async handling
+- **Unix sockets** - Docker and systemd integration
+- **Lower maintenance** - No adapter complexity like Tesla
+- **OTP native** - Leverages battle-tested `:httpc`
 
 ## Dependency Management
 
