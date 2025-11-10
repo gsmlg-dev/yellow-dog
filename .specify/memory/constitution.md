@@ -1,18 +1,28 @@
 <!--
-Sync Impact Report - Constitution v1.1.0
+Sync Impact Report - Constitution v1.2.0
 ========================================
-Version Change: 1.0.0 → 1.1.0 (MINOR bump)
+Version Change: 1.1.0 → 1.2.0 (MINOR bump)
 
-Reason: Added new mandatory testing principle for infrastructure libraries requiring 100% unit test coverage.
+Reason: Added new mandatory HTTP transport standard requiring :http_fetch for all HTTP/HTTPS requests.
 
 Modified Principles:
-- Testing Standards: Enhanced with infrastructure library requirements
+- Transport Layer Standards: Added HTTP Transport section
+- Prohibited Practices: Updated rule #2 and added rule #12
 
 Added Sections:
-- ## Testing Standards > ### Infrastructure Library Test Coverage (NEW)
-  - MANDATORY 100% unit test coverage for abyss, ex_dns, ex_dhcp
+- ## Transport Layer Standards > ### HTTP Transport (NEW)
+  - MANDATORY :http_fetch for all HTTP requests
+  - Prohibited: Tesla, HTTPoison, Finch, direct :httpc
+  - Includes implementation patterns and rationale
 
 Changes Summary:
+- Added explicit requirement for :http_fetch as the only permitted HTTP client
+- Prohibited Tesla, HTTPoison, Finch, and other HTTP client libraries
+- Provided implementation patterns with examples
+- Updated Prohibited Practices with new HTTP client rule
+- Rationale: Lightweight, consistent API, minimal dependencies, lower maintenance
+
+Previous Changes (v1.1.0):
 - Added explicit requirement for 100% unit test pass rate in infrastructure libraries
 - Clarified that core YellowDog apps have target coverage (not mandatory 100%)
 - Specified rationale: infrastructure libs are dependencies for multiple protocol apps
@@ -24,8 +34,10 @@ Templates Requiring Updates:
 ⚠ .specify/templates/commands/*.md - Does not exist yet
 
 Follow-up TODOs:
-- Create template files when speckit workflow is implemented
-- Ensure CI enforces 100% test pass rate for infrastructure libraries
+- Update CLAUDE.md with HTTP transport standard
+- Add :http_fetch to project dependencies
+- Create migration guide for existing Tesla usage (if any)
+- Ensure CI checks for prohibited HTTP libraries
 
 Ratification Date: 2025-11-07 (original)
 Last Amended: 2025-11-10
@@ -163,6 +175,59 @@ end
 - DNS queries over TCP (for large responses)
 - DNS over TLS (DoT)
 - Connection management and pooling
+
+### HTTP Transport
+
+**MANDATORY RULE:** HTTP/HTTPS requests MUST use `:http_fetch`.
+
+**Prohibited:**
+- ❌ Tesla HTTP client
+- ❌ HTTPoison
+- ❌ Finch
+- ❌ Mint (use via http_fetch)
+- ❌ Direct `:httpc` usage
+- ❌ Other HTTP client libraries
+
+**Required Usage:**
+- External API calls
+- HTTP-based service integrations
+- Webhook requests
+- DNS-over-HTTPS (DoH) queries
+- DHCP vendor option retrieval
+
+**Implementation Pattern:**
+```elixir
+# Basic HTTP GET request
+{:ok, response} = HttpFetch.get("https://api.example.com/endpoint")
+
+# With headers and options
+{:ok, response} = HttpFetch.get(
+  "https://api.example.com/data",
+  headers: [{"authorization", "Bearer token"}],
+  timeout: 5000
+)
+
+# POST with JSON body
+{:ok, response} = HttpFetch.post(
+  "https://api.example.com/resource",
+  Jason.encode!(%{data: "value"}),
+  headers: [{"content-type", "application/json"}]
+)
+
+# Handle responses
+case response do
+  %{status: 200, body: body} -> {:ok, Jason.decode!(body)}
+  %{status: status} -> {:error, {:http_error, status}}
+end
+```
+
+**Rationale:**
+- Lightweight, minimal dependencies
+- Built on `:mint` for HTTP/2 support
+- Simple, consistent API
+- Good error handling
+- No adapter complexity like Tesla
+- Lower maintenance overhead
 
 ## Dependency Management
 
@@ -675,7 +740,7 @@ devenv shell        # Manual activation
 ### ❌ NEVER DO:
 
 1. **Disable CI jobs** - All jobs must remain active
-2. **Use direct socket libraries** - Use Abyss for UDP, :thousand_island for TCP
+2. **Use direct socket libraries** - Use Abyss for UDP, :thousand_island for TCP, :http_fetch for HTTP
 3. **Skip warnings** - Code must compile with `--warnings-as-errors`
 4. **Commit without tests** - New features require tests
 5. **Hardcode configuration** - Use YellowDog.Config
@@ -685,6 +750,7 @@ devenv shell        # Manual activation
 9. **Use deprecated functions** - Keep code up to date
 10. **Ignore telemetry** - All services must emit events
 11. **Commit failing infrastructure library tests** - 100% pass rate required for abyss, ex_dns, ex_dhcp
+12. **Use alternative HTTP clients** - Only :http_fetch is permitted for HTTP requests
 
 ## Migration History
 
@@ -711,6 +777,7 @@ This constitution is a living document. Changes require:
 4. **Documentation** - Update CLAUDE.md accordingly
 
 **Amendment History:**
+- **v1.2.0 (2025-11-10)**: Added mandatory HTTP transport standard requiring :http_fetch for all HTTP requests
 - **v1.1.0 (2025-11-10)**: Added mandatory 100% unit test pass rate for infrastructure libraries (abyss, ex_dns, ex_dhcp)
 - **v1.0.0 (2025-11-07)**: Initial constitution ratified
 
@@ -718,5 +785,5 @@ This constitution is a living document. Changes require:
 
 **Ratification Date:** 2025-11-07
 **Last Amended:** 2025-11-10
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Maintainers:** Yellow Dog DNS Team
