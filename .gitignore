@@ -47,4 +47,7 @@ yellow_dog-*.tar
 .specify/.cache/
 
 
+/apps/yellow_dog_mdns/data/
+
+
 
