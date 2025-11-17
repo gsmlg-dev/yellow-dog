@@ -54,6 +54,9 @@ defmodule YellowDog.Console.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:gettext, "~> 0.20"},
+      {:ecto, "~> 3.12"},
+      {:phoenix_ecto, "~> 4.6"},
+      {:toml, "~> 0.7"},
 
       # YellowDog dependencies
       {:yellow_dog, in_umbrella: true},
@@ -64,7 +67,8 @@ defmodule YellowDog.Console.MixProject do
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:lazy_html, ">= 0.1.0", only: :test}
     ]
   end
 

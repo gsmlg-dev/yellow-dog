@@ -1,0 +1,252 @@
+<div class="container mx-auto px-4 py-6 max-w-7xl">
+  <!-- Page Header -->
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-3xl font-bold">Service Settings</h1>
+      <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+        Configure YellowDog network services
+      </p>
+    </div>
+
+    <div class="flex gap-2 items-center">
+      <!-- Version Info -->
+      <div class="text-xs text-gray-500">
+        <span>Config Version: <%= @version_info.version %></span>
+      </div>
+
+      <!-- Reload Button -->
+      <button
+        phx-click="reload_config"
+        class="btn btn-ghost btn-sm"
+        title="Reload configuration from disk"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+        Reload
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tabs tabs-boxed bg-base-200 mb-6">
+    <button
+      phx-click="switch_tab"
+      phx-value-tab="dns"
+      class={["tab", @active_tab == :dns && "tab-active"]}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 mr-2"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+        />
+      </svg>
+      DNS
+    </button>
+
+    <button
+      phx-click="switch_tab"
+      phx-value-tab="mdns"
+      class={["tab", @active_tab == :mdns && "tab-active"]}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 mr-2"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"
+        />
+      </svg>
+      mDNS
+    </button>
+
+    <button
+      phx-click="switch_tab"
+      phx-value-tab="dhcpv4"
+      class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 mr-2"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+        />
+      </svg>
+      DHCPv4
+    </button>
+
+    <button
+      phx-click="switch_tab"
+      phx-value-tab="dhcpv6"
+      class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 mr-2"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+        />
+      </svg>
+      DHCPv6
+    </button>
+  </div>
+
+  <!-- Tab Content -->
+  <div class="tab-content">
+    <%= case @active_tab do %>
+      <% :dns -> %>
+        <YellowDog.Console.SettingsLive.DnsTab.dns_tab
+          changeset={@dns_changeset}
+          pending_changes={@pending_changes}
+        />
+      <% :mdns -> %>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body text-center py-12">
+            <p class="text-gray-500">mDNS configuration interface coming soon</p>
+          </div>
+        </div>
+      <% :dhcpv4 -> %>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body text-center py-12">
+            <p class="text-gray-500">DHCPv4 configuration interface coming soon</p>
+          </div>
+        </div>
+      <% :dhcpv6 -> %>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body text-center py-12">
+            <p class="text-gray-500">DHCPv6 configuration interface coming soon</p>
+          </div>
+        </div>
+    <% end %>
+  </div>
+
+  <!-- Conflict Resolution Modal -->
+  <%= if @show_conflict_modal do %>
+    <.modal id="conflict-modal" show={true} on_cancel={JS.push("close_conflict_modal")}>
+      <:title>Configuration Conflict Detected</:title>
+
+      <div class="space-y-4">
+        <div class="alert alert-warning">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="stroke-current shrink-0 h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <span>
+            The configuration has been modified by another user or process. Your changes cannot be saved.
+          </span>
+        </div>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          Click "Reload Configuration" to get the latest version and try again.
+        </p>
+      </div>
+
+      <:actions>
+        <button phx-click="close_conflict_modal" class="btn btn-ghost">
+          Cancel
+        </button>
+        <button phx-click="reload_config" phx-click-away="close_conflict_modal" class="btn btn-primary">
+          Reload Configuration
+        </button>
+      </:actions>
+    </.modal>
+  <% end %>
+
+  <!-- Recovery Modal (for backup restoration) -->
+  <%= if @show_recovery_modal do %>
+    <.modal id="recovery-modal" show={true} on_cancel={JS.push("close_recovery_modal")}>
+      <:title>Configuration Recovery</:title>
+
+      <div class="space-y-4">
+        <p class="text-sm">
+          Select a backup to restore:
+        </p>
+
+        <div class="space-y-2">
+          <%= for backup <- list_backups(@config_path) do %>
+            <button
+              phx-click="restore_backup"
+              phx-value-backup_path={backup.path}
+              class="btn btn-outline btn-block justify-start"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+              <span class="flex-1 text-left">
+                <%= backup.timestamp %>
+              </span>
+              <span class="text-xs text-gray-500">
+                <%= backup.size %>
+              </span>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <:actions>
+        <button phx-click="close_recovery_modal" class="btn btn-primary">
+          Close
+        </button>
+      </:actions>
+    </.modal>
+  <% end %>
+</div>

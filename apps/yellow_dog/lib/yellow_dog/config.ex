@@ -296,4 +296,79 @@ defmodule YellowDog.Config do
         error
     end
   end
+
+  @doc """
+  Updates configuration for a specific service.
+
+  New config will be loaded on next service restart.
+
+  ## Examples
+
+      iex> new_config = %{port: 5353, listen: "127.0.0.1"}
+      iex> YellowDog.Config.update(:dns, new_config)
+      :ok
+  """
+  @spec update(service_name(), map()) :: :ok
+  def update(service, new_config) do
+    Agent.update(__MODULE__, fn state ->
+      put_in(state, [to_string(service)], new_config)
+    end)
+  end
+
+  @doc """
+  Compare-and-swap update with version checking.
+
+  Atomically updates configuration only if the version matches expected.
+  Used for optimistic locking in web console.
+
+  ## Parameters
+    - service: Service atom (:dns, :mdns, :dhcpv4, :dhcpv6)
+    - new_config: New configuration map
+    - expected_version: Expected current version number
+
+  ## Returns
+    - `:ok` if version matches and update successful
+    - `{:error, :version_mismatch}` if version doesn't match
+
+  ## Examples
+
+      iex> YellowDog.Config.compare_and_swap(:dns, %{port: 5353}, 1)
+      :ok
+
+      iex> YellowDog.Config.compare_and_swap(:dns, %{port: 5353}, 99)
+      {:error, :version_mismatch}
+  """
+  @spec compare_and_swap(service_name(), map(), non_neg_integer()) ::
+          :ok | {:error, :version_mismatch}
+  def compare_and_swap(service, new_config, expected_version) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      current_version = Map.get(state, :_version, 0)
+
+      if current_version == expected_version do
+        new_state =
+          state
+          |> put_in([to_string(service)], new_config)
+          |> Map.put(:_version, current_version + 1)
+
+        {:ok, new_state}
+      else
+        {{:error, :version_mismatch}, state}
+      end
+    end)
+  end
+
+  @doc """
+  Gets the current configuration version.
+
+  Used for optimistic locking to track configuration changes.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_version()
+      0
+  """
+  @spec get_version() :: non_neg_integer()
+  def get_version do
+    Agent.get(__MODULE__, fn state -> Map.get(state, :_version, 0) end)
+  end
 end

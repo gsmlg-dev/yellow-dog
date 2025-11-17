@@ -396,4 +396,115 @@ defmodule YellowDog.ConfigTest do
       assert result == nil
     end
   end
+
+  describe "Configuration Updates (update/2, compare_and_swap/3)" do
+    setup do
+      # Ensure config agent is stopped
+      case Process.whereis(YellowDog.Config) do
+        nil -> :ok
+        pid -> Process.exit(pid, :kill)
+      end
+
+      wait_for_unregister(YellowDog.Config, 100)
+
+      # Start with test config
+      {:ok, config} = ConfigHelper.load_test_config("valid_config")
+      {:ok, _pid} = YellowDog.Config.start_link(config)
+
+      on_exit(fn ->
+        case Process.whereis(YellowDog.Config) do
+          nil -> :ok
+          pid -> Process.exit(pid, :kill)
+        end
+      end)
+
+      :ok
+    end
+
+    test "update/2 updates service configuration" do
+      new_config = %{"port" => 5353, "listen" => "127.0.0.1"}
+
+      assert :ok = YellowDog.Config.update(:dns, new_config)
+
+      # Verify update applied
+      updated = YellowDog.Config.get_service(:dns)
+      assert updated[:port] == 5353
+      assert updated[:listen] == "127.0.0.1"
+    end
+
+    test "update/2 preserves other services" do
+      original_mdns = YellowDog.Config.get_service(:mdns)
+
+      YellowDog.Config.update(:dns, %{"port" => 9999})
+
+      # Verify mDNS unchanged
+      mdns_config = YellowDog.Config.get_service(:mdns)
+      assert mdns_config == original_mdns
+    end
+
+    test "compare_and_swap/3 updates when version matches" do
+      current_version = YellowDog.Config.get_version()
+
+      new_config = %{"port" => 8080, "listen" => "0.0.0.0"}
+
+      assert :ok = YellowDog.Config.compare_and_swap(:dns, new_config, current_version)
+
+      # Verify update applied
+      updated = YellowDog.Config.get_service(:dns)
+      assert updated[:port] == 8080
+
+      # Verify version incremented
+      assert YellowDog.Config.get_version() == current_version + 1
+    end
+
+    test "compare_and_swap/3 rejects update with mismatched version" do
+      current_version = YellowDog.Config.get_version()
+      original_dns = YellowDog.Config.get_service(:dns)
+
+      new_config = %{"port" => 8080}
+
+      # Try to update with wrong version
+      assert {:error, :version_mismatch} =
+               YellowDog.Config.compare_and_swap(:dns, new_config, current_version + 99)
+
+      # Verify update NOT applied
+      dns_config = YellowDog.Config.get_service(:dns)
+      assert dns_config == original_dns
+
+      # Verify version unchanged
+      assert YellowDog.Config.get_version() == current_version
+    end
+
+    test "get_version/0 returns current version" do
+      version = YellowDog.Config.get_version()
+      assert is_integer(version)
+      assert version >= 0
+    end
+
+    test "optimistic locking workflow simulates concurrent administrators" do
+      # Simulate two administrators loading the page
+      version_admin_a = YellowDog.Config.get_version()
+      version_admin_b = YellowDog.Config.get_version()
+
+      assert version_admin_a == version_admin_b
+
+      # Admin A saves first (succeeds)
+      assert :ok = YellowDog.Config.compare_and_swap(:dns, %{"port" => 5353}, version_admin_a)
+
+      # Admin B tries to save with stale version (fails)
+      assert {:error, :version_mismatch} =
+               YellowDog.Config.compare_and_swap(:dns, %{"port" => 8080}, version_admin_b)
+
+      # Admin B reloads page and gets new version
+      version_admin_b_reload = YellowDog.Config.get_version()
+
+      # Admin B saves again with correct version (succeeds)
+      assert :ok =
+               YellowDog.Config.compare_and_swap(:dns, %{"port" => 8080}, version_admin_b_reload)
+
+      # Verify final state
+      dns_config = YellowDog.Config.get_service(:dns)
+      assert dns_config[:port] == 8080
+    end
+  end
 end
