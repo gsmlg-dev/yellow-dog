@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Dns.FetchRoot do
       "Host" => uri.host
     }
 
-    case HTTP.fetch(url, [method: "GET", headers: headers]) |> HTTP.Promise.await() do
+    case HTTP.fetch(url, method: "GET", headers: headers) |> HTTP.Promise.await() do
       {:ok, %{ok: true, status: 200} = response} ->
         case HTTP.Response.text(response) do
           {:ok, data} -> {:ok, data}
