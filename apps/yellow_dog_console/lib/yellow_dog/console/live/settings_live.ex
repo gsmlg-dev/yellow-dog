@@ -38,6 +38,10 @@ defmodule YellowDog.Console.SettingsLive do
         |> assign(:show_recovery_modal, false)
         |> assign(:changeset, nil)
         |> assign(:pending_changes, %{})
+        |> assign(:show_pool_form, false)
+        |> assign(:pool_form_mode, nil)
+        |> assign(:pool_form_service, nil)
+        |> assign(:editing_pool, nil)
         |> load_service_forms()
 
       {:ok, socket}
@@ -56,6 +60,10 @@ defmodule YellowDog.Console.SettingsLive do
           |> assign(:show_recovery_modal, false)
           |> assign(:changeset, nil)
           |> assign(:pending_changes, %{})
+          |> assign(:show_pool_form, false)
+          |> assign(:pool_form_mode, nil)
+          |> assign(:pool_form_service, nil)
+          |> assign(:editing_pool, nil)
           |> load_service_forms()
 
         {:ok, socket}
@@ -82,7 +90,16 @@ defmodule YellowDog.Console.SettingsLive do
 
   def handle_event("save_" <> service, %{"service_configuration" => params}, socket) do
     service_atom = String.to_existing_atom(service)
+
+    # Get existing changeset to preserve pools
+    existing_changeset = Map.get(socket.assigns, :"#{service}_changeset")
+    existing_pools = Ecto.Changeset.get_field(existing_changeset, :pools) || []
+
+    # Create new changeset from params
     changeset = validate_service_config(service_atom, params)
+
+    # Preserve pools from existing changeset
+    changeset = Ecto.Changeset.put_embed(changeset, :pools, existing_pools)
 
     if changeset.valid? do
       handle_save(socket, service_atom, changeset)
@@ -143,6 +160,134 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  # Pool management events
+  def handle_event("add_" <> service_and_pool, _params, socket) do
+    # Parse service type from event name (e.g., "dhcpv4_pool" -> :dhcpv4)
+    service =
+      service_and_pool
+      |> String.replace_suffix("_pool", "")
+      |> String.to_existing_atom()
+
+    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
+
+    socket =
+      socket
+      |> assign(:show_pool_form, true)
+      |> assign(:pool_form_mode, :create)
+      |> assign(:pool_form_service, service)
+      |> assign(:pool_form_protocol, protocol)
+      |> assign(:editing_pool, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("edit_" <> service_and_pool, %{"pool-id" => pool_id}, socket) do
+    # Parse service type from event name
+    service =
+      service_and_pool
+      |> String.replace_suffix("_pool", "")
+      |> String.to_existing_atom()
+
+    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
+    changeset = Map.get(socket.assigns, :"#{service}_changeset")
+    pools = Ecto.Changeset.get_field(changeset, :pools) || []
+    pool = Enum.find(pools, &(&1.id == pool_id))
+
+    if pool do
+      socket =
+        socket
+        |> assign(:show_pool_form, true)
+        |> assign(:pool_form_mode, :edit)
+        |> assign(:pool_form_service, service)
+        |> assign(:pool_form_protocol, protocol)
+        |> assign(:editing_pool, pool)
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Pool not found")}
+    end
+  end
+
+  def handle_event("delete_" <> service_and_pool, %{"pool-id" => pool_id}, socket) do
+    # Parse service type from event name
+    service =
+      service_and_pool
+      |> String.replace_suffix("_pool", "")
+      |> String.to_existing_atom()
+
+    changeset = Map.get(socket.assigns, :"#{service}_changeset")
+    pools = Ecto.Changeset.get_field(changeset, :pools) || []
+    updated_pools = Enum.reject(pools, &(&1.id == pool_id))
+
+    # Update changeset by putting the new pools list directly
+    updated_changeset = Ecto.Changeset.put_embed(changeset, :pools, updated_pools)
+
+    socket =
+      socket
+      |> assign(:"#{service}_changeset", updated_changeset)
+      |> maybe_update_pending_changes(service, updated_changeset)
+      |> put_flash(:info, "Pool deleted")
+
+    {:noreply, socket}
+  end
+
+  def handle_event("close_pool_form", _params, socket) do
+    socket =
+      socket
+      |> assign(:show_pool_form, false)
+      |> assign(:pool_form_mode, nil)
+      |> assign(:pool_form_service, nil)
+      |> assign(:pool_form_protocol, nil)
+      |> assign(:editing_pool, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:close_pool_form, socket) do
+    handle_event("close_pool_form", %{}, socket)
+  end
+
+  def handle_info({:pool_saved, service, pool, mode}, socket) do
+    changeset = Map.get(socket.assigns, :"#{service}_changeset")
+    pools = Ecto.Changeset.get_field(changeset, :pools) || []
+
+    updated_pools =
+      case mode do
+        :create ->
+          # Add new pool to the list
+          pools ++ [pool]
+
+        :edit ->
+          # Replace existing pool with updated one
+          Enum.map(pools, fn p ->
+            if p.id == pool.id, do: pool, else: p
+          end)
+      end
+
+    # Update changeset by putting the new pools list directly
+    updated_changeset = Ecto.Changeset.put_embed(changeset, :pools, updated_pools)
+
+    flash_message =
+      case mode do
+        :create -> "Pool added successfully"
+        :edit -> "Pool updated successfully"
+      end
+
+    socket =
+      socket
+      |> assign(:"#{service}_changeset", updated_changeset)
+      |> maybe_update_pending_changes(service, updated_changeset)
+      |> assign(:show_pool_form, false)
+      |> assign(:pool_form_mode, nil)
+      |> assign(:pool_form_service, nil)
+      |> assign(:pool_form_protocol, nil)
+      |> assign(:editing_pool, nil)
+      |> put_flash(:info, flash_message)
+
+    {:noreply, socket}
+  end
+
   # Private Functions
 
   defp get_config_path do
@@ -168,8 +313,36 @@ defmodule YellowDog.Console.SettingsLive do
       service_config
       |> Map.put("enabled", enabled)
       |> Map.put("service_type", service)
+      |> maybe_add_pools(service, service_config)
 
     ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
+  end
+
+  defp maybe_add_pools(attrs, service, service_config)
+       when service in [:dhcpv4, :dhcpv6] do
+    pools = Map.get(service_config, "pools", [])
+
+    # Convert pools to proper format with protocol field
+    protocol = if service == :dhcpv4, do: :ipv4, else: :ipv6
+
+    formatted_pools =
+      Enum.map(pools, fn pool ->
+        pool
+        |> Map.put("protocol", protocol)
+        |> ensure_pool_id()
+      end)
+
+    Map.put(attrs, "pools", formatted_pools)
+  end
+
+  defp maybe_add_pools(attrs, _service, _service_config), do: attrs
+
+  defp ensure_pool_id(pool) do
+    if Map.has_key?(pool, "id") do
+      pool
+    else
+      Map.put(pool, "id", Ecto.UUID.generate())
+    end
   end
 
   defp validate_service_config(service, params) do
@@ -329,7 +502,65 @@ defmodule YellowDog.Console.SettingsLive do
         do: Map.put(updates, "#{service_key}.dns_servers", changes.dns_servers),
         else: updates
 
-    updates
+    # Handle pools for DHCP services
+    pools = changes.pools || []
+
+    if length(pools) > 0 do
+      formatted_pools =
+        Enum.map(pools, fn pool ->
+          # Start with base pool fields (exclude :id which is client-side only)
+          pool_map = %{
+            "name" => pool.name,
+            "range_start" => pool.range_start,
+            "range_end" => pool.range_end
+          }
+
+          # Add DHCPv4-specific fields
+          pool_map =
+            if pool.lease_time do
+              Map.put(pool_map, "lease_time", pool.lease_time)
+            else
+              pool_map
+            end
+
+          pool_map =
+            if pool.gateway && pool.gateway != "" do
+              Map.put(pool_map, "gateway", pool.gateway)
+            else
+              pool_map
+            end
+
+          # Add DHCPv6-specific fields
+          pool_map =
+            if pool.preferred_lifetime do
+              Map.put(pool_map, "preferred_lifetime", pool.preferred_lifetime)
+            else
+              pool_map
+            end
+
+          pool_map =
+            if pool.valid_lifetime do
+              Map.put(pool_map, "valid_lifetime", pool.valid_lifetime)
+            else
+              pool_map
+            end
+
+          # Add DNS servers if present
+          pool_map =
+            if pool.dns_servers && length(pool.dns_servers) > 0 do
+              Map.put(pool_map, "dns_servers", pool.dns_servers)
+            else
+              pool_map
+            end
+
+          pool_map
+        end)
+
+      Map.put(updates, "#{service_key}.pools", formatted_pools)
+    else
+      # Even if no pools, we should clear the pools array in TOML
+      Map.put(updates, "#{service_key}.pools", [])
+    end
   end
 
   defp extract_service_config(pending_changes) do

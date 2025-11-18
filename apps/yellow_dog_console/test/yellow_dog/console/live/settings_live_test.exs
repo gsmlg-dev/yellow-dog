@@ -655,4 +655,343 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert has_element?(view, ".badge", "Pending Changes")
     end
   end
+
+  describe "SettingsLive DHCPv4 pool management" do
+    setup %{config_path: config_path} do
+      # Add a test pool to the DHCPv4 configuration
+      config_with_pool = """
+      [core]
+      dns = true
+      mdns = true
+      dhcpv4 = true
+      dhcpv6 = false
+
+      [dns]
+      listen = "0.0.0.0"
+      port = 5353
+
+      [mdns]
+      listen = "0.0.0.0"
+      port = 5353
+      mode = "responder"
+
+      [dhcpv4]
+      listen = "0.0.0.0"
+      port = 6767
+
+      [[dhcpv4.pools]]
+      name = "test-pool"
+      range_start = "192.168.1.100"
+      range_end = "192.168.1.200"
+      lease_time = 3600
+      gateway = "192.168.1.1"
+      dns_servers = ["8.8.8.8", "8.8.4.4"]
+
+      [dhcpv6]
+      listen = "::"
+      port = 5667
+      """
+
+      File.write!(config_path, config_with_pool)
+      :ok
+    end
+
+    test "loads DHCPv4 configuration with pools", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      # Verify service form fields
+      assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
+      assert has_element?(view, "input[name='service_configuration[port]'][value='6767']")
+
+      # Verify pool table displays the test pool
+      assert has_element?(view, "td", "test-pool")
+      assert has_element?(view, "td", "192.168.1.100 - 192.168.1.200")
+      assert has_element?(view, "td", "1h")
+      assert has_element?(view, "td", "192.168.1.1")
+      assert has_element?(view, "td", "8.8.8.8, 8.8.4.4")
+    end
+
+    test "opens add pool modal when clicking Add Pool button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      # Click Add Pool button
+      html =
+        view
+        |> element("button[phx-click='add_dhcpv4_pool']")
+        |> render_click()
+
+      # Verify modal is displayed with create mode
+      assert html =~ "Add DHCPv4 Pool"
+      assert has_element?(view, "input[name='address_pool[name]']")
+      assert has_element?(view, "input[name='address_pool[range_start]']")
+      assert has_element?(view, "input[name='address_pool[range_end]']")
+      assert has_element?(view, "input[name='address_pool[lease_time]']")
+      assert has_element?(view, "input[name='address_pool[gateway]']")
+    end
+
+    test "validates pool form fields", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv4_pool']")
+      |> render_click()
+
+      # Try to submit empty form
+      html =
+        view
+        |> element("#pool-form")
+        |> render_submit(%{address_pool: %{protocol: "ipv4"}})
+
+      # Verify validation errors are displayed
+      assert html =~ "can&#39;t be blank" or html =~ "is required"
+    end
+
+    test "successfully adds a new pool", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv4_pool']")
+      |> render_click()
+
+      # Fill out and submit the pool form
+      view
+      |> element("#pool-form")
+      |> render_submit(%{
+        address_pool: %{
+          protocol: "ipv4",
+          name: "new-pool",
+          range_start: "192.168.2.100",
+          range_end: "192.168.2.200",
+          lease_time: "7200",
+          gateway: "192.168.2.1",
+          dns_servers_str: "1.1.1.1, 1.0.0.1"
+        }
+      })
+
+      # Verify success message
+      assert render(view) =~ "Pool added successfully"
+
+      # Verify new pool appears in the table
+      assert has_element?(view, "td", "new-pool")
+      assert has_element?(view, "td", "192.168.2.100 - 192.168.2.200")
+      assert has_element?(view, "td", "2h")
+
+      # Save configuration to persist pools
+      view
+      |> form("form[phx-submit='save_dhcpv4']",
+        service_configuration: %{listen: "0.0.0.0", port: 6767, enabled: true}
+      )
+      |> render_submit()
+
+      # Verify both pools are in config file
+      {:ok, config} = ConfigManager.load_config(config_path)
+      pools = config["dhcpv4"]["pools"]
+      assert length(pools) == 2
+      assert Enum.any?(pools, fn p -> p["name"] == "test-pool" end)
+      assert Enum.any?(pools, fn p -> p["name"] == "new-pool" end)
+    end
+
+    test "opens edit pool modal with existing pool data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      # Get the pool ID from the rendered page
+      # The edit button should have phx-value-pool-id attribute
+      html = render(view)
+      [pool_id] = Regex.run(~r/phx-value-pool-id="([^"]+)"/, html, capture: :all_but_first)
+
+      # Click edit button for the test pool
+      html =
+        view
+        |> element("button[phx-click='edit_dhcpv4_pool'][phx-value-pool-id='#{pool_id}']")
+        |> render_click()
+
+      # Verify modal shows edit mode with existing pool data
+      assert html =~ "Edit DHCPv4 Pool"
+      assert has_element?(view, "input[name='address_pool[name]'][value='test-pool']")
+
+      assert has_element?(
+               view,
+               "input[name='address_pool[range_start]'][value='192.168.1.100']"
+             )
+
+      assert has_element?(view, "input[name='address_pool[range_end]'][value='192.168.1.200']")
+      assert has_element?(view, "input[name='address_pool[lease_time]'][value='3600']")
+      assert has_element?(view, "input[name='address_pool[gateway]'][value='192.168.1.1']")
+    end
+
+    test "successfully edits an existing pool", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      # Get the pool ID
+      html = render(view)
+      [pool_id] = Regex.run(~r/phx-value-pool-id="([^"]+)"/, html, capture: :all_but_first)
+
+      # Open edit modal
+      view
+      |> element("button[phx-click='edit_dhcpv4_pool'][phx-value-pool-id='#{pool_id}']")
+      |> render_click()
+
+      # Edit the pool
+      view
+      |> element("#pool-form")
+      |> render_submit(%{
+        address_pool: %{
+          id: pool_id,
+          protocol: "ipv4",
+          name: "updated-pool",
+          range_start: "192.168.1.100",
+          range_end: "192.168.1.250",
+          lease_time: "7200",
+          gateway: "192.168.1.254",
+          dns_servers_str: "8.8.8.8"
+        }
+      })
+
+      # Verify success message
+      assert render(view) =~ "Pool updated successfully"
+
+      # Verify updated pool appears in the table
+      assert has_element?(view, "td", "updated-pool")
+      assert has_element?(view, "td", "192.168.1.100 - 192.168.1.250")
+      assert has_element?(view, "td", "192.168.1.254")
+
+      # Save configuration
+      view
+      |> form("form[phx-submit='save_dhcpv4']",
+        service_configuration: %{listen: "0.0.0.0", port: 6767, enabled: true}
+      )
+      |> render_submit()
+
+      # Verify pool was updated in config file
+      {:ok, config} = ConfigManager.load_config(config_path)
+      pool = List.first(config["dhcpv4"]["pools"])
+      assert pool["name"] == "updated-pool"
+      assert pool["range_end"] == "192.168.1.250"
+      assert pool["gateway"] == "192.168.1.254"
+    end
+
+    test "successfully deletes a pool", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      # Verify pool exists
+      assert has_element?(view, "td", "test-pool")
+
+      # Get the pool ID
+      html = render(view)
+      [pool_id] = Regex.run(~r/phx-value-pool-id="([^"]+)"/, html, capture: :all_but_first)
+
+      # Delete the pool
+      view
+      |> element("button[phx-click='delete_dhcpv4_pool'][phx-value-pool-id='#{pool_id}']")
+      |> render_click()
+
+      # Verify success message
+      assert render(view) =~ "Pool deleted"
+
+      # Verify pool is removed from table
+      assert has_element?(view, "p", "No address pools configured")
+
+      # Save configuration
+      view
+      |> form("form[phx-submit='save_dhcpv4']",
+        service_configuration: %{listen: "0.0.0.0", port: 6767, enabled: true}
+      )
+      |> render_submit()
+
+      # Verify pool was removed from config file
+      {:ok, config} = ConfigManager.load_config(config_path)
+      pools = config["dhcpv4"]["pools"] || []
+      assert Enum.empty?(pools)
+    end
+
+    test "closes pool form modal when clicking cancel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv4_pool']")
+      |> render_click()
+
+      # Verify modal is open
+      assert render(view) =~ "Add DHCPv4 Pool"
+
+      # Click cancel button
+      html =
+        view
+        |> element("#pool-form button[phx-click='close']")
+        |> render_click()
+
+      # Verify modal is closed
+      refute html =~ "Add DHCPv4 Pool"
+    end
+
+    test "validates pool IP addresses must be valid IPv4", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv4 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv4']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv4_pool']")
+      |> render_click()
+
+      # Submit with invalid IPv4 addresses
+      html =
+        view
+        |> element("#pool-form")
+        |> render_submit(%{
+          address_pool: %{
+            protocol: "ipv4",
+            name: "bad-pool",
+            range_start: "not-an-ip",
+            range_end: "999.999.999.999",
+            lease_time: "3600"
+          }
+        })
+
+      # Verify validation errors
+      assert html =~ "must be a valid"
+    end
+  end
 end

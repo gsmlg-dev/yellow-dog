@@ -29,7 +29,7 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
     field(:gateway, :string, virtual: true)
 
     # Pool references (DHCP services only)
-    embeds_many(:pools, AddressPool)
+    embeds_many(:pools, AddressPool, on_replace: :delete)
   end
 
   @type t :: %__MODULE__{
