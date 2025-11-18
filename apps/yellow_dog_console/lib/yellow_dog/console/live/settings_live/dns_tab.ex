@@ -49,8 +49,8 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
             </label>
             <.input_error changeset={@changeset} field={:enabled} />
           </div>
-
-          <!-- Listen Address -->
+          
+    <!-- Listen Address -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Listen Address</span>
@@ -67,11 +67,13 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
             />
             <.input_error changeset={@changeset} field={:listen} />
             <label class="label">
-              <span class="label-text-alt">IP address to bind DNS service (0.0.0.0 for all interfaces)</span>
+              <span class="label-text-alt">
+                IP address to bind DNS service (0.0.0.0 for all interfaces)
+              </span>
             </label>
           </div>
-
-          <!-- Port -->
+          
+    <!-- Port -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Port</span>
@@ -93,8 +95,8 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               <span class="label-text-alt">UDP port for DNS queries (default: 53)</span>
             </label>
           </div>
-
-          <!-- Configuration Info -->
+          
+    <!-- Configuration Info -->
           <div class="alert alert-info">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -119,8 +121,8 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               </ul>
             </div>
           </div>
-
-          <!-- Action Buttons -->
+          
+    <!-- Action Buttons -->
           <div class="flex gap-3 pt-4">
             <button
               type="submit"
@@ -173,8 +175,8 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
           </div>
         </.form>
       </.card>
-
-      <!-- Advanced Configuration (Future) -->
+      
+    <!-- Advanced Configuration (Future) -->
       <.card title="Advanced DNS Settings" class="opacity-50">
         <div class="text-center py-8 text-gray-500">
           <p class="text-sm">Zone management and advanced DNS features coming soon</p>
@@ -192,13 +194,14 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
   attr :field, :atom, required: true
 
   defp input_error(assigns) do
-    assigns = assign(assigns, :errors, Keyword.get_values(assigns.changeset.errors, assigns.field))
+    assigns =
+      assign(assigns, :errors, Keyword.get_values(assigns.changeset.errors, assigns.field))
 
     ~H"""
     <%= if @errors != [] do %>
       <div class="label">
         <span class="label-text-alt text-error">
-          <%= translate_error(Enum.at(@errors, 0)) %>
+          {translate_error(Enum.at(@errors, 0))}
         </span>
       </div>
     <% end %>

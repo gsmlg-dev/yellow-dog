@@ -13,19 +13,23 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
 
   @primary_key false
   embedded_schema do
-    field :enabled, :boolean, default: true
-    field :listen, :string
-    field :port, :integer
-    field :service_type, Ecto.Enum, values: [:dns, :mdns, :dhcpv4, :dhcpv6]
+    field(:enabled, :boolean, default: true)
+    field(:listen, :string)
+    field(:port, :integer)
+    field(:service_type, Ecto.Enum, values: [:dns, :mdns, :dhcpv4, :dhcpv6])
 
     # Service-specific fields
-    field :mode, Ecto.Enum, values: [:responder, :hybrid], virtual: true  # mDNS only
-    field :domain, :string, virtual: true  # DHCP services
-    field :dns_servers, {:array, :string}, virtual: true, default: []  # DHCP services
-    field :gateway, :string, virtual: true  # DHCPv4 only
+    # mDNS only
+    field(:mode, Ecto.Enum, values: [:responder, :hybrid], virtual: true)
+    # DHCP services
+    field(:domain, :string, virtual: true)
+    # DHCP services
+    field(:dns_servers, {:array, :string}, virtual: true, default: [])
+    # DHCPv4 only
+    field(:gateway, :string, virtual: true)
 
     # Pool references (DHCP services only)
-    embeds_many :pools, AddressPool
+    embeds_many(:pools, AddressPool)
   end
 
   @type t :: %__MODULE__{

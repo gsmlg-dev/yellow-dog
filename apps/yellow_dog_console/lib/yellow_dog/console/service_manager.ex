@@ -106,7 +106,8 @@ defmodule YellowDog.Console.ServiceManager do
       case Process.whereis(supervisor_name) do
         nil ->
           # Not restarted yet, wait and retry
-          Process.sleep(100 * attempt)  # Exponential backoff
+          # Exponential backoff
+          Process.sleep(100 * attempt)
           wait_for_restart(service, old_pid, attempt + 1)
 
         ^old_pid ->

@@ -1,8 +1,8 @@
 <div class="container mx-auto px-4 py-6 max-w-7xl">
   <!-- Flash Messages -->
   <Layouts.flash_group flash={@flash} />
-
-  <!-- Page Header -->
+  
+<!-- Page Header -->
   <div class="flex justify-between items-center mb-6">
     <div>
       <h1 class="text-3xl font-bold">Service Settings</h1>
@@ -14,10 +14,10 @@
     <div class="flex gap-2 items-center">
       <!-- Version Info -->
       <div class="text-xs text-gray-500">
-        <span>Config Version: <%= @version_info.version %></span>
+        <span>Config Version: {@version_info.version}</span>
       </div>
-
-      <!-- Reload Button -->
+      
+<!-- Reload Button -->
       <button
         phx-click="reload_config"
         class="btn btn-ghost btn-sm"
@@ -41,8 +41,8 @@
       </button>
     </div>
   </div>
-
-  <!-- Tab Navigation -->
+  
+<!-- Tab Navigation -->
   <div class="tabs tabs-boxed bg-base-200 mb-6">
     <button
       phx-click="switch_tab"
@@ -132,8 +132,8 @@
       DHCPv6
     </button>
   </div>
-
-  <!-- Tab Content -->
+  
+<!-- Tab Content -->
   <div class="tab-content">
     <%= case @active_tab do %>
       <% :dns -> %>
@@ -161,10 +161,15 @@
         </div>
     <% end %>
   </div>
-
-  <!-- Conflict Resolution Modal -->
+  
+<!-- Conflict Resolution Modal -->
   <%= if @show_conflict_modal do %>
-    <.modal id="conflict-modal" title="Configuration Conflict Detected" show={true} on_cancel={JS.push("close_conflict_modal")}>
+    <.modal
+      id="conflict-modal"
+      title="Configuration Conflict Detected"
+      show={true}
+      on_cancel={JS.push("close_conflict_modal")}
+    >
       <div class="space-y-4">
         <div class="alert alert-warning">
           <svg
@@ -194,16 +199,25 @@
         <button phx-click="close_conflict_modal" class="btn btn-ghost">
           Cancel
         </button>
-        <button phx-click="reload_config" phx-click-away="close_conflict_modal" class="btn btn-primary">
+        <button
+          phx-click="reload_config"
+          phx-click-away="close_conflict_modal"
+          class="btn btn-primary"
+        >
           Reload Configuration
         </button>
       </:actions>
     </.modal>
   <% end %>
-
-  <!-- Recovery Modal (for backup restoration) -->
+  
+<!-- Recovery Modal (for backup restoration) -->
   <%= if @show_recovery_modal do %>
-    <.modal id="recovery-modal" title="Configuration Recovery" show={true} on_cancel={JS.push("close_recovery_modal")}>
+    <.modal
+      id="recovery-modal"
+      title="Configuration Recovery"
+      show={true}
+      on_cancel={JS.push("close_recovery_modal")}
+    >
       <div class="space-y-4">
         <p class="text-sm">
           Select a backup to restore:
@@ -231,10 +245,10 @@
                 />
               </svg>
               <span class="flex-1 text-left">
-                <%= backup.timestamp %>
+                {backup.timestamp}
               </span>
               <span class="text-xs text-gray-500">
-                <%= backup.size %>
+                {backup.size}
               </span>
             </button>
           <% end %>

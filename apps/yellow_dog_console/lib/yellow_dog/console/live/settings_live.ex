@@ -119,7 +119,8 @@ defmodule YellowDog.Console.SettingsLive do
         {:noreply, socket}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to reload configuration: #{inspect(reason)}")}
+        {:noreply,
+         put_flash(socket, :error, "Failed to reload configuration: #{inspect(reason)}")}
     end
   end
 

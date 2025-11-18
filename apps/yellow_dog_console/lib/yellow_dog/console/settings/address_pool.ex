@@ -12,16 +12,21 @@ defmodule YellowDog.Console.Settings.AddressPool do
 
   @primary_key false
   embedded_schema do
-    field :id, :string  # UUID for client-side identification
-    field :name, :string
-    field :range_start, :string
-    field :range_end, :string
-    field :lease_time, :integer  # DHCPv4: seconds
-    field :preferred_lifetime, :integer  # DHCPv6: seconds
-    field :valid_lifetime, :integer  # DHCPv6: seconds
-    field :gateway, :string  # DHCPv4 only
-    field :dns_servers, {:array, :string}, default: []
-    field :protocol, Ecto.Enum, values: [:ipv4, :ipv6]
+    # UUID for client-side identification
+    field(:id, :string)
+    field(:name, :string)
+    field(:range_start, :string)
+    field(:range_end, :string)
+    # DHCPv4: seconds
+    field(:lease_time, :integer)
+    # DHCPv6: seconds
+    field(:preferred_lifetime, :integer)
+    # DHCPv6: seconds
+    field(:valid_lifetime, :integer)
+    # DHCPv4 only
+    field(:gateway, :string)
+    field(:dns_servers, {:array, :string}, default: [])
+    field(:protocol, Ecto.Enum, values: [:ipv4, :ipv6])
   end
 
   @type t :: %__MODULE__{

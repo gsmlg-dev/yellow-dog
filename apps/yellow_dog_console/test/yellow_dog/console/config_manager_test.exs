@@ -121,7 +121,8 @@ defmodule YellowDog.Console.ConfigManagerTest do
       # Create 15 backups
       for _ <- 1..15 do
         ConfigManager.create_backup(@test_config_path)
-        Process.sleep(10)  # Ensure unique timestamps
+        # Ensure unique timestamps
+        Process.sleep(10)
       end
 
       backups = ConfigManager.list_backups(@test_config_path)

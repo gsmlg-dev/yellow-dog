@@ -9,7 +9,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
   setup do
     # Create temporary config file for testing
     config_dir = System.tmp_dir!()
-    config_path = Path.join(config_dir, "test_config_#{:rand.uniform(100000)}.toml")
+    config_path = Path.join(config_dir, "test_config_#{:rand.uniform(100_000)}.toml")
 
     # Write default test configuration
     default_config = """
