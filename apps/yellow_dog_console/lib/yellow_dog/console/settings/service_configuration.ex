@@ -63,11 +63,11 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
       :dns_servers,
       :gateway
     ])
+    |> cast_embed(:pools, with: &AddressPool.changeset/2)
     |> validate_required([:enabled, :listen, :port, :service_type])
     |> validate_number(:port, greater_than: 0, less_than_or_equal_to: 65535)
     |> validate_ip_address(:listen)
     |> validate_service_specific()
-    |> cast_embed(:pools, with: &AddressPool.changeset/2)
   end
 
   # Private Functions

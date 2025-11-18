@@ -29,11 +29,12 @@ defmodule YellowDog.Console.Settings.ServiceConfigurationTest do
       assert changeset.valid?
     end
 
-    test "requires enabled, listen, port, service_type" do
+    test "requires listen, port, service_type" do
       changeset = ServiceConfiguration.changeset(%ServiceConfiguration{}, %{})
 
       refute changeset.valid?
-      assert %{enabled: _, listen: _, port: _, service_type: _} = errors_on(changeset)
+      # Note: enabled has a default value of true, so it won't error
+      assert %{listen: _, port: _, service_type: _} = errors_on(changeset)
     end
 
     test "validates port range" do
