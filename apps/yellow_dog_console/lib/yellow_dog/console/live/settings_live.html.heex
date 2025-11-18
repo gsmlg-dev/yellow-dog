@@ -1,4 +1,7 @@
 <div class="container mx-auto px-4 py-6 max-w-7xl">
+  <!-- Flash Messages -->
+  <Layouts.flash_group flash={@flash} />
+
   <!-- Page Header -->
   <div class="flex justify-between items-center mb-6">
     <div>
@@ -161,9 +164,7 @@
 
   <!-- Conflict Resolution Modal -->
   <%= if @show_conflict_modal do %>
-    <.modal id="conflict-modal" show={true} on_cancel={JS.push("close_conflict_modal")}>
-      <:title>Configuration Conflict Detected</:title>
-
+    <.modal id="conflict-modal" title="Configuration Conflict Detected" show={true} on_cancel={JS.push("close_conflict_modal")}>
       <div class="space-y-4">
         <div class="alert alert-warning">
           <svg
@@ -202,9 +203,7 @@
 
   <!-- Recovery Modal (for backup restoration) -->
   <%= if @show_recovery_modal do %>
-    <.modal id="recovery-modal" show={true} on_cancel={JS.push("close_recovery_modal")}>
-      <:title>Configuration Recovery</:title>
-
+    <.modal id="recovery-modal" title="Configuration Recovery" show={true} on_cancel={JS.push("close_recovery_modal")}>
       <div class="space-y-4">
         <p class="text-sm">
           Select a backup to restore:

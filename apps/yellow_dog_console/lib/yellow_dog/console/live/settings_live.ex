@@ -340,8 +340,10 @@ defmodule YellowDog.Console.SettingsLive do
   end
 
   defp update_pending_changes_after_save(socket, service) do
-    # After saving to file, mark as pending (needs service restart to apply)
-    pending = Map.put(socket.assigns.pending_changes, service, true)
+    # After saving to file, store the configuration (needs service restart to apply)
+    changeset = Map.get(socket.assigns, :"#{service}_changeset")
+    config = Ecto.Changeset.apply_changes(changeset)
+    pending = Map.put(socket.assigns.pending_changes, service, config)
     assign(socket, :pending_changes, pending)
   end
 
