@@ -56,6 +56,7 @@ defmodule YellowDog.Console.SettingsLive do
           |> assign(:show_recovery_modal, false)
           |> assign(:changeset, nil)
           |> assign(:pending_changes, %{})
+          |> load_service_forms()
 
         {:ok, socket}
     end

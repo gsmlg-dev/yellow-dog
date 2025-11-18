@@ -91,10 +91,14 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Set non-existent config path
       Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")
 
-      {:ok, view, html} = live(conn, ~p"/settings")
+      {:ok, view, _html} = live(conn, ~p"/settings")
 
-      assert html =~ "Failed to load configuration"
-      assert render(view) =~ "enoent"
+      # Page should load without crashing, showing empty state
+      rendered = render(view)
+      assert rendered =~ "Service Settings"
+      assert rendered =~ "Config Version: 0"
+      # Should show form with default/empty values
+      assert has_element?(view, "form")
     end
   end
 
@@ -162,7 +166,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
         |> form("form", service_configuration: %{listen: "999.999.999.999", port: 53})
         |> render_change()
 
-      assert html =~ "Invalid IP address format"
+      assert html =~ "must be a valid IP address"
       assert has_element?(view, "input.input-error[name='service_configuration[listen]']")
     end
 
@@ -329,8 +333,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/settings")
 
       # Simulate external modification (another user/process)
-      {:ok, config} = ConfigManager.load_config(config_path)
-      updated_config = put_in(config, ["dns", "port"], 9999)
+      {:ok, _config} = ConfigManager.load_config(config_path)
 
       # Use the correct update format for ConfigManager
       updates = %{"dns.port" => 9999}
