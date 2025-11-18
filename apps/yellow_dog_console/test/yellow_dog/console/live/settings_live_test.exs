@@ -492,4 +492,167 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert config["core"]["dns"] == true
     end
   end
+
+  describe "SettingsLive mDNS configuration" do
+    test "loads mDNS configuration correctly", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Verify mDNS form fields are populated from config
+      assert has_element?(view, "input[name='service_configuration[listen]'][value='0.0.0.0']")
+      assert has_element?(view, "input[name='service_configuration[port]'][value='5353']")
+      assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
+      assert has_element?(view, "select[name='service_configuration[mode]']")
+    end
+
+    test "validates mDNS mode field is required", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Try to save without mode (by clearing it)
+      html =
+        view
+        |> form("form",
+          service_configuration: %{listen: "0.0.0.0", port: 5353, enabled: true, mode: ""}
+        )
+        |> render_submit()
+
+      assert html =~ "can&#39;t be blank" or html =~ "is invalid"
+    end
+
+    test "successfully saves valid mDNS configuration", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Modify and save mDNS configuration
+      html =
+        view
+        |> form("form",
+          service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true, mode: "hybrid"}
+        )
+        |> render_submit()
+
+      # Verify flash message
+      assert html =~ "Configuration saved successfully"
+
+      # Verify configuration was persisted to file
+      {:ok, config} = ConfigManager.load_config(config_path)
+      assert config["mdns"]["listen"] == "127.0.0.1"
+      assert config["mdns"]["port"] == 5454
+      assert config["mdns"]["mode"] == "hybrid"
+      assert config["core"]["mdns"] == true
+    end
+
+    test "toggles mDNS service enabled status", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Disable mDNS service
+      view
+      |> form("form",
+        service_configuration: %{listen: "0.0.0.0", port: 5353, enabled: false, mode: "responder"}
+      )
+      |> render_submit()
+
+      # Verify persisted to file
+      {:ok, config} = ConfigManager.load_config(config_path)
+      assert config["core"]["mdns"] == false
+    end
+
+    test "validates mode must be responder or hybrid", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # The select dropdown should only show valid options
+      # This test verifies the component structure
+      assert has_element?(
+               view,
+               "select[name='service_configuration[mode]'] option[value='responder']"
+             )
+
+      assert has_element?(
+               view,
+               "select[name='service_configuration[mode]'] option[value='hybrid']"
+             )
+    end
+
+    test "preserves mDNS changes when switching tabs", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Modify mDNS configuration
+      view
+      |> form("form",
+        service_configuration: %{listen: "192.168.1.1", port: 5454, enabled: true, mode: "hybrid"}
+      )
+      |> render_change()
+
+      # Switch to DNS tab
+      view
+      |> element("button[phx-value-tab='dns']")
+      |> render_click()
+
+      # Switch back to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Verify mDNS form still has modified values
+      assert has_element?(
+               view,
+               "input[name='service_configuration[listen]'][value='192.168.1.1']"
+             )
+
+      assert has_element?(view, "input[name='service_configuration[port]'][value='5454']")
+
+      assert has_element?(
+               view,
+               "select[name='service_configuration[mode]'] option[value='hybrid'][selected]"
+             )
+    end
+
+    test "shows apply button when mDNS has pending changes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to mDNS tab
+      view
+      |> element("button[phx-value-tab='mdns']")
+      |> render_click()
+
+      # Save configuration (creates pending changes)
+      view
+      |> form("form",
+        service_configuration: %{listen: "127.0.0.1", port: 5454, enabled: true, mode: "hybrid"}
+      )
+      |> render_submit()
+
+      # Verify apply button appears
+      assert has_element?(view, "button[phx-click='apply_changes_mdns']")
+      assert has_element?(view, ".badge", "Pending Changes")
+    end
+  end
 end

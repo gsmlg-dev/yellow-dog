@@ -142,11 +142,10 @@
           pending_changes={@pending_changes}
         />
       <% :mdns -> %>
-        <div class="card bg-base-100 shadow-xl">
-          <div class="card-body text-center py-12">
-            <p class="text-gray-500">mDNS configuration interface coming soon</p>
-          </div>
-        </div>
+        <YellowDog.Console.SettingsLive.MdnsTab.mdns_tab
+          changeset={@mdns_changeset}
+          pending_changes={Map.has_key?(@pending_changes, :mdns)}
+        />
       <% :dhcpv4 -> %>
         <div class="card bg-base-100 shadow-xl">
           <div class="card-body text-center py-12">
