@@ -17,8 +17,8 @@ defmodule YellowDog.Console.SettingsLive do
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ConfigManager
-  alias YellowDog.Console.Settings.{ConfigurationVersion, ServiceConfiguration}
   alias YellowDog.Console.ServiceManager
+  alias YellowDog.Console.Settings.{ConfigurationVersion, ServiceConfiguration}
 
   require Logger
 
