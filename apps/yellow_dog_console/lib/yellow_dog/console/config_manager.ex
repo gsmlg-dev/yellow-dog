@@ -261,13 +261,20 @@ defmodule YellowDog.Console.ConfigManager do
     lines = String.split(content, "\n")
     tokens = parse_tokens(lines)
 
+    # Separate array table updates from regular updates
+    {array_updates, regular_updates} =
+      Enum.split_with(updates, fn {key, value} ->
+        String.ends_with?(key, ".pools") && is_list(value)
+      end)
+
+    # Apply regular key=value updates
     updated_lines =
       lines
       |> Enum.with_index()
       |> Enum.map(fn {line, idx} ->
         # Check if this line needs updating
         update_key =
-          Enum.find(updates, fn {key_path, _value} ->
+          Enum.find(regular_updates, fn {key_path, _value} ->
             Map.get(tokens, key_path) == idx
           end)
 
@@ -277,7 +284,100 @@ defmodule YellowDog.Console.ConfigManager do
         end
       end)
 
-    {:ok, Enum.join(updated_lines, "\n")}
+    # Handle array table updates (like pools)
+    final_lines =
+      Enum.reduce(array_updates, updated_lines, fn {key, pools}, lines ->
+        apply_array_table_update(lines, key, pools)
+      end)
+
+    {:ok, Enum.join(final_lines, "\n")}
+  end
+
+  defp apply_array_table_update(lines, key, items) do
+    # Parse key: "dhcpv4.pools" -> section="dhcpv4", array_name="pools"
+    parts = String.split(key, ".")
+    section = parts |> Enum.drop(-1) |> Enum.join(".")
+    _array_name = List.last(parts)
+    array_table_header = "[[#{key}]]"
+
+    # Find section boundaries and remove existing array tables
+    {cleaned_lines, section_end_idx} = remove_array_tables(lines, section, array_table_header)
+
+    # Generate new array table entries
+    new_pool_lines = generate_array_table_entries(array_table_header, items)
+
+    # Insert new array tables at the end of the section
+    insert_at = section_end_idx || length(cleaned_lines)
+    List.insert_at(cleaned_lines, insert_at, new_pool_lines) |> List.flatten()
+  end
+
+  defp remove_array_tables(lines, section, array_table_header) do
+    section_header = "[#{section}]"
+    in_section? = false
+    in_array_table? = false
+    section_end_idx = nil
+
+    {result, _, _, last_section_idx} =
+      lines
+      |> Enum.with_index()
+      |> Enum.reduce({[], in_section?, in_array_table?, section_end_idx}, fn
+        {line, idx}, {acc, in_sect, in_arr, sect_end} ->
+          trimmed = String.trim(line)
+
+          cond do
+            # Entering target section
+            trimmed == section_header ->
+              {acc ++ [line], true, false, idx}
+
+            # Leaving section (entering another section)
+            in_sect && String.match?(trimmed, ~r/^\[/) && trimmed != array_table_header ->
+              {acc ++ [line], false, false, sect_end}
+
+            # Entering array table in our section
+            in_sect && trimmed == array_table_header ->
+              {acc, in_sect, true, sect_end}
+
+            # Inside array table - skip these lines
+            in_arr && trimmed == "" ->
+              # Empty line might end array table
+              {acc, in_sect, false, idx}
+
+            in_arr && String.match?(trimmed, ~r/^\[/) ->
+              # Next section/array table starts
+              {acc ++ [line], String.match?(trimmed, ~r/^\[#{section}\]/),
+               trimmed == array_table_header, idx}
+
+            in_arr ->
+              # Skip array table content
+              {acc, in_sect, in_arr, idx}
+
+            # Regular line in our section
+            in_sect ->
+              {acc ++ [line], in_sect, in_arr, idx}
+
+            # Regular line outside our section
+            true ->
+              {acc ++ [line], in_sect, in_arr, sect_end}
+          end
+      end)
+
+    {result, last_section_idx}
+  end
+
+  defp generate_array_table_entries(header, items) when is_list(items) do
+    Enum.flat_map(items, fn item ->
+      ["", header] ++ format_table_entries(item)
+    end)
+  end
+
+  defp format_table_entries(map) when is_map(map) do
+    map
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    |> Enum.sort()
+    |> Enum.map(fn {key, value} ->
+      encoded = encode_toml_value(value)
+      "#{key} = #{encoded}"
+    end)
   end
 
   defp parse_tokens(lines) do

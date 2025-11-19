@@ -994,4 +994,156 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert html =~ "must be a valid"
     end
   end
+
+  describe "SettingsLive DHCPv6 pool management" do
+    setup %{config_path: config_path} do
+      # Add a test pool to the DHCPv6 configuration
+      config_with_pool = """
+      [core]
+      dns = true
+      mdns = true
+      dhcpv4 = false
+      dhcpv6 = true
+
+      [dns]
+      listen = "0.0.0.0"
+      port = 5353
+
+      [mdns]
+      listen = "0.0.0.0"
+      port = 5353
+      mode = "responder"
+
+      [dhcpv4]
+      listen = "0.0.0.0"
+      port = 6767
+
+      [dhcpv6]
+      listen = "::"
+      port = 5667
+
+      [[dhcpv6.pools]]
+      name = "test-ipv6-pool"
+      range_start = "2001:db8::100"
+      range_end = "2001:db8::200"
+      preferred_lifetime = 3600
+      valid_lifetime = 7200
+      dns_servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+      """
+
+      File.write!(config_path, config_with_pool)
+      :ok
+    end
+
+    test "loads DHCPv6 configuration with pools", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv6 tab
+      view
+      |> element("button[phx-value-tab='dhcpv6']")
+      |> render_click()
+
+      # Verify service form fields
+      assert has_element?(view, "input[name='service_configuration[listen]'][value='::']")
+      assert has_element?(view, "input[name='service_configuration[port]'][value='5667']")
+
+      # Verify pool table displays the test pool
+      assert has_element?(view, "td", "test-ipv6-pool")
+      assert has_element?(view, "td", "2001:db8::100 - 2001:db8::200")
+      assert has_element?(view, "td", "1h")
+      assert has_element?(view, "td", "2h")
+      assert has_element?(view, "td", "2001:4860:4860::8888, 2001:4860:4860::8844")
+    end
+
+    test "opens add pool modal for DHCPv6", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv6 tab
+      view
+      |> element("button[phx-value-tab='dhcpv6']")
+      |> render_click()
+
+      # Click Add Pool button
+      html =
+        view
+        |> element("button[phx-click='add_dhcpv6_pool']")
+        |> render_click()
+
+      # Verify modal is displayed with create mode for DHCPv6
+      assert html =~ "Add DHCPv6 Pool"
+      assert has_element?(view, "input[name='address_pool[name]']")
+      assert has_element?(view, "input[name='address_pool[range_start]']")
+      assert has_element?(view, "input[name='address_pool[range_end]']")
+      assert has_element?(view, "input[name='address_pool[preferred_lifetime]']")
+      assert has_element?(view, "input[name='address_pool[valid_lifetime]']")
+      # DHCPv6 should NOT have gateway field
+      refute has_element?(view, "input[name='address_pool[gateway]']")
+    end
+
+    test "successfully adds a new IPv6 pool", %{conn: conn, config_path: _config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv6 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv6']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv6_pool']")
+      |> render_click()
+
+      # Fill out and submit the pool form
+      view
+      |> element("#pool-form")
+      |> render_submit(%{
+        address_pool: %{
+          protocol: "ipv6",
+          name: "new-ipv6-pool",
+          range_start: "2001:db8:1::100",
+          range_end: "2001:db8:1::200",
+          preferred_lifetime: "3600",
+          valid_lifetime: "7200",
+          dns_servers_str: "2001:4860:4860::8888"
+        }
+      })
+
+      # Verify success message
+      assert render(view) =~ "Pool added successfully"
+
+      # Verify new pool appears in the table
+      assert has_element?(view, "td", "new-ipv6-pool")
+      assert has_element?(view, "td", "2001:db8:1::100 - 2001:db8:1::200")
+    end
+
+    test "validates IPv6 pool addresses must be valid", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      # Switch to DHCPv6 tab and open add pool modal
+      view
+      |> element("button[phx-value-tab='dhcpv6']")
+      |> render_click()
+
+      view
+      |> element("button[phx-click='add_dhcpv6_pool']")
+      |> render_click()
+
+      # Submit with invalid IPv6 addresses
+      html =
+        view
+        |> element("#pool-form")
+        |> render_submit(%{
+          address_pool: %{
+            protocol: "ipv6",
+            name: "bad-pool",
+            range_start: "not-an-ipv6",
+            range_end: "gggg:hhhh::1",
+            preferred_lifetime: "3600",
+            valid_lifetime: "7200"
+          }
+        })
+
+      # Verify validation errors
+      assert html =~ "must be a valid"
+    end
+  end
 end

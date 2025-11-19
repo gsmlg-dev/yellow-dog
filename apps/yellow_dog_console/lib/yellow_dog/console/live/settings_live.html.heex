@@ -152,11 +152,10 @@
           pending_changes={Map.has_key?(@pending_changes, :dhcpv4)}
         />
       <% :dhcpv6 -> %>
-        <div class="card bg-base-100 shadow-xl">
-          <div class="card-body text-center py-12">
-            <p class="text-gray-500">DHCPv6 configuration interface coming soon</p>
-          </div>
-        </div>
+        <YellowDog.Console.SettingsLive.Dhcpv6Tab.dhcpv6_tab
+          changeset={@dhcpv6_changeset}
+          pending_changes={Map.has_key?(@pending_changes, :dhcpv6)}
+        />
     <% end %>
   </div>
   
@@ -260,8 +259,8 @@
       </:actions>
     </.modal>
   <% end %>
-
-  <!-- Pool Form Modal -->
+  
+<!-- Pool Form Modal -->
   <%= if @show_pool_form do %>
     <.live_component
       module={YellowDog.Console.SettingsLive.PoolFormComponent}

@@ -95,11 +95,18 @@ defmodule YellowDog.Console.SettingsLive do
     existing_changeset = Map.get(socket.assigns, :"#{service}_changeset")
     existing_pools = Ecto.Changeset.get_field(existing_changeset, :pools) || []
 
-    # Create new changeset from params
-    changeset = validate_service_config(service_atom, params)
+    # Convert pool structs to maps for changeset
+    pool_maps =
+      Enum.map(existing_pools, fn pool ->
+        Map.from_struct(pool)
+        |> Map.drop([:__meta__])
+      end)
 
-    # Preserve pools from existing changeset
-    changeset = Ecto.Changeset.put_embed(changeset, :pools, existing_pools)
+    # Add pools to params
+    params_with_pools = Map.put(params, "pools", pool_maps)
+
+    # Create new changeset from params with pools
+    changeset = validate_service_config(service_atom, params_with_pools)
 
     if changeset.valid? do
       handle_save(socket, service_atom, changeset)
