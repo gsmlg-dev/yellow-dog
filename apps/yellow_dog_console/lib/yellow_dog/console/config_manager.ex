@@ -308,7 +308,9 @@ defmodule YellowDog.Console.ConfigManager do
 
     # Insert new array tables at the end of the section
     insert_at = section_end_idx || length(cleaned_lines)
-    List.insert_at(cleaned_lines, insert_at, new_pool_lines) |> List.flatten()
+    result = List.insert_at(cleaned_lines, insert_at, new_pool_lines) |> List.flatten()
+
+    result
   end
 
   defp remove_array_tables(lines, section, array_table_header) do

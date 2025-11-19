@@ -36,19 +36,19 @@ defmodule YellowDog.Console.Validators do
       {:ok, {a, b, c, d}} when protocol == :ipv4 ->
         # Verify format to catch incomplete addresses like "192.168.1"
         expected = "#{a}.#{b}.#{c}.#{d}"
-        if address == expected, do: :ok, else: {:error, "Invalid IP address format"}
+        if address == expected, do: :ok, else: {:error, "must be a valid IPv4 address"}
 
       {:ok, {_, _, _, _}} when protocol == :ipv6 ->
-        {:error, "IP address does not match protocol #{protocol}"}
+        {:error, "must be a valid IPv6 address"}
 
       {:ok, {_, _, _, _, _, _, _, _}} when protocol == :ipv6 ->
         :ok
 
       {:ok, {_, _, _, _, _, _, _, _}} when protocol == :ipv4 ->
-        {:error, "IP address does not match protocol #{protocol}"}
+        {:error, "must be a valid IPv4 address"}
 
       {:error, :einval} ->
-        {:error, "Invalid IP address format"}
+        {:error, "must be a valid #{protocol} address"}
     end
   end
 

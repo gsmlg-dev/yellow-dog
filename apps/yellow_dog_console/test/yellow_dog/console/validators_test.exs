@@ -24,12 +24,12 @@ defmodule YellowDog.Console.ValidatorsTest do
 
     test "rejects IPv4 when expecting IPv6" do
       assert {:error, message} = Validators.validate_ip("192.168.1.1", :ipv6)
-      assert message =~ "does not match protocol"
+      assert message =~ "must be a valid IPv6 address"
     end
 
     test "rejects IPv6 when expecting IPv4" do
       assert {:error, message} = Validators.validate_ip("::1", :ipv4)
-      assert message =~ "does not match protocol"
+      assert message =~ "must be a valid IPv4 address"
     end
   end
 

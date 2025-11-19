@@ -90,7 +90,7 @@ defmodule YellowDog.Console.Settings.ServiceConfigurationTest do
       refute changeset.valid?
     end
 
-    test "DHCP requires at least one pool" do
+    test "DHCP allows empty pools" do
       attrs = %{
         enabled: true,
         listen: "0.0.0.0",
@@ -100,8 +100,7 @@ defmodule YellowDog.Console.Settings.ServiceConfigurationTest do
       }
 
       changeset = ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
-      refute changeset.valid?
-      assert %{pools: _} = errors_on(changeset)
+      assert changeset.valid?
     end
 
     test "DHCP accepts valid pools" do

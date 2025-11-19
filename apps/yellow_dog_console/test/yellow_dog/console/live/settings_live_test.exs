@@ -955,12 +955,12 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert render(view) =~ "Add DHCPv4 Pool"
 
       # Click cancel button
-      html =
-        view
-        |> element("#pool-form button[phx-click='close']")
-        |> render_click()
+      view
+      |> element("#pool-form button[phx-click='close']")
+      |> render_click()
 
-      # Verify modal is closed
+      # Wait for parent to process the message and verify modal is closed
+      html = render(view)
       refute html =~ "Add DHCPv4 Pool"
     end
 

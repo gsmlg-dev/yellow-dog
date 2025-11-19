@@ -95,13 +95,8 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
   end
 
   defp validate_pools(changeset) do
-    pools = get_field(changeset, :pools) || []
-
-    if Enum.empty?(pools) do
-      add_error(changeset, :pools, "must have at least one address pool")
-    else
-      changeset
-    end
+    # Pools are optional - a DHCP service can exist without pools configured yet
+    changeset
   end
 
   defp validate_ip_address(changeset, field) do
