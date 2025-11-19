@@ -53,8 +53,8 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
             </label>
             <.input_error changeset={@changeset} field={:enabled} />
           </div>
-
-          <!-- Listen Address -->
+          
+    <!-- Listen Address -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Listen Address</span>
@@ -74,8 +74,8 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
               <span class="label-text-alt">IPv4 address to bind DHCPv4 service</span>
             </label>
           </div>
-
-          <!-- Port -->
+          
+    <!-- Port -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Port</span>
@@ -99,8 +99,8 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
           </div>
 
           <div class="divider"></div>
-
-          <!-- Action Buttons -->
+          
+    <!-- Action Buttons -->
           <div class="flex gap-2 justify-end">
             <%= if @pending_changes do %>
               <button
@@ -153,8 +153,8 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
           </div>
         </.form>
       </.card>
-
-      <!-- Address Pools Section -->
+      
+    <!-- Address Pools Section -->
       <.card title="Address Pools">
         <:actions>
           <button phx-click="add_dhcpv4_pool" class="btn btn-primary btn-sm gap-2">
@@ -207,11 +207,11 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
         <tbody>
           <%= for pool <- @pools do %>
             <tr>
-              <td class="font-medium"><%= pool.name %></td>
-              <td><%= pool.range_start %> - <%= pool.range_end %></td>
-              <td><%= format_lease_time(pool.lease_time) %></td>
-              <td><%= pool.gateway || "-" %></td>
-              <td><%= format_dns_servers(pool.dns_servers) %></td>
+              <td class="font-medium">{pool.name}</td>
+              <td>{pool.range_start} - {pool.range_end}</td>
+              <td>{format_lease_time(pool.lease_time)}</td>
+              <td>{pool.gateway || "-"}</td>
+              <td>{format_dns_servers(pool.dns_servers)}</td>
               <td class="text-right">
                 <div class="flex gap-2 justify-end">
                   <button

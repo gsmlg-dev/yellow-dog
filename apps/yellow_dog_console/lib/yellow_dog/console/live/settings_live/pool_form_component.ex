@@ -65,7 +65,7 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
     <div class="modal modal-open">
       <div class="modal-box w-11/12 max-w-2xl">
         <h3 class="font-bold text-lg mb-4">
-          <%= if @mode == :create, do: "Add", else: "Edit" %> <%= protocol_name(@protocol) %> Pool
+          {if @mode == :create, do: "Add", else: "Edit"} {protocol_name(@protocol)} Pool
         </h3>
 
         <.form
@@ -78,10 +78,14 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
         >
           <input type="hidden" name="address_pool[protocol]" value={@protocol} />
           <%= if @mode == :edit do %>
-            <input type="hidden" name="address_pool[id]" value={Ecto.Changeset.get_field(@changeset, :id)} />
+            <input
+              type="hidden"
+              name="address_pool[id]"
+              value={Ecto.Changeset.get_field(@changeset, :id)}
+            />
           <% end %>
-
-          <!-- Pool Name -->
+          
+    <!-- Pool Name -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Pool Name</span>
@@ -98,8 +102,8 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
             />
             <.input_error changeset={@changeset} field={:name} />
           </div>
-
-          <!-- IP Range -->
+          
+    <!-- IP Range -->
           <div class="grid grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
@@ -218,8 +222,8 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
               </div>
             </div>
           <% end %>
-
-          <!-- DNS Servers (comma-separated) -->
+          
+    <!-- DNS Servers (comma-separated) -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">DNS Servers (Optional, comma-separated)</span>
@@ -247,7 +251,7 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
               class={["btn btn-primary", !@changeset.valid? && "btn-disabled"]}
               disabled={!@changeset.valid?}
             >
-              <%= if @mode == :create, do: "Add Pool", else: "Save Changes" %>
+              {if @mode == :create, do: "Add Pool", else: "Save Changes"}
             </button>
           </div>
         </.form>
