@@ -184,7 +184,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Enter port above range
       html =
         view
-        |> form("form", service_configuration: %{listen: "0.0.0.0", port: 99999})
+        |> form("form", service_configuration: %{listen: "0.0.0.0", port: 99_999})
         |> render_change()
 
       assert html =~ "must be less than or equal to 65535"
@@ -274,7 +274,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       # Attempt to save invalid configuration
       html =
         view
-        |> form("form", service_configuration: %{listen: "invalid", port: 99999, enabled: true})
+        |> form("form", service_configuration: %{listen: "invalid", port: 99_999, enabled: true})
         |> render_submit()
 
       # Verify error message

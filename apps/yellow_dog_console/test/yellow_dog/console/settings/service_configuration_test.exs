@@ -41,7 +41,7 @@ defmodule YellowDog.Console.Settings.ServiceConfigurationTest do
       attrs = %{
         enabled: true,
         listen: "0.0.0.0",
-        port: 99999,
+        port: 99_999,
         service_type: :dns
       }
 

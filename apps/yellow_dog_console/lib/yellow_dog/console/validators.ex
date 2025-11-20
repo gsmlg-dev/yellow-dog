@@ -72,7 +72,7 @@ defmodule YellowDog.Console.Validators do
   """
   @spec validate_port(integer()) :: :ok | {:error, String.t()}
   def validate_port(port) when is_integer(port) do
-    if port >= 1 and port <= 65535 do
+    if port >= 1 and port <= 65_535 do
       :ok
     else
       {:error, "Port must be between 1 and 65535"}
@@ -110,9 +110,8 @@ defmodule YellowDog.Console.Validators do
     with :ok <- validate_ip(start_ip, protocol),
          :ok <- validate_ip(end_ip, protocol),
          {:ok, start_tuple} <- :inet.parse_address(to_charlist(start_ip)),
-         {:ok, end_tuple} <- :inet.parse_address(to_charlist(end_ip)),
-         :ok <- compare_ip_addresses(start_tuple, end_tuple) do
-      :ok
+         {:ok, end_tuple} <- :inet.parse_address(to_charlist(end_ip)) do
+      compare_ip_addresses(start_tuple, end_tuple)
     end
   end
 

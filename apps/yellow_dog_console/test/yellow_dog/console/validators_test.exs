@@ -38,14 +38,14 @@ defmodule YellowDog.Console.ValidatorsTest do
       assert :ok == Validators.validate_port(1)
       assert :ok == Validators.validate_port(53)
       assert :ok == Validators.validate_port(8080)
-      assert :ok == Validators.validate_port(65535)
+      assert :ok == Validators.validate_port(65_535)
     end
 
     test "rejects invalid ports" do
       assert {:error, message} = Validators.validate_port(0)
       assert message =~ "between 1 and 65535"
 
-      assert {:error, message} = Validators.validate_port(99999)
+      assert {:error, message} = Validators.validate_port(99_999)
       assert message =~ "between 1 and 65535"
 
       assert {:error, message} = Validators.validate_port(-1)
