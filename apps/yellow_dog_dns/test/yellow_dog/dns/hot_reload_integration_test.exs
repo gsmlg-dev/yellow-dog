@@ -10,6 +10,8 @@ defmodule YellowDog.Dns.HotReloadIntegrationTest do
   # File system operations require sequential execution
   use ExUnit.Case, async: false
 
+  @moduletag :integration
+
   alias YellowDog.Dns.View
   alias YellowDog.Dns.View.Manager, as: ViewManager
   alias YellowDog.Dns.View.ConfigWatcher

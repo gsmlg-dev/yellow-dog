@@ -1,6 +1,8 @@
 defmodule YellowDog.Dns.Query.DelegationTest do
   use ExUnit.Case, async: false
 
+  @moduletag :integration
+
   alias YellowDog.Dns.Query.Delegation
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Manager
@@ -44,8 +46,8 @@ defmodule YellowDog.Dns.Query.DelegationTest do
 
     ; Another sub-zone with out-of-bailiwick nameserver
     another IN  NS    ns1.external.net.
-    another IN  NS    ns2.sub.example.com.
-    ns2.sub IN  A     192.0.2.102
+    another IN  NS    ns1.another.example.com.
+    ns1.another IN  A     192.0.2.102
 
     ; Deep sub-zone delegation
     deep.sub IN  NS    ns1.deep.sub.example.com.
@@ -59,6 +61,7 @@ defmodule YellowDog.Dns.Query.DelegationTest do
   end
 
   describe "check_delegation/3" do
+    @tag :integration
     test "detects delegation for sub-zone query" do
       # Debug: Check what records are in the zone
       all_records = :ets.tab2list(:dns_zone_data)
@@ -93,13 +96,13 @@ defmodule YellowDog.Dns.Query.DelegationTest do
 
       # Verify NS records
       ns_hostnames = Enum.map(ns_records, & &1.rdata)
-      assert "ns1.sub.example.com" in ns_hostnames
-      assert "ns2.sub.example.com" in ns_hostnames
+      assert "ns1.sub.example.com." in ns_hostnames
+      assert "ns2.sub.example.com." in ns_hostnames
 
       # Verify glue records (both in-bailiwick)
       glue_names = Enum.map(glue_records, & &1.owner)
-      assert "ns1.sub.example.com" in glue_names
-      assert "ns2.sub.example.com" in glue_names
+      assert "ns1.sub.example.com." in glue_names
+      assert "ns2.sub.example.com." in glue_names
     end
 
     test "detects delegation for deep sub-zone" do
@@ -111,8 +114,8 @@ defmodule YellowDog.Dns.Query.DelegationTest do
       assert length(ns_records) == 1
       assert length(glue_records) == 1
 
-      assert hd(ns_records).rdata == "ns1.deep.sub.example.com"
-      assert hd(glue_records).owner == "ns1.deep.sub.example.com"
+      assert hd(ns_records).rdata == "ns1.deep.sub.example.com."
+      assert hd(glue_records).owner == "ns1.deep.sub.example.com."
     end
 
     test "does not delegate for zone apex query" do
@@ -142,8 +145,8 @@ defmodule YellowDog.Dns.Query.DelegationTest do
 
       # Only in-bailiwick NS should have glue
       glue_names = Enum.map(glue_records, & &1.owner)
-      assert "ns2.sub.example.com" in glue_names
-      refute "ns1.external.net" in glue_names
+      assert "ns1.another.example.com." in glue_names
+      refute "ns1.external.net." in glue_names
     end
   end
 
