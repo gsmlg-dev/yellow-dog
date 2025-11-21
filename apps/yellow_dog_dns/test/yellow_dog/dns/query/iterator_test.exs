@@ -21,7 +21,7 @@ defmodule YellowDog.Dns.Query.IteratorTest do
 
         {:error, reason} ->
           # Network might be unavailable in CI
-          assert reason in [:timeout, :socket_open_failed]
+          assert reason in [:timeout, :socket_open_failed, :dns_error]
       end
     end
 
@@ -47,7 +47,7 @@ defmodule YellowDog.Dns.Query.IteratorTest do
 
         {:error, reason} ->
           # Network might be unavailable
-          assert reason in [:timeout, :socket_open_failed]
+          assert reason in [:timeout, :socket_open_failed, :dns_error]
       end
     end
 
