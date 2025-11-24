@@ -1,4 +1,4 @@
-defmodule YellowDog.MixProject do
+defmodule YellowDog.Umbrella.MixProject do
   use Mix.Project
 
   def project do
@@ -6,21 +6,22 @@ defmodule YellowDog.MixProject do
       apps_path: "apps",
       version: "1.1.1",
       start_permanent: Mix.env() == :prod,
-      name: "YellowDog",
       description: "YellowDog is a Domain Name Server and DHCP Server",
       releases: [
         yellow_dog: [
           include_executables_for: [:unix],
           applications: [
-            yellow_dog_core: :permanent,
-            yellow_dog_dns: :permanent
+            yellow_dog: :permanent,
+            yellow_dog_dns: :permanent,
+            yellow_dog_telemetry: :permanent
           ]
         ]
       ],
       dialyzer: dialyzer(),
       aliases: aliases(),
       docs: docs(),
-      deps: deps()
+      deps: deps(),
+      listeners: [Phoenix.CodeReloader]
     ]
   end
 
@@ -32,12 +33,10 @@ defmodule YellowDog.MixProject do
   defp deps do
     [
       # Shared dependencies for all apps
-      {:abyss, "~> 0.4"},
-      {:ex_dns, "~> 0.3"},
-      {:dhcp_ex, "~> 0.4"},
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -69,10 +68,10 @@ defmodule YellowDog.MixProject do
 
   defp aliases do
     [
-      publish: [
-        "format",
-        "hex.publish --yes"
-      ]
+      test: ["cmd mix test"],
+      lint: ["cmd mix lint"],
+      credo: ["cmd mix credo --strict"],
+      dialyzer: ["cmd mix dialyzer"]
     ]
   end
 end

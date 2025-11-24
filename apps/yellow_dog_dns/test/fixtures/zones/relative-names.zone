@@ -1,0 +1,18 @@
+; Zone with relative domain names
+$ORIGIN test.local.
+$TTL 600
+
+@  IN  SOA ns1 admin 2024010101 3600 1800 604800 600
+
+@    IN  NS  ns1
+ns1  IN  A   192.168.1.1
+
+; Relative names (should be made absolute with origin)
+host1  IN  A  192.168.1.10
+host2  IN  A  192.168.1.11
+
+; Using @ for zone apex
+@  IN  A  192.168.1.1
+
+; CNAME with relative target
+alias  IN  CNAME  host1

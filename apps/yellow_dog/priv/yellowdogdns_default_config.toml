@@ -1,0 +1,73 @@
+[core]
+# Service enable/disable flags
+dns = true
+mdns = false
+dhcpv4 = false
+dhcpv6 = false
+
+[dns]
+listen = "0.0.0.0"
+port = 5353
+
+[dns.zones]
+"example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
+
+[mdns]
+listen = "0.0.0.0"
+port = 5353
+
+[dhcpv4]
+listen = "0.0.0.0"
+port = 67
+
+# DHCPv4 address pools
+[[dhcpv4.pools]]
+name = "default"
+range_start = "192.168.1.100"
+range_end = "192.168.1.200"
+subnet_mask = "255.255.255.0"
+gateway = "192.168.1.1"
+dns_servers = ["192.168.1.1", "8.8.8.8"]
+domain_name = "local"
+lease_time = 86400  # 24 hours in seconds
+
+# Static reservations (optional)
+# [dhcpv4.static_reservations]
+# "00:11:22:33:44:55" = "192.168.1.50"
+
+[dhcpv6]
+listen = "::"
+port = 547
+
+# DHCPv6 address pools
+[[dhcpv6.pools]]
+name = "default"
+range_start = "fd00::100"
+range_end = "fd00::200"
+prefix_length = 64
+dns_servers = ["fd00::1", "2001:4860:4860::8888"]
+domain_name = "local"
+preferred_lifetime = 3600  # 1 hour
+valid_lifetime = 7200  # 2 hours
+
+# Static reservations (optional)
+# [dhcpv6.static_reservations]
+# "00:01:02:03:04:05:06:07:08:09" = "fd00::50"
+
+[server]
+logging-facility = "local0"
+logging-level = "warning"
+console = true
+bind = ["any"]
+ipv4-only = false
+ipv6-only = false
+telemetry = false
+padding = true
+reporting-agent = ""
+report-via-dns = false
+
+[forwarder]
+server = "8.8.8.8"
+override-ecs = false
+ecs-addr = "114.249.114.18"
+ecs-prefix = 24

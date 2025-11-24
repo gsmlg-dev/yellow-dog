@@ -1,0 +1,36 @@
+; Zone file for wildcard testing
+$ORIGIN wildcard.test.
+$TTL 3600
+
+; SOA record
+@  IN  SOA ns1.wildcard.test. admin.wildcard.test. (
+           2024102901  ; Serial
+           7200        ; Refresh
+           3600        ; Retry
+           1209600     ; Expire
+           3600 )      ; Minimum TTL
+
+; Name servers
+@       IN  NS  ns1.wildcard.test.
+
+; Exact match records (these take precedence over wildcards)
+ns1     IN  A    192.168.1.10
+www     IN  A    192.168.1.100
+exact   IN  A    192.168.1.50
+
+; Wildcard records - match anything at this level
+*.wildcard.test.     IN  A    192.168.1.200
+*.wildcard.test.     IN  AAAA 2001:db8::200
+
+; More specific wildcard
+*.sub.wildcard.test. IN  A    192.168.1.201
+
+; Wildcard with other record types
+*.app                IN  A    192.168.1.202
+*.app                IN  TXT  "app subdomain"
+
+; Test that exact matches override wildcards
+special.sub          IN  A    192.168.1.210
+
+; Wildcard CNAME
+*.alias              IN  CNAME www.wildcard.test.

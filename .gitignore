@@ -10,22 +10,15 @@
 # Where third-party dependencies like ExDoc output generated docs.
 /doc/
 
-<<<<<<< HEAD
-=======
 # Ignore .fetch files in case you like to edit your project deps locally.
 /.fetch
 
->>>>>>> main
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
 
 # Also ignore archive artifacts (built via "mix archive.build").
 *.ez
 
-<<<<<<< HEAD
-# Temporary files, for example, from tests.
-/tmp/
-=======
 # Ignore package tarball (built via "mix hex.build").
 yellow_dog-*.tar
 
@@ -38,4 +31,23 @@ yellow_dog-*.tar
 # devenv
 .devenv/
 .devenv.*
->>>>>>> main
+
+# Claude Code - Keep commands, ignore runtime artifacts
+.claude/.cache/
+.claude/logs/
+.claude/*.log
+.claude/oauth_token
+.claude/history/
+.claude/tmp/
+
+# Explicitly keep commands (optional, but documents intent)
+!.claude/commands/
+
+# Spec-kit
+.specify/.cache/
+
+
+/apps/yellow_dog_mdns/data/
+
+
+

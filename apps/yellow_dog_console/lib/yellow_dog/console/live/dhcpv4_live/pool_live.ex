@@ -1,0 +1,315 @@
+defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
+  use YellowDog.Console, :live_view
+
+  @impl true
+  def mount(%{"pool_name" => pool_name}, _session, socket) do
+    if connected?(socket) do
+      # Subscribe to lease events for this pool
+      :telemetry.attach(
+        "dhcpv4-pool-#{pool_name}-#{inspect(self())}",
+        [:yellow_dog, :dhcpv4, :lease_allocated],
+        &handle_telemetry_event/4,
+        %{pid: self(), pool_name: pool_name}
+      )
+    end
+
+    {:ok,
+     socket
+     |> assign(:pool_name, pool_name)
+     |> assign(:page_title, "Pool: #{pool_name}")
+     |> assign(:search_query, "")
+     |> assign(:filter_state, "all")
+     |> load_pool_data()}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => query}, socket) do
+    {:noreply,
+     socket
+     |> assign(:search_query, query)
+     |> load_pool_data()}
+  end
+
+  @impl true
+  def handle_event("filter_state", %{"state" => state}, socket) do
+    {:noreply,
+     socket
+     |> assign(:filter_state, state)
+     |> load_pool_data()}
+  end
+
+  @impl true
+  def handle_event("release_lease", %{"mac" => mac}, socket) do
+    mac_binary = parse_mac_string(mac)
+
+    case YellowDog.Dhcpv4.release_lease(mac_binary) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Lease released successfully")
+         |> load_pool_data()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to release lease: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_info({:telemetry_event, _event, _measurements, metadata}, socket) do
+    # Only reload if event is for this pool
+    if metadata[:pool_name] == socket.assigns.pool_name do
+      {:noreply, load_pool_data(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    :telemetry.detach("dhcpv4-pool-#{socket.assigns.pool_name}-#{inspect(self())}")
+    :ok
+  end
+
+  # Private Functions
+
+  defp load_pool_data(socket) do
+    pool_name = socket.assigns.pool_name
+
+    # Get pool configuration and statistics
+    pool_config = get_pool_config(pool_name)
+    pool_stats = get_pool_stats(pool_name)
+    static_reservations = get_static_reservations(pool_name)
+
+    # Get all leases for this pool
+    all_leases = get_pool_leases(pool_name)
+
+    # Filter leases based on search query and state
+    filtered =
+      all_leases
+      |> filter_by_search(socket.assigns.search_query)
+      |> filter_by_state(socket.assigns.filter_state)
+      |> Enum.sort_by(& &1.updated_at, :desc)
+
+    socket
+    |> assign(:pool_config, pool_config)
+    |> assign(:pool_stats, pool_stats)
+    |> assign(:static_reservations, static_reservations)
+    |> assign(:all_leases, all_leases)
+    |> assign(:filtered_leases, filtered)
+  end
+
+  defp get_pool_config(pool_name) do
+    case Code.ensure_loaded?(YellowDog.Dhcpv4.LeaseManager) do
+      true ->
+        try do
+          case YellowDog.Dhcpv4.LeaseManager.get_pool_config(pool_name) do
+            {:ok, config} -> config
+            _ -> default_pool_config(pool_name)
+          end
+        rescue
+          _ -> default_pool_config(pool_name)
+        catch
+          :exit, _ -> default_pool_config(pool_name)
+        end
+
+      false ->
+        default_pool_config(pool_name)
+    end
+  end
+
+  defp default_pool_config(pool_name) do
+    %{
+      name: pool_name,
+      range_start: {192, 168, 1, 10},
+      range_end: {192, 168, 1, 254},
+      subnet_mask: {255, 255, 255, 0},
+      gateway: {192, 168, 1, 1},
+      dns_servers: [{8, 8, 8, 8}, {8, 8, 4, 4}],
+      domain_name: "local",
+      lease_time: 86400,
+      excluded_ranges: []
+    }
+  end
+
+  defp get_pool_stats(pool_name) do
+    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
+      true ->
+        try do
+          case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
+            {:ok, stats} -> stats
+            _ -> default_pool_stats()
+          end
+        rescue
+          _ -> default_pool_stats()
+        catch
+          :exit, _ -> default_pool_stats()
+        end
+
+      false ->
+        default_pool_stats()
+    end
+  end
+
+  defp default_pool_stats do
+    %{
+      total_addresses: 0,
+      allocated_addresses: 0,
+      available_addresses: 0,
+      static_reservations: 0,
+      utilization_percent: 0.0,
+      leases_by_state: %{}
+    }
+  end
+
+  defp get_static_reservations(pool_name) do
+    case Code.ensure_loaded?(YellowDog.Dhcpv4.LeaseManager) do
+      true ->
+        try do
+          YellowDog.Dhcpv4.LeaseManager.get_static_reservations(pool_name)
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      false ->
+        []
+    end
+  end
+
+  defp get_pool_leases(pool_name) do
+    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
+      true ->
+        try do
+          YellowDog.Dhcpv4.list_leases()
+          |> Enum.filter(&(&1.pool_name == pool_name))
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      false ->
+        []
+    end
+  end
+
+  defp filter_by_search(leases, ""), do: leases
+
+  defp filter_by_search(leases, query) do
+    query_lower = String.downcase(query)
+
+    Enum.filter(leases, fn lease ->
+      mac_match =
+        format_mac(lease.mac_address) |> String.downcase() |> String.contains?(query_lower)
+
+      ip_match = format_ip(lease.ip_address) |> String.contains?(query_lower)
+
+      hostname_match =
+        if lease.hostname,
+          do: String.downcase(lease.hostname) |> String.contains?(query_lower),
+          else: false
+
+      mac_match || ip_match || hostname_match
+    end)
+  end
+
+  defp filter_by_state(leases, "all"), do: leases
+
+  defp filter_by_state(leases, state) do
+    state_atom = String.to_existing_atom(state)
+    Enum.filter(leases, &(&1.state == state_atom))
+  rescue
+    _ -> leases
+  end
+
+  defp handle_telemetry_event(event, measurements, metadata, %{pid: pid, pool_name: pool_name}) do
+    if metadata[:pool_name] == pool_name do
+      send(pid, {:telemetry_event, event, measurements, metadata})
+    end
+  end
+
+  defp format_mac(<<mac::binary-size(6)>>) do
+    mac
+    |> :binary.bin_to_list()
+    |> Enum.map(&Integer.to_string(&1, 16))
+    |> Enum.map(&String.pad_leading(&1, 2, "0"))
+    |> Enum.join(":")
+    |> String.upcase()
+  end
+
+  defp format_mac(_), do: "Unknown"
+
+  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip(_), do: "Unknown"
+
+  defp format_expiration(timestamp) do
+    DateTime.from_unix!(timestamp)
+    |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
+  end
+
+  defp format_time_remaining(expires_at) do
+    now = System.system_time(:second)
+    remaining = expires_at - now
+
+    cond do
+      remaining <= 0 -> "Expired"
+      remaining < 3600 -> "#{div(remaining, 60)}m remaining"
+      remaining < 86400 -> "#{div(remaining, 3600)}h remaining"
+      true -> "#{div(remaining, 86400)}d remaining"
+    end
+  end
+
+  defp format_lease_time(seconds) when is_integer(seconds) do
+    cond do
+      seconds < 60 -> "#{seconds}s"
+      seconds < 3600 -> "#{div(seconds, 60)}m"
+      seconds < 86400 -> "#{div(seconds, 3600)}h"
+      true -> "#{div(seconds, 86400)}d"
+    end
+  end
+
+  defp format_lease_time(_), do: "Unknown"
+
+  defp get_expiration_color(expires_at) do
+    now = System.system_time(:second)
+    remaining = expires_at - now
+
+    cond do
+      remaining <= 0 -> "text-error"
+      remaining < 3600 -> "text-error"
+      remaining < 7200 -> "text-warning"
+      true -> "text-base-content/50"
+    end
+  end
+
+  defp get_state_color(:active), do: "success"
+  defp get_state_color(:offered), do: "info"
+  defp get_state_color(:released), do: "warning"
+  defp get_state_color(:expired), do: "error"
+  defp get_state_color(:declined), do: "error"
+  defp get_state_color(_), do: "ghost"
+
+  defp get_state_text_color(:active), do: "text-success"
+  defp get_state_text_color(:offered), do: "text-info"
+  defp get_state_text_color(:released), do: "text-warning"
+  defp get_state_text_color(:expired), do: "text-error"
+  defp get_state_text_color(:declined), do: "text-error"
+  defp get_state_text_color(_), do: "text-base-content"
+
+  defp get_utilization_color(percent) when percent >= 90, do: "error"
+  defp get_utilization_color(percent) when percent >= 75, do: "warning"
+  defp get_utilization_color(percent) when percent >= 50, do: "info"
+  defp get_utilization_color(_), do: "success"
+
+  defp parse_mac_string(mac_string) do
+    mac_string
+    |> String.replace(":", "")
+    |> String.upcase()
+    |> Base.decode16!()
+  rescue
+    _ -> <<0, 0, 0, 0, 0, 0>>
+  end
+end

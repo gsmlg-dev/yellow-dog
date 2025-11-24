@@ -2,67 +2,128 @@ name: CI
 
 on:
   push:
-    branches: [ "*" ]
-
-env:
-  MIX_ENV: test
+    branches: [ '*' ]
 
 jobs:
-  test:
-    name: Test on Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
+  compile:
+    name: Compile
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        elixir: ['1.18']
-        otp: ['27', '28']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Erlang/OTP
-      uses: erlef/setup-beam@v1
-      with:
-        otp-version: ${{ matrix.otp }}
-        elixir-version: ${{ matrix.elixir }}
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          deps
-          _build
-        key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
 
-    - name: Install dependencies
-      run: mix deps.get --only $MIX_ENV
+      - name: Install dependencies
+        run: mix deps.get
 
-    - name: Compile dependencies
-      run: mix deps.compile
+      - name: Check code formatting
+        run: mix format --check-formatted
 
-    - name: Compile project
-      run: mix compile --warnings-as-errors
+  credo:
+    name: Credo
+    runs-on: ubuntu-latest
 
-    - name: Check formatting
-      run: mix format --check-formatted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # TODO: Re-enable credo after resolving CI environment issues
-  # - name: Run credo
-  #   run: mix credo
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
 
-    - name: Run tests
-      run: mix test
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
 
-      # TODO: Re-enable coverage reporting after adding proper tests
-  # - name: Upload coverage reports to Codecov
-  #   uses: codecov/codecov-action@v3
-  #   with:
-  #     file: _build/test/cover/excoveralls.json
-  #     flags: unittests
-  #     name: codecov-umbrella
-  #     fail_ci_if_error: true
+      - name: Install dependencies
+        run: mix deps.get
 
-  
+      - name: Run Credo strict
+        run: mix credo --strict
+
+  dialyzer:
+    name: Dialyzer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v4
+        with:
+          path: priv/plts
+          key: ${{ runner.os }}-dialyzer-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-dialyzer-
+
+      - name: Run Dialyzer
+        run: mix dialyzer --halt-exit-status

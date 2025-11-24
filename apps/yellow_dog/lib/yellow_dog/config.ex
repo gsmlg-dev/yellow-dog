@@ -1,0 +1,374 @@
+defmodule YellowDog.Config do
+  @moduledoc """
+  Configuration management for YellowDog with TOML file support.
+
+  Provides API for service applications to query their configuration
+  and check if they are enabled.
+  """
+
+  use Agent
+  require Logger
+
+  @type config_map :: map()
+  @type service_name :: :dns | :mdns | :dhcpv4 | :dhcpv6
+  @type config_key :: atom()
+  @type config_value :: term()
+  @type zone_name :: String.t()
+  @type zone_type :: :authoritative | :stub | :forward | :cache
+
+  # Default configuration fallback (now defined in application)
+  @default_config %{}
+
+  @doc """
+  Starts the configuration agent with the given config.
+  """
+  def start_link(config) do
+    Agent.start_link(fn -> config end, name: __MODULE__)
+  end
+
+  @doc """
+  Gets all configuration as a map.
+  """
+  @spec get_all() :: config_map()
+  def get_all do
+    Agent.get(__MODULE__, fn state -> state end)
+  end
+
+  @doc """
+  Gets a configuration value by name.
+  """
+  @spec get(config_key()) :: config_value()
+  def get(name) do
+    Agent.get(__MODULE__, fn state -> Map.get(state, name) end)
+  end
+
+  @doc """
+  Checks if a service is enabled in the configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.service_enabled?(:dns)
+      true
+
+      iex> YellowDog.Config.service_enabled?(:mdns)
+      false
+  """
+  @spec service_enabled?(service_name()) :: boolean()
+  def service_enabled?(service) do
+    case get("core") do
+      %{"core" => core_config} ->
+        Map.get(core_config, to_string(service), true)
+
+      core_config when is_map(core_config) ->
+        Map.get(core_config, to_string(service), true)
+
+      _ ->
+        true
+    end
+  end
+
+  @doc """
+  Gets a specific configuration value for a service.
+
+  ## Examples
+
+      iex> YellowDog.Config.get(:dns, :port)
+      53
+
+      iex> YellowDog.Config.get(:dhcpv4, :listen)
+      "0.0.0.0"
+  """
+  @spec get(service_name(), config_key()) :: config_value()
+  def get(service, key) do
+    service_config = get_service(service)
+    Map.get(service_config, key, get_default_value(service, key))
+  end
+
+  @doc """
+  Gets the entire configuration for a service.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_service(:dns)
+      %{listen: "0.0.0.0", port: 53}
+  """
+  @spec get_service(service_name()) :: map()
+  def get_service(service) do
+    case get(to_string(service)) do
+      service_config when is_map(service_config) ->
+        # Convert string keys to atoms for easier access
+        # If keys are already atoms (from transformer), keep them as-is
+        for {key, val} <- service_config, into: %{} do
+          atom_key = if is_binary(key), do: String.to_atom(key), else: key
+          {atom_key, val}
+        end
+
+      _ ->
+        get_default_service_config(service)
+    end
+  end
+
+  @doc """
+  Loads configuration from a TOML file path.
+
+  ## Examples
+
+      iex> YellowDog.Config.load("/path/to/config.toml")
+      {:ok, %{...}}
+
+      iex> YellowDog.Config.load("/nonexistent.toml")
+      {:error, :enoent}
+  """
+  @spec load(String.t()) :: {:ok, config_map()} | {:error, term()}
+  def load(path) do
+    case File.read(path) do
+      {:ok, content} ->
+        case Toml.decode(content) do
+          {:ok, config} ->
+            Logger.info("Loaded configuration from #{path}")
+            {:ok, config}
+
+          {:error, reason} ->
+            Logger.error("Failed to parse TOML from #{path}: #{inspect(reason)}")
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        Logger.error("Failed to read config file #{path}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Loads configuration with fallback to defaults.
+  """
+  @spec load_with_fallback(String.t()) :: config_map()
+  def load_with_fallback(path) do
+    case load(path) do
+      {:ok, config} ->
+        config
+
+      {:error, _reason} ->
+        Logger.warning("Using default configuration due to load failure")
+        @default_config
+    end
+  end
+
+  # Private helper functions
+
+  defp get_default_service_config(service) do
+    case Map.get(@default_config, to_string(service)) do
+      nil ->
+        %{}
+
+      config ->
+        for {key, val} <- config, into: %{}, do: {String.to_atom(key), val}
+    end
+  end
+
+  defp get_default_value(service, key) do
+    service_config = get_default_service_config(service)
+    Map.get(service_config, key)
+  end
+
+  @doc """
+  Gets all DNS zones from configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zones()
+      %{"example.com" => %{type: "authoritative", file: "zones/example.com.zone"}}
+  """
+  @spec get_dns_zones() :: map()
+  def get_dns_zones do
+    dns_config = get_service(:dns)
+    Map.get(dns_config, :zones, %{})
+  end
+
+  @doc """
+  Gets a specific DNS zone configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone("example.com")
+      {:ok, %{type: "authoritative", file: "zones/example.com.zone"}}
+
+      iex> YellowDog.Config.get_dns_zone("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone(zone_name()) :: {:ok, map()} | {:error, :not_found}
+  def get_dns_zone(zone_name) do
+    zones = get_dns_zones()
+
+    case Map.get(zones, zone_name) do
+      nil -> {:error, :not_found}
+      zone_config -> {:ok, zone_config}
+    end
+  end
+
+  @doc """
+  Lists all configured DNS zone names.
+
+  ## Examples
+
+      iex> YellowDog.Config.list_dns_zones()
+      ["example.com", "test.local"]
+  """
+  @spec list_dns_zones() :: [zone_name()]
+  def list_dns_zones do
+    zones = get_dns_zones()
+    Map.keys(zones)
+  end
+
+  @doc """
+  Checks if a zone is configured and enabled.
+
+  ## Examples
+
+      iex> YellowDog.Config.dns_zone_enabled?("example.com")
+      true
+
+      iex> YellowDog.Config.dns_zone_enabled?("nonexistent.com")
+      false
+  """
+  @spec dns_zone_enabled?(zone_name()) :: boolean()
+  def dns_zone_enabled?(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, _zone_config} -> true
+      {:error, :not_found} -> false
+    end
+  end
+
+  @doc """
+  Gets the type of a DNS zone.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone_type("example.com")
+      {:ok, :authoritative}
+
+      iex> YellowDog.Config.get_dns_zone_type("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone_type(zone_name()) :: {:ok, zone_type()} | {:error, :not_found}
+  def get_dns_zone_type(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, zone_config} ->
+        type_str = Map.get(zone_config, "type", "authoritative")
+
+        type =
+          case type_str do
+            "authoritative" -> :authoritative
+            "stub" -> :stub
+            "forward" -> :forward
+            "cache" -> :cache
+            _ -> :authoritative
+          end
+
+        {:ok, type}
+
+      {:error, :not_found} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Gets the zone file path for a DNS zone.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_dns_zone_file("example.com")
+      {:ok, "zones/example.com.zone"}
+
+      iex> YellowDog.Config.get_dns_zone_file("nonexistent.com")
+      {:error, :not_found}
+  """
+  @spec get_dns_zone_file(zone_name()) :: {:ok, String.t()} | {:error, :not_found}
+  def get_dns_zone_file(zone_name) do
+    case get_dns_zone(zone_name) do
+      {:ok, zone_config} ->
+        case Map.get(zone_config, "file") do
+          nil -> {:error, :not_found}
+          file_path -> {:ok, file_path}
+        end
+
+      {:error, :not_found} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Updates configuration for a specific service.
+
+  New config will be loaded on next service restart.
+
+  ## Examples
+
+      iex> new_config = %{port: 5353, listen: "127.0.0.1"}
+      iex> YellowDog.Config.update(:dns, new_config)
+      :ok
+  """
+  @spec update(service_name(), map()) :: :ok
+  def update(service, new_config) do
+    Agent.update(__MODULE__, fn state ->
+      put_in(state, [to_string(service)], new_config)
+    end)
+  end
+
+  @doc """
+  Compare-and-swap update with version checking.
+
+  Atomically updates configuration only if the version matches expected.
+  Used for optimistic locking in web console.
+
+  ## Parameters
+    - service: Service atom (:dns, :mdns, :dhcpv4, :dhcpv6)
+    - new_config: New configuration map
+    - expected_version: Expected current version number
+
+  ## Returns
+    - `:ok` if version matches and update successful
+    - `{:error, :version_mismatch}` if version doesn't match
+
+  ## Examples
+
+      iex> YellowDog.Config.compare_and_swap(:dns, %{port: 5353}, 1)
+      :ok
+
+      iex> YellowDog.Config.compare_and_swap(:dns, %{port: 5353}, 99)
+      {:error, :version_mismatch}
+  """
+  @spec compare_and_swap(service_name(), map(), non_neg_integer()) ::
+          :ok | {:error, :version_mismatch}
+  def compare_and_swap(service, new_config, expected_version) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      current_version = Map.get(state, :_version, 0)
+
+      if current_version == expected_version do
+        new_state =
+          state
+          |> put_in([to_string(service)], new_config)
+          |> Map.put(:_version, current_version + 1)
+
+        {:ok, new_state}
+      else
+        {{:error, :version_mismatch}, state}
+      end
+    end)
+  end
+
+  @doc """
+  Gets the current configuration version.
+
+  Used for optimistic locking to track configuration changes.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_version()
+      0
+  """
+  @spec get_version() :: non_neg_integer()
+  def get_version do
+    Agent.get(__MODULE__, fn state -> Map.get(state, :_version, 0) end)
+  end
+end

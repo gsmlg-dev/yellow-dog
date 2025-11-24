@@ -8,16 +8,17 @@ Yellow Dog DNS is a distributed DNS and DHCP server written in Elixir/Erlang.
 
 Yellow Dog DNS is organized as an Elixir umbrella project with the following applications:
 
-- **YellowDogCore** - Core application providing configuration management and orchestration
-- **YellowDogDns** - DNS functionality including name resolution, zones, and views
-- **YellowDogDhcpv4** - DHCPv4 protocol implementation (using dhcp_ex)
-- **YellowDogDhcpv6** - DHCPv6 protocol implementation (using dhcp_ex)
-- **YellowDogMdns** - mDNS (multicast DNS) functionality (using ex_dns)
+- **YellowDog** - Core application providing configuration management and orchestration
+- **YellowDog.Telemetry** - Centralized telemetry and metrics functionality
+- **YellowDog.Dns** - DNS functionality including name resolution, zones, and views
+- **YellowDog.Dhcpv4** - DHCPv4 protocol implementation (using ex_dhcp)
+- **YellowDog.Dhcpv6** - DHCPv6 protocol implementation (using ex_dhcp)
+- **YellowDog.Mdns** - mDNS (multicast DNS) functionality (using ex_dns)
 
 ### Key Dependencies
 
-- **ex_dns** - DNS protocol handling (used by YellowDogDns and YellowDogMdns)
-- **dhcp_ex** - DHCP protocol implementation (used by YellowDogDhcpv4 and YellowDogDhcpv6)
+- **ex_dns** - DNS protocol handling (used by YellowDog.Dns and YellowDog.Mdns)
+- **ex_dhcp** - DHCP protocol implementation (used by YellowDog.Dhcpv4 and YellowDog.Dhcpv6)
 - **abyss** - High-performance UDP server (used across applications)
 - **telemetry** - Metrics and observability
 
@@ -30,7 +31,7 @@ Yellow Dog DNS is organized as an Elixir umbrella project with the following app
 mix run --no-halt
 
 # Or start specific applications
-mix app.start yellow_dog_core
+mix app.start yellow_dog
 mix app.start yellow_dog_dns
 ```
 
@@ -65,7 +66,8 @@ dnsperf -n 100000 -d t.txt -s 127.0.0.1 -p 53
 ```
 yellow_dog/                 # Umbrella project root
 ├── apps/                   # Application directory
-│   ├── yellow_dog_core/    # Core application
+│   ├── yellow_dog/           # Core application
+│   ├── yellow_dog_telemetry/ # Telemetry package
 │   ├── yellow_dog_dns/     # DNS functionality
 │   ├── yellow_dog_dhcpv4/  # DHCPv4 protocol
 │   ├── yellow_dog_dhcpv6/  # DHCPv6 protocol

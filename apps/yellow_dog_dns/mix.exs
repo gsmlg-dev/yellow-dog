@@ -1,4 +1,4 @@
-defmodule YellowDogDns.MixProject do
+defmodule YellowDog.Dns.MixProject do
   use Mix.Project
 
   def project do
@@ -11,15 +11,15 @@ defmodule YellowDogDns.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
-      mod: {YellowDogDns.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
@@ -27,12 +27,32 @@ defmodule YellowDogDns.MixProject do
   defp deps do
     [
       # Core dependencies
-      {:yellow_dog_core, in_umbrella: true},
+      {:yellow_dog_telemetry, in_umbrella: true},
 
       # External dependencies for DNS functionality
-      {:abyss, "~> 0.4"},
-      {:ex_dns, "~> 0.3"},
-      {:telemetry, "~> 1.0"}
+      {:abyss, in_umbrella: true},
+      {:ex_dns, in_umbrella: true},
+      {:telemetry, "~> 1.0"},
+
+      # HTTP client for root zone fetching
+      {:req, "~> 0.5"},
+
+      # TOML configuration parsing
+      {:toml, "~> 0.7"},
+
+      # File system watching for hot-reload
+      {:file_system, "~> 1.0"},
+
+      # Development and test dependencies
+      {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      lint: ["credo --strict", "dialyzer"]
     ]
   end
 end

@@ -1,0 +1,631 @@
+defmodule YellowDog.Mdns.NetworkMonitor do
+  @moduledoc """
+  Monitors all mDNS network traffic (queries + responses) for network visibility.
+
+  Tracks both queries and responses, providing comprehensive network discovery
+  and activity monitoring. This is an enhanced version of MessageCache that
+  tracks not just responses but also queries seen on the network.
+  """
+
+  use GenServer
+  require Logger
+
+  @response_table :mdns_responses
+  @query_table :mdns_queries
+  @services_table :mdns_discovered_services
+  @ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
+
+  # Cleanup every 5 minutes
+  @cleanup_interval 300_000
+  # Default TTL for cached records
+  @default_ttl 120
+
+  @type message_entry :: %{
+          domain: String.t(),
+          record_type: atom(),
+          message: DNS.Message.t(),
+          source_ip: tuple(),
+          source_port: integer(),
+          received_at: integer(),
+          ttl: integer()
+        }
+
+  @type query_entry :: %{
+          domain: String.t(),
+          record_type: atom(),
+          source_ip: tuple(),
+          source_port: integer(),
+          timestamp: integer(),
+          answered: boolean()
+        }
+
+  @type discovered_service :: %{
+          service_id: String.t(),
+          name: String.t(),
+          type: String.t(),
+          domain: String.t(),
+          host: String.t() | nil,
+          port: integer() | nil,
+          txt_records: map(),
+          addresses: [tuple()],
+          first_seen: integer(),
+          last_seen: integer(),
+          response_count: integer(),
+          source_ips: [tuple()]
+        }
+
+  # Client API
+
+  @doc """
+  Starts the NetworkMonitor GenServer.
+  """
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @doc """
+  Logs a query seen on the network.
+  """
+  @spec log_query(DNS.Message.t(), tuple(), integer()) :: :ok
+  def log_query(message, source_ip, source_port) do
+    GenServer.cast(__MODULE__, {:log_query, message, source_ip, source_port})
+  end
+
+  @doc """
+  Caches a response message.
+  """
+  @spec cache_response(DNS.Message.t(), tuple(), integer()) :: :ok
+  def cache_response(message, source_ip, source_port) do
+    GenServer.cast(__MODULE__, {:cache_response, message, source_ip, source_port})
+  end
+
+  @doc """
+  Queries the cache for records matching a domain.
+  """
+  @spec query(String.t(), atom() | nil) :: [message_entry()]
+  def query(domain, record_type \\ nil) do
+    domain_key = normalize_domain(domain)
+
+    entries =
+      case :ets.lookup(@response_table, domain_key) do
+        [] -> []
+        results -> Enum.map(results, fn {_key, entry} -> entry end)
+      end
+
+    entries =
+      if record_type do
+        Enum.filter(entries, fn entry -> entry.record_type == record_type end)
+      else
+        entries
+      end
+
+    now = System.system_time(:second)
+
+    Enum.filter(entries, fn entry ->
+      entry.received_at + entry.ttl > now
+    end)
+  end
+
+  @doc """
+  Gets recent queries seen on the network.
+  """
+  @spec get_queries(keyword()) :: [query_entry()]
+  def get_queries(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    since = Keyword.get(opts, :since, System.system_time(:second) - 3600)
+
+    @query_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.filter(fn entry -> entry.timestamp >= since end)
+    |> Enum.sort_by(& &1.timestamp, :desc)
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets queries that have not been answered.
+  """
+  @spec get_unanswered_queries() :: [query_entry()]
+  def get_unanswered_queries do
+    @query_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.filter(fn entry -> not entry.answered end)
+    |> Enum.sort_by(& &1.timestamp, :desc)
+  end
+
+  @doc """
+  Lists all discovered services on the network.
+  """
+  @spec list_discovered_services() :: [discovered_service()]
+  def list_discovered_services do
+    now = System.system_time(:second)
+    # 5 minutes
+    stale_threshold = now - 300
+
+    @services_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {_key, service} -> service end)
+    |> Enum.filter(fn service -> service.last_seen > stale_threshold end)
+    |> Enum.sort_by(& &1.name)
+  end
+
+  @doc """
+  Gets details about a specific discovered service.
+  """
+  @spec get_discovered_service(String.t()) :: discovered_service() | nil
+  def get_discovered_service(service_id) do
+    case :ets.lookup(@services_table, service_id) do
+      [{^service_id, service}] -> service
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Searches for services by type.
+  """
+  @spec search_services(keyword()) :: [discovered_service()]
+  def search_services(opts \\ []) do
+    type_filter = Keyword.get(opts, :type)
+
+    services = list_discovered_services()
+
+    if type_filter do
+      normalized_type = String.downcase(type_filter)
+
+      Enum.filter(services, fn service ->
+        String.downcase(service.type) == normalized_type
+      end)
+    else
+      services
+    end
+  end
+
+  @doc """
+  Gets network statistics.
+  """
+  @spec network_stats() :: map()
+  def network_stats do
+    responses = :ets.info(@response_table, :size)
+    queries = :ets.info(@query_table, :size)
+    services = length(list_discovered_services())
+
+    # Get unique hosts
+    unique_hosts =
+      @response_table
+      |> :ets.tab2list()
+      |> Enum.map(fn {_key, entry} -> entry.source_ip end)
+      |> Enum.uniq()
+      |> length()
+
+    # Calculate queries per minute (last hour)
+    now = System.system_time(:second)
+    one_hour_ago = now - 3600
+
+    recent_queries =
+      get_queries(since: one_hour_ago)
+      |> length()
+
+    queries_per_minute = recent_queries / 60.0
+
+    # Get most queried services
+    most_queried =
+      get_queries(since: one_hour_ago)
+      |> Enum.group_by(& &1.domain)
+      |> Enum.map(fn {domain, queries} -> {domain, length(queries)} end)
+      |> Enum.sort_by(fn {_domain, count} -> count end, :desc)
+      |> Enum.take(10)
+      |> Enum.map(fn {domain, count} -> %{domain: domain, count: count} end)
+
+    %{
+      total_responses: responses,
+      total_queries: queries,
+      active_services: services,
+      unique_hosts: unique_hosts,
+      queries_per_minute: Float.round(queries_per_minute, 2),
+      most_queried_services: most_queried
+    }
+  end
+
+  @doc """
+  Gets all cached messages (legacy API compatibility).
+  """
+  @spec list_all() :: [message_entry()]
+  def list_all do
+    now = System.system_time(:second)
+
+    @response_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.filter(fn entry ->
+      entry.received_at + entry.ttl > now
+    end)
+  end
+
+  @doc """
+  Gets cache statistics (legacy API compatibility).
+  """
+  @spec stats() :: map()
+  def stats do
+    total = :ets.info(@response_table, :size)
+    now = System.system_time(:second)
+
+    all_entries = :ets.tab2list(@response_table)
+
+    expired =
+      Enum.count(all_entries, fn {_key, entry} ->
+        entry.received_at + entry.ttl <= now
+      end)
+
+    %{
+      total_entries: total,
+      active_entries: total - expired,
+      expired_entries: expired
+    }
+  end
+
+  @doc """
+  Clears all entries from the cache.
+  """
+  @spec clear() :: :ok
+  def clear do
+    GenServer.call(__MODULE__, :clear)
+  end
+
+  # Server Callbacks
+
+  @impl true
+  def init(_opts) do
+    init_tables()
+    schedule_cleanup()
+
+    Logger.info("NetworkMonitor started with enhanced query tracking")
+
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_cast({:log_query, message, source_ip, source_port}, state) do
+    store_query(message, source_ip, source_port)
+    {:noreply, state}
+  end
+
+  def handle_cast({:cache_response, message, source_ip, source_port}, state) do
+    store_response(message, source_ip, source_port)
+    mark_queries_as_answered(message)
+    update_discovered_services(message, source_ip)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_call(:clear, _from, state) do
+    :ets.delete_all_objects(@response_table)
+    :ets.delete_all_objects(@query_table)
+    :ets.delete_all_objects(@services_table)
+    Logger.info("NetworkMonitor cache cleared")
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_info(:cleanup_expired, state) do
+    cleanup_expired_entries()
+    schedule_cleanup()
+    {:noreply, state}
+  end
+
+  # Private functions
+
+  defp init_tables do
+    for table <- [@response_table, @query_table, @services_table] do
+      if :ets.whereis(table) == :undefined do
+        :ets.new(table, @ets_options)
+      end
+    end
+
+    :ok
+  end
+
+  defp store_query(message, source_ip, source_port) do
+    now = System.system_time(:second)
+
+    Enum.each(message.qdlist, fn question ->
+      domain_key = normalize_domain(to_string(question.name))
+
+      entry = %{
+        domain: to_string(question.name),
+        record_type: question.type,
+        source_ip: source_ip,
+        source_port: source_port,
+        timestamp: now,
+        answered: false
+      }
+
+      :ets.insert(@query_table, {domain_key, entry})
+
+      Logger.debug(
+        "Logged mDNS query: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
+      )
+    end)
+
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :query_logged],
+      %{question_count: length(message.qdlist)},
+      %{source_ip: source_ip}
+    )
+  end
+
+  defp store_response(message, source_ip, source_port) do
+    now = System.system_time(:second)
+
+    # Store answer records
+    Enum.each(message.anlist, fn record ->
+      cache_record(record, message, source_ip, source_port, now, :answer)
+    end)
+
+    # Store authority records
+    Enum.each(message.nslist, fn record ->
+      cache_record(record, message, source_ip, source_port, now, :authority)
+    end)
+
+    # Store additional records
+    Enum.each(message.arlist, fn record ->
+      cache_record(record, message, source_ip, source_port, now, :additional)
+    end)
+  end
+
+  defp cache_record(record, message, source_ip, source_port, received_at, section) do
+    domain_key = normalize_domain(to_string(record.name))
+
+    entry = %{
+      domain: to_string(record.name),
+      record_type: record.type,
+      record: record,
+      message: message,
+      source_ip: source_ip,
+      source_port: source_port,
+      received_at: received_at,
+      ttl: max(record.ttl, @default_ttl),
+      section: section
+    }
+
+    :ets.insert(@response_table, {domain_key, entry})
+  end
+
+  defp mark_queries_as_answered(message) do
+    # Match answers to queries
+    Enum.each(message.anlist, fn record ->
+      domain_key = normalize_domain(to_string(record.name))
+
+      case :ets.lookup(@query_table, domain_key) do
+        [] ->
+          :ok
+
+        queries ->
+          Enum.each(queries, fn {key, query} ->
+            if query.record_type == record.type or query.record_type == :ANY do
+              updated_query = %{query | answered: true}
+              :ets.delete_object(@query_table, {key, query})
+              :ets.insert(@query_table, {key, updated_query})
+            end
+          end)
+      end
+    end)
+  end
+
+  defp update_discovered_services(message, source_ip) do
+    # Extract service information from PTR, SRV, TXT records
+    # Group records by service instance
+
+    services = extract_services_from_message(message, source_ip)
+
+    Enum.each(services, fn service ->
+      update_or_create_service(service)
+    end)
+  end
+
+  defp extract_services_from_message(message, source_ip) do
+    now = System.system_time(:second)
+
+    # Find PTR records (service type enumeration)
+    ptr_records =
+      Enum.filter(message.anlist, fn record -> record.type == :PTR end)
+
+    # For each PTR, try to find corresponding SRV, TXT, A/AAAA records
+    Enum.flat_map(ptr_records, fn ptr ->
+      service_instance = to_string(ptr.data)
+      service_type = to_string(ptr.name)
+
+      # Find SRV record
+      srv_record =
+        Enum.find(message.anlist ++ message.arlist, fn record ->
+          record.type == :SRV and to_string(record.name) == service_instance
+        end)
+
+      # Find TXT record
+      txt_record =
+        Enum.find(message.anlist ++ message.arlist, fn record ->
+          record.type == :TXT and to_string(record.name) == service_instance
+        end)
+
+      # Find A/AAAA records
+      host = if srv_record, do: to_string(srv_record.data.target), else: nil
+
+      addresses =
+        if host do
+          (message.anlist ++ message.arlist)
+          |> Enum.filter(fn record ->
+            record.type in [:A, :AAAA] and to_string(record.name) == host
+          end)
+          |> Enum.map(fn record -> record.data end)
+        else
+          []
+        end
+
+      if srv_record do
+        [
+          %{
+            service_id: service_instance,
+            name: extract_service_name(service_instance),
+            type: service_type,
+            domain: "local",
+            host: host,
+            port: srv_record.data.port,
+            txt_records: parse_txt_records(txt_record),
+            addresses: addresses,
+            timestamp: now,
+            source_ip: source_ip
+          }
+        ]
+      else
+        []
+      end
+    end)
+  end
+
+  defp extract_service_name(service_instance) do
+    # service_instance is like "My Service._http._tcp.local"
+    # Extract "My Service"
+    service_instance
+    |> String.split(".")
+    |> hd()
+  end
+
+  defp parse_txt_records(nil), do: %{}
+
+  defp parse_txt_records(txt_record) do
+    case txt_record.data do
+      list when is_list(list) ->
+        list
+        |> Enum.map(fn str ->
+          case String.split(str, "=", parts: 2) do
+            [key, value] -> {key, value}
+            [key] -> {key, ""}
+          end
+        end)
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp update_or_create_service(service_info) do
+    service_id = service_info.service_id
+
+    case :ets.lookup(@services_table, service_id) do
+      [{^service_id, existing}] ->
+        # Update existing service
+        updated = %{
+          existing
+          | last_seen: service_info.timestamp,
+            response_count: existing.response_count + 1,
+            source_ips: Enum.uniq([service_info.source_ip | existing.source_ips]),
+            # Update fields that may have changed
+            host: service_info.host || existing.host,
+            port: service_info.port || existing.port,
+            txt_records: Map.merge(existing.txt_records, service_info.txt_records),
+            addresses: Enum.uniq(service_info.addresses ++ existing.addresses)
+        }
+
+        :ets.insert(@services_table, {service_id, updated})
+
+      [] ->
+        # Create new service
+        new_service = %{
+          service_id: service_id,
+          name: service_info.name,
+          type: service_info.type,
+          domain: service_info.domain,
+          host: service_info.host,
+          port: service_info.port,
+          txt_records: service_info.txt_records,
+          addresses: service_info.addresses,
+          first_seen: service_info.timestamp,
+          last_seen: service_info.timestamp,
+          response_count: 1,
+          source_ips: [service_info.source_ip]
+        }
+
+        :ets.insert(@services_table, {service_id, new_service})
+
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :service_discovered],
+          %{},
+          %{service_id: service_id, type: service_info.type}
+        )
+
+        Logger.info("Discovered new mDNS service: #{service_id}")
+    end
+  end
+
+  defp cleanup_expired_entries do
+    now = System.system_time(:second)
+
+    # Clean up expired responses
+    response_entries = :ets.tab2list(@response_table)
+
+    expired_responses =
+      Enum.filter(response_entries, fn {_key, entry} ->
+        entry.received_at + entry.ttl <= now
+      end)
+
+    Enum.each(expired_responses, fn {key, entry} ->
+      :ets.delete_object(@response_table, {key, entry})
+    end)
+
+    # Clean up old queries (older than 1 hour)
+    one_hour_ago = now - 3600
+    query_entries = :ets.tab2list(@query_table)
+
+    old_queries =
+      Enum.filter(query_entries, fn {_key, entry} ->
+        entry.timestamp < one_hour_ago
+      end)
+
+    Enum.each(old_queries, fn {key, entry} ->
+      :ets.delete_object(@query_table, {key, entry})
+    end)
+
+    # Clean up stale services (not seen in 10 minutes)
+    ten_minutes_ago = now - 600
+
+    @services_table
+    |> :ets.tab2list()
+    |> Enum.filter(fn {_key, service} -> service.last_seen < ten_minutes_ago end)
+    |> Enum.each(fn {key, service} ->
+      :ets.delete(@services_table, key)
+      Logger.debug("Removed stale service: #{service.service_id}")
+    end)
+
+    total_cleaned = length(expired_responses) + length(old_queries)
+
+    if total_cleaned > 0 do
+      Logger.info("Cleaned up #{total_cleaned} expired entries")
+
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :cache_cleanup],
+        %{expired_count: total_cleaned},
+        %{}
+      )
+    end
+  end
+
+  defp schedule_cleanup do
+    Process.send_after(self(), :cleanup_expired, @cleanup_interval)
+  end
+
+  defp normalize_domain(domain) when is_binary(domain) do
+    domain
+    |> String.downcase()
+    |> String.trim_trailing(".")
+  end
+
+  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
+  defp format_ip({a, b, c, d, e, f, g, h}) do
+    parts = [a, b, c, d, e, f, g, h]
+    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
+    Enum.join(hex_parts, ":")
+  end
+end

@@ -1,12 +1,15 @@
 FROM docker.io/library/elixir:1.17-alpine AS builder
 
+# Install git for fetching hex from GitHub
+RUN apk add --no-cache git
+
 COPY . /app
 WORKDIR /app
 
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.1
 
-RUN mix local.hex --force && \
+RUN mix archive.install github hexpm/hex branch latest --force && \
     mix local.rebar --force && \
     mix deps.get && \
     mix release yellow_dog --version "${RELEASE_VERSION}"

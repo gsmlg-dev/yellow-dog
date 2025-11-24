@@ -1,0 +1,102 @@
+defmodule YellowDog.Dns.Supervisor do
+  @moduledoc """
+  The main supervisor for the YellowDog DNS application.
+
+  Manages the DNS server with proper supervision strategy following
+  the same pattern as DHCPv4/v6 applications.
+
+  The supervisor only starts if DNS is enabled in the YellowDog configuration.
+  """
+
+  use Supervisor
+
+  alias YellowDog.Telemetry
+
+  @doc """
+  Starts the DNS server supervisor.
+
+  ## Options
+  - `name`: Supervisor name (default: YellowDog.Dns)
+  - `server_options`: Options passed to DNS server
+
+  ## Returns
+  - `{:ok, pid}` - Supervisor started successfully
+  - `{:error, reason}` - Failed to start supervisor
+  - `:ignore` - DNS service is disabled in configuration
+  """
+  @spec start_link(keyword()) :: Supervisor.on_start() | :ignore
+  def start_link(opts) do
+    # Check if DNS service is enabled
+    unless apply(YellowDog.Config, :service_enabled?, [:dns]) do
+      Telemetry.info("DNS service is disabled, skipping startup")
+      :ignore
+    else
+      opts = Map.new(opts)
+      name = Map.get(opts, :name, YellowDog.Dns)
+      opts = Map.put(opts, :name, name)
+
+      Telemetry.debug("Starting DNS supervisor")
+      Supervisor.start_link(__MODULE__, opts, name: name)
+    end
+  end
+
+  @impl true
+  def init(opts) do
+    Telemetry.span("dns.supervisor.init", %{}, fn ->
+      children = build_children(opts)
+      Supervisor.init(children, strategy: :one_for_one)
+    end)
+  end
+
+  defp build_children(opts) do
+    server_options = Map.get(opts, :server_options, [])
+
+    # Get cache configuration from YellowDog.Config
+    cache_config =
+      case apply(YellowDog.Config, :get, [:dns, :cache]) do
+        nil ->
+          []
+
+        config when is_map(config) ->
+          Enum.into(config, [])
+
+        _ ->
+          []
+      end
+
+    [
+      # Zone Manager - manages zone lifecycle and storage
+      {YellowDog.Dns.Zone.Manager, []}
+      |> Supervisor.child_spec(id: :zone_manager, restart: :permanent),
+
+      # Query Cache Manager - manages DNS query cache
+      {YellowDog.Dns.Query.Cache.Manager, cache_config}
+      |> Supervisor.child_spec(id: :cache_manager, restart: :permanent),
+
+      # Query Cache Cleaner - periodic cleanup of expired entries
+      {YellowDog.Dns.Query.Cache.Cleaner, cache_config}
+      |> Supervisor.child_spec(id: :cache_cleaner, restart: :permanent),
+
+      # Root Zone Manager - manages root zone for recursive resolution
+      {YellowDog.Dns.RootZone.Manager, strategy: :hints}
+      |> Supervisor.child_spec(id: :root_zone_manager, restart: :permanent),
+
+      # DNS Server (wraps Abyss UDP server)
+      {YellowDog.Dns.Server, server_options}
+      |> Supervisor.child_spec(id: :server, restart: :permanent),
+
+      # Post-start task - load configured zones
+      {Task,
+       fn ->
+         Telemetry.debug("DNS post-start task: loading configured zones")
+         # TODO: Load zones from configuration
+         # zones = YellowDog.Config.get(:dns, :zones) || []
+         # Enum.each(zones, fn zone_config ->
+         #   YellowDog.Dns.Zone.Manager.load_zone(zone_config.name, zone_config)
+         # end)
+         Telemetry.debug("DNS post-start task completed")
+       end}
+      |> Supervisor.child_spec(id: :post_start, restart: :temporary)
+    ]
+  end
+end

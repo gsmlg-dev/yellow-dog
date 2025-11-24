@@ -1,4 +1,4 @@
-# YellowDogDhcpv6
+# YellowDog.Dhcpv6
 
 **TODO: Add description**
 
