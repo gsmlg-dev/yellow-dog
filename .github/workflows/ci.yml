@@ -121,9 +121,21 @@ jobs:
       - name: Restore Dialyzer PLT cache
         uses: actions/cache@v4
         with:
-          path: priv/plts
+          path: |
+            priv/plts
+            apps/ex_dns/priv/plts
+            apps/ex_dhcp/priv/plts
+            apps/abyss/priv/plts
           key: ${{ runner.os }}-dialyzer-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-dialyzer-
 
+      - name: Create PLT directories
+        run: |
+          mkdir -p priv/plts
+          mkdir -p apps/ex_dns/priv/plts
+          mkdir -p apps/ex_dhcp/priv/plts
+          mkdir -p apps/abyss/priv/plts
+
       - name: Run Dialyzer
         run: mix dialyzer --halt-exit-status
+        timeout-minutes: 60
