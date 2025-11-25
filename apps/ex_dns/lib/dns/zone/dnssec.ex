@@ -158,7 +158,7 @@ defmodule DNS.Zone.DNSSEC do
       # Create DNSKEY records list
       dnskey_records = [dnskey]
 
-      # Create DS records list  
+      # Create DS records list
       ds_records = [ds]
 
       # Create DNSSEC records list for backward compatibility
