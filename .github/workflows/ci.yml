@@ -92,53 +92,21 @@ jobs:
       - name: Run Credo strict
         run: mix credo --strict
 
-  dialyzer:
-    name: Dialyzer
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: '1.18'
-          otp-version: '28'
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-
-      - name: Install dependencies
-        run: mix deps.get
-
-      - name: Restore Dialyzer PLT cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            priv/plts
-            apps/ex_dns/priv/plts
-            apps/ex_dhcp/priv/plts
-            apps/abyss/priv/plts
-          key: ${{ runner.os }}-dialyzer-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-dialyzer-
-
-      - name: Create PLT directories
-        run: |
-          mkdir -p priv/plts
-          mkdir -p apps/ex_dns/priv/plts
-          mkdir -p apps/ex_dhcp/priv/plts
-          mkdir -p apps/abyss/priv/plts
-
-      - name: Run Dialyzer
-        # Dialyzer is informational - PLT building may timeout on first run
-        # After first successful run, PLT will be cached and subsequent runs faster
-        run: mix dialyzer --halt-exit-status
-        timeout-minutes: 60
-        continue-on-error: true
+  # NOTE: Dialyzer is disabled in CI due to resource constraints
+  # PLT building requires more memory than GitHub free runners provide
+  # Run dialyzer locally with: mix dialyzer
+  # dialyzer:
+  #   name: Dialyzer
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Set up Elixir
+  #       uses: erlef/setup-beam@v1
+  #       with:
+  #         elixir-version: '1.18'
+  #         otp-version: '28'
+  #     - name: Install dependencies
+  #       run: mix deps.get
+  #     - name: Run Dialyzer
+  #       run: mix dialyzer --halt-exit-status
