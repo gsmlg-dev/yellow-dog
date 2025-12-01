@@ -61,8 +61,7 @@ defmodule YellowDog.Console do
 
   def live_view do
     quote do
-      use Phoenix.LiveView,
-        layout: {YellowDog.Console.Layouts, :app}
+      use Phoenix.LiveView
 
       unquote(html_helpers())
     end
