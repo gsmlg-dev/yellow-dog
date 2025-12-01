@@ -55,6 +55,9 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :yellow_dog_console, dev_routes: true
 
+# Settings page configuration path for development
+config :yellow_dog_console, config_path: "priv/yellowdogdns_default_config.toml"
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
