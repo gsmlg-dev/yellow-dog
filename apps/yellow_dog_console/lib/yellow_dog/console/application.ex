@@ -14,6 +14,8 @@ defmodule YellowDog.Console.Application do
       {Phoenix.PubSub, name: YellowDog.Console.PubSub},
       # Telemetry supervisor for metrics
       YellowDog.Console.Telemetry,
+      # Configuration version tracking for settings optimistic locking
+      YellowDog.Console.Settings.ConfigurationVersion,
       # Phoenix Endpoint
       YellowDog.Console.Endpoint
     ]

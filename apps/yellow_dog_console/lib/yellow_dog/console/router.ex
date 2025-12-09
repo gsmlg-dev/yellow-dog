@@ -19,7 +19,13 @@ defmodule YellowDog.Console.Router do
 
     get "/", PageController, :home
     live "/dashboard", DashboardLive
-    live "/settings", SettingsLive
+
+    # Settings routes with tab parameter
+    live "/settings", SettingsLive, :dns
+    live "/settings/dns", SettingsLive, :dns
+    live "/settings/mdns", SettingsLive, :mdns
+    live "/settings/dhcpv4", SettingsLive, :dhcpv4
+    live "/settings/dhcpv6", SettingsLive, :dhcpv6
 
     # mDNS Management Routes
     live "/mdns", MdnsLive.Index

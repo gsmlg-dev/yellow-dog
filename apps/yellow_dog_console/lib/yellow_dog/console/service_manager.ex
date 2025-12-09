@@ -40,9 +40,35 @@ defmodule YellowDog.Console.ServiceManager do
   """
   @spec apply_and_restart(atom(), map()) :: :ok | {:error, term()}
   def apply_and_restart(service, new_config) do
-    with :ok <- update_config(service, new_config),
-         {:ok, old_pid} <- get_supervisor_pid(service),
-         :ok <- terminate_supervisor(old_pid),
+    # First update the configuration
+    case update_config(service, new_config) do
+      :ok ->
+        # Check if service is currently running
+        case get_supervisor_pid(service) do
+          {:ok, old_pid} ->
+            # Service is running, restart it
+            restart_running_service(service, old_pid)
+
+          {:error, :supervisor_not_running} ->
+            # Service is not running, try to start it if enabled
+            if Map.get(new_config, "enabled", false) do
+              start_service(service)
+            else
+              # Service is disabled and not running - nothing to do
+              Logger.info("Service #{service} configuration updated (service disabled)")
+              :ok
+            end
+        end
+
+      {:error, reason} = error ->
+        emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
+        Logger.error("Failed to update config for service #{service}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp restart_running_service(service, old_pid) do
+    with :ok <- terminate_supervisor(old_pid),
          {:ok, new_pid} <- wait_for_restart(service, old_pid),
          :ok <- verify_service_health(service, new_pid) do
       emit_telemetry(:service_restarted, %{service: service})
@@ -54,6 +80,30 @@ defmodule YellowDog.Console.ServiceManager do
         Logger.error("Failed to restart service #{service}: #{inspect(reason)}")
         error
     end
+  end
+
+  defp start_service(service) do
+    # Try to start the service via the main YellowDog application
+    Logger.info("Starting service #{service}...")
+
+    # The service should be started by YellowDog.Application
+    # We need to trigger a reload of the service configuration
+    case YellowDog.start_service(service) do
+      :ok ->
+        emit_telemetry(:service_started, %{service: service})
+        Logger.info("Service #{service} started successfully")
+        :ok
+
+      {:error, reason} = error ->
+        emit_telemetry(:service_start_failed, %{service: service, reason: reason})
+        Logger.error("Failed to start service #{service}: #{inspect(reason)}")
+        error
+    end
+  rescue
+    # If YellowDog.start_service doesn't exist, log a warning
+    e in UndefinedFunctionError ->
+      Logger.warning("YellowDog.start_service/1 not available: #{inspect(e)}")
+      {:error, :start_not_implemented}
   end
 
   # Private Functions

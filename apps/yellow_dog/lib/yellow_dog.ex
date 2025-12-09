@@ -139,4 +139,30 @@ defmodule YellowDog do
   """
   @spec format_status(atom()) :: String.t()
   defdelegate format_status(service), to: YellowDog.ServiceManager
+
+  @doc """
+  Starts a service that is currently not running.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+
+  ## Returns
+  - `:ok` if service started successfully
+  - `{:error, reason}` if start failed
+  """
+  @spec start_service(atom()) :: :ok | {:error, term()}
+  defdelegate start_service(service), to: YellowDog.ServiceManager
+
+  @doc """
+  Stops a running service.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+
+  ## Returns
+  - `:ok` if service stopped successfully
+  - `{:error, reason}` if stop failed
+  """
+  @spec stop_service(atom()) :: :ok | {:error, term()}
+  defdelegate stop_service(service), to: YellowDog.ServiceManager
 end

@@ -33,7 +33,6 @@ defmodule YellowDog.Console.SettingsLive do
         |> assign(:config_path, config_path)
         |> assign(:config, config)
         |> assign(:version_info, version_info)
-        |> assign(:active_tab, :dns)
         |> assign(:show_conflict_modal, false)
         |> assign(:show_recovery_modal, false)
         |> assign(:changeset, nil)
@@ -55,7 +54,6 @@ defmodule YellowDog.Console.SettingsLive do
           |> assign(:config_path, config_path)
           |> assign(:config, %{})
           |> assign(:version_info, %{version: 0, timestamp: 0, file_path: config_path})
-          |> assign(:active_tab, :dns)
           |> assign(:show_conflict_modal, false)
           |> assign(:show_recovery_modal, false)
           |> assign(:changeset, nil)
@@ -71,11 +69,12 @@ defmodule YellowDog.Console.SettingsLive do
   end
 
   @impl true
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab_atom = String.to_existing_atom(tab)
-    {:noreply, assign(socket, :active_tab, tab_atom)}
+  def handle_params(_params, _url, socket) do
+    # live_action comes from the router (e.g., :dns, :mdns, :dhcpv4, :dhcpv6)
+    {:noreply, assign(socket, :active_tab, socket.assigns.live_action)}
   end
 
+  @impl true
   def handle_event("validate_" <> service, %{"service_configuration" => params}, socket) do
     service_atom = String.to_existing_atom(service)
     changeset = validate_service_config(service_atom, params)
@@ -316,13 +315,51 @@ defmodule YellowDog.Console.SettingsLive do
     core_config = Map.get(config, "core", %{})
     enabled = Map.get(core_config, to_string(service), false)
 
+    # Merge with defaults for this service
+    defaults = get_service_defaults(service)
+
     attrs =
-      service_config
+      defaults
+      |> Map.merge(service_config)
       |> Map.put("enabled", enabled)
       |> Map.put("service_type", service)
       |> maybe_add_pools(service, service_config)
 
     ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
+  end
+
+  defp get_service_defaults(:dns) do
+    %{
+      "listen" => "0.0.0.0",
+      "port" => 53
+    }
+  end
+
+  defp get_service_defaults(:mdns) do
+    %{
+      "listen" => "0.0.0.0",
+      "port" => 5353,
+      "mode" => "responder"
+    }
+  end
+
+  defp get_service_defaults(:dhcpv4) do
+    %{
+      "listen" => "0.0.0.0",
+      "port" => 67,
+      "gateway" => "192.168.1.1",
+      "domain" => "local",
+      "dns_servers" => ["8.8.8.8", "8.8.4.4"]
+    }
+  end
+
+  defp get_service_defaults(:dhcpv6) do
+    %{
+      "listen" => "::",
+      "port" => 547,
+      "domain" => "local",
+      "dns_servers" => ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+    }
   end
 
   defp maybe_add_pools(attrs, service, service_config)

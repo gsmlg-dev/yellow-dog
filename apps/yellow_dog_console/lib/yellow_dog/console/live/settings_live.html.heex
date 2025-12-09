@@ -42,9 +42,8 @@
   
 <!-- Tab Navigation -->
   <div class="tabs tabs-boxed bg-base-200 mb-6">
-    <button
-      phx-click="switch_tab"
-      phx-value-tab="dns"
+    <.link
+      patch={~p"/settings/dns"}
       class={["tab", @active_tab == :dns && "tab-active"]}
     >
       <svg
@@ -62,11 +61,10 @@
         />
       </svg>
       DNS
-    </button>
+    </.link>
 
-    <button
-      phx-click="switch_tab"
-      phx-value-tab="mdns"
+    <.link
+      patch={~p"/settings/mdns"}
       class={["tab", @active_tab == :mdns && "tab-active"]}
     >
       <svg
@@ -84,11 +82,10 @@
         />
       </svg>
       mDNS
-    </button>
+    </.link>
 
-    <button
-      phx-click="switch_tab"
-      phx-value-tab="dhcpv4"
+    <.link
+      patch={~p"/settings/dhcpv4"}
       class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
     >
       <svg
@@ -106,11 +103,10 @@
         />
       </svg>
       DHCPv4
-    </button>
+    </.link>
 
-    <button
-      phx-click="switch_tab"
-      phx-value-tab="dhcpv6"
+    <.link
+      patch={~p"/settings/dhcpv6"}
       class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
     >
       <svg
@@ -128,11 +124,11 @@
         />
       </svg>
       DHCPv6
-    </button>
+    </.link>
   </div>
   
 <!-- Tab Content -->
-  <div class="tab-content">
+  <div class="mt-4">
     <%= case @active_tab do %>
       <% :dns -> %>
         <YellowDog.Console.SettingsLive.DnsTab.dns_tab

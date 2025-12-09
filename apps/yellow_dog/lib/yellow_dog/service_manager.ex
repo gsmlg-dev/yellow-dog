@@ -80,6 +80,68 @@ defmodule YellowDog.ServiceManager do
   def list_services, do: @services
 
   @doc """
+  Starts a service that is currently not running.
+
+  Updates the configuration to enable the service and starts its supervisor.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+
+  ## Returns
+  - `:ok` if service started successfully
+  - `{:error, reason}` if start failed
+  """
+  @spec start_service(atom()) :: :ok | {:error, term()}
+  def start_service(service) when service in @services do
+    # Enable the service in config
+    YellowDog.Config.set_service_enabled(service, true)
+
+    # Start the supervisor via YellowDog.Application
+    supervisor_module = Map.get(@service_modules, service)
+
+    case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def start_service(service) do
+    Logger.warning("Unknown service: #{inspect(service)}")
+    {:error, :unknown_service}
+  end
+
+  @doc """
+  Stops a running service.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+
+  ## Returns
+  - `:ok` if service stopped successfully
+  - `{:error, reason}` if stop failed
+  """
+  @spec stop_service(atom()) :: :ok | {:error, term()}
+  def stop_service(service) when service in @services do
+    # Disable the service in config
+    YellowDog.Config.set_service_enabled(service, false)
+
+    # Stop the supervisor
+    supervisor_module = Map.get(@service_modules, service)
+
+    case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
+      :ok -> :ok
+      {:error, :not_found} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def stop_service(service) do
+    Logger.warning("Unknown service: #{inspect(service)}")
+    {:error, :unknown_service}
+  end
+
+  @doc """
   Gets detailed statistics for a specific service.
 
   ## Parameters

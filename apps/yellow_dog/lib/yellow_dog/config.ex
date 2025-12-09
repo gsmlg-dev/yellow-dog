@@ -68,6 +68,26 @@ defmodule YellowDog.Config do
   end
 
   @doc """
+  Enables or disables a service in the configuration.
+
+  ## Examples
+
+      iex> YellowDog.Config.set_service_enabled(:dns, true)
+      :ok
+
+      iex> YellowDog.Config.set_service_enabled(:mdns, false)
+      :ok
+  """
+  @spec set_service_enabled(service_name(), boolean()) :: :ok
+  def set_service_enabled(service, enabled) do
+    Agent.update(__MODULE__, fn state ->
+      core_config = Map.get(state, "core", %{})
+      new_core = Map.put(core_config, to_string(service), enabled)
+      Map.put(state, "core", new_core)
+    end)
+  end
+
+  @doc """
   Gets a specific configuration value for a service.
 
   ## Examples

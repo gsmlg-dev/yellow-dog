@@ -35,6 +35,83 @@ defmodule YellowDog.Application do
     Supervisor.start_link(children, opts)
   end
 
+  @doc """
+  Starts a service supervisor dynamically.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+  - `supervisor_module` - The supervisor module to start
+
+  ## Returns
+  - `{:ok, pid}` if started successfully
+  - `{:error, reason}` if start failed
+  """
+  @spec start_service_supervisor(atom(), module()) :: {:ok, pid()} | {:error, term()}
+  def start_service_supervisor(service, _supervisor_module) do
+    # Get the app module for this service
+    app_module = service_app_module(service)
+
+    # Get server options from current config
+    config = YellowDog.Config.get_all()
+    server_options = build_server_options(config, service)
+
+    # Build child spec
+    child_spec = {app_module, server_options: server_options}
+
+    # Start the child under the main supervisor
+    case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
+      {:ok, pid} ->
+        Logger.info("Started service #{service} with PID #{inspect(pid)}")
+        {:ok, pid}
+
+      {:error, {:already_started, pid}} ->
+        Logger.info("Service #{service} already running with PID #{inspect(pid)}")
+        {:error, {:already_started, pid}}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to start service #{service}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  @doc """
+  Stops a service supervisor dynamically.
+
+  ## Parameters
+  - `service` - Service name (:dns, :mdns, :dhcpv4, :dhcpv6)
+  - `supervisor_module` - The supervisor module to stop
+
+  ## Returns
+  - `:ok` if stopped successfully
+  - `{:error, reason}` if stop failed
+  """
+  @spec stop_service_supervisor(atom(), module()) :: :ok | {:error, term()}
+  def stop_service_supervisor(service, _supervisor_module) do
+    app_module = service_app_module(service)
+
+    case Supervisor.terminate_child(YellowDog.Supervisor, app_module) do
+      :ok ->
+        # Also delete the child spec so it can be restarted later
+        Supervisor.delete_child(YellowDog.Supervisor, app_module)
+        Logger.info("Stopped service #{service}")
+        :ok
+
+      {:error, :not_found} ->
+        Logger.debug("Service #{service} not found (already stopped)")
+        {:error, :not_found}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to stop service #{service}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  # Maps service atom to app module
+  defp service_app_module(:dns), do: YellowDog.Dns
+  defp service_app_module(:mdns), do: YellowDog.Mdns
+  defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
+  defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
+
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
 
