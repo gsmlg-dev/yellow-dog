@@ -212,7 +212,6 @@ defmodule YellowDog.Console.Layouts do
                   />
                 </svg>
                 <span>DNS</span>
-                <div class="badge badge-success badge-sm">Running</div>
               </summary>
               <ul>
                 <li><a href="/dns">Overview</a></li>
@@ -242,7 +241,6 @@ defmodule YellowDog.Console.Layouts do
                   />
                 </svg>
                 <span>DHCPv4</span>
-                <div class="badge badge-success badge-sm">Running</div>
               </summary>
               <ul>
                 <li><a href="/dhcpv4">Overview</a></li>
@@ -271,7 +269,6 @@ defmodule YellowDog.Console.Layouts do
                   />
                 </svg>
                 <span>DHCPv6</span>
-                <div class="badge badge-error badge-sm">Stopped</div>
               </summary>
               <ul>
                 <li><a href="/dhcpv6">Overview</a></li>
@@ -300,7 +297,6 @@ defmodule YellowDog.Console.Layouts do
                   />
                 </svg>
                 <span>mDNS</span>
-                <div class="badge badge-success badge-sm">Running</div>
               </summary>
               <ul>
                 <li><a href="/mdns">Overview</a></li>
