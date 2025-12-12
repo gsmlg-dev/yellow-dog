@@ -65,13 +65,25 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       # Update the supervisor-managed View.Manager with initial views
       # View.Manager is started by YellowDog.Dns.Supervisor with the name YellowDog.Dns.View.Manager
-      case ViewManager.update_views(YellowDog.Dns.View.Manager, initial_views) do
-        :ok ->
-          Telemetry.info("Updated View.Manager with initial views", %{
-            view_count: length(initial_views)
-          })
+      # In tests, the View.Manager may not be running, so we need to handle that gracefully
+      try do
+        case ViewManager.update_views(YellowDog.Dns.View.Manager, initial_views) do
+          :ok ->
+            Telemetry.info("Updated View.Manager with initial views", %{
+              view_count: length(initial_views)
+            })
 
-        {:error, reason} ->
+          {:error, reason} ->
+            Telemetry.warning("Failed to update View.Manager with initial views", %{
+              reason: inspect(reason)
+            })
+        end
+      catch
+        :exit, {:noproc, _} ->
+          # View.Manager process not running (e.g., in tests without full supervisor tree)
+          Telemetry.debug("View.Manager not running, skipping view update")
+
+        :exit, reason ->
           Telemetry.warning("Failed to update View.Manager with initial views", %{
             reason: inspect(reason)
           })
@@ -196,7 +208,8 @@ defmodule YellowDog.Dns.Handler.UDP do
     # Match client to view for split-horizon DNS
     # Get current views from ViewManager for hot-reload support
     # ViewManager is managed by supervisor with named process YellowDog.Dns.View.Manager
-    views = ViewManager.get_views(YellowDog.Dns.View.Manager)
+    # In tests, the View.Manager may not be running, so we fall back to default view
+    views = get_views_safely()
     view = match_client_to_view(client_ip, views)
 
     Telemetry.debug("Matched client to view", %{
@@ -1108,6 +1121,21 @@ defmodule YellowDog.Dns.Handler.UDP do
     case matching_zone do
       nil -> {:error, :not_found}
       zone_name -> {:ok, zone_name}
+    end
+  end
+
+  # Safely get views from ViewManager, falling back to default view if process not running
+  defp get_views_safely do
+    try do
+      ViewManager.get_views(YellowDog.Dns.View.Manager)
+    catch
+      :exit, {:noproc, _} ->
+        # View.Manager process not running (e.g., in tests without full supervisor tree)
+        # Return default view
+        [View.default()]
+
+      :exit, _ ->
+        [View.default()]
     end
   end
 end
