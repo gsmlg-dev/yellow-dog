@@ -19,6 +19,60 @@ defmodule YellowDog.Console.DashboardLive do
     {:noreply, assign(socket, :services, get_service_status())}
   end
 
+  @impl true
+  def handle_event("start_service", %{"service" => service_str}, socket) do
+    service = String.to_existing_atom(service_str)
+
+    case YellowDog.start_service(service) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(:services, get_service_status())
+         |> put_flash(:info, "#{String.upcase(service_str)} started successfully")}
+
+      {:error, {:already_started, _pid}} ->
+        {:noreply,
+         socket
+         |> assign(:services, get_service_status())
+         |> put_flash(:info, "#{String.upcase(service_str)} is already running")}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Failed to start #{String.upcase(service_str)}: #{inspect(reason)}"
+         )}
+    end
+  end
+
+  @impl true
+  def handle_event("stop_service", %{"service" => service_str}, socket) do
+    service = String.to_existing_atom(service_str)
+
+    case YellowDog.stop_service(service) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(:services, get_service_status())
+         |> put_flash(:info, "#{String.upcase(service_str)} stopped successfully")}
+
+      {:error, :not_running} ->
+        {:noreply,
+         socket
+         |> assign(:services, get_service_status())
+         |> put_flash(:info, "#{String.upcase(service_str)} is not running")}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Failed to stop #{String.upcase(service_str)}: #{inspect(reason)}"
+         )}
+    end
+  end
+
   # Service configuration
   @service_info %{
     dns: %{name: "DNS", description: "Domain Name Service", default_port: "53"},
@@ -41,14 +95,26 @@ defmodule YellowDog.Console.DashboardLive do
         # Get port from config or use default
         port = get_service_port(service_status, service_config)
 
+        # Get error status if present
+        error = Map.get(service_status, :error)
+
+        # Determine status text
+        status =
+          cond do
+            error != nil -> "Error"
+            service_status[:running] -> "Running"
+            true -> "Stopped"
+          end
+
         # Build service map
         %{
           key: service_key,
           name: service_config.name,
           description: service_config.description,
-          status: if(service_status[:running], do: "Running", else: "Stopped"),
+          status: status,
           enabled: Map.get(service_status, :enabled, false),
           running: Map.get(service_status, :running, false),
+          error: error,
           port: port,
           pid: format_pid(service_status[:pid]),
           memory: format_memory(service_status[:memory]),
@@ -110,6 +176,7 @@ defmodule YellowDog.Console.DashboardLive do
         status: "Unknown",
         enabled: false,
         running: false,
+        error: nil,
         port: service_config.default_port,
         pid: "N/A",
         memory: "N/A",

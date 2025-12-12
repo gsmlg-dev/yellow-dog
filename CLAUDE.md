@@ -801,3 +801,10 @@ The project uses several tools for maintaining code quality:
 - **machete**: Testing utilities (development and test only)
 - **dialyxir**: Static type analysis (~> 1.0)
 - Never disable any job in ci.yml
+
+## Active Technologies
+- Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0 (001-dns-service)
+- ETS tables for caching, Agent for configuration (001-dns-service)
+
+## Recent Changes
+- 001-dns-service: Added Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0
