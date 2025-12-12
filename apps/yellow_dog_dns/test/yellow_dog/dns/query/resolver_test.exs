@@ -6,7 +6,21 @@ defmodule YellowDog.Dns.Query.ResolverTest do
   alias YellowDog.Dns.Zone.Storage
 
   setup do
-    # Initialize storage (ignore if already exists)
+    # Clean up any existing ETS tables and reinitialize storage
+    # This ensures a clean state for each test
+    tables = [:dns_zone_data, :dns_zone_metadata, :dns_zone_index]
+
+    for table <- tables do
+      try do
+        if :ets.whereis(table) != :undefined do
+          :ets.delete(table)
+        end
+      rescue
+        ArgumentError -> :ok
+      end
+    end
+
+    # Now initialize storage fresh
     case Storage.init() do
       :ok -> :ok
       {:error, :already_exists} -> :ok
