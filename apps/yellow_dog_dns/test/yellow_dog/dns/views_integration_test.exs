@@ -15,14 +15,24 @@ defmodule YellowDog.Dns.ViewsIntegrationTest do
   alias YellowDog.Dns.Zone.Manager, as: ZoneManager
 
   setup do
-    # Start Zone.Manager if not running
-    case Process.whereis(YellowDog.Dns.Zone.Manager) do
-      nil ->
-        {:ok, _pid} = YellowDog.Dns.Zone.Manager.start_link([])
+    # Start Zone.Manager - use start_supervised! for proper cleanup between tests
+    # First stop any existing Zone.Manager process
+    try do
+      case Process.whereis(YellowDog.Dns.Zone.Manager) do
+        nil ->
+          :ok
 
-      _pid ->
-        :ok
+        pid when is_pid(pid) ->
+          GenServer.stop(pid, :normal, 5000)
+      end
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
     end
+
+    # Start fresh Zone.Manager
+    start_supervised!({YellowDog.Dns.Zone.Manager, []})
 
     # Load test zones
     internal_zone_data = """

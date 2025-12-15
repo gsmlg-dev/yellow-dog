@@ -30,7 +30,6 @@ defmodule YellowDog.Dns.Handler.UDP do
   alias YellowDog.Dns.View
   alias YellowDog.Dns.View.Config, as: ViewConfig
   alias YellowDog.Dns.View.Manager, as: ViewManager
-  alias YellowDog.Dns.View.ConfigWatcher
   alias DNS.Zone.Recursive, as: RecursiveDNS
   alias DNS.Message
   alias DNS.Message.Record
@@ -55,7 +54,8 @@ defmodule YellowDog.Dns.Handler.UDP do
         zone_count: length(loaded_zones)
       })
 
-      # Initialize views for split-horizon DNS
+      # Initialize views for split-horizon DNS and update the View.Manager
+      # View.Manager is now started by the supervisor - we just initialize views here
       initial_views = initialize_views(loaded_zones)
 
       Telemetry.info("Initialized #{length(initial_views)} DNS view(s)", %{
@@ -63,24 +63,41 @@ defmodule YellowDog.Dns.Handler.UDP do
         view_names: Enum.map(initial_views, & &1.name)
       })
 
-      # Start View.Manager with initial views
-      {:ok, view_manager_pid} = ViewManager.start_link(views: initial_views, name: nil)
+      # Update the supervisor-managed View.Manager with initial views
+      # View.Manager is started by YellowDog.Dns.Supervisor with the name YellowDog.Dns.View.Manager
+      # In tests, the View.Manager may not be running, so we need to handle that gracefully
+      try do
+        case ViewManager.update_views(YellowDog.Dns.View.Manager, initial_views) do
+          :ok ->
+            Telemetry.info("Updated View.Manager with initial views", %{
+              view_count: length(initial_views)
+            })
 
-      Telemetry.info("Started View.Manager", %{
-        pid: inspect(view_manager_pid),
-        initial_view_count: length(initial_views)
-      })
+          {:error, reason} ->
+            Telemetry.warning("Failed to update View.Manager with initial views", %{
+              reason: inspect(reason)
+            })
+        end
+      catch
+        :exit, {:noproc, _} ->
+          # View.Manager process not running (e.g., in tests without full supervisor tree)
+          Telemetry.debug("View.Manager not running, skipping view update")
 
-      # Optionally start ConfigWatcher for hot-reload
-      config_watcher_pid = start_config_watcher_if_enabled(view_manager_pid)
+        :exit, reason ->
+          Telemetry.warning("Failed to update View.Manager with initial views", %{
+            reason: inspect(reason)
+          })
+      end
+
+      # ConfigWatcher is now managed by the supervisor if hot-reload is enabled
+      # No need to start it here
 
       # Add DNS-specific state (cache is now managed by CacheManager)
+      # View.Manager is accessed by name, not PID
       dns_state = %{
         mode: mode,
         upstream_servers: parse_upstream_servers(upstream_servers),
         loaded_zones: loaded_zones,
-        view_manager_pid: view_manager_pid,
-        config_watcher_pid: config_watcher_pid,
         stats: %{
           queries: 0,
           cache_hits: 0,
@@ -190,7 +207,9 @@ defmodule YellowDog.Dns.Handler.UDP do
 
     # Match client to view for split-horizon DNS
     # Get current views from ViewManager for hot-reload support
-    views = ViewManager.get_views(state.view_manager_pid)
+    # ViewManager is managed by supervisor with named process YellowDog.Dns.View.Manager
+    # In tests, the View.Manager may not be running, so we fall back to default view
+    views = get_views_safely()
     view = match_client_to_view(client_ip, views)
 
     Telemetry.debug("Matched client to view", %{
@@ -1105,58 +1124,18 @@ defmodule YellowDog.Dns.Handler.UDP do
     end
   end
 
-  defp start_config_watcher_if_enabled(view_manager_pid) do
-    # Check if hot-reload is enabled and config path is set
-    hot_reload_enabled = get_config(:hot_reload_enabled, false)
-    config_path = Application.get_env(:yellow_dog_dns, :views_config_path)
+  # Safely get views from ViewManager, falling back to default view if process not running
+  defp get_views_safely do
+    try do
+      ViewManager.get_views(YellowDog.Dns.View.Manager)
+    catch
+      :exit, {:noproc, _} ->
+        # View.Manager process not running (e.g., in tests without full supervisor tree)
+        # Return default view
+        [View.default()]
 
-    cond do
-      not hot_reload_enabled ->
-        Telemetry.info("Hot-reload disabled, not starting ConfigWatcher")
-        nil
-
-      is_nil(config_path) or config_path == "" ->
-        Telemetry.warning("Hot-reload enabled but no views_config_path configured")
-        nil
-
-      not File.exists?(config_path) ->
-        Telemetry.warning("Hot-reload enabled but config file does not exist", %{
-          path: config_path
-        })
-
-        nil
-
-      true ->
-        # Start ConfigWatcher with ViewManager callback
-        debounce_ms = get_config(:reload_debounce_ms, 300)
-
-        opts = [
-          config_path: config_path,
-          reload_callback: fn views ->
-            ViewManager.update_views(view_manager_pid, views)
-          end,
-          debounce_ms: debounce_ms,
-          name: nil
-        ]
-
-        case ConfigWatcher.start_link(opts) do
-          {:ok, pid} ->
-            Telemetry.info("Started ConfigWatcher for hot-reload", %{
-              pid: inspect(pid),
-              config_path: config_path,
-              debounce_ms: debounce_ms
-            })
-
-            pid
-
-          {:error, reason} ->
-            Telemetry.error("Failed to start ConfigWatcher", %{
-              reason: inspect(reason),
-              config_path: config_path
-            })
-
-            nil
-        end
+      :exit, _ ->
+        [View.default()]
     end
   end
 end

@@ -28,16 +28,24 @@
       <div :for={service <- @services} class="stat">
         <div class="stat-figure">
           <.status_indicator
-            status={if service.status == "Running", do: "running", else: "stopped"}
+            status={
+              cond do
+                service.status == "Running" -> "running"
+                service.status == "Error" -> "error"
+                true -> "stopped"
+              end
+            }
             pulse
           />
         </div>
         <div class="stat-title">{service.description}</div>
         <div class="stat-value text-2xl">
           <span class={
-            if service.status == "Running",
-              do: "text-success",
-              else: "text-error"
+            cond do
+              service.status == "Running" -> "text-success"
+              service.status == "Error" -> "text-error"
+              true -> "text-base-content/50"
+            end
           }>
             {service.name}
           </span>
@@ -57,7 +65,13 @@
               <h3 class="card-title text-lg mb-2">
                 {service.name}
                 <.badge
-                  color={if service.status == "Running", do: "success", else: "error"}
+                  color={
+                    cond do
+                      service.status == "Running" -> "success"
+                      service.status == "Error" -> "error"
+                      true -> "neutral"
+                    end
+                  }
                   size="sm"
                 >
                   {service.status}
@@ -66,6 +80,24 @@
               <p class="text-sm text-base-content/70 mb-4">
                 {service.description}
               </p>
+              <%= if service.error do %>
+                <div class="alert alert-error text-sm py-2 px-3">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="stroke-current shrink-0 h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{service.error}</span>
+                </div>
+              <% end %>
             </div>
           </div>
 
@@ -80,7 +112,13 @@
             <div class="flex items-center justify-between text-sm">
               <span class="text-base-content/60">Status</span>
               <.status_indicator
-                status={if service.status == "Running", do: "running", else: "stopped"}
+                status={
+                  cond do
+                    service.status == "Running" -> "running"
+                    service.status == "Error" -> "error"
+                    true -> "stopped"
+                  end
+                }
                 label={service.status}
               />
             </div>
@@ -106,12 +144,75 @@
 
             <.progress
               value={if service.status == "Running", do: 100, else: 0}
-              color={if service.status == "Running", do: "success", else: "error"}
+              color={
+                cond do
+                  service.status == "Running" -> "success"
+                  service.status == "Error" -> "error"
+                  true -> "neutral"
+                end
+              }
               class="mt-2"
             />
           </div>
 
           <:actions>
+            <%= if service.running do %>
+              <button
+                class="btn btn-sm btn-error gap-2"
+                phx-click="stop_service"
+                phx-value-service={service.key}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+                  />
+                </svg>
+                Stop
+              </button>
+            <% else %>
+              <button
+                class="btn btn-sm btn-success gap-2"
+                phx-click="start_service"
+                phx-value-service={service.key}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                Start
+              </button>
+            <% end %>
             <button class="btn btn-sm btn-ghost gap-2">
               <svg
                 xmlns="http://www.w3.org/2000/svg"

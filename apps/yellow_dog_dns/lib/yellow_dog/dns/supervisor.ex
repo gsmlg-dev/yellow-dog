@@ -22,22 +22,18 @@ defmodule YellowDog.Dns.Supervisor do
   ## Returns
   - `{:ok, pid}` - Supervisor started successfully
   - `{:error, reason}` - Failed to start supervisor
-  - `:ignore` - DNS service is disabled in configuration
-  """
-  @spec start_link(keyword()) :: Supervisor.on_start() | :ignore
-  def start_link(opts) do
-    # Check if DNS service is enabled
-    unless apply(YellowDog.Config, :service_enabled?, [:dns]) do
-      Telemetry.info("DNS service is disabled, skipping startup")
-      :ignore
-    else
-      opts = Map.new(opts)
-      name = Map.get(opts, :name, YellowDog.Dns)
-      opts = Map.put(opts, :name, name)
 
-      Telemetry.debug("Starting DNS supervisor")
-      Supervisor.start_link(__MODULE__, opts, name: name)
-    end
+  Note: Service enablement is handled at the application layer.
+  This supervisor always starts when invoked.
+  """
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  def start_link(opts) do
+    opts = Map.new(opts)
+    name = Map.get(opts, :name, YellowDog.Dns)
+    opts = Map.put(opts, :name, name)
+
+    Telemetry.debug("Starting DNS supervisor")
+    Supervisor.start_link(__MODULE__, opts, name: name)
   end
 
   @impl true
@@ -64,7 +60,14 @@ defmodule YellowDog.Dns.Supervisor do
           []
       end
 
-    [
+    # Get view configuration
+    views_config_path = Application.get_env(:yellow_dog_dns, :views_config_path)
+    hot_reload_enabled = get_config(:hot_reload_enabled, false)
+    reload_debounce_ms = get_config(:reload_debounce_ms, 300)
+
+    # Build base children list with correct dependency order:
+    # Zone.Manager → Cache.Manager → Cache.Cleaner → RootZone.Manager → View.Manager → ConfigWatcher → Server
+    base_children = [
       # Zone Manager - manages zone lifecycle and storage
       {YellowDog.Dns.Zone.Manager, []}
       |> Supervisor.child_spec(id: :zone_manager, restart: :permanent),
@@ -81,6 +84,33 @@ defmodule YellowDog.Dns.Supervisor do
       {YellowDog.Dns.RootZone.Manager, strategy: :hints}
       |> Supervisor.child_spec(id: :root_zone_manager, restart: :permanent),
 
+      # View Manager - manages DNS views for split-horizon DNS
+      {YellowDog.Dns.View.Manager, [name: YellowDog.Dns.View.Manager]}
+      |> Supervisor.child_spec(id: :view_manager, restart: :permanent)
+    ]
+
+    # Conditionally add ConfigWatcher if hot-reload is enabled and config path exists
+    config_watcher_children =
+      if hot_reload_enabled and is_binary(views_config_path) and views_config_path != "" do
+        config_watcher_opts = [
+          config_path: views_config_path,
+          reload_callback: fn views ->
+            YellowDog.Dns.View.Manager.update_views(YellowDog.Dns.View.Manager, views)
+          end,
+          debounce_ms: reload_debounce_ms,
+          name: YellowDog.Dns.View.ConfigWatcher
+        ]
+
+        [
+          {YellowDog.Dns.View.ConfigWatcher, config_watcher_opts}
+          |> Supervisor.child_spec(id: :config_watcher, restart: :transient)
+        ]
+      else
+        []
+      end
+
+    # Server and post-start task come last
+    server_children = [
       # DNS Server (wraps Abyss UDP server)
       {YellowDog.Dns.Server, server_options}
       |> Supervisor.child_spec(id: :server, restart: :permanent),
@@ -98,5 +128,17 @@ defmodule YellowDog.Dns.Supervisor do
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
+
+    base_children ++ config_watcher_children ++ server_children
+  end
+
+  # Helper to get DNS configuration
+  defp get_config(key, default) do
+    case apply(YellowDog.Config, :get, [:dns, key]) do
+      nil -> default
+      value -> value
+    end
+  rescue
+    _ -> default
   end
 end
