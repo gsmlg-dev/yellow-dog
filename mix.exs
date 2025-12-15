@@ -124,7 +124,14 @@ defmodule YellowDog.Umbrella.MixProject do
       end
     end)
 
-    # Run ExUnit
-    ExUnit.run()
+    # Run ExUnit and check results
+    %{failures: failures, excluded: excluded, total: total} = ExUnit.run()
+
+    # Exit with non-zero code if there are failures
+    if failures > 0 do
+      Mix.raise("#{failures} test(s) failed out of #{total} (#{excluded} excluded)")
+    end
+
+    :ok
   end
 end

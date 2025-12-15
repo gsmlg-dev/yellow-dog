@@ -244,28 +244,21 @@ defmodule E2ETest.ServiceHelper do
   end
 
   # Extract port from server state (varies by server implementation)
-  defp extract_port_from_state(%{config: config}) when is_list(config) do
-    case Keyword.get(config, :port) do
-      nil -> {:error, :port_not_in_config}
-      0 -> get_port_from_abyss_config(config)
-      port -> {:ok, port}
-    end
-  end
-
+  # Check for abyss_pid FIRST since state may have both config and abyss_pid
   defp extract_port_from_state(%{abyss_pid: abyss_pid}) when is_pid(abyss_pid) do
     # Try to get port from Abyss listener
     get_port_from_abyss(abyss_pid)
   end
 
-  defp extract_port_from_state(_), do: {:error, :unknown_state_format}
-
-  defp get_port_from_abyss_config(config) do
-    # Check if there's socket info in transport options
-    case Keyword.get(config, :transport_options) do
-      nil -> {:error, :no_transport_options}
-      _opts -> {:error, :port_not_available}
+  defp extract_port_from_state(%{config: config}) when is_list(config) do
+    case Keyword.get(config, :port) do
+      nil -> {:error, :port_not_in_config}
+      0 -> {:error, :port_is_zero}
+      port -> {:ok, port}
     end
   end
+
+  defp extract_port_from_state(_), do: {:error, :unknown_state_format}
 
   defp get_port_from_abyss(abyss_pid) do
     # Try to get listener pool and then listener info

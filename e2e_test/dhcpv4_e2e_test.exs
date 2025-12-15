@@ -36,7 +36,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         {:ok, Map.put(ctx, :lease_manager, lease_manager_result)}
 
       {:error, reason} ->
-        {:error, reason}
+        raise "Failed to start DHCPv4 server: #{inspect(reason)}"
     end
   end
 

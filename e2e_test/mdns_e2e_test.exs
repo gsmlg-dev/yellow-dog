@@ -37,7 +37,7 @@ defmodule E2ETest.MdnsE2ETest do
         {:ok, Map.put(ctx, :registry, registry_result)}
 
       {:error, reason} ->
-        {:error, reason}
+        raise "Failed to start mDNS server: #{inspect(reason)}"
     end
   end
 

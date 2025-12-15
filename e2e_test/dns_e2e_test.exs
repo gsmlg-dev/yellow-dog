@@ -31,7 +31,7 @@ defmodule E2ETest.DnsE2ETest do
         {:ok, ctx}
 
       {:error, reason} ->
-        {:error, reason}
+        raise "Failed to start DNS server: #{inspect(reason)}"
     end
   end
 
