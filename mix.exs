@@ -71,7 +71,60 @@ defmodule YellowDog.Umbrella.MixProject do
       test: ["cmd mix test"],
       lint: ["cmd mix lint"],
       credo: ["cmd mix credo --strict"],
-      dialyzer: ["cmd mix dialyzer"]
+      dialyzer: ["cmd mix dialyzer"],
+      # E2E test aliases - use function to run tests at umbrella root
+      "test.e2e": &run_e2e_tests/1,
+      "test.e2e.dns": &run_e2e_dns/1,
+      "test.e2e.mdns": &run_e2e_mdns/1,
+      "test.e2e.dhcpv4": &run_e2e_dhcpv4/1,
+      "test.e2e.dhcpv6": &run_e2e_dhcpv6/1
     ]
+  end
+
+  # E2E test functions - run ExUnit directly at umbrella level
+  defp run_e2e_tests(_args) do
+    run_e2e_test_files(["e2e_test/"])
+  end
+
+  defp run_e2e_dns(_args) do
+    run_e2e_test_files(["e2e_test/dns_e2e_test.exs"])
+  end
+
+  defp run_e2e_mdns(_args) do
+    run_e2e_test_files(["e2e_test/mdns_e2e_test.exs"])
+  end
+
+  defp run_e2e_dhcpv4(_args) do
+    run_e2e_test_files(["e2e_test/dhcpv4_e2e_test.exs"])
+  end
+
+  defp run_e2e_dhcpv6(_args) do
+    run_e2e_test_files(["e2e_test/dhcpv6_e2e_test.exs"])
+  end
+
+  defp run_e2e_test_files(paths) do
+    # Ensure test environment
+    Mix.env(:test)
+
+    # Compile the umbrella apps first
+    Mix.Task.run("compile", [])
+
+    # Load and compile test helper
+    Code.compile_file("e2e_test/test_helper.exs")
+
+    # Require all test files
+    Enum.each(paths, fn path ->
+      if File.dir?(path) do
+        Path.wildcard(Path.join(path, "**/*_test.exs"))
+        |> Enum.each(&Code.require_file/1)
+      else
+        if File.exists?(path) do
+          Code.require_file(path)
+        end
+      end
+    end)
+
+    # Run ExUnit
+    ExUnit.run()
   end
 end
