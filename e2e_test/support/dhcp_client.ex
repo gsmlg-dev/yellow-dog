@@ -374,9 +374,9 @@ defmodule E2ETest.DhcpClient do
       msg_type: @dhcpv6_solicit,
       transaction_id: transaction_id,
       options: [
-        V6Option.new(1, byte_size(duid), duid),
-        V6Option.new(3, byte_size(ia_na_value), ia_na_value),
-        V6Option.new(6, 4, <<0, 23, 0, 24>>)
+        V6Option.new(1, duid),
+        V6Option.new(3, ia_na_value),
+        V6Option.new(6, <<0, 23, 0, 24>>)
       ]
     }
   end
@@ -386,10 +386,10 @@ defmodule E2ETest.DhcpClient do
       msg_type: @dhcpv6_request,
       transaction_id: transaction_id,
       options: [
-        V6Option.new(1, byte_size(duid), duid),
-        V6Option.new(2, byte_size(server_duid), server_duid),
-        V6Option.new(3, byte_size(ia_na), ia_na),
-        V6Option.new(6, 4, <<0, 23, 0, 24>>)
+        V6Option.new(1, duid),
+        V6Option.new(2, server_duid),
+        V6Option.new(3, ia_na),
+        V6Option.new(6, <<0, 23, 0, 24>>)
       ]
     }
   end

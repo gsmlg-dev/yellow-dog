@@ -105,11 +105,11 @@ defmodule E2ETest.Dhcpv4E2ETest do
         file: <<0::1024>>,
         options: [
           # DHCP Message Type: DISCOVER
-          %DHCPv4.Message.Option{code: 53, value: <<1>>},
+          %DHCPv4.Message.Option{type: 53, value: <<1>>},
           # Client Identifier (type 1 = ethernet)
-          %DHCPv4.Message.Option{code: 61, value: <<1>> <> :erlang.list_to_binary(:erlang.tuple_to_list(mac))},
+          %DHCPv4.Message.Option{type: 61, value: <<1>> <> :erlang.list_to_binary(:erlang.tuple_to_list(mac))},
           # Parameter Request List
-          %DHCPv4.Message.Option{code: 55, value: <<1, 3, 6, 15, 28, 51, 58, 59>>}
+          %DHCPv4.Message.Option{type: 55, value: <<1, 3, 6, 15, 28, 51, 58, 59>>}
         ]
       }
 
@@ -227,7 +227,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         sname: <<0::512>>,
         file: <<0::1024>>,
         options: [
-          %DHCPv4.Message.Option{code: 53, value: <<1>>}
+          %DHCPv4.Message.Option{type: 53, value: <<1>>}
         ]
       }
 
@@ -339,7 +339,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
   end
 
   defp get_server_identifier(message) do
-    case Enum.find(message.options, fn opt -> opt.code == 54 end) do
+    case Enum.find(message.options, fn opt -> opt.type == 54 end) do
       %{value: <<a, b, c, d>>} -> {a, b, c, d}
       _ -> nil
     end
