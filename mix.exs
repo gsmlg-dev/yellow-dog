@@ -71,7 +71,13 @@ defmodule YellowDog.Umbrella.MixProject do
       test: ["cmd mix test"],
       lint: ["cmd mix lint"],
       credo: ["cmd mix credo --strict"],
-      dialyzer: ["cmd mix dialyzer"]
+      dialyzer: ["cmd mix dialyzer"],
+      # E2E test aliases
+      "test.e2e": ["test e2e_test/"],
+      "test.e2e.dns": ["test e2e_test/dns_e2e_test.exs"],
+      "test.e2e.mdns": ["test e2e_test/mdns_e2e_test.exs"],
+      "test.e2e.dhcpv4": ["test e2e_test/dhcpv4_e2e_test.exs"],
+      "test.e2e.dhcpv6": ["test e2e_test/dhcpv6_e2e_test.exs"]
     ]
   end
 end

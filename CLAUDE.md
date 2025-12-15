@@ -101,6 +101,32 @@ mix test.unit               # Run only unit tests (exclude integration/slow)
 mix test.integration        # Run integration tests only
 ```
 
+### E2E Testing
+```bash
+# Run all E2E tests (starts services with auto-selected ports)
+mix test.e2e
+
+# Run E2E tests for specific services
+mix test.e2e.dns       # DNS server E2E tests
+mix test.e2e.mdns      # mDNS server E2E tests
+mix test.e2e.dhcpv4    # DHCPv4 server E2E tests
+mix test.e2e.dhcpv6    # DHCPv6 server E2E tests
+```
+
+**E2E Test Structure:**
+- `e2e_test/` - E2E test directory at umbrella root
+- `e2e_test/support/` - Shared test helpers
+  - `service_helper.ex` - Service lifecycle management (start/stop servers)
+  - `dns_client.ex` - DNS query helper using ex_dns library
+  - `dhcp_client.ex` - DHCP message helper using ex_dhcp library
+- `e2e_test/*_e2e_test.exs` - E2E test files for each service
+
+**E2E Test Patterns:**
+- Services start with `port: 0` for auto-selection (CI-friendly)
+- mDNS uses unicast to loopback in CI (no multicast)
+- Each test file has `setup` callback to start service and `on_exit` for cleanup
+- Tests verify real protocol behavior (DNS queries, DHCP handshakes)
+
 ### Code Formatting and Linting
 ```bash
 # Format all code according to .formatter.exs configuration
@@ -805,6 +831,8 @@ The project uses several tools for maintaining code quality:
 ## Active Technologies
 - Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0 (001-dns-service)
 - ETS tables for caching, Agent for configuration (001-dns-service)
+- Elixir 1.18 with OTP 27/28 + ExUnit, ex_dns (DNS protocol), ex_dhcp (DHCP protocol), abyss (UDP transport) (001-e2e-service-tests)
+- N/A (in-memory test data only) (001-e2e-service-tests)
 
 ## Recent Changes
 - 001-dns-service: Added Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0
