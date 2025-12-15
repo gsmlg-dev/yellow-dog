@@ -11,6 +11,8 @@ defmodule E2ETest.DhcpClient do
   alias DHCPv6.Message, as: V6Message
   alias DHCPv6.Message.Option, as: V6Option
 
+  import Bitwise
+
   @default_timeout 5_000
 
   # DHCPv4 Message Types (Option 53)
