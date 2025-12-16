@@ -36,7 +36,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         {:ok, Map.put(ctx, :lease_manager, lease_manager_result)}
 
       {:error, reason} ->
-        {:error, reason}
+        raise "Failed to start DHCPv4 server: #{inspect(reason)}"
     end
   end
 
@@ -87,6 +87,9 @@ defmodule E2ETest.Dhcpv4E2ETest do
       mac = DhcpClient.generate_mac()
       xid = DhcpClient.generate_xid()
 
+      # Pad MAC to 16 bytes for chaddr field
+      chaddr = mac <> <<0::80>>
+
       # Build DISCOVER with additional options
       discover = %DHCPv4.Message{
         op: 1,
@@ -100,20 +103,20 @@ defmodule E2ETest.Dhcpv4E2ETest do
         yiaddr: {0, 0, 0, 0},
         siaddr: {0, 0, 0, 0},
         giaddr: {0, 0, 0, 0},
-        chaddr: mac,
+        chaddr: chaddr,
         sname: <<0::512>>,
         file: <<0::1024>>,
         options: [
           # DHCP Message Type: DISCOVER
-          %DHCPv4.Message.Option{type: 53, value: <<1>>},
-          # Client Identifier (type 1 = ethernet)
-          %DHCPv4.Message.Option{type: 61, value: <<1>> <> :erlang.list_to_binary(:erlang.tuple_to_list(mac))},
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
+          # Client Identifier (type 1 = ethernet, 1 byte type + 6 bytes MAC = 7)
+          %DHCPv4.Message.Option{type: 61, length: 7, value: <<1>> <> mac},
           # Parameter Request List
-          %DHCPv4.Message.Option{type: 55, value: <<1, 3, 6, 15, 28, 51, 58, 59>>}
+          %DHCPv4.Message.Option{type: 55, length: 8, value: <<1, 3, 6, 15, 28, 51, 58, 59>>}
         ]
       }
 
-      packet = DHCPv4.Message.to_binary(discover)
+      packet = DHCP.Parameter.to_iodata(discover) |> IO.iodata_to_binary()
       result = send_dhcp_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
@@ -210,6 +213,9 @@ defmodule E2ETest.Dhcpv4E2ETest do
       mac = DhcpClient.generate_mac()
       xid = DhcpClient.generate_xid()
 
+      # Pad MAC to 16 bytes for chaddr field
+      chaddr = mac <> <<0::80>>
+
       # Build DISCOVER with specific XID
       discover = %DHCPv4.Message{
         op: 1,
@@ -223,20 +229,20 @@ defmodule E2ETest.Dhcpv4E2ETest do
         yiaddr: {0, 0, 0, 0},
         siaddr: {0, 0, 0, 0},
         giaddr: {0, 0, 0, 0},
-        chaddr: mac,
+        chaddr: chaddr,
         sname: <<0::512>>,
         file: <<0::1024>>,
         options: [
-          %DHCPv4.Message.Option{type: 53, value: <<1>>}
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>}
         ]
       }
 
-      packet = DHCPv4.Message.to_binary(discover)
+      packet = DHCP.Parameter.to_iodata(discover) |> IO.iodata_to_binary()
       result = send_dhcp_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv4.Message.from_binary(response_data)
+          response = DHCPv4.Message.from_iodata(response_data)
           # XID should match
           assert response.xid == xid, "Response XID should match request"
 

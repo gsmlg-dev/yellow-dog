@@ -36,7 +36,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
         {:ok, Map.put(ctx, :lease_manager, lease_manager_result)}
 
       {:error, reason} ->
-        {:error, reason}
+        raise "Failed to start DHCPv6 server: #{inspect(reason)}"
     end
   end
 
@@ -94,7 +94,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(solicit)
+      packet = DHCP.Parameter.to_iodata(solicit) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
@@ -204,12 +204,12 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(solicit)
+      packet = DHCP.Parameter.to_iodata(solicit) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv6.Message.from_binary(response_data)
+          {:ok, response} = DHCPv6.Message.from_iodata(response_data)
           # Transaction ID should match
           assert response.transaction_id == transaction_id,
                  "Response transaction_id should match request"
@@ -284,12 +284,12 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(info_request)
+      packet = DHCP.Parameter.to_iodata(info_request) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv6.Message.from_binary(response_data)
+          {:ok, response} = DHCPv6.Message.from_iodata(response_data)
           # Should get REPLY (7)
           assert response.msg_type == 7
 
