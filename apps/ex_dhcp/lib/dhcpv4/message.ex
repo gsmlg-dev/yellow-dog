@@ -262,11 +262,14 @@ defmodule DHCPv4.Message do
     @impl true
     def to_iodata(%DHCPv4.Message{} = message) do
       <<message.op::8, message.htype::8, message.hlen::8, message.hops::8, message.xid::32,
-        message.secs::16, message.flags::16, message.ciaddr::32, message.yiaddr::32,
-        message.siaddr::32, message.giaddr::32, message.chaddr::binary-size(16),
+        message.secs::16, message.flags::16, ip4_to_binary(message.ciaddr)::binary,
+        ip4_to_binary(message.yiaddr)::binary, ip4_to_binary(message.siaddr)::binary,
+        ip4_to_binary(message.giaddr)::binary, message.chaddr::binary-size(16),
         message.sname::binary-size(64), message.file::binary-size(128),
         Option.to_dhcp_binary(message.options)::binary>>
     end
+
+    defp ip4_to_binary({a, b, c, d}), do: <<a, b, c, d>>
   end
 
   defimpl String.Chars, for: DHCPv4.Message do

@@ -236,7 +236,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv4.Message.from_binary(response_data)
+          response = DHCPv4.Message.from_iodata(response_data)
           # XID should match
           assert response.xid == xid, "Response XID should match request"
 

@@ -209,7 +209,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv6.Message.from_binary(response_data)
+          {:ok, response} = DHCPv6.Message.from_iodata(response_data)
           # Transaction ID should match
           assert response.transaction_id == transaction_id,
                  "Response transaction_id should match request"
@@ -289,7 +289,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
 
       case result do
         {:ok, response_data} ->
-          response = DHCPv6.Message.from_binary(response_data)
+          {:ok, response} = DHCPv6.Message.from_iodata(response_data)
           # Should get REPLY (7)
           assert response.msg_type == 7
 

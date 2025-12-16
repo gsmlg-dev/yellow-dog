@@ -178,8 +178,8 @@ defmodule E2ETest.DnsClient do
       arcount: 0
     }
 
-    # Create question
-    question = Question.new(name, type_to_code(type), :IN)
+    # Create question - use lowercase :in for DNS.Class.new/1
+    question = Question.new(name, type_to_code(type), :in)
 
     %Message{
       header: header,
