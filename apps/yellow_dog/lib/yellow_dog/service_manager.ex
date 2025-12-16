@@ -9,11 +9,21 @@ defmodule YellowDog.ServiceManager do
   require Logger
 
   @services [:dns, :mdns, :dhcpv4, :dhcpv6]
-  @service_modules %{
+
+  # Supervisor modules (used for start/stop)
+  @service_supervisors %{
     dns: YellowDog.Dns.Supervisor,
     mdns: YellowDog.Mdns.Supervisor,
     dhcpv4: YellowDog.Dhcpv4.Supervisor,
     dhcpv6: YellowDog.Dhcpv6.Supervisor
+  }
+
+  # Process registration names (supervisors register with these names, not their module names)
+  @service_process_names %{
+    dns: YellowDog.Dns,
+    mdns: YellowDog.Mdns,
+    dhcpv4: YellowDog.Dhcpv4,
+    dhcpv6: YellowDog.Dhcpv6
   }
 
   @doc """
@@ -97,7 +107,7 @@ defmodule YellowDog.ServiceManager do
     YellowDog.Config.set_service_enabled(service, true)
 
     # Start the supervisor via YellowDog.Application
-    supervisor_module = Map.get(@service_modules, service)
+    supervisor_module = Map.get(@service_supervisors, service)
 
     case YellowDog.Application.start_service_supervisor(service, supervisor_module) do
       {:ok, _pid} -> :ok
@@ -127,7 +137,7 @@ defmodule YellowDog.ServiceManager do
     YellowDog.Config.set_service_enabled(service, false)
 
     # Stop the supervisor
-    supervisor_module = Map.get(@service_modules, service)
+    supervisor_module = Map.get(@service_supervisors, service)
 
     case YellowDog.Application.stop_service_supervisor(service, supervisor_module) do
       :ok -> :ok
@@ -235,9 +245,10 @@ defmodule YellowDog.ServiceManager do
   # Private functions
 
   defp get_supervisor_status(service) do
-    supervisor_module = Map.get(@service_modules, service)
+    # Use the actual process registration name (supervisors register as YellowDog.Dns, not YellowDog.Dns.Supervisor)
+    process_name = Map.get(@service_process_names, service)
 
-    case Process.whereis(supervisor_module) do
+    case Process.whereis(process_name) do
       nil ->
         {:error, :not_running}
 
