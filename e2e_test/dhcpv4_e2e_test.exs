@@ -87,6 +87,9 @@ defmodule E2ETest.Dhcpv4E2ETest do
       mac = DhcpClient.generate_mac()
       xid = DhcpClient.generate_xid()
 
+      # Pad MAC to 16 bytes for chaddr field
+      chaddr = mac <> <<0::80>>
+
       # Build DISCOVER with additional options
       discover = %DHCPv4.Message{
         op: 1,
@@ -100,14 +103,14 @@ defmodule E2ETest.Dhcpv4E2ETest do
         yiaddr: {0, 0, 0, 0},
         siaddr: {0, 0, 0, 0},
         giaddr: {0, 0, 0, 0},
-        chaddr: mac,
+        chaddr: chaddr,
         sname: <<0::512>>,
         file: <<0::1024>>,
         options: [
           # DHCP Message Type: DISCOVER
           %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
           # Client Identifier (type 1 = ethernet, 1 byte type + 6 bytes MAC = 7)
-          %DHCPv4.Message.Option{type: 61, length: 7, value: <<1>> <> :erlang.list_to_binary(:erlang.tuple_to_list(mac))},
+          %DHCPv4.Message.Option{type: 61, length: 7, value: <<1>> <> mac},
           # Parameter Request List
           %DHCPv4.Message.Option{type: 55, length: 8, value: <<1, 3, 6, 15, 28, 51, 58, 59>>}
         ]
@@ -210,6 +213,9 @@ defmodule E2ETest.Dhcpv4E2ETest do
       mac = DhcpClient.generate_mac()
       xid = DhcpClient.generate_xid()
 
+      # Pad MAC to 16 bytes for chaddr field
+      chaddr = mac <> <<0::80>>
+
       # Build DISCOVER with specific XID
       discover = %DHCPv4.Message{
         op: 1,
@@ -223,7 +229,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         yiaddr: {0, 0, 0, 0},
         siaddr: {0, 0, 0, 0},
         giaddr: {0, 0, 0, 0},
-        chaddr: mac,
+        chaddr: chaddr,
         sname: <<0::512>>,
         file: <<0::1024>>,
         options: [
