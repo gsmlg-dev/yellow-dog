@@ -1,6 +1,14 @@
 # E2E Test Helper
 # Configure ExUnit for E2E tests with service lifecycle management.
 
+# Start required applications for E2E tests
+# These provide infrastructure needed by the service servers
+Application.ensure_all_started(:telemetry)
+Application.ensure_all_started(:logger)
+
+# Start YellowDog core application (provides Config GenServer)
+Application.ensure_all_started(:yellow_dog)
+
 # Add support modules to the code path
 Code.compile_file("support/service_helper.ex", __DIR__)
 Code.compile_file("support/dns_client.ex", __DIR__)
