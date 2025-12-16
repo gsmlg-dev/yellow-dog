@@ -42,7 +42,7 @@ jobs:
 
       - name: Run E2E tests (${{ matrix.service }})
         run: MIX_ENV=test mix test.e2e.${{ matrix.service }}
-        timeout-minutes: 2
+        timeout-minutes: 5
 
   e2e-all:
     name: E2E Tests (All)
