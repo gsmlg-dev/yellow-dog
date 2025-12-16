@@ -120,7 +120,8 @@ defmodule YellowDog.Dhcpv4 do
   """
   @spec status() :: map()
   def status do
-    case Process.whereis(Supervisor) do
+    # Supervisor registers with name YellowDog.Dhcpv4, not YellowDog.Dhcpv4.Supervisor
+    case Process.whereis(__MODULE__) do
       nil ->
         %{running: false, lease_stats: %{}}
 
