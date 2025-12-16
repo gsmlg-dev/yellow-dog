@@ -94,7 +94,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(solicit)
+      packet = DHCP.Parameter.to_iodata(solicit) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
@@ -204,7 +204,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(solicit)
+      packet = DHCP.Parameter.to_iodata(solicit) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
@@ -284,7 +284,7 @@ defmodule E2ETest.Dhcpv6E2ETest do
         ]
       }
 
-      packet = DHCPv6.Message.to_binary(info_request)
+      packet = DHCP.Parameter.to_iodata(info_request) |> IO.iodata_to_binary()
       result = send_dhcpv6_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do

@@ -113,7 +113,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         ]
       }
 
-      packet = DHCPv4.Message.to_binary(discover)
+      packet = DHCP.Parameter.to_iodata(discover) |> IO.iodata_to_binary()
       result = send_dhcp_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
@@ -231,7 +231,7 @@ defmodule E2ETest.Dhcpv4E2ETest do
         ]
       }
 
-      packet = DHCPv4.Message.to_binary(discover)
+      packet = DHCP.Parameter.to_iodata(discover) |> IO.iodata_to_binary()
       result = send_dhcp_packet(ctx.host, ctx.port, packet, 2_000)
 
       case result do
