@@ -8,7 +8,8 @@ Application.ensure_all_started(:logger)
 
 # Start YellowDog Config GenServer directly (not the full app which has complex dependencies)
 # The E2E tests only need the Config process to be running
-case YellowDog.Config.start_link([]) do
+# Pass an empty map (not list) since Config uses Agent with Map operations
+case YellowDog.Config.start_link(%{}) do
   {:ok, _pid} -> :ok
   {:error, {:already_started, _pid}} -> :ok
 end
