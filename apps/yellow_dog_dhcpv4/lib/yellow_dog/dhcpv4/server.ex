@@ -121,11 +121,14 @@ defmodule YellowDog.Dhcpv4.Server do
     abyss_opts = Keyword.drop(opts_with_transport, @dhcp_specific_keys)
 
     # Override with provided options (from main YellowDog app)
+    # IMPORTANT: Force rate_limit_enabled: false at the end to avoid conflicts
+    # with the global Abyss.RateLimiter process
     final_config =
       config_keywords
       |> Keyword.merge(abyss_opts)
       |> Keyword.put(:handler_module, YellowDog.Dhcpv4.Handler)
       |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
+      |> Keyword.put(:rate_limit_enabled, false)
 
     final_config
   end
