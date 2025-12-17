@@ -35,35 +35,47 @@ defmodule Abyss.RateLimiter do
             enabled: false
 
   @doc """
-  Start the rate limiter with the given options
+  Start the rate limiter with the given options.
+
+  Each Abyss server instance should have its own rate limiter.
+  The rate limiter is NOT registered with a global name to allow
+  multiple server instances to run concurrently.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    GenServer.start_link(__MODULE__, opts)
   end
 
   @doc """
-  Check if a packet from the given IP should be allowed based on rate limits
+  Check if a packet from the given IP should be allowed based on rate limits.
+
+  ## Parameters
+  - `rate_limiter` - PID of the rate limiter process
+  - `ip` - Source IP address tuple
+
+  ## Returns
+  - `true` if the packet should be allowed
+  - `false` if rate limit exceeded
   """
-  @spec allow_packet?(:inet.ip_address()) :: boolean()
-  def allow_packet?(ip) when is_tuple(ip) do
-    GenServer.call(__MODULE__, {:allow_packet?, ip})
+  @spec allow_packet?(pid(), :inet.ip_address()) :: boolean()
+  def allow_packet?(rate_limiter, ip) when is_pid(rate_limiter) and is_tuple(ip) do
+    GenServer.call(rate_limiter, {:allow_packet?, ip})
   end
 
   @doc """
-  Update rate limiting configuration
+  Update rate limiting configuration.
   """
-  @spec update_config(keyword()) :: :ok
-  def update_config(_opts) do
-    GenServer.call(__MODULE__, :update_config, :infinity)
+  @spec update_config(pid(), keyword()) :: :ok
+  def update_config(rate_limiter, _opts) when is_pid(rate_limiter) do
+    GenServer.call(rate_limiter, :update_config, :infinity)
   end
 
   @doc """
-  Get current statistics
+  Get current statistics.
   """
-  @spec get_stats() :: map()
-  def get_stats do
-    GenServer.call(__MODULE__, :get_stats)
+  @spec get_stats(pid()) :: map()
+  def get_stats(rate_limiter) when is_pid(rate_limiter) do
+    GenServer.call(rate_limiter, :get_stats)
   end
 
   @impl GenServer

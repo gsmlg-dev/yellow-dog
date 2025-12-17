@@ -39,6 +39,7 @@ defmodule Abyss.Listener do
           is_active: boolean(),
           is_listening: boolean(),
           server_pid: pid(),
+          rate_limiter_pid: pid() | nil,
           server_config: Abyss.ServerConfig.t(),
           listener_id: binary(),
           listener_socket: Abyss.Transport.socket(),
@@ -145,12 +146,16 @@ defmodule Abyss.Listener do
 
       listener_span = Abyss.Telemetry.start_span(:listener, %{}, span_metadata)
 
+      # Get rate limiter PID from server (may be nil if rate limiting disabled)
+      rate_limiter_pid = Abyss.Server.rate_limiter_pid(server_pid)
+
       state = %{
         broadcast: broadcast,
         is_active: active,
         is_listening: not broadcast,
         server_config: server_config,
         server_pid: server_pid,
+        rate_limiter_pid: rate_limiter_pid,
         listener_id: listener_id,
         listener_socket: listener_socket,
         listener_span: listener_span,
@@ -197,7 +202,8 @@ defmodule Abyss.Listener do
 
   def handle_info({:udp, socket, ip, port, data}, %{listener_span: listener_span} = state) do
     # Check rate limiting
-    if state.server_config.rate_limit_enabled and not Abyss.RateLimiter.allow_packet?(ip) do
+    if state.server_config.rate_limit_enabled and state.rate_limiter_pid != nil and
+         not Abyss.RateLimiter.allow_packet?(state.rate_limiter_pid, ip) do
       Abyss.Telemetry.span_event(listener_span, :rate_limit_exceeded, %{
         remote_address: ip,
         remote_port: port
@@ -264,7 +270,8 @@ defmodule Abyss.Listener do
         })
 
         # Check rate limiting
-        if state.server_config.rate_limit_enabled and not Abyss.RateLimiter.allow_packet?(ip) do
+        if state.server_config.rate_limit_enabled and state.rate_limiter_pid != nil and
+         not Abyss.RateLimiter.allow_packet?(state.rate_limiter_pid, ip) do
           Abyss.Telemetry.span_event(listener_span, :rate_limit_exceeded, %{
             remote_address: ip,
             remote_port: port
@@ -322,7 +329,8 @@ defmodule Abyss.Listener do
         })
 
         # Check rate limiting
-        if state.server_config.rate_limit_enabled and not Abyss.RateLimiter.allow_packet?(ip) do
+        if state.server_config.rate_limit_enabled and state.rate_limiter_pid != nil and
+         not Abyss.RateLimiter.allow_packet?(state.rate_limiter_pid, ip) do
           Abyss.Telemetry.span_event(listener_span, :rate_limit_exceeded, %{
             remote_address: ip,
             remote_port: port

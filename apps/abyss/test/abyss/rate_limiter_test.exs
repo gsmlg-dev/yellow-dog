@@ -26,18 +26,18 @@ defmodule Abyss.RateLimiterTest do
     end
   end
 
-  describe "allow_packet?/1" do
+  describe "allow_packet?/2" do
     test "allows all packets when rate limiting is disabled" do
-      {:ok, _pid} = start_supervised({RateLimiter, [enabled: false]})
+      {:ok, pid} = start_supervised({RateLimiter, [enabled: false]})
 
       ip = {127, 0, 0, 1}
-      assert RateLimiter.allow_packet?(ip)
-      assert RateLimiter.allow_packet?(ip)
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
+      assert RateLimiter.allow_packet?(pid, ip)
+      assert RateLimiter.allow_packet?(pid, ip)
     end
 
     test "allows packets within rate limit" do
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -49,13 +49,13 @@ defmodule Abyss.RateLimiterTest do
 
       ip = {127, 0, 0, 1}
       # First packet
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
       # Second packet (at limit)
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
     end
 
     test "blocks packets exceeding rate limit" do
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -67,15 +67,15 @@ defmodule Abyss.RateLimiterTest do
 
       ip = {127, 0, 0, 1}
       # First packet
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
       # Second packet
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
       # Third packet (exceeds limit)
-      refute RateLimiter.allow_packet?(ip)
+      refute RateLimiter.allow_packet?(pid, ip)
     end
 
     test "handles different IP addresses independently" do
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -88,17 +88,17 @@ defmodule Abyss.RateLimiterTest do
       ip1 = {127, 0, 0, 1}
       ip2 = {192, 168, 1, 1}
 
-      assert RateLimiter.allow_packet?(ip1)
+      assert RateLimiter.allow_packet?(pid, ip1)
       # Different IP, should be allowed
-      assert RateLimiter.allow_packet?(ip2)
+      assert RateLimiter.allow_packet?(pid, ip2)
       # IP1 exceeded limit
-      refute RateLimiter.allow_packet?(ip1)
+      refute RateLimiter.allow_packet?(pid, ip1)
       # IP2 exceeded limit
-      refute RateLimiter.allow_packet?(ip2)
+      refute RateLimiter.allow_packet?(pid, ip2)
     end
 
     test "handles IPv6 addresses" do
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -109,15 +109,15 @@ defmodule Abyss.RateLimiterTest do
         )
 
       ip = {0, 0, 0, 0, 0, 0, 0, 1}
-      assert RateLimiter.allow_packet?(ip)
-      assert RateLimiter.allow_packet?(ip)
-      refute RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
+      assert RateLimiter.allow_packet?(pid, ip)
+      refute RateLimiter.allow_packet?(pid, ip)
     end
   end
 
-  describe "get_stats/0" do
+  describe "get_stats/1" do
     test "returns current statistics" do
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -127,7 +127,7 @@ defmodule Abyss.RateLimiterTest do
            ]}
         )
 
-      stats = RateLimiter.get_stats()
+      stats = RateLimiter.get_stats(pid)
 
       assert stats.enabled == true
       assert stats.max_packets == 10
@@ -141,7 +141,7 @@ defmodule Abyss.RateLimiterTest do
     test "cleans up expired buckets" do
       # This test is difficult to implement reliably due to timing
       # but we can test that cleanup doesn't crash the process
-      {:ok, _pid} =
+      {:ok, pid} =
         start_supervised(
           {RateLimiter,
            [
@@ -152,12 +152,12 @@ defmodule Abyss.RateLimiterTest do
         )
 
       ip = {127, 0, 0, 1}
-      assert RateLimiter.allow_packet?(ip)
+      assert RateLimiter.allow_packet?(pid, ip)
 
       # Wait for cleanup interval (simulated)
       Process.sleep(50)
 
-      stats = RateLimiter.get_stats()
+      stats = RateLimiter.get_stats(pid)
       assert stats.active_buckets >= 0
     end
   end

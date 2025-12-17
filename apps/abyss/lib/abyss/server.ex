@@ -148,6 +148,39 @@ defmodule Abyss.Server do
     end
   end
 
+  @doc """
+  Get the PID of the rate limiter for a server.
+
+  ## Parameters
+  - `supervisor` - The server supervisor PID
+
+  ## Returns
+  - The rate limiter PID if found and alive, `nil` otherwise
+  """
+  @spec rate_limiter_pid(Supervisor.supervisor()) :: pid() | nil
+  def rate_limiter_pid(supervisor) do
+    try do
+      case Process.alive?(supervisor) do
+        false ->
+          nil
+
+        true ->
+          supervisor
+          |> Supervisor.which_children()
+          |> Enum.find_value(fn
+            {:rate_limiter, rate_limiter_pid, _, _} when is_pid(rate_limiter_pid) ->
+              rate_limiter_pid
+
+            _ ->
+              nil
+          end)
+      end
+    rescue
+      ArgumentError -> nil
+      _ -> nil
+    end
+  end
+
   @impl Supervisor
   @spec init(Abyss.ServerConfig.t()) ::
           {:ok,
