@@ -87,6 +87,9 @@ defmodule YellowDog.Dhcpv4.Server do
 
   # Private helper functions
 
+  # DHCP-specific options that should not be passed to Abyss
+  @dhcp_specific_keys [:pools, :static_reservations]
+
   defp build_server_config(opts) do
     # Start with defaults, then override with passed options
     config = get_config()
@@ -112,10 +115,13 @@ defmodule YellowDog.Dhcpv4.Server do
           {updated_keywords, Keyword.delete(opts, :listen)}
       end
 
+    # Filter out DHCP-specific options that Abyss doesn't understand
+    abyss_opts = Keyword.drop(opts_with_transport, @dhcp_specific_keys)
+
     # Override with provided options (from main YellowDog app)
     final_config =
       config_keywords
-      |> Keyword.merge(opts_with_transport)
+      |> Keyword.merge(abyss_opts)
       |> Keyword.put(:handler_module, YellowDog.Dhcpv4.Handler)
       |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
 
