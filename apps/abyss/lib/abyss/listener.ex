@@ -146,22 +146,26 @@ defmodule Abyss.Listener do
 
       listener_span = Abyss.Telemetry.start_span(:listener, %{}, span_metadata)
 
-      # Get rate limiter PID from server (may be nil if rate limiting disabled)
-      rate_limiter_pid = Abyss.Server.rate_limiter_pid(server_pid)
-
+      # Rate limiter PID will be fetched asynchronously to avoid deadlock
+      # (server supervisor is still initializing when listeners start)
       state = %{
         broadcast: broadcast,
         is_active: active,
         is_listening: not broadcast,
         server_config: server_config,
         server_pid: server_pid,
-        rate_limiter_pid: rate_limiter_pid,
+        rate_limiter_pid: nil,
         listener_id: listener_id,
         listener_socket: listener_socket,
         listener_span: listener_span,
         local_info: {ip, port},
         transport: transport
       }
+
+      # Fetch rate limiter PID asynchronously (after server supervisor finishes init)
+      if server_config.rate_limit_enabled do
+        Process.send_after(self(), :fetch_rate_limiter_pid, 10)
+      end
 
       # Start listening immediately for non-broadcast mode
       if not broadcast do
@@ -198,6 +202,12 @@ defmodule Abyss.Listener do
           {:noreply, state}
       end
     end
+  end
+
+  def handle_info(:fetch_rate_limiter_pid, state) do
+    # Fetch rate limiter PID from server (should be available now that server is fully initialized)
+    rate_limiter_pid = Abyss.Server.rate_limiter_pid(state.server_pid)
+    {:noreply, %{state | rate_limiter_pid: rate_limiter_pid}}
   end
 
   def handle_info({:udp, socket, ip, port, data}, %{listener_span: listener_span} = state) do
