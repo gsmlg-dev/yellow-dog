@@ -43,7 +43,7 @@ defmodule YellowDog.Dns.Handler.UDP do
       Telemetry.info("Initializing DNS handler")
 
       # Get configuration from application config or defaults
-      mode = get_config(:mode, :authoritative)
+      mode = get_config(:mode, :authoritative) |> parse_mode()
       upstream_servers = get_config(:upstream_servers, ["8.8.8.8", "1.1.1.1"])
       zone_files = get_config(:zone_files, [])
 
@@ -1002,6 +1002,12 @@ defmodule YellowDog.Dns.Handler.UDP do
         end
     end
   end
+
+  defp parse_mode("forward"), do: :forward
+  defp parse_mode("recursive"), do: :recursive
+  defp parse_mode("authoritative"), do: :authoritative
+  defp parse_mode(mode) when is_atom(mode), do: mode
+  defp parse_mode(_), do: :authoritative
 
   defp format_ip({a, b, c, d}) do
     "#{a}.#{b}.#{c}.#{d}"

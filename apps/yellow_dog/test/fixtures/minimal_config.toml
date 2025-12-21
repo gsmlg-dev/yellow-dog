@@ -7,4 +7,4 @@ dhcpv4 = false
 dhcpv6 = false
 
 [dns]
-port = 5353
+port = 53

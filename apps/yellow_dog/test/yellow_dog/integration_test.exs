@@ -37,11 +37,11 @@ defmodule YellowDog.IntegrationTest do
 
       # Verify service configs are loaded correctly
       dns_config = YellowDog.Config.get_service(:dns)
-      assert dns_config.port == 5353
+      assert dns_config.port == 53
       assert dns_config.listen == "127.0.0.1"
 
       dhcpv4_config = YellowDog.Config.get_service(:dhcpv4)
-      assert dhcpv4_config.port == 6767
+      assert dhcpv4_config.port == 67
     end
 
     test "starts application with minimal config using defaults" do
@@ -58,7 +58,7 @@ defmodule YellowDog.IntegrationTest do
 
       # Verify DNS config values
       dns_config = YellowDog.Config.get_service(:dns)
-      assert dns_config.port == 5353
+      assert dns_config.port == 53
     end
 
     test "starts application with all services disabled" do
@@ -99,13 +99,13 @@ defmodule YellowDog.IntegrationTest do
       dns_config = YellowDog.Config.get_service(:dns)
 
       # Verify config has expected values
-      assert dns_config.port == 5353
+      assert dns_config.port == 53
       assert dns_config.listen == "127.0.0.1"
       assert dns_config.worker_pool_size == 10
 
       # Get DHCP config
       dhcpv4_config = YellowDog.Config.get_service(:dhcpv4)
-      assert dhcpv4_config.port == 6767
+      assert dhcpv4_config.port == 67
       assert dhcpv4_config.listen == "0.0.0.0"
     end
   end

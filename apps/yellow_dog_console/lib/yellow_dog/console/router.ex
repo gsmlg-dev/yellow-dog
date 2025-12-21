@@ -48,6 +48,9 @@ defmodule YellowDog.Console.Router do
     live "/dns/zones", DnsLive.ZonesLive
     live "/dns/cache", DnsLive.CacheLive
     live "/dns/views", DnsLive.ViewsLive
+
+    # Service Diagnostics
+    live "/diagnostics", DiagnosticsLive
   end
 
   scope "/api", YellowDog.Console do
