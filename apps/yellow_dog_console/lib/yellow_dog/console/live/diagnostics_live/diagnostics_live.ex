@@ -91,7 +91,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
         </div>
 
         <%!-- Tab Content --%>
-        <div class="tab-content">
+        <div>
           <%= case @active_tab do %>
             <% :dns -> %>
               <DnsTab.render
