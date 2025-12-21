@@ -306,7 +306,7 @@ defmodule YellowDog.Application do
     case service_name do
       :dns ->
         [
-          port: Map.get(service_config, "port", if(Mix.env() == :test, do: 5353, else: 53)),
+          port: Map.get(service_config, "port", 53),
           listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
         ]
 

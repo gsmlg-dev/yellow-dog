@@ -34,7 +34,7 @@ defmodule YellowDog.Dns.SupervisorTest do
     end
 
     test "accepts server_options" do
-      opts = [server_options: [port: 5353]]
+      opts = [server_options: [port: 53]]
 
       assert Keyword.has_key?(opts, :server_options)
       assert is_list(opts[:server_options])
@@ -79,7 +79,7 @@ defmodule YellowDog.Dns.SupervisorTest do
   describe "Server integration" do
     test "supervisor starts DNS server with options" do
       # The supervisor should pass server_options to the DNS server
-      server_options = [port: 5353, listen: "127.0.0.1"]
+      server_options = [port: 53, listen: "127.0.0.1"]
 
       # Verify option format
       assert is_list(server_options)

@@ -88,8 +88,8 @@ defmodule YellowDog.Dns.ServerTest do
   describe "Configuration customization" do
     test "configuration can be built with custom port" do
       # This tests that the server would accept custom configuration
-      # We can't actually start the server on port 53 in tests
-      custom_opts = [port: 5353]
+      # DNS standard port is 53
+      custom_opts = [port: 53]
 
       # Verify that passing options would work (can't test actual server start)
       assert is_list(custom_opts)

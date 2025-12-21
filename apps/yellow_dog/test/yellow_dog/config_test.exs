@@ -422,13 +422,13 @@ defmodule YellowDog.ConfigTest do
     end
 
     test "update/2 updates service configuration" do
-      new_config = %{"port" => 5353, "listen" => "127.0.0.1"}
+      new_config = %{"port" => 53, "listen" => "127.0.0.1"}
 
       assert :ok = YellowDog.Config.update(:dns, new_config)
 
       # Verify update applied
       updated = YellowDog.Config.get_service(:dns)
-      assert updated[:port] == 5353
+      assert updated[:port] == 53
       assert updated[:listen] == "127.0.0.1"
     end
 

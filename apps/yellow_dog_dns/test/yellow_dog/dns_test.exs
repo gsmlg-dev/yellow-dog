@@ -33,12 +33,12 @@ defmodule YellowDog.DnsTest do
 
     test "DNS supervisor can be created" do
       # Test that DNS supervisor can be created with a child spec
-      child_spec = YellowDog.Dns.child_spec(server_options: [port: 5353])
+      child_spec = YellowDog.Dns.child_spec(server_options: [port: 53])
 
       assert is_map(child_spec)
 
       assert child_spec.start ==
-               {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 5353]]]}
+               {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 53]]]}
 
       assert is_tuple(child_spec.start)
     end
