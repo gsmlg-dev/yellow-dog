@@ -30,95 +30,97 @@ defmodule YellowDog.Console.DiagnosticsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container mx-auto p-4">
-      <h1 class="text-2xl font-bold mb-4">Service Diagnostics</h1>
+    <Layouts.app flash={@flash}>
+      <div class="max-w-7xl">
+        <h1 class="text-2xl font-bold mb-4">Service Diagnostics</h1>
 
-      <%!-- Tab Navigation --%>
-      <div role="tablist" class="tabs tabs-boxed mb-4">
-        <button
-          role="tab"
-          class={["tab", @active_tab == :dns && "tab-active"]}
-          phx-click="select_tab"
-          phx-value-tab="dns"
-        >
-          DNS
-        </button>
-        <button
-          role="tab"
-          class={["tab", @active_tab == :mdns && "tab-active"]}
-          phx-click="select_tab"
-          phx-value-tab="mdns"
-        >
-          mDNS
-        </button>
-        <button
-          role="tab"
-          class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
-          phx-click="select_tab"
-          phx-value-tab="dhcpv4"
-        >
-          DHCPv4
-        </button>
-        <button
-          role="tab"
-          class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
-          phx-click="select_tab"
-          phx-value-tab="dhcpv6"
-        >
-          DHCPv6
-        </button>
-      </div>
-
-      <%!-- Display Mode Toggle --%>
-      <div class="flex justify-end mb-4">
-        <div class="join">
+        <%!-- Tab Navigation --%>
+        <div role="tablist" class="tabs tabs-boxed mb-4">
           <button
-            class={["btn btn-sm join-item", @display_mode == :struct && "btn-active"]}
-            phx-click="toggle_display_mode"
-            phx-value-mode="struct"
+            role="tab"
+            class={["tab", @active_tab == :dns && "tab-active"]}
+            phx-click="select_tab"
+            phx-value-tab="dns"
           >
-            Struct
+            DNS
           </button>
           <button
-            class={["btn btn-sm join-item", @display_mode == :raw && "btn-active"]}
-            phx-click="toggle_display_mode"
-            phx-value-mode="raw"
+            role="tab"
+            class={["tab", @active_tab == :mdns && "tab-active"]}
+            phx-click="select_tab"
+            phx-value-tab="mdns"
           >
-            Raw Hex
+            mDNS
+          </button>
+          <button
+            role="tab"
+            class={["tab", @active_tab == :dhcpv4 && "tab-active"]}
+            phx-click="select_tab"
+            phx-value-tab="dhcpv4"
+          >
+            DHCPv4
+          </button>
+          <button
+            role="tab"
+            class={["tab", @active_tab == :dhcpv6 && "tab-active"]}
+            phx-click="select_tab"
+            phx-value-tab="dhcpv6"
+          >
+            DHCPv6
           </button>
         </div>
-      </div>
 
-      <%!-- Tab Content --%>
-      <div class="tab-content">
-        <%= case @active_tab do %>
-          <% :dns -> %>
-            <DnsTab.render
-              tab={@tabs.dns}
-              display_mode={@display_mode}
-              history_visible={@history_visible}
-            />
-          <% :mdns -> %>
-            <MdnsTab.render
-              tab={@tabs.mdns}
-              display_mode={@display_mode}
-              history_visible={@history_visible}
-            />
-          <% :dhcpv4 -> %>
-            <Dhcpv4Tab.render
-              tab={@tabs.dhcpv4}
-              display_mode={@display_mode}
-              history_visible={@history_visible}
-            />
-          <% :dhcpv6 -> %>
-            <Dhcpv6Tab.render
-              tab={@tabs.dhcpv6}
-              display_mode={@display_mode}
-              history_visible={@history_visible}
-            />
-        <% end %>
+        <%!-- Display Mode Toggle --%>
+        <div class="flex justify-end mb-4">
+          <div class="join">
+            <button
+              class={["btn btn-sm join-item", @display_mode == :struct && "btn-active"]}
+              phx-click="toggle_display_mode"
+              phx-value-mode="struct"
+            >
+              Struct
+            </button>
+            <button
+              class={["btn btn-sm join-item", @display_mode == :raw && "btn-active"]}
+              phx-click="toggle_display_mode"
+              phx-value-mode="raw"
+            >
+              Raw Hex
+            </button>
+          </div>
+        </div>
+
+        <%!-- Tab Content --%>
+        <div class="tab-content">
+          <%= case @active_tab do %>
+            <% :dns -> %>
+              <DnsTab.render
+                tab={@tabs.dns}
+                display_mode={@display_mode}
+                history_visible={@history_visible}
+              />
+            <% :mdns -> %>
+              <MdnsTab.render
+                tab={@tabs.mdns}
+                display_mode={@display_mode}
+                history_visible={@history_visible}
+              />
+            <% :dhcpv4 -> %>
+              <Dhcpv4Tab.render
+                tab={@tabs.dhcpv4}
+                display_mode={@display_mode}
+                history_visible={@history_visible}
+              />
+            <% :dhcpv6 -> %>
+              <Dhcpv6Tab.render
+                tab={@tabs.dhcpv6}
+                display_mode={@display_mode}
+                history_visible={@history_visible}
+              />
+          <% end %>
+        </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 

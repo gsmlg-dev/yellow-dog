@@ -15,18 +15,37 @@ defmodule YellowDog.Console.Layouts do
 
   @doc """
   App layout for pages that need additional wrapping.
+  Can be used as a layout (receives @inner_content) or as a component (receives inner_block slot).
   """
+  attr :flash, :map, default: %{}, doc: "the map of flash messages"
+  attr :current_user, :any, default: nil, doc: "the current user"
+  slot :inner_block, doc: "the inner content when used as a component"
+
   def app(assigns) do
+    # Support both layout usage (@inner_content) and component usage (inner_block slot)
+    assigns =
+      assign_new(assigns, :content, fn ->
+        if Map.has_key?(assigns, :inner_content) do
+          assigns.inner_content
+        else
+          nil
+        end
+      end)
+
     ~H"""
     <div class="drawer lg:drawer-open h-full">
       <input id="main-drawer" type="checkbox" class="drawer-toggle" />
 
       <div class="drawer-content flex flex-col h-full">
-        <.navbar current_user={assigns[:current_user]} />
+        <.navbar current_user={@current_user} />
         <div class="flex-1 overflow-auto">
           <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <.flash_group flash={@flash} />
-            {render_slot(@inner_block)}
+            <%= if @content do %>
+              {@content}
+            <% else %>
+              {render_slot(@inner_block)}
+            <% end %>
           </div>
         </div>
       </div>
