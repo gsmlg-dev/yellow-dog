@@ -4,8 +4,10 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 
-// Theme Toggle Hook
+// Hooks
 let Hooks = {}
+
+// Theme Toggle Hook
 Hooks.ThemeToggle = {
   mounted() {
     // Load saved theme from localStorage or default to 'light'
@@ -20,6 +22,30 @@ Hooks.ThemeToggle = {
       const newTheme = e.target.checked ? 'dark' : 'light'
       document.documentElement.setAttribute('data-theme', newTheme)
       localStorage.setItem('theme', newTheme)
+    })
+  }
+}
+
+// Copy to Clipboard Hook
+Hooks.CopyToClipboard = {
+  mounted() {
+    this.el.addEventListener("click", (e) => {
+      const target = this.el.dataset.target
+      const content = document.getElementById(target)
+
+      if (!content) {
+        console.error("Copy target not found:", target)
+        return
+      }
+
+      const text = content.textContent || content.innerText
+
+      navigator.clipboard.writeText(text).then(() => {
+        this.pushEvent("copied", {target: target})
+      }).catch(err => {
+        console.error("Copy failed:", err)
+        this.pushEvent("copy_failed", {target: target, error: err.message})
+      })
     })
   }
 }

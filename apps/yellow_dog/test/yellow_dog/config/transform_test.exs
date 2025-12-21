@@ -17,7 +17,7 @@ defmodule YellowDog.Config.TransformTest do
     test "transforms DNS section with IP addresses and atom keys" do
       config = %{
         "dns" => %{
-          "port" => 5353,
+          "port" => 53,
           "listen" => "127.0.0.1",
           "mode" => "authoritative",
           "upstream_servers" => ["8.8.8.8", "1.1.1.1"],
@@ -28,7 +28,7 @@ defmodule YellowDog.Config.TransformTest do
 
       result = Transform.apply(config)
 
-      assert result["dns"][:port] == 5353
+      assert result["dns"][:port] == 53
       assert result["dns"][:listen] == {127, 0, 0, 1}
       assert result["dns"][:mode] == :authoritative
       assert result["dns"][:upstream_servers] == [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
@@ -175,14 +175,14 @@ defmodule YellowDog.Config.TransformTest do
       dhcpv6 = false
 
       [dns]
-      port = 5353
+      port = 53
       listen = "127.0.0.1"
       mode = "authoritative"
       upstream_servers = ["8.8.8.8", "1.1.1.1"]
       worker_pool_size = 10
 
       [dhcpv4]
-      port = 6767
+      port = 67
       listen = "0.0.0.0"
       """
 
@@ -196,14 +196,14 @@ defmodule YellowDog.Config.TransformTest do
       assert config["core"][:dhcpv6] == false
 
       # Verify DNS section
-      assert config["dns"][:port] == 5353
+      assert config["dns"][:port] == 53
       assert config["dns"][:listen] == {127, 0, 0, 1}
       assert config["dns"][:mode] == :authoritative
       assert config["dns"][:upstream_servers] == [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
       assert config["dns"][:worker_pool_size] == 10
 
       # Verify DHCPv4 section
-      assert config["dhcpv4"][:port] == 6767
+      assert config["dhcpv4"][:port] == 67
       assert config["dhcpv4"][:listen] == {0, 0, 0, 0}
     end
   end

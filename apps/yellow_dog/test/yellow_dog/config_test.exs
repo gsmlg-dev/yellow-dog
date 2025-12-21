@@ -87,7 +87,7 @@ defmodule YellowDog.ConfigTest do
       {:ok, config} = ConfigHelper.load_test_config("valid_config")
 
       dns_config = Map.get(config, "dns")
-      assert dns_config["port"] == 5353
+      assert dns_config["port"] == 53
       assert dns_config["listen"] == "127.0.0.1"
       assert dns_config["worker_pool_size"] == 10
     end
@@ -194,7 +194,7 @@ defmodule YellowDog.ConfigTest do
       dns_config = YellowDog.Config.get("dns")
 
       assert is_map(dns_config)
-      assert dns_config["port"] == 5353
+      assert dns_config["port"] == 53
     end
 
     test "get_service/1 returns service config with atom keys" do
@@ -202,13 +202,13 @@ defmodule YellowDog.ConfigTest do
 
       assert is_map(dns_config)
       assert Map.has_key?(dns_config, :port)
-      assert dns_config.port == 5353
+      assert dns_config.port == 53
     end
 
     test "get/2 returns specific config value for service" do
       port = YellowDog.Config.get(:dns, :port)
 
-      assert port == 5353
+      assert port == 53
     end
 
     test "service_enabled?/1 correctly identifies enabled services" do
@@ -231,7 +231,7 @@ defmodule YellowDog.ConfigTest do
       results = Task.await_many(tasks)
 
       assert length(results) == 10
-      assert Enum.all?(results, fn config -> is_map(config) and config.port == 5353 end)
+      assert Enum.all?(results, fn config -> is_map(config) and config.port == 53 end)
     end
   end
 
@@ -489,7 +489,7 @@ defmodule YellowDog.ConfigTest do
       assert version_admin_a == version_admin_b
 
       # Admin A saves first (succeeds)
-      assert :ok = YellowDog.Config.compare_and_swap(:dns, %{"port" => 5353}, version_admin_a)
+      assert :ok = YellowDog.Config.compare_and_swap(:dns, %{"port" => 53}, version_admin_a)
 
       # Admin B tries to save with stale version (fails)
       assert {:error, :version_mismatch} =

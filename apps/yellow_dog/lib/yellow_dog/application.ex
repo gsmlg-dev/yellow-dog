@@ -132,9 +132,9 @@ defmodule YellowDog.Application do
                 |> put_in(["core", "dns"], false)
                 |> put_in(["core", "mdns"], false)
                 |> put_in(["core", "dhcpv6"], false)
-                |> put_in(["dns", "port"], 5353)
-                |> put_in(["dhcpv4", "port"], 6767)
-                |> put_in(["dhcpv6", "port"], 5667)
+                |> put_in(["dns", "port"], 53)
+                |> put_in(["dhcpv4", "port"], 67)
+                |> put_in(["dhcpv6", "port"], 547)
               else
                 config
               end

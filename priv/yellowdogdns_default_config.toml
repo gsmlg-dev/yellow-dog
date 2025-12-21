@@ -1,12 +1,14 @@
 [core]
-dns = false
+dns = true
 mdns = true
 dhcpv4 = true
 dhcpv6 = true
 
 [dns]
 listen = "0.0.0.0"
-port = 5353
+port = 53
+mode = "forward"
+upstream_servers = ["8.8.8.8", "1.1.1.1"]
 
 [dns.zones.example.com]
 type = "authoritative"

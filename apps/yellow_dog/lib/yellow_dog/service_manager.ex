@@ -390,27 +390,28 @@ defmodule YellowDog.ServiceManager do
   end
 
   defp format_config(service, config) when is_map(config) do
+    # Config keys are atoms from YellowDog.Config.get_service/1
     case service do
       :dns ->
-        port = Map.get(config, "port", 53)
-        listen = Map.get(config, "listen", "0.0.0.0")
+        port = Map.get(config, :port) || Map.get(config, "port", 53)
+        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
         "#{listen}:#{port}"
 
       :mdns ->
-        port = Map.get(config, "port", 5353)
-        listen = Map.get(config, "listen", "0.0.0.0")
+        port = Map.get(config, :port) || Map.get(config, "port", 5353)
+        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
         "#{listen}:#{port}"
 
       :dhcpv4 ->
-        port = Map.get(config, "port", 67)
-        listen = Map.get(config, "listen", "0.0.0.0")
-        pools = Map.get(config, "pools", [])
+        port = Map.get(config, :port) || Map.get(config, "port", 67)
+        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
+        pools = Map.get(config, :pools) || Map.get(config, "pools", [])
         "#{listen}:#{port} (#{length(pools)} pools)"
 
       :dhcpv6 ->
-        port = Map.get(config, "port", 547)
-        listen = Map.get(config, "listen", "::")
-        pools = Map.get(config, "pools", [])
+        port = Map.get(config, :port) || Map.get(config, "port", 547)
+        listen = Map.get(config, :listen) || Map.get(config, "listen", "::")
+        pools = Map.get(config, :pools) || Map.get(config, "pools", [])
         "#{listen}:#{port} (#{length(pools)} pools)"
     end
   end
