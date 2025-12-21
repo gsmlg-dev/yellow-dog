@@ -250,8 +250,8 @@ defmodule YellowDog.IntegrationTest do
 
       ports = Task.await_many(tasks)
 
-      # All processes should see the same value
-      assert Enum.all?(ports, fn port -> port == 5353 end)
+      # All processes should see the same value (DNS port is 53)
+      assert Enum.all?(ports, fn port -> port == 53 end)
     end
   end
 

@@ -196,6 +196,9 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     end
 
     test "can be used as Abyss.Handler" do
+      # Ensure module is loaded before checking exported functions
+      Code.ensure_loaded!(Handler)
+
       # Test that the handler implements the required callbacks
       assert function_exported?(Handler, :handle_data, 2)
       assert function_exported?(Handler, :handle_error, 2)

@@ -78,14 +78,16 @@ defmodule Abyss.ServerTest do
       assert {:ok, pid} = Server.start_link(config)
 
       children = Supervisor.which_children(pid)
-      assert length(children) == 4
+      # The activator Task completes quickly and may be removed before we check,
+      # so we expect either 3 or 4 children (3 permanent + 1 transient activator)
+      assert length(children) in [3, 4]
 
-      # Check for expected child ids
+      # Check for expected permanent child ids
       child_ids = Enum.map(children, fn {id, _, _, _} -> id end)
       assert :listener_pool in child_ids
       assert :connection_sup in child_ids
-      assert :activator in child_ids
       assert :shutdown_listener in child_ids
+      # activator may or may not be present (it's a Task that completes quickly)
 
       :ok = Supervisor.stop(pid)
     end

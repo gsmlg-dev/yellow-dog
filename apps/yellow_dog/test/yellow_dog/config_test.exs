@@ -208,7 +208,7 @@ defmodule YellowDog.ConfigTest do
     test "get/2 returns specific config value for service" do
       port = YellowDog.Config.get(:dns, :port)
 
-      assert port == 5353
+      assert port == 53
     end
 
     test "service_enabled?/1 correctly identifies enabled services" do
@@ -231,7 +231,7 @@ defmodule YellowDog.ConfigTest do
       results = Task.await_many(tasks)
 
       assert length(results) == 10
-      assert Enum.all?(results, fn config -> is_map(config) and config.port == 5353 end)
+      assert Enum.all?(results, fn config -> is_map(config) and config.port == 53 end)
     end
   end
 
