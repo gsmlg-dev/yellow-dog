@@ -1,31 +1,33 @@
 <!--
-Sync Impact Report - Constitution v1.2.0
+Sync Impact Report - Constitution v1.3.0
 ========================================
-Version Change: 1.1.0 → 1.2.0 (MINOR bump)
+Version Change: 1.2.0 → 1.3.0 (MINOR bump)
 
-Reason: Added new mandatory HTTP transport standard requiring :http_fetch for all HTTP/HTTPS requests.
+Reason: Added new mandatory Logging Standards requiring all logging to use yellow_dog_telemetry
+with telemetry-attached handlers instead of direct Logger calls.
 
 Modified Principles:
-- Transport Layer Standards: Added HTTP Transport section
-- Prohibited Practices: Updated rule #2 and added rule #12
+- Telemetry Standards: Expanded with new Logging Standards subsection
+- Prohibited Practices: Added rule #13 prohibiting direct Logger calls
 
 Added Sections:
-- ## Transport Layer Standards > ### HTTP Transport (NEW)
-  - MANDATORY :http_fetch for all HTTP requests
-  - Prohibited: Tesla, HTTPoison, Finch, direct :httpc
-  - Includes implementation patterns and rationale
+- ## Telemetry Standards > ### Logging Standards (NEW)
+  - MANDATORY: All logging via yellow_dog_telemetry
+  - Prohibited: Direct Logger.info/warn/error/debug calls
+  - Implementation patterns for telemetry-based logging
+  - Logger handler attachment examples
 
 Changes Summary:
+- Added explicit requirement for yellow_dog_telemetry as the only permitted logging mechanism
+- Prohibited direct Logger module usage for application logging
+- Provided telemetry event emission patterns with examples
+- Provided Logger handler attachment patterns for log output
+- Updated Prohibited Practices with new logging rule
+- Rationale: Centralized observability, structured logging, consistent metrics
+
+Previous Changes (v1.2.0):
 - Added explicit requirement for :http_fetch as the only permitted HTTP client
 - Prohibited Tesla, HTTPoison, Finch, and other HTTP client libraries
-- Provided implementation patterns with examples
-- Updated Prohibited Practices with new HTTP client rule
-- Rationale: Lightweight, consistent API, minimal dependencies, lower maintenance
-
-Previous Changes (v1.1.0):
-- Added explicit requirement for 100% unit test pass rate in infrastructure libraries
-- Clarified that core YellowDog apps have target coverage (not mandatory 100%)
-- Specified rationale: infrastructure libs are dependencies for multiple protocol apps
 
 Templates Requiring Updates:
 ⚠ .specify/templates/plan-template.md - Does not exist yet
@@ -34,13 +36,13 @@ Templates Requiring Updates:
 ⚠ .specify/templates/commands/*.md - Does not exist yet
 
 Follow-up TODOs:
-- Update CLAUDE.md with HTTP transport standard
-- Add :http_fetch to project dependencies
-- Create migration guide for existing Tesla usage (if any)
-- Ensure CI checks for prohibited HTTP libraries
+- Update CLAUDE.md with logging standard
+- Audit existing code for direct Logger usage and migrate to telemetry
+- Add telemetry handler examples to yellow_dog_telemetry documentation
+- Ensure CI checks for prohibited Logger calls (optional linting rule)
 
 Ratification Date: 2025-11-07 (original)
-Last Amended: 2025-11-10
+Last Amended: 2025-12-22
 -->
 
 # Yellow Dog DNS - Project Constitution
@@ -522,6 +524,161 @@ mix dialyzer --halt-exit-status  # CI check
 {:yellow_dog_telemetry, in_umbrella: true}
 ```
 
+### Logging Standards
+
+**MANDATORY RULE:** ALL logging MUST use `yellow_dog_telemetry` via telemetry events.
+
+**Prohibited:**
+- ❌ Direct `Logger.info/1` calls
+- ❌ Direct `Logger.warn/1` calls
+- ❌ Direct `Logger.error/1` calls
+- ❌ Direct `Logger.debug/1` calls
+- ❌ Direct `require Logger` for logging purposes
+- ❌ Any direct Logger module usage for application logging
+
+**Required Approach:**
+1. Emit telemetry events for all loggable actions
+2. Attach Logger handlers to telemetry events for log output
+3. Centralize all logging configuration in `yellow_dog_telemetry`
+
+**Implementation Pattern - Emitting Events:**
+
+```elixir
+# In your protocol/service module
+defmodule YellowDog.Dns.Handler do
+  # Instead of: Logger.info("DNS query received: #{inspect(query)}")
+  # Use telemetry:
+  def handle_query(query) do
+    :telemetry.execute(
+      [:yellow_dog, :dns, :query, :received],
+      %{count: 1},
+      %{query: query, timestamp: System.system_time(:millisecond)}
+    )
+
+    # ... process query ...
+
+    :telemetry.execute(
+      [:yellow_dog, :dns, :query, :completed],
+      %{duration_ms: duration},
+      %{query: query, result: result}
+    )
+  end
+
+  # For errors - instead of: Logger.error("DNS resolution failed: #{reason}")
+  def handle_error(query, reason) do
+    :telemetry.execute(
+      [:yellow_dog, :dns, :query, :error],
+      %{count: 1},
+      %{query: query, reason: reason, severity: :error}
+    )
+  end
+end
+```
+
+**Implementation Pattern - Attaching Logger Handlers:**
+
+```elixir
+# In apps/yellow_dog_telemetry/lib/yellow_dog/telemetry.ex
+defmodule YellowDog.Telemetry do
+  require Logger
+
+  @doc """
+  Attach logger handlers to telemetry events.
+  Call this during application startup.
+  """
+  def attach_logger_handlers do
+    # DNS logging
+    :telemetry.attach(
+      "yellow-dog-dns-logger",
+      [:yellow_dog, :dns, :query, :received],
+      &__MODULE__.log_dns_query/4,
+      %{level: :info}
+    )
+
+    :telemetry.attach(
+      "yellow-dog-dns-error-logger",
+      [:yellow_dog, :dns, :query, :error],
+      &__MODULE__.log_dns_error/4,
+      %{level: :error}
+    )
+
+    # DHCP logging
+    :telemetry.attach(
+      "yellow-dog-dhcp-logger",
+      [:yellow_dog, :dhcpv4, :lease, :granted],
+      &__MODULE__.log_dhcp_lease/4,
+      %{level: :info}
+    )
+
+    # Add more handlers as needed...
+    :ok
+  end
+
+  # Handler implementations
+  def log_dns_query(_event, measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      "DNS query received: #{inspect(metadata.query)}"
+    end)
+  end
+
+  def log_dns_error(_event, _measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      "DNS error: #{inspect(metadata.reason)} for query #{inspect(metadata.query)}"
+    end)
+  end
+
+  def log_dhcp_lease(_event, _measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      "DHCP lease granted: #{metadata.ip} to #{metadata.mac}"
+    end)
+  end
+end
+```
+
+**Application Startup Integration:**
+
+```elixir
+# In apps/yellow_dog/lib/yellow_dog/application.ex
+defmodule YellowDog.Application do
+  def start(_type, _args) do
+    # Attach logger handlers before starting services
+    YellowDog.Telemetry.attach_logger_handlers()
+
+    children = [
+      # ... supervisors ...
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one)
+  end
+end
+```
+
+**Rationale:**
+- **Centralized observability** - All logging flows through telemetry
+- **Structured logging** - Metadata is always available
+- **Metrics integration** - Same events power both logs and metrics
+- **Configurable verbosity** - Enable/disable log handlers without code changes
+- **Testing friendly** - Attach test handlers to verify logging behavior
+- **Consistent format** - All logs follow the same pattern
+- **Performance** - Telemetry is lightweight; logging is opt-in via handlers
+
+**Event Naming Convention:**
+
+```elixir
+# Pattern: [:yellow_dog, <service>, <resource>, <action>]
+[:yellow_dog, :dns, :query, :received]
+[:yellow_dog, :dns, :query, :completed]
+[:yellow_dog, :dns, :query, :error]
+[:yellow_dog, :dns, :cache, :hit]
+[:yellow_dog, :dns, :cache, :miss]
+[:yellow_dog, :dhcpv4, :lease, :requested]
+[:yellow_dog, :dhcpv4, :lease, :granted]
+[:yellow_dog, :dhcpv4, :lease, :expired]
+[:yellow_dog, :dhcpv6, :lease, :requested]
+[:yellow_dog, :mdns, :service, :registered]
+[:yellow_dog, :mdns, :discovery, :query]
+```
+
 ### Metrics Collection
 
 **MANDATORY:** Web console displays real-time metrics:
@@ -795,6 +952,7 @@ devenv shell        # Manual activation
 10. **Ignore telemetry** - All services must emit events
 11. **Commit failing infrastructure library tests** - 100% pass rate required for abyss, ex_dns, ex_dhcp
 12. **Use alternative HTTP clients** - Only :http_fetch is permitted for HTTP requests
+13. **Use direct Logger calls** - All logging MUST use yellow_dog_telemetry via telemetry events
 
 ## Migration History
 
@@ -821,6 +979,7 @@ This constitution is a living document. Changes require:
 4. **Documentation** - Update CLAUDE.md accordingly
 
 **Amendment History:**
+- **v1.3.0 (2025-12-22)**: Added mandatory Logging Standards requiring all logging via yellow_dog_telemetry with telemetry-attached handlers
 - **v1.2.0 (2025-11-10)**: Added mandatory HTTP transport standard requiring :http_fetch for all HTTP requests
 - **v1.1.0 (2025-11-10)**: Added mandatory 100% unit test pass rate for infrastructure libraries (abyss, ex_dns, ex_dhcp)
 - **v1.0.0 (2025-11-07)**: Initial constitution ratified
@@ -828,6 +987,6 @@ This constitution is a living document. Changes require:
 ---
 
 **Ratification Date:** 2025-11-07
-**Last Amended:** 2025-11-10
-**Version:** 1.2.0
+**Last Amended:** 2025-12-22
+**Version:** 1.3.0
 **Maintainers:** Yellow Dog DNS Team
