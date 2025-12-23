@@ -302,7 +302,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
     end
   end
 
-  defp find_next_available(start_ip, end_ip, allocated_ips) do
+  defp find_next_available(start_ip, end_ip, unavailable_ips) do
     start_int = ipv6_to_integer(start_ip)
     end_int = ipv6_to_integer(end_ip)
 
@@ -311,21 +311,22 @@ defmodule YellowDog.Dhcpv6.AddressPool do
     max_attempts = 100
 
     result =
-      Enum.find(1..max_attempts, fn _attempt ->
+      Enum.reduce_while(1..max_attempts, nil, fn _attempt, _acc ->
         # Generate a random offset within the range
         offset = :rand.uniform(end_int - start_int + 1) - 1
         ip_int = start_int + offset
         ip = integer_to_ipv6(ip_int)
-        not MapSet.member?(allocated_ips, ip)
+
+        if not MapSet.member?(unavailable_ips, ip) do
+          {:halt, {:ok, ip}}
+        else
+          {:cont, nil}
+        end
       end)
 
     case result do
-      nil ->
-        {:error, :pool_exhausted}
-
-      _attempt ->
-        offset = :rand.uniform(end_int - start_int + 1) - 1
-        {:ok, integer_to_ipv6(start_int + offset)}
+      nil -> {:error, :pool_exhausted}
+      {:ok, ip} -> {:ok, ip}
     end
   end
 

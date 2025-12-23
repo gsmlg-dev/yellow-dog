@@ -31,7 +31,7 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"mdns\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
 
       assert html =~ "Service Type"
       assert html =~ "224.0.0.251:5353"
@@ -41,7 +41,7 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"dhcpv4\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv4"])) |> render_click()
 
       assert html =~ "Message Type"
       assert html =~ "Client MAC"
@@ -52,7 +52,7 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"dhcpv6\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv6"])) |> render_click()
 
       assert html =~ "Message Type"
       assert html =~ "DUID"
@@ -63,11 +63,11 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       # Switch to mDNS first
-      view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"mdns\"]") |> render_click()
+      view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
 
       # Switch back to DNS
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"dns\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="dns"])) |> render_click()
 
       assert html =~ "Domain Name"
       assert html =~ "DNS Server"
@@ -84,7 +84,7 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       # Toggle to raw mode - click the Raw Hex button
       html =
         view
-        |> element("[phx-click=\"toggle_display_mode\"][phx-value-mode=\"raw\"]")
+        |> element(~s([phx-click="toggle_display_mode"][phx-value-mode="raw"]))
         |> render_click()
 
       # The toggle should work (no error)
@@ -97,39 +97,39 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       {:ok, _view, html} = live(conn, "/diagnostics")
 
       # Check for form fields
-      assert html =~ "dns_query[query_name]"
-      assert html =~ "dns_query[record_type]"
-      assert html =~ "dns_query[server]"
+      assert html =~ ~s(dns_query[query_name])
+      assert html =~ ~s(dns_query[record_type])
+      assert html =~ ~s(dns_query[server])
     end
 
     test "mDNS tab has required fields", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"mdns\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="mdns"])) |> render_click()
 
-      assert html =~ "mdns_query[service_type]"
-      assert html =~ "mdns_query[query_type]"
+      assert html =~ ~s(mdns_query[service_type])
+      assert html =~ ~s(mdns_query[query_type])
     end
 
     test "DHCPv4 tab has required fields", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"dhcpv4\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv4"])) |> render_click()
 
-      assert html =~ "dhcpv4_query[message_type]"
-      assert html =~ "dhcpv4_query[client_mac]"
+      assert html =~ ~s(dhcpv4_query[message_type])
+      assert html =~ ~s(dhcpv4_query[client_mac])
     end
 
     test "DHCPv6 tab has required fields", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/diagnostics")
 
       html =
-        view |> element("[phx-click=\"select_tab\"][phx-value-tab=\"dhcpv6\"]") |> render_click()
+        view |> element(~s([phx-click="select_tab"][phx-value-tab="dhcpv6"])) |> render_click()
 
-      assert html =~ "dhcpv6_query[message_type]"
-      assert html =~ "dhcpv6_query[duid]"
+      assert html =~ ~s(dhcpv6_query[message_type])
+      assert html =~ ~s(dhcpv6_query[duid])
     end
   end
 
