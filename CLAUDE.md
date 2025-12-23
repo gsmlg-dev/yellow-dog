@@ -837,6 +837,8 @@ The project uses several tools for maintaining code quality:
 - LiveView assigns (session-scoped, ETS not required) (001-service-diagnostics)
 - Elixir 1.18 / OTP 27-28 + `:telemetry` (already present), `yellow_dog_telemetry` (in umbrella) (001-telemetry-logging)
 - N/A (in-memory telemetry events) (001-telemetry-logging)
+- Elixir 1.18 / OTP 27-28 + `:telemetry` (~> 1.0), `yellow_dog_telemetry` (umbrella) (001-complete-logger-telemetry-migration)
+- ETS tables for caching, Agent for configuration (no changes) (001-complete-logger-telemetry-migration)
 
 ## Recent Changes
 - 001-dns-service: Added Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0
