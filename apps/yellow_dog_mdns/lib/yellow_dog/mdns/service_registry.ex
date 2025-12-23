@@ -7,7 +7,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Mdns.ServiceStore
 
@@ -237,10 +236,18 @@ defmodule YellowDog.Mdns.ServiceRegistry do
             register_service_internal(service_def, state, source: :file)
           end)
 
-          Logger.info("Loaded #{length(services)} services from file")
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :service_registry, :loaded_from_file],
+            %{service_count: length(services)},
+            %{file: storage_file}
+          )
 
         {:error, reason} ->
-          Logger.warning("Could not load services from file: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :service_registry, :load_failed],
+            %{count: 1},
+            %{reason: inspect(reason), file: storage_file}
+          )
       end
     end
 
@@ -362,7 +369,12 @@ defmodule YellowDog.Mdns.ServiceRegistry do
       register_service_internal(service_def, state, source: :file)
     end)
 
-    Logger.info("Reloaded #{length(services)} services from file")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :service_registry, :reloaded_from_file],
+      %{service_count: length(services)},
+      %{}
+    )
+
     {:noreply, state}
   end
 

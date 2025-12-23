@@ -8,7 +8,6 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dhcpv6.{AddressPool, LeaseStorage}
 
@@ -223,10 +222,18 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
     case LeaseStorage.init(storage_type: storage_type) do
       :ok ->
-        Logger.info("DHCPv6 Mnesia storage initialized")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :storage_initialized],
+          %{count: 1},
+          %{storage_type: storage_type}
+        )
 
       {:error, reason} ->
-        Logger.error("Failed to initialize DHCPv6 Mnesia storage: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :storage_init_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
     end
 
     # Load existing leases from Mnesia into ETS cache
@@ -243,7 +250,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
             pool
 
           {:error, reason} ->
-            Logger.error("Failed to create DHCPv6 address pool: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease_manager, :pool_create_failed],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
             nil
         end
       end)
@@ -256,7 +268,11 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       pools: parsed_pools
     }
 
-    Logger.info("DHCPv6 LeaseManager started with #{length(parsed_pools)} pools")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease_manager, :started],
+      %{count: 1, pool_count: length(parsed_pools)},
+      %{}
+    )
 
     {:ok, state}
   end
@@ -284,10 +300,18 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     # Update state in Mnesia (mark as released instead of deleting)
     case LeaseStorage.update_state(duid, iaid, :released) do
       {:ok, _lease} ->
-        Logger.info("Released DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :lease_released],
+          %{count: 1},
+          %{duid: format_duid(duid), iaid: iaid}
+        )
 
       {:error, reason} ->
-        Logger.warning("Failed to update lease state in Mnesia: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :release_failed],
+          %{count: 1},
+          %{duid: format_duid(duid), iaid: iaid, reason: inspect(reason)}
+        )
     end
 
     {:reply, :ok, state}
@@ -306,7 +330,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       end
     end)
 
-    Logger.warning("IPv6 address #{inspect(ip)} declined by DUID #{format_duid(duid)}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease_manager, :ip_declined],
+      %{count: 1},
+      %{ip: inspect(ip), duid: format_duid(duid)}
+    )
+
     {:reply, :ok, state}
   end
 
@@ -364,8 +393,10 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         # Update in Mnesia
         store_lease_to_mnesia(renewed_lease)
 
-        Logger.info(
-          "Renewed DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :lease_renewed],
+          %{count: 1},
+          %{duid: format_duid(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
         )
 
         {:ok, renewed_lease}
@@ -379,8 +410,10 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
             :ets.insert(@table_name, {lease_key, renewed_lease})
             store_lease_to_mnesia(renewed_lease)
 
-            Logger.info(
-              "Renewed DHCPv6 lease from storage for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(renewed_lease.ip)}"
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease_manager, :lease_renewed_from_storage],
+              %{count: 1},
+              %{duid: format_duid(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
             )
 
             {:ok, renewed_lease}
@@ -430,20 +463,20 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       # Store in Mnesia for persistence
       store_lease_to_mnesia(lease)
 
-      Logger.info(
-        "Allocated new DHCPv6 lease for DUID #{format_duid(duid)} IAID #{iaid}: #{inspect(ip)}"
-      )
-
-      # Emit telemetry event
       :telemetry.execute(
-        [:yellow_dog, :dhcpv6, :lease_allocated],
+        [:yellow_dog, :dhcpv6, :lease_manager, :lease_allocated],
         %{count: 1},
         %{duid: format_duid(duid), iaid: iaid, ip: ip, pool: pool.name}
       )
 
       {:ok, lease}
     else
-      Logger.error("DHCPv6 pool exhausted for #{pool.name}")
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease_manager, :pool_exhausted],
+        %{count: 1},
+        %{pool_name: pool.name}
+      )
+
       {:error, :pool_exhausted}
     end
   end
@@ -471,13 +504,19 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     case LeaseStorage.cleanup_expired() do
       {:ok, mnesia_expired_count} ->
         if ets_expired_count > 0 || mnesia_expired_count > 0 do
-          Logger.info(
-            "Cleaned up #{ets_expired_count} expired DHCPv6 leases from cache, #{mnesia_expired_count} from storage"
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv6, :lease_manager, :cleanup_completed],
+            %{ets_expired: ets_expired_count, mnesia_expired: mnesia_expired_count},
+            %{}
           )
         end
 
       {:error, reason} ->
-        Logger.error("Failed to cleanup expired leases from Mnesia: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :cleanup_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
     end
   end
 
@@ -491,7 +530,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         :ok
 
       {:error, reason} ->
-        Logger.error("Failed to store lease to Mnesia: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :lease_manager, :store_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         :error
     end
   end
@@ -515,7 +559,11 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       end)
 
     if loaded_count > 0 do
-      Logger.info("Loaded #{loaded_count} active DHCPv6 leases from storage into cache")
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease_manager, :leases_loaded],
+        %{count: loaded_count},
+        %{}
+      )
     end
 
     :ok

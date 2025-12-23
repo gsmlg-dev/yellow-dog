@@ -764,6 +764,51 @@ defmodule YellowDog.Telemetry do
   end
 
   # ============================================================================
+  # Logger Handler Attachment API
+  # ============================================================================
+
+  @doc """
+  Attach all logger handlers for protocol-specific telemetry events.
+
+  This function should be called during application startup to enable
+  log output for all telemetry events. Without calling this function,
+  telemetry events will fire but produce no log output.
+
+  ## Examples
+
+      # In YellowDog.Application.start/2
+      YellowDog.Telemetry.attach_logger_handlers()
+
+  ## Returns
+
+  - `:ok` on success
+  """
+  @spec attach_logger_handlers() :: :ok
+  def attach_logger_handlers do
+    YellowDog.Telemetry.LoggerHandlers.attach_all()
+  end
+
+  @doc """
+  Detach all logger handlers for protocol-specific telemetry events.
+
+  This is useful for testing or when you want to run in silent mode
+  where telemetry events are emitted but no log output is produced.
+
+  ## Examples
+
+      # In test setup
+      YellowDog.Telemetry.detach_logger_handlers()
+
+  ## Returns
+
+  - `:ok` on success (even if handlers were not attached)
+  """
+  @spec detach_logger_handlers() :: :ok
+  def detach_logger_handlers do
+    YellowDog.Telemetry.LoggerHandlers.detach_all()
+  end
+
+  # ============================================================================
   # Private Helper Functions
   # ============================================================================
 

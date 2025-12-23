@@ -8,7 +8,6 @@ defmodule YellowDog.Dhcpv4.Handler do
   """
 
   use Abyss.Handler
-  require Logger
 
   alias YellowDog.Dhcpv4.LeaseManager
 
@@ -31,7 +30,6 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     try do
       message = DHCPv4.Message.from_iodata(data)
-      Logger.debug("Received DHCPv4 message from #{:inet.ntoa(ip)}:#{port} - #{message.op}")
 
       # Emit telemetry event for message received
       :telemetry.execute(
@@ -44,13 +42,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       handle_dhcp_message(message, ip, port, state, start_time)
     rescue
       e ->
-        Logger.error(
-          "Error handling DHCPv4 message from #{:inet.ntoa(ip)}:#{port}: #{inspect(e)}"
-        )
-
         # Emit telemetry event for error
         :telemetry.execute(
-          [:yellow_dog, :dhcpv4, :message_error],
+          [:yellow_dog, :dhcpv4, :message, :error],
           %{duration: System.monotonic_time(:microsecond) - start_time},
           %{client_ip: ip, client_port: port, error: Exception.message(e)}
         )
@@ -61,13 +55,23 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   @impl true
   def handle_error(reason, state) do
-    Logger.error("DHCPv4 handler error: #{inspect(reason)}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :handler, :error],
+      %{count: 1},
+      %{reason: inspect(reason)}
+    )
+
     {:continue, state}
   end
 
   @impl true
   def handle_timeout(state) do
-    Logger.debug("DHCPv4 handler timeout")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :handler, :timeout],
+      %{count: 1},
+      %{}
+    )
+
     {:continue, state}
   end
 
@@ -81,11 +85,21 @@ defmodule YellowDog.Dhcpv4.Handler do
 
       # BOOTREPLY
       2 ->
-        Logger.debug("Received BOOTREPLY (should not happen on server)")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :unexpected],
+          %{count: 1},
+          %{message_type: :bootreply, reason: "should not happen on server"}
+        )
+
         {:continue, state}
 
       op ->
-        Logger.warning("Unknown DHCP operation: #{op}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :unknown],
+          %{count: 1},
+          %{operation: op}
+        )
+
         {:continue, state}
     end
   end
@@ -108,25 +122,40 @@ defmodule YellowDog.Dhcpv4.Handler do
         handle_dhcp_inform(message, client_ip, client_port, state, start_time)
 
       msg_type when msg_type in [:offer, :ack, :nak] ->
-        Logger.debug(
-          "Received DHCP server message type: #{msg_type} (should not happen on server)"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :unexpected],
+          %{count: 1},
+          %{message_type: msg_type, reason: "should not happen on server"}
         )
 
         {:continue, state}
 
       _ ->
-        Logger.warning("DHCP message missing or unsupported message type option")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :unsupported],
+          %{count: 1},
+          %{reason: "missing or unsupported message type option"}
+        )
+
         {:continue, state}
     end
   end
 
   defp handle_dhcp_discover(message, client_ip, client_port, state, start_time) do
-    Logger.info("DHCPDISCOVER from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :lease, :requested],
+      %{count: 1},
+      %{client_ip: client_ip, client_mac: message.chaddr, message_type: :discover}
+    )
 
     # Generate a DHCPOFFER response
     case create_dhcp_offer(message, client_ip) do
       nil ->
-        Logger.warning("Failed to create DHCPOFFER for #{format_mac(message.chaddr)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :offer, :failed],
+          %{count: 1},
+          %{client_mac: message.chaddr, reason: "could not create offer"}
+        )
 
       offer ->
         send_dhcp_response(offer, client_ip, client_port, state)
@@ -146,8 +175,15 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Determine REQUEST state: SELECTING, INIT-REBOOT, RENEWING, or REBINDING
     request_state = determine_request_state(message)
 
-    Logger.info(
-      "DHCPREQUEST (#{request_state}) from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :lease, :requested],
+      %{count: 1},
+      %{
+        client_ip: client_ip,
+        client_mac: message.chaddr,
+        message_type: :request,
+        state: request_state
+      }
     )
 
     # Generate a DHCPACK or DHCPNAK response based on state
@@ -156,68 +192,60 @@ defmodule YellowDog.Dhcpv4.Handler do
         send_dhcp_response(ack, client_ip, client_port, state)
 
         :telemetry.execute(
-          [:yellow_dog, :dhcpv4, :request_ack],
+          [:yellow_dog, :dhcpv4, :lease, :granted],
           %{duration: System.monotonic_time(:microsecond) - start_time},
           %{client_ip: client_ip, client_mac: message.chaddr, state: request_state}
         )
 
       {:nak, reason} ->
-        Logger.warning("Sending DHCPNAK to #{format_mac(message.chaddr)}: #{reason}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :rejected],
+          %{count: 1},
+          %{client_mac: message.chaddr, reason: reason, state: request_state}
+        )
+
         nak = build_dhcp_nak(message, reason)
         send_dhcp_response(nak, client_ip, client_port, state)
-
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv4, :request_nak],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{
-            client_ip: client_ip,
-            client_mac: message.chaddr,
-            reason: reason,
-            state: request_state
-          }
-        )
     end
 
     {:continue, state}
   end
 
   defp handle_dhcp_decline(message, client_ip, _client_port, state, start_time) do
-    Logger.info("DHCPDECLINE from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})")
-
     # Get the declined IP address
     declined_ip = get_requested_ip(message) || client_ip
 
-    # Mark the IP as declined in LeaseManager
-    LeaseManager.decline_ip(declined_ip, message.chaddr)
-
-    # Emit telemetry event
     :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :decline_handled],
+      [:yellow_dog, :dhcpv4, :lease, :declined],
       %{duration: System.monotonic_time(:microsecond) - start_time},
       %{client_ip: client_ip, client_mac: message.chaddr, declined_ip: declined_ip}
     )
+
+    # Mark the IP as declined in LeaseManager
+    LeaseManager.decline_ip(declined_ip, message.chaddr)
 
     {:continue, state}
   end
 
   defp handle_dhcp_release(message, client_ip, _client_port, state, start_time) do
-    Logger.info("DHCPRELEASE from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})")
-
-    # Release the lease for this MAC address
-    LeaseManager.release_lease(message.chaddr)
-
-    # Emit telemetry event
     :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :release_handled],
+      [:yellow_dog, :dhcpv4, :lease, :released],
       %{duration: System.monotonic_time(:microsecond) - start_time},
       %{client_ip: client_ip, client_mac: message.chaddr}
     )
+
+    # Release the lease for this MAC address
+    LeaseManager.release_lease(message.chaddr)
 
     {:continue, state}
   end
 
   defp handle_dhcp_inform(message, client_ip, _client_port, state, start_time) do
-    Logger.info("DHCPINFORM from #{:inet.ntoa(client_ip)} (#{format_mac(message.chaddr)})")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :inform, :received],
+      %{count: 1},
+      %{client_ip: client_ip, client_mac: message.chaddr}
+    )
 
     # Handle inform - provide configuration parameters only
     ack = create_dhcp_ack_inform(message, client_ip)
@@ -225,7 +253,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     send_dhcp_response(ack, client_ip, 68, state)
 
     :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :inform_handled],
+      [:yellow_dog, :dhcpv4, :inform, :handled],
       %{duration: System.monotonic_time(:microsecond) - start_time},
       %{client_ip: client_ip, client_mac: message.chaddr}
     )
@@ -245,11 +273,21 @@ defmodule YellowDog.Dhcpv4.Handler do
         build_dhcp_offer(discover, lease)
 
       {:error, :pool_exhausted} ->
-        Logger.error("Cannot create DHCPOFFER: address pool exhausted")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :pool, :exhausted],
+          %{count: 1},
+          %{client_mac: discover.chaddr, operation: :offer}
+        )
+
         nil
 
       {:error, reason} ->
-        Logger.error("Cannot create DHCPOFFER: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :offer, :error],
+          %{count: 1},
+          %{client_mac: discover.chaddr, reason: inspect(reason)}
+        )
+
         nil
     end
   end
@@ -304,7 +342,12 @@ defmodule YellowDog.Dhcpv4.Handler do
 
       {:error, :wrong_server} ->
         # Client is requesting from a different server, silently ignore
-        Logger.debug("Ignoring REQUEST with non-matching server identifier")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :request, :ignored],
+          %{count: 1},
+          %{client_mac: request.chaddr, reason: "non-matching server identifier"}
+        )
+
         {:nak, "Wrong server identifier"}
     end
   end
@@ -317,15 +360,30 @@ defmodule YellowDog.Dhcpv4.Handler do
         {:ok, ack}
 
       {:error, :pool_exhausted} ->
-        Logger.error("Cannot create DHCPACK: address pool exhausted")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :pool, :exhausted],
+          %{count: 1},
+          %{client_mac: request.chaddr, operation: :ack}
+        )
+
         {:nak, "Address pool exhausted"}
 
       {:error, :pool_not_found} ->
-        Logger.error("Cannot create DHCPACK: pool not found")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :pool, :not_found],
+          %{count: 1},
+          %{client_mac: request.chaddr}
+        )
+
         {:nak, "Invalid network or pool"}
 
       {:error, reason} ->
-        Logger.error("Cannot create DHCPACK: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :ack, :error],
+          %{count: 1},
+          %{client_mac: request.chaddr, reason: inspect(reason)}
+        )
+
         {:nak, "Lease allocation failed: #{inspect(reason)}"}
     end
   end
@@ -452,10 +510,18 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     case :gen_udp.send(state.socket, client_ip, response_port, data) do
       :ok ->
-        Logger.debug("Sent DHCP response to #{:inet.ntoa(client_ip)}:#{response_port}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :response, :sent],
+          %{count: 1, bytes: IO.iodata_length(data)},
+          %{client_ip: client_ip, client_port: response_port}
+        )
 
       {:error, reason} ->
-        Logger.error("Failed to send DHCP response: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :response, :error],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: response_port, reason: inspect(reason)}
+        )
     end
   end
 
@@ -647,13 +713,4 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
   defp ip_tuple_to_integer(_), do: 0
-
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.join(":")
-  end
-
-  defp format_mac(_), do: "unknown"
 end

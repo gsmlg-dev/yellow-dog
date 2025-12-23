@@ -835,6 +835,8 @@ The project uses several tools for maintaining code quality:
 - N/A (in-memory test data only) (001-e2e-service-tests)
 - Elixir 1.18 / OTP 27-28 + Phoenix LiveView 1.0, ex_dns (in_umbrella), ex_dhcp (in_umbrella), DaisyUI 5.0 (001-service-diagnostics)
 - LiveView assigns (session-scoped, ETS not required) (001-service-diagnostics)
+- Elixir 1.18 / OTP 27-28 + `:telemetry` (already present), `yellow_dog_telemetry` (in umbrella) (001-telemetry-logging)
+- N/A (in-memory telemetry events) (001-telemetry-logging)
 
 ## Recent Changes
 - 001-dns-service: Added Elixir 1.18 / OTP 27-28 + Abyss (UDP server), ex_dns (DNS protocol), Phoenix LiveView 1.0, DaisyUI 5.0

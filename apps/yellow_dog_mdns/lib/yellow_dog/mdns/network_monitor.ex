@@ -8,7 +8,6 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   """
 
   use GenServer
-  require Logger
 
   @response_table :mdns_responses
   @query_table :mdns_queries
@@ -280,7 +279,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     init_tables()
     schedule_cleanup()
 
-    Logger.info("NetworkMonitor started with enhanced query tracking")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :network_monitor, :started],
+      %{count: 1},
+      %{}
+    )
 
     {:ok, %{}}
   end
@@ -303,7 +306,13 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     :ets.delete_all_objects(@response_table)
     :ets.delete_all_objects(@query_table)
     :ets.delete_all_objects(@services_table)
-    Logger.info("NetworkMonitor cache cleared")
+
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :network_monitor, :cleared],
+      %{count: 1},
+      %{}
+    )
+
     {:reply, :ok, state}
   end
 
@@ -342,10 +351,6 @@ defmodule YellowDog.Mdns.NetworkMonitor do
       }
 
       :ets.insert(@query_table, {domain_key, entry})
-
-      Logger.debug(
-        "Logged mDNS query: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
-      )
     end)
 
     :telemetry.execute(
@@ -551,11 +556,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
         :telemetry.execute(
           [:yellow_dog, :mdns, :service_discovered],
-          %{},
+          %{count: 1},
           %{service_id: service_id, type: service_info.type}
         )
-
-        Logger.info("Discovered new mDNS service: #{service_id}")
     end
   end
 
@@ -590,21 +593,20 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     # Clean up stale services (not seen in 10 minutes)
     ten_minutes_ago = now - 600
 
-    @services_table
-    |> :ets.tab2list()
-    |> Enum.filter(fn {_key, service} -> service.last_seen < ten_minutes_ago end)
-    |> Enum.each(fn {key, service} ->
+    stale_services =
+      @services_table
+      |> :ets.tab2list()
+      |> Enum.filter(fn {_key, service} -> service.last_seen < ten_minutes_ago end)
+
+    Enum.each(stale_services, fn {key, _service} ->
       :ets.delete(@services_table, key)
-      Logger.debug("Removed stale service: #{service.service_id}")
     end)
 
-    total_cleaned = length(expired_responses) + length(old_queries)
+    total_cleaned = length(expired_responses) + length(old_queries) + length(stale_services)
 
     if total_cleaned > 0 do
-      Logger.info("Cleaned up #{total_cleaned} expired entries")
-
       :telemetry.execute(
-        [:yellow_dog, :mdns, :cache_cleanup],
+        [:yellow_dog, :mdns, :network_monitor, :cleanup],
         %{expired_count: total_cleaned},
         %{}
       )
@@ -619,13 +621,5 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     domain
     |> String.downcase()
     |> String.trim_trailing(".")
-  end
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
   end
 end

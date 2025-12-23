@@ -29,7 +29,6 @@ defmodule YellowDog.Dns.RPZ.Manager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dns.RPZ
 
@@ -195,9 +194,10 @@ defmodule YellowDog.Dns.RPZ.Manager do
       stats: stats
     }
 
-    Logger.info("RPZ Manager initialized",
-      enabled: enabled,
-      zone_count: map_size(zones)
+    :telemetry.execute(
+      [:yellow_dog, :dns, :rpz_manager, :initialized],
+      %{zone_count: map_size(zones)},
+      %{enabled: enabled}
     )
 
     {:ok, state}
@@ -208,7 +208,11 @@ defmodule YellowDog.Dns.RPZ.Manager do
     new_zones = Map.put(state.zones, zone_name, priority)
     new_state = %{state | zones: new_zones}
 
-    Logger.info("Added RPZ zone", zone: zone_name, priority: priority)
+    :telemetry.execute(
+      [:yellow_dog, :dns, :rpz_manager, :zone_added],
+      %{priority: priority},
+      %{zone: zone_name}
+    )
 
     {:reply, :ok, new_state}
   end
@@ -221,7 +225,13 @@ defmodule YellowDog.Dns.RPZ.Manager do
 
       {_priority, new_zones} ->
         new_state = %{state | zones: new_zones}
-        Logger.info("Removed RPZ zone", zone: zone_name)
+
+        :telemetry.execute(
+          [:yellow_dog, :dns, :rpz_manager, :zone_removed],
+          %{count: 1},
+          %{zone: zone_name}
+        )
+
         {:reply, :ok, new_state}
     end
   end
@@ -262,7 +272,13 @@ defmodule YellowDog.Dns.RPZ.Manager do
   @impl true
   def handle_call({:set_enabled, enabled}, _from, state) do
     new_state = %{state | enabled: enabled}
-    Logger.info("RPZ enabled status changed", enabled: enabled)
+
+    :telemetry.execute(
+      [:yellow_dog, :dns, :rpz_manager, :enabled_changed],
+      %{count: 1},
+      %{enabled: enabled}
+    )
+
     {:reply, :ok, new_state}
   end
 

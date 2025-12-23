@@ -32,7 +32,6 @@ defmodule YellowDog.Dns.View.Operations do
 
   """
 
-  require Logger
   alias YellowDog.Telemetry
   alias YellowDog.Dns.View
   alias YellowDog.Dns.View.Manager, as: ViewManager
@@ -475,8 +474,7 @@ defmodule YellowDog.Dns.View.Operations do
       stats = ViewManager.stats(manager_pid)
       {:ok, stats}
     catch
-      :exit, reason ->
-        Logger.warning("Failed to get manager stats: #{inspect(reason)}")
+      :exit, _reason ->
         {:error, :manager_unavailable}
     end
   end
@@ -488,7 +486,6 @@ defmodule YellowDog.Dns.View.Operations do
       ConfigWatcher.status(watcher_pid)
     catch
       :exit, reason ->
-        Logger.warning("Failed to get watcher status: #{inspect(reason)}")
         %{status: :unavailable, error: inspect(reason)}
     end
   end

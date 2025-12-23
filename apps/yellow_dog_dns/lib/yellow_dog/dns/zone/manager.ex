@@ -29,7 +29,6 @@ defmodule YellowDog.Dns.Zone.Manager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Storage
@@ -202,7 +201,11 @@ defmodule YellowDog.Dns.Zone.Manager do
     # Initialize storage
     case Storage.init() do
       :ok ->
-        Logger.info("DNS Zone Manager started successfully")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :started],
+          %{count: 1},
+          %{}
+        )
 
         state = %{
           zones: %{},
@@ -213,11 +216,21 @@ defmodule YellowDog.Dns.Zone.Manager do
 
       {:error, :already_exists} ->
         # Storage already initialized, continue
-        Logger.info("DNS Zone Manager started (storage already initialized)")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :started],
+          %{count: 1},
+          %{storage: :already_initialized}
+        )
+
         {:ok, %{zones: %{}, load_queue: []}}
 
       {:error, reason} ->
-        Logger.error("Failed to initialize DNS Zone Manager: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :start_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:stop, reason}
     end
   end
@@ -247,7 +260,12 @@ defmodule YellowDog.Dns.Zone.Manager do
         {:reply, success, new_state}
 
       {:error, reason} = error ->
-        Logger.error("Failed to load zone #{zone_name}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :load_zone_failed],
+          %{count: 1},
+          %{zone: zone_name, reason: inspect(reason)}
+        )
+
         Telemetry.end_span(span_id, %{status: :failed, reason: reason})
         {:reply, error, state}
     end
@@ -297,16 +315,21 @@ defmodule YellowDog.Dns.Zone.Manager do
 
         new_state = put_in(state, [:zones, zone_name], zone_info)
 
-        Logger.info("Forward zone loaded",
-          zone: zone_name,
-          forwarders: length(forwarders),
-          mode: forward.forward_mode
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :forward_zone_loaded],
+          %{forwarder_count: length(forwarders)},
+          %{zone: zone_name, mode: forward.forward_mode}
         )
 
         {:reply, {:ok, zone_name}, new_state}
 
       {:error, reason} = error ->
-        Logger.error("Failed to load forward zone #{zone_name}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :forward_zone_failed],
+          %{count: 1},
+          %{zone: zone_name, reason: inspect(reason)}
+        )
+
         {:reply, error, state}
     end
   end
@@ -318,7 +341,12 @@ defmodule YellowDog.Dns.Zone.Manager do
 
       new_state = %{state | zones: Map.delete(state.zones, zone_name)}
 
-      Logger.info("Zone unloaded", zone: zone_name)
+      :telemetry.execute(
+        [:yellow_dog, :dns, :zone_manager, :zone_unloaded],
+        %{count: 1},
+        %{zone: zone_name}
+      )
+
       {:reply, :ok, new_state}
     else
       {:reply, {:error, :not_found}, state}
@@ -352,7 +380,12 @@ defmodule YellowDog.Dns.Zone.Manager do
                 updated_info = Map.put(zone_info, :loaded_at, System.system_time(:second))
                 new_state = put_in(state, [:zones, zone_name], updated_info)
 
-                Logger.info("Zone reloaded", zone: zone_name)
+                :telemetry.execute(
+                  [:yellow_dog, :dns, :zone_manager, :zone_reloaded],
+                  %{count: 1},
+                  %{zone: zone_name}
+                )
+
                 {:reply, success, new_state}
 
               {:error, _} = error ->
@@ -422,20 +455,19 @@ defmodule YellowDog.Dns.Zone.Manager do
 
         Storage.put_zone_metadata(zone_name, metadata)
 
-        Logger.info("Zone loaded from file",
-          zone: zone_name,
-          file: file,
-          type: zone_type,
-          record_count: length(zone.records)
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :zone_loaded_from_file],
+          %{record_count: length(zone.records)},
+          %{zone: zone_name, file: file, type: zone_type}
         )
 
         {:ok, zone_name}
 
       {:error, reason} = error ->
-        Logger.error("Failed to parse zone file",
-          zone: zone_name,
-          file: file,
-          error: inspect(reason)
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_manager, :zone_parse_failed],
+          %{count: 1},
+          %{zone: zone_name, file: file, reason: inspect(reason)}
         )
 
         error
@@ -483,9 +515,10 @@ defmodule YellowDog.Dns.Zone.Manager do
 
     Storage.put_zone_metadata(zone_name, format.metadata)
 
-    Logger.info("Zone records stored",
-      zone: zone_name,
-      record_count: length(zone.records)
+    :telemetry.execute(
+      [:yellow_dog, :dns, :zone_manager, :zone_records_stored],
+      %{record_count: length(zone.records)},
+      %{zone: zone_name}
     )
 
     :ok

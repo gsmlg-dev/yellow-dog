@@ -7,7 +7,6 @@ defmodule YellowDog.Mdns.MessageCache do
   """
 
   use GenServer
-  require Logger
 
   @table_name :mdns_message_cache
   @ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
@@ -149,7 +148,11 @@ defmodule YellowDog.Mdns.MessageCache do
     # Schedule periodic cleanup
     schedule_cleanup()
 
-    Logger.info("mDNS MessageCache started")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :message_cache, :started],
+      %{count: 1},
+      %{}
+    )
 
     {:ok, %{}}
   end
@@ -163,7 +166,13 @@ defmodule YellowDog.Mdns.MessageCache do
   @impl true
   def handle_call(:clear, _from, state) do
     :ets.delete_all_objects(@table_name)
-    Logger.info("mDNS MessageCache cleared")
+
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :message_cache, :cleared],
+      %{count: 1},
+      %{}
+    )
+
     {:reply, :ok, state}
   end
 
@@ -227,8 +236,10 @@ defmodule YellowDog.Mdns.MessageCache do
 
     :ets.insert(@table_name, {domain_key, entry})
 
-    Logger.debug(
-      "Cached mDNS #{section} record: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :message_cache, :record_cached],
+      %{count: 1},
+      %{domain: entry.domain, record_type: entry.record_type, section: section}
     )
   end
 
@@ -249,8 +260,10 @@ defmodule YellowDog.Mdns.MessageCache do
 
     :ets.insert(@table_name, {domain_key, entry})
 
-    Logger.debug(
-      "Cached mDNS query: #{entry.domain} (#{entry.record_type}) from #{format_ip(source_ip)}"
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :message_cache, :query_cached],
+      %{count: 1},
+      %{domain: entry.domain, record_type: entry.record_type}
     )
   end
 
@@ -271,10 +284,8 @@ defmodule YellowDog.Mdns.MessageCache do
     expired_count = length(expired_entries)
 
     if expired_count > 0 do
-      Logger.info("Cleaned up #{expired_count} expired mDNS cache entries")
-
       :telemetry.execute(
-        [:yellow_dog, :mdns, :cache_cleanup],
+        [:yellow_dog, :mdns, :message_cache, :cleanup],
         %{expired_count: expired_count},
         %{}
       )
@@ -289,15 +300,5 @@ defmodule YellowDog.Mdns.MessageCache do
     domain
     |> String.downcase()
     |> String.trim_trailing(".")
-  end
-
-  defp format_ip({a, b, c, d}) do
-    "#{a}.#{b}.#{c}.#{d}"
-  end
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
   end
 end

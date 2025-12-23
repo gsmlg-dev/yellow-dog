@@ -22,8 +22,6 @@ defmodule YellowDog.Dns.Zone.Storage do
   Value: %{records_count: ..., last_modified: ...}
   """
 
-  require Logger
-
   @zone_data_table :dns_zone_data
   @zone_metadata_table :dns_zone_metadata
   @zone_index_table :dns_zone_index
@@ -52,11 +50,21 @@ defmodule YellowDog.Dns.Zone.Storage do
   def init do
     case create_tables() do
       :ok ->
-        Logger.info("DNS zone storage initialized successfully")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_storage, :initialized],
+          %{count: 1},
+          %{}
+        )
+
         :ok
 
       {:error, reason} = error ->
-        Logger.warning("DNS zone storage initialization failed: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_storage, :init_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         error
     end
   end
@@ -228,7 +236,6 @@ defmodule YellowDog.Dns.Zone.Storage do
 
     :telemetry.execute([:yellow_dog, :dns, :zone, :deleted], %{}, %{zone: zone_name})
 
-    Logger.info("Zone deleted", zone: zone_name)
     :ok
   end
 

@@ -19,7 +19,6 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
   - `:ram_copies` - Memory-only storage (for testing)
   """
 
-  require Logger
   require Record
 
   alias YellowDog.Dhcpv4.AddressPool
@@ -80,11 +79,21 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
     with :ok <- ensure_schema_created(nodes),
          :ok <- ensure_table_created(storage_type, nodes) do
-      Logger.info("LeaseStorage initialized with #{storage_type} on #{inspect(nodes)}")
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :lease_storage, :initialized],
+        %{count: 1},
+        %{storage_type: storage_type, nodes: nodes}
+      )
+
       :ok
     else
       {:error, reason} = error ->
-        Logger.error("Failed to initialize LeaseStorage: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :init_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         error
     end
   end
@@ -129,7 +138,12 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         {:ok, result}
 
       {:aborted, reason} ->
-        Logger.error("Failed to store lease: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :store_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -163,7 +177,12 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         {:ok, lease}
 
       {:aborted, reason} ->
-        Logger.error("Failed to read lease: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :read_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -195,11 +214,21 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
       {:atomic, _multiple} ->
         # This shouldn't happen - IP should be unique
-        Logger.warning("Multiple leases found for IP #{inspect(ip_address)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :multiple_found],
+          %{count: 1},
+          %{ip_address: ip_address}
+        )
+
         {:error, :multiple_found}
 
       {:aborted, reason} ->
-        Logger.error("Failed to read lease by IP: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :read_by_ip_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -226,7 +255,12 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         :ok
 
       {:aborted, reason} ->
-        Logger.error("Failed to delete lease: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :delete_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -285,7 +319,12 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         leases
 
       {:aborted, reason} ->
-        Logger.error("Failed to list leases: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :list_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         []
     end
   end
@@ -358,7 +397,12 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         {:ok, lease}
 
       {:aborted, reason} ->
-        Logger.error("Failed to update lease state: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :update_state_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -396,13 +440,22 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
     case :mnesia.transaction(transaction) do
       {:atomic, count} ->
         if count > 0 do
-          Logger.info("Expired #{count} leases")
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_storage, :expired],
+            %{count: count},
+            %{}
+          )
         end
 
         {:ok, count}
 
       {:aborted, reason} ->
-        Logger.error("Failed to cleanup expired leases: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :cleanup_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -456,11 +509,21 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
     case :mnesia.transaction(transaction) do
       {:atomic, :ok} ->
-        Logger.warning("Cleared all leases from storage")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :cleared],
+          %{count: 1},
+          %{}
+        )
+
         :ok
 
       {:aborted, reason} ->
-        Logger.error("Failed to clear leases: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease_storage, :clear_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:error, reason}
     end
   end
@@ -526,13 +589,21 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
     |> Enum.each(fn attr ->
       case :mnesia.add_table_index(@table_name, attr) do
         {:atomic, :ok} ->
-          Logger.info("Added index on #{attr}")
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_storage, :index_added],
+            %{count: 1},
+            %{attribute: attr}
+          )
 
         {:aborted, {:already_exists, @table_name, _}} ->
           :ok
 
         {:aborted, reason} ->
-          Logger.error("Failed to add index on #{attr}: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_storage, :index_failed],
+            %{count: 1},
+            %{attribute: attr, reason: inspect(reason)}
+          )
       end
     end)
   end

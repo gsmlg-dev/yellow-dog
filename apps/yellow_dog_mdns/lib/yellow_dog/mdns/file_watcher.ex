@@ -7,7 +7,6 @@ defmodule YellowDog.Mdns.FileWatcher do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Mdns.{ServiceStore, ServiceRegistry}
 
@@ -72,15 +71,30 @@ defmodule YellowDog.Mdns.FileWatcher do
     if enabled do
       case start_file_watcher(file_path) do
         {:ok, watcher_pid} ->
-          Logger.info("FileWatcher started for #{file_path}")
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :file_watcher, :started],
+            %{count: 1},
+            %{file_path: file_path}
+          )
+
           {:ok, %{state | watcher_pid: watcher_pid}}
 
         {:error, reason} ->
-          Logger.error("Failed to start file watcher: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :file_watcher, :start_failed],
+            %{count: 1},
+            %{reason: inspect(reason)}
+          )
+
           {:ok, state}
       end
     else
-      Logger.info("FileWatcher disabled")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :file_watcher, :disabled],
+        %{count: 1},
+        %{}
+      )
+
       {:ok, state}
     end
   end
@@ -94,7 +108,12 @@ defmodule YellowDog.Mdns.FileWatcher do
       end)
 
     if should_reload and Path.basename(path) == Path.basename(state.file_path) do
-      Logger.info("Services file changed, reloading: #{path}")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :file_watcher, :file_changed],
+        %{count: 1},
+        %{path: path}
+      )
+
       handle_reload(state)
     else
       {:noreply, state}
@@ -102,7 +121,12 @@ defmodule YellowDog.Mdns.FileWatcher do
   end
 
   def handle_info({:file_event, _watcher_pid, :stop}, state) do
-    Logger.warning("File watcher stopped")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :file_watcher, :stopped],
+      %{count: 1},
+      %{}
+    )
+
     {:noreply, %{state | watcher_pid: nil}}
   end
 
@@ -169,7 +193,11 @@ defmodule YellowDog.Mdns.FileWatcher do
          }}
 
       {:error, reason} ->
-        Logger.error("Failed to reload services from file: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :file_watcher, :reload_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
 
         :telemetry.execute(
           [:yellow_dog, :mdns, :file_reload_error],

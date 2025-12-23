@@ -9,7 +9,6 @@ defmodule YellowDog.Mdns.Handler do
   """
 
   use Abyss.Handler
-  require Logger
 
   alias YellowDog.Mdns.{MessageCache, NetworkMonitor, Responder, ServiceRegistry}
 
@@ -37,37 +36,31 @@ defmodule YellowDog.Mdns.Handler do
       handle_dns_message(message, ip, port, state, start_time, mode)
     rescue
       e ->
-        # Emit telemetry event for parsing error
         :telemetry.execute(
-          [:yellow_dog, :mdns, :parse_error],
-          %{bytes: byte_size(data)},
+          [:yellow_dog, :mdns, :message, :parse_error],
+          %{count: 1, bytes: byte_size(data)},
           %{reason: inspect(e), source_ip: ip, source_port: port}
         )
 
-        Logger.debug("Failed to parse mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
         {:continue, state}
     end
   rescue
     e ->
-      # Emit telemetry event for handler error
       :telemetry.execute(
-        [:yellow_dog, :mdns, :handler_error],
-        %{bytes: byte_size(data)},
+        [:yellow_dog, :mdns, :handler, :error],
+        %{count: 1, bytes: byte_size(data)},
         %{error: inspect(e), source_ip: ip, source_port: port}
       )
 
-      Logger.error("Error handling mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
       {:continue, state}
   catch
     e ->
-      # Emit telemetry event for handler error
       :telemetry.execute(
-        [:yellow_dog, :mdns, :handler_error],
-        %{bytes: byte_size(data)},
+        [:yellow_dog, :mdns, :handler, :error],
+        %{count: 1, bytes: byte_size(data)},
         %{error: inspect(e), source_ip: ip, source_port: port}
       )
 
-      Logger.error("Error handling mDNS message from #{format_ip(ip)}:#{port}: #{inspect(e)}")
       {:continue, state}
   end
 
@@ -76,7 +69,12 @@ defmodule YellowDog.Mdns.Handler do
   """
   @impl true
   def handle_error(error, state) do
-    Logger.error("mDNS handler error: #{inspect(error)}")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :handler, :error],
+      %{count: 1},
+      %{reason: inspect(error)}
+    )
+
     {:continue, state}
   end
 
@@ -85,22 +83,22 @@ defmodule YellowDog.Mdns.Handler do
   """
   @impl true
   def handle_timeout(state) do
-    Logger.debug("mDNS handler timeout")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :handler, :timeout],
+      %{count: 1},
+      %{}
+    )
+
     {:continue, state}
   end
 
   # Private functions
 
   defp handle_dns_message(message, ip, port, state, start_time, mode) do
-    # Log message type
     is_query = message.header.qr == 0
-    message_type = if is_query, do: "query", else: "response"
+    message_type = if is_query, do: :query, else: :response
     question_count = length(message.qdlist)
     answer_count = length(message.anlist)
-
-    Logger.debug(
-      "Received mDNS #{message_type} from #{format_ip(ip)}:#{port} (#{question_count} questions, #{answer_count} answers) [mode: #{mode}]"
-    )
 
     # Check if this is a .local domain message
     if has_local_domain?(message) do
@@ -141,21 +139,34 @@ defmodule YellowDog.Mdns.Handler do
         %{source_ip: ip, source_port: port, message_type: message_type, mode: mode}
       )
     else
-      Logger.debug("Ignoring non-.local mDNS message")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :message, :ignored],
+        %{count: 1},
+        %{reason: :non_local_domain, source_ip: ip, source_port: port}
+      )
     end
 
     {:continue, state}
   end
 
-  defp handle_query(query, _ip, _port, state, _start_time) do
+  defp handle_query(query, ip, _port, state, _start_time) do
     # Get matching services from registry
     services = ServiceRegistry.get_records_for_query(query.qdlist)
 
     if Enum.empty?(services) do
-      Logger.debug("No matching services for query")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :query, :no_match],
+        %{count: 1},
+        %{source_ip: ip}
+      )
+
       :ok
     else
-      Logger.debug("Found #{length(services)} matching service(s)")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :query, :matched],
+        %{count: 1, service_count: length(services)},
+        %{source_ip: ip}
+      )
 
       # Check if we should respond (known-answer suppression)
       if Responder.should_respond?(query, services) do
@@ -169,19 +180,15 @@ defmodule YellowDog.Mdns.Handler do
             send_multicast_response(validated_response, state)
 
             :telemetry.execute(
-              [:yellow_dog, :mdns, :response_sent],
-              %{service_count: length(services)},
+              [:yellow_dog, :mdns, :response, :sent],
+              %{count: 1, service_count: length(services)},
               %{}
             )
 
-            Logger.debug("Sent mDNS response for #{length(services)} service(s)")
-
           {:error, :too_large, size} ->
-            Logger.warning("Response too large to send: #{size} bytes")
-
             :telemetry.execute(
-              [:yellow_dog, :mdns, :response_too_large],
-              %{size: size},
+              [:yellow_dog, :mdns, :response, :too_large],
+              %{count: 1, size: size},
               %{}
             )
         end
@@ -199,7 +206,12 @@ defmodule YellowDog.Mdns.Handler do
     YellowDog.Mdns.Server.send_multicast(response_data)
   rescue
     e ->
-      Logger.error("Failed to send mDNS response: #{inspect(e)}")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :response, :send_failed],
+        %{count: 1},
+        %{reason: inspect(e)}
+      )
+
       :ok
   end
 
@@ -236,14 +248,4 @@ defmodule YellowDog.Mdns.Handler do
   end
 
   defp is_local_domain?(_), do: false
-
-  defp format_ip({a, b, c, d}) do
-    "#{a}.#{b}.#{c}.#{d}"
-  end
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
-  end
 end
