@@ -8,7 +8,6 @@ defmodule YellowDog.Mdns.Server do
   """
 
   use GenServer
-  require Logger
 
   @type options :: keyword()
   @type server_config :: map()
@@ -151,13 +150,23 @@ defmodule YellowDog.Mdns.Server do
       port = Keyword.get(server_config, :port, 5353)
       multicast_address = Keyword.get(opts, :multicast_address, @mdns_multicast_address)
 
-      Logger.info("Starting mDNS server on port #{port} in #{mode} mode")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :server, :starting],
+        %{count: 1},
+        %{port: port, mode: mode}
+      )
 
       case Abyss.start_link(server_config) do
         {:ok, abyss_pid} ->
           # Open a UDP socket for sending multicast responses
           socket_opts = [:binary, {:active, false}, {:reuseaddr, true}]
           {:ok, socket} = :gen_udp.open(0, socket_opts)
+
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :server, :started],
+            %{count: 1},
+            %{port: port, mode: mode}
+          )
 
           {:ok,
            %{
@@ -170,12 +179,21 @@ defmodule YellowDog.Mdns.Server do
            }}
 
         {:error, reason} ->
-          Logger.error("Failed to start mDNS server: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :mdns, :server, :start_failed],
+            %{count: 1},
+            %{reason: inspect(reason)}
+          )
+
           {:stop, reason}
       end
     rescue
       UndefinedFunctionError ->
-        Logger.warning("Config module not available in test environment, using defaults")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :server, :config_fallback],
+          %{count: 1},
+          %{}
+        )
         server_config = get_default_server_config()
         multicast_address = @mdns_multicast_address
 
@@ -194,7 +212,12 @@ defmodule YellowDog.Mdns.Server do
              }}
 
           {:error, reason} ->
-            Logger.error("Failed to start mDNS server: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :mdns, :server, :start_failed],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
             {:stop, reason}
         end
     end
@@ -215,14 +238,23 @@ defmodule YellowDog.Mdns.Server do
         {:reply, :ok, state}
 
       {:error, reason} = error ->
-        Logger.error("Failed to send multicast: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :server, :multicast_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:reply, error, state}
     end
   end
 
   @impl true
   def terminate(reason, state) do
-    Logger.info("mDNS server stopping: #{inspect(reason)}")
+    :telemetry.execute(
+      [:yellow_dog, :mdns, :server, :stopping],
+      %{count: 1},
+      %{reason: inspect(reason)}
+    )
 
     if state[:socket] do
       :gen_udp.close(state.socket)

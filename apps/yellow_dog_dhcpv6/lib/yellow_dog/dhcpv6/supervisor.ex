@@ -7,7 +7,6 @@ defmodule YellowDog.Dhcpv6.Supervisor do
   """
 
   use Supervisor
-  require Logger
 
   @doc """
   Starts the DHCPv6 server supervisor.
@@ -26,7 +25,12 @@ defmodule YellowDog.Dhcpv6.Supervisor do
     name = Map.get(opts, :name, YellowDog.Dhcpv6)
     opts = Map.put(opts, :name, name)
 
-    Logger.debug("Starting DHCPv6 supervisor")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :supervisor, :starting],
+      %{count: 1},
+      %{}
+    )
+
     Supervisor.start_link(__MODULE__, opts, name: name)
   end
 
@@ -45,7 +49,11 @@ defmodule YellowDog.Dhcpv6.Supervisor do
       # Pre-start task
       {Task,
        fn ->
-         Logger.debug("DHCPv6 pre-start task: Initializing ETS tables")
+         :telemetry.execute(
+           [:yellow_dog, :dhcpv6, :supervisor, :pre_start],
+           %{count: 1},
+           %{}
+         )
        end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
       # Lease manager - must start before server
@@ -57,7 +65,11 @@ defmodule YellowDog.Dhcpv6.Supervisor do
       # Post-start task
       {Task,
        fn ->
-         Logger.debug("DHCPv6 post-start task completed")
+         :telemetry.execute(
+           [:yellow_dog, :dhcpv6, :supervisor, :post_start],
+           %{count: 1},
+           %{}
+         )
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]

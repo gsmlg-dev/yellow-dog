@@ -3,33 +3,25 @@ defmodule YellowDog.Mdns.ServerTest do
 
   alias YellowDog.Mdns.Server
 
-  import ExUnit.CaptureLog
-
   describe "start_link/1" do
     test "starts server without service_enabled check" do
       # Test that the server starts without checking service_enabled?
       # The service management is handled at the application level
-      log =
-        capture_log(fn ->
-          # This will try to start the server but may fail due to Config unavailability
-          # That's expected behavior in test environment
-          result =
-            try do
-              Server.start_link([])
-            rescue
-              UndefinedFunctionError -> {:error, :config_unavailable}
-            end
-
-          # The server should attempt to start (and may fail due to Config)
-          case result do
-            {:ok, pid} when is_pid(pid) -> :ok
-            {:error, :config_unavailable} -> :ok
-            _ -> flunk("Unexpected result: #{inspect(result)}")
-          end
-        end)
-
-      # The log might contain errors due to Config unavailability
+      # This will try to start the server but may fail due to Config unavailability
       # That's expected behavior in test environment
+      result =
+        try do
+          Server.start_link([])
+        rescue
+          UndefinedFunctionError -> {:error, :config_unavailable}
+        end
+
+      # The server should attempt to start (and may fail due to Config)
+      case result do
+        {:ok, pid} when is_pid(pid) -> :ok
+        {:error, :config_unavailable} -> :ok
+        _ -> flunk("Unexpected result: #{inspect(result)}")
+      end
     end
 
     test "builds server configuration correctly" do

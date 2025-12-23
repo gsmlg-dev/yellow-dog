@@ -11,6 +11,10 @@ defmodule YellowDog.Application do
 
   @impl true
   def start(_type, _args) do
+    # Attach telemetry logger handlers before starting services
+    # This enables log output for all protocol-specific telemetry events
+    YellowDog.Telemetry.attach_logger_handlers()
+
     # Load TOML configuration in the application
     config = load_toml_config()
 

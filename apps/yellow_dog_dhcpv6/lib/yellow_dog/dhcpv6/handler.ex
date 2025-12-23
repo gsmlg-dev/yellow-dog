@@ -7,8 +7,6 @@ defmodule YellowDog.Dhcpv6.Handler do
   via DUID (DHCP Unique Identifier) and supports IPv6 multicast.
   """
 
-  require Logger
-
   alias YellowDog.Dhcpv6.LeaseManager
 
   # DHCPv6 message type constants
@@ -51,35 +49,28 @@ defmodule YellowDog.Dhcpv6.Handler do
     try do
       case DHCPv6.Message.from_iodata(data) do
         {:ok, message} ->
-          Logger.debug(
-            "Received DHCPv6 message type #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}"
-          )
-
-          # Emit telemetry
           :telemetry.execute(
-            [:yellow_dog, :dhcpv6, :message_received],
-            %{duration: System.monotonic_time(:microsecond) - start_time},
+            [:yellow_dog, :dhcpv6, :message, :received],
+            %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
             %{client_ip: client_ip, client_port: client_port, msg_type: message.msg_type}
           )
 
           handle_dhcpv6_message(message, client_ip, client_port, state, start_time)
 
         {:error, reason} ->
-          Logger.warning(
-            "Failed to parse DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(reason)}"
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv6, :message, :parse_error],
+            %{count: 1},
+            %{client_ip: client_ip, client_port: client_port, reason: inspect(reason)}
           )
 
           {:continue, state}
       end
     rescue
       error ->
-        Logger.error(
-          "Error handling DHCPv6 message from #{format_ip(client_ip)}:#{client_port}: #{inspect(error)}"
-        )
-
         :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message_error],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
+          [:yellow_dog, :dhcpv6, :message, :error],
+          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
           %{client_ip: client_ip, client_port: client_port, error: Exception.message(error)}
         )
 
@@ -91,7 +82,12 @@ defmodule YellowDog.Dhcpv6.Handler do
   Handles handler errors (implements Abyss.Handler callback).
   """
   def handle_error(error, state) do
-    Logger.error("DHCPv6 handler error: #{inspect(error)}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :handler, :error],
+      %{count: 1},
+      %{reason: inspect(error)}
+    )
+
     {:continue, state}
   end
 
@@ -99,7 +95,12 @@ defmodule YellowDog.Dhcpv6.Handler do
   Handles handler timeouts (implements Abyss.Handler callback).
   """
   def handle_timeout(state) do
-    Logger.debug("DHCPv6 handler timeout")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :handler, :timeout],
+      %{count: 1},
+      %{}
+    )
+
     {:continue, state}
   end
 
@@ -135,8 +136,10 @@ defmodule YellowDog.Dhcpv6.Handler do
         handle_relay_reply(message, client_ip, client_port, state)
 
       _ ->
-        Logger.warning(
-          "Unknown DHCPv6 message type: #{message.msg_type} from #{format_ip(client_ip)}:#{client_port}"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :unknown],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port, msg_type: message.msg_type}
         )
 
         {:continue, state}
@@ -144,8 +147,10 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_solicit(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 SOLICIT from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :requested],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :solicit}
     )
 
     client_duid = get_client_duid(message)
@@ -156,11 +161,21 @@ defmodule YellowDog.Dhcpv6.Handler do
     # Check if any IA type is present
     case {client_duid, ia_na, ia_ta, ia_pd} do
       {nil, _, _, _} ->
-        Logger.warning("SOLICIT missing client DUID")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "SOLICIT missing client DUID", client_ip: client_ip}
+        )
+
         {:continue, state}
 
       {_, nil, nil, nil} ->
-        Logger.warning("SOLICIT missing all IA options (IA_NA, IA_TA, IA_PD)")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "SOLICIT missing all IA options", client_ip: client_ip}
+        )
+
         {:continue, state}
 
       {duid, _, _, _} ->
@@ -175,7 +190,12 @@ defmodule YellowDog.Dhcpv6.Handler do
                 [lease | leases]
 
               {:error, reason} ->
-                Logger.error("Failed to allocate IA_NA lease: #{inspect(reason)}")
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), ia_type: :ia_na, client_duid: duid}
+                )
+
                 leases
             end
           else
@@ -190,7 +210,12 @@ defmodule YellowDog.Dhcpv6.Handler do
                 [ta_lease | leases]
 
               {:error, reason} ->
-                Logger.error("Failed to allocate IA_TA lease: #{inspect(reason)}")
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), ia_type: :ia_ta, client_duid: duid}
+                )
+
                 leases
             end
           else
@@ -211,9 +236,9 @@ defmodule YellowDog.Dhcpv6.Handler do
           send_dhcpv6_response(advertise, client_ip, client_port, state)
 
           :telemetry.execute(
-            [:yellow_dog, :dhcpv6, :solicit_handled],
-            %{duration: System.monotonic_time(:microsecond) - start_time},
-            %{client_ip: client_ip, duid: format_duid(duid), ia_count: length(leases)}
+            [:yellow_dog, :dhcpv6, :solicit, :completed],
+            %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+            %{client_ip: client_ip, client_duid: duid, ia_count: length(leases)}
           )
         end
 
@@ -222,8 +247,10 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_request(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 REQUEST from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :requested],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :request}
     )
 
     client_duid = get_client_duid(message)
@@ -231,11 +258,21 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     case {client_duid, ia_na} do
       {nil, _} ->
-        Logger.warning("REQUEST missing client DUID")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "REQUEST missing client DUID", client_ip: client_ip}
+        )
+
         {:continue, state}
 
       {_, nil} ->
-        Logger.warning("REQUEST missing IA_NA option")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "REQUEST missing IA_NA option", client_ip: client_ip}
+        )
+
         {:continue, state}
 
       {duid, %{iaid: iaid}} ->
@@ -246,13 +283,17 @@ defmodule YellowDog.Dhcpv6.Handler do
             send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :request_handled],
-              %{duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, duid: format_duid(duid)}
+              [:yellow_dog, :dhcpv6, :lease, :granted],
+              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+              %{client_ip: client_ip, client_duid: duid}
             )
 
           {:error, reason} ->
-            Logger.error("Failed to allocate lease for REQUEST: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+              %{count: 1},
+              %{reason: inspect(reason), client_duid: duid}
+            )
         end
 
         {:continue, state}
@@ -260,8 +301,10 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_renew(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 RENEW from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :renewed],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :renew}
     )
 
     client_duid = get_client_duid(message)
@@ -276,35 +319,82 @@ defmodule YellowDog.Dhcpv6.Handler do
             send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :renew_handled],
-              %{duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, duid: format_duid(duid)}
+              [:yellow_dog, :dhcpv6, :lease, :granted],
+              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+              %{client_ip: client_ip, client_duid: duid}
             )
 
           {:error, reason} ->
-            Logger.error("Failed to renew lease: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+              %{count: 1},
+              %{reason: inspect(reason), client_duid: duid}
+            )
         end
 
         {:continue, state}
 
       _ ->
-        Logger.warning("RENEW missing required options")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "RENEW missing required options", client_ip: client_ip}
+        )
+
         {:continue, state}
     end
   end
 
   defp handle_rebind(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 REBIND from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :rebind],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :rebind}
     )
 
-    # Rebind is similar to renew
-    handle_renew(message, client_ip, client_port, state, start_time)
+    # Rebind is similar to renew - reuse the renew logic
+    client_duid = get_client_duid(message)
+    ia_na = get_ia_na(message)
+
+    case {client_duid, ia_na} do
+      {duid, %{iaid: iaid}} when duid != nil ->
+        case LeaseManager.allocate_lease(duid, iaid) do
+          {:ok, lease} ->
+            reply = create_reply(message, lease)
+            send_dhcpv6_response(reply, client_ip, client_port, state)
+
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease, :granted],
+              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+              %{client_ip: client_ip, client_duid: duid}
+            )
+
+          {:error, reason} ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :lease, :rebind_failed],
+              %{count: 1},
+              %{reason: inspect(reason), client_duid: duid}
+            )
+        end
+
+        {:continue, state}
+
+      _ ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "REBIND missing required options", client_ip: client_ip}
+        )
+
+        {:continue, state}
+    end
   end
 
   defp handle_release(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 RELEASE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :released],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :release}
     )
 
     client_duid = get_client_duid(message)
@@ -315,21 +405,27 @@ defmodule YellowDog.Dhcpv6.Handler do
         LeaseManager.release_lease(duid, iaid)
 
         :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :release_handled],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, duid: format_duid(duid)}
+          [:yellow_dog, :dhcpv6, :lease, :release_completed],
+          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_duid: duid}
         )
 
       _ ->
-        Logger.warning("RELEASE missing required options")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "RELEASE missing required options", client_ip: client_ip}
+        )
     end
 
     {:continue, state}
   end
 
   defp handle_decline(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 DECLINE from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :lease, :declined],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :decline}
     )
 
     client_duid = get_client_duid(message)
@@ -340,21 +436,27 @@ defmodule YellowDog.Dhcpv6.Handler do
         LeaseManager.decline_ip(ia_addr, duid)
 
         :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :decline_handled],
-          %{duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, duid: format_duid(duid), declined_ip: ia_addr}
+          [:yellow_dog, :dhcpv6, :lease, :decline_completed],
+          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
         )
 
       _ ->
-        Logger.warning("DECLINE missing required options")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "DECLINE missing required options", client_ip: client_ip}
+        )
     end
 
     {:continue, state}
   end
 
   defp handle_inform(message, client_ip, client_port, state, start_time) do
-    Logger.info(
-      "DHCPv6 INFORM from #{format_client_duid(message)} (#{format_ip(client_ip)}:#{client_port})"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :inform, :requested],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, message_type: :information_request}
     )
 
     # INFORMATION-REQUEST - provide configuration without address allocation
@@ -362,8 +464,8 @@ defmodule YellowDog.Dhcpv6.Handler do
     send_dhcpv6_response(reply, client_ip, client_port, state)
 
     :telemetry.execute(
-      [:yellow_dog, :dhcpv6, :inform_handled],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
+      [:yellow_dog, :dhcpv6, :inform, :completed],
+      %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
       %{client_ip: client_ip}
     )
 
@@ -371,16 +473,20 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp handle_relay_forward(_message, client_ip, client_port, state) do
-    Logger.info(
-      "DHCPv6 RELAY-FORWARD from #{format_ip(client_ip)}:#{client_port} (not implemented)"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :relay, :forward],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, status: :not_implemented}
     )
 
     {:continue, state}
   end
 
   defp handle_relay_reply(_message, client_ip, client_port, state) do
-    Logger.info(
-      "DHCPv6 RELAY-REPLY from #{format_ip(client_ip)}:#{client_port} (not implemented)"
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :relay, :reply],
+      %{count: 1},
+      %{client_ip: client_ip, client_port: client_port, status: :not_implemented}
     )
 
     {:continue, state}
@@ -610,7 +716,11 @@ defmodule YellowDog.Dhcpv6.Handler do
   defp allocate_prefix_delegation(duid, iaid) do
     # For now, return a placeholder
     # Full implementation would use PrefixPool module
-    Logger.debug("IA_PD allocation requested for DUID #{format_duid(duid)} IAID #{iaid}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :prefix, :delegation_requested],
+      %{count: 1},
+      %{client_duid: duid, iaid: iaid}
+    )
 
     # TODO: Integrate with PrefixPool module
     # Example placeholder prefix: 2001:db8:1000::/56
@@ -744,12 +854,18 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     case :gen_udp.send(state.socket, client_ip, client_port, data) do
       :ok ->
-        Logger.debug(
-          "Sent DHCPv6 response type #{response.msg_type} to #{format_ip(client_ip)}:#{client_port}"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :response, :sent],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port, msg_type: response.msg_type}
         )
 
       {:error, reason} ->
-        Logger.error("Failed to send DHCPv6 response: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :response, :send_failed],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port, reason: inspect(reason)}
+        )
     end
   end
 
@@ -759,39 +875,4 @@ defmodule YellowDog.Dhcpv6.Handler do
     <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
   end
 
-  defp format_client_duid(message) do
-    case get_client_duid(message) do
-      nil -> "unknown_duid"
-      duid -> format_duid(duid)
-    end
-  end
-
-  defp format_duid(duid) when is_binary(duid) do
-    "DUID:#{:erlang.phash2(duid) |> Integer.to_string(16) |> String.upcase()}"
-  end
-
-  defp format_duid(_), do: "UNKNOWN"
-
-  defp format_ip({a, b, c, d}) do
-    "#{a}.#{b}.#{c}.#{d}"
-  end
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    # Format IPv6 address as compressed string
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-
-    # Basic compression - replace longest sequence of 0s with ::
-    hex_str = Enum.join(hex_parts, ":")
-
-    # Simple compression for common cases
-    hex_str
-    |> String.replace(":0:0:0:0:0:0:0:0", "::")
-    |> String.replace(":0:0:0:0:0:0:0", "::")
-    |> String.replace(":0:0:0:0:0:0", "::")
-    |> String.replace(":0:0:0:0:0", "::")
-    |> String.replace(":0:0:0:0", "::")
-    |> String.replace(":0:0:0", "::")
-    |> String.replace(":0:0", "::")
-  end
 end

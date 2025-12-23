@@ -6,7 +6,6 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   Supports multiple pools, static reservations, and prefix delegation.
   """
 
-  require Logger
   import Bitwise
 
   @type ipv6_address ::

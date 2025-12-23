@@ -6,8 +6,6 @@ defmodule YellowDog.Mdns.ServiceStore do
   Supports file watching for hot-reload and atomic writes with backup.
   """
 
-  require Logger
-
   @type service_def :: %{
           name: String.t(),
           type: String.t(),
@@ -51,15 +49,30 @@ defmodule YellowDog.Mdns.ServiceStore do
         |> Enum.reject(&match?({:error, _}, &1))
         |> Enum.map(fn {:ok, service} -> service end)
 
-      Logger.info("Loaded #{length(validated_services)} services from #{file_path}")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :service_store, :loaded],
+        %{service_count: length(validated_services)},
+        %{file_path: file_path}
+      )
+
       {:ok, validated_services}
     else
       {:error, :enoent} ->
-        Logger.info("Services file not found: #{file_path}, starting with empty services")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :service_store, :file_not_found],
+          %{count: 1},
+          %{file_path: file_path}
+        )
+
         {:ok, []}
 
       {:error, reason} = error ->
-        Logger.error("Failed to load services from #{file_path}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :service_store, :load_failed],
+          %{count: 1},
+          %{file_path: file_path, reason: inspect(reason)}
+        )
+
         error
     end
   end
@@ -90,11 +103,21 @@ defmodule YellowDog.Mdns.ServiceStore do
          :ok <- ensure_directory(file_path),
          :ok <- maybe_create_backup(file_path, create_backup?),
          :ok <- atomic_write(file_path, content) do
-      Logger.info("Saved #{length(services)} services to #{file_path}")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :service_store, :saved],
+        %{service_count: length(services)},
+        %{file_path: file_path}
+      )
+
       :ok
     else
       {:error, reason} = error ->
-        Logger.error("Failed to save services to #{file_path}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :service_store, :save_failed],
+          %{count: 1},
+          %{file_path: file_path, reason: inspect(reason)}
+        )
+
         error
     end
   end

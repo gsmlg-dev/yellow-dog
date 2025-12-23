@@ -6,11 +6,9 @@ defmodule YellowDog.Mdns.TestHelper do
   and other common test patterns for mDNS functionality.
   """
 
-  import ExUnit.CaptureLog
   import ExUnit.Callbacks
 
   alias DNS.Message
-  alias DNS.ResourceRecord
 
   @doc """
   Creates a basic mDNS query message for a .local domain.

@@ -5,8 +5,6 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
   alias YellowDog.Dhcpv6.LeaseManager
   alias YellowDog.Dhcpv6.LeaseStorage
 
-  import ExUnit.CaptureLog
-
   setup do
     # Initialize storage and start LeaseManager for handler tests
     LeaseStorage.init(storage_type: :ram_copies)
@@ -94,15 +92,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
       # Test that the handler processes the message without fatal errors
       # Note: UDP send will fail with mock socket, but handler should continue
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, message}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Handler processes the message but UDP send fails with mock socket
-      # Just verify it doesn't crash and continues
-      assert log =~ "Error handling DHCPv6 message" or log =~ "SOLICIT"
+      result = Handler.handle_data({client_ip, client_port, message}, state)
+      assert result == {:continue, state}
     end
 
     test "handles DHCPv6 REQUEST message" do
@@ -114,14 +105,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       state = %{socket: self()}
 
       # Test that the handler processes the message without crashing
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, message}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Should log REQUEST handling
-      assert log =~ "REQUEST"
+      result = Handler.handle_data({client_ip, client_port, message}, state)
+      assert result == {:continue, state}
     end
 
     test "handles invalid message gracefully" do
@@ -134,14 +119,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       state = %{socket: self()}
 
       # Test that the handler handles errors gracefully
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, data}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Should log unknown message type warning for invalid message
-      assert log =~ "Unknown DHCPv6 message type"
+      result = Handler.handle_data({client_ip, client_port, data}, state)
+      assert result == {:continue, state}
     end
 
     test "handles malformed DHCPv6 message" do
@@ -153,14 +132,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
       state = %{socket: self()}
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, malformed_data}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Should handle parsing error gracefully
-      assert log =~ "Failed to parse DHCPv6 message" or log =~ "Error handling DHCPv6 message"
+      result = Handler.handle_data({client_ip, client_port, malformed_data}, state)
+      assert result == {:continue, state}
     end
   end
 
@@ -169,13 +142,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       state = %{socket: self()}
 
       # Test error handling callback
-      log =
-        capture_log(fn ->
-          result = Handler.handle_error(:test_error, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "DHCPv6 handler error"
+      result = Handler.handle_error(:test_error, state)
+      assert result == {:continue, state}
     end
 
     test "handles timeouts" do
@@ -216,10 +184,8 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       state = %{socket: self()}
       invalid_data = <<0xFF>>
 
-      capture_log(fn ->
-        result = Handler.handle_data({ipv4_address, 546, invalid_data}, state)
-        assert result == {:continue, state}
-      end)
+      result = Handler.handle_data({ipv4_address, 546, invalid_data}, state)
+      assert result == {:continue, state}
     end
 
     test "formats IPv6 addresses correctly" do
@@ -227,17 +193,11 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       ipv6_address = {0xFE80, 0, 0, 0, 0, 0, 0, 0x1234}
       state = %{socket: self()}
 
-      # Even with invalid data, the address should be formatted correctly in logs
+      # Even with invalid data, the address should be formatted correctly
       invalid_data = <<0xFF>>
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ipv6_address, 546, invalid_data}, state)
-          assert result == {:continue, state}
-        end)
-
-      # The exact format depends on the implementation, but should contain IPv6-like content
-      assert log =~ "Failed to parse" or log =~ "Error handling"
+      result = Handler.handle_data({ipv6_address, 546, invalid_data}, state)
+      assert result == {:continue, state}
     end
   end
 end

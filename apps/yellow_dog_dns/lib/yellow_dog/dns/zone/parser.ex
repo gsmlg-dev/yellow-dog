@@ -34,7 +34,6 @@ defmodule YellowDog.Dns.Zone.Parser do
       @    IN  TXT  "v=spf1 mx a -all"
   """
 
-  require Logger
   alias YellowDog.Dns.Zone
 
   @type parse_result :: {:ok, Zone.t()} | {:error, term()}
@@ -254,8 +253,7 @@ defmodule YellowDog.Dns.Zone.Parser do
         end
 
       "$INCLUDE" ->
-        # Not implemented yet
-        Logger.warning("$INCLUDE directive not yet implemented")
+        # Not implemented yet - $INCLUDE directive ignored
         {:ok, nil, state}
 
       _ ->

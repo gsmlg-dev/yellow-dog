@@ -9,8 +9,6 @@ defmodule YellowDog.Mdns.Responder do
   - Response delay for shared records
   """
 
-  require Logger
-
   alias YellowDog.Mdns.{ServiceRegistry, RecordBuilder}
   alias DNS.Message
   alias DNS.Message.{Header, Question, Record}
@@ -29,7 +27,6 @@ defmodule YellowDog.Mdns.Responder do
     has_known_answers = has_known_answers?(query, matching_services)
 
     if has_known_answers do
-      Logger.debug("Suppressing response due to known answers")
       false
     else
       true
@@ -185,7 +182,12 @@ defmodule YellowDog.Mdns.Responder do
     estimated_size = estimate_message_size(message)
 
     if estimated_size > 1232 do
-      Logger.warning("Response too large: #{estimated_size} bytes")
+      :telemetry.execute(
+        [:yellow_dog, :mdns, :responder, :response_too_large],
+        %{size: estimated_size},
+        %{}
+      )
+
       {:error, :too_large, estimated_size}
     else
       {:ok, message}

@@ -4,8 +4,6 @@ defmodule YellowDog.Mdns.HandlerTest do
   alias YellowDog.Mdns.Handler
   alias YellowDog.Mdns.TestHelper
 
-  import ExUnit.CaptureLog
-
   # Define test handler module for testing
   defmodule TestHandler do
     use Abyss.Handler
@@ -39,13 +37,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "processes mDNS PTR query" do
@@ -55,13 +48,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "processes mDNS SRV query" do
@@ -71,13 +59,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "ignores mDNS response messages" do
@@ -114,13 +97,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS response"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "ignores queries without .local domains" do
@@ -131,14 +109,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS query"
-      assert log =~ "Ignoring non-.local mDNS message"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "handles empty query messages" do
@@ -148,13 +120,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, iodata}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({ip, port, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "handles malformed DNS packets" do
@@ -163,13 +130,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, malformed_data}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Error handling mDNS message"
+      result = Handler.handle_data({ip, port, malformed_data}, state)
+      assert result == {:continue, state}
     end
 
     test "handles handler errors gracefully" do
@@ -178,13 +140,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       ip = {127, 0, 0, 1}
       port = 12345
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({ip, port, "invalid_data"}, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "Error handling mDNS message"
+      result = Handler.handle_data({ip, port, "invalid_data"}, state)
+      assert result == {:continue, state}
     end
 
     test "handles message reception telemetry" do
@@ -227,13 +184,8 @@ defmodule YellowDog.Mdns.HandlerTest do
     test "handles timeout events" do
       state = TestHelper.create_test_state()
 
-      log =
-        capture_log(fn ->
-          result = Handler.handle_timeout(state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "mDNS handler timeout"
+      result = Handler.handle_timeout(state)
+      assert result == {:continue, state}
     end
   end
 
@@ -264,12 +216,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       {:ok, iodata} = TestHelper.encode_message(message)
       state = TestHelper.create_test_state()
 
-      log =
-        capture_log(fn ->
-          Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "detects .local domain with subdomain" do
@@ -277,12 +225,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       {:ok, iodata} = TestHelper.encode_message(message)
       state = TestHelper.create_test_state()
 
-      log =
-        capture_log(fn ->
-          Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
-        end)
-
-      assert log =~ "Received mDNS query"
+      result = Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
+      assert result == {:continue, state}
     end
 
     test "ignores non-local domain questions" do
@@ -290,12 +234,8 @@ defmodule YellowDog.Mdns.HandlerTest do
       {:ok, iodata} = TestHelper.encode_message(message)
       state = TestHelper.create_test_state()
 
-      log =
-        capture_log(fn ->
-          Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
-        end)
-
-      assert log =~ "Ignoring non-.local mDNS message"
+      result = Handler.handle_data({{127, 0, 0, 1}, 12345, iodata}, state)
+      assert result == {:continue, state}
     end
   end
 

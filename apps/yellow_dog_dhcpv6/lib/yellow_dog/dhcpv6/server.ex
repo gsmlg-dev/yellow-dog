@@ -8,7 +8,6 @@ defmodule YellowDog.Dhcpv6.Server do
   """
 
   use GenServer
-  require Logger
 
   @doc """
   Starts the DHCPv6 server GenServer.
@@ -70,21 +69,42 @@ defmodule YellowDog.Dhcpv6.Server do
   def init(opts) do
     server_config = build_server_config(opts)
     port = Keyword.get(server_config, :port, 547)
-    Logger.info("Starting DHCPv6 server on port #{port}")
+
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :server, :starting],
+      %{count: 1},
+      %{port: port}
+    )
 
     case Abyss.start_link(server_config) do
       {:ok, abyss_pid} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :server, :started],
+          %{count: 1},
+          %{port: port}
+        )
+
         {:ok, %{abyss_pid: abyss_pid, config: server_config}}
 
       {:error, reason} ->
-        Logger.error("Failed to start DHCPv6 server: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :server, :start_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:stop, reason}
     end
   end
 
   @impl true
   def terminate(reason, state) do
-    Logger.info("DHCPv6 server stopping: #{inspect(reason)}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv6, :server, :stopping],
+      %{count: 1},
+      %{reason: inspect(reason)}
+    )
+
     if state.abyss_pid, do: GenServer.stop(state.abyss_pid, :normal)
     :ok
   end

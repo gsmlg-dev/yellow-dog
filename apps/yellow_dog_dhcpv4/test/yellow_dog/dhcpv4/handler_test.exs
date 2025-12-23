@@ -4,8 +4,6 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
   alias YellowDog.Dhcpv4.Handler
   alias YellowDog.Dhcpv4.LeaseManager
 
-  import ExUnit.CaptureLog
-
   setup do
     # Start LeaseManager before each test
     pool_config = %{
@@ -122,17 +120,11 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, data}, state)
-          assert result == {:continue, state}
-        end)
+      result = Handler.handle_data({client_ip, client_port, data}, state)
+      assert result == {:continue, state}
 
       # Clean up socket
       :gen_udp.close(socket)
-
-      # Should log discovery handling
-      assert log =~ "DHCPDISCOVER"
     end
 
     test "handles DHCPREQUEST message" do
@@ -145,17 +137,11 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       state = %{socket: socket}
 
       # Test that the handler processes the message without crashing
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, data}, state)
-          assert result == {:continue, state}
-        end)
+      result = Handler.handle_data({client_ip, client_port, data}, state)
+      assert result == {:continue, state}
 
       # Clean up socket
       :gen_udp.close(socket)
-
-      # Should log request handling
-      assert log =~ "DHCPREQUEST"
     end
 
     test "handles invalid message gracefully" do
@@ -167,14 +153,8 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       state = %{socket: self()}
 
       # Test that the handler handles errors gracefully
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, data}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Should log error handling
-      assert log =~ "Error handling DHCPv4 message"
+      result = Handler.handle_data({client_ip, client_port, data}, state)
+      assert result == {:continue, state}
     end
 
     test "handles bootreply messages (should not happen on server)" do
@@ -243,15 +223,9 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       # Mock state with socket
       state = %{socket: self()}
 
-      # Test that the handler ignores bootreply messages
-      log =
-        capture_log(fn ->
-          result = Handler.handle_data({client_ip, client_port, data}, state)
-          assert result == {:continue, state}
-        end)
-
-      # Should log error handling (since the message is malformed)
-      assert log =~ "Error handling DHCPv4 message"
+      # Test that the handler handles bootreply gracefully
+      result = Handler.handle_data({client_ip, client_port, data}, state)
+      assert result == {:continue, state}
     end
   end
 
@@ -260,26 +234,16 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       state = %{socket: self()}
 
       # Test error handling callback
-      log =
-        capture_log(fn ->
-          result = Handler.handle_error(:test_error, state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "DHCPv4 handler error"
+      result = Handler.handle_error(:test_error, state)
+      assert result == {:continue, state}
     end
 
     test "handles timeouts" do
       state = %{socket: self()}
 
       # Test timeout handling callback
-      log =
-        capture_log(fn ->
-          result = Handler.handle_timeout(state)
-          assert result == {:continue, state}
-        end)
-
-      assert log =~ "DHCPv4 handler timeout"
+      result = Handler.handle_timeout(state)
+      assert result == {:continue, state}
     end
   end
 

@@ -27,7 +27,6 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
   This would allocate /56 prefixes from the 2001:db8:1000::/48 block.
   """
 
-  require Logger
   import Bitwise
 
   @type ipv6_address ::

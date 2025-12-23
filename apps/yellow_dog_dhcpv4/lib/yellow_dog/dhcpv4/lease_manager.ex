@@ -9,7 +9,6 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dhcpv4.AddressPool
   alias YellowDog.Dhcpv4.LeaseStorage
@@ -238,10 +237,18 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
     case LeaseStorage.init(storage_type: storage_type) do
       :ok ->
-        Logger.info("Mnesia storage initialized with #{storage_type}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :storage, :initialized],
+          %{count: 1},
+          %{storage_type: storage_type}
+        )
 
       {:error, reason} ->
-        Logger.error("Failed to initialize Mnesia storage: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :storage, :init_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
     end
 
     # Extract pools from options
@@ -255,7 +262,12 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
             pool
 
           {:error, reason} ->
-            Logger.error("Failed to create address pool: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :pool, :creation_failed],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
             nil
         end
       end)
@@ -268,7 +280,11 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
       pools: parsed_pools
     }
 
-    Logger.info("LeaseManager started with #{length(parsed_pools)} pools")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :lease_manager, :started],
+      %{count: 1, pool_count: length(parsed_pools)},
+      %{}
+    )
 
     {:ok, state}
   end
@@ -296,18 +312,30 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
     case LeaseStorage.update_state(mac_key, :released) do
       {:ok, _lease} ->
-        Logger.info("Released lease for MAC #{format_mac_display(mac_key)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :release_completed],
+          %{count: 1},
+          %{client_mac: mac_key}
+        )
+
         {:reply, :ok, state}
 
       {:error, :not_found} ->
-        Logger.warning(
-          "Attempted to release non-existent lease for MAC #{format_mac_display(mac_key)}"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :release_not_found],
+          %{count: 1},
+          %{client_mac: mac_key}
         )
 
         {:reply, :ok, state}
 
       {:error, reason} ->
-        Logger.error("Failed to release lease: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :release_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:reply, {:error, reason}, state}
     end
   end
@@ -318,18 +346,30 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
     case LeaseStorage.update_state(mac_key, :declined) do
       {:ok, _lease} ->
-        Logger.warning("IP #{inspect(ip)} declined by MAC #{format_mac_display(mac_key)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :decline_completed],
+          %{count: 1},
+          %{client_mac: mac_key, declined_ip: ip}
+        )
+
         {:reply, :ok, state}
 
       {:error, :not_found} ->
-        Logger.warning(
-          "Attempted to decline non-existent lease for MAC #{format_mac_display(mac_key)}"
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :decline_not_found],
+          %{count: 1},
+          %{client_mac: mac_key}
         )
 
         {:reply, :ok, state}
 
       {:error, reason} ->
-        Logger.error("Failed to decline IP: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :decline_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:reply, {:error, reason}, state}
     end
   end
@@ -408,7 +448,11 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         :ok
 
       {:error, reason} ->
-        Logger.error("Failed to cleanup expired leases: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :cleanup_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
     end
 
     schedule_cleanup()
@@ -428,14 +472,21 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
         case LeaseStorage.put(renewed_lease) do
           {:ok, lease} ->
-            Logger.info(
-              "Renewed lease for MAC #{format_mac_display(mac_key)}: #{inspect(lease.ip_address)}"
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :lease, :renewed],
+              %{count: 1},
+              %{client_mac: mac_key, ip_address: lease.ip_address}
             )
 
             {:ok, lease}
 
           {:error, reason} ->
-            Logger.error("Failed to renew lease: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :lease, :renew_failed],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
             {:error, reason}
         end
 
@@ -480,25 +531,30 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
       case LeaseStorage.put(lease) do
         {:ok, stored_lease} ->
-          Logger.info(
-            "Allocated new lease for MAC #{format_mac_display(mac_key)}: #{inspect(ip)}"
-          )
-
-          # Emit telemetry event
           :telemetry.execute(
-            [:yellow_dog, :dhcpv4, :lease_allocated],
+            [:yellow_dog, :dhcpv4, :lease, :allocated],
             %{count: 1},
-            %{mac: mac_key, ip: ip, pool: pool.name}
+            %{client_mac: mac_key, ip_address: ip, pool_name: pool.name}
           )
 
           {:ok, stored_lease}
 
         {:error, reason} ->
-          Logger.error("Failed to store new lease: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease, :store_failed],
+            %{count: 1},
+            %{reason: inspect(reason)}
+          )
+
           {:error, reason}
       end
     else
-      Logger.error("Pool exhausted for #{pool.name}")
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :pool, :exhausted],
+        %{count: 1},
+        %{pool_name: pool.name}
+      )
+
       {:error, :pool_exhausted}
     end
   end
@@ -530,17 +586,4 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   defp normalize_mac(mac) when is_binary(mac), do: mac
-
-  # Format MAC address for display in logs
-  defp format_mac_display(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.map(&String.pad_leading(&1, 2, "0"))
-    |> Enum.join(":")
-    |> String.upcase()
-  end
-
-  defp format_mac_display(mac) when is_binary(mac), do: Base.encode16(mac)
-  defp format_mac_display(_), do: "UNKNOWN"
 end

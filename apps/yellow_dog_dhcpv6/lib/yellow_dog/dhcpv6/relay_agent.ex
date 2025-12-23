@@ -32,8 +32,6 @@ defmodule YellowDog.Dhcpv6.RelayAgent do
   - options: Encapsulated server response and relay agent options
   """
 
-  require Logger
-
   @msg_type_relay_forw 12
   @msg_type_relay_repl 13
 
@@ -101,7 +99,12 @@ defmodule YellowDog.Dhcpv6.RelayAgent do
               end
 
             {:error, reason} ->
-              Logger.error("Failed to parse encapsulated client message: #{inspect(reason)}")
+              :telemetry.execute(
+                [:yellow_dog, :dhcpv6, :relay_agent, :parse_failed],
+                %{count: 1},
+                %{reason: inspect(reason)}
+              )
+
               {:error, :invalid_encapsulated_message}
           end
 

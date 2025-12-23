@@ -23,7 +23,6 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
   """
 
   use GenServer
-  require Logger
 
   @type config_callback :: (map() -> :ok | {:error, term()})
 
@@ -83,19 +82,39 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
 
     cond do
       not enabled ->
-        Logger.info("ConfigWatcher disabled")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :config_watcher, :disabled],
+          %{count: 1},
+          %{reason: :explicitly_disabled}
+        )
+
         {:ok, %{enabled: false}}
 
       is_nil(config_file) ->
-        Logger.warning("No config file specified, ConfigWatcher disabled")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :config_watcher, :disabled],
+          %{count: 1},
+          %{reason: :no_config_file}
+        )
+
         {:ok, %{enabled: false}}
 
       is_nil(reload_callback) ->
-        Logger.error("No reload callback specified, ConfigWatcher cannot start")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :config_watcher, :start_failed],
+          %{count: 1},
+          %{reason: :no_reload_callback}
+        )
+
         {:stop, :no_reload_callback}
 
       not File.exists?(config_file) ->
-        Logger.warning("Config file #{config_file} does not exist, ConfigWatcher disabled")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :config_watcher, :disabled],
+          %{count: 1},
+          %{reason: :file_not_found, config_file: config_file}
+        )
+
         {:ok, %{enabled: false}}
 
       true ->
@@ -118,12 +137,21 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
               reload_count: 0
             }
 
-            Logger.info("ConfigWatcher started, monitoring #{config_file}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :config_watcher, :started],
+              %{count: 1},
+              %{config_file: config_file}
+            )
 
             {:ok, state}
 
           {:error, reason} ->
-            Logger.error("Failed to start FileSystem watcher: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :config_watcher, :start_failed],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
             {:stop, reason}
         end
     end
@@ -188,7 +216,11 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
       # Schedule reload after debounce period
       timer = Process.send_after(self(), :do_reload, state.debounce_ms)
 
-      Logger.debug("Config file changed, scheduling reload in #{state.debounce_ms}ms")
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :config_watcher, :change_detected],
+        %{count: 1, debounce_ms: state.debounce_ms},
+        %{config_file: state.config_file}
+      )
 
       {:noreply, %{state | debounce_timer: timer}}
     else
@@ -198,7 +230,12 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
 
   @impl true
   def handle_info({:file_event, _watcher_pid, :stop}, state) do
-    Logger.warning("FileSystem watcher stopped")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config_watcher, :watcher_stopped],
+      %{count: 1},
+      %{}
+    )
+
     {:noreply, state}
   end
 
@@ -216,7 +253,12 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to reload configuration: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :config_watcher, :reload_failed],
+          %{count: 1},
+          %{reason: inspect(reason)}
+        )
+
         {:noreply, %{state | debounce_timer: nil}}
     end
   end
@@ -233,7 +275,11 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
   defp do_reload(state) do
     start_time = System.monotonic_time(:microsecond)
 
-    Logger.info("Reloading configuration from #{state.config_file}")
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config_watcher, :reloading],
+      %{count: 1},
+      %{config_file: state.config_file}
+    )
 
     # Emit telemetry event for reload start
     :telemetry.execute(
@@ -250,7 +296,12 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
         :ok
       else
         {:error, reason} = error ->
-          Logger.error("Configuration reload failed: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :config_watcher, :reload_error],
+            %{count: 1},
+            %{config_file: state.config_file, reason: inspect(reason)}
+          )
+
           error
       end
 
@@ -265,8 +316,6 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
           %{duration: duration},
           %{config_file: state.config_file}
         )
-
-        Logger.info("Configuration reloaded successfully in #{duration}µs")
 
       {:error, reason} ->
         :telemetry.execute(

@@ -9,8 +9,6 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   - Allocation rates and trends
   """
 
-  require Logger
-
   alias YellowDog.Dhcpv4.{AddressPool, LeaseStorage}
 
   @type pool_stats :: %{
@@ -171,9 +169,14 @@ defmodule YellowDog.Dhcpv4.PoolStats do
     stats = get_pool_stats(pool)
 
     if stats.utilization_percent >= threshold do
-      Logger.warning(
-        "Pool #{pool.name} is at #{stats.utilization_percent}% utilization " <>
-          "(#{stats.available_addresses} addresses remaining)"
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :pool, :high_utilization],
+        %{
+          count: 1,
+          utilization_percent: stats.utilization_percent,
+          available_addresses: stats.available_addresses
+        },
+        %{pool_name: pool.name}
       )
 
       {:warning, stats.utilization_percent}

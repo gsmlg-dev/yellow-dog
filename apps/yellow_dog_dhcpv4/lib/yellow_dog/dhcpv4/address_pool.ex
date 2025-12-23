@@ -6,8 +6,6 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   Supports multiple pools, static reservations, and address conflict detection.
   """
 
-  require Logger
-
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()
   @type ip_range :: {ip_address(), ip_address()}

@@ -7,7 +7,6 @@ defmodule YellowDog.Mdns.Supervisor do
   """
 
   use Supervisor
-  require Logger
 
   @doc """
   Starts the mDNS server supervisor.
@@ -60,7 +59,11 @@ defmodule YellowDog.Mdns.Supervisor do
       # Pre-start task
       {Task,
        fn ->
-         Logger.info("mDNS starting: Initializing components")
+         :telemetry.execute(
+           [:yellow_dog, :mdns, :supervisor, :pre_start],
+           %{count: 1},
+           %{}
+         )
        end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
 
@@ -88,7 +91,12 @@ defmodule YellowDog.Mdns.Supervisor do
       {Task,
        fn ->
          mode = Keyword.get(server_options, :mode, :hybrid)
-         Logger.info("mDNS service started successfully in #{mode} mode")
+
+         :telemetry.execute(
+           [:yellow_dog, :mdns, :supervisor, :post_start],
+           %{count: 1},
+           %{mode: mode}
+         )
        end}
       |> Supervisor.child_spec(id: :post_start, restart: :temporary)
     ]
