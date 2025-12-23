@@ -178,7 +178,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :lease, :requested],
       %{count: 1},
-      %{client_ip: client_ip, client_mac: message.chaddr, message_type: :request, state: request_state}
+      %{
+        client_ip: client_ip,
+        client_mac: message.chaddr,
+        message_type: :request,
+        state: request_state
+      }
     )
 
     # Generate a DHCPACK or DHCPNAK response based on state

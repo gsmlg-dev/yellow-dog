@@ -194,6 +194,7 @@ defmodule YellowDog.Mdns.Server do
           %{count: 1},
           %{}
         )
+
         server_config = get_default_server_config()
         multicast_address = @mdns_multicast_address
 

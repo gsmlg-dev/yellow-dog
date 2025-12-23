@@ -874,5 +874,4 @@ defmodule YellowDog.Dhcpv6.Handler do
   defp ipv6_to_binary({a, b, c, d, e, f, g, h}) do
     <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
   end
-
 end
