@@ -35,7 +35,7 @@ As an operator, I want DNS query resolution events to emit structured telemetry 
 
 1. **Given** a DNS query is forwarded, **When** the resolution completes, **Then** a `[:yellow_dog, :dns, :query, :forward]` telemetry event is emitted with timing and server info
 2. **Given** a recursive DNS query starts, **When** the resolution completes, **Then** a `[:yellow_dog, :dns, :query, :recursive]` event is emitted with iteration count
-3. **Given** a cache lookup occurs, **When** the result is found/missed, **Then** a `[:yellow_dog, :dns, :cache, :lookup]` event is emitted with hit/miss status
+3. **Given** a cache lookup occurs, **When** the result is found, **Then** a `[:yellow_dog, :dns, :cache, :hit]` event is emitted; **When** the result is missed, **Then** a `[:yellow_dog, :dns, :cache, :miss]` event is emitted
 
 ---
 

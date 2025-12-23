@@ -3,7 +3,7 @@
 **Feature**: Complete Logger to Telemetry Migration
 **Branch**: `001-complete-logger-telemetry-migration`
 **Generated**: 2025-12-23
-**Total Tasks**: 24
+**Total Tasks**: 58
 
 ## Implementation Strategy
 
@@ -193,7 +193,9 @@
 - [ ] T053 Run `mix format --check-formatted` to verify code formatting
 - [ ] T054 Verify final Logger count: `grep -r "Logger\." apps/*/lib --include="*.ex" | grep -v "abyss/logger.ex" | grep -v "logger_handlers.ex" | grep -v "telemetry/application.ex" | wc -l` should be 0
 - [ ] T055 Verify require Logger removed: `grep -r "require Logger" apps/*/lib --include="*.ex" | grep -v "abyss/logger.ex" | grep -v "logger_handlers.ex" | grep -v "telemetry/application.ex" | wc -l` should be 0
-- [ ] T056 Update CLAUDE.md with migration completion note in Recent Changes section
+- [ ] T056 Verify all telemetry events include timing measurements where applicable (spot-check 3+ events per story phase)
+- [ ] T057 Verify all telemetry events include `source: __MODULE__` in metadata (spot-check 3+ events per story phase)
+- [ ] T058 Update CLAUDE.md with migration completion note in Recent Changes section
 
 ---
 
@@ -265,8 +267,8 @@ Parallel Group E (Infrastructure modules - T045-T048):
 | 5 | US3 - Core App | 8 | 3 | Yes |
 | 6 | US4 - Console | 8 | 3 | Yes |
 | 7 | US5 - Infrastructure | 6 | 2 | Yes |
-| 8 | Polish | 6 | 0 | No |
-| **Total** | | **56** | **18** | |
+| 8 | Polish | 8 | 0 | No |
+| **Total** | | **58** | **18** | |
 
 ### Migration Pattern Reference
 
