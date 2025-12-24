@@ -20,8 +20,6 @@ defmodule YellowDog.Dns.Query.Referral do
   - Detection of referral loops
   """
 
-  require Logger
-
   @type t :: %__MODULE__{
           query_name: String.t(),
           query_type: atom(),
@@ -93,7 +91,18 @@ defmodule YellowDog.Dns.Query.Referral do
 
     # Check for loops
     if detect_loop?(state, ns_names) do
-      Logger.warning("Referral loop detected", path: format_path(state), ns_names: ns_names)
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :error],
+        %{count: 1},
+        %{
+          source: __MODULE__,
+          reason: :loop_detected,
+          path: format_path(state),
+          ns_names: ns_names,
+          severity: :warning
+        }
+      )
+
       {:error, :loop_detected}
     else
       # Create path entry

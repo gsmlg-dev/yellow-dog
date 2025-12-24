@@ -39,7 +39,6 @@ defmodule YellowDog.Dns.Query.Forwarder do
       {:ok, [%Record{...}]}
   """
 
-  require Logger
   alias DNS.Message
   alias DNS.Message.Record
   alias YellowDog.Dns.Query.Cache.Manager, as: CacheManager
@@ -115,8 +114,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
       if use_cache do
         case CacheManager.get(normalized_name, normalized_type, query_class) do
           {:ok, records, _authority} ->
-            # Cache hit
-            Logger.debug("Cache hit for #{normalized_name} #{query_type}")
+            # Cache hit - telemetry already emitted by CacheManager
 
             :telemetry.execute(
               [:yellow_dog, :dns, :forward, :cache_hit],
@@ -127,8 +125,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
             {:ok, records}
 
           {:error, :not_found} ->
-            # Cache miss, forward to upstream
-            Logger.debug("Cache miss for #{normalized_name} #{query_type}")
+            # Cache miss - telemetry already emitted by CacheManager, forward to upstream
 
             :telemetry.execute(
               [:yellow_dog, :dns, :forward, :cache_miss],
@@ -215,7 +212,12 @@ defmodule YellowDog.Dns.Query.Forwarder do
           response_type: :answer
         )
 
-        Logger.debug("Cached response for #{query_name} #{query_type} with TTL #{ttl}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :cache, :store],
+          %{count: 1, ttl: ttl},
+          %{source: __MODULE__, query_name: query_name, query_type: query_type}
+        )
+
         result
 
       {:nxdomain, _} ->
@@ -262,13 +264,20 @@ defmodule YellowDog.Dns.Query.Forwarder do
 
       {:servfail, _} = servfail ->
         # SERVFAIL from upstream, try next forwarder
-        Logger.debug("SERVFAIL from upstream #{format_ip(forwarder)}, trying next forwarder")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :forward_error],
+          %{count: 1},
+          %{source: __MODULE__, upstream: format_ip(forwarder), reason: :servfail}
+        )
+
         try_next_forwarder(query_name, query_type, rest, timeout_ms, max_retries, opts, servfail)
 
       {:error, reason} ->
         # Communication error, try next forwarder
-        Logger.debug(
-          "Error from upstream #{format_ip(forwarder)}: #{inspect(reason)}, trying next"
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :forward_error],
+          %{count: 1},
+          %{source: __MODULE__, upstream: format_ip(forwarder), reason: reason}
         )
 
         try_next_forwarder(
@@ -336,8 +345,15 @@ defmodule YellowDog.Dns.Query.Forwarder do
         servfail
 
       {:error, :timeout} when retries_left > 0 ->
-        Logger.debug(
-          "Timeout querying #{format_ip(forwarder_ip)}, retrying (#{retries_left} left)"
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :forward_error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            upstream: format_ip(forwarder_ip),
+            reason: :timeout,
+            retries_left: retries_left
+          }
         )
 
         send_with_retries(forwarder_ip, query_data, query_id, timeout_ms, retries_left - 1)
@@ -389,7 +405,6 @@ defmodule YellowDog.Dns.Query.Forwarder do
         case decode_response(response_data, expected_id) do
           {:ok, _records, truncated: true} ->
             # Response was truncated, retry over TCP
-            Logger.debug("Response truncated, retrying over TCP for #{format_ip(ip)}")
 
             :telemetry.execute(
               [:yellow_dog, :dns, :forward, :tcp_fallback],
@@ -424,8 +439,16 @@ defmodule YellowDog.Dns.Query.Forwarder do
 
                 {:ok, {other_ip, other_port, _data}} ->
                   # Unexpected source, ignore
-                  Logger.warning(
-                    "Received response from unexpected source: #{format_ip(other_ip)}:#{other_port}"
+                  :telemetry.execute(
+                    [:yellow_dog, :dns, :query, :error],
+                    %{count: 1},
+                    %{
+                      source: __MODULE__,
+                      reason: :unexpected_source,
+                      from_ip: format_ip(other_ip),
+                      from_port: other_port,
+                      severity: :warning
+                    }
                   )
 
                   {:error, :unexpected_source}
@@ -494,16 +517,37 @@ defmodule YellowDog.Dns.Query.Forwarder do
       if response.header.id == expected_id do
         parse_response(response)
       else
-        Logger.warning("Query ID mismatch: expected #{expected_id}, got #{response.header.id}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: :id_mismatch,
+            expected_id: expected_id,
+            got_id: response.header.id,
+            severity: :warning
+          }
+        )
+
         {:error, :id_mismatch}
       end
     rescue
       error ->
-        Logger.error("Failed to decode DNS response: #{inspect(error)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: {:decode_failed, error}, severity: :error}
+        )
+
         {:error, :decode_failed}
     catch
       :throw, error ->
-        Logger.error("Failed to parse DNS response: #{inspect(error)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: {:parse_failed, error}, severity: :error}
+        )
+
         {:error, :parse_failed}
     end
   end
@@ -535,7 +579,12 @@ defmodule YellowDog.Dns.Query.Forwarder do
 
       _ ->
         # Other error codes
-        Logger.debug("Received DNS error code: #{inspect(rcode_value)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: {:dns_error, rcode_value}, severity: :debug}
+        )
+
         {:error, :dns_error}
     end
   end

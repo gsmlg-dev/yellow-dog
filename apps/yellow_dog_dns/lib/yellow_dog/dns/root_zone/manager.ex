@@ -41,7 +41,6 @@ defmodule YellowDog.Dns.RootZone.Manager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dns.RootZone.{Hints, Fetcher}
   alias YellowDog.Dns.Zone
@@ -186,7 +185,11 @@ defmodule YellowDog.Dns.RootZone.Manager do
     # Parse configuration
     config = parse_opts(opts)
 
-    Logger.info("Starting Root Zone Manager with strategy: #{config.strategy}")
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :start],
+      %{count: 1},
+      %{source: __MODULE__, strategy: config.strategy, severity: :info}
+    )
 
     # Load root zone based on strategy
     case load_root_zone_with_strategy(config) do
@@ -201,14 +204,21 @@ defmodule YellowDog.Dns.RootZone.Manager do
 
         state = maybe_schedule_fetch(state)
 
-        Logger.info("Root Zone Manager started successfully",
-          strategy: config.strategy
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :loaded],
+          %{count: 1},
+          %{source: __MODULE__, strategy: config.strategy, severity: :info}
         )
 
         {:ok, state}
 
       {:error, reason} ->
-        Logger.error("Failed to load root zone: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{source: __MODULE__, reason: inspect(reason), severity: :error}
+        )
+
         {:stop, reason}
     end
   end
@@ -249,7 +259,12 @@ defmodule YellowDog.Dns.RootZone.Manager do
         {:reply, :ok, new_state}
 
       {:error, reason} = error ->
-        Logger.error("Failed to reload root zone: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{source: __MODULE__, reason: inspect(reason), severity: :error}
+        )
+
         Telemetry.end_span(span_id, %{status: :failed, reason: reason})
         {:reply, error, state}
     end
@@ -263,24 +278,38 @@ defmodule YellowDog.Dns.RootZone.Manager do
 
   @impl true
   def handle_info(:fetch_root_zone, state) do
-    Logger.info("Periodic root zone fetch triggered")
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :fetch],
+      %{count: 1},
+      %{source: __MODULE__, trigger: :periodic, severity: :info}
+    )
 
     case Fetcher.fetch_root_zone(
            url: state.config.fetch_url,
            timeout_ms: 30_000
          ) do
       {:ok, serial} ->
-        Logger.info("Root zone fetched successfully", serial: serial)
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :loaded],
+          %{count: 1, serial: serial},
+          %{source: __MODULE__, severity: :info}
+        )
+
         new_state = %{state | loaded_at: System.system_time(:second), serial: serial}
         new_state = maybe_schedule_fetch(new_state)
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.warning("Periodic root zone fetch failed: #{inspect(reason)}")
-
-        if state.config.fallback_to_hints do
-          Logger.info("Using root hints as fallback")
-        end
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: inspect(reason),
+            fallback: state.config.fallback_to_hints,
+            severity: :warning
+          }
+        )
 
         # Reschedule despite failure
         new_state = maybe_schedule_fetch(state)
@@ -315,26 +344,49 @@ defmodule YellowDog.Dns.RootZone.Manager do
 
   defp load_root_zone_with_strategy(%{strategy: :hints}) do
     # Use embedded hints, no loading needed
-    Logger.info("Using embedded root hints")
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :loaded],
+      %{count: 1},
+      %{source: __MODULE__, strategy: :hints, severity: :info}
+    )
+
     :ok
   end
 
   defp load_root_zone_with_strategy(%{strategy: :fetch} = config) do
-    Logger.info("Fetching root zone from IANA")
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :fetch],
+      %{count: 1},
+      %{source: __MODULE__, trigger: :startup, severity: :info}
+    )
 
     case Fetcher.fetch_root_zone(
            url: config.fetch_url,
            timeout_ms: 30_000
          ) do
       {:ok, _serial} ->
-        Logger.info("Root zone fetched successfully")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :loaded],
+          %{count: 1},
+          %{source: __MODULE__, strategy: :fetch, severity: :info}
+        )
+
         :ok
 
       {:error, reason} ->
-        Logger.warning("Root zone fetch failed: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{source: __MODULE__, reason: inspect(reason), severity: :warning}
+        )
 
         if config.fallback_to_hints do
-          Logger.info("Falling back to root hints")
+          :telemetry.execute(
+            [:yellow_dog, :dns, :root_zone, :loaded],
+            %{count: 1},
+            %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
+          )
+
           :ok
         else
           {:error, reason}
@@ -346,28 +398,60 @@ defmodule YellowDog.Dns.RootZone.Manager do
     zone_file = config.zone_file
 
     if zone_file && File.exists?(zone_file) do
-      Logger.info("Loading root zone from file: #{zone_file}")
+      :telemetry.execute(
+        [:yellow_dog, :dns, :root_zone, :fetch],
+        %{count: 1},
+        %{source: __MODULE__, zone_file: zone_file, severity: :info}
+      )
 
       case Zone.Manager.load_zone(".", file: zone_file, type: :master) do
         {:ok, _} ->
-          Logger.info("Root zone loaded from file successfully")
+          :telemetry.execute(
+            [:yellow_dog, :dns, :root_zone, :loaded],
+            %{count: 1},
+            %{source: __MODULE__, strategy: :auth, severity: :info}
+          )
+
           :ok
 
         {:error, reason} = error ->
-          Logger.error("Failed to load root zone from file: #{inspect(reason)}")
+          :telemetry.execute(
+            [:yellow_dog, :dns, :root_zone, :fetch_error],
+            %{count: 1},
+            %{source: __MODULE__, reason: inspect(reason), severity: :error}
+          )
 
           if config.fallback_to_hints do
-            Logger.info("Falling back to root hints")
+            :telemetry.execute(
+              [:yellow_dog, :dns, :root_zone, :loaded],
+              %{count: 1},
+              %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
+            )
+
             :ok
           else
             error
           end
       end
     else
-      Logger.error("Root zone file not found: #{inspect(zone_file)}")
+      :telemetry.execute(
+        [:yellow_dog, :dns, :root_zone, :fetch_error],
+        %{count: 1},
+        %{
+          source: __MODULE__,
+          reason: :zone_file_not_found,
+          zone_file: inspect(zone_file),
+          severity: :error
+        }
+      )
 
       if config.fallback_to_hints do
-        Logger.info("Falling back to root hints")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :loaded],
+          %{count: 1},
+          %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
+        )
+
         :ok
       else
         {:error, :zone_file_not_found}
@@ -385,8 +469,10 @@ defmodule YellowDog.Dns.RootZone.Manager do
     interval_ms = state.config.fetch_interval_hours * 60 * 60 * 1000
     timer = Fetcher.schedule_periodic_fetch(interval_ms)
 
-    Logger.debug("Scheduled next root zone fetch",
-      interval_hours: state.config.fetch_interval_hours
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :scheduled],
+      %{count: 1, interval_hours: state.config.fetch_interval_hours},
+      %{source: __MODULE__, severity: :debug}
     )
 
     %{state | fetch_timer: timer}

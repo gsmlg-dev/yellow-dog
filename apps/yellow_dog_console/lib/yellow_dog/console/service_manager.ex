@@ -12,8 +12,6 @@ defmodule YellowDog.Console.ServiceManager do
   - Verify service health
   """
 
-  require Logger
-
   @doc """
   Applies pending configuration for a service and restarts it.
 
@@ -55,14 +53,37 @@ defmodule YellowDog.Console.ServiceManager do
               start_service(service)
             else
               # Service is disabled and not running - nothing to do
-              Logger.info("Service #{service} configuration updated (service disabled)")
+              :telemetry.execute(
+                [:yellow_dog, :console, :service, :action],
+                %{count: 1},
+                %{
+                  source: __MODULE__,
+                  service: service,
+                  action: :config_updated,
+                  enabled: false,
+                  severity: :info
+                }
+              )
+
               :ok
             end
         end
 
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
-        Logger.error("Failed to update config for service #{service}: #{inspect(reason)}")
+
+        :telemetry.execute(
+          [:yellow_dog, :console, :service, :action],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :config_update_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
+        )
+
         error
     end
   end
@@ -72,37 +93,88 @@ defmodule YellowDog.Console.ServiceManager do
          {:ok, new_pid} <- wait_for_restart(service, old_pid),
          :ok <- verify_service_health(service, new_pid) do
       emit_telemetry(:service_restarted, %{service: service})
-      Logger.info("Service #{service} restarted successfully")
+
+      :telemetry.execute(
+        [:yellow_dog, :console, :service, :action],
+        %{count: 1},
+        %{source: __MODULE__, service: service, action: :restarted, severity: :info}
+      )
+
       :ok
     else
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
-        Logger.error("Failed to restart service #{service}: #{inspect(reason)}")
+
+        :telemetry.execute(
+          [:yellow_dog, :console, :service, :action],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :restart_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
+        )
+
         error
     end
   end
 
   defp start_service(service) do
     # Try to start the service via the main YellowDog application
-    Logger.info("Starting service #{service}...")
+    :telemetry.execute(
+      [:yellow_dog, :console, :service, :action],
+      %{count: 1},
+      %{source: __MODULE__, service: service, action: :starting, severity: :info}
+    )
 
     # The service should be started by YellowDog.Application
     # We need to trigger a reload of the service configuration
     case YellowDog.start_service(service) do
       :ok ->
         emit_telemetry(:service_started, %{service: service})
-        Logger.info("Service #{service} started successfully")
+
+        :telemetry.execute(
+          [:yellow_dog, :console, :service, :action],
+          %{count: 1},
+          %{source: __MODULE__, service: service, action: :started, severity: :info}
+        )
+
         :ok
 
       {:error, reason} = error ->
         emit_telemetry(:service_start_failed, %{service: service, reason: reason})
-        Logger.error("Failed to start service #{service}: #{inspect(reason)}")
+
+        :telemetry.execute(
+          [:yellow_dog, :console, :service, :action],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :start_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
+        )
+
         error
     end
   rescue
-    # If YellowDog.start_service doesn't exist, log a warning
+    # If YellowDog.start_service doesn't exist, emit warning
     e in UndefinedFunctionError ->
-      Logger.warning("YellowDog.start_service/1 not available: #{inspect(e)}")
+      :telemetry.execute(
+        [:yellow_dog, :console, :service, :action],
+        %{count: 1},
+        %{
+          source: __MODULE__,
+          service: service,
+          action: :start_not_available,
+          error: inspect(e),
+          severity: :warning
+        }
+      )
+
       {:error, :start_not_implemented}
   end
 
@@ -110,7 +182,12 @@ defmodule YellowDog.Console.ServiceManager do
 
   defp update_config(service, new_config) do
     # Update YellowDog.Config Agent with new configuration
-    Logger.debug("Updating configuration for service: #{service}")
+    :telemetry.execute(
+      [:yellow_dog, :console, :service, :action],
+      %{count: 1},
+      %{source: __MODULE__, service: service, action: :updating_config, severity: :debug}
+    )
+
     YellowDog.Config.update(service, new_config)
   end
 
@@ -175,7 +252,11 @@ defmodule YellowDog.Console.ServiceManager do
     # Give service time to initialize
     Process.sleep(500)
 
-    Logger.debug("Verifying health of service: #{service}")
+    :telemetry.execute(
+      [:yellow_dog, :console, :service, :action],
+      %{count: 1},
+      %{source: __MODULE__, service: service, action: :verifying_health, severity: :debug}
+    )
 
     # Check if supervisor is still alive
     if Process.alive?(pid) do

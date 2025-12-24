@@ -28,7 +28,6 @@ defmodule YellowDog.Dns.Query.Delegation do
       :not_delegated
   """
 
-  require Logger
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Storage
 

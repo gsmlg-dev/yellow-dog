@@ -73,10 +73,16 @@ defmodule DNS.Error do
   @spec log_detailed_error(error_type(), module(), term(), map()) :: :ok
   def log_detailed_error(type, module, reason, context \\ %{}) do
     if Application.get_env(:dns, :detailed_errors, false) do
-      require Logger
-
-      Logger.error(
-        "DNS Detailed Error: #{inspect(type)} in #{module}: #{inspect(reason)} context: #{inspect(context)}"
+      :telemetry.execute(
+        [:ex_dns, :error, :detailed],
+        %{count: 1},
+        %{
+          source: module,
+          error_type: type,
+          reason: inspect(reason),
+          context: context,
+          severity: :error
+        }
       )
     end
 

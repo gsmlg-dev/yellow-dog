@@ -12,7 +12,6 @@ defmodule YellowDog.Dns.Query.Iterator do
   recursive resolver. This module only handles one query/response cycle.
   """
 
-  require Logger
   alias DNS.Message
   alias DNS.Message.Record
 
@@ -114,7 +113,17 @@ defmodule YellowDog.Dns.Query.Iterator do
       {:ok, message}
     rescue
       error ->
-        Logger.error("Failed to create query message: #{inspect(error)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: :message_creation_failed,
+            error: inspect(error),
+            severity: :error
+          }
+        )
+
         {:error, :message_creation_failed}
     end
   end
@@ -125,7 +134,12 @@ defmodule YellowDog.Dns.Query.Iterator do
       {:ok, IO.iodata_to_binary(data)}
     rescue
       error ->
-        Logger.error("Failed to encode query: #{inspect(error)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: :encode_failed, error: inspect(error), severity: :error}
+        )
+
         {:error, :encode_failed}
     end
   end
@@ -144,8 +158,16 @@ defmodule YellowDog.Dns.Query.Iterator do
               {:ok, response_data}
 
             {:ok, {other_ip, other_port, _data}} ->
-              Logger.warning(
-                "Received response from unexpected source: #{format_ip(other_ip)}:#{other_port}"
+              :telemetry.execute(
+                [:yellow_dog, :dns, :query, :error],
+                %{count: 1},
+                %{
+                  source: __MODULE__,
+                  reason: :unexpected_source,
+                  from_ip: format_ip(other_ip),
+                  from_port: other_port,
+                  severity: :warning
+                }
               )
 
               {:error, :unexpected_source}
@@ -161,7 +183,17 @@ defmodule YellowDog.Dns.Query.Iterator do
         end
 
       {:error, reason} ->
-        Logger.error("Failed to open UDP socket: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: :socket_open_failed,
+            error: inspect(reason),
+            severity: :error
+          }
+        )
+
         {:error, :socket_open_failed}
     end
   end
@@ -174,12 +206,28 @@ defmodule YellowDog.Dns.Query.Iterator do
       if response.header.id == expected_id do
         {:ok, response}
       else
-        Logger.warning("Query ID mismatch: expected #{expected_id}, got #{response.header.id}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: :id_mismatch,
+            expected_id: expected_id,
+            got_id: response.header.id,
+            severity: :warning
+          }
+        )
+
         {:error, :id_mismatch}
       end
     rescue
       error ->
-        Logger.error("Failed to decode DNS response: #{inspect(error)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: :decode_failed, error: inspect(error), severity: :error}
+        )
+
         {:error, :decode_failed}
     end
   end
@@ -224,7 +272,12 @@ defmodule YellowDog.Dns.Query.Iterator do
         {:error, :refused}
 
       _ ->
-        Logger.debug("Received DNS error code: #{inspect(rcode_value)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: :dns_error, rcode: inspect(rcode_value), severity: :debug}
+        )
+
         {:error, :dns_error}
     end
   end

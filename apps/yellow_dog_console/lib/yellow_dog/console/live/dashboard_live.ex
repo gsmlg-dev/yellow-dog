@@ -126,8 +126,12 @@ defmodule YellowDog.Console.DashboardLive do
     rescue
       e ->
         # Fallback to default status if service manager fails
-        require Logger
-        Logger.warning("Failed to get service status: #{inspect(e)}")
+        :telemetry.execute(
+          [:yellow_dog, :console, :dashboard, :status_error],
+          %{count: 1},
+          %{source: __MODULE__, error: inspect(e), severity: :warning}
+        )
+
         get_fallback_status()
     end
   end

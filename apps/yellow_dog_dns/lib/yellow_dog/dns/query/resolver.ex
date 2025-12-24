@@ -18,7 +18,6 @@ defmodule YellowDog.Dns.Query.Resolver do
       {:nxdomain, [], [%SOA{...}]}
   """
 
-  require Logger
   alias YellowDog.Dns.Zone
   alias YellowDog.Dns.Zone.Storage
   alias YellowDog.Dns.Query.Forwarder
@@ -224,7 +223,12 @@ defmodule YellowDog.Dns.Query.Resolver do
   defp do_resolve(zone_name, owner, qtype) do
     # Check if zone exists
     unless Storage.zone_exists?(zone_name) do
-      Logger.debug("Zone not found", zone: zone_name)
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :error],
+        %{count: 1},
+        %{source: __MODULE__, zone: zone_name, reason: :zone_not_found, severity: :debug}
+      )
+
       {:servfail, [], []}
     else
       # Check zone type - forward and hint zones use different resolution
@@ -256,7 +260,12 @@ defmodule YellowDog.Dns.Query.Resolver do
       {:delegated, _delegation_point, ns_records, glue_records} ->
         # This query is for a delegated sub-zone
         # Return referral with NS records in authority and glue in additional
-        Logger.debug("Delegation found for #{normalized_owner}", zone: zone_name)
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :referral],
+          %{count: 1, ns_count: length(ns_records)},
+          %{source: __MODULE__, query_name: normalized_owner, zone: zone_name}
+        )
+
         {:delegation, ns_records, glue_records}
 
       :not_delegated ->
@@ -338,7 +347,12 @@ defmodule YellowDog.Dns.Query.Resolver do
         {:servfail, [], []}
 
       {:error, reason} ->
-        Logger.warning("Forward query failed", reason: inspect(reason))
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :forward_error],
+          %{count: 1},
+          %{source: __MODULE__, query_name: query_name, reason: reason, severity: :warning}
+        )
+
         {:servfail, [], []}
     end
   end
@@ -367,7 +381,18 @@ defmodule YellowDog.Dns.Query.Resolver do
         {:nxdomain, [], authority_records}
 
       {:error, reason} ->
-        Logger.warning("Recursive resolution failed", reason: inspect(reason))
+        :telemetry.execute(
+          [:yellow_dog, :dns, :query, :recursive_error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            query_name: query_name,
+            query_type: query_type,
+            reason: reason,
+            severity: :warning
+          }
+        )
+
         {:servfail, [], []}
     end
   end
@@ -471,7 +496,17 @@ defmodule YellowDog.Dns.Query.Resolver do
 
   defp do_resolve_with_cname(_zone_name, _owner, _qtype, 0, chain) do
     # Hit max depth, return what we have with SERVFAIL
-    Logger.warning("CNAME chain too deep", chain_length: length(chain))
+    :telemetry.execute(
+      [:yellow_dog, :dns, :query, :error],
+      %{count: 1},
+      %{
+        source: __MODULE__,
+        reason: :cname_chain_too_deep,
+        chain_length: length(chain),
+        severity: :warning
+      }
+    )
+
     {:servfail, chain, []}
   end
 

@@ -23,7 +23,6 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
       Fetcher.schedule_periodic_fetch(24 * 60 * 60 * 1000)  # 24 hours
   """
 
-  require Logger
   alias YellowDog.Dns.Zone
   alias YellowDog.Telemetry
 
@@ -67,24 +66,43 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
 
     span_id = Telemetry.start_span("dns.root_zone.fetch", %{url: url})
 
-    Logger.info("Fetching root zone from #{url}")
+    :telemetry.execute(
+      [:yellow_dog, :dns, :root_zone, :fetch],
+      %{count: 1},
+      %{source: __MODULE__, url: url, severity: :info}
+    )
 
     case do_fetch(url, timeout_ms) do
       {:ok, zone_data} ->
         case parse_and_load(zone_data, temp_dir) do
           {:ok, serial} = success ->
-            Logger.info("Root zone fetched and loaded successfully", serial: serial)
+            :telemetry.execute(
+              [:yellow_dog, :dns, :root_zone, :loaded],
+              %{count: 1, serial: serial},
+              %{source: __MODULE__, severity: :info}
+            )
+
             Telemetry.end_span(span_id, %{status: :success, serial: serial})
             success
 
           {:error, reason} = error ->
-            Logger.error("Failed to parse/load root zone: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :dns, :root_zone, :fetch_error],
+              %{count: 1},
+              %{source: __MODULE__, reason: inspect(reason), severity: :error}
+            )
+
             Telemetry.end_span(span_id, %{status: :failed, reason: reason})
             error
         end
 
       {:error, reason} = error ->
-        Logger.error("Failed to fetch root zone: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{source: __MODULE__, reason: inspect(reason), severity: :error}
+        )
+
         Telemetry.end_span(span_id, %{status: :failed, reason: reason})
         error
     end
@@ -130,7 +148,17 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
         end
 
       {:error, reason} ->
-        Logger.error("Failed to write temp zone file: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :dns, :root_zone, :fetch_error],
+          %{count: 1},
+          %{
+            source: __MODULE__,
+            reason: :file_write_error,
+            error: inspect(reason),
+            severity: :error
+          }
+        )
+
         {:error, {:file_write_error, reason}}
     end
   end

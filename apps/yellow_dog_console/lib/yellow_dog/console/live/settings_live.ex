@@ -20,8 +20,6 @@ defmodule YellowDog.Console.SettingsLive do
   alias YellowDog.Console.ServiceManager
   alias YellowDog.Console.Settings.{ConfigurationVersion, ServiceConfiguration}
 
-  require Logger
-
   @impl true
   def mount(_params, _session, socket) do
     config_path = get_config_path()
@@ -46,7 +44,11 @@ defmodule YellowDog.Console.SettingsLive do
       {:ok, socket}
     else
       {:error, reason} ->
-        Logger.error("Failed to load configuration: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :console, :settings, :config_load_error],
+          %{count: 1},
+          %{source: __MODULE__, reason: inspect(reason), severity: :error}
+        )
 
         socket =
           socket
