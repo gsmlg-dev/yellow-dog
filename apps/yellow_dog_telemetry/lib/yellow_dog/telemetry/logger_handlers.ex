@@ -29,10 +29,16 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   # Handler IDs for tracking attached handlers
   @handler_ids [
     "yellow-dog-dns-logger",
+    "yellow-dog-dns-query-logger",
+    "yellow-dog-dns-root-zone-logger",
     "yellow-dog-dhcpv4-logger",
     "yellow-dog-dhcpv6-logger",
     "yellow-dog-mdns-logger",
-    "yellow-dog-service-logger"
+    "yellow-dog-service-logger",
+    "yellow-dog-application-logger",
+    "yellow-dog-config-logger",
+    "yellow-dog-console-logger",
+    "yellow-dog-infrastructure-logger"
   ]
 
   @doc """
@@ -124,6 +130,100 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
       ],
       &handle_service_event/4,
       %{level: :info}
+    )
+
+    # DNS Query resolution events (T002)
+    :telemetry.attach_many(
+      "yellow-dog-dns-query-logger",
+      [
+        [:yellow_dog, :dns, :query, :start],
+        [:yellow_dog, :dns, :query, :complete],
+        [:yellow_dog, :dns, :query, :forward],
+        [:yellow_dog, :dns, :query, :forward_error],
+        [:yellow_dog, :dns, :query, :recursive],
+        [:yellow_dog, :dns, :query, :recursive_error],
+        [:yellow_dog, :dns, :query, :iterate],
+        [:yellow_dog, :dns, :query, :referral],
+        # DNS Cache events (T003)
+        [:yellow_dog, :dns, :cache, :store],
+        [:yellow_dog, :dns, :cache, :cleanup],
+        [:yellow_dog, :dns, :cache, :expired],
+        [:yellow_dog, :dns, :cache, :start],
+        [:yellow_dog, :dns, :cache, :cleaner_start],
+        [:yellow_dog, :dns, :cache, :cleanup_completed]
+      ],
+      &handle_dns_query_event/4,
+      %{level: :debug}
+    )
+
+    # Root zone events (T004)
+    :telemetry.attach_many(
+      "yellow-dog-dns-root-zone-logger",
+      [
+        [:yellow_dog, :dns, :root_zone, :fetch],
+        [:yellow_dog, :dns, :root_zone, :fetch_error],
+        [:yellow_dog, :dns, :root_zone, :update],
+        [:yellow_dog, :dns, :root_zone, :loaded],
+        [:yellow_dog, :dns, :root_zone, :start],
+        [:yellow_dog, :dns, :root_zone, :scheduled]
+      ],
+      &handle_root_zone_event/4,
+      %{level: :info}
+    )
+
+    # Application lifecycle events (T005)
+    :telemetry.attach_many(
+      "yellow-dog-application-logger",
+      [
+        [:yellow_dog, :application, :start],
+        [:yellow_dog, :application, :stop],
+        [:yellow_dog, :application, :error]
+      ],
+      &handle_application_event/4,
+      %{level: :info}
+    )
+
+    # Config events (T005)
+    :telemetry.attach_many(
+      "yellow-dog-config-logger",
+      [
+        [:yellow_dog, :config, :loaded],
+        [:yellow_dog, :config, :error],
+        [:yellow_dog, :config, :validated]
+      ],
+      &handle_config_event/4,
+      %{level: :info}
+    )
+
+    # Console events (T006)
+    :telemetry.attach_many(
+      "yellow-dog-console-logger",
+      [
+        [:yellow_dog, :console, :dashboard, :load],
+        [:yellow_dog, :console, :dashboard, :error],
+        [:yellow_dog, :console, :dashboard, :status_error],
+        [:yellow_dog, :console, :settings, :update],
+        [:yellow_dog, :console, :settings, :error],
+        [:yellow_dog, :console, :settings, :config_load_error],
+        [:yellow_dog, :console, :service, :action]
+      ],
+      &handle_console_event/4,
+      %{level: :info}
+    )
+
+    # Infrastructure events (rate limiter, DNS errors)
+    :telemetry.attach_many(
+      "yellow-dog-infrastructure-logger",
+      [
+        [:abyss, :rate_limiter, :check],
+        [:abyss, :rate_limiter, :exceeded],
+        [:abyss, :rate_limiter, :start],
+        [:abyss, :rate_limiter, :cleanup],
+        [:ex_dns, :error],
+        [:ex_dns, :error, :detailed]
+      ],
+      &handle_infrastructure_event/4,
+      %{level: :debug}
     )
 
     :ok
@@ -454,6 +554,364 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   defp do_handle_service_event(_event, _metadata, _config), do: :ok
 
   # =============================================================================
+  # DNS Query Event Handler (T002, T003)
+  # =============================================================================
+
+  @doc false
+  def handle_dns_query_event(event, measurements, metadata, config) do
+    try do
+      do_handle_dns_query_event(event, measurements, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :start], _measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      "DNS query start: #{metadata[:query_name]} (#{metadata[:query_type]})"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :complete], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      duration = format_duration_ms(measurements[:duration_ms])
+      "DNS query complete: #{metadata[:query_name]} -> #{metadata[:result]} (#{duration})"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :forward], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      duration = format_duration_ms(measurements[:duration_ms])
+      "DNS forward: #{metadata[:query_name]} to #{metadata[:upstream]} -> #{metadata[:result]} (#{duration})"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :forward_error], _measurements, metadata, _config) do
+    Logger.log(:warning, fn ->
+      "DNS forward error: #{metadata[:query_name]} to #{metadata[:upstream]} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :recursive], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      duration = format_duration_ms(measurements[:duration_ms])
+      iterations = measurements[:iteration_count] || 0
+      "DNS recursive: #{metadata[:query_name]} -> #{metadata[:result]} (#{iterations} iterations, #{duration})"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :recursive_error], _measurements, metadata, _config) do
+    Logger.log(:warning, fn ->
+      "DNS recursive error: #{metadata[:query_name]} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :iterate], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      iteration = measurements[:iteration] || 0
+      "DNS iterate: #{metadata[:query_name]} iteration #{iteration} -> #{metadata[:server]}"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :referral], _measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      "DNS referral: #{metadata[:query_name]} -> #{metadata[:zone]} (#{metadata[:ns_count]} nameservers)"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :cache, :store], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      ttl = measurements[:ttl] || 0
+      "DNS cache store: #{metadata[:query_name]} (#{metadata[:query_type]}) TTL #{ttl}s"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :cache, :cleanup], measurements, _metadata, _config) do
+    Logger.log(:debug, fn ->
+      removed = measurements[:entries_removed] || 0
+      remaining = measurements[:entries_remaining] || 0
+      duration = format_duration_ms(measurements[:duration_ms])
+      "DNS cache cleanup: #{removed} removed, #{remaining} remaining (#{duration})"
+    end)
+  end
+
+  defp do_handle_dns_query_event([:yellow_dog, :dns, :cache, :expired], measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      count = measurements[:count] || 1
+      "DNS cache expired: #{count} entries for #{metadata[:query_name]}"
+    end)
+  end
+
+  defp do_handle_dns_query_event(_event, _measurements, _metadata, _config), do: :ok
+
+  # =============================================================================
+  # Root Zone Event Handler (T004)
+  # =============================================================================
+
+  @doc false
+  def handle_root_zone_event(event, measurements, metadata, config) do
+    try do
+      do_handle_root_zone_event(event, measurements, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_root_zone_event([:yellow_dog, :dns, :root_zone, :fetch], measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      duration = format_duration_ms(measurements[:duration_ms])
+      "Root zone fetch: #{metadata[:source_url]} -> #{metadata[:result]} (#{duration})"
+    end)
+  end
+
+  defp do_handle_root_zone_event([:yellow_dog, :dns, :root_zone, :fetch_error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      "Root zone fetch error: #{metadata[:source_url]} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_root_zone_event([:yellow_dog, :dns, :root_zone, :update], measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      zone_count = measurements[:zone_count] || 0
+      "Root zone update: #{zone_count} zones loaded (version: #{metadata[:version] || "unknown"})"
+    end)
+  end
+
+  defp do_handle_root_zone_event([:yellow_dog, :dns, :root_zone, :loaded], measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      ns_count = measurements[:ns_count] || 0
+      "Root zone loaded: #{ns_count} root nameservers from #{metadata[:source] || "unknown"}"
+    end)
+  end
+
+  defp do_handle_root_zone_event(_event, _measurements, _metadata, _config), do: :ok
+
+  # =============================================================================
+  # Application Lifecycle Event Handler (T005)
+  # =============================================================================
+
+  @doc false
+  def handle_application_event(event, measurements, metadata, config) do
+    try do
+      do_handle_application_event(event, measurements, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_application_event([:yellow_dog, :application, :start], _measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      version = metadata[:version] || "unknown"
+      env = metadata[:environment] || :unknown
+      "Application started: YellowDog v#{version} (#{env})"
+    end)
+  end
+
+  defp do_handle_application_event([:yellow_dog, :application, :stop], measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      uptime = format_duration_ms(measurements[:uptime_ms])
+      reason = metadata[:reason] || :normal
+      "Application stopped: #{reason} (uptime: #{uptime})"
+    end)
+  end
+
+  defp do_handle_application_event([:yellow_dog, :application, :error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      "Application error: #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_application_event(_event, _measurements, _metadata, _config), do: :ok
+
+  # =============================================================================
+  # Config Event Handler (T005)
+  # =============================================================================
+
+  @doc false
+  def handle_config_event(event, _measurements, metadata, config) do
+    try do
+      do_handle_config_event(event, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_config_event([:yellow_dog, :config, :loaded], metadata, config) do
+    Logger.log(config.level, fn ->
+      file = metadata[:config_file] || "default"
+      services = metadata[:services_enabled] || []
+      "Config loaded: #{file} (services: #{Enum.join(services, ", ")})"
+    end)
+  end
+
+  defp do_handle_config_event([:yellow_dog, :config, :error], metadata, _config) do
+    Logger.log(:error, fn ->
+      file = metadata[:config_file] || "unknown"
+      "Config error: #{file} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_config_event([:yellow_dog, :config, :validated], metadata, config) do
+    Logger.log(config.level, fn ->
+      "Config validated: #{metadata[:config_file] || "default"}"
+    end)
+  end
+
+  defp do_handle_config_event(_event, _metadata, _config), do: :ok
+
+  # =============================================================================
+  # Console Event Handler (T006)
+  # =============================================================================
+
+  @doc false
+  def handle_console_event(event, measurements, metadata, config) do
+    try do
+      do_handle_console_event(event, measurements, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :dashboard, :load], measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      duration = format_duration_ms(measurements[:duration_ms])
+      services = metadata[:services_loaded] || []
+      "Console dashboard load: #{length(services)} services (#{duration})"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :dashboard, :error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      "Console dashboard error: #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :dashboard, :status_error], _measurements, metadata, _config) do
+    Logger.log(:warning, fn ->
+      "Console dashboard status error: #{metadata[:error]}"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :settings, :update], _measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      setting = metadata[:setting] || "unknown"
+      "Console settings update: #{setting} -> #{metadata[:result] || :success}"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :settings, :error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      setting = metadata[:setting] || "unknown"
+      "Console settings error: #{setting} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :settings, :config_load_error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      "Console settings config load error: #{metadata[:reason]}"
+    end)
+  end
+
+  defp do_handle_console_event([:yellow_dog, :console, :service, :action], _measurements, metadata, config) do
+    Logger.log(config.level, fn ->
+      service = metadata[:service] || "unknown"
+      action = metadata[:action] || "unknown"
+      "Console service action: #{action} on #{service}"
+    end)
+  end
+
+  defp do_handle_console_event(_event, _measurements, _metadata, _config), do: :ok
+
+  # =============================================================================
+  # Infrastructure Event Handler
+  # =============================================================================
+
+  @doc false
+  def handle_infrastructure_event(event, measurements, metadata, config) do
+    try do
+      do_handle_infrastructure_event(event, measurements, metadata, config)
+    rescue
+      error ->
+        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
+    catch
+      kind, value ->
+        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
+    end
+  end
+
+  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :check], _measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      client = format_ip(metadata[:client_ip])
+      allowed = if metadata[:allowed], do: "allowed", else: "denied"
+      "Rate limiter: #{client} -> #{allowed}"
+    end)
+  end
+
+  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :exceeded], _measurements, metadata, _config) do
+    Logger.log(:warning, fn ->
+      client = format_ip(metadata[:client_ip])
+      limit = metadata[:limit] || 0
+      window = metadata[:window_ms] || 0
+      "Rate limit exceeded: #{client} (limit: #{limit}/#{window}ms)"
+    end)
+  end
+
+  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :start], _measurements, metadata, _config) do
+    Logger.log(:debug, fn ->
+      enabled = metadata[:enabled]
+      max_packets = metadata[:max_packets]
+      window_ms = metadata[:window_ms]
+      "Rate limiter started: enabled=#{enabled}, max_packets=#{max_packets}, window_ms=#{window_ms}"
+    end)
+  end
+
+  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :cleanup], measurements, _metadata, _config) do
+    Logger.log(:debug, fn ->
+      count = measurements[:count] || 0
+      "Cleaned up #{count} expired rate limit buckets"
+    end)
+  end
+
+  defp do_handle_infrastructure_event([:ex_dns, :error], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      error_type = metadata[:error_type] || :unknown
+      "DNS protocol error: #{error_type} -> #{inspect(metadata[:reason])}"
+    end)
+  end
+
+  defp do_handle_infrastructure_event([:ex_dns, :error, :detailed], _measurements, metadata, _config) do
+    Logger.log(:error, fn ->
+      error_type = metadata[:error_type] || :unknown
+      source = metadata[:source] || :unknown
+      reason = metadata[:reason] || "unknown"
+      context = metadata[:context] || %{}
+      "DNS Detailed Error: #{inspect(error_type)} in #{source}: #{reason} context: #{inspect(context)}"
+    end)
+  end
+
+  defp do_handle_infrastructure_event(_event, _measurements, _metadata, _config), do: :ok
+
+  # =============================================================================
   # Formatting Helpers
   # =============================================================================
 
@@ -524,4 +982,13 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   def format_duration(us) when is_integer(us) and us < 1_000_000, do: "#{Float.round(us / 1000, 2)}ms"
   def format_duration(us) when is_integer(us), do: "#{Float.round(us / 1_000_000, 2)}s"
   def format_duration(_), do: "unknown"
+
+  @doc """
+  Formats a duration in milliseconds as a human-readable string.
+  """
+  @spec format_duration_ms(integer() | nil) :: String.t()
+  def format_duration_ms(nil), do: "unknown"
+  def format_duration_ms(ms) when is_integer(ms) and ms < 1000, do: "#{ms}ms"
+  def format_duration_ms(ms) when is_integer(ms), do: "#{Float.round(ms / 1000, 2)}s"
+  def format_duration_ms(_), do: "unknown"
 end

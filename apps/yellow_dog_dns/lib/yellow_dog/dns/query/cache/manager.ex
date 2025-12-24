@@ -26,7 +26,6 @@ defmodule YellowDog.Dns.Query.Cache.Manager do
   """
 
   use GenServer
-  require Logger
 
   alias YellowDog.Dns.Query.Cache.{Entry, Storage, Stats}
   alias YellowDog.Dns.Zone
@@ -267,9 +266,10 @@ defmodule YellowDog.Dns.Query.Cache.Manager do
       started_at: System.monotonic_time(:second)
     }
 
-    Logger.info("DNS Query Cache Manager started",
-      enabled: config.enabled,
-      max_entries: config.max_entries
+    :telemetry.execute(
+      [:yellow_dog, :dns, :cache, :start],
+      %{count: 1},
+      %{source: __MODULE__, enabled: config.enabled, max_entries: config.max_entries, severity: :info}
     )
 
     {:ok, state}

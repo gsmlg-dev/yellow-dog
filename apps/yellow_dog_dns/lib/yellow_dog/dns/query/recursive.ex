@@ -44,7 +44,6 @@ defmodule YellowDog.Dns.Query.Recursive do
   - Comprehensive telemetry and logging
   """
 
-  require Logger
   alias YellowDog.Dns.RootZone.Manager, as: RootZone
   alias YellowDog.Dns.Query.Iterator
   alias YellowDog.Dns.Query.Referral
@@ -110,14 +109,13 @@ defmodule YellowDog.Dns.Query.Recursive do
       |> filter_by_ip_version(ip_version)
 
     if length(root_servers) == 0 do
-      Logger.error("No root servers available for IP version: #{ip_version}")
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :recursive_error],
+        %{count: 1},
+        %{source: __MODULE__, query_name: normalized_name, reason: :no_root_servers, ip_version: ip_version, severity: :error}
+      )
       {:error, :no_root_servers}
     else
-      Logger.info("Starting recursive resolution",
-        query: normalized_name,
-        type: query_type,
-        root_servers: length(root_servers)
-      )
 
       # Emit telemetry
       :telemetry.execute(
@@ -170,38 +168,36 @@ defmodule YellowDog.Dns.Query.Recursive do
        ) do
     # Check max depth
     if Referral.max_depth_exceeded?(state, max_depth) do
-      Logger.warning("Maximum recursion depth exceeded",
-        query: query_name,
-        depth: state.depth,
-        max: max_depth
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :recursive_error],
+        %{count: 1},
+        %{source: __MODULE__, query_name: query_name, reason: :max_depth_exceeded, depth: state.depth, max: max_depth, severity: :warning}
       )
 
       {:error, :max_depth_exceeded}
     else
-      Logger.debug("Querying nameservers",
-        level: state.depth,
-        ns_count: length(nameservers),
-        query: query_name
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :iterate],
+        %{count: 1, iteration: state.depth, ns_count: length(nameservers)},
+        %{source: __MODULE__, query_name: query_name}
       )
 
       # Query nameservers (try multiple in parallel)
       case query_nameservers(nameservers, query_name, query_type, timeout_ms, max_parallel) do
         {:answer, answers, authority} ->
-          Logger.info("Got answer",
-            query: query_name,
-            type: query_type,
-            answer_count: length(answers),
-            depth: state.depth
+          :telemetry.execute(
+            [:yellow_dog, :dns, :query, :recursive],
+            %{count: 1, answer_count: length(answers), depth: state.depth},
+            %{source: __MODULE__, query_name: query_name, query_type: query_type, result: :answer}
           )
 
           {:ok, answers, authority}
 
         {:referral, ns_records, glue_map, queried_ip} ->
-          Logger.debug("Got referral",
-            query: query_name,
-            ns_count: length(ns_records),
-            glue_count: map_size(glue_map),
-            depth: state.depth
+          :telemetry.execute(
+            [:yellow_dog, :dns, :query, :referral],
+            %{count: 1, ns_count: length(ns_records), glue_count: map_size(glue_map)},
+            %{source: __MODULE__, query_name: query_name, zone: extract_zone_from_ns_records(ns_records)}
           )
 
           # Determine the zone from NS records (they all should be for the same zone)
@@ -225,10 +221,10 @@ defmodule YellowDog.Dns.Query.Recursive do
                   )
 
                 {:error, reason} ->
-                  Logger.warning("Failed to resolve NS addresses",
-                    reason: reason,
-                    ns_records: length(ns_records),
-                    glue_count: map_size(glue_map)
+                  :telemetry.execute(
+                    [:yellow_dog, :dns, :query, :recursive_error],
+                    %{count: 1},
+                    %{source: __MODULE__, reason: reason, ns_count: length(ns_records), glue_count: map_size(glue_map), severity: :warning}
                   )
 
                   {:error, reason}
@@ -239,11 +235,19 @@ defmodule YellowDog.Dns.Query.Recursive do
           end
 
         {:nxdomain, authority} ->
-          Logger.info("Got NXDOMAIN", query: query_name, depth: state.depth)
+          :telemetry.execute(
+            [:yellow_dog, :dns, :query, :recursive],
+            %{count: 1, depth: state.depth},
+            %{source: __MODULE__, query_name: query_name, result: :nxdomain, severity: :info}
+          )
           {:nxdomain, [], authority}
 
         {:error, reason} ->
-          Logger.warning("Query failed", query: query_name, reason: reason, depth: state.depth)
+          :telemetry.execute(
+            [:yellow_dog, :dns, :query, :recursive_error],
+            %{count: 1, depth: state.depth},
+            %{source: __MODULE__, query_name: query_name, reason: reason, severity: :warning}
+          )
           {:error, reason}
       end
     end
@@ -284,12 +288,20 @@ defmodule YellowDog.Dns.Query.Recursive do
 
           {:ok, {:error, reason}} ->
             # This NS failed, try next
-            Logger.debug("Nameserver query failed", reason: reason)
+            :telemetry.execute(
+              [:yellow_dog, :dns, :query, :recursive_error],
+              %{count: 1},
+              %{source: __MODULE__, reason: reason, severity: :debug}
+            )
             {:cont, {:error, reason}}
 
           {:exit, :timeout} ->
             # Task timed out, try next
-            Logger.debug("Nameserver query timed out")
+            :telemetry.execute(
+              [:yellow_dog, :dns, :query, :recursive_error],
+              %{count: 1},
+              %{source: __MODULE__, reason: :timeout, severity: :debug}
+            )
             {:cont, {:error, :timeout}}
 
           _ ->
@@ -326,7 +338,11 @@ defmodule YellowDog.Dns.Query.Recursive do
     if length(ns_ips) > 0 do
       {:ok, ns_ips}
     else
-      Logger.warning("No glue records available for nameservers")
+      :telemetry.execute(
+        [:yellow_dog, :dns, :query, :recursive_error],
+        %{count: 1},
+        %{source: __MODULE__, reason: :no_glue, severity: :warning}
+      )
       {:error, :no_glue}
     end
   end

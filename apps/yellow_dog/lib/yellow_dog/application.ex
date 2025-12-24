@@ -7,7 +7,6 @@ defmodule YellowDog.Application do
   """
 
   use Application
-  require Logger
 
   @impl true
   def start(_type, _args) do
@@ -21,8 +20,12 @@ defmodule YellowDog.Application do
     # Log which config file was loaded and enabled services
     log_config_info(config)
 
-    # Debug: print the actual config being loaded
-    Logger.debug("Loaded config: #{inspect(config)}")
+    # Debug: emit telemetry for loaded config
+    :telemetry.execute(
+      [:yellow_dog, :config, :loaded],
+      %{count: 1},
+      %{source: __MODULE__, severity: :debug}
+    )
 
     children = [
       # Configuration manager - must start first
@@ -65,15 +68,27 @@ defmodule YellowDog.Application do
     # Start the child under the main supervisor
     case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
       {:ok, pid} ->
-        Logger.info("Started service #{service} with PID #{inspect(pid)}")
+        :telemetry.execute(
+          [:yellow_dog, :service, :started],
+          %{count: 1},
+          %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
+        )
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        Logger.info("Service #{service} already running with PID #{inspect(pid)}")
+        :telemetry.execute(
+          [:yellow_dog, :service, :started],
+          %{count: 1},
+          %{source: __MODULE__, service: service, pid: inspect(pid), already_started: true, severity: :info}
+        )
         {:error, {:already_started, pid}}
 
       {:error, reason} = error ->
-        Logger.error("Failed to start service #{service}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :application, :error],
+          %{count: 1},
+          %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
+        )
         error
     end
   end
@@ -97,15 +112,27 @@ defmodule YellowDog.Application do
       :ok ->
         # Also delete the child spec so it can be restarted later
         Supervisor.delete_child(YellowDog.Supervisor, app_module)
-        Logger.info("Stopped service #{service}")
+        :telemetry.execute(
+          [:yellow_dog, :service, :stopped],
+          %{count: 1},
+          %{source: __MODULE__, service: service, severity: :info}
+        )
         :ok
 
       {:error, :not_found} ->
-        Logger.debug("Service #{service} not found (already stopped)")
+        :telemetry.execute(
+          [:yellow_dog, :service, :stopped],
+          %{count: 1},
+          %{source: __MODULE__, service: service, not_found: true, severity: :debug}
+        )
         {:error, :not_found}
 
       {:error, reason} = error ->
-        Logger.error("Failed to stop service #{service}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :application, :error],
+          %{count: 1},
+          %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
+        )
         error
     end
   end
@@ -144,22 +171,30 @@ defmodule YellowDog.Application do
               end
 
             {:error, reason} ->
-              Logger.warning(
-                "Failed to parse TOML from #{config_file_path}: #{inspect(reason)}, using defaults"
+              :telemetry.execute(
+                [:yellow_dog, :config, :error],
+                %{count: 1},
+                %{source: __MODULE__, reason: :parse_error, config_file: config_file_path, error: inspect(reason), severity: :warning}
               )
 
               get_default_config()
           end
 
         {:error, reason} ->
-          Logger.warning(
-            "Failed to read config file #{config_file_path}: #{inspect(reason)}, using defaults"
+          :telemetry.execute(
+            [:yellow_dog, :config, :error],
+            %{count: 1},
+            %{source: __MODULE__, reason: :read_error, config_file: config_file_path, error: inspect(reason), severity: :warning}
           )
 
           get_default_config()
       end
     else
-      Logger.warning("No config file path specified, using defaults")
+      :telemetry.execute(
+        [:yellow_dog, :config, :error],
+        %{count: 1},
+        %{source: __MODULE__, reason: :no_config_path, severity: :warning}
+      )
       get_default_config()
     end
   end
@@ -222,11 +257,13 @@ defmodule YellowDog.Application do
     config_file_path = Application.get_env(:yellow_dog, :config_file_path)
     default_config_path = Path.expand("../priv/yellowdogdns_default_config.toml", __DIR__)
 
-    if config_file_path && config_file_path == default_config_path do
-      Logger.info("Loaded default configuration from: #{config_file_path}")
-    else
-      Logger.info("Loaded custom configuration from: #{config_file_path}")
-    end
+    is_default = config_file_path && config_file_path == default_config_path
+
+    :telemetry.execute(
+      [:yellow_dog, :config, :loaded],
+      %{count: 1},
+      %{source: __MODULE__, config_file: config_file_path, is_default: is_default, severity: :info}
+    )
 
     # Log enabled services
     case Map.get(config, "core") do
@@ -236,19 +273,23 @@ defmodule YellowDog.Application do
           |> Enum.filter(fn {_name, enabled} -> enabled end)
           |> Enum.map(fn {name, _enabled} -> name end)
 
-        Logger.info("Enabled services: #{Enum.join(enabled_services, ", ")}")
-
         disabled_services =
           [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
           |> Enum.filter(fn {_name, enabled} -> not enabled end)
           |> Enum.map(fn {name, _enabled} -> name end)
 
-        if length(disabled_services) > 0 do
-          Logger.info("Disabled services: #{Enum.join(disabled_services, ", ")}")
-        end
+        :telemetry.execute(
+          [:yellow_dog, :config, :validated],
+          %{count: 1, enabled_count: length(enabled_services), disabled_count: length(disabled_services)},
+          %{source: __MODULE__, enabled_services: Enum.join(enabled_services, ", "), disabled_services: Enum.join(disabled_services, ", "), severity: :info}
+        )
 
       _ ->
-        Logger.warning("No [core] configuration found, enabling all services")
+        :telemetry.execute(
+          [:yellow_dog, :config, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: :no_core_config, severity: :warning}
+        )
     end
   end
 
@@ -283,7 +324,11 @@ defmodule YellowDog.Application do
       end)
 
     if length(service_names) > 0 do
-      Logger.info("Starting services: #{Enum.join(service_names, ", ")}")
+      :telemetry.execute(
+        [:yellow_dog, :application, :start],
+        %{count: length(service_names)},
+        %{source: __MODULE__, services: Enum.join(service_names, ", "), severity: :info}
+      )
     end
 
     # Log disabled services
@@ -297,7 +342,11 @@ defmodule YellowDog.Application do
       end)
 
     if length(disabled_services) > 0 do
-      Logger.info("Skipping disabled services: #{Enum.join(disabled_services, ", ")}")
+      :telemetry.execute(
+        [:yellow_dog, :application, :start],
+        %{count: 0, skipped: length(disabled_services)},
+        %{source: __MODULE__, skipped_services: Enum.join(disabled_services, ", "), severity: :info}
+      )
     end
 
     enabled_services

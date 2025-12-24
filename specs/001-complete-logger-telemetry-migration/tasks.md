@@ -17,12 +17,12 @@
 
 **Goal**: Prepare for migration by identifying current state and adding new logger handlers.
 
-- [ ] T001 Audit current Logger calls with `grep -r "Logger\." apps/*/lib --include="*.ex" | grep -v "_test.exs" | wc -l` to establish baseline
-- [ ] T002 Add DNS query telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
-- [ ] T003 Add DNS cache telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
-- [ ] T004 Add root zone telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
-- [ ] T005 Add application lifecycle telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
-- [ ] T006 Add console telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
+- [X] T001 Audit current Logger calls with `grep -r "Logger\." apps/*/lib --include="*.ex" | grep -v "_test.exs" | wc -l` to establish baseline (Result: 156 total, 104 to migrate)
+- [X] T002 Add DNS query telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
+- [X] T003 Add DNS cache telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
+- [X] T004 Add root zone telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
+- [X] T005 Add application lifecycle telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
+- [X] T006 Add console telemetry handlers in `apps/yellow_dog_telemetry/lib/yellow_dog/telemetry/logger_handlers.ex`
 
 ---
 

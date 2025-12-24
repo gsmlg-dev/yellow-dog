@@ -7,7 +7,6 @@ defmodule Abyss.RateLimiter do
   """
 
   use GenServer
-  require Logger
 
   @typedoc """
   Token bucket state for rate limiting a single IP address.
@@ -93,8 +92,10 @@ defmodule Abyss.RateLimiter do
       window_ms: window_ms
     }
 
-    Logger.debug(
-      "Rate limiter started: enabled=#{enabled}, max_packets=#{max_packets}, window_ms=#{window_ms}"
+    :telemetry.execute(
+      [:abyss, :rate_limiter, :start],
+      %{count: 1},
+      %{source: __MODULE__, enabled: enabled, max_packets: max_packets, window_ms: window_ms}
     )
 
     {:ok, state}
@@ -141,7 +142,11 @@ defmodule Abyss.RateLimiter do
     cleaned_count = map_size(state.buckets) - map_size(cleaned_buckets)
 
     if cleaned_count > 0 do
-      Logger.debug("Cleaned up #{cleaned_count} expired rate limit buckets")
+      :telemetry.execute(
+        [:abyss, :rate_limiter, :cleanup],
+        %{count: cleaned_count},
+        %{source: __MODULE__}
+      )
     end
 
     # Schedule next cleanup

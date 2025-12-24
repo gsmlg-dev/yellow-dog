@@ -7,7 +7,6 @@ defmodule YellowDog.Config do
   """
 
   use Agent
-  require Logger
 
   @type config_map :: map()
   @type service_name :: :dns | :mdns | :dhcpv4 | :dhcpv6
@@ -145,16 +144,28 @@ defmodule YellowDog.Config do
       {:ok, content} ->
         case Toml.decode(content) do
           {:ok, config} ->
-            Logger.info("Loaded configuration from #{path}")
+            :telemetry.execute(
+              [:yellow_dog, :config, :loaded],
+              %{count: 1},
+              %{source: __MODULE__, path: path, severity: :info}
+            )
             {:ok, config}
 
           {:error, reason} ->
-            Logger.error("Failed to parse TOML from #{path}: #{inspect(reason)}")
+            :telemetry.execute(
+              [:yellow_dog, :config, :error],
+              %{count: 1},
+              %{source: __MODULE__, path: path, reason: :parse_error, error: inspect(reason), severity: :error}
+            )
             {:error, reason}
         end
 
       {:error, reason} ->
-        Logger.error("Failed to read config file #{path}: #{inspect(reason)}")
+        :telemetry.execute(
+          [:yellow_dog, :config, :error],
+          %{count: 1},
+          %{source: __MODULE__, path: path, reason: :read_error, error: inspect(reason), severity: :error}
+        )
         {:error, reason}
     end
   end
@@ -169,7 +180,11 @@ defmodule YellowDog.Config do
         config
 
       {:error, _reason} ->
-        Logger.warning("Using default configuration due to load failure")
+        :telemetry.execute(
+          [:yellow_dog, :config, :loaded],
+          %{count: 1},
+          %{source: __MODULE__, fallback: true, severity: :warning}
+        )
         @default_config
     end
   end

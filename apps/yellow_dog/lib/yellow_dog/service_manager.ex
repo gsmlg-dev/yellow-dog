@@ -6,8 +6,6 @@ defmodule YellowDog.ServiceManager do
   and control services across the entire YellowDog system.
   """
 
-  require Logger
-
   @services [:dns, :mdns, :dhcpv4, :dhcpv6]
 
   # Supervisor modules (used for start/stop)
@@ -76,7 +74,11 @@ defmodule YellowDog.ServiceManager do
   end
 
   def get_service_status(service) do
-    Logger.warning("Unknown service: #{inspect(service)}")
+    :telemetry.execute(
+      [:yellow_dog, :service, :error],
+      %{count: 1},
+      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+    )
     %{error: "Unknown service"}
   end
 
@@ -117,7 +119,11 @@ defmodule YellowDog.ServiceManager do
   end
 
   def start_service(service) do
-    Logger.warning("Unknown service: #{inspect(service)}")
+    :telemetry.execute(
+      [:yellow_dog, :service, :error],
+      %{count: 1},
+      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+    )
     {:error, :unknown_service}
   end
 
@@ -147,7 +153,11 @@ defmodule YellowDog.ServiceManager do
   end
 
   def stop_service(service) do
-    Logger.warning("Unknown service: #{inspect(service)}")
+    :telemetry.execute(
+      [:yellow_dog, :service, :error],
+      %{count: 1},
+      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+    )
     {:error, :unknown_service}
   end
 
