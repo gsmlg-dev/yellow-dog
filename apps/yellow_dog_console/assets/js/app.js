@@ -50,6 +50,24 @@ Hooks.CopyToClipboard = {
   }
 }
 
+// Log Auto-Scroll Hook
+// Automatically scrolls to bottom when new logs arrive, unless user has scrolled up
+Hooks.LogAutoScroll = {
+  mounted() {
+    this.autoScroll = true
+    this.el.addEventListener('scroll', () => {
+      // Check if user is near the bottom (within 50px)
+      const atBottom = this.el.scrollHeight - this.el.scrollTop <= this.el.clientHeight + 50
+      this.autoScroll = atBottom
+    })
+  },
+  updated() {
+    if (this.autoScroll) {
+      this.el.scrollTop = this.el.scrollHeight
+    }
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

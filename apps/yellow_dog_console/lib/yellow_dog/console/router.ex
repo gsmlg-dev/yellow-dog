@@ -51,6 +51,9 @@ defmodule YellowDog.Console.Router do
 
     # Service Diagnostics
     live "/diagnostics", DiagnosticsLive
+
+    # Real-time Logs
+    live "/logs", LogsLive
   end
 
   scope "/api", YellowDog.Console do
