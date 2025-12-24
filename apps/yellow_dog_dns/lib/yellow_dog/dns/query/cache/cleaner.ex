@@ -132,7 +132,13 @@ defmodule YellowDog.Dns.Query.Cache.Cleaner do
     :telemetry.execute(
       [:yellow_dog, :dns, :cache, :cleaner_start],
       %{count: 1},
-      %{source: __MODULE__, interval_ms: interval, max_memory_mb: max_memory_mb, max_entries: max_entries, severity: :info}
+      %{
+        source: __MODULE__,
+        interval_ms: interval,
+        max_memory_mb: max_memory_mb,
+        max_entries: max_entries,
+        severity: :info
+      }
     )
 
     {:ok, state}
@@ -223,8 +229,19 @@ defmodule YellowDog.Dns.Query.Cache.Cleaner do
     if expired_removed > 0 or memory_evicted > 0 or count_evicted > 0 do
       :telemetry.execute(
         [:yellow_dog, :dns, :cache, :cleanup_completed],
-        %{count: 1, expired_removed: expired_removed, memory_evicted: memory_evicted, count_evicted: count_evicted, duration_ms: duration_ms},
-        %{source: __MODULE__, memory_mb: memory_info.mb, entry_count: entry_count, severity: :debug}
+        %{
+          count: 1,
+          expired_removed: expired_removed,
+          memory_evicted: memory_evicted,
+          count_evicted: count_evicted,
+          duration_ms: duration_ms
+        },
+        %{
+          source: __MODULE__,
+          memory_mb: memory_info.mb,
+          entry_count: entry_count,
+          severity: :debug
+        }
       )
     end
 

@@ -131,6 +131,7 @@ defmodule YellowDog.Console.DashboardLive do
           %{count: 1},
           %{source: __MODULE__, error: inspect(e), severity: :warning}
         )
+
         get_fallback_status()
     end
   end

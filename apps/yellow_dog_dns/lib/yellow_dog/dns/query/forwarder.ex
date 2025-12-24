@@ -217,6 +217,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
           %{count: 1, ttl: ttl},
           %{source: __MODULE__, query_name: query_name, query_type: query_type}
         )
+
         result
 
       {:nxdomain, _} ->
@@ -268,6 +269,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
           %{count: 1},
           %{source: __MODULE__, upstream: format_ip(forwarder), reason: :servfail}
         )
+
         try_next_forwarder(query_name, query_type, rest, timeout_ms, max_retries, opts, servfail)
 
       {:error, reason} ->
@@ -346,7 +348,12 @@ defmodule YellowDog.Dns.Query.Forwarder do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :forward_error],
           %{count: 1},
-          %{source: __MODULE__, upstream: format_ip(forwarder_ip), reason: :timeout, retries_left: retries_left}
+          %{
+            source: __MODULE__,
+            upstream: format_ip(forwarder_ip),
+            reason: :timeout,
+            retries_left: retries_left
+          }
         )
 
         send_with_retries(forwarder_ip, query_data, query_id, timeout_ms, retries_left - 1)
@@ -435,7 +442,13 @@ defmodule YellowDog.Dns.Query.Forwarder do
                   :telemetry.execute(
                     [:yellow_dog, :dns, :query, :error],
                     %{count: 1},
-                    %{source: __MODULE__, reason: :unexpected_source, from_ip: format_ip(other_ip), from_port: other_port, severity: :warning}
+                    %{
+                      source: __MODULE__,
+                      reason: :unexpected_source,
+                      from_ip: format_ip(other_ip),
+                      from_port: other_port,
+                      severity: :warning
+                    }
                   )
 
                   {:error, :unexpected_source}
@@ -507,8 +520,15 @@ defmodule YellowDog.Dns.Query.Forwarder do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :error],
           %{count: 1},
-          %{source: __MODULE__, reason: :id_mismatch, expected_id: expected_id, got_id: response.header.id, severity: :warning}
+          %{
+            source: __MODULE__,
+            reason: :id_mismatch,
+            expected_id: expected_id,
+            got_id: response.header.id,
+            severity: :warning
+          }
         )
+
         {:error, :id_mismatch}
       end
     rescue
@@ -518,6 +538,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
           %{count: 1},
           %{source: __MODULE__, reason: {:decode_failed, error}, severity: :error}
         )
+
         {:error, :decode_failed}
     catch
       :throw, error ->
@@ -526,6 +547,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
           %{count: 1},
           %{source: __MODULE__, reason: {:parse_failed, error}, severity: :error}
         )
+
         {:error, :parse_failed}
     end
   end
@@ -562,6 +584,7 @@ defmodule YellowDog.Dns.Query.Forwarder do
           %{count: 1},
           %{source: __MODULE__, reason: {:dns_error, rcode_value}, severity: :debug}
         )
+
         {:error, :dns_error}
     end
   end

@@ -56,19 +56,34 @@ defmodule YellowDog.Console.ServiceManager do
               :telemetry.execute(
                 [:yellow_dog, :console, :service, :action],
                 %{count: 1},
-                %{source: __MODULE__, service: service, action: :config_updated, enabled: false, severity: :info}
+                %{
+                  source: __MODULE__,
+                  service: service,
+                  action: :config_updated,
+                  enabled: false,
+                  severity: :info
+                }
               )
+
               :ok
             end
         end
 
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
+
         :telemetry.execute(
           [:yellow_dog, :console, :service, :action],
           %{count: 1},
-          %{source: __MODULE__, service: service, action: :config_update_failed, reason: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :config_update_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
         )
+
         error
     end
   end
@@ -78,20 +93,30 @@ defmodule YellowDog.Console.ServiceManager do
          {:ok, new_pid} <- wait_for_restart(service, old_pid),
          :ok <- verify_service_health(service, new_pid) do
       emit_telemetry(:service_restarted, %{service: service})
+
       :telemetry.execute(
         [:yellow_dog, :console, :service, :action],
         %{count: 1},
         %{source: __MODULE__, service: service, action: :restarted, severity: :info}
       )
+
       :ok
     else
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
+
         :telemetry.execute(
           [:yellow_dog, :console, :service, :action],
           %{count: 1},
-          %{source: __MODULE__, service: service, action: :restart_failed, reason: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :restart_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
         )
+
         error
     end
   end
@@ -109,20 +134,30 @@ defmodule YellowDog.Console.ServiceManager do
     case YellowDog.start_service(service) do
       :ok ->
         emit_telemetry(:service_started, %{service: service})
+
         :telemetry.execute(
           [:yellow_dog, :console, :service, :action],
           %{count: 1},
           %{source: __MODULE__, service: service, action: :started, severity: :info}
         )
+
         :ok
 
       {:error, reason} = error ->
         emit_telemetry(:service_start_failed, %{service: service, reason: reason})
+
         :telemetry.execute(
           [:yellow_dog, :console, :service, :action],
           %{count: 1},
-          %{source: __MODULE__, service: service, action: :start_failed, reason: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            service: service,
+            action: :start_failed,
+            reason: inspect(reason),
+            severity: :error
+          }
         )
+
         error
     end
   rescue
@@ -131,8 +166,15 @@ defmodule YellowDog.Console.ServiceManager do
       :telemetry.execute(
         [:yellow_dog, :console, :service, :action],
         %{count: 1},
-        %{source: __MODULE__, service: service, action: :start_not_available, error: inspect(e), severity: :warning}
+        %{
+          source: __MODULE__,
+          service: service,
+          action: :start_not_available,
+          error: inspect(e),
+          severity: :warning
+        }
       )
+
       {:error, :start_not_implemented}
   end
 
@@ -145,6 +187,7 @@ defmodule YellowDog.Console.ServiceManager do
       %{count: 1},
       %{source: __MODULE__, service: service, action: :updating_config, severity: :debug}
     )
+
     YellowDog.Config.update(service, new_config)
   end
 

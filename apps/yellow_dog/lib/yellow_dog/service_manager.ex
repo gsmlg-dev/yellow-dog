@@ -77,8 +77,14 @@ defmodule YellowDog.ServiceManager do
     :telemetry.execute(
       [:yellow_dog, :service, :error],
       %{count: 1},
-      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+      %{
+        source: __MODULE__,
+        reason: :unknown_service,
+        service: inspect(service),
+        severity: :warning
+      }
     )
+
     %{error: "Unknown service"}
   end
 
@@ -122,8 +128,14 @@ defmodule YellowDog.ServiceManager do
     :telemetry.execute(
       [:yellow_dog, :service, :error],
       %{count: 1},
-      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+      %{
+        source: __MODULE__,
+        reason: :unknown_service,
+        service: inspect(service),
+        severity: :warning
+      }
     )
+
     {:error, :unknown_service}
   end
 
@@ -156,8 +168,14 @@ defmodule YellowDog.ServiceManager do
     :telemetry.execute(
       [:yellow_dog, :service, :error],
       %{count: 1},
-      %{source: __MODULE__, reason: :unknown_service, service: inspect(service), severity: :warning}
+      %{
+        source: __MODULE__,
+        reason: :unknown_service,
+        service: inspect(service),
+        severity: :warning
+      }
     )
+
     {:error, :unknown_service}
   end
 

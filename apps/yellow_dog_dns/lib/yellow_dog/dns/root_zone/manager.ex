@@ -218,6 +218,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
           %{count: 1},
           %{source: __MODULE__, reason: inspect(reason), severity: :error}
         )
+
         {:stop, reason}
     end
   end
@@ -263,6 +264,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
           %{count: 1},
           %{source: __MODULE__, reason: inspect(reason), severity: :error}
         )
+
         Telemetry.end_span(span_id, %{status: :failed, reason: reason})
         {:reply, error, state}
     end
@@ -292,6 +294,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
           %{count: 1, serial: serial},
           %{source: __MODULE__, severity: :info}
         )
+
         new_state = %{state | loaded_at: System.system_time(:second), serial: serial}
         new_state = maybe_schedule_fetch(new_state)
         {:noreply, new_state}
@@ -300,7 +303,12 @@ defmodule YellowDog.Dns.RootZone.Manager do
         :telemetry.execute(
           [:yellow_dog, :dns, :root_zone, :fetch_error],
           %{count: 1},
-          %{source: __MODULE__, reason: inspect(reason), fallback: state.config.fallback_to_hints, severity: :warning}
+          %{
+            source: __MODULE__,
+            reason: inspect(reason),
+            fallback: state.config.fallback_to_hints,
+            severity: :warning
+          }
         )
 
         # Reschedule despite failure
@@ -341,6 +349,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
       %{count: 1},
       %{source: __MODULE__, strategy: :hints, severity: :info}
     )
+
     :ok
   end
 
@@ -361,6 +370,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
           %{count: 1},
           %{source: __MODULE__, strategy: :fetch, severity: :info}
         )
+
         :ok
 
       {:error, reason} ->
@@ -376,6 +386,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
             %{count: 1},
             %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
           )
+
           :ok
         else
           {:error, reason}
@@ -400,6 +411,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
             %{count: 1},
             %{source: __MODULE__, strategy: :auth, severity: :info}
           )
+
           :ok
 
         {:error, reason} = error ->
@@ -415,6 +427,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
               %{count: 1},
               %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
             )
+
             :ok
           else
             error
@@ -424,7 +437,12 @@ defmodule YellowDog.Dns.RootZone.Manager do
       :telemetry.execute(
         [:yellow_dog, :dns, :root_zone, :fetch_error],
         %{count: 1},
-        %{source: __MODULE__, reason: :zone_file_not_found, zone_file: inspect(zone_file), severity: :error}
+        %{
+          source: __MODULE__,
+          reason: :zone_file_not_found,
+          zone_file: inspect(zone_file),
+          severity: :error
+        }
       )
 
       if config.fallback_to_hints do
@@ -433,6 +451,7 @@ defmodule YellowDog.Dns.RootZone.Manager do
           %{count: 1},
           %{source: __MODULE__, strategy: :hints, fallback: true, severity: :info}
         )
+
         :ok
       else
         {:error, :zone_file_not_found}

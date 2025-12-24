@@ -81,6 +81,7 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
               %{count: 1, serial: serial},
               %{source: __MODULE__, severity: :info}
             )
+
             Telemetry.end_span(span_id, %{status: :success, serial: serial})
             success
 
@@ -90,6 +91,7 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
               %{count: 1},
               %{source: __MODULE__, reason: inspect(reason), severity: :error}
             )
+
             Telemetry.end_span(span_id, %{status: :failed, reason: reason})
             error
         end
@@ -100,6 +102,7 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
           %{count: 1},
           %{source: __MODULE__, reason: inspect(reason), severity: :error}
         )
+
         Telemetry.end_span(span_id, %{status: :failed, reason: reason})
         error
     end
@@ -148,8 +151,14 @@ defmodule YellowDog.Dns.RootZone.Fetcher do
         :telemetry.execute(
           [:yellow_dog, :dns, :root_zone, :fetch_error],
           %{count: 1},
-          %{source: __MODULE__, reason: :file_write_error, error: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            reason: :file_write_error,
+            error: inspect(reason),
+            severity: :error
+          }
         )
+
         {:error, {:file_write_error, reason}}
     end
   end

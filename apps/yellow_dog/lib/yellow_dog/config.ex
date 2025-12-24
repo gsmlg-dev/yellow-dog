@@ -149,14 +149,22 @@ defmodule YellowDog.Config do
               %{count: 1},
               %{source: __MODULE__, path: path, severity: :info}
             )
+
             {:ok, config}
 
           {:error, reason} ->
             :telemetry.execute(
               [:yellow_dog, :config, :error],
               %{count: 1},
-              %{source: __MODULE__, path: path, reason: :parse_error, error: inspect(reason), severity: :error}
+              %{
+                source: __MODULE__,
+                path: path,
+                reason: :parse_error,
+                error: inspect(reason),
+                severity: :error
+              }
             )
+
             {:error, reason}
         end
 
@@ -164,8 +172,15 @@ defmodule YellowDog.Config do
         :telemetry.execute(
           [:yellow_dog, :config, :error],
           %{count: 1},
-          %{source: __MODULE__, path: path, reason: :read_error, error: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            path: path,
+            reason: :read_error,
+            error: inspect(reason),
+            severity: :error
+          }
         )
+
         {:error, reason}
     end
   end
@@ -185,6 +200,7 @@ defmodule YellowDog.Config do
           %{count: 1},
           %{source: __MODULE__, fallback: true, severity: :warning}
         )
+
         @default_config
     end
   end

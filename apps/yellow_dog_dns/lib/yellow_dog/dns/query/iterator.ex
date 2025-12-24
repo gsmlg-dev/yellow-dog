@@ -116,8 +116,14 @@ defmodule YellowDog.Dns.Query.Iterator do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :error],
           %{count: 1},
-          %{source: __MODULE__, reason: :message_creation_failed, error: inspect(error), severity: :error}
+          %{
+            source: __MODULE__,
+            reason: :message_creation_failed,
+            error: inspect(error),
+            severity: :error
+          }
         )
+
         {:error, :message_creation_failed}
     end
   end
@@ -133,6 +139,7 @@ defmodule YellowDog.Dns.Query.Iterator do
           %{count: 1},
           %{source: __MODULE__, reason: :encode_failed, error: inspect(error), severity: :error}
         )
+
         {:error, :encode_failed}
     end
   end
@@ -154,7 +161,13 @@ defmodule YellowDog.Dns.Query.Iterator do
               :telemetry.execute(
                 [:yellow_dog, :dns, :query, :error],
                 %{count: 1},
-                %{source: __MODULE__, reason: :unexpected_source, from_ip: format_ip(other_ip), from_port: other_port, severity: :warning}
+                %{
+                  source: __MODULE__,
+                  reason: :unexpected_source,
+                  from_ip: format_ip(other_ip),
+                  from_port: other_port,
+                  severity: :warning
+                }
               )
 
               {:error, :unexpected_source}
@@ -173,8 +186,14 @@ defmodule YellowDog.Dns.Query.Iterator do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :error],
           %{count: 1},
-          %{source: __MODULE__, reason: :socket_open_failed, error: inspect(reason), severity: :error}
+          %{
+            source: __MODULE__,
+            reason: :socket_open_failed,
+            error: inspect(reason),
+            severity: :error
+          }
         )
+
         {:error, :socket_open_failed}
     end
   end
@@ -190,8 +209,15 @@ defmodule YellowDog.Dns.Query.Iterator do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :error],
           %{count: 1},
-          %{source: __MODULE__, reason: :id_mismatch, expected_id: expected_id, got_id: response.header.id, severity: :warning}
+          %{
+            source: __MODULE__,
+            reason: :id_mismatch,
+            expected_id: expected_id,
+            got_id: response.header.id,
+            severity: :warning
+          }
         )
+
         {:error, :id_mismatch}
       end
     rescue
@@ -201,6 +227,7 @@ defmodule YellowDog.Dns.Query.Iterator do
           %{count: 1},
           %{source: __MODULE__, reason: :decode_failed, error: inspect(error), severity: :error}
         )
+
         {:error, :decode_failed}
     end
   end
@@ -250,6 +277,7 @@ defmodule YellowDog.Dns.Query.Iterator do
           %{count: 1},
           %{source: __MODULE__, reason: :dns_error, rcode: inspect(rcode_value), severity: :debug}
         )
+
         {:error, :dns_error}
     end
   end

@@ -112,11 +112,17 @@ defmodule YellowDog.Dns.Query.Recursive do
       :telemetry.execute(
         [:yellow_dog, :dns, :query, :recursive_error],
         %{count: 1},
-        %{source: __MODULE__, query_name: normalized_name, reason: :no_root_servers, ip_version: ip_version, severity: :error}
+        %{
+          source: __MODULE__,
+          query_name: normalized_name,
+          reason: :no_root_servers,
+          ip_version: ip_version,
+          severity: :error
+        }
       )
+
       {:error, :no_root_servers}
     else
-
       # Emit telemetry
       :telemetry.execute(
         [:yellow_dog, :dns, :recursive, :start],
@@ -171,7 +177,14 @@ defmodule YellowDog.Dns.Query.Recursive do
       :telemetry.execute(
         [:yellow_dog, :dns, :query, :recursive_error],
         %{count: 1},
-        %{source: __MODULE__, query_name: query_name, reason: :max_depth_exceeded, depth: state.depth, max: max_depth, severity: :warning}
+        %{
+          source: __MODULE__,
+          query_name: query_name,
+          reason: :max_depth_exceeded,
+          depth: state.depth,
+          max: max_depth,
+          severity: :warning
+        }
       )
 
       {:error, :max_depth_exceeded}
@@ -197,7 +210,11 @@ defmodule YellowDog.Dns.Query.Recursive do
           :telemetry.execute(
             [:yellow_dog, :dns, :query, :referral],
             %{count: 1, ns_count: length(ns_records), glue_count: map_size(glue_map)},
-            %{source: __MODULE__, query_name: query_name, zone: extract_zone_from_ns_records(ns_records)}
+            %{
+              source: __MODULE__,
+              query_name: query_name,
+              zone: extract_zone_from_ns_records(ns_records)
+            }
           )
 
           # Determine the zone from NS records (they all should be for the same zone)
@@ -224,7 +241,13 @@ defmodule YellowDog.Dns.Query.Recursive do
                   :telemetry.execute(
                     [:yellow_dog, :dns, :query, :recursive_error],
                     %{count: 1},
-                    %{source: __MODULE__, reason: reason, ns_count: length(ns_records), glue_count: map_size(glue_map), severity: :warning}
+                    %{
+                      source: __MODULE__,
+                      reason: reason,
+                      ns_count: length(ns_records),
+                      glue_count: map_size(glue_map),
+                      severity: :warning
+                    }
                   )
 
                   {:error, reason}
@@ -240,6 +263,7 @@ defmodule YellowDog.Dns.Query.Recursive do
             %{count: 1, depth: state.depth},
             %{source: __MODULE__, query_name: query_name, result: :nxdomain, severity: :info}
           )
+
           {:nxdomain, [], authority}
 
         {:error, reason} ->
@@ -248,6 +272,7 @@ defmodule YellowDog.Dns.Query.Recursive do
             %{count: 1, depth: state.depth},
             %{source: __MODULE__, query_name: query_name, reason: reason, severity: :warning}
           )
+
           {:error, reason}
       end
     end
@@ -293,6 +318,7 @@ defmodule YellowDog.Dns.Query.Recursive do
               %{count: 1},
               %{source: __MODULE__, reason: reason, severity: :debug}
             )
+
             {:cont, {:error, reason}}
 
           {:exit, :timeout} ->
@@ -302,6 +328,7 @@ defmodule YellowDog.Dns.Query.Recursive do
               %{count: 1},
               %{source: __MODULE__, reason: :timeout, severity: :debug}
             )
+
             {:cont, {:error, :timeout}}
 
           _ ->
@@ -343,6 +370,7 @@ defmodule YellowDog.Dns.Query.Recursive do
         %{count: 1},
         %{source: __MODULE__, reason: :no_glue, severity: :warning}
       )
+
       {:error, :no_glue}
     end
   end

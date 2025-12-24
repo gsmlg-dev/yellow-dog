@@ -94,8 +94,15 @@ defmodule YellowDog.Dns.Query.Referral do
       :telemetry.execute(
         [:yellow_dog, :dns, :query, :error],
         %{count: 1},
-        %{source: __MODULE__, reason: :loop_detected, path: format_path(state), ns_names: ns_names, severity: :warning}
+        %{
+          source: __MODULE__,
+          reason: :loop_detected,
+          path: format_path(state),
+          ns_names: ns_names,
+          severity: :warning
+        }
       )
+
       {:error, :loop_detected}
     else
       # Create path entry

@@ -228,6 +228,7 @@ defmodule YellowDog.Dns.Query.Resolver do
         %{count: 1},
         %{source: __MODULE__, zone: zone_name, reason: :zone_not_found, severity: :debug}
       )
+
       {:servfail, [], []}
     else
       # Check zone type - forward and hint zones use different resolution
@@ -264,6 +265,7 @@ defmodule YellowDog.Dns.Query.Resolver do
           %{count: 1, ns_count: length(ns_records)},
           %{source: __MODULE__, query_name: normalized_owner, zone: zone_name}
         )
+
         {:delegation, ns_records, glue_records}
 
       :not_delegated ->
@@ -350,6 +352,7 @@ defmodule YellowDog.Dns.Query.Resolver do
           %{count: 1},
           %{source: __MODULE__, query_name: query_name, reason: reason, severity: :warning}
         )
+
         {:servfail, [], []}
     end
   end
@@ -381,8 +384,15 @@ defmodule YellowDog.Dns.Query.Resolver do
         :telemetry.execute(
           [:yellow_dog, :dns, :query, :recursive_error],
           %{count: 1},
-          %{source: __MODULE__, query_name: query_name, query_type: query_type, reason: reason, severity: :warning}
+          %{
+            source: __MODULE__,
+            query_name: query_name,
+            query_type: query_type,
+            reason: reason,
+            severity: :warning
+          }
         )
+
         {:servfail, [], []}
     end
   end
@@ -489,8 +499,14 @@ defmodule YellowDog.Dns.Query.Resolver do
     :telemetry.execute(
       [:yellow_dog, :dns, :query, :error],
       %{count: 1},
-      %{source: __MODULE__, reason: :cname_chain_too_deep, chain_length: length(chain), severity: :warning}
+      %{
+        source: __MODULE__,
+        reason: :cname_chain_too_deep,
+        chain_length: length(chain),
+        severity: :warning
+      }
     )
+
     {:servfail, chain, []}
   end
 

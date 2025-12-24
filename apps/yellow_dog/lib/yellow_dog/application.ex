@@ -73,14 +73,22 @@ defmodule YellowDog.Application do
           %{count: 1},
           %{source: __MODULE__, service: service, pid: inspect(pid), severity: :info}
         )
+
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
         :telemetry.execute(
           [:yellow_dog, :service, :started],
           %{count: 1},
-          %{source: __MODULE__, service: service, pid: inspect(pid), already_started: true, severity: :info}
+          %{
+            source: __MODULE__,
+            service: service,
+            pid: inspect(pid),
+            already_started: true,
+            severity: :info
+          }
         )
+
         {:error, {:already_started, pid}}
 
       {:error, reason} = error ->
@@ -89,6 +97,7 @@ defmodule YellowDog.Application do
           %{count: 1},
           %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
         )
+
         error
     end
   end
@@ -112,11 +121,13 @@ defmodule YellowDog.Application do
       :ok ->
         # Also delete the child spec so it can be restarted later
         Supervisor.delete_child(YellowDog.Supervisor, app_module)
+
         :telemetry.execute(
           [:yellow_dog, :service, :stopped],
           %{count: 1},
           %{source: __MODULE__, service: service, severity: :info}
         )
+
         :ok
 
       {:error, :not_found} ->
@@ -125,6 +136,7 @@ defmodule YellowDog.Application do
           %{count: 1},
           %{source: __MODULE__, service: service, not_found: true, severity: :debug}
         )
+
         {:error, :not_found}
 
       {:error, reason} = error ->
@@ -133,6 +145,7 @@ defmodule YellowDog.Application do
           %{count: 1},
           %{source: __MODULE__, service: service, reason: inspect(reason), severity: :error}
         )
+
         error
     end
   end
@@ -174,7 +187,13 @@ defmodule YellowDog.Application do
               :telemetry.execute(
                 [:yellow_dog, :config, :error],
                 %{count: 1},
-                %{source: __MODULE__, reason: :parse_error, config_file: config_file_path, error: inspect(reason), severity: :warning}
+                %{
+                  source: __MODULE__,
+                  reason: :parse_error,
+                  config_file: config_file_path,
+                  error: inspect(reason),
+                  severity: :warning
+                }
               )
 
               get_default_config()
@@ -184,7 +203,13 @@ defmodule YellowDog.Application do
           :telemetry.execute(
             [:yellow_dog, :config, :error],
             %{count: 1},
-            %{source: __MODULE__, reason: :read_error, config_file: config_file_path, error: inspect(reason), severity: :warning}
+            %{
+              source: __MODULE__,
+              reason: :read_error,
+              config_file: config_file_path,
+              error: inspect(reason),
+              severity: :warning
+            }
           )
 
           get_default_config()
@@ -195,6 +220,7 @@ defmodule YellowDog.Application do
         %{count: 1},
         %{source: __MODULE__, reason: :no_config_path, severity: :warning}
       )
+
       get_default_config()
     end
   end
@@ -262,7 +288,12 @@ defmodule YellowDog.Application do
     :telemetry.execute(
       [:yellow_dog, :config, :loaded],
       %{count: 1},
-      %{source: __MODULE__, config_file: config_file_path, is_default: is_default, severity: :info}
+      %{
+        source: __MODULE__,
+        config_file: config_file_path,
+        is_default: is_default,
+        severity: :info
+      }
     )
 
     # Log enabled services
@@ -280,8 +311,17 @@ defmodule YellowDog.Application do
 
         :telemetry.execute(
           [:yellow_dog, :config, :validated],
-          %{count: 1, enabled_count: length(enabled_services), disabled_count: length(disabled_services)},
-          %{source: __MODULE__, enabled_services: Enum.join(enabled_services, ", "), disabled_services: Enum.join(disabled_services, ", "), severity: :info}
+          %{
+            count: 1,
+            enabled_count: length(enabled_services),
+            disabled_count: length(disabled_services)
+          },
+          %{
+            source: __MODULE__,
+            enabled_services: Enum.join(enabled_services, ", "),
+            disabled_services: Enum.join(disabled_services, ", "),
+            severity: :info
+          }
         )
 
       _ ->
@@ -345,7 +385,11 @@ defmodule YellowDog.Application do
       :telemetry.execute(
         [:yellow_dog, :application, :start],
         %{count: 0, skipped: length(disabled_services)},
-        %{source: __MODULE__, skipped_services: Enum.join(disabled_services, ", "), severity: :info}
+        %{
+          source: __MODULE__,
+          skipped_services: Enum.join(disabled_services, ", "),
+          severity: :info
+        }
       )
     end
 

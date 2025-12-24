@@ -269,7 +269,12 @@ defmodule YellowDog.Dns.Query.Cache.Manager do
     :telemetry.execute(
       [:yellow_dog, :dns, :cache, :start],
       %{count: 1},
-      %{source: __MODULE__, enabled: config.enabled, max_entries: config.max_entries, severity: :info}
+      %{
+        source: __MODULE__,
+        enabled: config.enabled,
+        max_entries: config.max_entries,
+        severity: :info
+      }
     )
 
     {:ok, state}
