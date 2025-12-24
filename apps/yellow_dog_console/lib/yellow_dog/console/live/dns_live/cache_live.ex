@@ -33,18 +33,31 @@ defmodule YellowDog.Console.DnsLive.CacheLive do
     {:noreply, assign(socket, :stats, get_cache_stats())}
   end
 
+  @max_cache_entries 10_000
+  @max_cache_memory_bytes 100 * 1024 * 1024
+
   defp get_cache_stats do
     try do
-      YellowDog.Dns.Query.Cache.Manager.stats()
+      stats = YellowDog.Dns.Query.Cache.Manager.stats()
+
+      # Convert struct to map and add max_entries/max_memory_bytes for UI
+      stats
+      |> Map.from_struct()
+      |> Map.put(:max_entries, @max_cache_entries)
+      |> Map.put(:max_memory_bytes, @max_cache_memory_bytes)
     rescue
       _ ->
         %{
           total_entries: 0,
           hit_count: 0,
           miss_count: 0,
+          insert_count: 0,
+          eviction_count: 0,
+          expired_count: 0,
           memory_bytes: 0,
-          max_entries: 10_000,
-          max_memory_bytes: 100 * 1024 * 1024
+          collected_at: 0,
+          max_entries: @max_cache_entries,
+          max_memory_bytes: @max_cache_memory_bytes
         }
     end
   end

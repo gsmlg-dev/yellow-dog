@@ -80,7 +80,7 @@ defmodule YellowDog.Console.DnsLive.ZonesLive do
   defp total_records(zones), do: Enum.sum(Enum.map(zones, & &1.record_count))
 
   defp total_memory(zones) do
-    total_mb = Enum.sum(Enum.map(zones, & &1.memory_mb)) |> Float.round(2)
+    total_mb = (Enum.sum(Enum.map(zones, & &1.memory_mb)) * 1.0) |> Float.round(2)
     "#{total_mb} MB"
   end
 
