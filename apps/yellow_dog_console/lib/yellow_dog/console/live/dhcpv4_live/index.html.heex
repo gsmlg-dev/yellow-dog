@@ -1,14 +1,19 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DHCPv4 Server</h1>
         <p class="mt-2 text-base-content/70">
           Monitor DHCP leases, pools, and client activity
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-3">
+        <.status_indicator
+          status={if @status.running, do: "running", else: "stopped"}
+          label={if @status.running, do: "Running", else: "Stopped"}
+          pulse
+        />
         <.link navigate={~p"/dhcpv4/leases"} class="btn btn-primary">
           <svg
             xmlns="http://www.w3.org/2000/svg"

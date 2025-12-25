@@ -223,7 +223,8 @@ defmodule YellowDog.Mdns do
   """
   @spec status() :: map()
   def status do
-    case Process.whereis(Supervisor) do
+    # Supervisor registers with name YellowDog.Mdns, not YellowDog.Mdns.Supervisor
+    case Process.whereis(YellowDog.Mdns) do
       nil ->
         %{
           running: false,

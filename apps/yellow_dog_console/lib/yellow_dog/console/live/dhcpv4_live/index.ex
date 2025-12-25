@@ -17,6 +17,7 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
      socket
      |> assign(:page_title, "DHCPv4 Overview")
      |> assign(:last_event, nil)
+     |> assign(:status, get_status())
      |> load_dhcp_data()}
   end
 
@@ -141,4 +142,20 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   defp get_state_text_color(:expired), do: "text-error"
   defp get_state_text_color(:declined), do: "text-error"
   defp get_state_text_color(_), do: "text-base-content"
+
+  defp get_status do
+    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
+      true ->
+        try do
+          YellowDog.Dhcpv4.status()
+        rescue
+          _ -> %{running: false}
+        catch
+          :exit, _ -> %{running: false}
+        end
+
+      false ->
+        %{running: false}
+    end
+  end
 end
