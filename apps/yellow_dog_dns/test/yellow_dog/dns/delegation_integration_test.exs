@@ -1,6 +1,8 @@
 defmodule YellowDog.Dns.DelegationIntegrationTest do
   use ExUnit.Case, async: false
 
+  @moduletag :integration
+
   alias YellowDog.Dns.Handler.UDP, as: Handler
   alias YellowDog.Dns.Zone.Manager
   alias YellowDog.Dns.Zone.Parser

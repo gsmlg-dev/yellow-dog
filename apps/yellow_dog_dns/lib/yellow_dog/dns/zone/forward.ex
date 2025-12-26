@@ -11,6 +11,11 @@ defmodule YellowDog.Dns.Zone.Forward do
   - Timeout and retry handling
   - Response caching (optional)
   - Health checking of upstream servers
+
+  ## Legacy API
+
+  This module also provides a legacy struct-based API for configuration
+  and validation, used by Zone.Manager for loading forward zones.
   """
 
   use GenServer
@@ -22,12 +27,34 @@ defmodule YellowDog.Dns.Zone.Forward do
   @default_timeout 5000
   @default_retries 2
 
+  @type t :: %__MODULE__{
+          name: String.t() | nil,
+          upstreams: [{:inet.ip_address(), :inet.port_number()}] | nil,
+          socket: :gen_udp.socket() | nil,
+          timeout: non_neg_integer() | nil,
+          retries: non_neg_integer() | nil,
+          forwarders: [:inet.ip_address()] | nil,
+          forward_mode: :only | :first | nil,
+          timeout_ms: non_neg_integer() | nil,
+          max_retries: non_neg_integer() | nil,
+          current_upstream: non_neg_integer(),
+          query_count: non_neg_integer(),
+          success_count: non_neg_integer(),
+          error_count: non_neg_integer(),
+          pending: map()
+        }
+
   defstruct [
     :name,
     :upstreams,
     :socket,
     :timeout,
     :retries,
+    # Legacy fields for struct-based API
+    :forwarders,
+    :forward_mode,
+    :timeout_ms,
+    :max_retries,
     current_upstream: 0,
     query_count: 0,
     success_count: 0,
@@ -336,4 +363,152 @@ defmodule YellowDog.Dns.Zone.Forward do
   defp via_tuple(zone_name) do
     {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:forward, zone_name}}}
   end
+
+  # ===========================================================================
+  # Legacy Struct-Based API
+  # ===========================================================================
+  # These functions provide backwards compatibility for Zone.Manager and tests
+  # that use the struct-based API for configuration.
+
+  @doc """
+  Creates a new forward zone struct (legacy API).
+
+  ## Parameters
+  - `name` - Zone name
+  - `forwarders` - List of upstream server IP tuples
+  - `opts` - Options: forward_mode, timeout_ms, max_retries
+  """
+  @spec new(String.t(), [tuple()], keyword()) :: t()
+  def new(name, forwarders, opts \\ []) do
+    %__MODULE__{
+      name: name,
+      forwarders: forwarders,
+      forward_mode: Keyword.get(opts, :forward_mode, :only),
+      timeout_ms: Keyword.get(opts, :timeout_ms, @default_timeout),
+      max_retries: Keyword.get(opts, :max_retries, @default_retries)
+    }
+  end
+
+  @doc """
+  Validates a forward zone struct (legacy API).
+  """
+  @spec validate(t()) :: :ok | {:error, atom()}
+  def validate(%__MODULE__{} = forward) do
+    cond do
+      is_nil(forward.name) or forward.name == "" ->
+        {:error, :missing_name}
+
+      is_nil(forward.forwarders) or forward.forwarders == [] ->
+        {:error, :missing_forwarders}
+
+      forward.forward_mode not in [:only, :first] ->
+        {:error, :invalid_forward_mode}
+
+      not is_integer(forward.timeout_ms) or forward.timeout_ms < 100 or
+          forward.timeout_ms > 30_000 ->
+        {:error, :invalid_timeout}
+
+      not is_integer(forward.max_retries) or forward.max_retries < 0 or
+          forward.max_retries > 10 ->
+        {:error, :invalid_max_retries}
+
+      true ->
+        :ok
+    end
+  end
+
+  @doc """
+  Parses forward zone from config map (legacy API).
+  """
+  @spec parse_config(map()) :: {:ok, t()} | {:error, atom()}
+  def parse_config(config) when is_map(config) do
+    with {:ok, name} <- get_required(config, "name"),
+         {:ok, forwarder_strs} <- get_required(config, "forwarders"),
+         {:ok, forwarders} <- parse_forwarder_ips(forwarder_strs) do
+      forward_mode =
+        case Map.get(config, "forward_mode", "only") do
+          "first" -> :first
+          _ -> :only
+        end
+
+      forward =
+        new(name, forwarders,
+          forward_mode: forward_mode,
+          timeout_ms: Map.get(config, "timeout_ms", @default_timeout),
+          max_retries: Map.get(config, "max_retries", @default_retries)
+        )
+
+      {:ok, forward}
+    end
+  end
+
+  @doc """
+  Converts forward zone to storage metadata (legacy API).
+  """
+  @spec to_storage_metadata(t()) :: map()
+  def to_storage_metadata(%__MODULE__{} = forward) do
+    %{
+      type: :forward,
+      forwarders: forward.forwarders,
+      forward_mode: forward.forward_mode,
+      timeout_ms: forward.timeout_ms,
+      max_retries: forward.max_retries,
+      loaded_at: System.system_time(:second)
+    }
+  end
+
+  @doc """
+  Creates forward zone from storage metadata (legacy API).
+  """
+  @spec from_storage_metadata(String.t(), map()) :: {:ok, t()} | {:error, atom()}
+  def from_storage_metadata(zone_name, metadata) do
+    cond do
+      Map.get(metadata, :type) != :forward ->
+        {:error, :not_forward_zone}
+
+      is_nil(metadata[:forwarders]) or metadata[:forwarders] == [] ->
+        {:error, :missing_forwarders}
+
+      true ->
+        forward =
+          new(zone_name, metadata[:forwarders],
+            forward_mode: Map.get(metadata, :forward_mode, :only),
+            timeout_ms: Map.get(metadata, :timeout_ms, @default_timeout),
+            max_retries: Map.get(metadata, :max_retries, @default_retries)
+          )
+
+        {:ok, forward}
+    end
+  end
+
+  # Legacy API helpers
+
+  defp get_required(config, key) do
+    case Map.get(config, key) do
+      nil -> {:error, :"missing_#{String.to_atom(key)}"}
+      "" -> {:error, :"missing_#{String.to_atom(key)}"}
+      [] -> {:error, :"missing_#{String.to_atom(key)}"}
+      value -> {:ok, value}
+    end
+  end
+
+  defp parse_forwarder_ips(forwarder_strs) when is_list(forwarder_strs) do
+    results =
+      Enum.map(forwarder_strs, fn str ->
+        charlist = String.to_charlist(str)
+
+        case :inet.parse_address(charlist) do
+          {:ok, ip} -> {:ok, ip}
+          _ -> :error
+        end
+      end)
+
+    if Enum.any?(results, fn r -> r == :error end) do
+      {:error, :invalid_forwarders}
+    else
+      {:ok, Enum.map(results, fn {:ok, ip} -> ip end)}
+    end
+  end
+
+  defp parse_forwarder_ips(_), do: {:error, :invalid_forwarders}
 end

@@ -74,7 +74,8 @@ defmodule YellowDog.Dns.ServerTest do
 
   describe "Server lifecycle" do
     test "server module exports required functions" do
-      assert function_exported?(Server, :start_link, 1)
+      # start_link has default argument, so arity is 0
+      assert function_exported?(Server, :start_link, 0) or function_exported?(Server, :start_link, 1)
       assert function_exported?(Server, :stop, 1)
       assert function_exported?(Server, :get_config, 0)
     end
@@ -104,18 +105,41 @@ defmodule YellowDog.Dns.ServerTest do
     end
   end
 
-  describe "GenServer behaviour" do
-    test "server is a GenServer" do
-      # Verify the module uses GenServer
-      assert function_exported?(Server, :init, 1)
-      assert function_exported?(Server, :terminate, 2)
+  describe "Supervisor behaviour" do
+    setup do
+      Code.ensure_loaded!(Server)
+      :ok
+    end
+
+    test "server is a Supervisor" do
+      # Verify the module uses Supervisor
+      assert Kernel.function_exported?(Server, :init, 1)
+      # Supervisor.init/1 returns {:ok, supervisor_spec}
+    end
+
+    test "server exports status/0 function" do
+      assert Kernel.function_exported?(Server, :status, 0)
+    end
+
+    test "server exports resolve/1 function" do
+      assert Kernel.function_exported?(Server, :resolve, 1)
+    end
+
+    test "server exports get_port/0 and get_port/1 functions" do
+      assert Kernel.function_exported?(Server, :get_port, 0)
+      assert Kernel.function_exported?(Server, :get_port, 1)
     end
   end
 
   describe "Abyss integration" do
+    setup do
+      Code.ensure_loaded!(Server)
+      :ok
+    end
+
     test "server delegates to Abyss UDP server" do
       # The server wraps Abyss, so init should be defined
-      assert function_exported?(Server, :init, 1)
+      assert Kernel.function_exported?(Server, :init, 1)
     end
 
     test "configuration includes all required Abyss options" do

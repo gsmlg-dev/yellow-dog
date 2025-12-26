@@ -220,26 +220,54 @@ defmodule E2ETest.ServiceHelper do
   # the port should be available immediately after start_link returns.
   # We use a small delay to ensure socket is fully bound.
   defp wait_for_port(pid, _timeout) do
-    Process.sleep(100)
+    Process.sleep(200)
 
     if Process.alive?(pid) do
-      # For services using named registration, we can't easily get the port
-      # from outside. The tests will need to use a fixed port or the service
-      # should expose a way to get the bound port.
-      #
-      # Since our servers use Abyss internally and store abyss_pid in state,
-      # we would need to expose a get_port function. For now, we'll rely on
-      # the fact that port 0 causes OS to assign an ephemeral port.
-      #
-      # A workaround: try to use :sys.get_state to inspect the server state
+      # Try the get_port function if available (new supervisor-based servers)
       try do
-        state = :sys.get_state(pid, 5_000)
-        extract_port_from_state(state)
+        case get_port_via_api(pid) do
+          {:ok, port} -> {:ok, port}
+          {:error, _} -> get_port_via_state(pid)
+        end
       catch
-        _, _ -> {:error, :state_unavailable}
+        _, _ -> get_port_via_state(pid)
       end
     else
       {:error, :process_died}
+    end
+  end
+
+  # Try to get port via the server's get_port API (for supervisor-based servers)
+  defp get_port_via_api(pid) do
+    cond do
+      function_exported?(YellowDog.Dns.Server, :get_port, 1) and
+          is_dns_server?(pid) ->
+        YellowDog.Dns.Server.get_port(pid)
+
+      true ->
+        {:error, :no_get_port_api}
+    end
+  end
+
+  defp is_dns_server?(pid) do
+    pid == Process.whereis(YellowDog.Dns.Server) or
+      (is_pid(pid) and
+         try do
+           # Check if the pid is for DNS server by looking at its children
+           children = Supervisor.which_children(pid)
+           Enum.any?(children, fn {id, _, _, _} -> id == :abyss end)
+         catch
+           _, _ -> false
+         end)
+  end
+
+  # Fallback: get port via sys:get_state (for GenServer-based servers)
+  defp get_port_via_state(pid) do
+    try do
+      state = :sys.get_state(pid, 5_000)
+      extract_port_from_state(state)
+    catch
+      _, _ -> {:error, :state_unavailable}
     end
   end
 

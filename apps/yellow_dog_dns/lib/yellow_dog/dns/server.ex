@@ -84,6 +84,45 @@ defmodule YellowDog.Dns.Server do
     }
   end
 
+  @doc """
+  Returns the port the server is listening on.
+
+  This is useful for tests when starting with port 0 (auto-select).
+  """
+  def get_port(pid \\ __MODULE__) do
+    case find_abyss_pid(pid) do
+      nil ->
+        {:error, :abyss_not_found}
+
+      abyss_pid ->
+        case Abyss.Server.listener_pool_pid(abyss_pid) do
+          nil ->
+            {:error, :no_listener_pool}
+
+          pool_pid ->
+            case Abyss.ListenerPool.listener_pids(pool_pid) do
+              [] ->
+                {:error, :no_listeners}
+
+              [listener_pid | _] ->
+                case Abyss.Listener.listener_info(listener_pid) do
+                  {_ip, port} when is_integer(port) -> {:ok, port}
+                  _ -> {:error, :invalid_listener_info}
+                end
+            end
+        end
+    end
+  end
+
+  defp find_abyss_pid(supervisor_pid) do
+    children = Supervisor.which_children(supervisor_pid)
+
+    Enum.find_value(children, fn
+      {:abyss, pid, :supervisor, _} when is_pid(pid) -> pid
+      _ -> nil
+    end)
+  end
+
   # Supervisor callbacks
 
   @impl true
