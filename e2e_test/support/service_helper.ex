@@ -250,15 +250,9 @@ defmodule E2ETest.ServiceHelper do
   end
 
   defp is_dns_server?(pid) do
-    pid == Process.whereis(YellowDog.Dns.Server) or
-      (is_pid(pid) and
-         try do
-           # Check if the pid is for DNS server by looking at its children
-           children = Supervisor.which_children(pid)
-           Enum.any?(children, fn {id, _, _, _} -> id == :abyss end)
-         catch
-           _, _ -> false
-         end)
+    # Only check by registered name - don't call Supervisor.which_children
+    # on unknown processes as it will crash GenServers
+    pid == Process.whereis(YellowDog.Dns.Server)
   end
 
   # Fallback: get port via sys:get_state (for GenServer-based servers)
