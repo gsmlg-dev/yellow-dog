@@ -2,10 +2,9 @@ defmodule YellowDog.DnsTest do
   use ExUnit.Case
 
   describe "DNS application modules" do
-    test "DNS supervisor and server modules exist" do
+    test "DNS server modules exist" do
       # Test that core DNS modules exist and are properly defined
       assert Code.ensure_loaded?(YellowDog.Dns) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.Supervisor) == true
       assert Code.ensure_loaded?(YellowDog.Dns.Server) == true
       assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
     end
@@ -13,9 +12,10 @@ defmodule YellowDog.DnsTest do
     test "DNS module exports required functions" do
       # Test that the main DNS module exports required functions
       # Ensure the module is loaded first
-      assert Code.ensure_loaded?(YellowDog.Dns) == true
-      assert function_exported?(YellowDog.Dns, :start_link, 1)
-      assert function_exported?(YellowDog.Dns, :child_spec, 1)
+      Code.ensure_loaded!(YellowDog.Dns)
+      assert Kernel.function_exported?(YellowDog.Dns, :start_link, 0)
+      assert Kernel.function_exported?(YellowDog.Dns, :start_link, 1)
+      assert Kernel.function_exported?(YellowDog.Dns, :child_spec, 1)
     end
 
     test "DNS server configuration is valid" do
@@ -31,23 +31,20 @@ defmodule YellowDog.DnsTest do
       assert is_list(config.transport_options)
     end
 
-    test "DNS supervisor can be created" do
-      # Test that DNS supervisor can be created with a child spec
-      child_spec = YellowDog.Dns.child_spec(server_options: [port: 53])
+    test "DNS server can be created" do
+      # Test that DNS server can be created with a child spec
+      child_spec = YellowDog.Dns.child_spec(port: 53)
 
       assert is_map(child_spec)
-
-      assert child_spec.start ==
-               {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 53]]]}
-
+      assert child_spec.start == {YellowDog.Dns.Server, :start_link, [[port: 53]]}
       assert is_tuple(child_spec.start)
     end
   end
 
   describe "when DNS service is disabled" do
     test "main application starts without DNS when service is disabled" do
-      # Check that DNS supervisor is not running (service disabled in test env)
-      pid = Process.whereis(YellowDog.Dns)
+      # Check that DNS server is not running (service disabled in test env)
+      pid = Process.whereis(YellowDog.Dns.Server)
       assert pid == nil
     end
   end
@@ -101,27 +98,29 @@ defmodule YellowDog.DnsTest do
       # Verify top-level structure
       assert is_map(stats)
       assert Map.has_key?(stats, :zones)
-      assert Map.has_key?(stats, :storage)
+      assert Map.has_key?(stats, :views)
+      assert Map.has_key?(stats, :spans)
       assert Map.has_key?(stats, :service)
 
-      # Verify storage stats structure (may be error if not initialized)
-      storage = stats.storage
-      assert is_map(storage)
+      # Verify zones stats structure
+      zones = stats.zones
+      assert is_map(zones)
 
-      if Map.has_key?(storage, :error) do
-        # Storage not initialized - this is expected in test environment
-        assert storage.error == "Storage not initialized"
+      # In test environment, ZoneController is not running
+      if Map.has_key?(zones, :error) do
+        assert zones.error == "ZoneController not running"
       else
-        # Storage initialized - verify structure
-        assert Map.has_key?(storage, :total_zones)
-        assert Map.has_key?(storage, :total_records)
-        assert Map.has_key?(storage, :memory_bytes)
-        assert Map.has_key?(storage, :memory_mb)
-        assert is_integer(storage.total_zones)
-        assert is_integer(storage.total_records)
-        assert is_integer(storage.memory_bytes)
-        assert is_float(storage.memory_mb)
+        assert Map.has_key?(zones, :count)
+        assert is_integer(zones.count)
       end
+
+      # Verify views stats structure
+      views = stats.views
+      assert is_map(views)
+
+      # Verify spans stats structure
+      spans = stats.spans
+      assert is_map(spans)
 
       # Verify service status structure
       service = stats.service
@@ -130,19 +129,6 @@ defmodule YellowDog.DnsTest do
       assert Map.has_key?(service, :info)
       assert is_boolean(service.running)
       assert is_binary(service.info)
-
-      # Verify zones stats structure (either error or valid stats)
-      zones = stats.zones
-      assert is_map(zones)
-
-      # In test environment, zone manager is not running
-      if Map.has_key?(zones, :error) do
-        assert zones.error in ["Zone manager not running", "Zone manager not available"]
-      else
-        # If running, verify structure
-        assert Map.has_key?(zones, :loaded_zones)
-        assert is_integer(zones.loaded_zones)
-      end
     end
 
     test "status/0 returns service status" do

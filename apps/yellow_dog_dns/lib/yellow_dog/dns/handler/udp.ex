@@ -26,6 +26,8 @@ defmodule YellowDog.Dns.Handler.UDP do
   def handle_data({client_ip, client_port, data}, state) do
     # Create TSI before parsing to track even failed parses
     tsi = TSI.new_raw(client_ip, client_port)
+    IO.inspect({:dns, :udp, tsi})
+    Telemetry.info("handle dns udp #{inspect(tsi)}")
 
     try do
       # Parse incoming DNS message (returns struct directly, throws on error)
