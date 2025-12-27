@@ -156,12 +156,19 @@ defmodule YellowDog.Dns.Server do
 
   # Private helpers
 
-  defp find_abyss_pid(supervisor_pid) do
-    case Process.whereis(supervisor_pid) do
+  defp find_abyss_pid(supervisor) do
+    pid =
+      cond do
+        is_pid(supervisor) -> supervisor
+        is_atom(supervisor) -> Process.whereis(supervisor)
+        true -> nil
+      end
+
+    case pid do
       nil ->
         nil
 
-      pid when is_pid(pid) ->
+      _ ->
         children = Supervisor.which_children(pid)
 
         Enum.find_value(children, fn

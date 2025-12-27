@@ -238,49 +238,78 @@ defmodule E2ETest.ServiceHelper do
   end
 
   # Try to get port via the server's get_port API (for supervisor-based servers)
-  defp get_port_via_api(pid) do
-    cond do
-      function_exported?(YellowDog.Dns.Server, :get_port, 1) and
-          is_dns_server?(pid) ->
-        YellowDog.Dns.Server.get_port(pid)
-
-      true ->
-        {:error, :no_get_port_api}
-    end
+  # Only use for DNS servers which are now Supervisors - other servers are GenServers
+  defp get_port_via_api(_pid) do
+    # Skip API-based port detection - use state-based detection instead
+    # This avoids calling Supervisor.which_children on GenServer-based servers
+    # like mDNS, DHCPv4, and DHCPv6 which would crash them
+    {:error, :no_get_port_api}
   end
 
-  defp is_dns_server?(pid) do
-    # Only check by registered name - don't call Supervisor.which_children
-    # on unknown processes as it will crash GenServers
-    pid == Process.whereis(YellowDog.Dns.Server)
-  end
-
-  # Fallback: get port via sys:get_state (for GenServer-based servers)
+  # Get port via sys:get_state for GenServer-based servers, or via
+  # Supervisor.which_children for Supervisor-based servers (like DNS)
   defp get_port_via_state(pid) do
+    # Get state first - this works for both GenServers and Supervisors
     try do
       state = :sys.get_state(pid, 5_000)
-      extract_port_from_state(state)
+
+      # Check if this is a Supervisor state (tuple format) or GenServer state (map)
+      case state do
+        # Supervisor internal state is a complex tuple, but we can detect it
+        # by checking if the process responds to which_children
+        # For now, check if it's a map with abyss_pid (GenServer pattern)
+        %{abyss_pid: abyss_pid} when is_pid(abyss_pid) ->
+          get_port_from_abyss(abyss_pid)
+
+        %{config: config} when is_list(config) ->
+          case Keyword.get(config, :port) do
+            nil -> {:error, :port_not_in_config}
+            0 -> {:error, :port_is_zero}
+            port -> {:ok, port}
+          end
+
+        # Supervisor state - need to call which_children to find Abyss
+        # This is a Supervisor internal state tuple
+        {_, _, _, children, _, _, _, _, _, _} when is_map(children) ->
+          get_port_from_supervisor_pid(pid)
+
+        # Also check for simpler supervisor state format
+        _ when is_tuple(state) ->
+          get_port_from_supervisor_pid(pid)
+
+        _ ->
+          {:error, :unknown_state_format}
+      end
     catch
       _, _ -> {:error, :state_unavailable}
     end
   end
 
-  # Extract port from server state (varies by server implementation)
-  # Check for abyss_pid FIRST since state may have both config and abyss_pid
-  defp extract_port_from_state(%{abyss_pid: abyss_pid}) when is_pid(abyss_pid) do
-    # Try to get port from Abyss listener
-    get_port_from_abyss(abyss_pid)
-  end
-
-  defp extract_port_from_state(%{config: config}) when is_list(config) do
-    case Keyword.get(config, :port) do
-      nil -> {:error, :port_not_in_config}
-      0 -> {:error, :port_is_zero}
-      port -> {:ok, port}
+  # Get port from Supervisor by calling which_children
+  defp get_port_from_supervisor_pid(pid) do
+    try do
+      children = Supervisor.which_children(pid)
+      get_port_from_supervisor_children(children)
+    catch
+      _, _ -> {:error, :supervisor_children_failed}
     end
   end
 
-  defp extract_port_from_state(_), do: {:error, :unknown_state_format}
+  # Get port from Supervisor children list (for Supervisor-based servers like DNS)
+  defp get_port_from_supervisor_children(children) do
+    # Find Abyss child in the children list
+    abyss_pid =
+      Enum.find_value(children, fn
+        {:abyss, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
+        _ -> nil
+      end)
+
+    case abyss_pid do
+      nil -> {:error, :abyss_not_found}
+      pid -> get_port_from_abyss(pid)
+    end
+  end
+
 
   defp get_port_from_abyss(abyss_pid) do
     # Try to get listener pool and then listener info
