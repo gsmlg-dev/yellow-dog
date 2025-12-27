@@ -35,6 +35,9 @@ defmodule YellowDog.Application do
     # Add protocol supervisors conditionally based on configuration
     children = children ++ get_enabled_services(config)
 
+    # Add service heartbeat for periodic status logging
+    children = children ++ [YellowDog.ServiceHeartbeat]
+
     # Note: YellowDog.Console has its own Application module and starts separately
     # It is configured in mix.exs as a dependency with `mod: {YellowDog.Console.Application, []}`
 

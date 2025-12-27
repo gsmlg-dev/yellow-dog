@@ -41,14 +41,15 @@ defmodule YellowDog.Dns.Supervisor do
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+    # Register as YellowDog.Dns (not YellowDog.Dns.Supervisor) to match other services
+    Supervisor.start_link(__MODULE__, opts, name: YellowDog.Dns)
   end
 
   @doc """
   Stops the DNS supervisor.
   """
   @spec stop(pid() | atom()) :: :ok
-  def stop(pid \\ __MODULE__) do
+  def stop(pid \\ YellowDog.Dns) do
     Supervisor.stop(pid)
   end
 
@@ -58,7 +59,7 @@ defmodule YellowDog.Dns.Supervisor do
   @spec status() :: map()
   def status do
     %{
-      running: Process.whereis(__MODULE__) != nil,
+      running: Process.whereis(YellowDog.Dns) != nil,
       server: safe_call(fn -> YellowDog.Dns.Server.status() end, %{running: false}),
       connection_stats: safe_call(fn -> YellowDog.Dns.ConnectionManager.stats() end, %{}),
       view_stats: safe_call(fn -> YellowDog.Dns.ViewManager.stats() end, %{}),

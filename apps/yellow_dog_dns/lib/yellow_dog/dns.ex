@@ -117,7 +117,8 @@ defmodule YellowDog.Dns do
   """
   @spec status() :: map()
   def status do
-    case Process.whereis(YellowDog.Dns.Supervisor) do
+    # DNS supervisor registers as YellowDog.Dns (not YellowDog.Dns.Supervisor)
+    case Process.whereis(YellowDog.Dns) do
       nil ->
         %{running: false, info: "DNS service not running"}
 
