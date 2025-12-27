@@ -97,11 +97,16 @@ defmodule YellowDog.Dns.Supervisor do
       # ConnectionManager - manages per-connection processes
       {YellowDog.Dns.ConnectionManager, name: YellowDog.Dns.ConnectionManager},
 
-      # Post-init task - set up default view and zones
-      {Task, fn -> post_init(opts) end},
-
       # Server - network I/O (Abyss UDP + ThousandIsland TCP)
-      {YellowDog.Dns.Server, Keyword.merge(opts, port: port, listen: listen)}
+      {YellowDog.Dns.Server, Keyword.merge(opts, port: port, listen: listen)},
+
+      # Post-init task - set up default view and zones
+      # Uses restart: :temporary so it doesn't restart after completion
+      %{
+        id: :post_init,
+        start: {Task, :start_link, [fn -> post_init(opts) end]},
+        restart: :temporary
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -110,8 +115,9 @@ defmodule YellowDog.Dns.Supervisor do
   # Private helpers
 
   defp post_init(opts) do
-    # Wait for processes to start
-    Process.sleep(100)
+    # Wait for required processes to be ready
+    wait_for_process(YellowDog.Dns.ViewManager)
+    wait_for_process(YellowDog.Dns.ZoneController)
 
     # Start default view if no views configured
     views = Keyword.get(opts, :views, [])
@@ -248,5 +254,27 @@ defmodule YellowDog.Dns.Supervisor do
     _ -> default
   catch
     :exit, _ -> default
+  end
+
+  # Waits for a named process to be registered, with timeout
+  defp wait_for_process(name, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_wait_for_process(name, deadline)
+  end
+
+  defp do_wait_for_process(name, deadline) do
+    case Process.whereis(name) do
+      nil ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(10)
+          do_wait_for_process(name, deadline)
+        else
+          Telemetry.warning("Timeout waiting for process", %{name: name})
+          :timeout
+        end
+
+      pid when is_pid(pid) ->
+        :ok
+    end
   end
 end
