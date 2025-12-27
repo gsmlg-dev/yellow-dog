@@ -2,8 +2,13 @@ defmodule E2ETest.DnsClient do
   @moduledoc """
   DNS query helper for E2E tests.
 
-  Uses the ex_dns library to build DNS messages and sends them via UDP
+  Uses the ex_dns library to build DNS messages and sends them via UDP or TCP
   to test DNS and mDNS servers.
+
+  ## Transport Modes
+
+  - `:udp` (default) - Standard UDP DNS queries
+  - `:tcp` - DNS over TCP with 2-byte length prefix framing (RFC 1035)
   """
 
   alias DNS.Message
@@ -13,7 +18,7 @@ defmodule E2ETest.DnsClient do
   @default_timeout 5_000
 
   @doc """
-  Send a DNS query and receive the response.
+  Send a DNS query via UDP and receive the response.
 
   ## Parameters
   - `host` - Server IP address as tuple (e.g., {127, 0, 0, 1})
@@ -51,13 +56,94 @@ defmodule E2ETest.DnsClient do
 
     case :gen_udp.open(0, socket_opts) do
       {:ok, socket} ->
-        result = send_and_receive(socket, host, port, packet, timeout)
+        result = send_and_receive_udp(socket, host, port, packet, timeout)
         :gen_udp.close(socket)
         result
 
       {:error, reason} ->
         {:error, {:socket_open_failed, reason}}
     end
+  end
+
+  @doc """
+  Send a DNS query via TCP and receive the response.
+
+  Uses DNS over TCP framing (RFC 1035): 2-byte length prefix followed by message.
+
+  ## Parameters
+  - `host` - Server IP address as tuple (e.g., {127, 0, 0, 1})
+  - `port` - Server port number
+  - `name` - Domain name to query (e.g., "example.com")
+  - `type` - Record type atom (:A, :AAAA, :PTR, :SRV, :TXT, :MX, :NS, :SOA)
+  - `opts` - Options keyword list
+    - `:timeout` - Query timeout in ms (default: 5000)
+    - `:rd` - Recursion desired flag (default: 1)
+
+  ## Returns
+  - `{:ok, %DNS.Message{}}` - Parsed DNS response
+  - `{:error, reason}` - Error with reason
+  """
+  @spec query_tcp(:inet.ip_address(), :inet.port_number(), String.t(), atom(), keyword()) ::
+          {:ok, Message.t()} | {:error, term()}
+  def query_tcp(host, port, name, type, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    rd = Keyword.get(opts, :rd, 1)
+
+    # Build query message
+    message = build_query(name, type, rd)
+    packet = DNS.to_iodata(message) |> IO.iodata_to_binary()
+
+    # TCP framing: 2-byte length prefix
+    length = byte_size(packet)
+    framed_packet = <<length::16, packet::binary>>
+
+    # TCP socket options
+    socket_opts = [:binary, {:active, false}, {:packet, :raw}]
+
+    socket_opts =
+      if tuple_size(host) == 8 do
+        # IPv6
+        [:inet6 | socket_opts]
+      else
+        socket_opts
+      end
+
+    case :gen_tcp.connect(host, port, socket_opts, timeout) do
+      {:ok, socket} ->
+        result = send_and_receive_tcp(socket, framed_packet, timeout)
+        :gen_tcp.close(socket)
+        result
+
+      {:error, reason} ->
+        {:error, {:connect_failed, reason}}
+    end
+  end
+
+  @doc """
+  Query for an A record via TCP.
+  """
+  @spec query_a_tcp(:inet.ip_address(), :inet.port_number(), String.t(), keyword()) ::
+          {:ok, Message.t()} | {:error, term()}
+  def query_a_tcp(host, port, name, opts \\ []) do
+    query_tcp(host, port, name, :A, opts)
+  end
+
+  @doc """
+  Query for an AAAA record via TCP.
+  """
+  @spec query_aaaa_tcp(:inet.ip_address(), :inet.port_number(), String.t(), keyword()) ::
+          {:ok, Message.t()} | {:error, term()}
+  def query_aaaa_tcp(host, port, name, opts \\ []) do
+    query_tcp(host, port, name, :AAAA, opts)
+  end
+
+  @doc """
+  Query for a TXT record via TCP.
+  """
+  @spec query_txt_tcp(:inet.ip_address(), :inet.port_number(), String.t(), keyword()) ::
+          {:ok, Message.t()} | {:error, term()}
+  def query_txt_tcp(host, port, name, opts \\ []) do
+    query_tcp(host, port, name, :TXT, opts)
   end
 
   @doc """
@@ -203,17 +289,19 @@ defmodule E2ETest.DnsClient do
   defp type_to_code(n) when is_integer(n), do: n
   defp type_to_code(type), do: raise("Unknown DNS type: #{inspect(type)}")
 
-  defp send_and_receive(socket, host, port, packet, timeout) do
+  # UDP helper functions
+
+  defp send_and_receive_udp(socket, host, port, packet, timeout) do
     case :gen_udp.send(socket, host, port, packet) do
       :ok ->
-        receive_response(socket, timeout)
+        receive_udp_response(socket, timeout)
 
       {:error, reason} ->
         {:error, {:send_failed, reason}}
     end
   end
 
-  defp receive_response(socket, timeout) do
+  defp receive_udp_response(socket, timeout) do
     case :gen_udp.recv(socket, 0, timeout) do
       {:ok, {_ip, _port, response_data}} ->
         parse_response(response_data)
@@ -223,6 +311,42 @@ defmodule E2ETest.DnsClient do
 
       {:error, reason} ->
         {:error, {:recv_failed, reason}}
+    end
+  end
+
+  # TCP helper functions
+
+  defp send_and_receive_tcp(socket, framed_packet, timeout) do
+    case :gen_tcp.send(socket, framed_packet) do
+      :ok ->
+        receive_tcp_response(socket, timeout)
+
+      {:error, reason} ->
+        {:error, {:send_failed, reason}}
+    end
+  end
+
+  defp receive_tcp_response(socket, timeout) do
+    # First read the 2-byte length prefix
+    case :gen_tcp.recv(socket, 2, timeout) do
+      {:ok, <<length::16>>} ->
+        # Then read the message of that length
+        case :gen_tcp.recv(socket, length, timeout) do
+          {:ok, response_data} ->
+            parse_response(response_data)
+
+          {:error, :timeout} ->
+            {:error, :timeout}
+
+          {:error, reason} ->
+            {:error, {:recv_message_failed, reason}}
+        end
+
+      {:error, :timeout} ->
+        {:error, :timeout}
+
+      {:error, reason} ->
+        {:error, {:recv_length_failed, reason}}
     end
   end
 

@@ -11,14 +11,14 @@ defmodule E2ETest.ServiceHelper do
   @doc """
   Starts the DNS server with auto-selected port.
 
-  Returns a context map with server pid, assigned port, and host.
+  Returns a context map with server pid, assigned UDP port, TCP port, and host.
 
   ## Options
   - `:listen` - IP address to bind to (default: {127, 0, 0, 1})
   - `:timeout` - Startup timeout in ms (default: 10_000)
 
   ## Returns
-  - `{:ok, %{server_pid: pid, port: port, host: ip, service: :dns}}`
+  - `{:ok, %{server_pid: pid, port: udp_port, tcp_port: tcp_port, host: ip, service: :dns}}`
   - `{:error, reason}`
   """
   @spec start_dns_server(keyword()) :: {:ok, map()} | {:error, term()}
@@ -32,7 +32,89 @@ defmodule E2ETest.ServiceHelper do
       transport_options: [ip: host, reuseaddr: true]
     ]
 
-    start_service(YellowDog.Dns.Server, server_opts, :dns, host, timeout)
+    start_dns_service(YellowDog.Dns.Server, server_opts, host, timeout)
+  end
+
+  # Special start function for DNS that retrieves both UDP and TCP ports
+  defp start_dns_service(module, opts, host, timeout) do
+    # Unregister any existing named process
+    try do
+      if Process.whereis(module) do
+        GenServer.stop(module, :normal, 1_000)
+      end
+    catch
+      _, _ -> :ok
+    end
+
+    # Wait a bit for cleanup
+    Process.sleep(100)
+
+    case apply(module, :start_link, [opts]) do
+      {:ok, pid} ->
+        # Wait for service to be ready
+        Process.sleep(200)
+
+        if Process.alive?(pid) do
+          # Get UDP port
+          udp_port_result = get_dns_udp_port(pid)
+          # Get TCP port
+          tcp_port_result = get_dns_tcp_port(pid)
+
+          case {udp_port_result, tcp_port_result} do
+            {{:ok, udp_port}, {:ok, tcp_port}} ->
+              {:ok,
+               %{
+                 server_pid: pid,
+                 port: udp_port,
+                 tcp_port: tcp_port,
+                 host: host,
+                 service: :dns
+               }}
+
+            {{:ok, udp_port}, {:error, _}} ->
+              # TCP port detection failed but UDP works - still usable
+              {:ok,
+               %{
+                 server_pid: pid,
+                 port: udp_port,
+                 tcp_port: nil,
+                 host: host,
+                 service: :dns
+               }}
+
+            {{:error, reason}, _} ->
+              # Cleanup on failure
+              try do
+                GenServer.stop(pid, :normal, 1_000)
+              catch
+                _, _ -> :ok
+              end
+
+              {:error, {:udp_port_detection_failed, reason}}
+          end
+        else
+          {:error, :process_died}
+        end
+
+      {:error, reason} ->
+        {:error, {:start_failed, reason}}
+    end
+  end
+
+  defp get_dns_udp_port(pid) do
+    try do
+      YellowDog.Dns.Server.get_udp_port(pid)
+    catch
+      _, _ -> {:error, :udp_port_unavailable}
+    end
+  end
+
+  defp get_dns_tcp_port(pid) do
+    try do
+      YellowDog.Dns.Server.get_tcp_port(pid)
+    catch
+      _, _ -> {:error, :tcp_port_unavailable}
+    end
   end
 
   @doc """

@@ -162,9 +162,10 @@ defmodule YellowDog.Dns.Server do
         {:error, :thousand_island_not_found}
 
       ti_pid ->
-        # ThousandIsland stores port in its state
+        # ThousandIsland.listener_info returns {:ok, {ip, port}} or :error
         case ThousandIsland.listener_info(ti_pid) do
-          {:ok, info} -> {:ok, info.port}
+          {:ok, {_ip, port}} when is_integer(port) -> {:ok, port}
+          {:ok, _other} -> {:error, :invalid_listener_info}
           :error -> {:error, :port_not_available}
         end
     end
