@@ -34,6 +34,9 @@ defmodule YellowDog.Dns.MixProject do
       {:ex_dns, in_umbrella: true},
       {:telemetry, "~> 1.0"},
 
+      # TCP server for DNS over TCP
+      {:thousand_island, "~> 1.0"},
+
       # HTTP client for root zone fetching
       {:req, "~> 0.5"},
 

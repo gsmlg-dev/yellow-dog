@@ -4,7 +4,7 @@ defmodule YellowDog.Dns.Server do
 
   Supervises the network servers:
   - `Abyss` - UDP server for DNS queries
-  - `ThousandIsland` - TCP server for DNS queries (TODO: implement)
+  - `ThousandIsland` - TCP server for DNS queries
 
   This supervisor is a child of `YellowDog.Dns.Supervisor` and handles only
   network I/O. All DNS resolution logic is handled by ConnectionProcess,
@@ -12,11 +12,13 @@ defmodule YellowDog.Dns.Server do
 
   ## Handler Registration
 
-  The handler module (`YellowDog.Dns.Handler.UDP`) is registered with Abyss.
-  On each incoming packet, the handler:
-  1. Calls ConnectionManager to start a connection process
-  2. Forwards queries to the connection process
-  3. Sends responses back to the client
+  - UDP: `YellowDog.Dns.Handler.UDP` is registered with Abyss
+  - TCP: `YellowDog.Dns.Handler.TCP` is registered with ThousandIsland
+
+  On each incoming packet/connection, handlers:
+  1. Call ConnectionManager to start a connection process
+  2. Forward queries to the connection process
+  3. Send responses back to the client
   """
 
   use Supervisor
@@ -27,7 +29,7 @@ defmodule YellowDog.Dns.Server do
   Starts the network server supervisor.
 
   ## Options
-  - `port`: UDP port to listen on (default: 53)
+  - `port`: UDP/TCP port to listen on (default: 53)
   - `listen`: IP address tuple to bind to
 
   ## Returns
@@ -53,21 +55,42 @@ defmodule YellowDog.Dns.Server do
   @spec get_config() :: map()
   def get_config do
     %{
+      # Shared settings
       port: 53,
-      transport_module: Abyss.Transport.UDP.Unicast,
-      handler_module: YellowDog.Dns.Handler.UDP,
-      transport_options: [
-        ip: {0, 0, 0, 0},
-        reuseaddr: true
-      ],
-      read_timeout: 5_000,
-      shutdown_timeout: 5_000,
-      num_listeners: 50,
-      num_connections: 10_000,
-      max_packet_size: 512,
-      rate_limit_enabled: true,
-      rate_limit_max_packets: 1000,
-      rate_limit_window_ms: 1000
+      listen: {0, 0, 0, 0},
+
+      # UDP settings (Abyss)
+      udp: %{
+        transport_module: Abyss.Transport.UDP.Unicast,
+        handler_module: YellowDog.Dns.Handler.UDP,
+        transport_options: [
+          ip: {0, 0, 0, 0},
+          reuseaddr: true
+        ],
+        read_timeout: 5_000,
+        shutdown_timeout: 5_000,
+        num_listeners: 50,
+        num_connections: 10_000,
+        max_packet_size: 512,
+        rate_limit_enabled: true,
+        rate_limit_max_packets: 1000,
+        rate_limit_window_ms: 1000
+      },
+
+      # TCP settings (ThousandIsland)
+      tcp: %{
+        handler_module: YellowDog.Dns.Handler.TCP,
+        transport_module: ThousandIsland.Transports.TCP,
+        transport_options: [
+          ip: {0, 0, 0, 0},
+          reuseaddr: true,
+          nodelay: true
+        ],
+        num_acceptors: 100,
+        num_connections: 16_384,
+        read_timeout: 120_000,
+        shutdown_timeout: 15_000
+      }
     }
   end
 
@@ -79,7 +102,7 @@ defmodule YellowDog.Dns.Server do
     %{
       running: Process.whereis(__MODULE__) != nil,
       udp: %{running: find_abyss_pid(__MODULE__) != nil},
-      tcp: %{running: false}  # TODO: implement TCP
+      tcp: %{running: find_thousand_island_pid(__MODULE__) != nil}
     }
   end
 
@@ -89,11 +112,20 @@ defmodule YellowDog.Dns.Server do
   Useful for tests when starting with port 0 (auto-select).
   """
   @spec get_port() :: {:ok, :inet.port_number()} | {:error, term()}
-  def get_port, do: get_port(__MODULE__)
+  def get_port, do: get_udp_port(__MODULE__)
 
   @spec get_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
-  def get_port(pid) do
-    case find_abyss_pid(pid) do
+  def get_port(pid), do: get_udp_port(pid)
+
+  @doc """
+  Returns the UDP port the server is listening on.
+  """
+  @spec get_udp_port() :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_udp_port, do: get_udp_port(__MODULE__)
+
+  @spec get_udp_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_udp_port(supervisor) do
+    case find_abyss_pid(supervisor) do
       nil ->
         {:error, :abyss_not_found}
 
@@ -117,21 +149,46 @@ defmodule YellowDog.Dns.Server do
     end
   end
 
+  @doc """
+  Returns the TCP port the server is listening on.
+  """
+  @spec get_tcp_port() :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_tcp_port, do: get_tcp_port(__MODULE__)
+
+  @spec get_tcp_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_tcp_port(supervisor) do
+    case find_thousand_island_pid(supervisor) do
+      nil ->
+        {:error, :thousand_island_not_found}
+
+      ti_pid ->
+        # ThousandIsland stores port in its state
+        case ThousandIsland.listener_info(ti_pid) do
+          {:ok, info} -> {:ok, info.port}
+          :error -> {:error, :port_not_available}
+        end
+    end
+  end
+
   # Supervisor callbacks
 
   @impl true
   def init(opts) do
     Telemetry.info("Starting DNS network server")
 
-    # Build Abyss configuration
+    # Build configurations
     abyss_config = build_abyss_config(opts)
-    port = Keyword.get(abyss_config, :port, 53)
-    transport_opts = Keyword.get(abyss_config, :transport_options, [])
-    listen_ip = Keyword.get(transport_opts, :ip, {0, 0, 0, 0})
+    tcp_config = build_thousand_island_config(opts)
+
+    port = Keyword.get(opts, :port, 53)
+    listen = Keyword.get(opts, :listen, {0, 0, 0, 0})
+    listen_ip = normalize_ip(listen)
 
     Telemetry.info("DNS server listening", %{
       port: port,
-      listen: format_ip(listen_ip)
+      listen: format_ip(listen_ip),
+      udp: true,
+      tcp: true
     })
 
     children = [
@@ -141,14 +198,14 @@ defmodule YellowDog.Dns.Server do
         start: {Abyss, :start_link, [abyss_config]},
         restart: :permanent,
         type: :supervisor
+      },
+      # ThousandIsland TCP server
+      %{
+        id: :thousand_island,
+        start: {ThousandIsland, :start_link, [tcp_config]},
+        restart: :permanent,
+        type: :supervisor
       }
-      # TODO: Add ThousandIsland TCP server
-      # %{
-      #   id: :thousand_island,
-      #   start: {ThousandIsland, :start_link, [tcp_config]},
-      #   restart: :permanent,
-      #   type: :supervisor
-      # }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -157,12 +214,7 @@ defmodule YellowDog.Dns.Server do
   # Private helpers
 
   defp find_abyss_pid(supervisor) do
-    pid =
-      cond do
-        is_pid(supervisor) -> supervisor
-        is_atom(supervisor) -> Process.whereis(supervisor)
-        true -> nil
-      end
+    pid = resolve_pid(supervisor)
 
     case pid do
       nil ->
@@ -180,31 +232,86 @@ defmodule YellowDog.Dns.Server do
     _ -> nil
   end
 
-  defp build_abyss_config(opts) do
-    config = get_config()
+  defp find_thousand_island_pid(supervisor) do
+    pid = resolve_pid(supervisor)
 
-    port = Keyword.get(opts, :port, config.port)
-    listen = Keyword.get(opts, :listen, {0, 0, 0, 0})
+    case pid do
+      nil ->
+        nil
 
-    listen_ip =
-      case listen do
-        ip when is_tuple(ip) -> ip
-        ip_str when is_binary(ip_str) -> parse_ip(ip_str)
-        _ -> {0, 0, 0, 0}
-      end
+      _ ->
+        children = Supervisor.which_children(pid)
 
-    transport_options =
-      config.transport_options
-      |> Keyword.put(:ip, listen_ip)
-
-    config
-    |> Map.to_list()
-    |> Keyword.put(:port, port)
-    |> Keyword.put(:transport_options, transport_options)
-    |> Keyword.put(:handler_module, YellowDog.Dns.Handler.UDP)
+        Enum.find_value(children, fn
+          {:thousand_island, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
+          _ -> nil
+        end)
+    end
+  rescue
+    _ -> nil
   end
 
-  defp parse_ip(ip_str) when is_binary(ip_str) do
+  defp resolve_pid(supervisor) do
+    cond do
+      is_pid(supervisor) -> supervisor
+      is_atom(supervisor) -> Process.whereis(supervisor)
+      true -> nil
+    end
+  end
+
+  defp build_abyss_config(opts) do
+    config = get_config()
+    udp_config = config.udp
+
+    port = Keyword.get(opts, :port, config.port)
+    listen_ip = normalize_ip(Keyword.get(opts, :listen, config.listen))
+
+    transport_options =
+      udp_config.transport_options
+      |> Keyword.put(:ip, listen_ip)
+
+    [
+      port: port,
+      transport_module: udp_config.transport_module,
+      handler_module: udp_config.handler_module,
+      transport_options: transport_options,
+      read_timeout: udp_config.read_timeout,
+      shutdown_timeout: udp_config.shutdown_timeout,
+      num_listeners: udp_config.num_listeners,
+      num_connections: udp_config.num_connections,
+      max_packet_size: udp_config.max_packet_size,
+      rate_limit_enabled: udp_config.rate_limit_enabled,
+      rate_limit_max_packets: udp_config.rate_limit_max_packets,
+      rate_limit_window_ms: udp_config.rate_limit_window_ms
+    ]
+  end
+
+  defp build_thousand_island_config(opts) do
+    config = get_config()
+    tcp_config = config.tcp
+
+    port = Keyword.get(opts, :port, config.port)
+    listen_ip = normalize_ip(Keyword.get(opts, :listen, config.listen))
+
+    transport_options =
+      tcp_config.transport_options
+      |> Keyword.put(:ip, listen_ip)
+
+    [
+      port: port,
+      handler_module: tcp_config.handler_module,
+      transport_module: tcp_config.transport_module,
+      transport_options: transport_options,
+      num_acceptors: tcp_config.num_acceptors,
+      num_connections: tcp_config.num_connections,
+      read_timeout: tcp_config.read_timeout,
+      shutdown_timeout: tcp_config.shutdown_timeout
+    ]
+  end
+
+  defp normalize_ip(ip) when is_tuple(ip), do: ip
+
+  defp normalize_ip(ip_str) when is_binary(ip_str) do
     charlist = String.to_charlist(ip_str)
 
     case :inet.parse_ipv4_address(charlist) do
@@ -219,8 +326,7 @@ defmodule YellowDog.Dns.Server do
     end
   end
 
-  defp parse_ip(ip) when is_tuple(ip), do: ip
-  defp parse_ip(_), do: {0, 0, 0, 0}
+  defp normalize_ip(_), do: {0, 0, 0, 0}
 
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
 

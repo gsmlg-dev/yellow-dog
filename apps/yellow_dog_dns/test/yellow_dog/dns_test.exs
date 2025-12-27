@@ -24,11 +24,19 @@ defmodule YellowDog.DnsTest do
 
       assert is_map(config)
       assert Map.has_key?(config, :port)
-      assert Map.has_key?(config, :handler_module)
-      assert Map.has_key?(config, :transport_options)
-      assert config.handler_module == YellowDog.Dns.Handler.UDP
+      assert Map.has_key?(config, :listen)
+      assert Map.has_key?(config, :udp)
+      assert Map.has_key?(config, :tcp)
+
+      # Check UDP config
+      assert config.udp.handler_module == YellowDog.Dns.Handler.UDP
+      assert is_list(config.udp.transport_options)
+
+      # Check TCP config
+      assert config.tcp.handler_module == YellowDog.Dns.Handler.TCP
+      assert is_list(config.tcp.transport_options)
+
       assert is_integer(config.port)
-      assert is_list(config.transport_options)
     end
 
     test "DNS server can be created" do
@@ -67,27 +75,52 @@ defmodule YellowDog.DnsTest do
     test "server configuration has expected defaults" do
       config = YellowDog.Dns.Server.get_config()
 
-      # Check default values
+      # Check shared defaults
       assert config.port == 53
-      assert config.transport_module == Abyss.Transport.UDP.Unicast
-      assert config.handler_module == YellowDog.Dns.Handler.UDP
-      assert config.read_timeout == 5_000
-      assert config.shutdown_timeout == 5_000
-      assert config.num_listeners == 50
-      assert config.num_connections == 10_000
+      assert config.listen == {0, 0, 0, 0}
+
+      # Check UDP defaults
+      udp = config.udp
+      assert udp.transport_module == Abyss.Transport.UDP.Unicast
+      assert udp.handler_module == YellowDog.Dns.Handler.UDP
+      assert udp.read_timeout == 5_000
+      assert udp.shutdown_timeout == 5_000
+      assert udp.num_listeners == 50
+      assert udp.num_connections == 10_000
       # DNS UDP limit
-      assert config.max_packet_size == 512
-      assert config.rate_limit_enabled == true
+      assert udp.max_packet_size == 512
+      assert udp.rate_limit_enabled == true
+
+      # Check TCP defaults
+      tcp = config.tcp
+      assert tcp.transport_module == ThousandIsland.Transports.TCP
+      assert tcp.handler_module == YellowDog.Dns.Handler.TCP
+      assert tcp.read_timeout == 120_000
+      assert tcp.shutdown_timeout == 15_000
+      assert tcp.num_acceptors == 100
+      assert tcp.num_connections == 16_384
     end
 
-    test "transport options include expected settings" do
+    test "UDP transport options include expected settings" do
       config = YellowDog.Dns.Server.get_config()
-      transport_options = config.transport_options
+      transport_options = config.udp.transport_options
 
       assert is_list(transport_options)
       assert Keyword.has_key?(transport_options, :ip)
       assert Keyword.has_key?(transport_options, :reuseaddr)
       assert transport_options[:reuseaddr] == true
+    end
+
+    test "TCP transport options include expected settings" do
+      config = YellowDog.Dns.Server.get_config()
+      transport_options = config.tcp.transport_options
+
+      assert is_list(transport_options)
+      assert Keyword.has_key?(transport_options, :ip)
+      assert Keyword.has_key?(transport_options, :reuseaddr)
+      assert Keyword.has_key?(transport_options, :nodelay)
+      assert transport_options[:reuseaddr] == true
+      assert transport_options[:nodelay] == true
     end
   end
 
