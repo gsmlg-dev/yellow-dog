@@ -3,45 +3,50 @@ defmodule YellowDog.Dns.Handler.UDP do
   UDP DNS message handler implementing the Abyss.Handler behaviour.
 
   This handler focuses ONLY on network I/O:
-  - Parse incoming DNS query
-  - Create TSI (Telemetry Span Item) with request metadata
-  - Delegate resolution to Server (which routes to ViewManager)
-  - Send response back to client
-  - Emit telemetry events
+  - On first request: call ConnectionManager to start connection process
+  - Forward all queries to connection process
+  - Send responses from connection process to client
+  - On network connection close: notify connection process to terminate
 
-  All DNS resolution logic is handled by the ViewManager, View, and Zone processes.
+  All DNS resolution logic is handled by ConnectionProcess, ViewManager,
+  View, and Zone processes.
+
+  ## Lifecycle
+
+  1 network connection = 1 Handler process = 1 connection process
+  UDP: typically one query, then connection closes
+  TCP: potentially multiple concurrent queries, terminates when TCP closes
   """
 
   use Abyss.Handler
 
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.TSI
-  alias YellowDog.Dns.SpanManager
-  alias YellowDog.Dns.Server
+  alias YellowDog.Dns.ConnectionManager
   alias DNS.Message
 
   ## Abyss.Handler Callbacks
 
   @impl true
   def handle_data({client_ip, client_port, data}, state) do
-    # Create TSI before parsing to track even failed parses
-    tsi = TSI.new_raw(client_ip, client_port)
-    IO.inspect({:dns, :udp, tsi})
-    Telemetry.info("handle dns udp #{inspect(tsi)}")
+    Telemetry.debug("DNS UDP received data", %{
+      client_ip: format_ip(client_ip),
+      client_port: client_port,
+      size: byte_size(data)
+    })
 
     try do
-      # Parse incoming DNS message (returns struct directly, throws on error)
+      # Parse incoming DNS message
       query = Message.from_iodata(data)
-      handle_query(query, tsi, client_ip, client_port, state)
+      handle_query(query, client_ip, client_port, state)
     rescue
       error ->
-        handle_exception(error, __STACKTRACE__, tsi, client_ip, client_port, state)
+        handle_exception(error, __STACKTRACE__, client_ip, client_port, state)
     catch
       {:format_error, section, _details} ->
-        handle_parse_error({:format_error, section}, tsi, client_ip, client_port, state)
+        handle_parse_error({:format_error, section}, client_ip, client_port, state)
 
       :throw, reason ->
-        handle_parse_error(reason, tsi, client_ip, client_port, state)
+        handle_parse_error(reason, client_ip, client_port, state)
     end
   end
 
@@ -54,64 +59,121 @@ defmodule YellowDog.Dns.Handler.UDP do
   @impl true
   def handle_timeout(state) do
     Telemetry.debug("DNS handler timeout")
+
+    # Notify connection process if it exists
+    if Map.get(state, :connection_pid) do
+      YellowDog.Dns.ConnectionProcess.connection_closed(state.connection_pid)
+    end
+
     {:continue, state}
   end
 
   ## Private Functions
 
-  defp handle_query(query, tsi, client_ip, client_port, state) do
-    # Update TSI with parsed query
-    tsi = TSI.set_query(tsi, query)
-
+  defp handle_query(query, client_ip, client_port, state) do
     Telemetry.debug("Received DNS query", %{
       client_ip: format_ip(client_ip),
       client_port: client_port,
       query: inspect_query(query)
     })
 
-    # Register TSI with SpanManager
-    tsi = register_tsi(tsi)
+    # Get or start connection process
+    case get_or_start_connection(state, client_ip, client_port) do
+      {:ok, conn_pid, new_state} ->
+        # Submit query to connection process
+        case YellowDog.Dns.ConnectionProcess.submit_query(conn_pid, query) do
+          :ok ->
+            # Wait for response from connection process
+            receive do
+              {:dns_response, _query_id, response} ->
+                send_response(response, client_ip, client_port, new_state.socket)
+                {:close, new_state}
 
-    # Delegate resolution to Server (which routes to ViewManager)
-    case resolve_query(tsi) do
-      {:ok, response} ->
-        # Complete the TSI
-        tsi = TSI.complete(tsi, response)
-        complete_tsi(tsi)
+              {:resolution_complete, _query_id, response} ->
+                send_response(response, client_ip, client_port, new_state.socket)
+                {:close, new_state}
 
-        # Send response back to client
-        send_response(response, client_ip, client_port, state.socket)
+              {:resolution_error, _query_id, reason} ->
+                response = create_error_response(query, reason)
+                send_response(response, client_ip, client_port, new_state.socket)
+                {:close, new_state}
+            after
+              10_000 ->
+                # Timeout waiting for response
+                Telemetry.warning("Timeout waiting for DNS response", %{
+                  client_ip: format_ip(client_ip),
+                  query: inspect_query(query)
+                })
 
-        {:close, state}
+                response = create_error_response(query, :servfail)
+                send_response(response, client_ip, client_port, new_state.socket)
+                {:close, new_state}
+            end
+
+          {:error, reason} ->
+            Telemetry.warning("Failed to submit query", %{reason: inspect(reason)})
+            response = create_error_response(query, :servfail)
+            send_response(response, client_ip, client_port, state.socket)
+            {:close, state}
+        end
 
       {:error, reason} ->
-        # Create error response
-        tsi = TSI.complete_error(tsi)
-        complete_tsi(tsi)
+        Telemetry.error("Failed to start connection process", %{reason: inspect(reason)})
 
-        response = create_error_response(query, reason)
-        send_response(response, client_ip, client_port, state.socket)
+        # Fallback to direct forwarding
+        case fallback_resolve(query) do
+          {:ok, response} ->
+            send_response(response, client_ip, client_port, state.socket)
+
+          {:error, _} ->
+            response = create_error_response(query, :servfail)
+            send_response(response, client_ip, client_port, state.socket)
+        end
 
         {:close, state}
     end
   end
 
-  defp handle_parse_error(reason, tsi, client_ip, client_port, state) do
+  defp get_or_start_connection(state, client_ip, client_port) do
+    case Map.get(state, :connection_pid) do
+      nil ->
+        # Start new connection process
+        case ConnectionManager.start_connection(self(), client_ip, client_port, socket: state.socket) do
+          {:ok, pid} ->
+            {:ok, pid, Map.put(state, :connection_pid, pid)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      pid when is_pid(pid) ->
+        if Process.alive?(pid) do
+          {:ok, pid, state}
+        else
+          # Connection died, start new one
+          case ConnectionManager.start_connection(self(), client_ip, client_port, socket: state.socket) do
+            {:ok, new_pid} ->
+              {:ok, new_pid, Map.put(state, :connection_pid, new_pid)}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end
+    end
+  end
+
+  defp handle_parse_error(reason, client_ip, client_port, state) do
     Telemetry.warning("Failed to parse DNS query", %{
       client_ip: format_ip(client_ip),
       client_port: client_port,
       reason: inspect(reason)
     })
 
-    # Complete TSI with error
-    tsi = TSI.complete_error(tsi)
-    complete_tsi(tsi)
-
     # Can't send error response without parsing query ID
     {:close, state}
   end
 
-  defp handle_exception(error, stacktrace, tsi, client_ip, client_port, state) do
+  defp handle_exception(error, stacktrace, client_ip, client_port, state) do
     Telemetry.error("Exception handling DNS query", %{
       client_ip: format_ip(client_ip),
       client_port: client_port,
@@ -119,33 +181,11 @@ defmodule YellowDog.Dns.Handler.UDP do
       stacktrace: Exception.format_stacktrace(stacktrace)
     })
 
-    # Complete TSI with error
-    tsi = TSI.complete_error(tsi)
-    complete_tsi(tsi)
-
     {:close, state}
   end
 
-  defp resolve_query(tsi) do
-    # Delegate to Server which routes to ViewManager
-    try do
-      Server.resolve(tsi)
-    catch
-      :exit, {:noproc, _} ->
-        # Server not running, try forwarding directly
-        fallback_resolve(tsi)
-
-      :exit, reason ->
-        Telemetry.warning("Resolution failed", %{reason: inspect(reason)})
-        {:error, :servfail}
-    end
-  end
-
-  defp fallback_resolve(tsi) do
-    # Fallback for when Server/ViewManager isn't running
-    # Try to forward to upstream servers directly
-    query = tsi.query
-
+  # Fallback resolution for when ConnectionManager is not available
+  defp fallback_resolve(query) do
     upstreams = get_upstreams()
 
     if upstreams == [] do
@@ -243,22 +283,6 @@ defmodule YellowDog.Dns.Handler.UDP do
     end
   end
 
-  defp register_tsi(tsi) do
-    try do
-      SpanManager.register(tsi)
-    catch
-      :exit, _ -> tsi
-    end
-  end
-
-  defp complete_tsi(tsi) do
-    try do
-      SpanManager.complete(tsi)
-    catch
-      :exit, _ -> tsi
-    end
-  end
-
   defp create_error_response(query, reason) do
     rcode =
       case reason do
@@ -266,6 +290,7 @@ defmodule YellowDog.Dns.Handler.UDP do
         :servfail -> :servfail
         :refused -> :refused
         :nxdomain -> :nxdomain
+        :timeout -> :servfail
         _ -> :servfail
       end
 
@@ -313,7 +338,7 @@ defmodule YellowDog.Dns.Handler.UDP do
   defp format_ip(other), do: inspect(other)
 
   defp inspect_query(query) do
-    case query.questions do
+    case query.qdlist do
       [question | _] ->
         "#{question.name} #{question.type} #{question.class}"
 

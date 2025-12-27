@@ -59,8 +59,8 @@ defmodule YellowDog.Dns.Zone.Root do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
-  def resolve(pid, tsi, query) do
-    GenServer.call(pid, {:resolve, tsi, query})
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query})
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -105,7 +105,7 @@ defmodule YellowDog.Dns.Zone.Root do
   end
 
   @impl true
-  def handle_call({:resolve, _tsi, _query}, _from, state) do
+  def handle_call({:resolve, _query}, _from, state) do
     state = %{state | query_count: state.query_count + 1}
     # Return referral to root servers
     {:reply, {:referral, state.root_servers}, state}

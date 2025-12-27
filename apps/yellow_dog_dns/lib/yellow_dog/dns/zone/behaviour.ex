@@ -2,11 +2,10 @@ defmodule YellowDog.Dns.Zone.Behaviour do
   @moduledoc """
   Behaviour for DNS zone implementations.
 
-  All zone types (Auth, Forward, Stub, Root, Cache) implement this behaviour
+  All zone types (Auth, Forward, Stub, Root, Cache, RPZ) implement this behaviour
   to provide a consistent interface for query resolution.
   """
 
-  alias YellowDog.Dns.TSI
   alias DNS.Message
 
   @doc """
@@ -20,7 +19,6 @@ defmodule YellowDog.Dns.Zone.Behaviour do
   ## Parameters
 
   - `pid` - The zone process
-  - `tsi` - The Telemetry Span Item with query context
   - `query` - The DNS query message
 
   ## Returns
@@ -29,7 +27,7 @@ defmodule YellowDog.Dns.Zone.Behaviour do
   - `{:referral, ns_records}` - Referral to other nameservers
   - `{:error, rcode}` - Error with DNS response code
   """
-  @callback resolve(pid :: pid(), tsi :: TSI.t(), query :: Message.t()) ::
+  @callback resolve(pid :: pid(), query :: Message.t()) ::
               {:ok, Message.t()}
               | {:referral, [DNS.ResourceRecord.t()]}
               | {:error, atom()}

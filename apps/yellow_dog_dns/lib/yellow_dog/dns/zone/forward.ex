@@ -86,8 +86,8 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
-  def resolve(pid, tsi, query) do
-    GenServer.call(pid, {:resolve, tsi, query}, @default_timeout + 1000)
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query}, @default_timeout + 1000)
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -134,7 +134,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @impl true
-  def handle_call({:resolve, tsi, query}, from, state) do
+  def handle_call({:resolve, query}, from, state) do
     state = %{state | query_count: state.query_count + 1}
 
     case state.upstreams do
@@ -154,7 +154,6 @@ defmodule YellowDog.Dns.Zone.Forward do
 
             pending = %{
               from: from,
-              tsi: tsi,
               query: query,
               upstream: upstream,
               timer: timer_ref,

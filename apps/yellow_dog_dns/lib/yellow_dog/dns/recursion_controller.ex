@@ -25,7 +25,6 @@ defmodule YellowDog.Dns.RecursionController do
   use GenServer
 
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.TSI
   alias DNS.Message
 
   @max_recursion_depth 10
@@ -76,9 +75,9 @@ defmodule YellowDog.Dns.RecursionController do
   @doc """
   Performs recursive resolution for a query.
   """
-  @spec resolve(pid(), TSI.t()) :: {:ok, Message.t()} | {:error, atom()}
-  def resolve(pid, tsi) do
-    GenServer.call(pid, {:resolve, tsi}, @query_timeout * @max_recursion_depth)
+  @spec resolve(pid(), Message.t()) :: {:ok, Message.t()} | {:error, atom()}
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query}, @query_timeout * @max_recursion_depth)
   end
 
   @doc """
@@ -110,11 +109,11 @@ defmodule YellowDog.Dns.RecursionController do
   end
 
   @impl true
-  def handle_call({:resolve, tsi}, _from, state) do
+  def handle_call({:resolve, query}, _from, state) do
     state = %{state | query_count: state.query_count + 1}
 
     # Start recursive resolution
-    case do_recursive_resolve(state, tsi, 0) do
+    case do_recursive_resolve(state, query, 0) do
       {:ok, response} ->
         state = %{state | success_count: state.success_count + 1}
         {:reply, {:ok, response}, state}
@@ -151,13 +150,11 @@ defmodule YellowDog.Dns.RecursionController do
 
   # Private Functions
 
-  defp do_recursive_resolve(_state, _tsi, depth) when depth >= @max_recursion_depth do
+  defp do_recursive_resolve(_state, _query, depth) when depth >= @max_recursion_depth do
     {:error, :max_recursion_depth}
   end
 
-  defp do_recursive_resolve(state, tsi, depth) do
-    query = tsi.query
-
+  defp do_recursive_resolve(state, query, depth) do
     case query.qdlist do
       [question | _] ->
         # Start from root servers
@@ -301,7 +298,7 @@ defmodule YellowDog.Dns.RecursionController do
     # Create query for NS hostname
     ns_query = build_query(ns_hostname, :a)
 
-    case do_recursive_resolve(state, %TSI{query: ns_query}, depth) do
+    case do_recursive_resolve(state, ns_query, depth) do
       {:ok, response} ->
         addresses =
           response.anlist

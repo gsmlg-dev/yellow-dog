@@ -36,7 +36,7 @@ defmodule YellowDog.DnsTest do
       child_spec = YellowDog.Dns.child_spec(port: 53)
 
       assert is_map(child_spec)
-      assert child_spec.start == {YellowDog.Dns.Server, :start_link, [[port: 53]]}
+      assert child_spec.start == {YellowDog.Dns.Supervisor, :start_link, [[port: 53]]}
       assert is_tuple(child_spec.start)
     end
   end
@@ -99,7 +99,7 @@ defmodule YellowDog.DnsTest do
       assert is_map(stats)
       assert Map.has_key?(stats, :zones)
       assert Map.has_key?(stats, :views)
-      assert Map.has_key?(stats, :spans)
+      assert Map.has_key?(stats, :connections)
       assert Map.has_key?(stats, :service)
 
       # Verify zones stats structure
@@ -118,9 +118,9 @@ defmodule YellowDog.DnsTest do
       views = stats.views
       assert is_map(views)
 
-      # Verify spans stats structure
-      spans = stats.spans
-      assert is_map(spans)
+      # Verify connections stats structure
+      connections = stats.connections
+      assert is_map(connections)
 
       # Verify service status structure
       service = stats.service

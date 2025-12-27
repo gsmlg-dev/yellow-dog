@@ -55,8 +55,8 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
-  def resolve(pid, tsi, query) do
-    GenServer.call(pid, {:resolve, tsi, query})
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query})
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -137,10 +137,10 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @impl true
-  def handle_call({:resolve, tsi, query}, _from, state) do
+  def handle_call({:resolve, query}, _from, state) do
     state = %{state | query_count: state.query_count + 1}
 
-    case do_resolve(state, tsi, query) do
+    case do_resolve(state, query) do
       {:ok, response} ->
         state = %{state | hit_count: state.hit_count + 1}
         {:reply, {:ok, response}, state}
@@ -208,7 +208,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   # Private Functions
 
-  defp do_resolve(state, _tsi, query) do
+  defp do_resolve(state, query) do
     case query.qdlist do
       [question | _] ->
         resolve_question(state, query, question)

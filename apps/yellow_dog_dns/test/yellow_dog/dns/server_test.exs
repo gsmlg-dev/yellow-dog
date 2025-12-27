@@ -117,14 +117,6 @@ defmodule YellowDog.Dns.ServerTest do
       # Supervisor.init/1 returns {:ok, supervisor_spec}
     end
 
-    test "server exports status/0 function" do
-      assert Kernel.function_exported?(Server, :status, 0)
-    end
-
-    test "server exports resolve/1 function" do
-      assert Kernel.function_exported?(Server, :resolve, 1)
-    end
-
     test "server exports get_port/0 and get_port/1 functions" do
       assert Kernel.function_exported?(Server, :get_port, 0)
       assert Kernel.function_exported?(Server, :get_port, 1)

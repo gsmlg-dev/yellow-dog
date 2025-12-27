@@ -167,6 +167,7 @@ defmodule YellowDog.Dns.ZoneController do
   defp zone_module(:stub), do: YellowDog.Dns.Zone.Stub
   defp zone_module(:root), do: YellowDog.Dns.Zone.Root
   defp zone_module(:cache), do: YellowDog.Dns.Zone.Cache
+  defp zone_module(:rpz), do: YellowDog.Dns.Zone.RPZ
 
   defp find_by_module_and_name(children, module, zone_name) do
     Enum.find_value(children, :error, fn {_id, pid, _type, modules} ->

@@ -1,15 +1,22 @@
 defmodule YellowDog.Dns.Server do
   @moduledoc """
-  DNS server supervisor using Abyss UDP server library.
+  Network I/O server supervisor for DNS.
 
-  Supervises the DNS subsystem components:
-  - SpanManager: Tracks active DNS requests
-  - ZoneController: Manages zone processes
-  - ViewManager: Manages view processes for split-horizon DNS
-  - Abyss: UDP server for receiving DNS packets
+  Supervises the network servers:
+  - `Abyss` - UDP server for DNS queries
+  - `ThousandIsland` - TCP server for DNS queries (TODO: implement)
 
-  The Handler only does network I/O and delegates resolution to the
-  ViewManager, which routes to appropriate View and Zone processes.
+  This supervisor is a child of `YellowDog.Dns.Supervisor` and handles only
+  network I/O. All DNS resolution logic is handled by ConnectionProcess,
+  ViewManager, View, and Zone processes.
+
+  ## Handler Registration
+
+  The handler module (`YellowDog.Dns.Handler.UDP`) is registered with Abyss.
+  On each incoming packet, the handler:
+  1. Calls ConnectionManager to start a connection process
+  2. Forwards queries to the connection process
+  3. Sends responses back to the client
   """
 
   use Supervisor
@@ -17,25 +24,25 @@ defmodule YellowDog.Dns.Server do
   alias YellowDog.Telemetry
 
   @doc """
-  Starts the DNS server supervisor.
+  Starts the network server supervisor.
 
   ## Options
-  - `port`: UDP port to listen on (overrides config)
-  - `listen`: IP address to bind to (overrides config)
-  - `views`: Initial view configurations
-  - `zones`: Initial zone configurations
+  - `port`: UDP port to listen on (default: 53)
+  - `listen`: IP address tuple to bind to
 
   ## Returns
   - `{:ok, pid}` - Server started successfully
   - `{:error, reason}` - Failed to start server
   """
+  @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @doc """
-  Stops the DNS server.
+  Stops the server.
   """
+  @spec stop(pid() | atom()) :: :ok
   def stop(pid \\ __MODULE__) do
     Supervisor.stop(pid)
   end
@@ -43,6 +50,7 @@ defmodule YellowDog.Dns.Server do
   @doc """
   Gets the default server configuration.
   """
+  @spec get_config() :: map()
   def get_config do
     %{
       port: 53,
@@ -64,32 +72,27 @@ defmodule YellowDog.Dns.Server do
   end
 
   @doc """
-  Resolves a DNS query through the server infrastructure.
-
-  This is the main entry point for query resolution from the Handler.
+  Returns server status.
   """
-  def resolve(tsi) do
-    YellowDog.Dns.ViewManager.resolve(tsi)
-  end
-
-  @doc """
-  Returns server status and statistics.
-  """
+  @spec status() :: map()
   def status do
     %{
       running: Process.whereis(__MODULE__) != nil,
-      span_stats: safe_call(&YellowDog.Dns.SpanManager.stats/0, %{}),
-      view_stats: safe_call(&YellowDog.Dns.ViewManager.stats/0, %{}),
-      zone_stats: safe_call(fn -> length(YellowDog.Dns.ZoneController.list_zones()) end, 0)
+      udp: %{running: find_abyss_pid(__MODULE__) != nil},
+      tcp: %{running: false}  # TODO: implement TCP
     }
   end
 
   @doc """
-  Returns the port the server is listening on.
+  Returns the UDP port the server is listening on.
 
-  This is useful for tests when starting with port 0 (auto-select).
+  Useful for tests when starting with port 0 (auto-select).
   """
-  def get_port(pid \\ __MODULE__) do
+  @spec get_port() :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_port, do: get_port(__MODULE__)
+
+  @spec get_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_port(pid) do
     case find_abyss_pid(pid) do
       nil ->
         {:error, :abyss_not_found}
@@ -114,184 +117,83 @@ defmodule YellowDog.Dns.Server do
     end
   end
 
-  defp find_abyss_pid(supervisor_pid) do
-    children = Supervisor.which_children(supervisor_pid)
-
-    Enum.find_value(children, fn
-      {:abyss, pid, :supervisor, _} when is_pid(pid) -> pid
-      _ -> nil
-    end)
-  end
-
   # Supervisor callbacks
 
   @impl true
   def init(opts) do
-    Telemetry.info("Starting DNS server supervisor")
+    Telemetry.info("Starting DNS network server")
 
     # Build Abyss configuration
-    abyss_config = build_server_config(opts)
+    abyss_config = build_abyss_config(opts)
     port = Keyword.get(abyss_config, :port, 53)
     transport_opts = Keyword.get(abyss_config, :transport_options, [])
     listen_ip = Keyword.get(transport_opts, :ip, {0, 0, 0, 0})
 
-    Telemetry.info("DNS server configuration", %{
+    Telemetry.info("DNS server listening", %{
       port: port,
       listen: format_ip(listen_ip)
     })
 
     children = [
-      # Registries for named processes
-      {Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry},
-      {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
-      {Registry, keys: :unique, name: YellowDog.Dns.RecursionRegistry},
-
-      # SpanManager - tracks active TSIs for in-flight requests
-      {YellowDog.Dns.SpanManager, name: YellowDog.Dns.SpanManager},
-
-      # ZoneController - supervises zone processes
-      {YellowDog.Dns.ZoneController, name: YellowDog.Dns.ZoneController},
-
-      # ViewManager - supervises view processes and routes requests
-      {YellowDog.Dns.ViewManager, name: YellowDog.Dns.ViewManager},
-
-      # Post-init task - set up default view and zones
-      {Task, fn -> post_init(opts) end},
-
-      # Abyss UDP server - receives DNS packets
+      # Abyss UDP server
       %{
         id: :abyss,
         start: {Abyss, :start_link, [abyss_config]},
         restart: :permanent,
         type: :supervisor
       }
+      # TODO: Add ThousandIsland TCP server
+      # %{
+      #   id: :thousand_island,
+      #   start: {ThousandIsland, :start_link, [tcp_config]},
+      #   restart: :permanent,
+      #   type: :supervisor
+      # }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # Private helper functions
+  # Private helpers
 
-  defp post_init(opts) do
-    # Wait a bit for processes to start
-    Process.sleep(100)
+  defp find_abyss_pid(supervisor_pid) do
+    case Process.whereis(supervisor_pid) do
+      nil ->
+        nil
 
-    # Start default view if no views configured
-    views = Keyword.get(opts, :views, [])
+      pid when is_pid(pid) ->
+        children = Supervisor.which_children(pid)
 
-    if Enum.empty?(views) do
-      YellowDog.Dns.ViewManager.start_view(%{
-        name: "default",
-        acl: :all,
-        zones: [],
-        recursion_enabled: true
-      })
-    else
-      Enum.each(views, &YellowDog.Dns.ViewManager.start_view/1)
-    end
-
-    # Start configured zones
-    zones = Keyword.get(opts, :zones, [])
-    Enum.each(zones, &start_zone/1)
-
-    # Set up default forwarding zone if not configured
-    upstreams = get_upstreams()
-
-    if upstreams != [] do
-      YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams)
-    end
-
-    Telemetry.info("DNS server post-init completed")
-  end
-
-  defp start_zone(zone_config) do
-    type = Map.get(zone_config, :type, :auth)
-    name = Map.get(zone_config, :name)
-    opts = Map.to_list(zone_config)
-    YellowDog.Dns.ZoneController.start_zone(type, name, opts)
-  end
-
-  defp get_upstreams do
-    case apply(YellowDog.Config, :get, [:dns, :upstream_servers]) do
-      nil -> [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
-      servers when is_list(servers) -> parse_upstreams(servers)
-      _ -> []
+        Enum.find_value(children, fn
+          {:abyss, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
+          _ -> nil
+        end)
     end
   rescue
-    _ -> []
+    _ -> nil
   end
 
-  defp parse_upstreams(servers) do
-    Enum.map(servers, fn
-      {ip, port} when is_tuple(ip) -> {ip, port}
-      ip when is_tuple(ip) -> {ip, 53}
-      ip_str when is_binary(ip_str) -> parse_upstream_string(ip_str)
-      _ -> nil
-    end)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp parse_upstream_string(str) do
-    case String.split(str, ":") do
-      [ip_str, port_str] ->
-        with {:ok, ip} <- parse_ip(ip_str),
-             {port, ""} <- Integer.parse(port_str) do
-          {ip, port}
-        else
-          _ -> nil
-        end
-
-      [ip_str] ->
-        case parse_ip(ip_str) do
-          {:ok, ip} -> {ip, 53}
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp build_server_config(opts) do
+  defp build_abyss_config(opts) do
     config = get_config()
 
-    port = apply(YellowDog.Config, :get, [:dns, :port]) || config.port
-    listen = apply(YellowDog.Config, :get, [:dns, :listen]) || "0.0.0.0"
+    port = Keyword.get(opts, :port, config.port)
+    listen = Keyword.get(opts, :listen, {0, 0, 0, 0})
 
     listen_ip =
-      case parse_ip(listen) do
-        {:ok, ip} -> ip
-        {:error, _} -> {0, 0, 0, 0}
+      case listen do
+        ip when is_tuple(ip) -> ip
+        ip_str when is_binary(ip_str) -> parse_ip(ip_str)
+        _ -> {0, 0, 0, 0}
       end
 
-    config_keywords =
-      config
-      |> Map.put(:port, port)
-      |> Map.update!(:transport_options, fn transport_opts ->
-        Keyword.put(transport_opts, :ip, listen_ip)
-      end)
-      |> Enum.map(fn {key, value} -> {key, value} end)
+    transport_options =
+      config.transport_options
+      |> Keyword.put(:ip, listen_ip)
 
-    {config_keywords, opts_with_transport} =
-      case Keyword.get(opts, :listen) do
-        nil ->
-          {config_keywords, opts}
-
-        listen_opt ->
-          case parse_ip(listen_opt) do
-            {:ok, ip} ->
-              transport_opts = Keyword.get(config_keywords, :transport_options, [])
-              updated_transport_opts = Keyword.put(transport_opts, :ip, ip)
-              updated_keywords = Keyword.put(config_keywords, :transport_options, updated_transport_opts)
-              {updated_keywords, Keyword.delete(opts, :listen)}
-
-            {:error, _} ->
-              {config_keywords, Keyword.delete(opts, :listen)}
-          end
-      end
-
-    config_keywords
-    |> Keyword.merge(opts_with_transport)
+    config
+    |> Map.to_list()
+    |> Keyword.put(:port, port)
+    |> Keyword.put(:transport_options, transport_options)
     |> Keyword.put(:handler_module, YellowDog.Dns.Handler.UDP)
   end
 
@@ -299,17 +201,19 @@ defmodule YellowDog.Dns.Server do
     charlist = String.to_charlist(ip_str)
 
     case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} -> {:ok, ip}
+      {:ok, ip} ->
+        ip
+
       {:error, _} ->
         case :inet.parse_ipv6_address(charlist) do
-          {:ok, ip} -> {:ok, ip}
-          {:error, _} -> {:error, :invalid_ip}
+          {:ok, ip} -> ip
+          {:error, _} -> {0, 0, 0, 0}
         end
     end
   end
 
-  defp parse_ip(ip) when is_tuple(ip), do: {:ok, ip}
-  defp parse_ip(_), do: {:error, :invalid_ip}
+  defp parse_ip(ip) when is_tuple(ip), do: ip
+  defp parse_ip(_), do: {0, 0, 0, 0}
 
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
 
@@ -320,12 +224,4 @@ defmodule YellowDog.Dns.Server do
   end
 
   defp format_ip(other), do: inspect(other)
-
-  defp safe_call(fun, default) do
-    fun.()
-  rescue
-    _ -> default
-  catch
-    :exit, _ -> default
-  end
 end

@@ -1,29 +1,29 @@
 defmodule YellowDog.Dns.ViewManager do
   @moduledoc """
-  Supervisor for DNS view processes.
+  Supervisor that manages DNS View processes.
 
-  The ViewManager supervises View processes and routes requests
-  to the appropriate view based on client IP matching.
+  The ViewManager supervises View processes and routes requests to the
+  appropriate view based on priority and ACL matching.
 
-  ## Responsibilities
+  ## Children
 
-  - Supervises View processes
-  - Routes requests to appropriate View based on ACL matching
-  - Manages view lifecycle (add/remove/update views)
-  - Provides view statistics
+  - View processes (one per configured view, ordered by priority)
+  - Default view process (always exists, cannot be deleted, matches any)
 
-  ## View Selection
+  ## Request Routing
 
-  Views are evaluated in order of registration. The first view whose ACL
-  matches the client IP handles the request. If no view matches, the
-  default view is used.
+  1. Receive request from connection process (with PID)
+  2. Evaluate views in priority order
+  3. Match client against view ACL (client IP or EDNS client subnet if enabled)
+  4. First matching view wins
+  5. If no match → route to default view (ACL matches any)
+  6. Forward to matched View (with connection process PID)
   """
 
   use DynamicSupervisor
 
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.TSI
-  alias YellowDog.Dns.ViewProcess
+  alias YellowDog.Dns.View
 
   @doc """
   Starts the ViewManager supervisor.
@@ -43,12 +43,14 @@ defmodule YellowDog.Dns.ViewManager do
   @doc """
   Resolves a DNS query through the appropriate view.
 
-  Finds the matching view based on client IP and delegates resolution
-  to that view process.
+  Routes the request to the matching view based on client IP ACL matching.
+  The view is selected by priority order - first matching view wins.
 
   ## Parameters
 
-  - `tsi` - Telemetry Span Item with request context
+  - `connection_pid` - PID of the connection process for response routing
+  - `client_ip` - Client IP address for ACL matching
+  - `query_id` - DNS query ID for tracking
   - `query` - DNS query message
 
   ## Returns
@@ -56,26 +58,39 @@ defmodule YellowDog.Dns.ViewManager do
   - `{:ok, response}` on success
   - `{:error, reason}` on failure
   """
-  @spec resolve(TSI.t()) :: {:ok, DNS.Message.t()} | {:error, atom()}
-  def resolve(%TSI{} = tsi) do
-    resolve(__MODULE__, tsi)
+  @spec resolve(pid(), :inet.ip_address(), non_neg_integer(), DNS.Message.t()) ::
+          {:ok, DNS.Message.t()} | {:error, atom()}
+  def resolve(connection_pid, client_ip, query_id, query) do
+    resolve(__MODULE__, connection_pid, client_ip, query_id, query)
   end
 
-  @spec resolve(Supervisor.supervisor(), TSI.t()) :: {:ok, DNS.Message.t()} | {:error, atom()}
-  def resolve(supervisor, %TSI{} = tsi) do
-    case find_matching_view(supervisor, tsi.client_ip) do
-      {:ok, view_pid} ->
-        ViewProcess.resolve(view_pid, tsi)
+  @spec resolve(
+          Supervisor.supervisor(),
+          pid(),
+          :inet.ip_address(),
+          non_neg_integer(),
+          DNS.Message.t()
+        ) :: {:ok, DNS.Message.t()} | {:error, atom()}
+  def resolve(supervisor, connection_pid, client_ip, query_id, query) do
+    # Find matching view by priority
+    case find_matching_view(supervisor, client_ip) do
+      {:ok, view_pid, view_name} ->
+        # Notify connection process of view match
+        send(connection_pid, {:view_matched, query_id, view_name})
+
+        # Delegate resolution to view
+        View.resolve(view_pid, connection_pid, query_id, query)
 
       {:error, :no_match} ->
         # Use default view if exists
         case find_default_view(supervisor) do
           {:ok, view_pid} ->
-            ViewProcess.resolve(view_pid, tsi)
+            send(connection_pid, {:view_matched, query_id, "default"})
+            View.resolve(view_pid, connection_pid, query_id, query)
 
           :error ->
             Telemetry.warning("No matching view for client", %{
-              client_ip: format_ip(tsi.client_ip)
+              client_ip: format_ip(client_ip)
             })
 
             {:error, :refused}
@@ -88,7 +103,14 @@ defmodule YellowDog.Dns.ViewManager do
 
   ## Parameters
 
-  - `view_config` - View configuration (name, acl, zones, etc.)
+  - `view_config` - View configuration map with:
+    - `:name` - View name (required)
+    - `:priority` - Priority for matching (lower = higher priority)
+    - `:acl` - ACL configuration (`:any` matches all)
+    - `:zones` - List of zone references
+    - `:rpz_zones` - List of RPZ zone references (ordered by specificity)
+    - `:recursion_enabled` - Enable recursive resolution
+    - `:ecs_enabled` - Enable EDNS client subnet matching
 
   ## Returns
 
@@ -108,7 +130,7 @@ defmodule YellowDog.Dns.ViewManager do
 
     child_spec = %{
       id: {:view, view_name},
-      start: {ViewProcess, :start_link, [config]},
+      start: {View, :start_link, [config]},
       restart: :permanent,
       type: :worker
     }
@@ -161,18 +183,20 @@ defmodule YellowDog.Dns.ViewManager do
   @doc """
   Lists all active views.
   """
-  @spec list_views() :: [{String.t(), pid()}]
+  @spec list_views() :: [{String.t(), pid(), integer()}]
   def list_views do
     list_views(__MODULE__)
   end
 
-  @spec list_views(Supervisor.supervisor()) :: [{String.t(), pid()}]
+  @spec list_views(Supervisor.supervisor()) :: [{String.t(), pid(), integer()}]
   def list_views(supervisor) do
     DynamicSupervisor.which_children(supervisor)
     |> Enum.filter(fn {_id, pid, _type, _modules} -> is_pid(pid) end)
     |> Enum.map(fn {{:view, name}, pid, _type, _modules} ->
-      {name, pid}
+      priority = get_view_priority(pid)
+      {name, pid, priority}
     end)
+    |> Enum.sort_by(fn {_name, _pid, priority} -> priority end)
   end
 
   @doc """
@@ -188,8 +212,8 @@ defmodule YellowDog.Dns.ViewManager do
     views = list_views(supervisor)
 
     view_stats =
-      Enum.map(views, fn {name, pid} ->
-        {name, ViewProcess.stats(pid)}
+      Enum.map(views, fn {name, pid, priority} ->
+        {name, Map.put(View.stats(pid), :priority, priority)}
       end)
       |> Map.new()
 
@@ -214,29 +238,31 @@ defmodule YellowDog.Dns.ViewManager do
 
   @spec update_views(Supervisor.supervisor(), [map() | keyword()]) :: :ok | {:error, term()}
   def update_views(supervisor, view_configs) do
-    current = list_views(supervisor) |> Map.new()
+    current = list_views(supervisor) |> Enum.map(fn {name, _pid, _prio} -> name end) |> MapSet.new()
     new_names = Enum.map(view_configs, &get_view_name/1) |> MapSet.new()
-    current_names = Map.keys(current) |> MapSet.new()
+    current_names = current
 
-    # Stop removed views
+    # Stop removed views (except default)
     removed = MapSet.difference(current_names, new_names)
 
     Enum.each(removed, fn name ->
-      stop_view(supervisor, name)
+      if name != "default" do
+        stop_view(supervisor, name)
+      end
     end)
 
     # Start or update views
     Enum.each(view_configs, fn config ->
       name = get_view_name(config)
 
-      case Map.get(current, name) do
-        nil ->
+      case get_view(supervisor, name) do
+        {:ok, pid} ->
+          # Existing view - update config
+          View.reload(pid, config)
+
+        :error ->
           # New view
           start_view(supervisor, config)
-
-        pid ->
-          # Existing view - update config
-          ViewProcess.reload(pid, config)
       end
     end)
 
@@ -252,19 +278,23 @@ defmodule YellowDog.Dns.ViewManager do
   # Private Functions
 
   defp find_matching_view(supervisor, client_ip) do
-    views = DynamicSupervisor.which_children(supervisor)
+    # Get all views sorted by priority
+    views = list_views(supervisor)
 
-    Enum.find_value(views, {:error, :no_match}, fn
-      {{:view, _name}, pid, _type, _modules} when is_pid(pid) ->
-        if ViewProcess.matches?(pid, client_ip) do
-          {:ok, pid}
+    # Find first matching view (excluding default for now)
+    result =
+      Enum.find_value(views, fn {name, pid, _priority} ->
+        if name != "default" and View.matches?(pid, client_ip) do
+          {:ok, pid, name}
         else
           nil
         end
+      end)
 
-      _ ->
-        nil
-    end)
+    case result do
+      nil -> {:error, :no_match}
+      match -> match
+    end
   end
 
   defp find_default_view(supervisor) do
@@ -282,6 +312,14 @@ defmodule YellowDog.Dns.ViewManager do
 
       _ ->
         :error
+    end
+  end
+
+  defp get_view_priority(pid) do
+    try do
+      View.get_priority(pid)
+    catch
+      _, _ -> :infinity
     end
   end
 

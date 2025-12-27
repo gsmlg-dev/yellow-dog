@@ -61,8 +61,8 @@ defmodule YellowDog.Dns.Zone.Cache do
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
-  def resolve(pid, tsi, query) do
-    GenServer.call(pid, {:resolve, tsi, query})
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query})
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -138,8 +138,8 @@ defmodule YellowDog.Dns.Zone.Cache do
   end
 
   @impl true
-  def handle_call({:resolve, _tsi, query}, _from, state) do
-    case query.questions do
+  def handle_call({:resolve, query}, _from, state) do
+    case query.qdlist do
       [question | _] ->
         key = cache_key(question.name, question.type)
 
@@ -231,7 +231,7 @@ defmodule YellowDog.Dns.Zone.Cache do
 
   @impl true
   def handle_cast({:cache, query, response}, state) do
-    case query.questions do
+    case query.qdlist do
       [question | _] ->
         # Calculate TTL from response
         ttl = calculate_ttl(response, state.min_ttl, state.max_ttl)
@@ -307,7 +307,7 @@ defmodule YellowDog.Dns.Zone.Cache do
 
   defp calculate_ttl(response, min_ttl, max_ttl) do
     # Get minimum TTL from all records
-    all_records = response.answers ++ response.authority ++ response.additional
+    all_records = response.anlist ++ response.nslist ++ response.arlist
 
     record_ttl =
       all_records
@@ -331,10 +331,10 @@ defmodule YellowDog.Dns.Zone.Cache do
     %{
       response
       | header: %{response.header | id: query.header.id},
-        questions: query.questions,
-        answers: adjust_ttls(response.answers, remaining),
-        authority: adjust_ttls(response.authority, remaining),
-        additional: adjust_ttls(response.additional, remaining)
+        qdlist: query.qdlist,
+        anlist: adjust_ttls(response.anlist, remaining),
+        nslist: adjust_ttls(response.nslist, remaining),
+        arlist: adjust_ttls(response.arlist, remaining)
     }
   end
 
