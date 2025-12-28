@@ -54,6 +54,9 @@ defmodule YellowDog.Console.Router do
 
     # Real-time Logs
     live "/logs", LogsLive
+
+    # Process Map
+    live "/process-map", ProcessMapLive
   end
 
   scope "/api", YellowDog.Console do
