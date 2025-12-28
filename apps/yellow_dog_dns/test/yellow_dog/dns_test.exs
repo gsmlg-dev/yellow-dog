@@ -2,10 +2,9 @@ defmodule YellowDog.DnsTest do
   use ExUnit.Case
 
   describe "DNS application modules" do
-    test "DNS supervisor and server modules exist" do
+    test "DNS server modules exist" do
       # Test that core DNS modules exist and are properly defined
       assert Code.ensure_loaded?(YellowDog.Dns) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.Supervisor) == true
       assert Code.ensure_loaded?(YellowDog.Dns.Server) == true
       assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
     end
@@ -13,9 +12,10 @@ defmodule YellowDog.DnsTest do
     test "DNS module exports required functions" do
       # Test that the main DNS module exports required functions
       # Ensure the module is loaded first
-      assert Code.ensure_loaded?(YellowDog.Dns) == true
-      assert function_exported?(YellowDog.Dns, :start_link, 1)
-      assert function_exported?(YellowDog.Dns, :child_spec, 1)
+      Code.ensure_loaded!(YellowDog.Dns)
+      assert Kernel.function_exported?(YellowDog.Dns, :start_link, 0)
+      assert Kernel.function_exported?(YellowDog.Dns, :start_link, 1)
+      assert Kernel.function_exported?(YellowDog.Dns, :child_spec, 1)
     end
 
     test "DNS server configuration is valid" do
@@ -24,30 +24,35 @@ defmodule YellowDog.DnsTest do
 
       assert is_map(config)
       assert Map.has_key?(config, :port)
-      assert Map.has_key?(config, :handler_module)
-      assert Map.has_key?(config, :transport_options)
-      assert config.handler_module == YellowDog.Dns.Handler.UDP
+      assert Map.has_key?(config, :listen)
+      assert Map.has_key?(config, :udp)
+      assert Map.has_key?(config, :tcp)
+
+      # Check UDP config
+      assert config.udp.handler_module == YellowDog.Dns.Handler.UDP
+      assert is_list(config.udp.transport_options)
+
+      # Check TCP config
+      assert config.tcp.handler_module == YellowDog.Dns.Handler.TCP
+      assert is_list(config.tcp.transport_options)
+
       assert is_integer(config.port)
-      assert is_list(config.transport_options)
     end
 
-    test "DNS supervisor can be created" do
-      # Test that DNS supervisor can be created with a child spec
-      child_spec = YellowDog.Dns.child_spec(server_options: [port: 53])
+    test "DNS server can be created" do
+      # Test that DNS server can be created with a child spec
+      child_spec = YellowDog.Dns.child_spec(port: 53)
 
       assert is_map(child_spec)
-
-      assert child_spec.start ==
-               {YellowDog.Dns.Supervisor, :start_link, [[server_options: [port: 53]]]}
-
+      assert child_spec.start == {YellowDog.Dns.Supervisor, :start_link, [[port: 53]]}
       assert is_tuple(child_spec.start)
     end
   end
 
   describe "when DNS service is disabled" do
     test "main application starts without DNS when service is disabled" do
-      # Check that DNS supervisor is not running (service disabled in test env)
-      pid = Process.whereis(YellowDog.Dns)
+      # Check that DNS server is not running (service disabled in test env)
+      pid = Process.whereis(YellowDog.Dns.Server)
       assert pid == nil
     end
   end
@@ -70,27 +75,52 @@ defmodule YellowDog.DnsTest do
     test "server configuration has expected defaults" do
       config = YellowDog.Dns.Server.get_config()
 
-      # Check default values
+      # Check shared defaults
       assert config.port == 53
-      assert config.transport_module == Abyss.Transport.UDP.Unicast
-      assert config.handler_module == YellowDog.Dns.Handler.UDP
-      assert config.read_timeout == 5_000
-      assert config.shutdown_timeout == 5_000
-      assert config.num_listeners == 50
-      assert config.num_connections == 10_000
+      assert config.listen == {0, 0, 0, 0}
+
+      # Check UDP defaults
+      udp = config.udp
+      assert udp.transport_module == Abyss.Transport.UDP.Unicast
+      assert udp.handler_module == YellowDog.Dns.Handler.UDP
+      assert udp.read_timeout == 5_000
+      assert udp.shutdown_timeout == 5_000
+      assert udp.num_listeners == 50
+      assert udp.num_connections == 10_000
       # DNS UDP limit
-      assert config.max_packet_size == 512
-      assert config.rate_limit_enabled == true
+      assert udp.max_packet_size == 512
+      assert udp.rate_limit_enabled == true
+
+      # Check TCP defaults
+      tcp = config.tcp
+      assert tcp.transport_module == ThousandIsland.Transports.TCP
+      assert tcp.handler_module == YellowDog.Dns.Handler.TCP
+      assert tcp.read_timeout == 120_000
+      assert tcp.shutdown_timeout == 15_000
+      assert tcp.num_acceptors == 100
+      assert tcp.num_connections == 16_384
     end
 
-    test "transport options include expected settings" do
+    test "UDP transport options include expected settings" do
       config = YellowDog.Dns.Server.get_config()
-      transport_options = config.transport_options
+      transport_options = config.udp.transport_options
 
       assert is_list(transport_options)
       assert Keyword.has_key?(transport_options, :ip)
       assert Keyword.has_key?(transport_options, :reuseaddr)
       assert transport_options[:reuseaddr] == true
+    end
+
+    test "TCP transport options include expected settings" do
+      config = YellowDog.Dns.Server.get_config()
+      transport_options = config.tcp.transport_options
+
+      assert is_list(transport_options)
+      assert Keyword.has_key?(transport_options, :ip)
+      assert Keyword.has_key?(transport_options, :reuseaddr)
+      assert Keyword.has_key?(transport_options, :nodelay)
+      assert transport_options[:reuseaddr] == true
+      assert transport_options[:nodelay] == true
     end
   end
 
@@ -101,27 +131,29 @@ defmodule YellowDog.DnsTest do
       # Verify top-level structure
       assert is_map(stats)
       assert Map.has_key?(stats, :zones)
-      assert Map.has_key?(stats, :storage)
+      assert Map.has_key?(stats, :views)
+      assert Map.has_key?(stats, :connections)
       assert Map.has_key?(stats, :service)
 
-      # Verify storage stats structure (may be error if not initialized)
-      storage = stats.storage
-      assert is_map(storage)
+      # Verify zones stats structure
+      zones = stats.zones
+      assert is_map(zones)
 
-      if Map.has_key?(storage, :error) do
-        # Storage not initialized - this is expected in test environment
-        assert storage.error == "Storage not initialized"
+      # In test environment, ZoneController is not running
+      if Map.has_key?(zones, :error) do
+        assert zones.error == "ZoneController not running"
       else
-        # Storage initialized - verify structure
-        assert Map.has_key?(storage, :total_zones)
-        assert Map.has_key?(storage, :total_records)
-        assert Map.has_key?(storage, :memory_bytes)
-        assert Map.has_key?(storage, :memory_mb)
-        assert is_integer(storage.total_zones)
-        assert is_integer(storage.total_records)
-        assert is_integer(storage.memory_bytes)
-        assert is_float(storage.memory_mb)
+        assert Map.has_key?(zones, :count)
+        assert is_integer(zones.count)
       end
+
+      # Verify views stats structure
+      views = stats.views
+      assert is_map(views)
+
+      # Verify connections stats structure
+      connections = stats.connections
+      assert is_map(connections)
 
       # Verify service status structure
       service = stats.service
@@ -130,19 +162,6 @@ defmodule YellowDog.DnsTest do
       assert Map.has_key?(service, :info)
       assert is_boolean(service.running)
       assert is_binary(service.info)
-
-      # Verify zones stats structure (either error or valid stats)
-      zones = stats.zones
-      assert is_map(zones)
-
-      # In test environment, zone manager is not running
-      if Map.has_key?(zones, :error) do
-        assert zones.error in ["Zone manager not running", "Zone manager not available"]
-      else
-        # If running, verify structure
-        assert Map.has_key?(zones, :loaded_zones)
-        assert is_integer(zones.loaded_zones)
-      end
     end
 
     test "status/0 returns service status" do

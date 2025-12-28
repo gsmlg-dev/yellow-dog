@@ -11,14 +11,14 @@ defmodule E2ETest.ServiceHelper do
   @doc """
   Starts the DNS server with auto-selected port.
 
-  Returns a context map with server pid, assigned port, and host.
+  Returns a context map with server pid, assigned UDP port, TCP port, and host.
 
   ## Options
   - `:listen` - IP address to bind to (default: {127, 0, 0, 1})
   - `:timeout` - Startup timeout in ms (default: 10_000)
 
   ## Returns
-  - `{:ok, %{server_pid: pid, port: port, host: ip, service: :dns}}`
+  - `{:ok, %{server_pid: pid, port: udp_port, tcp_port: tcp_port, host: ip, service: :dns}}`
   - `{:error, reason}`
   """
   @spec start_dns_server(keyword()) :: {:ok, map()} | {:error, term()}
@@ -32,7 +32,89 @@ defmodule E2ETest.ServiceHelper do
       transport_options: [ip: host, reuseaddr: true]
     ]
 
-    start_service(YellowDog.Dns.Server, server_opts, :dns, host, timeout)
+    start_dns_service(YellowDog.Dns.Server, server_opts, host, timeout)
+  end
+
+  # Special start function for DNS that retrieves both UDP and TCP ports
+  defp start_dns_service(module, opts, host, timeout) do
+    # Unregister any existing named process
+    try do
+      if Process.whereis(module) do
+        GenServer.stop(module, :normal, 1_000)
+      end
+    catch
+      _, _ -> :ok
+    end
+
+    # Wait a bit for cleanup
+    Process.sleep(100)
+
+    case apply(module, :start_link, [opts]) do
+      {:ok, pid} ->
+        # Wait for service to be ready
+        Process.sleep(200)
+
+        if Process.alive?(pid) do
+          # Get UDP port
+          udp_port_result = get_dns_udp_port(pid)
+          # Get TCP port
+          tcp_port_result = get_dns_tcp_port(pid)
+
+          case {udp_port_result, tcp_port_result} do
+            {{:ok, udp_port}, {:ok, tcp_port}} ->
+              {:ok,
+               %{
+                 server_pid: pid,
+                 port: udp_port,
+                 tcp_port: tcp_port,
+                 host: host,
+                 service: :dns
+               }}
+
+            {{:ok, udp_port}, {:error, _}} ->
+              # TCP port detection failed but UDP works - still usable
+              {:ok,
+               %{
+                 server_pid: pid,
+                 port: udp_port,
+                 tcp_port: nil,
+                 host: host,
+                 service: :dns
+               }}
+
+            {{:error, reason}, _} ->
+              # Cleanup on failure
+              try do
+                GenServer.stop(pid, :normal, 1_000)
+              catch
+                _, _ -> :ok
+              end
+
+              {:error, {:udp_port_detection_failed, reason}}
+          end
+        else
+          {:error, :process_died}
+        end
+
+      {:error, reason} ->
+        {:error, {:start_failed, reason}}
+    end
+  end
+
+  defp get_dns_udp_port(pid) do
+    try do
+      YellowDog.Dns.Server.get_udp_port(pid)
+    catch
+      _, _ -> {:error, :udp_port_unavailable}
+    end
+  end
+
+  defp get_dns_tcp_port(pid) do
+    try do
+      YellowDog.Dns.Server.get_tcp_port(pid)
+    catch
+      _, _ -> {:error, :tcp_port_unavailable}
+    end
   end
 
   @doc """
@@ -220,45 +302,96 @@ defmodule E2ETest.ServiceHelper do
   # the port should be available immediately after start_link returns.
   # We use a small delay to ensure socket is fully bound.
   defp wait_for_port(pid, _timeout) do
-    Process.sleep(100)
+    Process.sleep(200)
 
     if Process.alive?(pid) do
-      # For services using named registration, we can't easily get the port
-      # from outside. The tests will need to use a fixed port or the service
-      # should expose a way to get the bound port.
-      #
-      # Since our servers use Abyss internally and store abyss_pid in state,
-      # we would need to expose a get_port function. For now, we'll rely on
-      # the fact that port 0 causes OS to assign an ephemeral port.
-      #
-      # A workaround: try to use :sys.get_state to inspect the server state
+      # Try the get_port function if available (new supervisor-based servers)
       try do
-        state = :sys.get_state(pid, 5_000)
-        extract_port_from_state(state)
+        case get_port_via_api(pid) do
+          {:ok, port} -> {:ok, port}
+          {:error, _} -> get_port_via_state(pid)
+        end
       catch
-        _, _ -> {:error, :state_unavailable}
+        _, _ -> get_port_via_state(pid)
       end
     else
       {:error, :process_died}
     end
   end
 
-  # Extract port from server state (varies by server implementation)
-  # Check for abyss_pid FIRST since state may have both config and abyss_pid
-  defp extract_port_from_state(%{abyss_pid: abyss_pid}) when is_pid(abyss_pid) do
-    # Try to get port from Abyss listener
-    get_port_from_abyss(abyss_pid)
+  # Try to get port via the server's get_port API (for supervisor-based servers)
+  # Only use for DNS servers which are now Supervisors - other servers are GenServers
+  defp get_port_via_api(_pid) do
+    # Skip API-based port detection - use state-based detection instead
+    # This avoids calling Supervisor.which_children on GenServer-based servers
+    # like mDNS, DHCPv4, and DHCPv6 which would crash them
+    {:error, :no_get_port_api}
   end
 
-  defp extract_port_from_state(%{config: config}) when is_list(config) do
-    case Keyword.get(config, :port) do
-      nil -> {:error, :port_not_in_config}
-      0 -> {:error, :port_is_zero}
-      port -> {:ok, port}
+  # Get port via sys:get_state for GenServer-based servers, or via
+  # Supervisor.which_children for Supervisor-based servers (like DNS)
+  defp get_port_via_state(pid) do
+    # Get state first - this works for both GenServers and Supervisors
+    try do
+      state = :sys.get_state(pid, 5_000)
+
+      # Check if this is a Supervisor state (tuple format) or GenServer state (map)
+      case state do
+        # Supervisor internal state is a complex tuple, but we can detect it
+        # by checking if the process responds to which_children
+        # For now, check if it's a map with abyss_pid (GenServer pattern)
+        %{abyss_pid: abyss_pid} when is_pid(abyss_pid) ->
+          get_port_from_abyss(abyss_pid)
+
+        %{config: config} when is_list(config) ->
+          case Keyword.get(config, :port) do
+            nil -> {:error, :port_not_in_config}
+            0 -> {:error, :port_is_zero}
+            port -> {:ok, port}
+          end
+
+        # Supervisor state - need to call which_children to find Abyss
+        # This is a Supervisor internal state tuple
+        {_, _, _, children, _, _, _, _, _, _} when is_map(children) ->
+          get_port_from_supervisor_pid(pid)
+
+        # Also check for simpler supervisor state format
+        _ when is_tuple(state) ->
+          get_port_from_supervisor_pid(pid)
+
+        _ ->
+          {:error, :unknown_state_format}
+      end
+    catch
+      _, _ -> {:error, :state_unavailable}
     end
   end
 
-  defp extract_port_from_state(_), do: {:error, :unknown_state_format}
+  # Get port from Supervisor by calling which_children
+  defp get_port_from_supervisor_pid(pid) do
+    try do
+      children = Supervisor.which_children(pid)
+      get_port_from_supervisor_children(children)
+    catch
+      _, _ -> {:error, :supervisor_children_failed}
+    end
+  end
+
+  # Get port from Supervisor children list (for Supervisor-based servers like DNS)
+  defp get_port_from_supervisor_children(children) do
+    # Find Abyss child in the children list
+    abyss_pid =
+      Enum.find_value(children, fn
+        {:abyss, child_pid, :supervisor, _} when is_pid(child_pid) -> child_pid
+        _ -> nil
+      end)
+
+    case abyss_pid do
+      nil -> {:error, :abyss_not_found}
+      pid -> get_port_from_abyss(pid)
+    end
+  end
+
 
   defp get_port_from_abyss(abyss_pid) do
     # Try to get listener pool and then listener info

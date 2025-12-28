@@ -1,92 +1,395 @@
 defmodule YellowDog.Dns.Zone.Forward do
   @moduledoc """
-  Forward zone configuration and management.
+  Forwarding zone process.
 
-  Forward zones delegate DNS queries to upstream resolvers instead of
-  performing authoritative resolution. This is useful for:
-  - Delegating specific subdomains to external DNS servers
-  - Implementing conditional forwarding based on domain names
-  - Creating DNS split-brain architectures
+  Forwards DNS queries to configured upstream servers.
+  Supports multiple upstream servers with failover.
 
-  ## Forward Modes
+  ## Features
 
-  - `:first` - Try local authoritative resolution first, forward only on NXDOMAIN
-  - `:only` - Always forward to upstream, never try local resolution
+  - Multiple upstream servers with round-robin selection
+  - Timeout and retry handling
+  - Response caching (optional)
+  - Health checking of upstream servers
 
-  ## Examples
+  ## Legacy API
 
-      iex> forwarders = [{8, 8, 8, 8}, {1, 1, 1, 1}]
-      iex> forward = Forward.new("external.com", forwarders, forward_mode: :only)
-      %Forward{name: "external.com", forwarders: [...], forward_mode: :only}
-
-      iex> Forward.validate(forward)
-      :ok
+  This module also provides a legacy struct-based API for configuration
+  and validation, used by Zone.Manager for loading forward zones.
   """
 
-  @type forward_mode :: :first | :only
+  use GenServer
+
+  @behaviour YellowDog.Dns.Zone.Behaviour
+
+  alias YellowDog.Telemetry
+
+  @default_timeout 5000
+  @default_retries 2
+
   @type t :: %__MODULE__{
-          name: String.t(),
-          forwarders: [:inet.ip_address()],
-          forward_mode: forward_mode(),
-          timeout_ms: non_neg_integer(),
-          max_retries: non_neg_integer()
+          name: String.t() | nil,
+          upstreams: [{:inet.ip_address(), :inet.port_number()}] | nil,
+          socket: :gen_udp.socket() | nil,
+          timeout: non_neg_integer() | nil,
+          retries: non_neg_integer() | nil,
+          forwarders: [:inet.ip_address()] | nil,
+          forward_mode: :only | :first | nil,
+          timeout_ms: non_neg_integer() | nil,
+          max_retries: non_neg_integer() | nil,
+          current_upstream: non_neg_integer(),
+          query_count: non_neg_integer(),
+          success_count: non_neg_integer(),
+          error_count: non_neg_integer(),
+          pending: map()
         }
 
   defstruct [
     :name,
+    :upstreams,
+    :socket,
+    :timeout,
+    :retries,
+    # Legacy fields for struct-based API
     :forwarders,
     :forward_mode,
     :timeout_ms,
-    :max_retries
+    :max_retries,
+    current_upstream: 0,
+    query_count: 0,
+    success_count: 0,
+    error_count: 0,
+    pending: %{}
   ]
 
-  @doc """
-  Creates a new forward zone configuration.
+  # Client API
 
-  ## Parameters
-  - `name` - Zone name (e.g., "external.com")
-  - `forwarders` - List of IP addresses (tuples) to forward to
-  - `opts` - Optional configuration
+  @doc """
+  Starts a forwarding zone process.
 
   ## Options
-  - `:forward_mode` - Forward mode (default: `:only`)
-  - `:timeout_ms` - Timeout in milliseconds (default: 5000)
-  - `:max_retries` - Maximum retry attempts per forwarder (default: 2)
 
-  ## Examples
-
-      iex> Forward.new("external.com", [{8, 8, 8, 8}, {1, 1, 1, 1}])
-      %Forward{name: "external.com", forwarders: [{8, 8, 8, 8}, {1, 1, 1, 1}], ...}
+  - `:name` - Zone name (required)
+  - `:upstreams` - List of upstream servers [{ip, port}, ...]
+  - `:timeout` - Query timeout in ms (default: 5000)
+  - `:retries` - Number of retries (default: 2)
   """
-  @spec new(String.t(), [:inet.ip_address()], keyword()) :: t()
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    zone_name = Keyword.fetch!(opts, :name)
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
+  def get_name(pid) do
+    GenServer.call(pid, :get_name)
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
+  def resolve(pid, query) do
+    GenServer.call(pid, {:resolve, query}, @default_timeout + 1000)
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
+  def reload(pid, config) do
+    GenServer.call(pid, {:reload, config})
+  end
+
+  @impl YellowDog.Dns.Zone.Behaviour
+  def stats(pid) do
+    GenServer.call(pid, :stats)
+  end
+
+  # Server Callbacks
+
+  @impl true
+  def init(opts) do
+    zone_name = Keyword.fetch!(opts, :name)
+    upstreams = parse_upstreams(Keyword.get(opts, :upstreams, []))
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    retries = Keyword.get(opts, :retries, @default_retries)
+
+    # Open UDP socket for forwarding
+    {:ok, socket} = :gen_udp.open(0, [:binary, active: true])
+
+    state = %__MODULE__{
+      name: zone_name,
+      upstreams: upstreams,
+      socket: socket,
+      timeout: timeout,
+      retries: retries
+    }
+
+    Telemetry.info("Forward zone started", %{
+      name: zone_name,
+      upstreams: length(upstreams)
+    })
+
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_call(:get_name, _from, state) do
+    {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call({:resolve, query}, from, state) do
+    state = %{state | query_count: state.query_count + 1}
+
+    case state.upstreams do
+      [] ->
+        {:reply, {:error, :no_upstreams}, state}
+
+      _upstreams ->
+        # Select upstream (round-robin)
+        {upstream, state} = select_upstream(state)
+
+        # Send query
+        case send_query(state, upstream, query) do
+          :ok ->
+            # Store pending request
+            query_id = query.header.id
+            timer_ref = Process.send_after(self(), {:timeout, query_id}, state.timeout)
+
+            pending = %{
+              from: from,
+              query: query,
+              upstream: upstream,
+              timer: timer_ref,
+              retries: state.retries,
+              started_at: System.monotonic_time(:microsecond)
+            }
+
+            state = %{state | pending: Map.put(state.pending, query_id, pending)}
+            {:noreply, state}
+
+          {:error, reason} ->
+            state = %{state | error_count: state.error_count + 1}
+            {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_call({:reload, config}, _from, state) do
+    upstreams = parse_upstreams(Keyword.get(config, :upstreams, state.upstreams))
+    timeout = Keyword.get(config, :timeout, state.timeout)
+    retries = Keyword.get(config, :retries, state.retries)
+
+    new_state = %{state | upstreams: upstreams, timeout: timeout, retries: retries}
+
+    Telemetry.info("Forward zone reloaded", %{name: state.name})
+
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:stats, _from, state) do
+    stats = %{
+      name: state.name,
+      upstream_count: length(state.upstreams),
+      query_count: state.query_count,
+      success_count: state.success_count,
+      error_count: state.error_count,
+      pending_count: map_size(state.pending)
+    }
+
+    {:reply, stats, state}
+  end
+
+  @impl true
+  def handle_info({:udp, socket, ip, port, data}, %{socket: socket} = state) do
+    try do
+      response = DNS.Message.from_iodata(data)
+      query_id = response.header.id
+
+      case Map.pop(state.pending, query_id) do
+        {nil, _pending} ->
+          # Unknown response, ignore
+          {:noreply, state}
+
+        {pending, remaining} ->
+          # Cancel timeout timer
+          Process.cancel_timer(pending.timer)
+
+          # Calculate elapsed time
+          elapsed = System.monotonic_time(:microsecond) - pending.started_at
+
+          Telemetry.debug("Forward query completed", %{
+            zone: state.name,
+            upstream: format_upstream({ip, port}),
+            elapsed_us: elapsed
+          })
+
+          # Reply to caller
+          GenServer.reply(pending.from, {:ok, response})
+
+          state = %{
+            state
+            | pending: remaining,
+              success_count: state.success_count + 1
+          }
+
+          {:noreply, state}
+      end
+    catch
+      :throw, _reason ->
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:timeout, query_id}, state) do
+    case Map.pop(state.pending, query_id) do
+      {nil, _pending} ->
+        # Already handled
+        {:noreply, state}
+
+      {pending, remaining} ->
+        if pending.retries > 0 do
+          # Retry with next upstream
+          {upstream, state} = select_upstream(%{state | pending: remaining})
+
+          case send_query(state, upstream, pending.query) do
+            :ok ->
+              timer_ref = Process.send_after(self(), {:timeout, query_id}, state.timeout)
+
+              new_pending = %{
+                pending
+                | upstream: upstream,
+                  timer: timer_ref,
+                  retries: pending.retries - 1
+              }
+
+              state = %{state | pending: Map.put(state.pending, query_id, new_pending)}
+              {:noreply, state}
+
+            {:error, _reason} ->
+              GenServer.reply(pending.from, {:error, :servfail})
+              state = %{state | error_count: state.error_count + 1}
+              {:noreply, state}
+          end
+        else
+          # No more retries
+          Telemetry.warning("Forward query timeout", %{
+            zone: state.name,
+            query_id: query_id
+          })
+
+          GenServer.reply(pending.from, {:error, :servfail})
+          state = %{state | pending: remaining, error_count: state.error_count + 1}
+          {:noreply, state}
+        end
+    end
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    :gen_udp.close(state.socket)
+    :ok
+  end
+
+  # Private Functions
+
+  defp parse_upstreams(upstreams) when is_list(upstreams) do
+    Enum.map(upstreams, fn
+      {ip, port} when is_tuple(ip) and is_integer(port) ->
+        {ip, port}
+
+      ip_str when is_binary(ip_str) ->
+        parse_upstream_string(ip_str)
+
+      {ip_str, port} when is_binary(ip_str) and is_integer(port) ->
+        case parse_ip(ip_str) do
+          {:ok, ip} -> {ip, port}
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp parse_upstreams(_), do: []
+
+  defp parse_upstream_string(str) do
+    case String.split(str, ":") do
+      [ip_str, port_str] ->
+        with {:ok, ip} <- parse_ip(ip_str),
+             {port, ""} <- Integer.parse(port_str) do
+          {ip, port}
+        else
+          _ -> nil
+        end
+
+      [ip_str] ->
+        case parse_ip(ip_str) do
+          {:ok, ip} -> {ip, 53}
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_ip(ip_str) do
+    charlist = String.to_charlist(ip_str)
+
+    case :inet.parse_address(charlist) do
+      {:ok, ip} -> {:ok, ip}
+      _ -> :error
+    end
+  end
+
+  defp select_upstream(state) do
+    index = rem(state.current_upstream, length(state.upstreams))
+    upstream = Enum.at(state.upstreams, index)
+    {upstream, %{state | current_upstream: state.current_upstream + 1}}
+  end
+
+  defp send_query(state, {ip, port}, query) do
+    data = DNS.to_iodata(query)
+    :gen_udp.send(state.socket, ip, port, data)
+  end
+
+  defp format_upstream({ip, port}) do
+    "#{:inet.ntoa(ip)}:#{port}"
+  end
+
+  defp via_tuple(zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:forward, zone_name}}}
+  end
+
+  # ===========================================================================
+  # Legacy Struct-Based API
+  # ===========================================================================
+  # These functions provide backwards compatibility for Zone.Manager and tests
+  # that use the struct-based API for configuration.
+
+  @doc """
+  Creates a new forward zone struct (legacy API).
+
+  ## Parameters
+  - `name` - Zone name
+  - `forwarders` - List of upstream server IP tuples
+  - `opts` - Options: forward_mode, timeout_ms, max_retries
+  """
+  @spec new(String.t(), [tuple()], keyword()) :: t()
   def new(name, forwarders, opts \\ []) do
     %__MODULE__{
       name: name,
       forwarders: forwarders,
       forward_mode: Keyword.get(opts, :forward_mode, :only),
-      timeout_ms: Keyword.get(opts, :timeout_ms, 5000),
-      max_retries: Keyword.get(opts, :max_retries, 2)
+      timeout_ms: Keyword.get(opts, :timeout_ms, @default_timeout),
+      max_retries: Keyword.get(opts, :max_retries, @default_retries)
     }
   end
 
   @doc """
-  Validates a forward zone configuration.
-
-  Checks for:
-  - Valid zone name
-  - At least one forwarder
-  - Valid forward mode
-  - Reasonable timeout and retry values
-
-  ## Examples
-
-      iex> forward = Forward.new("external.com", [{8, 8, 8, 8}])
-      iex> Forward.validate(forward)
-      :ok
-
-      iex> forward = Forward.new("", [])
-      iex> Forward.validate(forward)
-      {:error, :missing_name}
+  Validates a forward zone struct (legacy API).
   """
   @spec validate(t()) :: :ok | {:error, atom()}
   def validate(%__MODULE__{} = forward) do
@@ -97,13 +400,15 @@ defmodule YellowDog.Dns.Zone.Forward do
       is_nil(forward.forwarders) or forward.forwarders == [] ->
         {:error, :missing_forwarders}
 
-      forward.forward_mode not in [:first, :only] ->
+      forward.forward_mode not in [:only, :first] ->
         {:error, :invalid_forward_mode}
 
-      forward.timeout_ms < 100 or forward.timeout_ms > 30_000 ->
+      not is_integer(forward.timeout_ms) or forward.timeout_ms < 100 or
+          forward.timeout_ms > 30_000 ->
         {:error, :invalid_timeout}
 
-      forward.max_retries < 0 or forward.max_retries > 10 ->
+      not is_integer(forward.max_retries) or forward.max_retries < 0 or
+          forward.max_retries > 10 ->
         {:error, :invalid_max_retries}
 
       true ->
@@ -112,68 +417,32 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @doc """
-  Parses forward zone configuration from a map (typically from TOML).
-
-  ## Parameters
-  - `config` - Configuration map
-
-  ## Expected Keys
-  - `"name"` - Zone name (required)
-  - `"forwarders"` - List of IP address strings (required)
-  - `"forward_mode"` - Forward mode string (optional, default: "only")
-  - `"timeout_ms"` - Timeout in milliseconds (optional)
-  - `"max_retries"` - Maximum retries (optional)
-
-  ## Examples
-
-      iex> config = %{
-      ...>   "name" => "external.com",
-      ...>   "forwarders" => ["8.8.8.8", "1.1.1.1"],
-      ...>   "forward_mode" => "only"
-      ...> }
-      iex> Forward.parse_config(config)
-      {:ok, %Forward{name: "external.com", forwarders: [...], ...}}
-
-      iex> Forward.parse_config(%{})
-      {:error, :missing_name}
+  Parses forward zone from config map (legacy API).
   """
   @spec parse_config(map()) :: {:ok, t()} | {:error, atom()}
   def parse_config(config) when is_map(config) do
-    with {:ok, name} <- fetch_required(config, "name"),
-         {:ok, forwarders_str} <- fetch_required(config, "forwarders"),
-         {:ok, forwarders} <- parse_forwarders(forwarders_str) do
-      opts =
-        []
-        |> maybe_add_opt(config, "forward_mode", :forward_mode, &parse_forward_mode/1)
-        |> maybe_add_opt(config, "timeout_ms", :timeout_ms, &parse_integer/1)
-        |> maybe_add_opt(config, "max_retries", :max_retries, &parse_integer/1)
+    with {:ok, name} <- get_required(config, "name"),
+         {:ok, forwarder_strs} <- get_required(config, "forwarders"),
+         {:ok, forwarders} <- parse_forwarder_ips(forwarder_strs) do
+      forward_mode =
+        case Map.get(config, "forward_mode", "only") do
+          "first" -> :first
+          _ -> :only
+        end
 
-      forward = new(name, forwarders, opts)
+      forward =
+        new(name, forwarders,
+          forward_mode: forward_mode,
+          timeout_ms: Map.get(config, "timeout_ms", @default_timeout),
+          max_retries: Map.get(config, "max_retries", @default_retries)
+        )
 
-      case validate(forward) do
-        :ok -> {:ok, forward}
-        error -> error
-      end
+      {:ok, forward}
     end
   end
 
   @doc """
-  Converts a forward zone to storage metadata format.
-
-  This allows forward zones to be stored in Zone.Storage alongside
-  authoritative zones.
-
-  ## Examples
-
-      iex> forward = Forward.new("external.com", [{8, 8, 8, 8}])
-      iex> Forward.to_storage_metadata(forward)
-      %{
-        type: :forward,
-        forwarders: [{8, 8, 8, 8}],
-        forward_mode: :only,
-        timeout_ms: 5000,
-        max_retries: 2
-      }
+  Converts forward zone to storage metadata (legacy API).
   """
   @spec to_storage_metadata(t()) :: map()
   def to_storage_metadata(%__MODULE__{} = forward) do
@@ -188,118 +457,57 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @doc """
-  Creates a forward zone from storage metadata.
-
-  ## Parameters
-  - `zone_name` - The zone name
-  - `metadata` - Metadata map from storage
-
-  ## Examples
-
-      iex> metadata = %{
-      ...>   type: :forward,
-      ...>   forwarders: [{8, 8, 8, 8}],
-      ...>   forward_mode: :only
-      ...> }
-      iex> Forward.from_storage_metadata("external.com", metadata)
-      {:ok, %Forward{name: "external.com", ...}}
+  Creates forward zone from storage metadata (legacy API).
   """
   @spec from_storage_metadata(String.t(), map()) :: {:ok, t()} | {:error, atom()}
-  def from_storage_metadata(zone_name, metadata) when is_map(metadata) do
-    if Map.get(metadata, :type) == :forward do
-      opts = [
-        forward_mode: Map.get(metadata, :forward_mode, :only),
-        timeout_ms: Map.get(metadata, :timeout_ms, 5000),
-        max_retries: Map.get(metadata, :max_retries, 2)
-      ]
+  def from_storage_metadata(zone_name, metadata) do
+    cond do
+      Map.get(metadata, :type) != :forward ->
+        {:error, :not_forward_zone}
 
-      forwarders = Map.get(metadata, :forwarders, [])
-      forward = new(zone_name, forwarders, opts)
+      is_nil(metadata[:forwarders]) or metadata[:forwarders] == [] ->
+        {:error, :missing_forwarders}
 
-      case validate(forward) do
-        :ok -> {:ok, forward}
-        error -> error
-      end
-    else
-      {:error, :not_forward_zone}
+      true ->
+        forward =
+          new(zone_name, metadata[:forwarders],
+            forward_mode: Map.get(metadata, :forward_mode, :only),
+            timeout_ms: Map.get(metadata, :timeout_ms, @default_timeout),
+            max_retries: Map.get(metadata, :max_retries, @default_retries)
+          )
+
+        {:ok, forward}
     end
   end
 
-  # Private Functions
+  # Legacy API helpers
 
-  defp fetch_required(config, key) do
+  defp get_required(config, key) do
     case Map.get(config, key) do
-      nil -> {:error, String.to_atom("missing_#{key}")}
+      nil -> {:error, :"missing_#{String.to_atom(key)}"}
+      "" -> {:error, :"missing_#{String.to_atom(key)}"}
+      [] -> {:error, :"missing_#{String.to_atom(key)}"}
       value -> {:ok, value}
     end
   end
 
-  defp parse_forwarders(forwarders) when is_list(forwarders) do
+  defp parse_forwarder_ips(forwarder_strs) when is_list(forwarder_strs) do
     results =
-      Enum.map(forwarders, fn
-        ip when is_tuple(ip) ->
-          {:ok, ip}
+      Enum.map(forwarder_strs, fn str ->
+        charlist = String.to_charlist(str)
 
-        ip_str when is_binary(ip_str) ->
-          parse_ip_address(ip_str)
-
-        _ ->
-          {:error, :invalid_forwarder}
+        case :inet.parse_address(charlist) do
+          {:ok, ip} -> {:ok, ip}
+          _ -> :error
+        end
       end)
 
-    # Check if all parsed successfully
-    if Enum.all?(results, &match?({:ok, _}, &1)) do
-      ips = Enum.map(results, fn {:ok, ip} -> ip end)
-      {:ok, ips}
-    else
+    if Enum.any?(results, fn r -> r == :error end) do
       {:error, :invalid_forwarders}
+    else
+      {:ok, Enum.map(results, fn {:ok, ip} -> ip end)}
     end
   end
 
-  defp parse_forwarders(_), do: {:error, :invalid_forwarders}
-
-  defp parse_ip_address(ip_str) when is_binary(ip_str) do
-    charlist = String.to_charlist(ip_str)
-
-    case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} ->
-        {:ok, ip}
-
-      {:error, _} ->
-        case :inet.parse_ipv6_address(charlist) do
-          {:ok, ip} -> {:ok, ip}
-          {:error, _} -> {:error, :invalid_ip}
-        end
-    end
-  end
-
-  defp parse_forward_mode("first"), do: {:ok, :first}
-  defp parse_forward_mode("only"), do: {:ok, :only}
-  defp parse_forward_mode(:first), do: {:ok, :first}
-  defp parse_forward_mode(:only), do: {:ok, :only}
-  defp parse_forward_mode(_), do: {:error, :invalid_forward_mode}
-
-  defp parse_integer(value) when is_integer(value), do: {:ok, value}
-
-  defp parse_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} -> {:ok, int}
-      _ -> {:error, :invalid_integer}
-    end
-  end
-
-  defp parse_integer(_), do: {:error, :invalid_integer}
-
-  defp maybe_add_opt(opts, config, config_key, opt_key, parser) do
-    case Map.get(config, config_key) do
-      nil ->
-        opts
-
-      value ->
-        case parser.(value) do
-          {:ok, parsed} -> Keyword.put(opts, opt_key, parsed)
-          {:error, _} -> opts
-        end
-    end
-  end
+  defp parse_forwarder_ips(_), do: {:error, :invalid_forwarders}
 end

@@ -1,11 +1,25 @@
 defmodule YellowDog.Dns.Supervisor do
   @moduledoc """
-  The main supervisor for the YellowDog DNS application.
+  Top-level supervisor for the DNS subsystem.
 
-  Manages the DNS server with proper supervision strategy following
-  the same pattern as DHCPv4/v6 applications.
+  Started by `YellowDog.Dns.Application`, this supervisor manages:
+  - `YellowDog.Dns.Server` - Network I/O servers (Abyss UDP + ThousandIsland TCP)
+  - `YellowDog.Dns.ZoneController` - Supervises zone processes
+  - `YellowDog.Dns.ViewManager` - Manages DNS views and routing
+  - `YellowDog.Dns.ConnectionManager` - Manages connection processes for DNS resolution
 
-  The supervisor only starts if DNS is enabled in the YellowDog configuration.
+  ## Process Hierarchy
+
+      YellowDog.Dns.Supervisor
+      ├── YellowDog.Dns.Server (Supervisor)
+      │   ├── Abyss (UDP Server)
+      │   └── ThousandIsland (TCP Server)
+      ├── ConnectionManager (DynamicSupervisor)
+      │   └── Connection Processes (per-connection)
+      ├── ViewManager (Supervisor)
+      │   └── View processes (GenServer, one per configured view)
+      └── ZoneController (Supervisor)
+          └── Zone processes (Auth, Forward, Stub, Root, Cache, RPZ)
   """
 
   use Supervisor
@@ -13,132 +27,254 @@ defmodule YellowDog.Dns.Supervisor do
   alias YellowDog.Telemetry
 
   @doc """
-  Starts the DNS server supervisor.
+  Starts the DNS supervisor.
 
   ## Options
-  - `name`: Supervisor name (default: YellowDog.Dns)
-  - `server_options`: Options passed to DNS server
+  - `port`: UDP port to listen on (default: 53)
+  - `listen`: IP address to bind to (default: "0.0.0.0")
+  - `views`: Initial view configurations
+  - `zones`: Initial zone configurations
 
   ## Returns
   - `{:ok, pid}` - Supervisor started successfully
   - `{:error, reason}` - Failed to start supervisor
-
-  Note: Service enablement is handled at the application layer.
-  This supervisor always starts when invoked.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts) do
-    opts = Map.new(opts)
-    name = Map.get(opts, :name, YellowDog.Dns)
-    opts = Map.put(opts, :name, name)
-
-    Telemetry.debug("Starting DNS supervisor")
-    Supervisor.start_link(__MODULE__, opts, name: name)
+  def start_link(opts \\ []) do
+    # Register as YellowDog.Dns (not YellowDog.Dns.Supervisor) to match other services
+    Supervisor.start_link(__MODULE__, opts, name: YellowDog.Dns)
   end
+
+  @doc """
+  Stops the DNS supervisor.
+  """
+  @spec stop(pid() | atom()) :: :ok
+  def stop(pid \\ YellowDog.Dns) do
+    Supervisor.stop(pid)
+  end
+
+  @doc """
+  Returns the status of the DNS subsystem.
+  """
+  @spec status() :: map()
+  def status do
+    %{
+      running: Process.whereis(YellowDog.Dns) != nil,
+      server: safe_call(fn -> YellowDog.Dns.Server.status() end, %{running: false}),
+      connection_stats: safe_call(fn -> YellowDog.Dns.ConnectionManager.stats() end, %{}),
+      view_stats: safe_call(fn -> YellowDog.Dns.ViewManager.stats() end, %{}),
+      zone_count: safe_call(fn -> length(YellowDog.Dns.ZoneController.list_zones()) end, 0)
+    }
+  end
+
+  # Supervisor callbacks
 
   @impl true
   def init(opts) do
-    Telemetry.span("dns.supervisor.init", %{}, fn ->
-      children = build_children(opts)
-      Supervisor.init(children, strategy: :one_for_one)
-    end)
-  end
+    Telemetry.info("Starting DNS supervisor")
 
-  defp build_children(opts) do
-    server_options = Map.get(opts, :server_options, [])
+    # Get server configuration
+    port = get_port(opts)
+    listen = get_listen(opts)
 
-    # Get cache configuration from YellowDog.Config
-    cache_config =
-      case apply(YellowDog.Config, :get, [:dns, :cache]) do
-        nil ->
-          []
+    Telemetry.info("DNS supervisor configuration", %{
+      port: port,
+      listen: format_ip(listen)
+    })
 
-        config when is_map(config) ->
-          Enum.into(config, [])
+    children = [
+      # Registries for named processes
+      {Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry},
+      {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
+      {Registry, keys: :unique, name: YellowDog.Dns.ConnectionRegistry},
 
-        _ ->
-          []
-      end
+      # ZoneController - supervises zone processes
+      {YellowDog.Dns.ZoneController, name: YellowDog.Dns.ZoneController},
 
-    # Get view configuration
-    views_config_path = Application.get_env(:yellow_dog_dns, :views_config_path)
-    hot_reload_enabled = get_config(:hot_reload_enabled, false)
-    reload_debounce_ms = get_config(:reload_debounce_ms, 300)
+      # ViewManager - supervises view processes and routes requests
+      {YellowDog.Dns.ViewManager, name: YellowDog.Dns.ViewManager},
 
-    # Build base children list with correct dependency order:
-    # Zone.Manager → Cache.Manager → Cache.Cleaner → RootZone.Manager → View.Manager → ConfigWatcher → Server
-    base_children = [
-      # Zone Manager - manages zone lifecycle and storage
-      {YellowDog.Dns.Zone.Manager, []}
-      |> Supervisor.child_spec(id: :zone_manager, restart: :permanent),
+      # ConnectionManager - manages per-connection processes
+      {YellowDog.Dns.ConnectionManager, name: YellowDog.Dns.ConnectionManager},
 
-      # Query Cache Manager - manages DNS query cache
-      {YellowDog.Dns.Query.Cache.Manager, cache_config}
-      |> Supervisor.child_spec(id: :cache_manager, restart: :permanent),
+      # Server - network I/O (Abyss UDP + ThousandIsland TCP)
+      {YellowDog.Dns.Server, Keyword.merge(opts, port: port, listen: listen)},
 
-      # Query Cache Cleaner - periodic cleanup of expired entries
-      {YellowDog.Dns.Query.Cache.Cleaner, cache_config}
-      |> Supervisor.child_spec(id: :cache_cleaner, restart: :permanent),
-
-      # Root Zone Manager - manages root zone for recursive resolution
-      {YellowDog.Dns.RootZone.Manager, strategy: :hints}
-      |> Supervisor.child_spec(id: :root_zone_manager, restart: :permanent),
-
-      # View Manager - manages DNS views for split-horizon DNS
-      {YellowDog.Dns.View.Manager, [name: YellowDog.Dns.View.Manager]}
-      |> Supervisor.child_spec(id: :view_manager, restart: :permanent)
+      # Post-init task - set up default view and zones
+      # Uses restart: :temporary so it doesn't restart after completion
+      %{
+        id: :post_init,
+        start: {Task, :start_link, [fn -> post_init(opts) end]},
+        restart: :temporary
+      }
     ]
 
-    # Conditionally add ConfigWatcher if hot-reload is enabled and config path exists
-    config_watcher_children =
-      if hot_reload_enabled and is_binary(views_config_path) and views_config_path != "" do
-        config_watcher_opts = [
-          config_path: views_config_path,
-          reload_callback: fn views ->
-            YellowDog.Dns.View.Manager.update_views(YellowDog.Dns.View.Manager, views)
-          end,
-          debounce_ms: reload_debounce_ms,
-          name: YellowDog.Dns.View.ConfigWatcher
-        ]
-
-        [
-          {YellowDog.Dns.View.ConfigWatcher, config_watcher_opts}
-          |> Supervisor.child_spec(id: :config_watcher, restart: :transient)
-        ]
-      else
-        []
-      end
-
-    # Server and post-start task come last
-    server_children = [
-      # DNS Server (wraps Abyss UDP server)
-      {YellowDog.Dns.Server, server_options}
-      |> Supervisor.child_spec(id: :server, restart: :permanent),
-
-      # Post-start task - load configured zones
-      {Task,
-       fn ->
-         Telemetry.debug("DNS post-start task: loading configured zones")
-         # TODO: Load zones from configuration
-         # zones = YellowDog.Config.get(:dns, :zones) || []
-         # Enum.each(zones, fn zone_config ->
-         #   YellowDog.Dns.Zone.Manager.load_zone(zone_config.name, zone_config)
-         # end)
-         Telemetry.debug("DNS post-start task completed")
-       end}
-      |> Supervisor.child_spec(id: :post_start, restart: :temporary)
-    ]
-
-    base_children ++ config_watcher_children ++ server_children
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # Helper to get DNS configuration
-  defp get_config(key, default) do
-    case apply(YellowDog.Config, :get, [:dns, key]) do
-      nil -> default
-      value -> value
+  # Private helpers
+
+  defp post_init(opts) do
+    # Wait for required processes to be ready
+    wait_for_process(YellowDog.Dns.ViewManager)
+    wait_for_process(YellowDog.Dns.ZoneController)
+
+    # Start default view if no views configured
+    views = Keyword.get(opts, :views, [])
+
+    if Enum.empty?(views) do
+      YellowDog.Dns.ViewManager.start_view(%{
+        name: "default",
+        priority: :infinity,
+        acl: :any,
+        zones: [],
+        rpz_zones: [],
+        recursion_enabled: true,
+        ecs_enabled: false
+      })
+    else
+      Enum.each(views, &YellowDog.Dns.ViewManager.start_view/1)
+    end
+
+    # Start configured zones
+    zones = Keyword.get(opts, :zones, [])
+    Enum.each(zones, &start_zone/1)
+
+    # Set up default forwarding zone if not configured
+    upstreams = get_upstreams()
+
+    if upstreams != [] do
+      YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams)
+    end
+
+    Telemetry.info("DNS supervisor post-init completed")
+  end
+
+  defp start_zone(zone_config) do
+    type = Map.get(zone_config, :type, :auth)
+    name = Map.get(zone_config, :name)
+    opts = Map.to_list(zone_config)
+    YellowDog.Dns.ZoneController.start_zone(type, name, opts)
+  end
+
+  defp get_port(opts) do
+    Keyword.get(opts, :port) ||
+      apply(YellowDog.Config, :get, [:dns, :port]) ||
+      53
+  rescue
+    _ -> 53
+  end
+
+  defp get_listen(opts) do
+    listen =
+      Keyword.get(opts, :listen) ||
+        apply(YellowDog.Config, :get, [:dns, :listen]) ||
+        "0.0.0.0"
+
+    case parse_ip(listen) do
+      {:ok, ip} -> ip
+      {:error, _} -> {0, 0, 0, 0}
     end
   rescue
+    _ -> {0, 0, 0, 0}
+  end
+
+  defp get_upstreams do
+    case apply(YellowDog.Config, :get, [:dns, :upstream_servers]) do
+      nil -> [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
+      servers when is_list(servers) -> parse_upstreams(servers)
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp parse_upstreams(servers) do
+    Enum.map(servers, fn
+      {ip, port} when is_tuple(ip) -> {ip, port}
+      ip when is_tuple(ip) -> {ip, 53}
+      ip_str when is_binary(ip_str) -> parse_upstream_string(ip_str)
+      _ -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp parse_upstream_string(str) do
+    case String.split(str, ":") do
+      [ip_str, port_str] ->
+        with {:ok, ip} <- parse_ip(ip_str),
+             {port, ""} <- Integer.parse(port_str) do
+          {ip, port}
+        else
+          _ -> nil
+        end
+
+      [ip_str] ->
+        case parse_ip(ip_str) do
+          {:ok, ip} -> {ip, 53}
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_ip(ip_str) when is_binary(ip_str) do
+    charlist = String.to_charlist(ip_str)
+
+    case :inet.parse_ipv4_address(charlist) do
+      {:ok, ip} ->
+        {:ok, ip}
+
+      {:error, _} ->
+        case :inet.parse_ipv6_address(charlist) do
+          {:ok, ip} -> {:ok, ip}
+          {:error, _} -> {:error, :invalid_ip}
+        end
+    end
+  end
+
+  defp parse_ip(ip) when is_tuple(ip), do: {:ok, ip}
+  defp parse_ip(_), do: {:error, :invalid_ip}
+
+  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
+  defp format_ip({a, b, c, d, e, f, g, h}) do
+    parts = [a, b, c, d, e, f, g, h]
+    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
+    Enum.join(hex_parts, ":")
+  end
+
+  defp format_ip(other), do: inspect(other)
+
+  defp safe_call(fun, default) do
+    fun.()
+  rescue
     _ -> default
+  catch
+    :exit, _ -> default
+  end
+
+  # Waits for a named process to be registered, with timeout
+  defp wait_for_process(name, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_wait_for_process(name, deadline)
+  end
+
+  defp do_wait_for_process(name, deadline) do
+    case Process.whereis(name) do
+      nil ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(10)
+          do_wait_for_process(name, deadline)
+        else
+          Telemetry.warning("Timeout waiting for process", %{name: name})
+          :timeout
+        end
+
+      pid when is_pid(pid) ->
+        :ok
+    end
   end
 end

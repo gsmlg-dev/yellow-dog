@@ -4,20 +4,43 @@ defmodule YellowDog.Dns do
 
   The DNS application provides a complete DNS server implementation with support for:
   - Standard DNS query types (A, AAAA, MX, NS, SOA, TXT, CNAME, etc.)
-  - DNS views for different client perspectives
-  - Zone management and ACL-based access control
-  - Caching for improved performance
+  - DNS views for split-horizon DNS
+  - Zone management with authoritative, forward, cache, stub, and root zones
+  - Per-view caching for improved performance
+  - Response Policy Zones (RPZ) for DNS firewall
   - Integration with the YellowDog configuration system
 
   ## Architecture
 
-  The DNS application consists of several key components:
+  The DNS application uses a process hierarchy for separation of concerns:
 
-  - **YellowDog.Dns.Server**: The main DNS server using Abyss UDP library
-  - **YellowDog.Dns.Handler.UDP**: UDP packet handler for DNS queries
-  - **YellowDog.Dns.ViewManager**: Manages DNS views and perspectives
-  - **YellowDog.Dns.NameResolver**: Handles DNS name resolution logic
-  - **YellowDog.Dns.View**: Core view functionality with ACL, cache, and zone management
+  ```
+  YellowDog.Dns.Supervisor
+  ├── YellowDog.Dns.Server (Supervisor)
+  │   ├── Abyss (UDP Server)
+  │   └── ThousandIsland (TCP Server)
+  ├── ConnectionManager (DynamicSupervisor)
+  │   └── Connection Processes (per-connection)
+  │       └── Tracks multiple in-flight queries concurrently
+  ├── ViewManager (Supervisor)
+  │   └── View processes (GenServer, one per configured view)
+  │       ├── RecursionController (if recursive enabled)
+  │       ├── Zone references
+  │       └── RPZ references
+  └── ZoneController (Supervisor)
+      └── Zone processes (Auth, Forward, Stub, Root, Cache, RPZ)
+  ```
+
+  ## Process Responsibilities
+
+  - **YellowDog.Dns.Supervisor**: Top-level supervisor for DNS service
+  - **YellowDog.Dns.Server**: Network I/O only (Abyss UDP + ThousandIsland TCP)
+  - **YellowDog.Dns.Handler**: Network I/O bridge, delegates to ConnectionManager
+  - **YellowDog.Dns.ConnectionManager**: Supervises connection processes
+  - **YellowDog.Dns.ConnectionProcess**: Per-connection query orchestration with telemetry
+  - **YellowDog.Dns.ViewManager**: Routes requests to appropriate View by ACL matching
+  - **YellowDog.Dns.View**: Per-view GenServer with zone/RPZ routing
+  - **YellowDog.Dns.ZoneController**: Manages zone process lifecycle
 
   ## Usage
 
@@ -25,12 +48,12 @@ defmodule YellowDog.Dns do
   application and can be configured through the centralized configuration system.
 
   ```elixir
-  # Start the DNS application
+  # Start the DNS server
   {:ok, _pid} = YellowDog.Dns.start_link([])
 
   # Or use it as a child in a supervisor
   children = [
-    {YellowDog.Dns, server_options: [port: 53, listen: "0.0.0.0"]}
+    {YellowDog.Dns, port: 53, listen: "0.0.0.0"}
   ]
   ```
 
@@ -47,31 +70,37 @@ defmodule YellowDog.Dns do
   """
 
   @doc """
-  Starts the DNS server supervisor.
+  Starts the DNS server.
 
   Delegates to `YellowDog.Dns.Supervisor.start_link/1`.
 
   ## Options
-  - `name`: Supervisor name (default: YellowDog.Dns)
-  - `server_options`: Options passed to the DNS server
+  - `port`: UDP port to listen on (default: 53)
+  - `listen`: IP address to bind to (default: "0.0.0.0")
+  - `views`: Initial view configurations
+  - `zones`: Initial zone configurations
 
   ## Returns
-  - `{:ok, pid}` - Supervisor started successfully
-  - `{:error, reason}` - Failed to start supervisor
+  - `{:ok, pid}` - Server started successfully
+  - `{:error, reason}` - Failed to start server
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
-  defdelegate start_link(options), to: YellowDog.Dns.Supervisor
+  defdelegate start_link(options \\ []), to: YellowDog.Dns.Supervisor
 
   @doc """
-  Returns a child specification for the DNS server supervisor.
-
-  Delegates to `YellowDog.Dns.Supervisor.child_spec/1`.
+  Returns a child specification for the DNS server.
 
   ## Returns
-  - `Supervisor.child_spec()` - Child specification for the DNS supervisor
+  - `Supervisor.child_spec()` - Child specification for the DNS server
   """
   @spec child_spec(keyword()) :: Supervisor.child_spec()
-  defdelegate child_spec(options), to: YellowDog.Dns.Supervisor
+  def child_spec(options) do
+    %{
+      id: __MODULE__,
+      start: {YellowDog.Dns.Supervisor, :start_link, [options]},
+      type: :supervisor
+    }
+  end
 
   @doc """
   Gets the status of the DNS service.
@@ -88,7 +117,7 @@ defmodule YellowDog.Dns do
   """
   @spec status() :: map()
   def status do
-    # Supervisor registers with name YellowDog.Dns, not YellowDog.Dns.Supervisor
+    # DNS supervisor registers as YellowDog.Dns (not YellowDog.Dns.Supervisor)
     case Process.whereis(YellowDog.Dns) do
       nil ->
         %{running: false, info: "DNS service not running"}
@@ -105,54 +134,49 @@ defmodule YellowDog.Dns do
   Gets DNS statistics.
 
   Returns comprehensive statistics about the DNS service including zone information,
-  storage metrics, and service status.
+  view statistics, connection statistics, and service status.
 
   ## Returns
   - Map with DNS statistics including:
-    - `zones` - Zone statistics from Zone.Manager (loaded zones, total records, etc.)
-    - `storage` - Storage statistics from Zone.Storage (memory usage, ETS table info)
-    - `service` - Service status information (running state, uptime if available)
+    - `zones` - Zone count and statistics from ZoneController
+    - `views` - View statistics from ViewManager
+    - `connections` - Active connection statistics from ConnectionManager
+    - `service` - Service status information
 
   ## Examples
       iex> YellowDog.Dns.stats()
       %{
-        zones: %{
-          loaded_zones: 3,
-          total_zones: 3,
-          total_records: 150,
-          memory_mb: 1.23
-        },
-        storage: %{
-          total_zones: 3,
-          total_records: 150,
-          memory_bytes: 1290240,
-          memory_mb: 1.23
-        },
-        service: %{
-          running: true,
-          info: "DNS service operational"
-        }
+        zones: %{count: 3},
+        views: %{count: 1},
+        connections: %{active: 0},
+        service: %{running: true, info: "DNS service operational"}
       }
   """
   @spec stats() :: map()
   def stats do
-    # Get zone statistics from Zone.Manager (handle if not running)
+    # Get zone statistics
     zone_stats =
       try do
-        case YellowDog.Dns.Zone.Manager.stats() do
-          {:ok, stats} -> stats
-          {:error, _reason} -> %{error: "Zone manager not available"}
-        end
+        zones = YellowDog.Dns.ZoneController.list_zones()
+        %{count: length(zones)}
       catch
-        :exit, _reason -> %{error: "Zone manager not running"}
+        :exit, _ -> %{error: "ZoneController not running"}
       end
 
-    # Get storage statistics from Zone.Storage (handle if not initialized)
-    storage_stats =
+    # Get view statistics
+    view_stats =
       try do
-        YellowDog.Dns.Zone.Storage.stats()
-      rescue
-        ArgumentError -> %{error: "Storage not initialized"}
+        YellowDog.Dns.ViewManager.stats()
+      catch
+        :exit, _ -> %{error: "ViewManager not running"}
+      end
+
+    # Get connection statistics
+    connection_stats =
+      try do
+        YellowDog.Dns.ConnectionManager.stats()
+      catch
+        :exit, _ -> %{error: "ConnectionManager not running"}
       end
 
     # Get service status
@@ -160,8 +184,19 @@ defmodule YellowDog.Dns do
 
     %{
       zones: zone_stats,
-      storage: storage_stats,
+      views: view_stats,
+      connections: connection_stats,
       service: service_status
     }
+  end
+
+  @doc """
+  Returns the port the DNS server is listening on.
+
+  Useful for tests when starting with port 0 (auto-select).
+  """
+  @spec get_port() :: {:ok, :inet.port_number()} | {:error, term()}
+  def get_port do
+    YellowDog.Dns.Server.get_port()
   end
 end
