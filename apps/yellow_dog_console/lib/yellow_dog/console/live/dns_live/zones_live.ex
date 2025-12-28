@@ -42,26 +42,17 @@ defmodule YellowDog.Console.DnsLive.ZonesLive do
 
   defp list_zones do
     try do
-      case YellowDog.Dns.Zone.Manager.list_zones() do
-        {:ok, zone_names} ->
-          Enum.map(zone_names, fn zone_name ->
-            stats =
-              case YellowDog.Dns.Zone.Storage.get_zone_stats(zone_name) do
-                {:ok, zone_stats} -> zone_stats
-                {:error, _} -> %{record_count: 0, memory_bytes: 0}
-              end
+      # Use ZoneController.list_zones/0 which returns [{type, name, pid}]
+      zones = YellowDog.Dns.ZoneController.list_zones()
 
-            %{
-              name: zone_name,
-              record_count: Map.get(stats, :record_count, 0),
-              memory_mb:
-                Map.get(stats, :memory_bytes, 0) |> then(&(&1 / 1_024 / 1_024)) |> Float.round(2)
-            }
-          end)
-
-        {:error, _} ->
-          []
-      end
+      Enum.map(zones, fn {zone_type, zone_name, _pid} ->
+        %{
+          name: zone_name,
+          type: zone_type,
+          record_count: 0,
+          memory_mb: 0.0
+        }
+      end)
     rescue
       _ -> []
     end
