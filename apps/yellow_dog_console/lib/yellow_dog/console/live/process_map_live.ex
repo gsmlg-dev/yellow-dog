@@ -2,14 +2,19 @@ defmodule YellowDog.Console.ProcessMapLive do
   @moduledoc """
   LiveView page for viewing Erlang process supervision trees.
 
-  Displays an interactive tree diagram of YellowDog application
-  processes with click-to-view status functionality.
+  Displays an interactive SVG tree diagram of YellowDog application
+  processes starting from YellowDog.Supervisor.
   """
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ProcessInspector
 
   @refresh_interval 5_000
+  @node_width 160
+  @node_height 36
+  @h_spacing 20
+  @v_spacing 50
+  @padding 40
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,24 +22,64 @@ defmodule YellowDog.Console.ProcessMapLive do
       :timer.send_interval(@refresh_interval, self(), :refresh_tree)
     end
 
-    trees = ProcessInspector.get_trees()
+    tree = ProcessInspector.get_tree()
+
+    layout_opts = [
+      node_width: @node_width,
+      node_height: @node_height,
+      h_spacing: @h_spacing,
+      v_spacing: @v_spacing,
+      padding: @padding
+    ]
+
+    {tree_with_layout, dimensions} =
+      if tree do
+        laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
+        dims = ProcessInspector.calculate_dimensions(tree, layout_opts)
+        {laid_out, dims}
+      else
+        {nil, {600, 300}}
+      end
+
+    {svg_width, svg_height} = dimensions
 
     {:ok,
      assign(socket,
        page_title: "Process Map",
-       trees: trees,
+       tree: tree_with_layout,
+       svg_width: svg_width,
+       svg_height: svg_height,
        selected_pid: nil,
        selected_status: nil,
-       expanded_pids: MapSet.new(),
        last_refresh: DateTime.utc_now(),
        show_status_panel: false,
-       loading_status: false
+       loading_status: false,
+       node_count: ProcessInspector.count_nodes(tree)
      )}
   end
 
   @impl true
   def handle_info(:refresh_tree, socket) do
-    trees = ProcessInspector.get_trees()
+    tree = ProcessInspector.get_tree()
+
+    layout_opts = [
+      node_width: @node_width,
+      node_height: @node_height,
+      h_spacing: @h_spacing,
+      v_spacing: @v_spacing,
+      padding: @padding
+    ]
+
+    {tree_with_layout, dimensions} =
+      if tree do
+        laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
+        dims = ProcessInspector.calculate_dimensions(tree, layout_opts)
+        {laid_out, dims}
+      else
+        {nil, {600, 300}}
+      end
+
+    {svg_width, svg_height} = dimensions
 
     # If we have a selected process, check if it's still alive
     socket =
@@ -53,7 +98,14 @@ defmodule YellowDog.Console.ProcessMapLive do
         socket
       end
 
-    {:noreply, assign(socket, trees: trees, last_refresh: DateTime.utc_now())}
+    {:noreply,
+     assign(socket,
+       tree: tree_with_layout,
+       svg_width: svg_width,
+       svg_height: svg_height,
+       last_refresh: DateTime.utc_now(),
+       node_count: ProcessInspector.count_nodes(tree)
+     )}
   end
 
   @impl true
@@ -89,89 +141,67 @@ defmodule YellowDog.Console.ProcessMapLive do
     {:noreply, assign(socket, show_status_panel: false, selected_pid: nil, selected_status: nil)}
   end
 
-  def handle_event("toggle_expand", %{"pid" => pid_string}, socket) do
-    expanded_pids = socket.assigns.expanded_pids
-
-    new_expanded =
-      if MapSet.member?(expanded_pids, pid_string) do
-        MapSet.delete(expanded_pids, pid_string)
-      else
-        MapSet.put(expanded_pids, pid_string)
-      end
-
-    {:noreply, assign(socket, expanded_pids: new_expanded)}
-  end
-
-  def handle_event("expand_all", _params, socket) do
-    # Collect all supervisor PIDs
-    all_pids =
-      socket.assigns.trees
-      |> Enum.flat_map(&collect_supervisor_pids/1)
-      |> MapSet.new()
-
-    {:noreply, assign(socket, expanded_pids: all_pids)}
-  end
-
-  def handle_event("collapse_all", _params, socket) do
-    {:noreply, assign(socket, expanded_pids: MapSet.new())}
-  end
-
-  defp collect_supervisor_pids(%{supervisor: nil}), do: []
-
-  defp collect_supervisor_pids(%{supervisor: sup_pid, children: children}) when is_pid(sup_pid) do
-    [inspect(sup_pid) | Enum.flat_map(children, &collect_child_pids/1)]
-  end
-
-  defp collect_supervisor_pids(_), do: []
-
-  defp collect_child_pids(%{type: :supervisor, pid: pid, children: children}) when is_pid(pid) do
-    [inspect(pid) | Enum.flat_map(children, &collect_child_pids/1)]
-  end
-
-  defp collect_child_pids(_), do: []
-
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-4 h-full">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 class="text-2xl font-bold">Process Map</h1>
             <p class="text-base-content/70">
-              Supervision tree diagram for YellowDog applications
+              Supervision tree starting from YellowDog.Supervisor
             </p>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm text-base-content/60">
-              Last refresh: {format_time(@last_refresh)}
-            </span>
-            <button class="btn btn-sm btn-ghost" phx-click="expand_all">
-              Expand All
-            </button>
-            <button class="btn btn-sm btn-ghost" phx-click="collapse_all">
-              Collapse All
-            </button>
+          <div class="flex items-center gap-4">
+            <div class="stats stats-horizontal shadow bg-base-200">
+              <div class="stat py-2 px-4">
+                <div class="stat-title text-xs">Processes</div>
+                <div class="stat-value text-lg">{@node_count}</div>
+              </div>
+              <div class="stat py-2 px-4">
+                <div class="stat-title text-xs">Last Refresh</div>
+                <div class="stat-value text-lg">{format_time(@last_refresh)}</div>
+              </div>
+            </div>
           </div>
         </div>
         
-    <!-- Tree Container -->
-        <div class="relative">
-          <div class={["transition-all duration-300", @show_status_panel && "lg:mr-96"]}>
-            <%= if Enum.empty?(@trees) do %>
-              <.empty_state />
-            <% else %>
-              <div class="space-y-4">
-                <%= for tree <- @trees do %>
-                  <.application_tree
-                    tree={tree}
-                    expanded_pids={@expanded_pids}
-                    selected_pid={@selected_pid}
-                  />
-                <% end %>
-              </div>
-            <% end %>
+    <!-- SVG Tree Container -->
+        <div class="flex-1 relative">
+          <div class={[
+            "card bg-base-200 shadow-lg overflow-auto h-full",
+            @show_status_panel && "lg:mr-96"
+          ]}>
+            <div class="card-body p-4">
+              <%= if @tree do %>
+                <svg
+                  width={@svg_width + @padding * 2}
+                  height={@svg_height + @padding * 2}
+                  class="mx-auto"
+                  style="min-width: 100%;"
+                >
+                  <g transform={"translate(#{@padding}, #{@padding})"}>
+                    <!-- Draw connections first (behind nodes) -->
+                    <.draw_connections
+                      node={@tree}
+                      node_width={@node_width}
+                      node_height={@node_height}
+                    />
+                    <!-- Draw nodes -->
+                    <.draw_nodes
+                      node={@tree}
+                      selected_pid={@selected_pid}
+                      node_width={@node_width}
+                      node_height={@node_height}
+                    />
+                  </g>
+                </svg>
+              <% else %>
+                <.empty_state />
+              <% end %>
+            </div>
           </div>
           
     <!-- Status Panel -->
@@ -186,174 +216,139 @@ defmodule YellowDog.Console.ProcessMapLive do
     """
   end
 
-  # Function Components
+  # SVG Drawing Components
 
-  attr :tree, :map, required: true
-  attr :expanded_pids, :any, required: true
-  attr :selected_pid, :any, required: true
+  attr :node, :map, required: true
+  attr :node_width, :integer, required: true
+  attr :node_height, :integer, required: true
 
-  defp application_tree(assigns) do
+  defp draw_connections(assigns) do
     ~H"""
-    <div class="card bg-base-200 shadow-sm">
-      <div class="card-body p-4">
-        <div class="flex items-center gap-3">
-          <span class={[
-            "badge badge-lg",
-            @tree.running && "badge-accent",
-            !@tree.running && "badge-ghost"
-          ]}>
-            {@tree.app_label}
-          </span>
-          <span class="text-sm text-base-content/60">
-            {@tree.app}
-          </span>
-          <%= if @tree.running do %>
-            <span class="badge badge-success badge-sm">Running</span>
-          <% else %>
-            <span class="badge badge-ghost badge-sm">Not Started</span>
-          <% end %>
-        </div>
-
-        <%= if @tree.running and @tree.supervisor do %>
-          <div class="mt-4 ml-2 border-l-2 border-base-300 pl-4">
-            <!-- Root supervisor -->
-            <.tree_node
-              node={
-                %{
-                  id: :root,
-                  pid: @tree.supervisor,
-                  type: :supervisor,
-                  modules: [],
-                  children: @tree.children,
-                  label: "Supervisor",
-                  status: :running
-                }
-              }
-              expanded_pids={@expanded_pids}
-              selected_pid={@selected_pid}
-              depth={0}
-            />
-          </div>
-        <% else %>
-          <div class="mt-4 text-base-content/50 text-sm italic">
-            Application not started - no processes to display
-          </div>
-        <% end %>
-      </div>
-    </div>
+    <%= for child <- @node.children do %>
+      <line
+        x1={@node.x + @node_width / 2}
+        y1={@node.y + @node_height}
+        x2={child.x + @node_width / 2}
+        y2={child.y}
+        stroke="currentColor"
+        stroke-width="2"
+        class="text-base-content/30"
+      />
+      <.draw_connections node={child} node_width={@node_width} node_height={@node_height} />
+    <% end %>
     """
   end
 
   attr :node, :map, required: true
-  attr :expanded_pids, :any, required: true
   attr :selected_pid, :any, required: true
-  attr :depth, :integer, default: 0
+  attr :node_width, :integer, required: true
+  attr :node_height, :integer, required: true
 
-  defp tree_node(assigns) do
+  defp draw_nodes(assigns) do
     pid_string = if is_pid(assigns.node.pid), do: inspect(assigns.node.pid), else: ""
-    is_expanded = MapSet.member?(assigns.expanded_pids, pid_string)
-    has_children = assigns.node.type == :supervisor and length(assigns.node.children) > 0
     is_selected = assigns.selected_pid == assigns.node.pid
+    is_supervisor = assigns.node.type == :supervisor
 
     assigns =
       assigns
       |> assign(:pid_string, pid_string)
-      |> assign(:is_expanded, is_expanded)
-      |> assign(:has_children, has_children)
       |> assign(:is_selected, is_selected)
+      |> assign(:is_supervisor, is_supervisor)
 
     ~H"""
-    <div class="tree-node">
-      <div class={[
-        "flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors",
-        "hover:bg-base-300",
-        @is_selected && "bg-primary/10 ring-1 ring-primary"
-      ]}>
-        <!-- Expand/Collapse indicator -->
-        <%= if @has_children do %>
-          <button
-            class="btn btn-ghost btn-xs btn-circle"
-            phx-click="toggle_expand"
-            phx-value-pid={@pid_string}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class={["h-4 w-4 transition-transform", @is_expanded && "rotate-90"]}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        <% else %>
-          <div class="w-6"></div>
-        <% end %>
-        
-    <!-- Node content (clickable for status) -->
-        <div
-          class="flex items-center gap-2 flex-1"
-          phx-click="select_node"
-          phx-value-pid={@pid_string}
-        >
-          <span class={[
-            "badge badge-sm",
-            @node.type == :supervisor && "badge-primary",
-            @node.type == :worker && "badge-secondary"
-          ]}>
-            {if @node.type == :supervisor, do: "SUP", else: "WRK"}
-          </span>
-          <span class="font-medium text-sm">
-            {@node.label}
-          </span>
-          <span class="text-xs text-base-content/50">
-            {@pid_string}
-          </span>
-          <.status_badge status={@node.status} />
-        </div>
-      </div>
+    <g
+      class="cursor-pointer"
+      phx-click="select_node"
+      phx-value-pid={@pid_string}
+    >
+      <!-- Node background -->
+      <rect
+        x={@node.x}
+        y={@node.y}
+        width={@node_width}
+        height={@node_height}
+        rx="6"
+        ry="6"
+        class={[
+          "transition-all duration-150",
+          @is_supervisor && "fill-primary/20 stroke-primary",
+          !@is_supervisor && "fill-secondary/20 stroke-secondary",
+          @is_selected && "fill-accent/30 stroke-accent stroke-2",
+          @node.status == :undefined && "fill-base-300 stroke-base-content/30",
+          @node.status == :restarting && "fill-warning/20 stroke-warning"
+        ]}
+        stroke-width={if @is_selected, do: "3", else: "2"}
+      />
       
-    <!-- Children -->
-      <%= if @has_children and @is_expanded do %>
-        <div class="ml-6 border-l-2 border-base-300 pl-4 mt-1">
-          <%= for child <- @node.children do %>
-            <.tree_node
-              node={child}
-              expanded_pids={@expanded_pids}
-              selected_pid={@selected_pid}
-              depth={@depth + 1}
-            />
-          <% end %>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
+    <!-- Type indicator -->
+      <rect
+        x={@node.x}
+        y={@node.y}
+        width="24"
+        height={@node_height}
+        rx="6"
+        ry="6"
+        class={[
+          @is_supervisor && "fill-primary",
+          !@is_supervisor && "fill-secondary",
+          @node.status == :undefined && "fill-base-content/30",
+          @node.status == :restarting && "fill-warning"
+        ]}
+      />
+      <rect
+        x={@node.x + 18}
+        y={@node.y}
+        width="6"
+        height={@node_height}
+        class={[
+          @is_supervisor && "fill-primary",
+          !@is_supervisor && "fill-secondary",
+          @node.status == :undefined && "fill-base-content/30",
+          @node.status == :restarting && "fill-warning"
+        ]}
+      />
+      <text
+        x={@node.x + 12}
+        y={@node.y + @node_height / 2 + 1}
+        text-anchor="middle"
+        dominant-baseline="middle"
+        class="fill-primary-content text-[10px] font-bold"
+      >
+        {if @is_supervisor, do: "S", else: "W"}
+      </text>
+      
+    <!-- Label -->
+      <text
+        x={@node.x + 32}
+        y={@node.y + @node_height / 2}
+        dominant-baseline="middle"
+        class="fill-base-content text-xs font-medium"
+      >
+        {truncate_label(@node.label, 16)}
+      </text>
+      
+    <!-- Status indicator dot -->
+      <circle
+        cx={@node.x + @node_width - 10}
+        cy={@node.y + @node_height / 2}
+        r="4"
+        class={[
+          @node.status == :running && "fill-success",
+          @node.status == :restarting && "fill-warning animate-pulse",
+          @node.status == :undefined && "fill-base-content/30"
+        ]}
+      />
+    </g>
 
-  attr :status, :atom, required: true
-
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-xs",
-      @status == :running && "badge-success",
-      @status == :restarting && "badge-warning",
-      @status == :undefined && "badge-ghost"
-    ]}>
-      <%= case @status do %>
-        <% :running -> %>
-          running
-        <% :restarting -> %>
-          restarting
-        <% :undefined -> %>
-          undefined
-      <% end %>
-    </span>
+    <!-- Draw child nodes recursively -->
+    <%= for child <- @node.children do %>
+      <.draw_nodes
+        node={child}
+        selected_pid={@selected_pid}
+        node_width={@node_width}
+        node_height={@node_height}
+      />
+    <% end %>
     """
   end
 
@@ -409,7 +404,7 @@ defmodule YellowDog.Console.ProcessMapLive do
             </div>
           <% else %>
             <div class="space-y-4">
-              <.status_field label="PID" value={inspect(@status.pid)} />
+              <.status_field label="PID" value={inspect(@status.pid)} mono={true} />
               <.status_field
                 label="Registered Name"
                 value={(@status.registered_name && Atom.to_string(@status.registered_name)) || "None"}
@@ -443,7 +438,10 @@ defmodule YellowDog.Console.ProcessMapLive do
       <%= if @badge do %>
         <span class="badge badge-info">{@value}</span>
       <% else %>
-        <span class={["text-sm font-medium", @mono && "font-mono text-xs"]}>
+        <span class={[
+          "text-sm font-medium",
+          @mono && "font-mono text-xs bg-base-200 px-2 py-1 rounded"
+        ]}>
           {@value}
         </span>
       <% end %>
@@ -453,27 +451,25 @@ defmodule YellowDog.Console.ProcessMapLive do
 
   defp empty_state(assigns) do
     ~H"""
-    <div class="card bg-base-200">
-      <div class="card-body items-center text-center py-12">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-16 w-16 text-base-content/30"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-          />
-        </svg>
-        <h2 class="text-xl font-bold mt-4">No Processes Available</h2>
-        <p class="text-base-content/70 max-w-md">
-          No YellowDog applications are currently running. Start the applications to see their process trees.
-        </p>
-      </div>
+    <div class="flex flex-col items-center justify-center py-12 text-center">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-16 w-16 text-base-content/30"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
+        />
+      </svg>
+      <h2 class="text-xl font-bold mt-4">YellowDog.Supervisor Not Found</h2>
+      <p class="text-base-content/70 max-w-md">
+        The YellowDog application supervisor is not running. Start the application to see its process tree.
+      </p>
     </div>
     """
   end
@@ -493,4 +489,12 @@ defmodule YellowDog.Console.ProcessMapLive do
   end
 
   defp format_number(num), do: inspect(num)
+
+  defp truncate_label(label, max_length) do
+    if String.length(label) > max_length do
+      String.slice(label, 0, max_length - 2) <> ".."
+    else
+      label
+    end
+  end
 end

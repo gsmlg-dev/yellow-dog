@@ -2,19 +2,9 @@ defmodule YellowDog.Console.ProcessInspector do
   @moduledoc """
   Service for inspecting Erlang/OTP supervision trees.
 
-  Provides introspection capabilities for YellowDog umbrella applications,
-  allowing visualization of process hierarchies and status information.
+  Builds a complete process tree starting from YellowDog.Supervisor,
+  suitable for SVG diagram rendering.
   """
-
-  @yellowdog_apps [
-    :yellow_dog,
-    :yellow_dog_dns,
-    :yellow_dog_dhcpv4,
-    :yellow_dog_dhcpv6,
-    :yellow_dog_mdns,
-    :yellow_dog_console,
-    :yellow_dog_telemetry
-  ]
 
   @process_info_keys [
     :registered_name,
@@ -28,30 +18,28 @@ defmodule YellowDog.Console.ProcessInspector do
   ]
 
   @doc """
-  Returns the list of YellowDog applications being tracked.
-  """
-  def yellowdog_apps, do: @yellowdog_apps
+  Get the complete supervision tree starting from YellowDog.Supervisor.
 
-  @doc """
-  Get supervision trees for all YellowDog applications.
-
-  Returns a list of application tree maps, each containing:
-  - app: atom - application name
-  - app_label: String.t - human-readable label
-  - supervisor: pid | nil - root supervisor PID
-  - running: boolean - whether the app is running
-  - children: [process_node] - child processes
+  Returns a tree structure suitable for SVG rendering:
+  %{
+    id: term(),
+    pid: pid(),
+    label: String.t(),
+    type: :supervisor | :worker,
+    status: :running | :restarting | :undefined,
+    children: [tree_node()]
+  }
   """
-  @spec get_trees() :: [map()]
-  def get_trees do
-    @yellowdog_apps
-    |> Enum.map(&build_app_tree/1)
+  @spec get_tree() :: map() | nil
+  def get_tree do
+    case Process.whereis(YellowDog.Supervisor) do
+      nil -> nil
+      pid -> build_tree_from_supervisor(pid, "YellowDog.Supervisor")
+    end
   end
 
   @doc """
   Get detailed status information for a specific process.
-
-  Returns `{:ok, status_map}` or `{:error, :process_not_found}`.
   """
   @spec get_process_status(pid()) :: {:ok, map()} | {:error, :process_not_found}
   def get_process_status(pid) when is_pid(pid) do
@@ -85,12 +73,9 @@ defmodule YellowDog.Console.ProcessInspector do
 
   @doc """
   Parse a PID from its string representation.
-
-  Handles both "#PID<0.123.0>" and "<0.123.0>" formats.
   """
   @spec parse_pid(String.t()) :: {:ok, pid()} | {:error, :invalid_pid}
   def parse_pid(pid_string) when is_binary(pid_string) do
-    # Handle "#PID<0.123.0>" format
     cleaned =
       pid_string
       |> String.replace("#PID", "")
@@ -108,97 +93,101 @@ defmodule YellowDog.Console.ProcessInspector do
 
   def parse_pid(_), do: {:error, :invalid_pid}
 
+  @doc """
+  Calculate tree layout positions for SVG rendering.
+
+  Returns tree with added x, y coordinates for each node.
+  Uses a top-down tree layout algorithm.
+  """
+  @spec calculate_layout(map(), keyword()) :: map()
+  def calculate_layout(tree, opts \\ []) do
+    node_width = Keyword.get(opts, :node_width, 180)
+    node_height = Keyword.get(opts, :node_height, 40)
+    h_spacing = Keyword.get(opts, :h_spacing, 30)
+    v_spacing = Keyword.get(opts, :v_spacing, 60)
+
+    # First pass: calculate subtree widths
+    tree_with_widths = calculate_subtree_widths(tree, node_width, h_spacing)
+
+    # Second pass: assign x, y positions
+    assign_positions(tree_with_widths, 0, 0, node_width, node_height, v_spacing)
+  end
+
+  @doc """
+  Count total nodes in the tree.
+  """
+  @spec count_nodes(map() | nil) :: non_neg_integer()
+  def count_nodes(nil), do: 0
+
+  def count_nodes(%{children: children}) do
+    1 + Enum.sum(Enum.map(children, &count_nodes/1))
+  end
+
+  def count_nodes(_), do: 1
+
+  @doc """
+  Calculate the dimensions needed for the SVG canvas.
+  """
+  @spec calculate_dimensions(map(), keyword()) :: {non_neg_integer(), non_neg_integer()}
+  def calculate_dimensions(tree, opts \\ []) do
+    node_width = Keyword.get(opts, :node_width, 180)
+    node_height = Keyword.get(opts, :node_height, 40)
+    h_spacing = Keyword.get(opts, :h_spacing, 30)
+    v_spacing = Keyword.get(opts, :v_spacing, 60)
+    padding = Keyword.get(opts, :padding, 40)
+
+    depth = tree_depth(tree)
+    max_width = tree_max_width(tree)
+
+    width = max_width * (node_width + h_spacing) + padding * 2
+    height = depth * (node_height + v_spacing) + padding * 2
+
+    {max(width, 400), max(height, 200)}
+  end
+
   # Private functions
 
-  defp build_app_tree(app) do
-    running = application_started?(app)
-    supervisor = if running, do: get_app_supervisor(app), else: nil
-    children = if supervisor, do: get_children(supervisor), else: []
+  defp build_tree_from_supervisor(pid, label) when is_pid(pid) do
+    children =
+      try do
+        Supervisor.which_children(pid)
+        |> Enum.map(fn {id, child_pid, type, _modules} ->
+          build_child_node(id, child_pid, type)
+        end)
+        |> Enum.reject(&is_nil/1)
+      rescue
+        _ -> []
+      catch
+        :exit, _ -> []
+      end
 
     %{
-      app: app,
-      app_label: get_app_label(app),
-      supervisor: supervisor,
-      running: running,
+      id: label,
+      pid: pid,
+      label: label,
+      type: :supervisor,
+      status: :running,
       children: children
     }
   end
 
-  defp application_started?(app) do
-    Application.started_applications()
-    |> Enum.any?(fn {name, _, _} -> name == app end)
-  end
-
-  defp get_app_supervisor(app) do
-    # Try common supervisor naming patterns
-    supervisor_names = [
-      # e.g., YellowDog.Dns.Supervisor
-      Module.concat([camelize_app(app), Supervisor]),
-      # e.g., YellowDog.Console.Supervisor
-      Module.concat([camelize_app(app), "Supervisor"]),
-      # Direct app module
-      camelize_app(app)
-    ]
-
-    Enum.find_value(supervisor_names, fn name ->
-      case Process.whereis(name) do
-        nil -> nil
-        pid when is_pid(pid) -> pid
-      end
-    end) || find_supervisor_from_application(app)
-  end
-
-  defp find_supervisor_from_application(app) do
-    case Application.get_application(app) do
-      nil ->
-        nil
-
-      ^app ->
-        # Try to find via Application.get_env
-        case Application.get_env(app, :supervisor) do
-          nil -> nil
-          name when is_atom(name) -> Process.whereis(name)
-          _ -> nil
-        end
-    end
-  end
-
-  defp camelize_app(app) do
-    app
-    |> Atom.to_string()
-    |> String.split("_")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join()
-    |> String.to_atom()
-  end
-
-  defp get_children(supervisor_pid) when is_pid(supervisor_pid) do
-    try do
-      case Supervisor.which_children(supervisor_pid) do
-        children when is_list(children) ->
-          Enum.map(children, fn {id, pid, type, modules} ->
-            build_child_node(id, pid, type, modules)
-          end)
-
-        _ ->
-          []
-      end
-    rescue
-      _ -> []
-    catch
-      :exit, _ -> []
-    end
-  end
-
-  defp get_children(_), do: []
-
-  defp build_child_node(id, pid, type, modules) do
-    node_status = get_node_status(pid)
+  defp build_child_node(id, pid, type) when is_pid(pid) do
     label = get_node_label(id, pid)
+    status = if Process.alive?(pid), do: :running, else: :undefined
 
     children =
-      if type == :supervisor and is_pid(pid) and node_status == :running do
-        get_children(pid)
+      if type == :supervisor and status == :running do
+        try do
+          Supervisor.which_children(pid)
+          |> Enum.map(fn {child_id, child_pid, child_type, _modules} ->
+            build_child_node(child_id, child_pid, child_type)
+          end)
+          |> Enum.reject(&is_nil/1)
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
       else
         []
       end
@@ -206,35 +195,66 @@ defmodule YellowDog.Console.ProcessInspector do
     %{
       id: id,
       pid: pid,
-      type: type,
-      modules: modules,
-      children: children,
       label: label,
-      status: node_status
+      type: type,
+      status: status,
+      children: children
     }
   end
 
-  defp get_node_status(pid) when is_pid(pid) do
-    if Process.alive?(pid), do: :running, else: :undefined
+  defp build_child_node(id, :undefined, type) do
+    %{
+      id: id,
+      pid: :undefined,
+      label: format_id(id),
+      type: type,
+      status: :undefined,
+      children: []
+    }
   end
 
-  defp get_node_status(:undefined), do: :undefined
-  defp get_node_status(:restarting), do: :restarting
-  defp get_node_status(_), do: :undefined
+  defp build_child_node(id, :restarting, type) do
+    %{
+      id: id,
+      pid: :restarting,
+      label: format_id(id),
+      type: type,
+      status: :restarting,
+      children: []
+    }
+  end
+
+  defp build_child_node(_, _, _), do: nil
 
   defp get_node_label(id, pid) when is_pid(pid) do
     case Process.info(pid, :registered_name) do
-      {:registered_name, name} when is_atom(name) -> Atom.to_string(name)
-      _ -> format_id(id)
+      {:registered_name, name} when is_atom(name) and name != [] ->
+        name |> Atom.to_string() |> shorten_module_name()
+
+      _ ->
+        format_id(id)
     end
   end
 
   defp get_node_label(id, _), do: format_id(id)
 
-  defp format_id(id) when is_atom(id), do: Atom.to_string(id)
-  defp format_id(id) when is_binary(id), do: id
-  defp format_id({module, _} = id) when is_atom(module), do: inspect(id)
-  defp format_id(id), do: inspect(id)
+  defp format_id(id) when is_atom(id) do
+    id |> Atom.to_string() |> shorten_module_name()
+  end
+
+  defp format_id({module, _} = _id) when is_atom(module) do
+    module |> Atom.to_string() |> shorten_module_name()
+  end
+
+  defp format_id(id) when is_binary(id), do: shorten_module_name(id)
+  defp format_id(id), do: inspect(id) |> shorten_module_name()
+
+  defp shorten_module_name(name) when is_binary(name) do
+    # Remove common prefixes to make labels shorter
+    name
+    |> String.replace(~r/^Elixir\./, "")
+    |> String.replace(~r/^YellowDog\./, "YD.")
+  end
 
   defp get_registered_name(info) do
     case Keyword.get(info, :registered_name) do
@@ -243,6 +263,82 @@ defmodule YellowDog.Console.ProcessInspector do
       _ -> nil
     end
   end
+
+  # Layout calculation functions
+
+  defp calculate_subtree_widths(node, node_width, h_spacing) do
+    children = Map.get(node, :children, [])
+
+    if Enum.empty?(children) do
+      Map.put(node, :subtree_width, node_width)
+    else
+      children_with_widths =
+        Enum.map(children, &calculate_subtree_widths(&1, node_width, h_spacing))
+
+      total_width =
+        children_with_widths
+        |> Enum.map(& &1.subtree_width)
+        |> Enum.sum()
+        |> Kernel.+(h_spacing * (length(children_with_widths) - 1))
+        |> max(node_width)
+
+      node
+      |> Map.put(:children, children_with_widths)
+      |> Map.put(:subtree_width, total_width)
+    end
+  end
+
+  defp assign_positions(node, x, y, node_width, node_height, v_spacing) do
+    subtree_width = Map.get(node, :subtree_width, node_width)
+    node_x = x + (subtree_width - node_width) / 2
+    node_y = y
+
+    children = Map.get(node, :children, [])
+
+    if Enum.empty?(children) do
+      node
+      |> Map.put(:x, node_x)
+      |> Map.put(:y, node_y)
+    else
+      children_y = y + node_height + v_spacing
+
+      {positioned_children, _} =
+        Enum.reduce(children, {[], x}, fn child, {acc, current_x} ->
+          child_width = Map.get(child, :subtree_width, node_width)
+
+          positioned_child =
+            assign_positions(child, current_x, children_y, node_width, node_height, v_spacing)
+
+          {acc ++ [positioned_child], current_x + child_width + 30}
+        end)
+
+      node
+      |> Map.put(:x, node_x)
+      |> Map.put(:y, node_y)
+      |> Map.put(:children, positioned_children)
+    end
+  end
+
+  defp tree_depth(nil), do: 0
+
+  defp tree_depth(%{children: []}), do: 1
+
+  defp tree_depth(%{children: children}) do
+    1 + (children |> Enum.map(&tree_depth/1) |> Enum.max(fn -> 0 end))
+  end
+
+  defp tree_depth(_), do: 1
+
+  defp tree_max_width(nil), do: 0
+
+  defp tree_max_width(%{children: []}), do: 1
+
+  defp tree_max_width(%{children: children}) do
+    children_width = children |> Enum.map(&tree_max_width/1) |> Enum.sum()
+    max(1, children_width)
+  end
+
+  defp tree_max_width(_), do: 1
 
   @doc """
   Format an MFA tuple as a human-readable string.
@@ -275,19 +371,4 @@ defmodule YellowDog.Console.ProcessInspector do
   end
 
   def format_memory(_), do: "0 B"
-
-  @doc """
-  Get a human-readable label for an application.
-  """
-  @spec get_app_label(atom()) :: String.t()
-  def get_app_label(:yellow_dog), do: "Core"
-  def get_app_label(:yellow_dog_dns), do: "DNS"
-  def get_app_label(:yellow_dog_dhcpv4), do: "DHCPv4"
-  def get_app_label(:yellow_dog_dhcpv6), do: "DHCPv6"
-  def get_app_label(:yellow_dog_mdns), do: "mDNS"
-  def get_app_label(:yellow_dog_console), do: "Console"
-  def get_app_label(:yellow_dog_telemetry), do: "Telemetry"
-
-  def get_app_label(app),
-    do: app |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
 end
