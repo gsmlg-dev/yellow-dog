@@ -34,39 +34,21 @@ defmodule YellowDog.Console.DnsLive.ViewsLive do
 
   defp list_views do
     try do
-      case YellowDog.Dns.View.Manager.get_views() do
-        {:ok, views} ->
-          Enum.map(views, fn {view_name, view_config} ->
-            %{
-              name: view_name,
-              priority: Map.get(view_config, :priority, 100),
-              zone_count: count_zones(view_config),
-              acl_count: count_acl_rules(view_config),
-              enabled: Map.get(view_config, :enabled, true)
-            }
-          end)
-          |> Enum.sort_by(& &1.priority)
+      # Use ViewManager.list_views/0 which returns [{name, pid, priority}]
+      views = YellowDog.Dns.ViewManager.list_views()
 
-        {:error, _} ->
-          []
-      end
+      Enum.map(views, fn {view_name, _pid, priority} ->
+        %{
+          name: view_name,
+          priority: priority,
+          zone_count: 0,
+          acl_count: 0,
+          enabled: true
+        }
+      end)
+      |> Enum.sort_by(& &1.priority)
     rescue
       _ -> []
-    end
-  end
-
-  defp count_zones(view_config) do
-    case Map.get(view_config, :zones) do
-      zones when is_list(zones) -> length(zones)
-      zones when is_map(zones) -> map_size(zones)
-      _ -> 0
-    end
-  end
-
-  defp count_acl_rules(view_config) do
-    case Map.get(view_config, :match_clients) do
-      rules when is_list(rules) -> length(rules)
-      _ -> 0
     end
   end
 

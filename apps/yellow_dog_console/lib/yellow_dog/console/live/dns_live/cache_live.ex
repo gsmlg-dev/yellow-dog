@@ -38,13 +38,46 @@ defmodule YellowDog.Console.DnsLive.CacheLive do
 
   defp get_cache_stats do
     try do
-      stats = YellowDog.Dns.Query.Cache.Manager.stats()
+      # Get cache stats from ZoneController's cache zones
+      zones = YellowDog.Dns.ZoneController.list_zones()
 
-      # Convert struct to map and add max_entries/max_memory_bytes for UI
-      stats
-      |> Map.from_struct()
-      |> Map.put(:max_entries, @max_cache_entries)
-      |> Map.put(:max_memory_bytes, @max_cache_memory_bytes)
+      cache_stats =
+        zones
+        |> Enum.filter(fn {type, _name, _pid} -> type == :cache end)
+        |> Enum.map(fn {:cache, _name, pid} ->
+          YellowDog.Dns.Zone.Cache.stats(pid)
+        end)
+        |> Enum.reduce(
+          %{
+            current_size: 0,
+            hit_count: 0,
+            miss_count: 0,
+            insert_count: 0,
+            eviction_count: 0
+          },
+          fn stat, acc ->
+            %{
+              current_size: acc.current_size + Map.get(stat, :current_size, 0),
+              hit_count: acc.hit_count + Map.get(stat, :hit_count, 0),
+              miss_count: acc.miss_count + Map.get(stat, :miss_count, 0),
+              insert_count: acc.insert_count + Map.get(stat, :insert_count, 0),
+              eviction_count: acc.eviction_count + Map.get(stat, :eviction_count, 0)
+            }
+          end
+        )
+
+      %{
+        total_entries: cache_stats.current_size,
+        hit_count: cache_stats.hit_count,
+        miss_count: cache_stats.miss_count,
+        insert_count: cache_stats.insert_count,
+        eviction_count: cache_stats.eviction_count,
+        expired_count: 0,
+        memory_bytes: 0,
+        collected_at: System.system_time(:second),
+        max_entries: @max_cache_entries,
+        max_memory_bytes: @max_cache_memory_bytes
+      }
     rescue
       _ ->
         %{

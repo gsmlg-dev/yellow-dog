@@ -138,7 +138,9 @@ defmodule YellowDog.Dns.Handler.UDP do
     case Map.get(state, :connection_pid) do
       nil ->
         # Start new connection process
-        case ConnectionManager.start_connection(self(), client_ip, client_port, socket: state.socket) do
+        case ConnectionManager.start_connection(self(), client_ip, client_port,
+               socket: state.socket
+             ) do
           {:ok, pid} ->
             {:ok, pid, Map.put(state, :connection_pid, pid)}
 
@@ -151,7 +153,9 @@ defmodule YellowDog.Dns.Handler.UDP do
           {:ok, pid, state}
         else
           # Connection died, start new one
-          case ConnectionManager.start_connection(self(), client_ip, client_port, socket: state.socket) do
+          case ConnectionManager.start_connection(self(), client_ip, client_port,
+                 socket: state.socket
+               ) do
             {:ok, new_pid} ->
               {:ok, new_pid, Map.put(state, :connection_pid, new_pid)}
 

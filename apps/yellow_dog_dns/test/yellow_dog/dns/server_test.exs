@@ -106,7 +106,9 @@ defmodule YellowDog.Dns.ServerTest do
   describe "Server lifecycle" do
     test "server module exports required functions" do
       # start_link has default argument, so arity is 0
-      assert function_exported?(Server, :start_link, 0) or function_exported?(Server, :start_link, 1)
+      assert function_exported?(Server, :start_link, 0) or
+               function_exported?(Server, :start_link, 1)
+
       assert function_exported?(Server, :stop, 1)
       assert function_exported?(Server, :get_config, 0)
     end

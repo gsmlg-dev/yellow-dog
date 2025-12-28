@@ -59,12 +59,19 @@ defmodule YellowDog.Console.DnsLive.Index do
   end
 
   defp get_cache_entries(_stats) do
-    # Try to get cache stats
+    # Try to get cache stats from ZoneController's cache zones
     try do
-      case YellowDog.Dns.Query.Cache.Manager.stats() do
-        %{total_entries: entries} -> entries
-        _ -> 0
-      end
+      zones = YellowDog.Dns.ZoneController.list_zones()
+
+      zones
+      |> Enum.filter(fn {type, _name, _pid} -> type == :cache end)
+      |> Enum.map(fn {:cache, _name, pid} ->
+        case YellowDog.Dns.Zone.Cache.stats(pid) do
+          %{current_size: size} -> size
+          _ -> 0
+        end
+      end)
+      |> Enum.sum()
     rescue
       _ -> 0
     end
