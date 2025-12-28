@@ -161,10 +161,14 @@ defmodule YellowDog.Telemetry.Application do
   end
 
   defp default_format do
-    case Mix.env() do
-      :dev -> :pretty
-      :test -> :minimal
-      :prod -> :json
+    if function_exported?(Mix, :env, 0) do
+      case Mix.env() do
+        :dev -> :pretty
+        :test -> :minimal
+        :prod -> :json
+      end
+    else
+      :json
     end
   end
 

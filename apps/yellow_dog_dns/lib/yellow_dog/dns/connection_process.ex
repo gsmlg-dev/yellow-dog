@@ -163,9 +163,10 @@ defmodule YellowDog.Dns.ConnectionProcess do
       client_ip: format_ip(state.client_ip),
       client_port: state.client_port,
       active_queries: map_size(state.queries),
-      queries: Enum.map(state.queries, fn {id, qs} ->
-        %{id: id, phase: qs.phase, elapsed_ms: elapsed_ms(qs.started_at)}
-      end)
+      queries:
+        Enum.map(state.queries, fn {id, qs} ->
+          %{id: id, phase: qs.phase, elapsed_ms: elapsed_ms(qs.started_at)}
+        end)
     }
 
     {:reply, stats, state}

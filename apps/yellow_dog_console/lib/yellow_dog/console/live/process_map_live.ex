@@ -24,24 +24,41 @@ defmodule YellowDog.Console.ProcessMapLive do
 
     tree = ProcessInspector.get_tree()
 
+    # Start with root node and immediate children (app supervisors) expanded
+    initial_expanded =
+      if tree do
+        # Add root pid if it's a real pid
+        pids = if is_pid(tree.pid), do: [tree.pid], else: []
+
+        # Add all immediate children pids (the app supervisors)
+        child_pids =
+          tree
+          |> Map.get(:children, [])
+          |> Enum.filter(&is_pid(&1.pid))
+          |> Enum.map(& &1.pid)
+
+        MapSet.new(pids ++ child_pids)
+      else
+        MapSet.new()
+      end
+
     layout_opts = [
       node_width: @node_width,
       node_height: @node_height,
       h_spacing: @h_spacing,
       v_spacing: @v_spacing,
-      padding: @padding
+      padding: @padding,
+      expanded_pids: initial_expanded
     ]
 
-    {tree_with_layout, dimensions} =
+    {tree_with_layout, svg_width, svg_height} =
       if tree do
         laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
-        dims = ProcessInspector.calculate_dimensions(tree, layout_opts)
-        {laid_out, dims}
+        {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+        {laid_out, w, h}
       else
-        {nil, {600, 300}}
+        {nil, 600, 300}
       end
-
-    {svg_width, svg_height} = dimensions
 
     {:ok,
      assign(socket,
@@ -49,12 +66,16 @@ defmodule YellowDog.Console.ProcessMapLive do
        tree: tree_with_layout,
        svg_width: svg_width,
        svg_height: svg_height,
+       padding: @padding,
+       node_width: @node_width,
+       node_height: @node_height,
        selected_pid: nil,
        selected_status: nil,
        last_refresh: DateTime.utc_now(),
        show_status_panel: false,
        loading_status: false,
-       node_count: ProcessInspector.count_nodes(tree)
+       node_count: ProcessInspector.count_nodes(tree),
+       expanded_pids: initial_expanded
      )}
   end
 
@@ -67,19 +88,18 @@ defmodule YellowDog.Console.ProcessMapLive do
       node_height: @node_height,
       h_spacing: @h_spacing,
       v_spacing: @v_spacing,
-      padding: @padding
+      padding: @padding,
+      expanded_pids: socket.assigns.expanded_pids
     ]
 
-    {tree_with_layout, dimensions} =
+    {tree_with_layout, svg_width, svg_height} =
       if tree do
         laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
-        dims = ProcessInspector.calculate_dimensions(tree, layout_opts)
-        {laid_out, dims}
+        {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+        {laid_out, w, h}
       else
-        {nil, {600, 300}}
+        {nil, 600, 300}
       end
-
-    {svg_width, svg_height} = dimensions
 
     # If we have a selected process, check if it's still alive
     socket =
@@ -141,6 +161,52 @@ defmodule YellowDog.Console.ProcessMapLive do
     {:noreply, assign(socket, show_status_panel: false, selected_pid: nil, selected_status: nil)}
   end
 
+  def handle_event("toggle_expand", %{"pid" => pid_string}, socket) do
+    case ProcessInspector.parse_pid(pid_string) do
+      {:ok, pid} ->
+        expanded_pids = socket.assigns.expanded_pids
+
+        new_expanded =
+          if MapSet.member?(expanded_pids, pid) do
+            MapSet.delete(expanded_pids, pid)
+          else
+            MapSet.put(expanded_pids, pid)
+          end
+
+        # Recalculate layout with new expansion state
+        tree = ProcessInspector.get_tree()
+
+        layout_opts = [
+          node_width: @node_width,
+          node_height: @node_height,
+          h_spacing: @h_spacing,
+          v_spacing: @v_spacing,
+          padding: @padding,
+          expanded_pids: new_expanded
+        ]
+
+        {tree_with_layout, svg_width, svg_height} =
+          if tree do
+            laid_out = ProcessInspector.calculate_layout(tree, layout_opts)
+            {w, h} = ProcessInspector.calculate_dimensions(laid_out, layout_opts)
+            {laid_out, w, h}
+          else
+            {nil, 600, 300}
+          end
+
+        {:noreply,
+         assign(socket,
+           expanded_pids: new_expanded,
+           tree: tree_with_layout,
+           svg_width: svg_width,
+           svg_height: svg_height
+         )}
+
+      {:error, :invalid_pid} ->
+        {:noreply, socket}
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -151,7 +217,7 @@ defmodule YellowDog.Console.ProcessMapLive do
           <div>
             <h1 class="text-2xl font-bold">Process Map</h1>
             <p class="text-base-content/70">
-              Supervision tree starting from YellowDog.Supervisor
+              Supervision trees for all YellowDog applications
             </p>
           </div>
           <div class="flex items-center gap-4">
@@ -177,8 +243,8 @@ defmodule YellowDog.Console.ProcessMapLive do
             <div class="card-body p-4">
               <%= if @tree do %>
                 <svg
-                  width={@svg_width + @padding * 2}
-                  height={@svg_height + @padding * 2}
+                  width={@svg_width}
+                  height={@svg_height}
                   class="mx-auto"
                   style="min-width: 100%;"
                 >
@@ -223,13 +289,16 @@ defmodule YellowDog.Console.ProcessMapLive do
   attr :node_height, :integer, required: true
 
   defp draw_connections(assigns) do
+    # Only draw connections if node is expanded and has children
+    children = if assigns.node[:expanded], do: assigns.node.children, else: []
+    assigns = assign(assigns, :visible_children, children)
+
     ~H"""
-    <%= for child <- @node.children do %>
-      <line
-        x1={@node.x + @node_width / 2}
-        y1={@node.y + @node_height}
-        x2={child.x + @node_width / 2}
-        y2={child.y}
+    <%= for child <- @visible_children do %>
+      <!-- Horizontal connection: right side of parent to left side of child -->
+      <path
+        d={"M #{@node.x + @node_width} #{@node.y + @node_height / 2} C #{@node.x + @node_width + 30} #{@node.y + @node_height / 2}, #{child.x - 30} #{child.y + @node_height / 2}, #{child.x} #{child.y + @node_height / 2}"}
+        fill="none"
         stroke="currentColor"
         stroke-width="2"
         class="text-base-content/30"
@@ -248,20 +317,22 @@ defmodule YellowDog.Console.ProcessMapLive do
     pid_string = if is_pid(assigns.node.pid), do: inspect(assigns.node.pid), else: ""
     is_selected = assigns.selected_pid == assigns.node.pid
     is_supervisor = assigns.node.type == :supervisor
+    has_children = length(assigns.node.children) > 0
+    is_expanded = assigns.node[:expanded] == true
+    visible_children = if is_expanded, do: assigns.node.children, else: []
 
     assigns =
       assigns
       |> assign(:pid_string, pid_string)
       |> assign(:is_selected, is_selected)
       |> assign(:is_supervisor, is_supervisor)
+      |> assign(:has_children, has_children)
+      |> assign(:is_expanded, is_expanded)
+      |> assign(:visible_children, visible_children)
 
     ~H"""
-    <g
-      class="cursor-pointer"
-      phx-click="select_node"
-      phx-value-pid={@pid_string}
-    >
-      <!-- Node background -->
+    <g class="cursor-pointer">
+      <!-- Node background (clickable for selection) -->
       <rect
         x={@node.x}
         y={@node.y}
@@ -278,6 +349,8 @@ defmodule YellowDog.Console.ProcessMapLive do
           @node.status == :restarting && "fill-warning/20 stroke-warning"
         ]}
         stroke-width={if @is_selected, do: "3", else: "2"}
+        phx-click="select_node"
+        phx-value-pid={@pid_string}
       />
       
     <!-- Type indicator -->
@@ -294,6 +367,8 @@ defmodule YellowDog.Console.ProcessMapLive do
           @node.status == :undefined && "fill-base-content/30",
           @node.status == :restarting && "fill-warning"
         ]}
+        phx-click="select_node"
+        phx-value-pid={@pid_string}
       />
       <rect
         x={@node.x + 18}
@@ -306,13 +381,15 @@ defmodule YellowDog.Console.ProcessMapLive do
           @node.status == :undefined && "fill-base-content/30",
           @node.status == :restarting && "fill-warning"
         ]}
+        phx-click="select_node"
+        phx-value-pid={@pid_string}
       />
       <text
         x={@node.x + 12}
         y={@node.y + @node_height / 2 + 1}
         text-anchor="middle"
         dominant-baseline="middle"
-        class="fill-primary-content text-[10px] font-bold"
+        class="fill-primary-content text-[10px] font-bold pointer-events-none"
       >
         {if @is_supervisor, do: "S", else: "W"}
       </text>
@@ -322,26 +399,52 @@ defmodule YellowDog.Console.ProcessMapLive do
         x={@node.x + 32}
         y={@node.y + @node_height / 2}
         dominant-baseline="middle"
-        class="fill-base-content text-xs font-medium"
+        class="fill-base-content text-xs font-medium pointer-events-none"
       >
-        {truncate_label(@node.label, 16)}
+        {truncate_label(@node.label, 14)}
       </text>
       
-    <!-- Status indicator dot -->
-      <circle
-        cx={@node.x + @node_width - 10}
-        cy={@node.y + @node_height / 2}
-        r="4"
-        class={[
-          @node.status == :running && "fill-success",
-          @node.status == :restarting && "fill-warning animate-pulse",
-          @node.status == :undefined && "fill-base-content/30"
-        ]}
-      />
+    <!-- Expand/Collapse button (only for nodes with children) -->
+      <%= if @has_children do %>
+        <g
+          phx-click="toggle_expand"
+          phx-value-pid={@pid_string}
+          class="cursor-pointer"
+        >
+          <circle
+            cx={@node.x + @node_width - 12}
+            cy={@node.y + @node_height / 2}
+            r="8"
+            class="fill-base-200 stroke-base-content/50 hover:fill-base-300"
+            stroke-width="1"
+          />
+          <text
+            x={@node.x + @node_width - 12}
+            y={@node.y + @node_height / 2 + 1}
+            text-anchor="middle"
+            dominant-baseline="middle"
+            class="fill-base-content text-[10px] font-bold pointer-events-none"
+          >
+            {if @is_expanded, do: "−", else: "+"}
+          </text>
+        </g>
+      <% else %>
+        <!-- Status indicator dot (only for leaf nodes) -->
+        <circle
+          cx={@node.x + @node_width - 12}
+          cy={@node.y + @node_height / 2}
+          r="4"
+          class={[
+            @node.status == :running && "fill-success",
+            @node.status == :restarting && "fill-warning animate-pulse",
+            @node.status == :undefined && "fill-base-content/30"
+          ]}
+        />
+      <% end %>
     </g>
 
-    <!-- Draw child nodes recursively -->
-    <%= for child <- @node.children do %>
+    <!-- Draw child nodes recursively (only if expanded) -->
+    <%= for child <- @visible_children do %>
       <.draw_nodes
         node={child}
         selected_pid={@selected_pid}

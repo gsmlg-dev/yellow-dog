@@ -38,8 +38,8 @@ defmodule YellowDog.Application do
     # Add service heartbeat for periodic status logging
     children = children ++ [YellowDog.ServiceHeartbeat]
 
-    # Note: YellowDog.Console has its own Application module and starts separately
-    # It is configured in mix.exs as a dependency with `mod: {YellowDog.Console.Application, []}`
+    # Note: YellowDog.Console and YellowDog.Telemetry have their own Application
+    # modules and start separately as OTP applications (required for Phoenix dependencies)
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
     Supervisor.start_link(children, opts)

@@ -17,8 +17,15 @@ defmodule YellowDog.Console.ProcessInspector do
     :reductions
   ]
 
+  # All YellowDog application supervisors to include in the process map
+  @app_supervisors [
+    YellowDog.Supervisor,
+    YellowDog.Console.Supervisor,
+    YellowDog.Telemetry.Supervisor
+  ]
+
   @doc """
-  Get the complete supervision tree starting from YellowDog.Supervisor.
+  Get the complete supervision tree for all YellowDog applications.
 
   Returns a tree structure suitable for SVG rendering:
   %{
@@ -32,11 +39,41 @@ defmodule YellowDog.Console.ProcessInspector do
   """
   @spec get_tree() :: map() | nil
   def get_tree do
-    case Process.whereis(YellowDog.Supervisor) do
-      nil -> nil
-      pid -> build_tree_from_supervisor(pid, "YellowDog.Supervisor")
+    # Build trees for all running YellowDog application supervisors
+    app_trees =
+      @app_supervisors
+      |> Enum.map(fn supervisor_name ->
+        case Process.whereis(supervisor_name) do
+          nil -> nil
+          pid -> build_tree_from_supervisor(pid, format_supervisor_label(supervisor_name))
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    case app_trees do
+      [] ->
+        nil
+
+      [single_tree] ->
+        single_tree
+
+      trees ->
+        # Create a virtual root node containing all application supervisors
+        %{
+          id: :yellow_dog_apps,
+          pid: self(),
+          label: "YellowDog",
+          type: :supervisor,
+          status: :running,
+          children: trees
+        }
     end
   end
+
+  defp format_supervisor_label(YellowDog.Supervisor), do: "Core"
+  defp format_supervisor_label(YellowDog.Console.Supervisor), do: "Console"
+  defp format_supervisor_label(YellowDog.Telemetry.Supervisor), do: "Telemetry"
+  defp format_supervisor_label(name), do: name |> Atom.to_string() |> shorten_module_name()
 
   @doc """
   Get detailed status information for a specific process.
@@ -97,20 +134,92 @@ defmodule YellowDog.Console.ProcessInspector do
   Calculate tree layout positions for SVG rendering.
 
   Returns tree with added x, y coordinates for each node.
-  Uses a top-down tree layout algorithm.
+  Uses a horizontal left-to-right tree layout algorithm.
   """
   @spec calculate_layout(map(), keyword()) :: map()
   def calculate_layout(tree, opts \\ []) do
     node_width = Keyword.get(opts, :node_width, 180)
     node_height = Keyword.get(opts, :node_height, 40)
-    h_spacing = Keyword.get(opts, :h_spacing, 30)
-    v_spacing = Keyword.get(opts, :v_spacing, 60)
+    h_spacing = Keyword.get(opts, :h_spacing, 60)
+    v_spacing = Keyword.get(opts, :v_spacing, 10)
+    expanded_pids = Keyword.get(opts, :expanded_pids, MapSet.new())
 
-    # First pass: calculate subtree widths
-    tree_with_widths = calculate_subtree_widths(tree, node_width, h_spacing)
+    # Horizontal layout: parent on left, children on right, stacked vertically
+    {laid_out, _} =
+      layout_node_horizontal(
+        tree,
+        0,
+        0,
+        node_width,
+        node_height,
+        h_spacing,
+        v_spacing,
+        expanded_pids
+      )
 
-    # Second pass: assign x, y positions
-    assign_positions(tree_with_widths, 0, 0, node_width, node_height, v_spacing)
+    laid_out
+  end
+
+  defp layout_node_horizontal(
+         node,
+         x,
+         y,
+         node_width,
+         node_height,
+         h_spacing,
+         v_spacing,
+         expanded_pids
+       ) do
+    children = Map.get(node, :children, [])
+    pid = Map.get(node, :pid)
+    is_expanded = is_pid(pid) and MapSet.member?(expanded_pids, pid)
+
+    # If no children or collapsed, just position this node
+    if Enum.empty?(children) or not is_expanded do
+      node_with_pos =
+        node
+        |> Map.put(:x, x)
+        |> Map.put(:y, y)
+        |> Map.put(:expanded, is_expanded)
+
+      {node_with_pos, y + node_height + v_spacing}
+    else
+      # Children go to the right of parent
+      children_x = x + node_width + h_spacing
+
+      # Layout all children vertically stacked
+      {laid_out_children, next_y} =
+        Enum.reduce(children, {[], y}, fn child, {acc, current_y} ->
+          {laid_out_child, new_y} =
+            layout_node_horizontal(
+              child,
+              children_x,
+              current_y,
+              node_width,
+              node_height,
+              h_spacing,
+              v_spacing,
+              expanded_pids
+            )
+
+          {acc ++ [laid_out_child], new_y}
+        end)
+
+      # Center parent vertically relative to children
+      children_start = y
+      children_end = next_y - v_spacing
+      parent_y = children_start + (children_end - children_start - node_height) / 2
+      parent_y = max(y, parent_y)
+
+      node_with_pos =
+        node
+        |> Map.put(:x, x)
+        |> Map.put(:y, parent_y)
+        |> Map.put(:children, laid_out_children)
+        |> Map.put(:expanded, is_expanded)
+
+      {node_with_pos, next_y}
+    end
   end
 
   @doc """
@@ -126,24 +235,39 @@ defmodule YellowDog.Console.ProcessInspector do
   def count_nodes(_), do: 1
 
   @doc """
-  Calculate the dimensions needed for the SVG canvas.
+  Calculate the dimensions needed for the SVG canvas based on actual laid out tree.
   """
   @spec calculate_dimensions(map(), keyword()) :: {non_neg_integer(), non_neg_integer()}
   def calculate_dimensions(tree, opts \\ []) do
+    padding = Keyword.get(opts, :padding, 40)
     node_width = Keyword.get(opts, :node_width, 180)
     node_height = Keyword.get(opts, :node_height, 40)
-    h_spacing = Keyword.get(opts, :h_spacing, 30)
-    v_spacing = Keyword.get(opts, :v_spacing, 60)
-    padding = Keyword.get(opts, :padding, 40)
 
-    depth = tree_depth(tree)
-    max_width = tree_max_width(tree)
+    # Calculate actual bounds from laid out tree
+    {max_x, max_y} = find_max_bounds(tree, 0, 0)
 
-    width = max_width * (node_width + h_spacing) + padding * 2
-    height = depth * (node_height + v_spacing) + padding * 2
+    width = trunc(max_x + node_width + padding * 2)
+    height = trunc(max_y + node_height + padding * 2)
 
     {max(width, 400), max(height, 200)}
   end
+
+  defp find_max_bounds(nil, max_x, max_y), do: {max_x, max_y}
+
+  defp find_max_bounds(%{x: x, y: y, children: children}, max_x, max_y) do
+    current_max_x = max(max_x, x)
+    current_max_y = max(max_y, y)
+
+    Enum.reduce(children, {current_max_x, current_max_y}, fn child, {mx, my} ->
+      find_max_bounds(child, mx, my)
+    end)
+  end
+
+  defp find_max_bounds(%{x: x, y: y}, max_x, max_y) do
+    {max(max_x, x), max(max_y, y)}
+  end
+
+  defp find_max_bounds(_, max_x, max_y), do: {max_x, max_y}
 
   # Private functions
 
@@ -253,6 +377,8 @@ defmodule YellowDog.Console.ProcessInspector do
     # Remove common prefixes to make labels shorter
     name
     |> String.replace(~r/^Elixir\./, "")
+    |> String.replace("YellowDog.Console.", "Console.")
+    |> String.replace("YellowDog.Telemetry.", "Telemetry.")
     |> String.replace(~r/^YellowDog\./, "YD.")
   end
 
@@ -263,82 +389,6 @@ defmodule YellowDog.Console.ProcessInspector do
       _ -> nil
     end
   end
-
-  # Layout calculation functions
-
-  defp calculate_subtree_widths(node, node_width, h_spacing) do
-    children = Map.get(node, :children, [])
-
-    if Enum.empty?(children) do
-      Map.put(node, :subtree_width, node_width)
-    else
-      children_with_widths =
-        Enum.map(children, &calculate_subtree_widths(&1, node_width, h_spacing))
-
-      total_width =
-        children_with_widths
-        |> Enum.map(& &1.subtree_width)
-        |> Enum.sum()
-        |> Kernel.+(h_spacing * (length(children_with_widths) - 1))
-        |> max(node_width)
-
-      node
-      |> Map.put(:children, children_with_widths)
-      |> Map.put(:subtree_width, total_width)
-    end
-  end
-
-  defp assign_positions(node, x, y, node_width, node_height, v_spacing) do
-    subtree_width = Map.get(node, :subtree_width, node_width)
-    node_x = x + (subtree_width - node_width) / 2
-    node_y = y
-
-    children = Map.get(node, :children, [])
-
-    if Enum.empty?(children) do
-      node
-      |> Map.put(:x, node_x)
-      |> Map.put(:y, node_y)
-    else
-      children_y = y + node_height + v_spacing
-
-      {positioned_children, _} =
-        Enum.reduce(children, {[], x}, fn child, {acc, current_x} ->
-          child_width = Map.get(child, :subtree_width, node_width)
-
-          positioned_child =
-            assign_positions(child, current_x, children_y, node_width, node_height, v_spacing)
-
-          {acc ++ [positioned_child], current_x + child_width + 30}
-        end)
-
-      node
-      |> Map.put(:x, node_x)
-      |> Map.put(:y, node_y)
-      |> Map.put(:children, positioned_children)
-    end
-  end
-
-  defp tree_depth(nil), do: 0
-
-  defp tree_depth(%{children: []}), do: 1
-
-  defp tree_depth(%{children: children}) do
-    1 + (children |> Enum.map(&tree_depth/1) |> Enum.max(fn -> 0 end))
-  end
-
-  defp tree_depth(_), do: 1
-
-  defp tree_max_width(nil), do: 0
-
-  defp tree_max_width(%{children: []}), do: 1
-
-  defp tree_max_width(%{children: children}) do
-    children_width = children |> Enum.map(&tree_max_width/1) |> Enum.sum()
-    max(1, children_width)
-  end
-
-  defp tree_max_width(_), do: 1
 
   @doc """
   Format an MFA tuple as a human-readable string.
