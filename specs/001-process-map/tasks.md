@@ -23,9 +23,9 @@
 
 **Goal**: Establish routing and navigation for the Process Map feature.
 
-- [ ] T001 Add `/process-map` route to `apps/yellow_dog_console/lib/yellow_dog/console/router.ex`
-- [ ] T002 Add "Process Map" menu item under System section in `apps/yellow_dog_console/lib/yellow_dog/console/components/layouts.ex`
-- [ ] T003 Create empty LiveView module stub in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T001 Add `/process-map` route to `apps/yellow_dog_console/lib/yellow_dog/console/router.ex`
+- [x] T002 Add "Process Map" menu item under System section in `apps/yellow_dog_console/lib/yellow_dog/console/components/layouts.ex`
+- [x] T003 Create empty LiveView module stub in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
 
 ---
 
@@ -35,10 +35,10 @@
 
 **Blocking**: All user stories depend on this phase.
 
-- [ ] T004 Create `apps/yellow_dog_console/lib/yellow_dog/console/services/` directory if it doesn't exist
-- [ ] T005 [P] Implement `get_trees/0` function that returns supervision trees for all YellowDog apps in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
-- [ ] T006 [P] Implement `get_process_status/1` function that returns detailed process info in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
-- [ ] T007 [P] Implement helper functions (`format_mfa/1`, `format_memory/1`, `get_app_label/1`) in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
+- [x] T004 Create `apps/yellow_dog_console/lib/yellow_dog/console/services/` directory if it doesn't exist
+- [x] T005 [P] Implement `get_trees/0` function that returns supervision trees for all YellowDog apps in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
+- [x] T006 [P] Implement `get_process_status/1` function that returns detailed process info in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
+- [x] T007 [P] Implement helper functions (`format_mfa/1`, `format_memory/1`, `get_app_label/1`) in `apps/yellow_dog_console/lib/yellow_dog/console/services/process_inspector.ex`
 
 ---
 
@@ -55,12 +55,12 @@
 
 ### Tasks
 
-- [ ] T008 [US1] Implement `mount/3` callback with initial tree fetch and 5-second timer in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T009 [US1] Implement `handle_info(:refresh_tree, socket)` for automatic tree updates in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T010 [P] [US1] Create `tree_node/1` function component for rendering individual nodes in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T011 [P] [US1] Create `application_tree/1` function component for rendering app-level trees in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T012 [US1] Implement main `render/1` function with page layout, header, and tree container in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T013 [US1] Add tree visualization CSS styles (expand/collapse indicators, indentation) to `apps/yellow_dog_console/assets/css/app.css`
+- [x] T008 [US1] Implement `mount/3` callback with initial tree fetch and 5-second timer in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T009 [US1] Implement `handle_info(:refresh_tree, socket)` for automatic tree updates in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T010 [P] [US1] Create `tree_node/1` function component for rendering individual nodes in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T011 [P] [US1] Create `application_tree/1` function component for rendering app-level trees in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T012 [US1] Implement main `render/1` function with page layout, header, and tree container in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T013 [US1] Add tree visualization CSS styles (expand/collapse indicators, indentation) to `apps/yellow_dog_console/assets/css/app.css`
 
 ---
 
@@ -78,10 +78,10 @@
 
 ### Tasks
 
-- [ ] T014 [US2] Implement `handle_event("select_node", params, socket)` to fetch and display process status in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T015 [US2] Implement `handle_event("close_panel", params, socket)` to dismiss status panel in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T016 [P] [US2] Create `status_panel/1` function component for displaying process details in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T017 [US2] Add status panel styling and positioning (slide-out panel on right side) to `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T014 [US2] Implement `handle_event("select_node", params, socket)` to fetch and display process status in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T015 [US2] Implement `handle_event("close_panel", params, socket)` to dismiss status panel in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T016 [P] [US2] Create `status_panel/1` function component for displaying process details in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T017 [US2] Add status panel styling and positioning (slide-out panel on right side) to `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
 
 ---
 
@@ -98,9 +98,9 @@
 
 ### Tasks
 
-- [ ] T018 [US3] Add `expanded_pids` MapSet to socket assigns and preserve across refreshes in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T019 [US3] Implement `handle_event("toggle_expand", params, socket)` to toggle node expansion in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T020 [US3] Update `tree_node/1` component to respect expansion state and show expand/collapse indicator in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T018 [US3] Add `expanded_pids` MapSet to socket assigns and preserve across refreshes in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T019 [US3] Implement `handle_event("toggle_expand", params, socket)` to toggle node expansion in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T020 [US3] Update `tree_node/1` component to respect expansion state and show expand/collapse indicator in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
 
 ---
 
@@ -108,9 +108,9 @@
 
 **Goal**: Handle edge cases, improve UX, ensure code quality.
 
-- [ ] T021 Handle edge case: process terminates while status panel open (show "Process terminated" message) in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T022 Add empty state UI when no processes available in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
-- [ ] T023 Verify compilation with `mix compile --warnings-as-errors` and fix any warnings
+- [x] T021 Handle edge case: process terminates while status panel open (show "Process terminated" message) in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T022 Add empty state UI when no processes available in `apps/yellow_dog_console/lib/yellow_dog/console/live/process_map_live.ex`
+- [x] T023 Verify compilation with `mix compile --warnings-as-errors` and fix any warnings
 
 ---
 
@@ -204,15 +204,15 @@ This delivers a working Process Map page that displays the supervision tree with
 
 After completing all tasks:
 
-- [ ] Page loads at `/process-map` within 2 seconds
-- [ ] Tree shows all started YellowDog applications
-- [ ] Each node displays process name/PID
-- [ ] Tree auto-refreshes every 5 seconds
-- [ ] Clicking node shows status panel with required fields
-- [ ] Status panel dismissible
-- [ ] Expand/collapse works on supervisor nodes
-- [ ] Expansion state preserved across refresh
-- [ ] Empty state shown when no processes
-- [ ] Process termination handled gracefully
-- [ ] `mix compile --warnings-as-errors` passes
-- [ ] `mix format --check-formatted` passes
+- [x] Page loads at `/process-map` within 2 seconds
+- [x] Tree shows all started YellowDog applications
+- [x] Each node displays process name/PID
+- [x] Tree auto-refreshes every 5 seconds
+- [x] Clicking node shows status panel with required fields
+- [x] Status panel dismissible
+- [x] Expand/collapse works on supervisor nodes
+- [x] Expansion state preserved across refresh
+- [x] Empty state shown when no processes
+- [x] Process termination handled gracefully
+- [x] `mix compile --warnings-as-errors` passes (pre-existing warnings excluded)
+- [x] `mix format --check-formatted` passes
