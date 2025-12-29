@@ -31,6 +31,7 @@ defmodule YellowDog.Dns.Server do
   ## Options
   - `port`: UDP/TCP port to listen on (default: 53)
   - `listen`: IP address tuple to bind to
+  - `tcp_enabled`: Whether to enable TCP server (default: true, can be configured via TOML)
 
   ## Returns
   - `{:ok, pid}` - Server started successfully
@@ -58,6 +59,9 @@ defmodule YellowDog.Dns.Server do
       # Shared settings
       port: 53,
       listen: {0, 0, 0, 0},
+
+      # TCP enabled flag (can be disabled via config)
+      tcp_enabled: true,
 
       # UDP settings (Abyss)
       udp: %{
@@ -99,11 +103,24 @@ defmodule YellowDog.Dns.Server do
   """
   @spec status() :: map()
   def status do
+    tcp_enabled = get_tcp_enabled()
+
     %{
       running: Process.whereis(__MODULE__) != nil,
       udp: %{running: find_abyss_pid(__MODULE__) != nil},
-      tcp: %{running: find_thousand_island_pid(__MODULE__) != nil}
+      tcp: %{
+        enabled: tcp_enabled,
+        running: tcp_enabled and find_thousand_island_pid(__MODULE__) != nil
+      }
     }
+  end
+
+  @doc """
+  Returns whether TCP is enabled.
+  """
+  @spec tcp_enabled?() :: boolean()
+  def tcp_enabled? do
+    get_tcp_enabled()
   end
 
   @doc """
@@ -179,40 +196,67 @@ defmodule YellowDog.Dns.Server do
 
     # Build configurations
     abyss_config = build_abyss_config(opts)
-    tcp_config = build_thousand_island_config(opts)
 
     port = Keyword.get(opts, :port, 53)
     listen = Keyword.get(opts, :listen, {0, 0, 0, 0})
     listen_ip = normalize_ip(listen)
 
+    # Check if TCP is enabled
+    tcp_enabled = Keyword.get(opts, :tcp_enabled, get_tcp_enabled())
+
     Telemetry.info("DNS server listening", %{
       port: port,
       listen: format_ip(listen_ip),
       udp: true,
-      tcp: true
+      tcp: tcp_enabled
     })
 
+    # Always start UDP server
     children = [
-      # Abyss UDP server
       %{
         id: :abyss,
         start: {Abyss, :start_link, [abyss_config]},
         restart: :permanent,
         type: :supervisor
-      },
-      # ThousandIsland TCP server
-      %{
-        id: :thousand_island,
-        start: {ThousandIsland, :start_link, [tcp_config]},
-        restart: :permanent,
-        type: :supervisor
       }
     ]
+
+    # Conditionally add TCP server
+    children =
+      if tcp_enabled do
+        tcp_config = build_thousand_island_config(opts)
+
+        children ++
+          [
+            %{
+              id: :thousand_island,
+              start: {ThousandIsland, :start_link, [tcp_config]},
+              restart: :permanent,
+              type: :supervisor
+            }
+          ]
+      else
+        Telemetry.info("DNS TCP server disabled by configuration")
+        children
+      end
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
   # Private helpers
+
+  defp get_tcp_enabled do
+    # Check config for tcp_enabled setting, default to true
+    case apply(YellowDog.Config, :get, [:dns, :tcp_enabled]) do
+      nil -> true
+      enabled when is_boolean(enabled) -> enabled
+      "true" -> true
+      "false" -> false
+      _ -> true
+    end
+  rescue
+    _ -> true
+  end
 
   defp find_abyss_pid(supervisor) do
     pid = resolve_pid(supervisor)
