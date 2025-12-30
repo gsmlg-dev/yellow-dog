@@ -77,6 +77,12 @@ defmodule YellowDog.Dns.Supervisor do
     port = get_port(opts)
     listen = get_listen(opts)
 
+    # Attach Abyss logger if debug is enabled
+    if get_debug(opts) do
+      Telemetry.info("Attaching Abyss debug logger")
+      Abyss.Logger.attach_logger(:debug)
+    end
+
     Telemetry.info("DNS supervisor configuration", %{
       port: port,
       listen: format_ip(listen)
@@ -177,6 +183,25 @@ defmodule YellowDog.Dns.Supervisor do
     end
   rescue
     _ -> {0, 0, 0, 0}
+  end
+
+  defp get_debug(opts) do
+    case Keyword.get(opts, :debug) do
+      nil ->
+        case apply(YellowDog.Config, :get, [:dns, :debug]) do
+          true -> true
+          "true" -> true
+          _ -> false
+        end
+
+      value when is_boolean(value) ->
+        value
+
+      _ ->
+        false
+    end
+  rescue
+    _ -> false
   end
 
   defp get_upstreams do

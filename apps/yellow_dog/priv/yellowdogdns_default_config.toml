@@ -9,6 +9,7 @@ dhcpv6 = false
 listen = "0.0.0.0"
 port = 53
 tcp_enabled = true  # Set to false to disable DNS over TCP
+debug = false  # Set to true to enable Abyss debug logging to console
 
 [dns.zones]
 "example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
