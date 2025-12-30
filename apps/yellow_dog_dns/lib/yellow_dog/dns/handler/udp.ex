@@ -119,17 +119,8 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       {:error, reason} ->
         Telemetry.error("Failed to start connection process", %{reason: inspect(reason)})
-
-        # Fallback to direct forwarding
-        case fallback_resolve(query) do
-          {:ok, response} ->
-            send_response(response, client_ip, client_port, state.socket)
-
-          {:error, _} ->
-            response = create_error_response(query, :servfail)
-            send_response(response, client_ip, client_port, state.socket)
-        end
-
+        response = create_error_response(query, :servfail)
+        send_response(response, client_ip, client_port, state.socket)
         {:close, state}
     end
   end
@@ -186,105 +177,6 @@ defmodule YellowDog.Dns.Handler.UDP do
     })
 
     {:close, state}
-  end
-
-  # Fallback resolution for when ConnectionManager is not available
-  defp fallback_resolve(query) do
-    upstreams = get_upstreams()
-
-    if upstreams == [] do
-      {:error, :refused}
-    else
-      forward_to_upstream(query, upstreams)
-    end
-  end
-
-  defp get_upstreams do
-    case apply(YellowDog.Config, :get, [:dns, :upstream_servers]) do
-      nil ->
-        [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
-
-      servers when is_list(servers) ->
-        Enum.map(servers, fn
-          {ip, port} when is_tuple(ip) -> {ip, port}
-          ip when is_tuple(ip) -> {ip, 53}
-          ip_str when is_binary(ip_str) -> parse_upstream_string(ip_str)
-          _ -> nil
-        end)
-        |> Enum.reject(&is_nil/1)
-
-      _ ->
-        []
-    end
-  rescue
-    _ -> [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
-  end
-
-  defp parse_upstream_string(str) do
-    case String.split(str, ":") do
-      [ip_str, port_str] ->
-        with {:ok, ip} <- parse_ip(ip_str),
-             {port, ""} <- Integer.parse(port_str) do
-          {ip, port}
-        else
-          _ -> nil
-        end
-
-      [ip_str] ->
-        case parse_ip(ip_str) do
-          {:ok, ip} -> {ip, 53}
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp parse_ip(ip_str) do
-    charlist = String.to_charlist(ip_str)
-
-    case :inet.parse_address(charlist) do
-      {:ok, ip} -> {:ok, ip}
-      _ -> :error
-    end
-  end
-
-  defp forward_to_upstream(query, upstreams) do
-    data = DNS.to_iodata(query)
-
-    Enum.reduce_while(upstreams, {:error, :no_response}, fn {ip, port}, _acc ->
-      case query_upstream(ip, port, data) do
-        {:ok, response} -> {:halt, {:ok, response}}
-        {:error, _} -> {:cont, {:error, :no_response}}
-      end
-    end)
-  end
-
-  defp query_upstream(ip, port, data) do
-    case :gen_udp.open(0, [:binary, active: false]) do
-      {:ok, socket} ->
-        :gen_udp.send(socket, ip, port, data)
-
-        result =
-          case :gen_udp.recv(socket, 0, 5000) do
-            {:ok, {_ip, _port, response_data}} ->
-              try do
-                {:ok, Message.from_iodata(response_data)}
-              catch
-                :throw, reason -> {:error, reason}
-              end
-
-            {:error, reason} ->
-              {:error, reason}
-          end
-
-        :gen_udp.close(socket)
-        result
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 
   defp create_error_response(query, reason) do
