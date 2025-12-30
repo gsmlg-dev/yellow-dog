@@ -4,12 +4,12 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   This handler focuses ONLY on network I/O:
   - On first request: call ConnectionManager to start connection process
-  - Forward all queries to connection process
-  - Send responses from connection process to client
+  - Forward all raw data to connection process (no parsing)
+  - Send raw responses from connection process to client
   - On network connection close: notify connection process to terminate
 
-  All DNS resolution logic is handled by ConnectionProcess, ViewManager,
-  View, and Zone processes.
+  All DNS protocol handling (parsing, resolution, encoding) is done by
+  ConnectionProcess, ViewManager, View, and Zone processes.
 
   ## Lifecycle
 
@@ -22,7 +22,6 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   alias YellowDog.Telemetry
   alias YellowDog.Dns.ConnectionManager
-  alias DNS.Message
 
   ## Abyss.Handler Callbacks
 
@@ -34,20 +33,7 @@ defmodule YellowDog.Dns.Handler.UDP do
       size: byte_size(data)
     })
 
-    try do
-      # Parse incoming DNS message
-      query = Message.from_iodata(data)
-      handle_query(query, client_ip, client_port, state)
-    rescue
-      error ->
-        handle_exception(error, __STACKTRACE__, client_ip, client_port, state)
-    catch
-      {:format_error, section, _details} ->
-        handle_parse_error({:format_error, section}, client_ip, client_port, state)
-
-      :throw, reason ->
-        handle_parse_error(reason, client_ip, client_port, state)
-    end
+    handle_raw_data(data, client_ip, client_port, state)
   end
 
   @impl true
@@ -70,57 +56,43 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   ## Private Functions
 
-  defp handle_query(query, client_ip, client_port, state) do
-    Telemetry.debug("Received DNS query", %{
+  defp handle_raw_data(data, client_ip, client_port, state) do
+    Telemetry.debug("Received DNS data", %{
       client_ip: format_ip(client_ip),
       client_port: client_port,
-      query: inspect_query(query)
+      size: byte_size(data)
     })
 
     # Get or start connection process
     case get_or_start_connection(state, client_ip, client_port) do
       {:ok, conn_pid, new_state} ->
-        # Submit query to connection process
-        case YellowDog.Dns.ConnectionProcess.submit_query(conn_pid, query) do
+        # Submit raw data to connection process
+        case YellowDog.Dns.ConnectionProcess.submit_raw_data(conn_pid, data) do
           :ok ->
-            # Wait for response from connection process
+            # Wait for raw response from connection process
             receive do
-              {:dns_response, _query_id, response} ->
-                send_response(response, client_ip, client_port, new_state.socket)
-                {:close, new_state}
-
-              {:resolution_complete, _query_id, response} ->
-                send_response(response, client_ip, client_port, new_state.socket)
-                {:close, new_state}
-
-              {:resolution_error, _query_id, reason} ->
-                response = create_error_response(query, reason)
-                send_response(response, client_ip, client_port, new_state.socket)
+              {:dns_raw_response, _query_id, response_data} ->
+                send_raw_response(response_data, client_ip, client_port, new_state.socket)
                 {:close, new_state}
             after
               10_000 ->
                 # Timeout waiting for response
                 Telemetry.warning("Timeout waiting for DNS response", %{
                   client_ip: format_ip(client_ip),
-                  query: inspect_query(query)
+                  data_size: byte_size(data)
                 })
-
-                response = create_error_response(query, :servfail)
-                send_response(response, client_ip, client_port, new_state.socket)
                 {:close, new_state}
             end
 
           {:error, reason} ->
-            Telemetry.warning("Failed to submit query", %{reason: inspect(reason)})
-            response = create_error_response(query, :servfail)
-            send_response(response, client_ip, client_port, state.socket)
+            Telemetry.warning("Failed to submit data to connection process", %{
+              reason: inspect(reason)
+            })
             {:close, state}
         end
 
       {:error, reason} ->
         Telemetry.error("Failed to start connection process", %{reason: inspect(reason)})
-        response = create_error_response(query, :servfail)
-        send_response(response, client_ip, client_port, state.socket)
         {:close, state}
     end
   end
@@ -157,63 +129,13 @@ defmodule YellowDog.Dns.Handler.UDP do
     end
   end
 
-  defp handle_parse_error(reason, client_ip, client_port, state) do
-    Telemetry.warning("Failed to parse DNS query", %{
-      client_ip: format_ip(client_ip),
-      client_port: client_port,
-      reason: inspect(reason)
-    })
-
-    # Can't send error response without parsing query ID
-    {:close, state}
-  end
-
-  defp handle_exception(error, stacktrace, client_ip, client_port, state) do
-    Telemetry.error("Exception handling DNS query", %{
-      client_ip: format_ip(client_ip),
-      client_port: client_port,
-      error: inspect(error),
-      stacktrace: Exception.format_stacktrace(stacktrace)
-    })
-
-    {:close, state}
-  end
-
-  defp create_error_response(query, reason) do
-    rcode =
-      case reason do
-        :format_error -> :formerr
-        :servfail -> :servfail
-        :refused -> :refused
-        :nxdomain -> :nxdomain
-        :timeout -> :servfail
-        _ -> :servfail
-      end
-
-    %Message{
-      header: %{
-        query.header
-        | qr: 1,
-          aa: 0,
-          tc: 0,
-          ra: 1,
-          rcode: rcode
-      },
-      qdlist: query.qdlist,
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
-  end
-
-  defp send_response(response, client_ip, client_port, socket) do
-    data = DNS.to_iodata(response)
-
-    case Abyss.Transport.UDP.send(socket, client_ip, client_port, data) do
+  defp send_raw_response(response_data, client_ip, client_port, socket) do
+    case Abyss.Transport.UDP.send(socket, client_ip, client_port, response_data) do
       :ok ->
         Telemetry.debug("Sent DNS response", %{
           client_ip: format_ip(client_ip),
-          client_port: client_port
+          client_port: client_port,
+          size: IO.iodata_length(response_data)
         })
 
       {:error, reason} ->
@@ -232,14 +154,4 @@ defmodule YellowDog.Dns.Handler.UDP do
   end
 
   defp format_ip(other), do: inspect(other)
-
-  defp inspect_query(query) do
-    case query.qdlist do
-      [question | _] ->
-        "#{question.name} #{question.type} #{question.class}"
-
-      _ ->
-        "empty query"
-    end
-  end
 end

@@ -42,6 +42,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
   alias YellowDog.Telemetry
   alias DNS.Message
 
+  # DNS module used for to_iodata/1
+  require DNS
+
   @default_query_timeout 5_000
 
   # Query phases
@@ -74,7 +77,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
       phase: :received,
       view: nil,
       zone: nil,
-      metadata: %{}
+      metadata: %{},
+      raw: false
     ]
   end
 
@@ -104,6 +108,20 @@ defmodule YellowDog.Dns.ConnectionProcess do
   @spec submit_query(pid(), Message.t()) :: :ok | {:error, term()}
   def submit_query(pid, query) do
     GenServer.call(pid, {:submit_query, query})
+  end
+
+  @doc """
+  Submits raw DNS data for resolution.
+
+  The data will be parsed, resolved, and the raw response binary sent
+  back to the Handler via `{:dns_raw_response, response_data}` message.
+
+  This allows the handler to remain purely I/O focused without any
+  DNS protocol knowledge.
+  """
+  @spec submit_raw_data(pid(), binary()) :: :ok | {:error, term()}
+  def submit_raw_data(pid, data) do
+    GenServer.call(pid, {:submit_raw_data, data})
   end
 
   @doc """
@@ -154,6 +172,35 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
       {:error, _reason} = error ->
         {:reply, error, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:submit_raw_data, data}, _from, state) do
+    try do
+      query = Message.from_iodata(data)
+      case submit_query_internal(state, query, raw: true) do
+        {:ok, new_state} ->
+          {:reply, :ok, new_state}
+
+        {:error, _reason} = error ->
+          {:reply, error, state}
+      end
+    rescue
+      error ->
+        Telemetry.warning("Failed to parse DNS query", %{
+          error: inspect(error),
+          data_size: byte_size(data)
+        })
+        {:reply, {:error, :parse_error}, state}
+    catch
+      {:format_error, section, _details} ->
+        Telemetry.warning("DNS format error", %{section: section})
+        {:reply, {:error, {:format_error, section}}, state}
+
+      :throw, reason ->
+        Telemetry.warning("DNS parse error", %{reason: inspect(reason)})
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -277,11 +324,12 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   # Private functions
 
-  defp submit_query_internal(state, query) do
+  defp submit_query_internal(state, query, opts \\ []) do
     if map_size(state.queries) >= state.max_concurrent_queries do
       {:error, :too_many_queries}
     else
       query_id = query.header.id
+      raw = Keyword.get(opts, :raw, false)
 
       # Start telemetry span
       span_ref = start_span(state, query)
@@ -296,7 +344,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
         span_ref: span_ref,
         timer_ref: timer_ref,
         started_at: System.monotonic_time(:millisecond),
-        phase: @phase_received
+        phase: @phase_received,
+        raw: raw
       }
 
       # Update state
@@ -380,8 +429,13 @@ defmodule YellowDog.Dns.ConnectionProcess do
         # End telemetry span
         end_span_success(qs, response)
 
-        # Send response to handler
-        send(state.handler_pid, {:dns_response, query_id, response})
+        # Send response to handler (raw binary or parsed message)
+        if qs.raw do
+          response_data = DNS.to_iodata(response)
+          send(state.handler_pid, {:dns_raw_response, query_id, response_data})
+        else
+          send(state.handler_pid, {:dns_response, query_id, response})
+        end
 
         %{state | queries: queries}
     end
@@ -402,8 +456,13 @@ defmodule YellowDog.Dns.ConnectionProcess do
         # Create error response
         error_response = create_error_response(qs.query, reason)
 
-        # Send error response to handler
-        send(state.handler_pid, {:dns_response, query_id, error_response})
+        # Send error response to handler (raw binary or parsed message)
+        if qs.raw do
+          response_data = DNS.to_iodata(error_response)
+          send(state.handler_pid, {:dns_raw_response, query_id, response_data})
+        else
+          send(state.handler_pid, {:dns_response, query_id, error_response})
+        end
 
         %{state | queries: queries}
     end

@@ -5,9 +5,12 @@ defmodule YellowDog.Dns.Handler.TCP do
   This handler focuses ONLY on network I/O:
   - On connection: start connection process for tracking queries
   - Handle DNS over TCP message framing (2-byte length prefix per RFC 1035)
-  - Forward all queries to connection process
-  - Send responses from connection process to client
+  - Forward raw message bytes to connection process (no DNS parsing)
+  - Send raw responses from connection process to client
   - On connection close: notify connection process to terminate
+
+  All DNS protocol handling (parsing, resolution, encoding) is done by
+  ConnectionProcess, ViewManager, View, and Zone processes.
 
   ## DNS over TCP (RFC 1035, RFC 7766)
 
@@ -25,7 +28,6 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   alias YellowDog.Telemetry
   alias YellowDog.Dns.ConnectionManager
-  alias DNS.Message
 
   ## ThousandIsland.Handler Callbacks
 
@@ -102,36 +104,15 @@ defmodule YellowDog.Dns.Handler.TCP do
     :ok
   end
 
-  # Handle async messages from ConnectionProcess
+  # Handle async raw responses from ConnectionProcess
   @impl GenServer
-  def handle_info({:dns_response, query_id, response}, {socket, state}) do
+  def handle_info({:dns_raw_response, query_id, response_data}, {socket, state}) do
     Telemetry.debug("Sending DNS TCP response", %{
       query_id: query_id,
       client_ip: format_ip(state.client_ip)
     })
 
-    send_response(response, socket)
-    {:noreply, {socket, state}, socket.read_timeout}
-  end
-
-  def handle_info({:resolution_complete, query_id, response}, {socket, state}) do
-    Telemetry.debug("Sending DNS TCP response (resolution complete)", %{
-      query_id: query_id,
-      client_ip: format_ip(state.client_ip)
-    })
-
-    send_response(response, socket)
-    {:noreply, {socket, state}, socket.read_timeout}
-  end
-
-  def handle_info({:resolution_error, query_id, reason}, {socket, state}) do
-    Telemetry.warning("DNS resolution error", %{
-      query_id: query_id,
-      reason: inspect(reason)
-    })
-
-    # We can't easily create error response without the original query
-    # The ConnectionProcess should have sent proper error response
+    send_raw_response(response_data, socket)
     {:noreply, {socket, state}, socket.read_timeout}
   end
 
@@ -141,114 +122,66 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   ## Private Functions
 
-  # Process buffer for complete DNS messages
+  # Process buffer for complete DNS messages (framing only, no parsing)
   defp process_buffer(buffer, socket, state) do
-    case parse_dns_message(buffer) do
-      {:ok, query, remaining} ->
-        # Handle the query
-        handle_query(query, socket, state)
+    case extract_framed_message(buffer) do
+      {:ok, message_data, remaining} ->
+        # Handle the raw message
+        handle_raw_message(message_data, state)
         # Continue processing remaining buffer
         process_buffer(remaining, socket, %{state | buffer: <<>>})
 
       {:incomplete, _} ->
         # Need more data - save buffer and wait
         {:continue, %{state | buffer: buffer}}
-
-      {:error, reason} ->
-        Telemetry.warning("Failed to parse DNS TCP message", %{
-          client_ip: format_ip(state.client_ip),
-          reason: inspect(reason)
-        })
-
-        {:close, state}
     end
   end
 
-  # Parse DNS message with 2-byte length framing (RFC 1035)
-  defp parse_dns_message(<<>>) do
+  # Extract framed message (2-byte length prefix per RFC 1035)
+  # Does NOT parse DNS content - just extracts the raw bytes
+  defp extract_framed_message(<<>>) do
     {:incomplete, :need_length}
   end
 
-  defp parse_dns_message(<<_partial::binary-size(1)>>) do
+  defp extract_framed_message(<<_partial::binary-size(1)>>) do
     {:incomplete, :need_length}
   end
 
-  defp parse_dns_message(<<length::16, rest::binary>>) when byte_size(rest) < length do
+  defp extract_framed_message(<<length::16, rest::binary>>) when byte_size(rest) < length do
     {:incomplete, {:need_message, length, byte_size(rest)}}
   end
 
-  defp parse_dns_message(<<length::16, message::binary-size(length), remaining::binary>>) do
-    try do
-      query = Message.from_iodata(message)
-      {:ok, query, remaining}
-    rescue
-      error -> {:error, {:parse_error, error}}
-    catch
-      {:format_error, section, _details} ->
-        {:error, {:format_error, section}}
-
-      :throw, reason ->
-        {:error, reason}
-    end
+  defp extract_framed_message(<<length::16, message::binary-size(length), remaining::binary>>) do
+    {:ok, message, remaining}
   end
 
-  defp parse_dns_message(_) do
-    {:error, :invalid_framing}
+  defp extract_framed_message(_) do
+    {:incomplete, :invalid_framing}
   end
 
-  defp handle_query(query, socket, state) do
-    Telemetry.debug("Received DNS TCP query", %{
+  defp handle_raw_message(message_data, state) do
+    Telemetry.debug("Received DNS TCP message", %{
       client_ip: format_ip(state.client_ip),
-      query: inspect_query(query)
+      size: byte_size(message_data)
     })
 
-    # Submit query to connection process (non-blocking for pipelining support)
-    case YellowDog.Dns.ConnectionProcess.submit_query(state.connection_pid, query) do
+    # Submit raw data to connection process (non-blocking for pipelining support)
+    case YellowDog.Dns.ConnectionProcess.submit_raw_data(state.connection_pid, message_data) do
       :ok ->
         # Response will arrive via handle_info
         :ok
 
       {:error, reason} ->
-        Telemetry.warning("Failed to submit TCP query", %{reason: inspect(reason)})
-        # Send error response
-        response = create_error_response(query, :servfail)
-        send_response(response, socket)
+        Telemetry.warning("Failed to submit TCP message", %{reason: inspect(reason)})
+        # ConnectionProcess will handle errors and send appropriate response
     end
   end
 
-  defp create_error_response(query, reason) do
-    rcode =
-      case reason do
-        :format_error -> :formerr
-        :servfail -> :servfail
-        :refused -> :refused
-        :nxdomain -> :nxdomain
-        :timeout -> :servfail
-        _ -> :servfail
-      end
-
-    %Message{
-      header: %{
-        query.header
-        | qr: 1,
-          aa: 0,
-          tc: 0,
-          ra: 1,
-          rcode: rcode
-      },
-      qdlist: query.qdlist,
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
-  end
-
-  defp send_response(response, socket) do
-    data = DNS.to_iodata(response)
-    length = IO.iodata_length(data)
+  defp send_raw_response(response_data, socket) do
+    length = IO.iodata_length(response_data)
 
     # RFC 1035: 2-byte length prefix (big-endian) followed by message
-    framed_message = [<<length::16>>, data]
+    framed_message = [<<length::16>>, response_data]
 
     case ThousandIsland.Socket.send(socket, framed_message) do
       :ok ->
@@ -272,14 +205,4 @@ defmodule YellowDog.Dns.Handler.TCP do
   end
 
   defp format_ip(other), do: inspect(other)
-
-  defp inspect_query(query) do
-    case query.qdlist do
-      [question | _] ->
-        "#{question.name} #{question.type} #{question.class}"
-
-      _ ->
-        "empty query"
-    end
-  end
 end
