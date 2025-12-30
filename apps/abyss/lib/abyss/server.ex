@@ -3,14 +3,12 @@ defmodule Abyss.Server do
   Internal server supervisor that manages the Abyss supervision tree.
 
   This module is responsible for managing all components of an Abyss server instance,
-  including the listener pool, connection supervisor, rate limiter (if enabled),
-  and shutdown coordination.
+  including the listener pool, connection supervisor, and shutdown coordination.
 
   ## Architecture
 
   The server manages the following children:
 
-  - **Rate Limiter**: Optional token bucket rate limiting for DoS protection
   - **Listener Pool**: Supervisor managing UDP listener processes
   - **Connection Supervisor**: Dynamic supervisor managing handler processes
   - **Activator Task**: Starts listener processes after initialization
@@ -19,7 +17,7 @@ defmodule Abyss.Server do
   ## Configuration
 
   The server is configured via `Abyss.ServerConfig` which contains all server
-  options including port, handler module, timeouts, and security settings.
+  options including port, handler module, and timeouts.
 
   This module is primarily used internally by `Abyss.start_link/1` and should
   not be used directly by end users.
@@ -148,39 +146,6 @@ defmodule Abyss.Server do
     end
   end
 
-  @doc """
-  Get the PID of the rate limiter for a server.
-
-  ## Parameters
-  - `supervisor` - The server supervisor PID
-
-  ## Returns
-  - The rate limiter PID if found and alive, `nil` otherwise
-  """
-  @spec rate_limiter_pid(Supervisor.supervisor()) :: pid() | nil
-  def rate_limiter_pid(supervisor) do
-    try do
-      case Process.alive?(supervisor) do
-        false ->
-          nil
-
-        true ->
-          supervisor
-          |> Supervisor.which_children()
-          |> Enum.find_value(fn
-            {:rate_limiter, rate_limiter_pid, _, _} when is_pid(rate_limiter_pid) ->
-              rate_limiter_pid
-
-            _ ->
-              nil
-          end)
-      end
-    rescue
-      ArgumentError -> nil
-      _ -> nil
-    end
-  end
-
   @impl Supervisor
   @spec init(Abyss.ServerConfig.t()) ::
           {:ok,
@@ -192,41 +157,23 @@ defmodule Abyss.Server do
     # Initialize telemetry metrics
     Abyss.Telemetry.init_metrics()
 
-    # Add rate limiter if enabled
-    rate_limiter_child =
-      if config.rate_limit_enabled do
-        [
-          {Abyss.RateLimiter,
-           [
-             enabled: config.rate_limit_enabled,
-             max_packets: config.rate_limit_max_packets,
-             window_ms: config.rate_limit_window_ms
-           ]}
-          |> Supervisor.child_spec(id: :rate_limiter)
-        ]
-      else
-        []
-      end
-
-    children =
-      rate_limiter_child ++
-        [
-          {Abyss.ListenerPool, {server_pid, config}}
-          |> Supervisor.child_spec(id: :listener_pool),
-          {DynamicSupervisor, strategy: :one_for_one, max_children: config.num_connections}
-          |> Supervisor.child_spec(id: :connection_sup),
-          Supervisor.child_spec(
-            {Task,
-             fn ->
-               server_pid
-               |> Abyss.Server.listener_pool_pid()
-               |> Abyss.ListenerPool.start_listening()
-             end},
-            id: :activator
-          ),
-          {Abyss.ShutdownListener, server_pid}
-          |> Supervisor.child_spec(id: :shutdown_listener)
-        ]
+    children = [
+      {Abyss.ListenerPool, {server_pid, config}}
+      |> Supervisor.child_spec(id: :listener_pool),
+      {DynamicSupervisor, strategy: :one_for_one, max_children: config.num_connections}
+      |> Supervisor.child_spec(id: :connection_sup),
+      Supervisor.child_spec(
+        {Task,
+         fn ->
+           server_pid
+           |> Abyss.Server.listener_pool_pid()
+           |> Abyss.ListenerPool.start_listening()
+         end},
+        id: :activator
+      ),
+      {Abyss.ShutdownListener, server_pid}
+      |> Supervisor.child_spec(id: :shutdown_listener)
+    ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end

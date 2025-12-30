@@ -336,36 +336,8 @@ defmodule Abyss.ServerConfigTest do
                read_timeout: 60_000,
                shutdown_timeout: 15_000,
                silent_terminate_on_error: false,
-               rate_limit_enabled: false,
-               rate_limit_max_packets: 1000,
-               rate_limit_window_ms: 1000,
                max_packet_size: 8192
              } = config
-    end
-  end
-
-  describe "rate limiting configuration" do
-    test "includes rate limiting fields" do
-      config =
-        Abyss.ServerConfig.new(
-          handler_module: Abyss.TestHandler,
-          port: 1234,
-          rate_limit_enabled: true,
-          rate_limit_max_packets: 500,
-          rate_limit_window_ms: 2000
-        )
-
-      assert config.rate_limit_enabled == true
-      assert config.rate_limit_max_packets == 500
-      assert config.rate_limit_window_ms == 2000
-    end
-
-    test "has default rate limiting values" do
-      config = Abyss.ServerConfig.new(handler_module: Abyss.TestHandler, port: 1234)
-
-      assert config.rate_limit_enabled == false
-      assert config.rate_limit_max_packets == 1000
-      assert config.rate_limit_window_ms == 1000
     end
   end
 

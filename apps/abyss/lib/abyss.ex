@@ -12,7 +12,7 @@ defmodule Abyss do
   - **High Performance**: Supervisor-based architecture with configurable connection pooling
   - **Flexible Handler System**: Pluggable handler modules for custom protocol implementations
   - **Real-time Metrics**: Built-in telemetry with connection counts, throughput rates, and response times
-  - **Security Features**: Built-in rate limiting and packet size validation
+  - **Security Features**: Built-in packet size validation
   - **Broadcast Support**: Native support for broadcast and multicast applications
   - **Graceful Shutdown**: Coordinated shutdown with configurable timeouts
   - **Extensible Transport**: Pluggable transport layer (currently UDP)
@@ -101,9 +101,6 @@ defmodule Abyss do
   - `read_timeout` - Connection read timeout in ms (default: `60_000`)
   - `shutdown_timeout` - Graceful shutdown timeout in ms (default: `15_000`)
   - `silent_terminate_on_error` - Silent termination on errors (default: `false`)
-  - `rate_limit_enabled` - Enable rate limiting (default: `false`)
-  - `rate_limit_max_packets` - Max packets per rate limit window (default: `1000`)
-  - `rate_limit_window_ms` - Rate limit window in ms (default: `1000`)
   - `max_packet_size` - Maximum packet size in bytes (default: `8192`)
   """
   @type options :: [
@@ -121,9 +118,6 @@ defmodule Abyss do
           read_timeout: timeout(),
           shutdown_timeout: timeout(),
           silent_terminate_on_error: boolean(),
-          rate_limit_enabled: boolean(),
-          rate_limit_max_packets: pos_integer(),
-          rate_limit_window_ms: pos_integer(),
           max_packet_size: pos_integer()
         ]
 
