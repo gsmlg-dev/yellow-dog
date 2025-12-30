@@ -8,6 +8,8 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
   use Phoenix.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.HexDump
+  alias DNS.Message
+  alias DHCPv4.Message, as: DHCPv4Message
 
   @doc """
   Renders the result display with request and response sections.
@@ -201,6 +203,17 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
 
   defp format_struct(nil), do: "(empty)"
 
+  # DNS messages have a nice to_string implementation
+  defp format_struct(%Message{} = message) do
+    to_string(message)
+  end
+
+  # DHCPv4 messages have a nice to_string implementation
+  defp format_struct(%DHCPv4Message{} = message) do
+    to_string(message)
+  end
+
+  # Fallback to inspect for other structs
   defp format_struct(struct) do
     inspect(struct, pretty: true, limit: :infinity, width: 80)
   end
