@@ -89,7 +89,6 @@ defmodule YellowDog.DnsTest do
       assert udp.num_connections == 10_000
       # DNS UDP limit
       assert udp.max_packet_size == 512
-      assert udp.rate_limit_enabled == true
 
       # Check TCP defaults
       tcp = config.tcp

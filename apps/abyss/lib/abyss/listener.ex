@@ -147,7 +147,7 @@ defmodule Abyss.Listener do
       state = %{
         broadcast: broadcast,
         is_active: active,
-        is_listening: not broadcast,
+        is_listening: false,
         server_config: server_config,
         server_pid: server_pid,
         listener_id: listener_id,

@@ -192,7 +192,9 @@ defmodule YellowDog.Dns.ViewManager do
   def list_views(supervisor) do
     DynamicSupervisor.which_children(supervisor)
     |> Enum.filter(fn {_id, pid, _type, _modules} -> is_pid(pid) end)
-    |> Enum.map(fn {{:view, name}, pid, _type, _modules} ->
+    |> Enum.map(fn {_id, pid, _type, _modules} ->
+      # DynamicSupervisor always returns :undefined as id, so we get the name from the View process
+      name = View.get_name(pid)
       priority = get_view_priority(pid)
       {name, pid, priority}
     end)
@@ -304,17 +306,27 @@ defmodule YellowDog.Dns.ViewManager do
   end
 
   defp find_view(supervisor, view_name) do
+    # DynamicSupervisor always returns :undefined as id, so we need to check each child
     children = DynamicSupervisor.which_children(supervisor)
 
-    case Enum.find(children, fn {id, _pid, _type, _modules} ->
-           id == {:view, view_name}
-         end) do
-      {{:view, ^view_name}, pid, _type, _modules} when is_pid(pid) ->
-        {:ok, pid}
+    result =
+      Enum.find_value(children, fn {_id, pid, _type, _modules} ->
+        if is_pid(pid) do
+          try do
+            if View.get_name(pid) == view_name do
+              {:ok, pid}
+            else
+              nil
+            end
+          catch
+            :exit, _ -> nil
+          end
+        else
+          nil
+        end
+      end)
 
-      _ ->
-        :error
-    end
+    result || :error
   end
 
   defp get_view_priority(pid) do

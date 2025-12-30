@@ -90,3 +90,7 @@ config :yellow_dog_telemetry,
   exclude_apps: nil,
   app_levels: %{},
   span_thresholds: %{}
+
+# Enable Abyss debug logging in development
+config :abyss,
+  log_level: :debug

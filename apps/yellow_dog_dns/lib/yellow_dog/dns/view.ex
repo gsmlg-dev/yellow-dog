@@ -498,7 +498,14 @@ defmodule YellowDog.Dns.View do
     %{response | header: %{response.header | id: new_id}}
   end
 
-  defp normalize_name(name) do
+  defp normalize_name(%DNS.Message.Domain{} = domain) do
+    domain
+    |> to_string()
+    |> String.downcase()
+    |> String.trim_trailing(".")
+  end
+
+  defp normalize_name(name) when is_binary(name) do
     name
     |> String.downcase()
     |> String.trim_trailing(".")

@@ -41,6 +41,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   alias YellowDog.Telemetry
   alias DNS.Message
+  alias DNS.Message.RCode
 
   # DNS module used for to_iodata/1
   require DNS
@@ -250,11 +251,10 @@ defmodule YellowDog.Dns.ConnectionProcess do
   end
 
   @impl true
-  def handle_info({:zone_response, query_id, response}, state) do
+  def handle_info({:zone_response, query_id, _response}, state) do
+    # Zone response received - update phase to RPZ evaluation
+    # The actual completion happens when {:resolution_complete, ...} is received
     state = update_query_phase(state, query_id, @phase_rpz)
-
-    # Check if RPZ processing is needed, otherwise complete
-    state = complete_query(state, query_id, response)
     {:noreply, state}
   end
 
@@ -366,11 +366,14 @@ defmodule YellowDog.Dns.ConnectionProcess do
   end
 
   defp send_to_view_manager(state, query_id, query) do
-    # Send resolution request to ViewManager with our PID for response routing
+    # Capture the connection process PID before spawning
+    connection_pid = self()
+
+    # Send resolution request to ViewManager with connection process PID for response routing
     spawn(fn ->
       result =
         YellowDog.Dns.ViewManager.resolve(
-          self(),
+          connection_pid,
           state.client_ip,
           query_id,
           query
@@ -379,10 +382,10 @@ defmodule YellowDog.Dns.ConnectionProcess do
       # Send result back to connection process
       case result do
         {:ok, response} ->
-          send(state.handler_pid, {:resolution_complete, query_id, response})
+          send(connection_pid, {:resolution_complete, query_id, response})
 
         {:error, reason} ->
-          send(state.handler_pid, {:resolution_error, query_id, reason})
+          send(connection_pid, {:resolution_error, query_id, reason})
       end
     end)
   end
@@ -483,11 +486,11 @@ defmodule YellowDog.Dns.ConnectionProcess do
   defp create_error_response(query, reason) do
     rcode =
       case reason do
-        :timeout -> :servfail
-        :refused -> :refused
-        :nxdomain -> :nxdomain
-        :format_error -> :formerr
-        _ -> :servfail
+        :timeout -> RCode.serv_fail()
+        :refused -> RCode.refused()
+        :nxdomain -> RCode.nx_domain()
+        :format_error -> RCode.form_err()
+        _ -> RCode.serv_fail()
       end
 
     %Message{

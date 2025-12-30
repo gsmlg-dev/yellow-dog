@@ -14,6 +14,12 @@ defmodule YellowDog.Application do
     # This enables log output for all protocol-specific telemetry events
     YellowDog.Telemetry.attach_logger_handlers()
 
+    # Attach Abyss logger if configured
+    # This enables debug logging for UDP transport operations
+    if log_level = Application.get_env(:abyss, :log_level) do
+      Abyss.Logger.attach_logger(log_level)
+    end
+
     # Load TOML configuration in the application
     config = load_toml_config()
 

@@ -52,12 +52,7 @@ defmodule YellowDog.Dhcpv4.Server do
       shutdown_timeout: 15_000,
       num_listeners: 10,
       num_connections: 1000,
-      max_packet_size: 1024,
-      # Rate limiting disabled - Abyss.RateLimiter uses a global name and conflicts
-      # with other services. DHCP runs on trusted internal networks anyway.
-      rate_limit_enabled: false,
-      rate_limit_max_packets: 100,
-      rate_limit_window_ms: 1000
+      max_packet_size: 1024
     }
   end
 
@@ -141,15 +136,9 @@ defmodule YellowDog.Dhcpv4.Server do
     abyss_opts = Keyword.drop(opts_with_transport, @dhcp_specific_keys)
 
     # Override with provided options (from main YellowDog app)
-    # IMPORTANT: Force rate_limit_enabled: false at the end to avoid conflicts
-    # with the global Abyss.RateLimiter process
-    final_config =
-      config_keywords
-      |> Keyword.merge(abyss_opts)
-      |> Keyword.put(:handler_module, YellowDog.Dhcpv4.Handler)
-      |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
-      |> Keyword.put(:rate_limit_enabled, false)
-
-    final_config
+    config_keywords
+    |> Keyword.merge(abyss_opts)
+    |> Keyword.put(:handler_module, YellowDog.Dhcpv4.Handler)
+    |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
   end
 end

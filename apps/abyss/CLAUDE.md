@@ -164,9 +164,6 @@ Key options when starting Abyss:
 - `transport_options`: Additional UDP socket options
 - `read_timeout`: Connection read timeout (default: 60_000ms)
 - `shutdown_timeout`: Graceful shutdown timeout (default: 15_000ms)
-- `rate_limit_enabled`: Enable rate limiting for DoS protection (default: false)
-- `rate_limit_max_packets`: Max packets per rate limit window (default: 1000)
-- `rate_limit_window_ms`: Rate limit window in milliseconds (default: 1000)
 - `max_packet_size`: Maximum allowed packet size in bytes (default: 8192)
 
 ## Telemetry and Monitoring
@@ -226,7 +223,6 @@ Abyss emits comprehensive telemetry events for monitoring:
 - `[:abyss, :connection, :send/recv]` - Data transmission events
 
 #### Security Events
-- `[:abyss, :listener, :rate_limit_exceeded]` - Rate limit violations
 - `[:abyss, :listener, :packet_too_large]` - Oversized packets rejected
 
 #### Performance Events
@@ -269,7 +265,6 @@ lib/
 │   ├── listener.ex       # Individual listener process with security checks
 │   ├── connection.ex     # Connection lifecycle management with non-blocking retry
 │   ├── handler.ex        # Handler behaviour and GenServer implementation
-│   ├── rate_limiter.ex   # Token bucket rate limiting for DoS protection
 │   ├── transport.ex      # Transport behaviour definition
 │   ├── transport/
 │   │   ├── udp.ex        # Main UDP transport module
@@ -295,10 +290,8 @@ test/
 │   ├── listener_pool_scaler_test.exs
 │   ├── listener_test.exs
 │   ├── listener_comprehensive_test.exs
-│   ├── listener_rate_limiting_test.exs
 │   ├── connection_test.exs
 │   ├── handler_test.exs
-│   ├── rate_limiter_test.exs
 │   ├── telemetry_test.exs
 │   ├── telemetry_metrics_test.exs
 │   ├── telemetry_integration_test.exs
@@ -419,7 +412,6 @@ Abyss emits comprehensive telemetry events for monitoring:
 - `[:abyss, :listener, :start/stop/ready/waiting/receiving]`
 - `[:abyss, :connection, :start/stop/ready/send/recv]`
 - `[:abyss, :acceptor, :start/stop/spawn_error]`
-- `[:abyss, :listener, :rate_limit_exceeded]` - Security event
 - `[:abyss, :listener, :packet_too_large]` - Security event
 
 Use `Abyss.Logger.attach_logger(:level)` to enable logging at different levels.
@@ -548,7 +540,6 @@ mix run --no-halt -e 'Abyss.Logger.attach_logger(:debug); # your server code'
 ### Performance Tuning
 - **num_listeners**: Increase for high-throughput scenarios (default: 100)
 - **num_connections**: Set appropriate limits for your use case
-- **rate_limit_max_packets**: Adjust based on expected traffic patterns
 - **max_packet_size**: Set based on protocol requirements
 - **read_timeout**: Adjust based on expected protocol timing
 - **transport_options**: Tune UDP buffer sizes as needed
@@ -642,7 +633,6 @@ end
 :telemetry.attach_many(
   "security-monitor",
   [
-    [:abyss, :listener, :rate_limit_exceeded],
     [:abyss, :listener, :packet_too_large]
   ],
   &handle_security_event/4,

@@ -98,8 +98,6 @@ defmodule YellowDog.Mdns.Server do
       read_timeout: Keyword.get(opts, :read_timeout, 5000),
       # Single listener for broadcast mode
       num_listeners: Keyword.get(opts, :num_listeners, 1),
-      # Disabled for local mDNS
-      rate_limit_enabled: Keyword.get(opts, :rate_limit_enabled, false),
       # mDNS MTU limit
       max_packet_size: Keyword.get(opts, :max_packet_size, 1232)
     ]
@@ -134,7 +132,6 @@ defmodule YellowDog.Mdns.Server do
       ],
       read_timeout: 5000,
       num_listeners: 1,
-      rate_limit_enabled: false,
       max_packet_size: 1232
     ]
   end

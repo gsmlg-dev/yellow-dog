@@ -21,7 +21,6 @@ defmodule YellowDog.Dns.ServerTest do
       assert is_integer(udp.num_listeners)
       assert is_integer(udp.num_connections)
       assert is_integer(udp.max_packet_size)
-      assert is_boolean(udp.rate_limit_enabled)
 
       # Check TCP config
       tcp = config.tcp
@@ -56,14 +55,6 @@ defmodule YellowDog.Dns.ServerTest do
       config = Server.get_config()
 
       assert config.tcp.handler_module == YellowDog.Dns.Handler.TCP
-    end
-
-    test "rate limiting is enabled by default for UDP" do
-      config = Server.get_config()
-
-      assert config.udp.rate_limit_enabled == true
-      assert is_integer(config.udp.rate_limit_max_packets)
-      assert is_integer(config.udp.rate_limit_window_ms)
     end
 
     test "max packet size is DNS UDP limit (512 bytes)" do
@@ -237,21 +228,4 @@ defmodule YellowDog.Dns.ServerTest do
     end
   end
 
-  describe "Rate limiting configuration" do
-    test "rate limiting is configured for DoS protection on UDP" do
-      config = Server.get_config()
-
-      assert config.udp.rate_limit_enabled == true
-      assert config.udp.rate_limit_max_packets == 1000
-      assert config.udp.rate_limit_window_ms == 1000
-    end
-
-    test "rate limit allows reasonable query volume" do
-      config = Server.get_config()
-
-      # Should allow at least 1000 queries per second per IP
-      assert config.udp.rate_limit_max_packets >= 1000
-      assert config.udp.rate_limit_window_ms <= 1000
-    end
-  end
 end

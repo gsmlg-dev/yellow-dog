@@ -54,12 +54,7 @@ defmodule YellowDog.Dhcpv6.Server do
       num_listeners: 10,
       num_connections: 1000,
       # DHCPv6 can use larger packets
-      max_packet_size: 1500,
-      # Rate limiting disabled - Abyss.RateLimiter uses a global name and conflicts
-      # with other services. DHCP runs on trusted internal networks anyway.
-      rate_limit_enabled: false,
-      rate_limit_max_packets: 100,
-      rate_limit_window_ms: 1000
+      max_packet_size: 1500
     }
   end
 
@@ -142,15 +137,9 @@ defmodule YellowDog.Dhcpv6.Server do
     abyss_opts = Keyword.drop(opts_with_transport, @dhcp_specific_keys)
 
     # Override with provided options
-    # IMPORTANT: Force rate_limit_enabled: false at the end to avoid conflicts
-    # with the global Abyss.RateLimiter process
-    final_config =
-      config_keywords
-      |> Keyword.merge(abyss_opts)
-      |> Keyword.put(:handler_module, YellowDog.Dhcpv6.Handler)
-      |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
-      |> Keyword.put(:rate_limit_enabled, false)
-
-    final_config
+    config_keywords
+    |> Keyword.merge(abyss_opts)
+    |> Keyword.put(:handler_module, YellowDog.Dhcpv6.Handler)
+    |> Keyword.put(:transport_module, Abyss.Transport.UDP.Broadcast)
   end
 end

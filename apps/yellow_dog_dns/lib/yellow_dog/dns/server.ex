@@ -75,10 +75,7 @@ defmodule YellowDog.Dns.Server do
         shutdown_timeout: 5_000,
         num_listeners: 50,
         num_connections: 10_000,
-        max_packet_size: 512,
-        rate_limit_enabled: true,
-        rate_limit_max_packets: 1000,
-        rate_limit_window_ms: 1000
+        max_packet_size: 512
       },
 
       # TCP settings (ThousandIsland)
@@ -324,10 +321,7 @@ defmodule YellowDog.Dns.Server do
       shutdown_timeout: udp_config.shutdown_timeout,
       num_listeners: udp_config.num_listeners,
       num_connections: udp_config.num_connections,
-      max_packet_size: udp_config.max_packet_size,
-      rate_limit_enabled: udp_config.rate_limit_enabled,
-      rate_limit_max_packets: udp_config.rate_limit_max_packets,
-      rate_limit_window_ms: udp_config.rate_limit_window_ms
+      max_packet_size: udp_config.max_packet_size
     ]
   end
 

@@ -112,9 +112,6 @@ Starts an Abyss server with the given options.
 - `transport_options` - Keyword list passed to UDP transport
 - `read_timeout` - Connection read timeout (default: 60_000ms)
 - `shutdown_timeout` - Graceful shutdown timeout (default: 15_000ms)
-- `rate_limit_enabled` - Enable rate limiting (default: false)
-- `rate_limit_max_packets` - Max packets per window (default: 1000)
-- `rate_limit_window_ms` - Rate limit window in ms (default: 1000)
 - `max_packet_size` - Maximum packet size in bytes (default: 8192)
 - `broadcast` - Enable broadcast mode (default: false)
 
@@ -211,9 +208,6 @@ Abyss.start_link([
 Abyss.start_link([
   handler_module: MyHandler,
   port: 8080,
-  rate_limit_enabled: true,
-  rate_limit_max_packets: 100,  # Lower limit for strict rate limiting
-  rate_limit_window_ms: 1000,
   max_packet_size: 1024         # Limit packet size to prevent DoS
 ])
 ```
@@ -253,7 +247,6 @@ Abyss emits comprehensive telemetry events for monitoring:
 - `[:abyss, :connection, :stop]`
 
 #### Security Events
-- `[:abyss, :listener, :rate_limit_exceeded]`
 - `[:abyss, :listener, :packet_too_large]`
 
 #### Enabling Logging
@@ -280,12 +273,7 @@ Abyss.Logger.attach_logger(:trace)   # Verbose tracing
    - Based on available memory and expected load
    - Use `:infinity` for unlimited (with caution)
 
-3. **Rate Limiting**
-   - Enable for public-facing services
-   - Adjust based on expected traffic patterns
-   - Monitor `[:abyss, :listener, :rate_limit_exceeded]` events
-
-4. **Buffer Sizes**
+3. **Buffer Sizes**
    - Configure via `transport_options`
    ```elixir
    transport_options: [
@@ -304,7 +292,7 @@ Monitor key metrics via telemetry:
   [
     [:abyss, :listener, :start],
     [:abyss, :connection, :start],
-    [:abyss, :listener, :rate_limit_exceeded]
+    [:abyss, :listener, :packet_too_large]
   ],
   &handle_metrics/4,
   %{}
@@ -322,11 +310,6 @@ Abyss.start_link([
   handler_module: MyHandler,
   port: 8080,
 
-  # Enable rate limiting for DoS protection
-  rate_limit_enabled: true,
-  rate_limit_max_packets: 1000,
-  rate_limit_window_ms: 1000,
-
   # Limit packet size to prevent memory exhaustion
   max_packet_size: 8192,
 
@@ -343,11 +326,10 @@ Abyss.start_link([
 
 ### Security Considerations
 
-1. **Rate Limiting**: Always enable rate limiting for public services
-2. **Packet Size Limits**: Set appropriate `max_packet_size` limits
-3. **Connection Limits**: Monitor and adjust `num_connections` based on resources
-4. **Network Access**: Use firewall rules to restrict access when possible
-5. **Monitoring**: Set up alerts for rate limiting events
+1. **Packet Size Limits**: Set appropriate `max_packet_size` limits
+2. **Connection Limits**: Monitor and adjust `num_connections` based on resources
+3. **Network Access**: Use firewall rules to restrict access when possible
+4. **Monitoring**: Set up alerts for security events
 
 ### Monitoring Security Events
 
@@ -355,7 +337,6 @@ Abyss.start_link([
 :telemetry.attach_many(
   "security-monitor",
   [
-    [:abyss, :listener, :rate_limit_exceeded],
     [:abyss, :listener, :packet_too_large]
   ],
   &handle_security_event/4,
@@ -364,9 +345,6 @@ Abyss.start_link([
 
 defp handle_security_event(event, measurements, metadata, config) do
   case event do
-    [:abyss, :listener, :rate_limit_exceeded] ->
-      Logger.warn("Rate limit exceeded from #{metadata.remote_address}")
-
     [:abyss, :listener, :packet_too_large] ->
       Logger.warn("Oversized packet from #{metadata.remote_address}: #{metadata.packet_size} bytes")
   end

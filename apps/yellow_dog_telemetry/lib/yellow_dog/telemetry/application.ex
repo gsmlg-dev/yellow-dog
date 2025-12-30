@@ -184,7 +184,9 @@ defmodule YellowDog.Telemetry.Application do
         :debug -> IO.ANSI.cyan() <> level_str <> IO.ANSI.reset()
         :info -> IO.ANSI.green() <> level_str <> IO.ANSI.reset()
         :warn -> IO.ANSI.yellow() <> level_str <> IO.ANSI.reset()
+        :warning -> IO.ANSI.yellow() <> level_str <> IO.ANSI.reset()
         :error -> IO.ANSI.red() <> level_str <> IO.ANSI.reset()
+        _ -> level_str
       end
     else
       level_str

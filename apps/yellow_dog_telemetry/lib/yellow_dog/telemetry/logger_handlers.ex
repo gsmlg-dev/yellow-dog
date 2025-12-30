@@ -211,14 +211,10 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
       %{level: :info}
     )
 
-    # Infrastructure events (rate limiter, DNS errors)
+    # Infrastructure events (DNS errors)
     :telemetry.attach_many(
       "yellow-dog-infrastructure-logger",
       [
-        [:abyss, :rate_limiter, :check],
-        [:abyss, :rate_limiter, :exceeded],
-        [:abyss, :rate_limiter, :start],
-        [:abyss, :rate_limiter, :cleanup],
         [:ex_dns, :error],
         [:ex_dns, :error, :detailed]
       ],
@@ -857,39 +853,6 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
       kind, value ->
         Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
     end
-  end
-
-  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :check], _measurements, metadata, _config) do
-    Logger.log(:debug, fn ->
-      client = format_ip(metadata[:client_ip])
-      allowed = if metadata[:allowed], do: "allowed", else: "denied"
-      "Rate limiter: #{client} -> #{allowed}"
-    end)
-  end
-
-  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :exceeded], _measurements, metadata, _config) do
-    Logger.log(:warning, fn ->
-      client = format_ip(metadata[:client_ip])
-      limit = metadata[:limit] || 0
-      window = metadata[:window_ms] || 0
-      "Rate limit exceeded: #{client} (limit: #{limit}/#{window}ms)"
-    end)
-  end
-
-  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :start], _measurements, metadata, _config) do
-    Logger.log(:debug, fn ->
-      enabled = metadata[:enabled]
-      max_packets = metadata[:max_packets]
-      window_ms = metadata[:window_ms]
-      "Rate limiter started: enabled=#{enabled}, max_packets=#{max_packets}, window_ms=#{window_ms}"
-    end)
-  end
-
-  defp do_handle_infrastructure_event([:abyss, :rate_limiter, :cleanup], measurements, _metadata, _config) do
-    Logger.log(:debug, fn ->
-      count = measurements[:count] || 0
-      "Cleaned up #{count} expired rate limit buckets"
-    end)
   end
 
   defp do_handle_infrastructure_event([:ex_dns, :error], _measurements, metadata, _config) do
