@@ -5,6 +5,8 @@ defmodule Abyss.ServerConfig do
   This is used internally by `Abyss.Handler`
   """
 
+  require Logger
+
   @typedoc "A set of configuration parameters for a Abyss server instance"
   @type t :: %__MODULE__{
           port: :inet.port_number(),
@@ -76,11 +78,34 @@ defmodule Abyss.ServerConfig do
       raise ArgumentError, "handler_module must be a module"
     end
 
-    broadcast = get_in(opts, [:transport_options, :broadcast])
+    # Determine broadcast mode from transport module
+    transport_module = Keyword.get(opts, :transport_module, Abyss.Transport.UDP)
+    is_broadcast = transport_module == Abyss.Transport.UDP.Broadcast
+
+    # Warn if broadcast is set in transport_options (invalid option)
+    if get_in(opts, [:transport_options, :broadcast]) != nil do
+      Logger.warning(
+        "Invalid option: transport_options[:broadcast] is ignored. " <>
+          "Use transport_module: Abyss.Transport.UDP.Broadcast instead."
+      )
+    end
+
+    # Remove broadcast from transport_options if present
+    opts =
+      if get_in(opts, [:transport_options, :broadcast]) != nil do
+        transport_opts =
+          opts
+          |> Keyword.get(:transport_options, [])
+          |> Keyword.delete(:broadcast)
+
+        Keyword.put(opts, :transport_options, transport_opts)
+      else
+        opts
+      end
 
     opts =
-      if broadcast == true do
-        opts |> Keyword.put(:broadcast, true)
+      if is_broadcast do
+        Keyword.put(opts, :broadcast, true)
       else
         opts
       end
