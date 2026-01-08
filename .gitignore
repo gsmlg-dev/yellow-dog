@@ -42,6 +42,7 @@ yellow_dog-*.tar
 
 # Explicitly keep commands (optional, but documents intent)
 !.claude/commands/
+!.claude/skills/
 
 # Spec-kit
 .specify/.cache/
