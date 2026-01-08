@@ -1,40 +1,64 @@
 defmodule YellowDog.Console.DnsLive.Index do
   @moduledoc """
-  DNS overview page showing status, statistics, and quick actions.
+  DNS overview page showing views as the primary navigation.
+
+  DNS data hierarchy:
+  - View (ACL, recursion enable/disable)
+    - Zone (auth, forward, stub, cache)
+      - Resource Records
   """
   use YellowDog.Console, :live_view
+
+  alias YellowDog.Dns.View
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      # Subscribe to DNS updates
+      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:views")
       Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:zones")
-      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:cache")
     end
 
     {:ok,
      socket
      |> assign(:page_title, "DNS Service")
      |> assign(:status, get_dns_status())
-     |> assign(:stats, get_dns_stats())}
+     |> assign(:views, list_views_with_zones())
+     |> assign(:expanded_view, nil)}
   end
 
   @impl true
-  def handle_info({:zone_loaded, _zone_name}, socket) do
+  def handle_event("refresh", _params, socket) do
     {:noreply,
      socket
-     |> assign(:stats, get_dns_stats())
-     |> put_flash(:info, "Zone loaded successfully")}
+     |> assign(:status, get_dns_status())
+     |> assign(:views, list_views_with_zones())}
+  end
+
+  @impl true
+  def handle_event("toggle_view", %{"view" => view_name}, socket) do
+    expanded =
+      if socket.assigns.expanded_view == view_name do
+        nil
+      else
+        view_name
+      end
+
+    {:noreply, assign(socket, :expanded_view, expanded)}
+  end
+
+  @impl true
+  def handle_info({:view_updated, _view_name}, socket) do
+    {:noreply, assign(socket, :views, list_views_with_zones())}
   end
 
   @impl true
   def handle_info({:zone_updated, _zone_name}, socket) do
-    {:noreply, assign(socket, :stats, get_dns_stats())}
+    {:noreply, assign(socket, :views, list_views_with_zones())}
   end
 
   @impl true
-  def handle_info({:cache_updated, _entry}, socket) do
-    {:noreply, assign(socket, :stats, get_dns_stats())}
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
   end
 
   defp get_dns_status do
@@ -45,39 +69,59 @@ defmodule YellowDog.Console.DnsLive.Index do
     end
   end
 
-  defp get_dns_stats do
+  defp list_views_with_zones do
     try do
-      YellowDog.Dns.stats()
-    rescue
-      _ ->
+      views = YellowDog.Dns.ViewManager.list_views()
+
+      Enum.map(views, fn {view_name, pid, priority} ->
+        stats = View.stats(pid)
+
         %{
-          zones: %{loaded_zones: 0, total_zones: 0, total_records: 0, memory_mb: 0},
-          storage: %{total_zones: 0, total_records: 0, memory_bytes: 0, memory_mb: 0},
-          service: %{running: false, info: "DNS service not running"}
+          name: view_name,
+          pid: pid,
+          priority: priority,
+          recursion_enabled: Map.get(stats, :recursion_enabled, false),
+          ecs_enabled: Map.get(stats, :ecs_enabled, false),
+          zones: get_view_zones(stats),
+          query_count: Map.get(stats, :query_count, 0),
+          hit_count: Map.get(stats, :hit_count, 0),
+          miss_count: Map.get(stats, :miss_count, 0),
+          cache_size: Map.get(stats, :cache_size, 0)
         }
-    end
-  end
-
-  defp get_cache_entries(_stats) do
-    # Try to get cache stats from ZoneController's cache zones
-    try do
-      zones = YellowDog.Dns.ZoneController.list_zones()
-
-      zones
-      |> Enum.filter(fn {type, _name, _pid} -> type == :cache end)
-      |> Enum.map(fn {:cache, _name, pid} ->
-        case YellowDog.Dns.Zone.Cache.stats(pid) do
-          %{current_size: size} -> size
-          _ -> 0
-        end
       end)
-      |> Enum.sum()
+      |> Enum.sort_by(& &1.priority)
     rescue
-      _ -> 0
+      _ -> []
     end
   end
 
-  defp format_memory(mb) when is_float(mb), do: "#{:erlang.float_to_binary(mb, decimals: 2)} MB"
-  defp format_memory(mb) when is_integer(mb), do: "#{mb} MB"
-  defp format_memory(_), do: "0 MB"
+  defp get_view_zones(stats) do
+    zones_config = Map.get(stats, :zones, [])
+
+    # zones can be [{type, name}] or [name]
+    Enum.map(zones_config, fn
+      {type, name} -> %{type: type, name: name}
+      name when is_binary(name) -> %{type: :unknown, name: name}
+    end)
+  end
+
+  defp zone_type_badge(:auth), do: "primary"
+  defp zone_type_badge(:forward), do: "secondary"
+  defp zone_type_badge(:stub), do: "accent"
+  defp zone_type_badge(:cache), do: "info"
+  defp zone_type_badge(_), do: "ghost"
+
+  defp zone_type_label(:auth), do: "Authoritative"
+  defp zone_type_label(:forward), do: "Forward"
+  defp zone_type_label(:stub), do: "Stub"
+  defp zone_type_label(:cache), do: "Cache"
+  defp zone_type_label(_), do: "Unknown"
+
+  defp total_zones(views) do
+    Enum.sum(Enum.map(views, fn v -> length(v.zones) end))
+  end
+
+  defp total_queries(views) do
+    Enum.sum(Enum.map(views, fn v -> v.query_count end))
+  end
 end

@@ -1,0 +1,262 @@
+<Layouts.app flash={@flash}>
+  <div class="space-y-6">
+    <!-- Breadcrumb -->
+    <div class="breadcrumbs text-sm">
+      <ul>
+        <li><.link navigate={~p"/dns"}>DNS</.link></li>
+        <li>Views</li>
+        <li class="font-semibold">{@view_name}</li>
+      </ul>
+    </div>
+
+    <%= if @view do %>
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-4xl font-bold font-mono">{@view.name}</h1>
+          <div class="flex items-center gap-2 mt-2">
+            <.badge size="lg" color="primary">Priority: {@view.priority}</.badge>
+            <%= if @view.recursion_enabled do %>
+              <.badge size="lg" color="success">Recursion Enabled</.badge>
+            <% else %>
+              <.badge size="lg" color="warning">Recursion Disabled</.badge>
+            <% end %>
+            <%= if @view.ecs_enabled do %>
+              <.badge size="lg" color="info">ECS Enabled</.badge>
+            <% end %>
+          </div>
+        </div>
+        <button phx-click="refresh" class="btn btn-primary gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Refresh
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
+        <div class="stat">
+          <div class="stat-figure text-primary">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Zones</div>
+          <div class="stat-value text-primary">{length(@view.zones)}</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-secondary">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Queries</div>
+          <div class="stat-value text-secondary">{@view.query_count}</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-success">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Hit Rate</div>
+          <div class="stat-value text-success">
+            {calculate_hit_rate(@view.hit_count, @view.miss_count)}%
+          </div>
+          <div class="stat-desc">{@view.hit_count} hits / {@view.miss_count} misses</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-figure text-info">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+          </div>
+          <div class="stat-title">Cache Size</div>
+          <div class="stat-value text-info">{@view.cache_size}</div>
+          <div class="stat-desc">Cached entries</div>
+        </div>
+      </div>
+
+      <!-- View Configuration -->
+      <.card title="View Configuration">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="p-4 rounded-lg bg-base-200">
+            <div class="text-sm text-base-content/60">Name</div>
+            <div class="font-mono font-semibold">{@view.name}</div>
+          </div>
+          <div class="p-4 rounded-lg bg-base-200">
+            <div class="text-sm text-base-content/60">Priority</div>
+            <div class="font-semibold">{@view.priority}</div>
+            <div class="text-xs text-base-content/50">Lower = Higher priority</div>
+          </div>
+          <div class="p-4 rounded-lg bg-base-200">
+            <div class="text-sm text-base-content/60">Recursion</div>
+            <div class="font-semibold">
+              <%= if @view.recursion_enabled do %>
+                <span class="text-success">Enabled</span>
+              <% else %>
+                <span class="text-warning">Disabled</span>
+              <% end %>
+            </div>
+          </div>
+          <div class="p-4 rounded-lg bg-base-200">
+            <div class="text-sm text-base-content/60">EDNS Client Subnet</div>
+            <div class="font-semibold">
+              <%= if @view.ecs_enabled do %>
+                <span class="text-success">Enabled</span>
+              <% else %>
+                <span class="text-base-content/50">Disabled</span>
+              <% end %>
+            </div>
+          </div>
+          <div class="p-4 rounded-lg bg-base-200">
+            <div class="text-sm text-base-content/60">RPZ Zones</div>
+            <div class="font-semibold">{length(@view.rpz_zones)}</div>
+          </div>
+        </div>
+      </.card>
+
+      <!-- Zones -->
+      <.card title="Zones" class="overflow-x-auto">
+        <%= if length(@view.zones) > 0 do %>
+          <.table id="zones" rows={@view.zones} zebra hover>
+            <:col :let={zone} label="Zone Name">
+              <div class="font-mono font-semibold">{zone.name}</div>
+            </:col>
+            <:col :let={zone} label="Type">
+              <.badge color={zone_type_badge(zone.type)}>
+                {zone_type_label(zone.type)}
+              </.badge>
+            </:col>
+            <:col :let={zone} label="Records">
+              <.badge size="lg">{Map.get(zone, :record_count, 0)}</.badge>
+            </:col>
+            <:col :let={zone} label="Queries">
+              {Map.get(zone, :query_count, 0)}
+            </:col>
+            <:col :let={zone} label="Hit Rate">
+              <%= calculate_hit_rate(Map.get(zone, :hit_count, 0), Map.get(zone, :miss_count, 0)) %>%
+            </:col>
+            <:action :let={zone}>
+              <.link
+                navigate={~p"/dns/views/#{@view_name}/zones/#{zone.name}"}
+                class="btn btn-ghost btn-sm gap-1"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                View Records
+              </.link>
+            </:action>
+          </.table>
+        <% else %>
+          <div class="text-center py-12">
+            <svg
+              class="mx-auto h-12 w-12 text-base-content/30"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium">No zones configured</h3>
+            <p class="mt-1 text-sm text-base-content/60">
+              <%= if @view.recursion_enabled do %>
+                This view uses recursion to resolve queries via upstream servers.
+              <% else %>
+                Add zones to this view to handle DNS queries.
+              <% end %>
+            </p>
+          </div>
+        <% end %>
+      </.card>
+
+      <!-- RPZ Zones (if any) -->
+      <%= if length(@view.rpz_zones) > 0 do %>
+        <.card title="Response Policy Zones (RPZ)">
+          <div class="space-y-2">
+            <%= for rpz_name <- @view.rpz_zones do %>
+              <div class="flex items-center justify-between p-3 rounded-lg bg-base-200">
+                <span class="font-mono">{rpz_name}</span>
+                <.badge color="warning">RPZ</.badge>
+              </div>
+            <% end %>
+          </div>
+        </.card>
+      <% end %>
+    <% else %>
+      <!-- View Not Found -->
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body text-center py-12">
+          <svg
+            class="mx-auto h-16 w-16 text-error"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          <h3 class="mt-4 text-xl font-semibold">View Not Found</h3>
+          <p class="mt-2 text-base-content/60">
+            The view '{@view_name}' does not exist or has been removed.
+          </p>
+          <div class="mt-4">
+            <.link navigate={~p"/dns"} class="btn btn-primary">
+              Back to DNS
+            </.link>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</Layouts.app>
