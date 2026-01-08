@@ -46,6 +46,8 @@ defmodule YellowDog.Console.Router do
     # DNS Management Routes (sidebar: Overview, Data, ACL)
     live "/dns", DnsLive.Index
     live "/dns/data", DnsLive.DataLive, :views
+    live "/dns/data/new", DnsLive.DataLive, :new_view
+    live "/dns/data/:view_name/edit", DnsLive.DataLive, :edit_view
     live "/dns/data/:view_name", DnsLive.DataLive, :zones
     live "/dns/data/:view_name/:zone_name", DnsLive.DataLive, :records
     live "/dns/acl", DnsLive.AclLive

@@ -19,9 +19,6 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     {:ok,
      socket
      |> assign(:page_title, "DNS Data")
-     |> assign(:show_view_form, false)
-     |> assign(:editing_view, nil)
-     |> assign(:view_form, to_form(%{"name" => "", "priority" => "100", "recursion_enabled" => "true", "ecs_enabled" => "false"}))
      |> assign(:delete_confirm, nil)}
   end
 
@@ -36,6 +33,50 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     |> assign(:view_name, nil)
     |> assign(:zone_name, nil)
     |> assign(:views, list_views())
+  end
+
+  defp apply_action(socket, :new_view, _params) do
+    form_data = %{
+      "name" => "",
+      "priority" => "100",
+      "recursion_enabled" => "true",
+      "ecs_enabled" => "false"
+    }
+
+    socket
+    |> assign(:page_title, "Add View")
+    |> assign(:view_name, nil)
+    |> assign(:zone_name, nil)
+    |> assign(:editing_view, nil)
+    |> assign(:view_form, to_form(form_data))
+  end
+
+  defp apply_action(socket, :edit_view, %{"view_name" => view_name}) do
+    case get_view_config(view_name) do
+      {:ok, config} ->
+        form_data = %{
+          "name" => config.name,
+          "priority" => to_string(config.priority),
+          "recursion_enabled" => to_string(config.recursion_enabled),
+          "ecs_enabled" => to_string(config.ecs_enabled)
+        }
+
+        socket
+        |> assign(:page_title, "Edit View - #{view_name}")
+        |> assign(:view_name, view_name)
+        |> assign(:zone_name, nil)
+        |> assign(:editing_view, view_name)
+        |> assign(:view_form, to_form(form_data))
+
+      :error ->
+        socket
+        |> assign(:page_title, "View Not Found")
+        |> assign(:view_name, view_name)
+        |> assign(:zone_name, nil)
+        |> assign(:editing_view, nil)
+        |> assign(:view_form, nil)
+        |> put_flash(:error, "View '#{view_name}' not found")
+    end
   end
 
   defp apply_action(socket, :zones, %{"view_name" => view_name}) do
@@ -98,37 +139,6 @@ defmodule YellowDog.Console.DnsLive.DataLive do
   # View management events
 
   @impl true
-  def handle_event("new_view", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_view_form, true)
-     |> assign(:editing_view, nil)
-     |> assign(:view_form, to_form(%{"name" => "", "priority" => "100", "recursion_enabled" => "true", "ecs_enabled" => "false"}))}
-  end
-
-  @impl true
-  def handle_event("edit_view", %{"name" => view_name}, socket) do
-    case get_view_config(view_name) do
-      {:ok, config} ->
-        form_data = %{
-          "name" => config.name,
-          "priority" => to_string(config.priority),
-          "recursion_enabled" => to_string(config.recursion_enabled),
-          "ecs_enabled" => to_string(config.ecs_enabled)
-        }
-
-        {:noreply,
-         socket
-         |> assign(:show_view_form, true)
-         |> assign(:editing_view, view_name)
-         |> assign(:view_form, to_form(form_data))}
-
-      :error ->
-        {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
-    end
-  end
-
-  @impl true
   def handle_event("confirm_delete", %{"name" => view_name}, socket) do
     {:noreply, assign(socket, :delete_confirm, view_name)}
   end
@@ -165,7 +175,7 @@ defmodule YellowDog.Console.DnsLive.DataLive do
 
   @impl true
   def handle_event("save_view", %{"view" => view_params}, socket) do
-    editing = socket.assigns.editing_view
+    editing = socket.assigns[:editing_view]
 
     config = %{
       name: view_params["name"],
@@ -199,10 +209,8 @@ defmodule YellowDog.Console.DnsLive.DataLive do
 
         {:noreply,
          socket
-         |> assign(:show_view_form, false)
-         |> assign(:editing_view, nil)
-         |> assign(:views, list_views())
-         |> put_flash(:info, "View '#{config.name}' #{action} successfully")}
+         |> put_flash(:info, "View '#{config.name}' #{action} successfully")
+         |> push_patch(to: ~p"/dns/data")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to save view: #{inspect(reason)}")}
@@ -210,12 +218,13 @@ defmodule YellowDog.Console.DnsLive.DataLive do
   end
 
   @impl true
+  def handle_event("cancel", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/dns/data")}
+  end
+
+  @impl true
   def handle_event("close_modal", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_view_form, false)
-     |> assign(:editing_view, nil)
-     |> assign(:delete_confirm, nil)}
+    {:noreply, assign(socket, :delete_confirm, nil)}
   end
 
   @impl true
