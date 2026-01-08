@@ -20,6 +20,7 @@ defmodule YellowDog.Dns.Zone.Auth do
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.ResourceRecord
+  alias DNS.Zone
 
   defstruct [
     :name,
@@ -27,9 +28,13 @@ defmodule YellowDog.Dns.Zone.Auth do
     :soa,
     :ns_records,
     :created_at,
+    :zone_file,
+    :zone_data_path,
+    :ttl,
     query_count: 0,
     hit_count: 0,
-    miss_count: 0
+    miss_count: 0,
+    dirty: false
   ]
 
   # Client API
@@ -93,11 +98,41 @@ defmodule YellowDog.Dns.Zone.Auth do
     GenServer.call(pid, {:get_records, name, type})
   end
 
+  @doc """
+  Saves the zone data to its zone file.
+
+  Returns `:ok` on success or `{:error, reason}` on failure.
+  """
+  @spec save(pid()) :: :ok | {:error, String.t()}
+  def save(pid) do
+    GenServer.call(pid, :save)
+  end
+
+  @doc """
+  Gets all records in the zone.
+  """
+  @spec get_all_records(pid()) :: [ResourceRecord.t()]
+  def get_all_records(pid) do
+    GenServer.call(pid, :get_all_records)
+  end
+
+  @doc """
+  Checks if the zone has unsaved changes.
+  """
+  @spec dirty?(pid()) :: boolean()
+  def dirty?(pid) do
+    GenServer.call(pid, :dirty?)
+  end
+
   # Server Callbacks
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
+
     zone_name = Keyword.fetch!(opts, :name)
+    zone_data_path = Keyword.get(opts, :zone_data_path)
+    zone_file = Keyword.get(opts, :zone_file)
 
     # Create ETS table for zone data
     table =
@@ -110,7 +145,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     state = %__MODULE__{
       name: zone_name,
       table: table,
-      created_at: DateTime.utc_now()
+      zone_file: zone_file,
+      zone_data_path: zone_data_path,
+      ttl: Keyword.get(opts, :ttl, 3600),
+      created_at: DateTime.utc_now(),
+      dirty: false
     }
 
     # Load initial zone data
@@ -119,14 +158,14 @@ defmodule YellowDog.Dns.Zone.Auth do
         zone_data = Keyword.get(opts, :zone_data) ->
           load_zone_data(state, zone_data)
 
-        zone_file = Keyword.get(opts, :zone_file) ->
+        zone_file != nil ->
           load_zone_file(state, zone_file)
 
         true ->
           state
       end
 
-    Telemetry.info("Auth zone started", %{name: zone_name})
+    Telemetry.info("Auth zone started", %{name: zone_name, zone_file: zone_file})
 
     {:ok, state}
   end
@@ -190,14 +229,14 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:add_record, record}, _from, state) do
-    :ets.insert(state.table, {{record.name, record.type}, record})
-    {:reply, :ok, state}
+    :ets.insert(state.table, {{normalize_name(record.name), record.type}, record})
+    {:reply, :ok, %{state | dirty: true}}
   end
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
-    :ets.delete(state.table, {name, type})
-    {:reply, :ok, state}
+    :ets.delete(state.table, {normalize_name(name), type})
+    {:reply, :ok, %{state | dirty: true}}
   end
 
   @impl true
@@ -206,7 +245,144 @@ defmodule YellowDog.Dns.Zone.Auth do
     {:reply, records, state}
   end
 
+  @impl true
+  def handle_call(:get_all_records, _from, state) do
+    records =
+      :ets.tab2list(state.table)
+      |> Enum.map(fn {_key, record} -> record end)
+
+    {:reply, records, state}
+  end
+
+  @impl true
+  def handle_call(:dirty?, _from, state) do
+    {:reply, state.dirty, state}
+  end
+
+  @impl true
+  def handle_call(:save, _from, state) do
+    case do_save(state) do
+      :ok ->
+        {:reply, :ok, %{state | dirty: false}}
+
+      {:error, reason} = error ->
+        Telemetry.error("Failed to save zone", %{
+          zone: state.name,
+          reason: reason
+        })
+
+        {:reply, error, state}
+    end
+  end
+
+  @impl true
+  def terminate(reason, state) do
+    # Save zone data on graceful shutdown if dirty
+    if state.dirty do
+      case do_save(state) do
+        :ok ->
+          Telemetry.info("Auth zone saved on shutdown", %{name: state.name})
+
+        {:error, save_reason} ->
+          Telemetry.error("Failed to save zone on shutdown", %{
+            zone: state.name,
+            reason: save_reason
+          })
+      end
+    end
+
+    # Clean up ETS table
+    :ets.delete(state.table)
+
+    Telemetry.info("Auth zone stopped", %{name: state.name, reason: inspect(reason)})
+    :ok
+  end
+
   # Private Functions
+
+  defp do_save(%{zone_file: nil, zone_data_path: nil} = _state) do
+    {:error, "No zone file path configured"}
+  end
+
+  defp do_save(state) do
+    # Determine the file path
+    file_path =
+      cond do
+        state.zone_file != nil ->
+          state.zone_file
+
+        state.zone_data_path != nil ->
+          Path.join(state.zone_data_path, "#{state.name}.zone")
+
+        true ->
+          nil
+      end
+
+    if file_path == nil do
+      {:error, "No zone file path configured"}
+    else
+      # Build zone struct from current state
+      records = get_all_records_from_table(state.table)
+      zone = build_zone_struct(state, records)
+
+      # Ensure directory exists
+      dir = Path.dirname(file_path)
+
+      case File.mkdir_p(dir) do
+        :ok ->
+          Zone.Loader.save_zone_to_file(zone, file_path)
+
+        {:error, reason} ->
+          {:error, "Failed to create directory: #{reason}"}
+      end
+    end
+  end
+
+  defp get_all_records_from_table(table) do
+    :ets.tab2list(table)
+    |> Enum.map(fn {_key, record} -> record end)
+  end
+
+  defp build_zone_struct(state, records) do
+    %Zone{
+      name: %DNS.Zone.Name{value: state.name},
+      type: :authoritative,
+      origin: state.name,
+      ttl: state.ttl || 3600,
+      soa: extract_soa_map(state.soa),
+      records: records_to_rrsets(records),
+      options: [source_file: state.zone_file],
+      comments: []
+    }
+  end
+
+  defp extract_soa_map(nil), do: nil
+
+  defp extract_soa_map(soa_record) do
+    %{
+      primary_ns: soa_record.rdata.mname,
+      admin_email: soa_record.rdata.rname,
+      serial: soa_record.rdata.serial,
+      refresh: soa_record.rdata.refresh,
+      retry: soa_record.rdata.retry,
+      expire: soa_record.rdata.expire,
+      minimum: soa_record.rdata.minimum
+    }
+  end
+
+  defp records_to_rrsets(records) do
+    records
+    |> Enum.group_by(fn r -> {r.name, r.type} end)
+    |> Enum.map(fn {{name, type}, recs} ->
+      %DNS.Zone.RRSet{
+        name: %DNS.Zone.Name{value: name},
+        type: type,
+        ttl: List.first(recs).ttl || 3600,
+        data: Enum.map(recs, & &1.rdata),
+        options: []
+      }
+    end)
+  end
 
   defp do_resolve(state, query) do
     case query.qdlist do

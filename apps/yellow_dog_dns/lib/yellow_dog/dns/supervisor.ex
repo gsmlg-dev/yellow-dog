@@ -160,7 +160,25 @@ defmodule YellowDog.Dns.Supervisor do
     type = Map.get(zone_config, :type, :auth)
     name = Map.get(zone_config, :name)
     opts = Map.to_list(zone_config)
+
+    # Add zone_data_path for auth zones
+    opts =
+      if type == :auth do
+        case get_zone_data_path() do
+          nil -> opts
+          path -> Keyword.put(opts, :zone_data_path, path)
+        end
+      else
+        opts
+      end
+
     YellowDog.Dns.ZoneController.start_zone(type, name, opts)
+  end
+
+  defp get_zone_data_path do
+    apply(YellowDog.Config, :get, [:dns, :zone_data_path])
+  rescue
+    _ -> nil
   end
 
   defp get_port(opts) do

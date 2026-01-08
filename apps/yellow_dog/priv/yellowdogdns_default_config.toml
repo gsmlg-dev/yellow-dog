@@ -10,6 +10,7 @@ listen = "0.0.0.0"
 port = 53
 tcp_enabled = true  # Set to false to disable DNS over TCP
 debug = false  # Set to true to enable Abyss debug logging to console
+zone_data_path = "priv/zones"  # Directory for authoritative zone files
 
 [dns.zones]
 "example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
