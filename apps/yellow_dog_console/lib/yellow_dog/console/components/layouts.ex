@@ -234,9 +234,8 @@ defmodule YellowDog.Console.Layouts do
               </summary>
               <ul>
                 <li><a href="/dns">Overview</a></li>
-                <li><a href="/dns/zones">Zones</a></li>
-                <li><a href="/dns/cache">Cache</a></li>
-                <li><a href="/dns/views">Views</a></li>
+                <li><a href="/dns/data">Data</a></li>
+                <li><a href="/dns/acl">ACL</a></li>
               </ul>
             </details>
           </li>

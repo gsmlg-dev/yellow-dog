@@ -43,14 +43,12 @@ defmodule YellowDog.Console.Router do
     live "/dhcpv6/leases", Dhcpv6Live.LeasesLive
     live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
 
-    # DNS Management Routes (hierarchical: View -> Zone -> Records)
+    # DNS Management Routes (sidebar: Overview, Data, ACL)
     live "/dns", DnsLive.Index
-    live "/dns/cache", DnsLive.CacheLive
-    live "/dns/views/:view_name", DnsLive.ViewDetailLive
-    live "/dns/views/:view_name/zones/:zone_name", DnsLive.ZoneDetailLive
-    # Legacy routes (redirect to new structure)
-    live "/dns/zones", DnsLive.ZonesLive
-    live "/dns/views", DnsLive.ViewsLive
+    live "/dns/data", DnsLive.DataLive, :views
+    live "/dns/data/:view_name", DnsLive.DataLive, :zones
+    live "/dns/data/:view_name/:zone_name", DnsLive.DataLive, :records
+    live "/dns/acl", DnsLive.AclLive
 
     # Service Diagnostics
     live "/diagnostics", DiagnosticsLive
