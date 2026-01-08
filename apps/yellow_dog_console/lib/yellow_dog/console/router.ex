@@ -49,6 +49,8 @@ defmodule YellowDog.Console.Router do
     live "/dns/data/new", DnsLive.DataLive, :new_view
     live "/dns/data/:view_name/edit", DnsLive.DataLive, :edit_view
     live "/dns/data/:view_name", DnsLive.DataLive, :zones
+    live "/dns/data/:view_name/zones/new", DnsLive.DataLive, :new_zone
+    live "/dns/data/:view_name/:zone_name/edit", DnsLive.DataLive, :edit_zone
     live "/dns/data/:view_name/:zone_name", DnsLive.DataLive, :records
     live "/dns/acl", DnsLive.AclLive
 

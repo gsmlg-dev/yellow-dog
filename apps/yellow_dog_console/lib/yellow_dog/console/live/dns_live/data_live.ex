@@ -98,6 +98,48 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     end
   end
 
+  defp apply_action(socket, :new_zone, %{"view_name" => view_name}) do
+    form_data = %{
+      "name" => "",
+      "type" => "auth",
+      "upstreams" => ""
+    }
+
+    socket
+    |> assign(:page_title, "Add Zone - #{view_name}")
+    |> assign(:view_name, view_name)
+    |> assign(:zone_name, nil)
+    |> assign(:editing_zone, nil)
+    |> assign(:zone_form, to_form(form_data))
+  end
+
+  defp apply_action(socket, :edit_zone, %{"view_name" => view_name, "zone_name" => zone_name}) do
+    case get_zone_config(zone_name) do
+      {:ok, config} ->
+        form_data = %{
+          "name" => config.name,
+          "type" => to_string(config.type),
+          "upstreams" => Enum.join(config.upstreams || [], "\n")
+        }
+
+        socket
+        |> assign(:page_title, "Edit Zone - #{zone_name}")
+        |> assign(:view_name, view_name)
+        |> assign(:zone_name, zone_name)
+        |> assign(:editing_zone, %{name: zone_name, type: config.type})
+        |> assign(:zone_form, to_form(form_data))
+
+      :error ->
+        socket
+        |> assign(:page_title, "Zone Not Found")
+        |> assign(:view_name, view_name)
+        |> assign(:zone_name, zone_name)
+        |> assign(:editing_zone, nil)
+        |> assign(:zone_form, nil)
+        |> put_flash(:error, "Zone '#{zone_name}' not found")
+    end
+  end
+
   defp apply_action(socket, :records, %{"view_name" => view_name, "zone_name" => zone_name}) do
     case get_zone_with_records(zone_name) do
       {:ok, zone} ->
@@ -219,7 +261,107 @@ defmodule YellowDog.Console.DnsLive.DataLive do
 
   @impl true
   def handle_event("cancel", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/dns/data")}
+    # Navigate back based on context
+    view_name = socket.assigns[:view_name]
+
+    if view_name do
+      {:noreply, push_patch(socket, to: ~p"/dns/data/#{view_name}")}
+    else
+      {:noreply, push_patch(socket, to: ~p"/dns/data")}
+    end
+  end
+
+  # Zone management events
+
+  @impl true
+  def handle_event("confirm_delete_zone", %{"type" => type, "name" => zone_name}, socket) do
+    {:noreply, assign(socket, :delete_confirm, %{type: :zone, zone_type: String.to_existing_atom(type), name: zone_name})}
+  end
+
+  @impl true
+  def handle_event("delete_zone", _params, socket) do
+    %{zone_type: zone_type, name: zone_name} = socket.assigns.delete_confirm
+    view_name = socket.assigns.view_name
+
+    case ZoneController.stop_zone(zone_type, zone_name) do
+      :ok ->
+        # Also unregister from view
+        case ViewManager.get_view(view_name) do
+          {:ok, _pid} ->
+            # Note: View doesn't have unregister_zone, zones list is managed via reload
+            :ok
+
+          :error ->
+            :ok
+        end
+
+        {:noreply,
+         socket
+         |> assign(:delete_confirm, nil)
+         |> put_flash(:info, "Zone '#{zone_name}' deleted successfully")
+         |> push_patch(to: ~p"/dns/data/#{view_name}")}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> assign(:delete_confirm, nil)
+         |> put_flash(:error, "Zone '#{zone_name}' not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("save_zone", %{"zone" => zone_params}, socket) do
+    editing = socket.assigns[:editing_zone]
+    view_name = socket.assigns.view_name
+    zone_name = zone_params["name"]
+    zone_type = String.to_existing_atom(zone_params["type"])
+
+    upstreams =
+      zone_params["upstreams"]
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    config = [upstreams: upstreams]
+
+    result =
+      if editing do
+        # Update existing zone
+        case ZoneController.reload_zone(editing.type, editing.name, config) do
+          :ok -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        # Create new zone and register with view
+        case ZoneController.start_zone(zone_type, zone_name, config) do
+          {:ok, _pid} ->
+            # Register zone with view
+            case ViewManager.get_view(view_name) do
+              {:ok, pid} ->
+                View.register_zone(pid, zone_type, zone_name)
+                :ok
+
+              :error ->
+                :ok
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end
+
+    case result do
+      :ok ->
+        action = if editing, do: "updated", else: "created"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Zone '#{zone_name}' #{action} successfully")
+         |> push_patch(to: ~p"/dns/data/#{view_name}")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
+    end
   end
 
   @impl true
@@ -276,6 +418,33 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     rescue
       _ -> :error
     end
+  end
+
+  defp get_zone_config(zone_name) do
+    zone_types = [:auth, :forward, :stub, :cache]
+
+    Enum.find_value(zone_types, :error, fn zone_type ->
+      try do
+        case ZoneController.find_zone(zone_type, zone_name) do
+          {:ok, pid} ->
+            module = zone_module(zone_type)
+            stats = module.stats(pid)
+
+            config = %{
+              name: zone_name,
+              type: zone_type,
+              upstreams: Map.get(stats, :upstreams, [])
+            }
+
+            {:ok, config}
+
+          :error ->
+            nil
+        end
+      rescue
+        _ -> nil
+      end
+    end)
   end
 
   # Data fetching functions
