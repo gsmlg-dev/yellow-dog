@@ -88,6 +88,14 @@
         <!-- Views List -->
         <%= if length(@views) > 0 do %>
           <.card title="DNS Views" class="overflow-x-auto">
+            <:actions>
+              <button phx-click="new_view" class="btn btn-primary btn-sm gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Add View
+              </button>
+            </:actions>
             <table class="table table-zebra">
               <thead>
                 <tr>
@@ -102,8 +110,13 @@
               </thead>
               <tbody>
                 <%= for view <- @views do %>
-                  <tr class="hover cursor-pointer" phx-click={JS.navigate(~p"/dns/data/#{view.name}")}>
-                    <td class="font-mono font-semibold">{view.name}</td>
+                  <tr class="hover">
+                    <td class="font-mono font-semibold">
+                      {view.name}
+                      <%= if view.name == "default" do %>
+                        <.badge color="ghost" size="sm" class="ml-1">default</.badge>
+                      <% end %>
+                    </td>
                     <td>{view.priority}</td>
                     <td>
                       <%= if view.recursion_enabled do %>
@@ -122,17 +135,42 @@
                     <td>{view.zone_count}</td>
                     <td>{view.query_count}</td>
                     <td>
-                      <.link navigate={~p"/dns/data/#{view.name}"} class="btn btn-ghost btn-sm gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
-                        View Zones
-                      </.link>
+                      <div class="flex items-center gap-1">
+                        <.link navigate={~p"/dns/data/#{view.name}"} class="btn btn-ghost btn-sm gap-1">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                          Zones
+                        </.link>
+                        <button
+                          phx-click="edit_view"
+                          phx-value-name={view.name}
+                          class="btn btn-ghost btn-sm btn-square"
+                          title="Edit view"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <%= if view.name != "default" do %>
+                          <button
+                            phx-click="confirm_delete"
+                            phx-value-name={view.name}
+                            class="btn btn-ghost btn-sm btn-square text-error"
+                            title="Delete view"
+                          >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        <% else %>
+                          <button class="btn btn-ghost btn-sm btn-square" disabled title="Cannot delete default view">
+                            <svg class="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        <% end %>
+                      </div>
                     </td>
                   </tr>
                 <% end %>
@@ -165,6 +203,14 @@
               <p class="mt-2 text-base-content/60">
                 No views have been configured yet.
               </p>
+              <div class="mt-4">
+                <button phx-click="new_view" class="btn btn-primary gap-2">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add First View
+                </button>
+              </div>
             </div>
           </div>
         <% end %>
@@ -496,4 +542,110 @@
         <% end %>
     <% end %>
   </div>
+
+  <!-- Add/Edit View Modal -->
+  <%= if @show_view_form do %>
+    <.modal id="view-modal" title={if @editing_view, do: "Edit View: #{@editing_view}", else: "Add New View"} show on_cancel={JS.push("close_modal")}>
+      <.form for={@view_form} phx-submit="save_view" class="space-y-4">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-semibold">View Name</span>
+          </label>
+          <input
+            type="text"
+            name="view[name]"
+            value={@view_form[:name].value}
+            class="input input-bordered w-full"
+            placeholder="e.g., internal, external, guest"
+            required
+            disabled={@editing_view != nil}
+          />
+          <%= if @editing_view do %>
+            <label class="label">
+              <span class="label-text-alt text-base-content/60">View name cannot be changed</span>
+            </label>
+          <% end %>
+        </div>
+
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-semibold">Priority</span>
+          </label>
+          <input
+            type="number"
+            name="view[priority]"
+            value={@view_form[:priority].value}
+            class="input input-bordered w-full"
+            placeholder="100"
+            min="0"
+            required
+          />
+          <label class="label">
+            <span class="label-text-alt">Lower value = higher priority (matched first)</span>
+          </label>
+        </div>
+
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-3">
+            <input
+              type="checkbox"
+              name="view[recursion_enabled]"
+              value="true"
+              checked={@view_form[:recursion_enabled].value == "true"}
+              class="checkbox checkbox-primary"
+            />
+            <span class="label-text font-semibold">Enable Recursion</span>
+          </label>
+          <label class="label pt-0">
+            <span class="label-text-alt">Allow recursive DNS queries to upstream servers</span>
+          </label>
+        </div>
+
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-3">
+            <input
+              type="checkbox"
+              name="view[ecs_enabled]"
+              value="true"
+              checked={@view_form[:ecs_enabled].value == "true"}
+              class="checkbox checkbox-info"
+            />
+            <span class="label-text font-semibold">Enable ECS</span>
+          </label>
+          <label class="label pt-0">
+            <span class="label-text-alt">EDNS Client Subnet for client IP matching</span>
+          </label>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            {if @editing_view, do: "Save Changes", else: "Create View"}
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  <% end %>
+
+  <!-- Delete Confirmation Modal -->
+  <%= if @delete_confirm do %>
+    <.modal id="delete-modal" title="Delete View" show on_cancel={JS.push("cancel_delete")}>
+      <div class="py-4">
+        <p class="text-base-content/80">
+          Are you sure you want to delete the view <strong class="font-mono">{@delete_confirm}</strong>?
+        </p>
+        <p class="mt-2 text-sm text-warning">
+          This action cannot be undone. All zones associated with this view will be orphaned.
+        </p>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" class="btn btn-ghost" phx-click="cancel_delete">Cancel</button>
+        <button type="button" class="btn btn-error" phx-click="delete_view" phx-value-name={@delete_confirm}>
+          Delete View
+        </button>
+      </div>
+    </.modal>
+  <% end %>
 </Layouts.app>

@@ -16,7 +16,13 @@ defmodule YellowDog.Console.DnsLive.DataLive do
       Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "dns:zones")
     end
 
-    {:ok, assign(socket, :page_title, "DNS Data")}
+    {:ok,
+     socket
+     |> assign(:page_title, "DNS Data")
+     |> assign(:show_view_form, false)
+     |> assign(:editing_view, nil)
+     |> assign(:view_form, to_form(%{"name" => "", "priority" => "100", "recursion_enabled" => "true", "ecs_enabled" => "false"}))
+     |> assign(:delete_confirm, nil)}
   end
 
   @impl true
@@ -89,6 +95,129 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     {:noreply, assign(socket, :type_filter, type)}
   end
 
+  # View management events
+
+  @impl true
+  def handle_event("new_view", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_view_form, true)
+     |> assign(:editing_view, nil)
+     |> assign(:view_form, to_form(%{"name" => "", "priority" => "100", "recursion_enabled" => "true", "ecs_enabled" => "false"}))}
+  end
+
+  @impl true
+  def handle_event("edit_view", %{"name" => view_name}, socket) do
+    case get_view_config(view_name) do
+      {:ok, config} ->
+        form_data = %{
+          "name" => config.name,
+          "priority" => to_string(config.priority),
+          "recursion_enabled" => to_string(config.recursion_enabled),
+          "ecs_enabled" => to_string(config.ecs_enabled)
+        }
+
+        {:noreply,
+         socket
+         |> assign(:show_view_form, true)
+         |> assign(:editing_view, view_name)
+         |> assign(:view_form, to_form(form_data))}
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("confirm_delete", %{"name" => view_name}, socket) do
+    {:noreply, assign(socket, :delete_confirm, view_name)}
+  end
+
+  @impl true
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, :delete_confirm, nil)}
+  end
+
+  @impl true
+  def handle_event("delete_view", %{"name" => view_name}, socket) do
+    if is_default_view?(view_name) do
+      {:noreply,
+       socket
+       |> assign(:delete_confirm, nil)
+       |> put_flash(:error, "Cannot delete the default view")}
+    else
+      case ViewManager.stop_view(view_name) do
+        :ok ->
+          {:noreply,
+           socket
+           |> assign(:delete_confirm, nil)
+           |> assign(:views, list_views())
+           |> put_flash(:info, "View '#{view_name}' deleted successfully")}
+
+        {:error, :not_found} ->
+          {:noreply,
+           socket
+           |> assign(:delete_confirm, nil)
+           |> put_flash(:error, "View '#{view_name}' not found")}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("save_view", %{"view" => view_params}, socket) do
+    editing = socket.assigns.editing_view
+
+    config = %{
+      name: view_params["name"],
+      priority: String.to_integer(view_params["priority"]),
+      recursion_enabled: view_params["recursion_enabled"] == "true",
+      ecs_enabled: view_params["ecs_enabled"] == "true"
+    }
+
+    result =
+      if editing do
+        # Update existing view
+        case ViewManager.get_view(editing) do
+          {:ok, pid} ->
+            View.reload(pid, config)
+            :ok
+
+          :error ->
+            {:error, :not_found}
+        end
+      else
+        # Create new view
+        case ViewManager.start_view(config) do
+          {:ok, _pid} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      end
+
+    case result do
+      :ok ->
+        action = if editing, do: "updated", else: "created"
+
+        {:noreply,
+         socket
+         |> assign(:show_view_form, false)
+         |> assign(:editing_view, nil)
+         |> assign(:views, list_views())
+         |> put_flash(:info, "View '#{config.name}' #{action} successfully")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save view: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_view_form, false)
+     |> assign(:editing_view, nil)
+     |> assign(:delete_confirm, nil)}
+  end
+
   @impl true
   def handle_info({:view_updated, _view_name}, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, get_current_params(socket))}
@@ -109,6 +238,35 @@ defmodule YellowDog.Console.DnsLive.DataLive do
     params = if socket.assigns[:view_name], do: Map.put(params, "view_name", socket.assigns.view_name), else: params
     params = if socket.assigns[:zone_name], do: Map.put(params, "zone_name", socket.assigns.zone_name), else: params
     params
+  end
+
+  # View management helpers
+
+  defp is_default_view?(view_name), do: view_name == "default"
+
+  defp get_view_config(view_name) do
+    try do
+      case ViewManager.get_view(view_name) do
+        {:ok, pid} ->
+          stats = View.stats(pid)
+
+          config = %{
+            name: stats.name,
+            priority: stats.priority,
+            recursion_enabled: stats.recursion_enabled,
+            ecs_enabled: stats.ecs_enabled,
+            zones: stats.zones,
+            rpz_zones: stats.rpz_zones
+          }
+
+          {:ok, config}
+
+        :error ->
+          :error
+      end
+    rescue
+      _ -> :error
+    end
   end
 
   # Data fetching functions
