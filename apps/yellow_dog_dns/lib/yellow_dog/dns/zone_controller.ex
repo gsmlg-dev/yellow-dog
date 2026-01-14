@@ -56,6 +56,17 @@ defmodule YellowDog.Dns.ZoneController do
     module = zone_module(zone_type)
     opts = Keyword.merge(config, name: zone_name)
 
+    # Add zone_data_path for auth zones to enable persistence
+    opts =
+      if zone_type == :auth do
+        case get_zone_data_path() do
+          nil -> opts
+          path -> Keyword.put_new(opts, :zone_data_path, path)
+        end
+      else
+        opts
+      end
+
     child_spec = %{
       id: {zone_type, zone_name},
       start: {module, :start_link, [opts]},
@@ -186,5 +197,23 @@ defmodule YellowDog.Dns.ZoneController do
         nil
       end
     end)
+  end
+
+  # Get zone data path from config with fallback to default
+  defp get_zone_data_path do
+    try do
+      apply(YellowDog.Config, :get, [:dns, :zone_data_path]) ||
+        default_zone_data_path()
+    rescue
+      _ -> default_zone_data_path()
+    end
+  end
+
+  defp default_zone_data_path do
+    # Default to priv/zones directory
+    case :code.priv_dir(:yellow_dog_dns) do
+      {:error, _} -> "priv/zones"
+      path -> Path.join(to_string(path), "zones")
+    end
   end
 end
