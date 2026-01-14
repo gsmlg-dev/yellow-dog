@@ -189,6 +189,7 @@ defmodule YellowDog.Dns.Zone.Forward do
     stats = %{
       name: state.name,
       upstream_count: length(state.upstreams),
+      upstreams: format_upstreams(state.upstreams),
       query_count: state.query_count,
       success_count: state.success_count,
       error_count: state.error_count,
@@ -196,6 +197,11 @@ defmodule YellowDog.Dns.Zone.Forward do
     }
 
     {:reply, stats, state}
+  end
+
+  # Format upstreams back to string format for display/editing
+  defp format_upstreams(upstreams) do
+    Enum.map(upstreams, &format_upstream/1)
   end
 
   @impl true

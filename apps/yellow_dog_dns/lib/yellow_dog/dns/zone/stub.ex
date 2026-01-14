@@ -97,6 +97,7 @@ defmodule YellowDog.Dns.Zone.Stub do
     stats = %{
       name: state.name,
       ns_count: length(state.ns_records),
+      ns_records: state.ns_records,
       query_count: state.query_count,
       created_at: state.created_at
     }
