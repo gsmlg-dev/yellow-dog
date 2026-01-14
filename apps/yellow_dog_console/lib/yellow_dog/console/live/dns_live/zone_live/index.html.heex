@@ -1,0 +1,521 @@
+<Layouts.app flash={@flash}>
+  <div class="space-y-4">
+    <!-- Breadcrumb -->
+    <div class="breadcrumbs text-sm">
+      <ul>
+        <li><.link navigate={~p"/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/dns/views"}>Views</.link></li>
+        <li class="font-semibold">{@view_name}</li>
+      </ul>
+    </div>
+    
+<!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Zones</h1>
+        <p class="text-sm text-base-content/70">
+          Zones in view: <span class="font-mono font-semibold">{@view_name}</span>
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button phx-click="refresh" class="btn btn-ghost btn-sm" title="Refresh">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Refresh
+        </button>
+        <.link
+          patch={~p"/dns/views/#{@view_name}/zones/import"}
+          class="btn btn-ghost btn-sm"
+          title="Import Zone"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+            />
+          </svg>
+          Import
+        </.link>
+        <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary btn-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Add Zone
+        </.link>
+      </div>
+    </div>
+
+    <%= case @live_action do %>
+      <% :index -> %>
+        <!-- Zones Data Table -->
+        <div class="card bg-base-100 shadow">
+          <div class="card-body p-0">
+            <%= if length(@zones) > 0 do %>
+              <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                  <thead>
+                    <tr>
+                      <th>Zone Name</th>
+                      <th>Type</th>
+                      <th>Records</th>
+                      <th>Queries</th>
+                      <th class="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for zone <- @zones do %>
+                      <tr class="hover">
+                        <td>
+                          <%= if zone.type == :auth do %>
+                            <.link
+                              navigate={
+                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                              }
+                              class="link link-hover font-mono font-semibold"
+                            >
+                              {zone.name}
+                            </.link>
+                          <% else %>
+                            <span class="font-mono font-semibold">{zone.name}</span>
+                          <% end %>
+                        </td>
+                        <td>
+                          <.badge color={zone_type_badge(zone.type)} size="sm">
+                            {zone_type_label(zone.type)}
+                          </.badge>
+                        </td>
+                        <td>
+                          <%= if zone.type == :auth do %>
+                            <.link
+                              navigate={
+                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                              }
+                              class="link link-hover"
+                            >
+                              {zone.record_count} records
+                            </.link>
+                          <% else %>
+                            <span class="text-base-content/60">N/A</span>
+                          <% end %>
+                        </td>
+                        <td class="font-mono text-sm">{format_number(zone.query_count)}</td>
+                        <td class="text-right">
+                          <div class="flex items-center justify-end gap-1">
+                            <%= if zone.type == :auth do %>
+                              <.link
+                                navigate={
+                                  ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/records"
+                                }
+                                class="btn btn-ghost btn-sm"
+                                title="View Records"
+                              >
+                                <svg
+                                  class="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                              </.link>
+                            <% end %>
+                            <.link
+                              patch={
+                                ~p"/dns/views/#{@view_name}/zones/#{zone.type}/#{zone.name}/edit"
+                              }
+                              class="btn btn-ghost btn-sm"
+                              title="Edit"
+                            >
+                              <svg
+                                class="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            </.link>
+                            <button
+                              phx-click="confirm_delete"
+                              phx-value-type={zone.type}
+                              phx-value-name={zone.name}
+                              class="btn btn-ghost btn-sm text-error"
+                              title="Delete"
+                            >
+                              <svg
+                                class="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+              <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
+                {length(@zones)} zone(s)
+              </div>
+            <% else %>
+              <div class="text-center py-12">
+                <div class="text-6xl mb-4">
+                  <svg
+                    class="w-16 h-16 mx-auto text-base-content/30"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                      d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <h3 class="text-lg font-semibold mb-2">No Zones</h3>
+                <p class="text-base-content/60 mb-4">This view has no zones configured.</p>
+                <div class="flex justify-center gap-2">
+                  <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary">
+                    Create Zone
+                  </.link>
+                  <.link patch={~p"/dns/views/#{@view_name}/zones/import"} class="btn btn-ghost">
+                    Import Zone
+                  </.link>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% :new -> %>
+        <!-- New Zone Form -->
+        <.card title={"Add Zone to #{@view_name}"}>
+          <.form for={@zone_form} phx-submit="save_zone" phx-change="validate_zone" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Zone Name</span>
+              </label>
+              <input
+                type="text"
+                name="zone[name]"
+                value={@zone_form[:name].value}
+                class="input input-bordered w-full font-mono"
+                placeholder="e.g., example.com"
+                required
+              />
+              <label class="label">
+                <span class="label-text-alt">Fully qualified domain name</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Zone Type</span>
+              </label>
+              <select name="zone[type]" class="select select-bordered w-full">
+                <option value="auth" selected={@zone_form[:type].value == "auth"}>
+                  Authoritative - Serve records from local data
+                </option>
+                <option value="forward" selected={@zone_form[:type].value == "forward"}>
+                  Forward - Forward queries to upstream servers
+                </option>
+                <option value="stub" selected={@zone_form[:type].value == "stub"}>
+                  Stub - Only NS records pointing to authoritative servers
+                </option>
+              </select>
+            </div>
+
+            <!-- Upstream Servers - shown for forward zones -->
+            <%= if @zone_form[:type].value == "forward" do %>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Upstream DNS Servers</span>
+                </label>
+                <textarea
+                  name="zone[upstreams]"
+                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1"
+                >{@zone_form[:upstreams].value}</textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    IP addresses of upstream DNS servers (one per line)
+                  </span>
+                </label>
+              </div>
+            <% end %>
+
+            <!-- NS Records - shown for stub zones -->
+            <%= if @zone_form[:type].value == "stub" do %>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">NS Server Names</span>
+                </label>
+                <textarea
+                  name="zone[ns_records]"
+                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  placeholder="ns1.example.com&#10;ns2.example.com"
+                >{@zone_form[:ns_records].value}</textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    Fully qualified names of authoritative NS servers (one per line)
+                  </span>
+                </label>
+              </div>
+            <% end %>
+
+            <!-- Info for auth zones -->
+            <%= if @zone_form[:type].value == "auth" do %>
+              <div class="alert alert-info">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  class="stroke-current shrink-0 w-6 h-6"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  >
+                  </path>
+                </svg>
+                <span>
+                  Authoritative zones serve records from local data.
+                  You can add records after creating the zone.
+                </span>
+              </div>
+            <% end %>
+
+            <div class="divider"></div>
+
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary">Create Zone</button>
+            </div>
+          </.form>
+        </.card>
+      <% :edit -> %>
+        <!-- Edit Zone Form -->
+        <.card title={"Edit Zone: #{@editing_zone.name}"}>
+          <.form for={@zone_form} phx-submit="save_zone" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Zone Name</span>
+              </label>
+              <input
+                type="text"
+                name="zone[name]"
+                value={@zone_form[:name].value}
+                class="input input-bordered w-full font-mono bg-base-200"
+                disabled
+              />
+              <label class="label">
+                <span class="label-text-alt text-base-content/60">Name cannot be changed</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Zone Type</span>
+              </label>
+              <div class="flex items-center gap-2">
+                <.badge color={zone_type_badge(@editing_zone.type)} size="md">
+                  {zone_type_label(@editing_zone.type)}
+                </.badge>
+                <span class="text-sm text-base-content/60">(cannot be changed)</span>
+              </div>
+              <input type="hidden" name="zone[type]" value={@editing_zone.type} />
+            </div>
+
+            <!-- Upstream Servers - shown for forward zones -->
+            <%= if @editing_zone.type == :forward do %>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Upstream DNS Servers</span>
+                </label>
+                <textarea
+                  name="zone[upstreams]"
+                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  placeholder="8.8.8.8&#10;8.8.4.4"
+                >{@zone_form[:upstreams].value}</textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    IP addresses of upstream DNS servers (one per line)
+                  </span>
+                </label>
+              </div>
+            <% end %>
+
+            <!-- NS Records - shown for stub zones -->
+            <%= if @editing_zone.type == :stub do %>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">NS Server Names</span>
+                </label>
+                <textarea
+                  name="zone[ns_records]"
+                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  placeholder="ns1.example.com&#10;ns2.example.com"
+                >{@zone_form[:ns_records].value}</textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    Fully qualified names of authoritative NS servers (one per line)
+                  </span>
+                </label>
+              </div>
+            <% end %>
+
+            <!-- Info for auth zones -->
+            <%= if @editing_zone.type == :auth do %>
+              <div class="alert alert-info">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  class="stroke-current shrink-0 w-6 h-6"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  >
+                  </path>
+                </svg>
+                <span>
+                  Edit records for this zone from the records page.
+                </span>
+              </div>
+            <% end %>
+
+            <div class="divider"></div>
+
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </.form>
+        </.card>
+      <% :import -> %>
+        <!-- Zone Import Form -->
+        <.card title={"Import Zone Data to #{@view_name}"}>
+          <.form for={@import_form} phx-submit="import_zone" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Import Format</span>
+              </label>
+              <select name="import[format]" class="select select-bordered w-full">
+                <option value="zone" selected={@import_form[:format].value == "zone"}>
+                  BIND Zone File Format
+                </option>
+                <option value="csv" selected={@import_form[:format].value == "csv"}>
+                  CSV (name,type,ttl,data)
+                </option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Zone Data</span>
+              </label>
+              <textarea
+                name="import[zone_data]"
+                class="textarea textarea-bordered h-64 font-mono text-sm"
+                placeholder="$ORIGIN example.com.\n$TTL 3600\n@       IN  SOA   ns1.example.com. admin.example.com. (\n                    2024010101 ; serial\n                    3600       ; refresh\n                    600        ; retry\n                    604800     ; expire\n                    86400 )    ; minimum\n@       IN  NS    ns1.example.com.\n@       IN  A     192.0.2.1\nwww     IN  A     192.0.2.2"
+              >{@import_form[:zone_data].value}</textarea>
+              <label class="label">
+                <span class="label-text-alt">Paste zone file content or CSV data</span>
+              </label>
+            </div>
+
+            <div class="alert alert-info">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                class="stroke-current shrink-0 w-6 h-6"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                >
+                </path>
+              </svg>
+              <span>
+                Zone import will create a new authoritative zone with the parsed records.
+              </span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary">Import Zone</button>
+            </div>
+          </.form>
+        </.card>
+    <% end %>
+  </div>
+  
+<!-- Delete Confirmation Modal -->
+  <%= if @delete_confirm do %>
+    <.modal id="delete-modal" title="Delete Zone" show on_cancel={JS.push("close_modal")}>
+      <div class="py-4">
+        <p class="text-base-content/80">
+          Are you sure you want to delete the zone <strong class="font-mono">{@delete_confirm.name}</strong>?
+        </p>
+        <p class="mt-2 text-sm text-warning">
+          This action cannot be undone. All records in this zone will be deleted.
+        </p>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
+        <button type="button" class="btn btn-error" phx-click="delete_zone">
+          Delete Zone
+        </button>
+      </div>
+    </.modal>
+  <% end %>
+</Layouts.app>
