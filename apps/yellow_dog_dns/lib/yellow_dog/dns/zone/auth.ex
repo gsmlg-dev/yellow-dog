@@ -34,7 +34,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     query_count: 0,
     hit_count: 0,
     miss_count: 0,
-    dirty: false
+    dirty: false,
+    # Version for optimistic locking - increments on each modification
+    version: 1,
+    # Timestamp of last modification
+    updated_at: nil
   ]
 
   # Client API
@@ -122,6 +126,55 @@ defmodule YellowDog.Dns.Zone.Auth do
   @spec dirty?(pid()) :: boolean()
   def dirty?(pid) do
     GenServer.call(pid, :dirty?)
+  end
+
+  @doc """
+  Gets the current version of the zone.
+
+  The version is an integer that increments on each modification.
+  Use this for optimistic locking to detect concurrent changes.
+  """
+  @spec get_version(pid()) :: pos_integer()
+  def get_version(pid) do
+    GenServer.call(pid, :get_version)
+  end
+
+  @doc """
+  Gets metadata about the zone including version info.
+
+  Returns a map with:
+  - `:version` - Current version number
+  - `:updated_at` - DateTime of last modification (nil if never modified)
+  - `:created_at` - DateTime when zone was created
+  - `:dirty` - Whether zone has unsaved changes
+  """
+  @spec get_metadata(pid()) :: map()
+  def get_metadata(pid) do
+    GenServer.call(pid, :get_metadata)
+  end
+
+  @doc """
+  Adds a record with version check for optimistic locking.
+
+  Returns `{:ok, new_version}` on success, or `{:error, :version_conflict}`
+  if the zone was modified since `expected_version`.
+  """
+  @spec add_record_versioned(pid(), ResourceRecord.t(), pos_integer()) ::
+          {:ok, pos_integer()} | {:error, :version_conflict}
+  def add_record_versioned(pid, record, expected_version) do
+    GenServer.call(pid, {:add_record_versioned, record, expected_version})
+  end
+
+  @doc """
+  Removes a record with version check for optimistic locking.
+
+  Returns `{:ok, new_version}` on success, or `{:error, :version_conflict}`
+  if the zone was modified since `expected_version`.
+  """
+  @spec remove_record_versioned(pid(), String.t(), atom(), pos_integer()) ::
+          {:ok, pos_integer()} | {:error, :version_conflict}
+  def remove_record_versioned(pid, name, type, expected_version) do
+    GenServer.call(pid, {:remove_record_versioned, name, type, expected_version})
   end
 
   # Server Callbacks
@@ -221,7 +274,9 @@ defmodule YellowDog.Dns.Zone.Auth do
       query_count: state.query_count,
       hit_count: state.hit_count,
       miss_count: state.miss_count,
-      created_at: state.created_at
+      created_at: state.created_at,
+      version: state.version,
+      updated_at: state.updated_at
     }
 
     {:reply, stats, state}
@@ -229,14 +284,31 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:add_record, record}, _from, state) do
-    :ets.insert(state.table, {{normalize_name(record.name), record.type}, record})
-    {:reply, :ok, %{state | dirty: true}}
+    key = {normalize_name(record.name), normalize_type(record.type)}
+    :ets.insert(state.table, {key, record})
+
+    new_state = %{
+      state
+      | dirty: true,
+        version: state.version + 1,
+        updated_at: DateTime.utc_now()
+    }
+
+    {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
     :ets.delete(state.table, {normalize_name(name), type})
-    {:reply, :ok, %{state | dirty: true}}
+
+    new_state = %{
+      state
+      | dirty: true,
+        version: state.version + 1,
+        updated_at: DateTime.utc_now()
+    }
+
+    {:reply, :ok, new_state}
   end
 
   @impl true
@@ -257,6 +329,62 @@ defmodule YellowDog.Dns.Zone.Auth do
   @impl true
   def handle_call(:dirty?, _from, state) do
     {:reply, state.dirty, state}
+  end
+
+  @impl true
+  def handle_call(:get_version, _from, state) do
+    {:reply, state.version, state}
+  end
+
+  @impl true
+  def handle_call(:get_metadata, _from, state) do
+    metadata = %{
+      version: state.version,
+      updated_at: state.updated_at,
+      created_at: state.created_at,
+      dirty: state.dirty
+    }
+
+    {:reply, metadata, state}
+  end
+
+  @impl true
+  def handle_call({:add_record_versioned, record, expected_version}, _from, state) do
+    if state.version == expected_version do
+      key = {normalize_name(record.name), normalize_type(record.type)}
+      :ets.insert(state.table, {key, record})
+      new_version = state.version + 1
+
+      new_state = %{
+        state
+        | dirty: true,
+          version: new_version,
+          updated_at: DateTime.utc_now()
+      }
+
+      {:reply, {:ok, new_version}, new_state}
+    else
+      {:reply, {:error, :version_conflict}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:remove_record_versioned, name, type, expected_version}, _from, state) do
+    if state.version == expected_version do
+      :ets.delete(state.table, {normalize_name(name), type})
+      new_version = state.version + 1
+
+      new_state = %{
+        state
+        | dirty: true,
+          version: new_version,
+          updated_at: DateTime.utc_now()
+      }
+
+      {:reply, {:ok, new_version}, new_state}
+    else
+      {:reply, {:error, :version_conflict}, state}
+    end
   end
 
   @impl true
@@ -372,17 +500,114 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp records_to_rrsets(records) do
     records
-    |> Enum.group_by(fn r -> {r.name, r.type} end)
+    |> Enum.group_by(fn r -> {normalize_name(r.name), normalize_type(r.type)} end)
     |> Enum.map(fn {{name, type}, recs} ->
       %DNS.Zone.RRSet{
-        name: %DNS.Zone.Name{value: name},
+        name: name,
         type: type,
         ttl: List.first(recs).ttl || 3600,
-        data: Enum.map(recs, & &1.rdata),
+        data: Enum.map(recs, &rdata_to_bind_map(normalize_type(&1.type), &1.rdata)),
         options: []
       }
     end)
   end
+
+  # Convert rdata structs to the map format expected by DNS.Zone.to_bind_format
+  defp rdata_to_bind_map(:a, rdata) do
+    address = extract_address(rdata)
+    %{type: :a, address: address}
+  end
+
+  defp rdata_to_bind_map(:aaaa, rdata) do
+    address = extract_address(rdata)
+    %{type: :aaaa, address: address}
+  end
+
+  defp rdata_to_bind_map(:cname, rdata) do
+    target = extract_target(rdata)
+    %{type: :cname, cname: target}
+  end
+
+  defp rdata_to_bind_map(:ns, rdata) do
+    target = extract_target(rdata)
+    %{type: :ns, nsdname: target}
+  end
+
+  defp rdata_to_bind_map(:ptr, rdata) do
+    target = extract_target(rdata)
+    %{type: :ptr, ptrdname: target}
+  end
+
+  defp rdata_to_bind_map(:mx, rdata) do
+    {preference, exchange} = extract_mx(rdata)
+    %{type: :mx, preference: preference, exchange: exchange}
+  end
+
+  defp rdata_to_bind_map(:txt, rdata) do
+    txt = extract_txt(rdata)
+    %{type: :txt, txtdata: txt}
+  end
+
+  defp rdata_to_bind_map(:srv, rdata) do
+    {priority, weight, port, target} = extract_srv(rdata)
+    %{type: :srv, priority: priority, weight: weight, port: port, target: target}
+  end
+
+  defp rdata_to_bind_map(:caa, rdata) do
+    {flags, tag, value} = extract_caa(rdata)
+    %{type: :caa, flags: flags, tag: tag, value: value}
+  end
+
+  defp rdata_to_bind_map(type, rdata) do
+    # Fallback: use to_string for unknown types
+    %{type: type, data: rdata_to_string(rdata)}
+  end
+
+  # Extract address from A/AAAA records
+  defp extract_address(%{data: {_, _, _, _} = ip}), do: ip |> :inet.ntoa() |> to_string()
+  defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}), do: ip |> :inet.ntoa() |> to_string()
+  defp extract_address({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
+  defp extract_address({_, _, _, _, _, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
+  defp extract_address(rdata) when is_struct(rdata), do: to_string(rdata)
+  defp extract_address(rdata), do: to_string(rdata)
+
+  # Extract target domain from CNAME/NS/PTR records
+  defp extract_target(%{data: target}), do: to_string(target)
+  defp extract_target(target) when is_struct(target), do: to_string(target)
+  defp extract_target(target), do: to_string(target)
+
+  # Extract MX data
+  defp extract_mx(%{data: %{preference: p, exchange: e}}), do: {p, to_string(e)}
+  defp extract_mx(%{preference: p, exchange: e}), do: {p, to_string(e)}
+  defp extract_mx({p, e}), do: {p, to_string(e)}
+  defp extract_mx(rdata), do: {10, to_string(rdata)}
+
+  # Extract TXT data
+  defp extract_txt(%{data: txt}) when is_list(txt), do: Enum.join(txt, " ")
+  defp extract_txt(%{data: txt}), do: to_string(txt)
+  defp extract_txt(txt) when is_list(txt), do: Enum.join(txt, " ")
+  defp extract_txt(txt), do: to_string(txt)
+
+  # Extract SRV data
+  defp extract_srv(%{data: %{priority: p, weight: w, port: port, target: t}}),
+    do: {p, w, port, to_string(t)}
+
+  defp extract_srv(%{priority: p, weight: w, port: port, target: t}),
+    do: {p, w, port, to_string(t)}
+
+  defp extract_srv({p, w, port, t}), do: {p, w, port, to_string(t)}
+  defp extract_srv(rdata), do: {0, 0, 0, to_string(rdata)}
+
+  # Extract CAA data
+  defp extract_caa(%{data: %{flags: f, tag: t, value: v}}), do: {f, t, v}
+  defp extract_caa(%{flags: f, tag: t, value: v}), do: {f, t, v}
+  defp extract_caa({f, t, v}), do: {f, t, v}
+  defp extract_caa(rdata), do: {0, "issue", to_string(rdata)}
+
+  # Convert rdata to string for fallback
+  defp rdata_to_string(rdata) when is_struct(rdata), do: to_string(rdata)
+  defp rdata_to_string(rdata) when is_binary(rdata), do: rdata
+  defp rdata_to_string(rdata), do: inspect(rdata)
 
   defp do_resolve(state, query) do
     case query.qdlist do
@@ -462,9 +687,44 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp normalize_name(name) do
     name
+    |> to_string()
     |> String.downcase()
     |> String.trim_trailing(".")
   end
+
+  defp normalize_type(type) when is_atom(type), do: type
+
+  defp normalize_type(%DNS.ResourceRecordType{value: value}) do
+    # Convert RRType struct to atom
+    case value do
+      <<1::16>> -> :a
+      <<2::16>> -> :ns
+      <<5::16>> -> :cname
+      <<6::16>> -> :soa
+      <<12::16>> -> :ptr
+      <<15::16>> -> :mx
+      <<16::16>> -> :txt
+      <<28::16>> -> :aaaa
+      <<33::16>> -> :srv
+      <<43::16>> -> :ds
+      <<46::16>> -> :rrsig
+      <<47::16>> -> :nsec
+      <<48::16>> -> :dnskey
+      <<50::16>> -> :nsec3
+      <<51::16>> -> :nsec3param
+      <<52::16>> -> :tlsa
+      <<65::16>> -> :https
+      <<99::16>> -> :spf
+      <<255::16>> -> :any
+      <<256::16>> -> :uri
+      <<257::16>> -> :caa
+      _ -> :unknown
+    end
+  end
+
+  defp normalize_type(%{type: type}), do: normalize_type(type)
+  defp normalize_type(type) when is_binary(type), do: String.downcase(type) |> String.to_atom()
+  defp normalize_type(_), do: :unknown
 
   defp build_response(query, answers, state) do
     # Get NS records for authority section
