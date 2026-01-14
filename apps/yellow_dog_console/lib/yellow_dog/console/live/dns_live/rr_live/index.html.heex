@@ -1,0 +1,322 @@
+<Layouts.app flash={@flash}>
+  <div class="space-y-4">
+    <!-- Breadcrumb -->
+    <div class="breadcrumbs text-sm">
+      <ul>
+        <li><.link navigate={~p"/dns"}>DNS</.link></li>
+        <li><.link navigate={~p"/dns/views"}>Views</.link></li>
+        <li><.link navigate={~p"/dns/views/#{@view_name}/zones"}>{@view_name}</.link></li>
+        <li class="font-semibold">{@zone_name}</li>
+      </ul>
+    </div>
+
+<!-- Header -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Resource Records</h1>
+        <p class="text-sm text-base-content/70">
+          Zone: <span class="font-mono font-semibold">{@zone_name}</span>
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button phx-click="refresh" class="btn btn-ghost btn-sm" title="Refresh">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Refresh
+        </button>
+        <.link
+          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"}
+          class="btn btn-ghost btn-sm"
+          title="Bulk Add"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          Bulk Add
+        </.link>
+        <.link
+          patch={~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"}
+          class="btn btn-primary btn-sm"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Add Record
+        </.link>
+      </div>
+    </div>
+
+    <%= case @live_action do %>
+      <% :index -> %>
+        <!-- Records Data Table -->
+        <div class="card bg-base-100 shadow">
+          <div class="card-body p-0">
+            <%= if length(@rrs) > 0 do %>
+              <!-- Filter Bar -->
+              <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
+                <input
+                  type="text"
+                  placeholder="Filter by name..."
+                  class="input input-bordered input-sm flex-1 min-w-48"
+                  phx-change="filter"
+                  phx-debounce="300"
+                  name="filter"
+                  value={@filter}
+                />
+                <select
+                  class="select select-bordered select-sm"
+                  phx-change="filter_type"
+                  name="type"
+                >
+                  <option value="all" selected={@type_filter == "all"}>All Types</option>
+                  <%= for type <- unique_record_types(@rrs) do %>
+                    <option value={type} selected={@type_filter == to_string(type)}>
+                      {String.upcase(to_string(type))}
+                    </option>
+                  <% end %>
+                </select>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>TTL</th>
+                      <th>Data</th>
+                      <th class="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for {record, idx} <- Enum.with_index(filtered_records(@rrs, @filter, @type_filter)) do %>
+                      <tr class="hover">
+                        <td class="font-mono text-sm max-w-xs truncate" title={record.name}>
+                          {record.name}
+                        </td>
+                        <td>
+                          <.badge color={record_type_badge(record.type)} size="sm">
+                            {String.upcase(to_string(record.type))}
+                          </.badge>
+                        </td>
+                        <td class="font-mono text-sm">{record.ttl}</td>
+                        <td class="font-mono text-sm max-w-md truncate" title={record.rdata}>
+                          {record.rdata}
+                        </td>
+                        <td class="text-right">
+                          <div class="flex items-center justify-end gap-1">
+                            <.link
+                              patch={
+                                ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/#{idx}/edit"
+                              }
+                              class="btn btn-ghost btn-sm"
+                              title="Edit"
+                            >
+                              <svg
+                                class="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            </.link>
+                            <button
+                              phx-click="confirm_delete"
+                              phx-value-index={idx}
+                              class="btn btn-ghost btn-sm text-error"
+                              title="Delete"
+                            >
+                              <svg
+                                class="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+              <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
+                {length(filtered_records(@rrs, @filter, @type_filter))} of {length(@rrs)} record(s)
+              </div>
+            <% else %>
+              <div class="text-center py-12">
+                <div class="text-6xl mb-4">
+                  <svg
+                    class="w-16 h-16 mx-auto text-base-content/30"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.5"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+                <h3 class="text-lg font-semibold mb-2">No Records</h3>
+                <p class="text-base-content/60 mb-4">This zone has no resource records.</p>
+                <div class="flex justify-center gap-2">
+                  <.link
+                    patch={
+                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/new"
+                    }
+                    class="btn btn-primary"
+                  >
+                    Add Record
+                  </.link>
+                  <.link
+                    patch={
+                      ~p"/dns/views/#{@view_name}/zones/#{@zone_type}/#{@zone_name}/records/bulk"
+                    }
+                    class="btn btn-ghost"
+                  >
+                    Bulk Add
+                  </.link>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% :new -> %>
+        <!-- New Record Form with Real-Time Validation -->
+        <.live_component
+          module={YellowDog.Console.Components.RecordForm}
+          id="new-record-form"
+          zone_name={@zone_name}
+          zone_pid={@zone_pid}
+          record={nil}
+          on_save={fn record -> send(self(), {:record_saved, record}) end}
+          on_cancel={fn -> send(self(), :record_cancelled) end}
+        />
+      <% :edit -> %>
+        <!-- Edit Record Form with Real-Time Validation -->
+        <.live_component
+          module={YellowDog.Console.Components.RecordForm}
+          id="edit-record-form"
+          zone_name={@zone_name}
+          zone_pid={@zone_pid}
+          record={@editing_rr && @editing_rr.original}
+          on_save={fn record -> send(self(), {:record_saved, record}) end}
+          on_cancel={fn -> send(self(), :record_cancelled) end}
+        />
+      <% :bulk -> %>
+        <!-- Bulk Add Records Form -->
+        <.card title={"Bulk Add Records to #{@zone_name}"}>
+          <.form for={@bulk_form} phx-submit="bulk_add_rrs" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Records</span>
+              </label>
+              <textarea
+                name="bulk[records]"
+                class="textarea textarea-bordered h-64 font-mono text-sm"
+                placeholder={"www     3600  IN  A     192.0.2.1\nmail    3600  IN  A     192.0.2.2\nmail    3600  IN  MX    10 mail.example.com.\n@       3600  IN  TXT   \"v=spf1 mx -all\""}
+              >{@bulk_form[:records].value}</textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  One record per line in zone file format: name ttl class type rdata
+                </span>
+              </label>
+            </div>
+
+            <div class="alert alert-info">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                class="stroke-current shrink-0 w-6 h-6"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                >
+                </path>
+              </svg>
+              <div>
+                <p class="font-semibold">Format: name ttl class type rdata</p>
+                <p class="text-sm">Lines starting with ; are treated as comments and ignored.</p>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary">Add Records</button>
+            </div>
+          </.form>
+        </.card>
+    <% end %>
+  </div>
+
+<!-- Delete Confirmation Modal -->
+  <%= if @delete_confirm do %>
+    <.modal
+      id="delete-modal"
+      title="Delete Resource Record"
+      show
+      on_cancel={JS.push("close_modal")}
+    >
+      <div class="py-4">
+        <p class="text-base-content/80">
+          Are you sure you want to delete the record
+          <strong class="font-mono">{@delete_confirm.rr.name}</strong>
+          (<span class="badge badge-sm">{String.upcase(to_string(@delete_confirm.rr.type))}</span>)?
+        </p>
+        <p class="mt-2 text-sm text-warning">
+          This action cannot be undone.
+        </p>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
+        <button type="button" class="btn btn-error" phx-click="delete_rr">
+          Delete Record
+        </button>
+      </div>
+    </.modal>
+  <% end %>
+</Layouts.app>
