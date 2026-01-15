@@ -475,4 +475,38 @@ defmodule YellowDog.Console.CoreComponents do
     js
     |> JS.dispatch("click", to: "##{id} form[method=dialog] button")
   end
+
+  ## Formatting helpers
+
+  @doc """
+  Formats a number with thousand separators.
+
+  ## Examples
+
+      iex> format_number(1234567)
+      "1,234,567"
+
+      iex> format_number(0)
+      "0"
+  """
+  def format_number(number) when is_integer(number) do
+    number
+    |> Integer.to_string()
+    |> String.graphemes()
+    |> Enum.reverse()
+    |> Enum.chunk_every(3)
+    |> Enum.map(&Enum.reverse/1)
+    |> Enum.reverse()
+    |> Enum.map(&Enum.join/1)
+    |> Enum.join(",")
+  end
+
+  def format_number(number) when is_float(number) do
+    number
+    |> trunc()
+    |> format_number()
+  end
+
+  def format_number(nil), do: "0"
+  def format_number(other), do: to_string(other)
 end

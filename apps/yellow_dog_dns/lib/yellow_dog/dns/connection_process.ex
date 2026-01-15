@@ -180,6 +180,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
   def handle_call({:submit_raw_data, data}, _from, state) do
     try do
       query = Message.from_iodata(data)
+
       case submit_query_internal(state, query, raw: true) do
         {:ok, new_state} ->
           {:reply, :ok, new_state}
@@ -193,6 +194,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
           error: inspect(error),
           data_size: byte_size(data)
         })
+
         {:reply, {:error, :parse_error}, state}
     catch
       {:format_error, section, _details} ->

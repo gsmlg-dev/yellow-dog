@@ -583,15 +583,7 @@ defmodule YellowDog.Console.ProcessMapLive do
     Calendar.strftime(datetime, "%H:%M:%S")
   end
 
-  defp format_number(num) when is_integer(num) do
-    num
-    |> Integer.to_string()
-    |> String.reverse()
-    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
-    |> String.reverse()
-  end
-
-  defp format_number(num), do: inspect(num)
+  # format_number is now provided by CoreComponents
 
   defp truncate_label(label, max_length) do
     if String.length(label) > max_length do

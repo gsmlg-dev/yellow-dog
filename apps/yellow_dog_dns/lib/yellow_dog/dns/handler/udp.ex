@@ -81,6 +81,7 @@ defmodule YellowDog.Dns.Handler.UDP do
                   client_ip: format_ip(client_ip),
                   data_size: byte_size(data)
                 })
+
                 {:close, new_state}
             end
 
@@ -88,6 +89,7 @@ defmodule YellowDog.Dns.Handler.UDP do
             Telemetry.warning("Failed to submit data to connection process", %{
               reason: inspect(reason)
             })
+
             {:close, state}
         end
 

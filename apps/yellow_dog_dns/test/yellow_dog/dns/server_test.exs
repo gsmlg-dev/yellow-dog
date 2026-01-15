@@ -227,5 +227,4 @@ defmodule YellowDog.Dns.ServerTest do
       assert config.tcp.num_connections == 16_384
     end
   end
-
 end

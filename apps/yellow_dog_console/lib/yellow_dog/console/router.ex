@@ -45,13 +45,33 @@ defmodule YellowDog.Console.Router do
 
     # DNS Management Routes (sidebar: Overview, Data, ACL)
     live "/dns", DnsLive.Index
-    live "/dns/data", DnsLive.DataLive, :views
-    live "/dns/data/new", DnsLive.DataLive, :new_view
-    live "/dns/data/:view_name/edit", DnsLive.DataLive, :edit_view
-    live "/dns/data/:view_name", DnsLive.DataLive, :zones
-    live "/dns/data/:view_name/zones/new", DnsLive.DataLive, :new_zone
-    live "/dns/data/:view_name/:zone_name/edit", DnsLive.DataLive, :edit_zone
-    live "/dns/data/:view_name/:zone_name", DnsLive.DataLive, :records
+
+    # DNS Views (first level of hierarchy)
+    live "/dns/views", DnsLive.ViewLive.Index, :index
+    live "/dns/views/new", DnsLive.ViewLive.Index, :new
+    live "/dns/views/:view_name/edit", DnsLive.ViewLive.Index, :edit
+
+    # DNS Zones (second level - drill-down from view)
+    live "/dns/views/:view_name/zones", DnsLive.ZoneLive.Index, :index
+    live "/dns/views/:view_name/zones/new", DnsLive.ZoneLive.Index, :new
+    live "/dns/views/:view_name/zones/import", DnsLive.ZoneLive.Index, :import
+    live "/dns/views/:view_name/zones/:zone_type/:zone_name/edit", DnsLive.ZoneLive.Index, :edit
+
+    # DNS Resource Records (third level - drill-down from zone)
+    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records", DnsLive.RrLive.Index, :index
+
+    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/new",
+         DnsLive.RrLive.Index,
+         :new
+
+    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/bulk",
+         DnsLive.RrLive.Index,
+         :bulk
+
+    live "/dns/views/:view_name/zones/:zone_type/:zone_name/records/:rr_index/edit",
+         DnsLive.RrLive.Index,
+         :edit
+
     live "/dns/acl", DnsLive.AclLive
 
     # Service Diagnostics
