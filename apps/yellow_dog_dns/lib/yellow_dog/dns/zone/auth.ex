@@ -19,6 +19,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   alias YellowDog.Telemetry
   alias DNS.Message
+  alias DNS.Message.RCode
   alias DNS.ResourceRecord
   alias DNS.Zone
 
@@ -621,7 +622,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp resolve_question(state, query, question) do
     qname = normalize_name(question.name)
-    qtype = question.type
+    qtype = normalize_type(question.type)
 
     # Check if name is in this zone
     if in_zone?(state.name, qname) do
@@ -735,7 +736,7 @@ defmodule YellowDog.Dns.Zone.Auth do
         query.header
         | qr: true,
           aa: true,
-          rcode: :noerror
+          rcode: RCode.no_error()
       },
       qdlist: query.qdlist,
       anlist: answers,
@@ -750,7 +751,7 @@ defmodule YellowDog.Dns.Zone.Auth do
         query.header
         | qr: true,
           aa: true,
-          rcode: :noerror
+          rcode: RCode.no_error()
       },
       qdlist: query.qdlist,
       anlist: [],
@@ -765,7 +766,7 @@ defmodule YellowDog.Dns.Zone.Auth do
         query.header
         | qr: true,
           aa: true,
-          rcode: :nxdomain
+          rcode: RCode.nx_domain()
       },
       qdlist: query.qdlist,
       anlist: [],
@@ -784,16 +785,18 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp load_zone_data(state, zone_data) when is_list(zone_data) do
     {soa, ns_records, _other_records} =
       Enum.reduce(zone_data, {nil, [], []}, fn record, {soa, ns, others} ->
-        case record.type do
+        # Normalize the type for pattern matching
+        case normalize_type(record.type) do
           :soa -> {record, ns, others}
           :ns -> {soa, [record | ns], others}
           _ -> {soa, ns, [record | others]}
         end
       end)
 
-    # Insert all records into ETS
+    # Insert all records into ETS with normalized keys
     Enum.each(zone_data, fn record ->
-      :ets.insert(state.table, {{normalize_name(record.name), record.type}, record})
+      key = {normalize_name(record.name), normalize_type(record.type)}
+      :ets.insert(state.table, {key, record})
     end)
 
     %{state | soa: soa, ns_records: Enum.reverse(ns_records)}

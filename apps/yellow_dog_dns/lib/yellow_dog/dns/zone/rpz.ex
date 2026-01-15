@@ -47,6 +47,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
   alias YellowDog.Telemetry
   alias YellowDog.Dns.Zone.Behaviour
   alias DNS.Message
+  alias DNS.Message.RCode
 
   @behaviour Behaviour
 
@@ -370,7 +371,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp create_nxdomain_response(query) do
     %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: :nxdomain},
+      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: RCode.nx_domain()},
       qdlist: query.qdlist,
       anlist: [],
       nslist: [],
@@ -380,7 +381,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp create_nodata_response(query) do
     %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: :noerror},
+      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: RCode.no_error()},
       qdlist: query.qdlist,
       anlist: [],
       nslist: [],
@@ -390,7 +391,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp create_tc_response(query) do
     %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 1, ra: 1, rcode: :noerror},
+      header: %{query.header | qr: 1, aa: 0, tc: 1, ra: 1, rcode: RCode.no_error()},
       qdlist: query.qdlist,
       anlist: [],
       nslist: [],
@@ -400,7 +401,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp create_local_data_response(query, local_data) do
     %Message{
-      header: %{query.header | qr: 1, aa: 1, tc: 0, ra: 1, rcode: :noerror},
+      header: %{query.header | qr: 1, aa: 1, tc: 0, ra: 1, rcode: RCode.no_error()},
       qdlist: query.qdlist,
       anlist: local_data,
       nslist: [],

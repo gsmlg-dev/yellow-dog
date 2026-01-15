@@ -26,6 +26,7 @@ defmodule YellowDog.Dns.RecursionController do
 
   alias YellowDog.Telemetry
   alias DNS.Message
+  alias DNS.Message.RCode
 
   @max_recursion_depth 10
   @query_timeout 5000
@@ -215,13 +216,15 @@ defmodule YellowDog.Dns.RecursionController do
   end
 
   defp handle_response(state, query, question, response, depth) do
+    rcode = normalize_rcode(response.header.rcode)
+
     cond do
       # Got an answer
-      response.header.rcode == :noerror and length(response.anlist) > 0 ->
+      rcode == :noerror and length(response.anlist) > 0 ->
         {:ok, response}
 
       # NXDOMAIN
-      response.header.rcode == :nxdomain ->
+      rcode == :nxdomain ->
         {:ok, response}
 
       # Got referral (no answers but has authority section with NS records)
@@ -229,14 +232,26 @@ defmodule YellowDog.Dns.RecursionController do
         follow_referral(state, query, question, response, depth)
 
       # Server error
-      response.header.rcode != :noerror ->
-        {:error, response.header.rcode}
+      rcode != :noerror ->
+        {:error, rcode}
 
       # No useful response
       true ->
         {:error, :no_data}
     end
   end
+
+  # Normalize rcode to atom for comparison
+  defp normalize_rcode(:noerror), do: :noerror
+  defp normalize_rcode(:nxdomain), do: :nxdomain
+  defp normalize_rcode(%RCode{value: <<0::4>>}), do: :noerror
+  defp normalize_rcode(%RCode{value: <<1::4>>}), do: :formerr
+  defp normalize_rcode(%RCode{value: <<2::4>>}), do: :servfail
+  defp normalize_rcode(%RCode{value: <<3::4>>}), do: :nxdomain
+  defp normalize_rcode(%RCode{value: <<4::4>>}), do: :notimp
+  defp normalize_rcode(%RCode{value: <<5::4>>}), do: :refused
+  defp normalize_rcode(%RCode{} = rcode), do: rcode
+  defp normalize_rcode(other), do: other
 
   defp follow_referral(state, query, question, response, depth) do
     # Extract NS records and their glue
@@ -326,7 +341,7 @@ defmodule YellowDog.Dns.RecursionController do
         tc: 0,
         rd: 0,
         ra: 0,
-        rcode: :noerror
+        rcode: RCode.no_error()
       },
       qdlist: [
         DNS.Message.Question.new(name, type, :in)
