@@ -147,6 +147,11 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
   end
 
+  @impl true
+  def handle_info({:service_toggled, _service_id}, socket) do
+    {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
+  end
+
   defp list_services(opts \\ []) do
     try do
       YellowDog.Mdns.list_registered_services(opts)

@@ -83,7 +83,8 @@ defmodule YellowDog.Dns.Zone.RPZ do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+    view_name = Keyword.get(opts, :view_name, "default")
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
   end
 
   @doc """
@@ -109,6 +110,12 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   @impl Behaviour
   def get_name(pid), do: GenServer.call(pid, :get_name)
+
+  @doc """
+  Gets the view name this zone belongs to.
+  """
+  @spec get_view(pid()) :: String.t()
+  def get_view(pid), do: GenServer.call(pid, :get_view)
 
   @impl Behaviour
   def reload(pid, config), do: GenServer.call(pid, {:reload, config})
@@ -161,6 +168,11 @@ defmodule YellowDog.Dns.Zone.RPZ do
   @impl true
   def handle_call(:get_name, _from, state) do
     {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call(:get_view, _from, state) do
+    {:reply, state.view_name, state}
   end
 
   @impl true
@@ -444,7 +456,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
     Enum.join(parts, ".")
   end
 
-  defp via_tuple(zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:rpz, zone_name}}}
+  defp via_tuple(view_name, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :rpz, zone_name}}}
   end
 end

@@ -45,7 +45,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_name" => zone_name
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
-    zone_pid = get_zone_pid(zone_type_atom, zone_name)
+    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
     socket
     |> assign(:page_title, "Records - #{zone_name}")
@@ -65,7 +65,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_name" => zone_name
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
-    zone_pid = get_zone_pid(zone_type_atom, zone_name)
+    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
     socket
     |> assign(:page_title, "New Record - #{zone_name}")
@@ -84,7 +84,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "rr_index" => rr_index_str
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
-    zone_pid = get_zone_pid(zone_type_atom, zone_name)
+    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
     rr_index = String.to_integer(rr_index_str)
 
     socket =
@@ -114,7 +114,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_name" => zone_name
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
-    zone_pid = get_zone_pid(zone_type_atom, zone_name)
+    zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
     form_data = %{
       "records" => ""
@@ -156,7 +156,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     zone_type = socket.assigns.zone_type
     view_name = socket.assigns.view_name
 
-    with {:ok, pid} <- find_auth_zone(zone_type, zone_name),
+    with {:ok, pid} <- find_auth_zone(view_name, zone_type, zone_name),
          {:ok, record} <- build_record(pid, zone_name, rr_params) do
       if editing do
         remove_existing_record(pid, editing.original)
@@ -307,8 +307,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   # Private Helpers
   # ============================================================================
 
-  defp get_zone_pid(zone_type, zone_name) do
-    case ZoneController.find_zone(zone_type, zone_name) do
+  defp get_zone_pid(view_name, zone_type, zone_name) do
+    case ZoneController.find_zone(view_name, zone_type, zone_name) do
       {:ok, pid} -> pid
       :error -> nil
     end
@@ -321,12 +321,13 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   defp load_records(socket) do
+    view_name = socket.assigns.view_name
     zone_type = socket.assigns.zone_type
     zone_name = socket.assigns.zone_name
 
     records =
       if zone_type == :auth do
-        case get_auth_zone_records(zone_type, zone_name) do
+        case get_auth_zone_records(view_name, zone_type, zone_name) do
           {:ok, records} -> records
           :error -> []
         end
@@ -336,9 +337,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     assign(socket, :rrs, records)
   end
 
-  defp get_auth_zone_records(zone_type, zone_name) do
+  defp get_auth_zone_records(view_name, zone_type, zone_name) do
     try do
-      case ZoneController.find_zone(zone_type, zone_name) do
+      case ZoneController.find_zone(view_name, zone_type, zone_name) do
         {:ok, pid} ->
           records =
             YellowDog.Dns.Zone.Auth.get_all_records(pid)
@@ -496,14 +497,14 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   defp format_srv(rdata), do: to_string(rdata)
 
-  defp find_auth_zone(:auth, zone_name) do
-    case ZoneController.find_zone(:auth, zone_name) do
+  defp find_auth_zone(view_name, :auth, zone_name) do
+    case ZoneController.find_zone(view_name, :auth, zone_name) do
       {:ok, pid} -> {:ok, pid}
       :error -> {:error, "Authoritative zone not found: #{zone_name}"}
     end
   end
 
-  defp find_auth_zone(_zone_type, zone_name) do
+  defp find_auth_zone(_view_name, _zone_type, zone_name) do
     {:error, "Zone '#{zone_name}' is not authoritative"}
   end
 

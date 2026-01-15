@@ -24,6 +24,7 @@ defmodule YellowDog.Dns.ViewManager do
 
   alias YellowDog.Telemetry
   alias YellowDog.Dns.View
+  alias YellowDog.Dns.ConfigPersistence
 
   @doc """
   Starts the ViewManager supervisor.
@@ -277,6 +278,72 @@ defmodule YellowDog.Dns.ViewManager do
     })
 
     :ok
+  end
+
+  # Persistence Functions
+
+  @doc """
+  Saves current view configuration to the data directory.
+
+  Collects all view configurations and persists them to TOML files.
+
+  ## Parameters
+  - `data_path` - Optional path to the DNS data directory (default: from config)
+  - `opts` - Options passed to ConfigPersistence
+
+  ## Returns
+  - `:ok` on success
+  - `{:error, reason}` on failure
+  """
+  @spec save_config(String.t(), keyword()) :: :ok | {:error, term()}
+  def save_config(data_path \\ ConfigPersistence.default_data_path(), opts \\ []) do
+    views = ConfigPersistence.collect_views()
+    ConfigPersistence.save_views(data_path, views, opts)
+  end
+
+  @doc """
+  Loads view configuration from the data directory and applies it.
+
+  ## Parameters
+  - `data_path` - Optional path to the DNS data directory (default: from config)
+
+  ## Returns
+  - `:ok` on success
+  - `{:error, reason}` on failure
+  """
+  @spec load_config(String.t()) :: :ok | {:error, term()}
+  def load_config(data_path \\ ConfigPersistence.default_data_path()) do
+    load_config(__MODULE__, data_path)
+  end
+
+  @spec load_config(Supervisor.supervisor(), String.t()) :: :ok | {:error, term()}
+  def load_config(supervisor, data_path) do
+    views_path = Path.join(data_path, "views.toml")
+
+    case YellowDog.Dns.ViewStore.load_views(views_path) do
+      {:ok, views} when views != [] ->
+        # Convert view configs to the format expected by update_views
+        view_configs =
+          Enum.map(views, fn view ->
+            %{
+              name: view.name,
+              priority: view[:priority] || 100,
+              acl: view[:match_clients] || view[:acl],
+              zones: view[:zones] || [],
+              recursion_enabled: view[:recursion] || false,
+              ecs_enabled: view[:ecs_enabled] || false
+            }
+          end)
+
+        update_views(supervisor, view_configs)
+
+      {:ok, []} ->
+        Telemetry.info("No views found in config file", %{path: views_path})
+        :ok
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   # Private Functions

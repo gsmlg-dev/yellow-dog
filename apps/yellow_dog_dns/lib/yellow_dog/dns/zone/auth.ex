@@ -25,6 +25,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defstruct [
     :name,
+    :view_name,
     :table,
     :soa,
     :ns_records,
@@ -56,12 +57,21 @@ defmodule YellowDog.Dns.Zone.Auth do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+    view_name = Keyword.get(opts, :view_name, "default")
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
   def get_name(pid) do
     GenServer.call(pid, :get_name)
+  end
+
+  @doc """
+  Gets the view name this zone belongs to.
+  """
+  @spec get_view(pid()) :: String.t()
+  def get_view(pid) do
+    GenServer.call(pid, :get_view)
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -185,12 +195,13 @@ defmodule YellowDog.Dns.Zone.Auth do
     Process.flag(:trap_exit, true)
 
     zone_name = Keyword.fetch!(opts, :name)
+    view_name = Keyword.get(opts, :view_name, "default")
     zone_data_path = Keyword.get(opts, :zone_data_path)
     zone_file = Keyword.get(opts, :zone_file)
 
     # Create ETS table for zone data
     table =
-      :ets.new(:"zone_#{zone_name}", [
+      :ets.new(:"zone_#{view_name}_#{zone_name}", [
         :bag,
         :protected,
         read_concurrency: true
@@ -198,6 +209,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     state = %__MODULE__{
       name: zone_name,
+      view_name: view_name,
       table: table,
       zone_file: zone_file,
       zone_data_path: zone_data_path,
@@ -227,6 +239,11 @@ defmodule YellowDog.Dns.Zone.Auth do
   @impl true
   def handle_call(:get_name, _from, state) do
     {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call(:get_view, _from, state) do
+    {:reply, state.view_name, state}
   end
 
   @impl true
@@ -818,7 +835,7 @@ defmodule YellowDog.Dns.Zone.Auth do
     end
   end
 
-  defp via_tuple(zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:auth, zone_name}}}
+  defp via_tuple(view_name, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :auth, zone_name}}}
   end
 end

@@ -29,6 +29,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   @type t :: %__MODULE__{
           name: String.t() | nil,
+          view_name: String.t() | nil,
           upstreams: [{:inet.ip_address(), :inet.port_number()}] | nil,
           socket: :gen_udp.socket() | nil,
           timeout: non_neg_integer() | nil,
@@ -46,6 +47,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   defstruct [
     :name,
+    :view_name,
     :upstreams,
     :socket,
     :timeout,
@@ -77,12 +79,21 @@ defmodule YellowDog.Dns.Zone.Forward do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+    view_name = Keyword.get(opts, :view_name, "default")
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
   def get_name(pid) do
     GenServer.call(pid, :get_name)
+  end
+
+  @doc """
+  Gets the view name this zone belongs to.
+  """
+  @spec get_view(pid()) :: String.t()
+  def get_view(pid) do
+    GenServer.call(pid, :get_view)
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -105,6 +116,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   @impl true
   def init(opts) do
     zone_name = Keyword.fetch!(opts, :name)
+    view_name = Keyword.get(opts, :view_name, "default")
     upstreams = parse_upstreams(Keyword.get(opts, :upstreams, []))
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     retries = Keyword.get(opts, :retries, @default_retries)
@@ -114,6 +126,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
     state = %__MODULE__{
       name: zone_name,
+      view_name: view_name,
       upstreams: upstreams,
       socket: socket,
       timeout: timeout,
@@ -131,6 +144,11 @@ defmodule YellowDog.Dns.Zone.Forward do
   @impl true
   def handle_call(:get_name, _from, state) do
     {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call(:get_view, _from, state) do
+    {:reply, state.view_name, state}
   end
 
   @impl true
@@ -365,8 +383,8 @@ defmodule YellowDog.Dns.Zone.Forward do
     "#{:inet.ntoa(ip)}:#{port}"
   end
 
-  defp via_tuple(zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:forward, zone_name}}}
+  defp via_tuple(view_name, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :forward, zone_name}}}
   end
 
   # ===========================================================================

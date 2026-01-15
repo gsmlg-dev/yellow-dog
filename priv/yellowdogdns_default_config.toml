@@ -11,6 +11,8 @@ tcp_enabled = true
 debug = false  # Set to true to enable Abyss debug logging to console
 mode = "forward"
 upstream_servers = ["8.8.8.8", "1.1.1.1"]
+data_path = "data/dns"
+zone_data_path = "data/dns/zones"
 
 [dns.zones.example.com]
 type = "authoritative"

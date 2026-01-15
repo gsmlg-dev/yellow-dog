@@ -541,6 +541,16 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   defp notify_service_change(event, service_id) do
     # Notify web console if available
+    # Map internal event names to expected LiveView event names
+    pubsub_event =
+      case event do
+        :registered -> :service_registered
+        :unregistered -> :service_unregistered
+        :updated -> :service_updated
+        :toggled -> :service_toggled
+        other -> other
+      end
+
     case Process.whereis(YellowDog.Console.PubSub) do
       nil ->
         :ok
@@ -550,7 +560,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
           apply(Phoenix.PubSub, :broadcast, [
             YellowDog.Console.PubSub,
             "mdns:services",
-            {event, service_id}
+            {pubsub_event, service_id}
           ])
         rescue
           _ -> :ok

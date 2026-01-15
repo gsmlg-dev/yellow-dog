@@ -337,10 +337,11 @@ defmodule YellowDog.Dns.View do
   defp resolve_in_zone(state, connection_pid, query_id, query, zone_name) do
     # Try different zone types in order
     zone_types = [:auth, :forward, :stub]
+    view_name = state.name
 
     result =
       Enum.find_value(zone_types, fn zone_type ->
-        case ZoneController.find_zone(zone_type, zone_name) do
+        case ZoneController.find_zone(view_name, zone_type, zone_name) do
           {:ok, zone_pid} ->
             module = zone_module(zone_type)
 
@@ -389,11 +390,27 @@ defmodule YellowDog.Dns.View do
   defp perform_recursion(state, connection_pid, query_id, query) do
     # Notify connection process of recursive step
     send(connection_pid, {:recursive_step, query_id, %{step: :forward}})
+    view_name = state.name
 
-    # For now, try the forward zone "." (root)
-    case ZoneController.find_zone(:forward, ".") do
-      {:ok, zone_pid} ->
-        case YellowDog.Dns.Zone.Forward.resolve(zone_pid, query) do
+    # Try to find forward zone "." in current view, then fall back to default view
+    zone_pid =
+      case ZoneController.find_zone(view_name, :forward, ".") do
+        {:ok, pid} -> pid
+        :error ->
+          # Fall back to default view's forward zone
+          case ZoneController.find_zone("default", :forward, ".") do
+            {:ok, pid} -> pid
+            :error -> nil
+          end
+      end
+
+    case zone_pid do
+      nil ->
+        # No forwarding configured
+        {:error, :servfail}
+
+      pid ->
+        case YellowDog.Dns.Zone.Forward.resolve(pid, query) do
           {:ok, response} ->
             send(connection_pid, {:zone_response, query_id, response})
             cache_response(state, query, response)
@@ -402,10 +419,6 @@ defmodule YellowDog.Dns.View do
           error ->
             error
         end
-
-      :error ->
-        # No forwarding configured
-        {:error, :servfail}
     end
   end
 

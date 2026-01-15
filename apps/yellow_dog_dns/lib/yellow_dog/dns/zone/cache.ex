@@ -27,6 +27,7 @@ defmodule YellowDog.Dns.Zone.Cache do
 
   defstruct [
     :name,
+    :view_name,
     :table,
     :max_size,
     :min_ttl,
@@ -52,12 +53,21 @@ defmodule YellowDog.Dns.Zone.Cache do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+    view_name = Keyword.get(opts, :view_name, "default")
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
   def get_name(pid) do
     GenServer.call(pid, :get_name)
+  end
+
+  @doc """
+  Gets the view name this zone belongs to.
+  """
+  @spec get_view(pid()) :: String.t()
+  def get_view(pid) do
+    GenServer.call(pid, :get_view)
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -104,13 +114,14 @@ defmodule YellowDog.Dns.Zone.Cache do
   @impl true
   def init(opts) do
     zone_name = Keyword.fetch!(opts, :name)
+    view_name = Keyword.get(opts, :view_name, "default")
     max_size = Keyword.get(opts, :max_size, @default_max_size)
     min_ttl = Keyword.get(opts, :min_ttl, @default_min_ttl)
     max_ttl = Keyword.get(opts, :max_ttl, @default_max_ttl)
 
-    # Create ETS table for cache
+    # Create ETS table for cache (view-scoped)
     table =
-      :ets.new(:"cache_#{zone_name}", [
+      :ets.new(:"cache_#{view_name}_#{zone_name}", [
         :set,
         :protected,
         read_concurrency: true
@@ -118,6 +129,7 @@ defmodule YellowDog.Dns.Zone.Cache do
 
     state = %__MODULE__{
       name: zone_name,
+      view_name: view_name,
       table: table,
       max_size: max_size,
       min_ttl: min_ttl,
@@ -127,7 +139,7 @@ defmodule YellowDog.Dns.Zone.Cache do
     # Schedule periodic cleanup
     schedule_cleanup()
 
-    Telemetry.info("Cache zone started", %{name: zone_name, max_size: max_size})
+    Telemetry.info("Cache zone started", %{name: zone_name, view: view_name, max_size: max_size})
 
     {:ok, state}
   end
@@ -135,6 +147,11 @@ defmodule YellowDog.Dns.Zone.Cache do
   @impl true
   def handle_call(:get_name, _from, state) do
     {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call(:get_view, _from, state) do
+    {:reply, state.view_name, state}
   end
 
   @impl true
@@ -377,7 +394,7 @@ defmodule YellowDog.Dns.Zone.Cache do
     Process.send_after(self(), :cleanup, @cleanup_interval)
   end
 
-  defp via_tuple(zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:cache, zone_name}}}
+  defp via_tuple(view_name, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :cache, zone_name}}}
   end
 end

@@ -25,6 +25,7 @@ defmodule YellowDog.Dns.Supervisor do
   use Supervisor
 
   alias YellowDog.Telemetry
+  alias YellowDog.Dns.ConfigPersistence
 
   @doc """
   Starts the DNS supervisor.
@@ -125,35 +126,145 @@ defmodule YellowDog.Dns.Supervisor do
     wait_for_process(YellowDog.Dns.ViewManager)
     wait_for_process(YellowDog.Dns.ZoneController)
 
-    # Start default view if no views configured
+    # Try to load persisted configuration first
+    {persisted_views, persisted_zones} = load_persisted_config()
+
+    # Start views: persisted > opts
     views = Keyword.get(opts, :views, [])
 
-    if Enum.empty?(views) do
-      YellowDog.Dns.ViewManager.start_view(%{
-        name: "default",
-        priority: :infinity,
-        acl: :any,
-        zones: [],
-        rpz_zones: [],
-        recursion_enabled: true,
-        ecs_enabled: false
-      })
-    else
-      Enum.each(views, &YellowDog.Dns.ViewManager.start_view/1)
+    cond do
+      # Use persisted views if available
+      persisted_views != [] ->
+        Telemetry.info("Loading #{length(persisted_views)} views from persisted config")
+        Enum.each(persisted_views, &start_view_from_config/1)
+
+      # Use views from opts if provided
+      views != [] ->
+        Enum.each(views, &YellowDog.Dns.ViewManager.start_view/1)
+
+      true ->
+        :ok
     end
 
-    # Start configured zones
+    # Always ensure default view exists as a catch-all fallback
+    # Default view has priority :infinity (lowest) so it matches only when no other view does
+    ensure_default_view()
+
+    # Start zones: persisted > opts
     zones = Keyword.get(opts, :zones, [])
-    Enum.each(zones, &start_zone/1)
+
+    if persisted_zones != [] do
+      Telemetry.info("Loading #{length(persisted_zones)} zones from persisted config")
+      Enum.each(persisted_zones, &start_zone_from_config/1)
+    else
+      Enum.each(zones, &start_zone/1)
+    end
 
     # Set up default forwarding zone if not configured
     upstreams = get_upstreams()
 
     if upstreams != [] do
-      YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams)
+      # Only start if not already started from persisted config
+      case YellowDog.Dns.ZoneController.find_zone(:forward, ".") do
+        {:ok, _pid} -> :ok
+        :error -> YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams)
+      end
     end
 
     Telemetry.info("DNS supervisor post-init completed")
+  end
+
+  defp load_persisted_config do
+    case ConfigPersistence.load_all() do
+      {:ok, %{views: views, zones: zones}} ->
+        {views, zones}
+
+      {:error, reason} ->
+        Telemetry.warning("Failed to load persisted config", %{reason: inspect(reason)})
+        {[], []}
+    end
+  end
+
+  defp start_view_from_config(view_config) do
+    config = %{
+      name: view_config.name,
+      priority: view_config[:priority] || 100,
+      acl: view_config[:match_clients] || view_config[:acl] || :any,
+      zones: view_config[:zones] || [],
+      rpz_zones: view_config[:rpz_zones] || [],
+      recursion_enabled: view_config[:recursion] || false,
+      ecs_enabled: view_config[:ecs_enabled] || false
+    }
+
+    YellowDog.Dns.ViewManager.start_view(config)
+  end
+
+  # Ensures a default view always exists as a catch-all
+  defp ensure_default_view do
+    case YellowDog.Dns.ViewManager.get_view("default") do
+      {:ok, _pid} ->
+        # Default view already exists
+        :ok
+
+      :error ->
+        # Create default view as catch-all
+        Telemetry.info("Creating default view as catch-all")
+
+        YellowDog.Dns.ViewManager.start_view(%{
+          name: "default",
+          priority: :infinity,
+          acl: :any,
+          zones: [],
+          rpz_zones: [],
+          recursion_enabled: true,
+          ecs_enabled: false
+        })
+    end
+  end
+
+  defp start_zone_from_config(zone_config) do
+    type = zone_config.type
+    name = zone_config.name
+    # Get view_name from config, default to "default" for backward compatibility
+    view_name = zone_config[:view_name] || "default"
+
+    opts =
+      zone_config
+      |> Map.to_list()
+      |> Keyword.delete(:name)
+      |> Keyword.delete(:type)
+      |> Keyword.put(:view_name, view_name)
+
+    # Add zone_data_path for auth zones
+    opts =
+      if type == :auth do
+        zone_file = zone_config[:file]
+        data_path = ConfigPersistence.default_data_path()
+
+        opts =
+          if zone_file do
+            # If file is relative, make it relative to data_path
+            full_path =
+              if Path.type(zone_file) == :relative do
+                Path.join(data_path, zone_file)
+              else
+                zone_file
+              end
+
+            Keyword.put(opts, :zone_file, full_path)
+          else
+            opts
+          end
+
+        case get_zone_data_path() do
+          nil -> opts
+          path -> Keyword.put_new(opts, :zone_data_path, path)
+        end
+      else
+        opts
+      end
+
+    YellowDog.Dns.ZoneController.start_zone(type, name, opts)
   end
 
   defp start_zone(zone_config) do

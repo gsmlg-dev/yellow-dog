@@ -7,6 +7,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
+  alias YellowDog.Dns.ConfigPersistence
 
   @impl true
   def mount(_params, _session, socket) do
@@ -20,7 +21,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
      |> assign(:views, list_views())
      |> assign(:delete_confirm, nil)
      |> assign(:view_form, nil)
-     |> assign(:editing_view, nil)}
+     |> assign(:editing_view, nil)
+     |> assign(:is_default_view, false)}
   end
 
   @impl true
@@ -37,6 +39,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     |> assign(:page_title, "DNS Views")
     |> assign(:view_form, nil)
     |> assign(:editing_view, nil)
+    |> assign(:is_default_view, false)
     |> refresh_views()
   end
 
@@ -57,9 +60,19 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   defp apply_action(socket, :edit, %{"view_name" => view_name}) do
     case get_view_config(view_name) do
       {:ok, config} ->
+        is_default = is_default_view?(view_name)
+
+        # For default view, priority is :infinity (shown as "∞")
+        priority_display =
+          if is_default do
+            "∞"
+          else
+            to_string(config.priority)
+          end
+
         form_data = %{
           "name" => config.name,
-          "priority" => to_string(config.priority),
+          "priority" => priority_display,
           "recursion_enabled" => to_string(config.recursion_enabled),
           "ecs_enabled" => to_string(config.ecs_enabled)
         }
@@ -67,6 +80,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         socket
         |> assign(:page_title, "Edit View - #{view_name}")
         |> assign(:editing_view, view_name)
+        |> assign(:is_default_view, is_default)
         |> assign(:view_form, to_form(form_data))
 
       :error ->
@@ -88,10 +102,19 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   @impl true
   def handle_event("save_view", %{"view" => view_params}, socket) do
     editing = socket.assigns[:editing_view]
+    is_default = socket.assigns[:is_default_view] || false
+
+    # Default view always has priority :infinity (not editable)
+    priority =
+      if is_default do
+        :infinity
+      else
+        String.to_integer(view_params["priority"])
+      end
 
     config = %{
       name: view_params["name"],
-      priority: String.to_integer(view_params["priority"]),
+      priority: priority,
       recursion_enabled: view_params["recursion_enabled"] == "true",
       ecs_enabled: view_params["ecs_enabled"] == "true"
     }
@@ -115,6 +138,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
     case result do
       :ok ->
+        # Persist configuration to files
+        save_config_async()
         action = if editing, do: "updated", else: "created"
 
         {:noreply,
@@ -144,6 +169,9 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     else
       case ViewManager.stop_view(view_name) do
         :ok ->
+          # Persist configuration to files
+          save_config_async()
+
           {:noreply,
            socket
            |> assign(:delete_confirm, nil)
@@ -236,5 +264,18 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     rescue
       _ -> :error
     end
+  end
+
+  defp save_config_async do
+    Task.start(fn ->
+      case ConfigPersistence.save_current() do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          require Logger
+          Logger.warning("Failed to save DNS config: #{inspect(reason)}")
+      end
+    end)
   end
 end

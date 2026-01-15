@@ -195,10 +195,9 @@ defmodule YellowDog.Console.CoreComponents do
 
   def modal(assigns) do
     ~H"""
-    <dialog
+    <div
       id={@id}
-      class="modal"
-      phx-mounted={@show && show_modal(@id)}
+      class={["modal", @show && "modal-open"]}
       phx-remove={hide_modal(@id)}
     >
       <div class="modal-box">
@@ -208,10 +207,10 @@ defmodule YellowDog.Console.CoreComponents do
           {render_slot(@actions)}
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button phx-click={@on_cancel}>close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" phx-click={@on_cancel}>
+        <button type="button">close</button>
+      </div>
+    </div>
     """
   end
 
@@ -468,12 +467,12 @@ defmodule YellowDog.Console.CoreComponents do
 
   def show_modal(js \\ %JS{}, id) when is_binary(id) do
     js
-    |> JS.dispatch("click", to: "##{id}")
+    |> JS.add_class("modal-open", to: "##{id}")
   end
 
   def hide_modal(js \\ %JS{}, id) do
     js
-    |> JS.dispatch("click", to: "##{id} form[method=dialog] button")
+    |> JS.remove_class("modal-open", to: "##{id}")
   end
 
   ## Formatting helpers

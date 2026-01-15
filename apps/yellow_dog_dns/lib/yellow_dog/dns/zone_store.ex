@@ -1,0 +1,394 @@
+defmodule YellowDog.Dns.ZoneStore do
+  @moduledoc """
+  Persistence layer for DNS zone metadata configurations.
+
+  Handles loading and saving zone metadata from/to TOML files.
+  Note: Resource records are stored in standard BIND zone files via Zone.Auth.
+
+  ## File Format
+
+  Zone metadata is stored in TOML format:
+
+      [zones."example.com"]
+      type = "auth"
+      file = "zones/example.com.zone"
+
+      [zones."internal.example.com"]
+      type = "auth"
+      file = "zones/internal.example.com.zone"
+
+      [zones."."]
+      type = "forward"
+      upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
+  """
+
+  @type zone_type :: :auth | :forward | :stub | :cache | :root | :rpz
+  @type zone_config :: %{
+          name: String.t(),
+          type: zone_type(),
+          view_name: String.t() | nil,
+          file: String.t() | nil,
+          upstreams: [String.t()] | nil,
+          ns_records: [String.t()] | nil,
+          ttl: pos_integer() | nil
+        }
+
+  @doc """
+  Loads zone metadata from a TOML file.
+
+  ## Parameters
+  - `file_path` - Path to the zones TOML file
+
+  ## Returns
+  - `{:ok, [zone_config]}` on success
+  - `{:error, reason}` on failure (returns empty list for missing file)
+  """
+  @spec load_zones(String.t()) :: {:ok, [zone_config()]} | {:error, term()}
+  def load_zones(file_path) do
+    with {:ok, content} <- File.read(file_path),
+         {:ok, raw_data} <- parse_toml(content),
+         {:ok, zones} <- extract_zones(raw_data) do
+      validated_zones =
+        zones
+        |> Enum.map(&validate_and_normalize_zone/1)
+        |> Enum.reject(&match?({:error, _}, &1))
+        |> Enum.map(fn {:ok, zone} -> zone end)
+
+      :telemetry.execute(
+        [:yellow_dog, :dns, :zone_store, :loaded],
+        %{zone_count: length(validated_zones)},
+        %{file_path: file_path}
+      )
+
+      {:ok, validated_zones}
+    else
+      {:error, :enoent} ->
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_store, :file_not_found],
+          %{count: 1},
+          %{file_path: file_path}
+        )
+
+        {:ok, []}
+
+      {:error, reason} = error ->
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_store, :load_failed],
+          %{count: 1},
+          %{file_path: file_path, reason: inspect(reason)}
+        )
+
+        error
+    end
+  end
+
+  @doc """
+  Saves zone metadata to a TOML file.
+
+  Performs atomic write by writing to a temporary file first, then renaming.
+  Creates a backup of the existing file if it exists.
+
+  ## Parameters
+  - `file_path` - Path to save the zones file
+  - `zones` - List of zone configurations
+  - `opts` - Options
+    - `:backup` - Create backup before overwriting (default: true)
+
+  ## Returns
+  - `:ok` on success
+  - `{:error, reason}` on failure
+  """
+  @spec save_zones(String.t(), [zone_config()], keyword()) :: :ok | {:error, term()}
+  def save_zones(file_path, zones, opts \\ []) do
+    create_backup? = Keyword.get(opts, :backup, true)
+
+    with {:ok, content} <- format_zones(zones),
+         :ok <- ensure_directory(file_path),
+         :ok <- maybe_create_backup(file_path, create_backup?),
+         :ok <- atomic_write(file_path, content) do
+      :telemetry.execute(
+        [:yellow_dog, :dns, :zone_store, :saved],
+        %{zone_count: length(zones)},
+        %{file_path: file_path}
+      )
+
+      :ok
+    else
+      {:error, reason} = error ->
+        :telemetry.execute(
+          [:yellow_dog, :dns, :zone_store, :save_failed],
+          %{count: 1},
+          %{file_path: file_path, reason: inspect(reason)}
+        )
+
+        error
+    end
+  end
+
+  @doc """
+  Validates a zone configuration.
+
+  ## Parameters
+  - `zone` - Zone configuration map
+
+  ## Returns
+  - `:ok` if valid
+  - `{:error, reason}` if invalid
+  """
+  @spec validate_zone(map()) :: :ok | {:error, String.t()}
+  def validate_zone(zone) do
+    with :ok <- validate_required_fields(zone),
+         :ok <- validate_name(zone.name),
+         :ok <- validate_type(zone.type),
+         :ok <- validate_type_specific(zone) do
+      :ok
+    end
+  end
+
+  # Private functions
+
+  defp parse_toml(content) do
+    case Toml.decode(content) do
+      {:ok, data} -> {:ok, data}
+      {:error, reason} -> {:error, {:toml_parse_error, reason}}
+    end
+  end
+
+  defp extract_zones(data) do
+    case Map.get(data, "zones") do
+      nil ->
+        {:ok, []}
+
+      zones when is_map(zones) ->
+        zone_list =
+          Enum.map(zones, fn {key, config} ->
+            # Key format is either "zone_name" or "view_name:zone_name"
+            # If view_name is in config, use that; otherwise parse from key
+            {zone_name, view_name} = parse_zone_key(key, config)
+
+            config
+            |> Map.put("name", zone_name)
+            |> Map.put_new("view_name", view_name)
+          end)
+
+        {:ok, zone_list}
+    end
+  end
+
+  # Parse zone key to extract zone name and view name
+  # Key format: "zone_name" (default view) or "view_name:zone_name"
+  defp parse_zone_key(key, config) do
+    # If view_name is already in config, use the key as zone name
+    if Map.has_key?(config, "view_name") do
+      # Parse the zone name from the key (strip view prefix if present)
+      zone_name =
+        case String.split(key, ":", parts: 2) do
+          [_view, name] -> name
+          [name] -> name
+        end
+
+      {zone_name, config["view_name"]}
+    else
+      # Legacy format: key is just zone name, belongs to default view
+      case String.split(key, ":", parts: 2) do
+        [view_name, zone_name] -> {zone_name, view_name}
+        [zone_name] -> {zone_name, "default"}
+      end
+    end
+  end
+
+  defp validate_and_normalize_zone(zone) do
+    normalized = normalize_zone_keys(zone)
+
+    case validate_zone(normalized) do
+      :ok -> {:ok, normalized}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp normalize_zone_keys(zone) when is_map(zone) do
+    %{
+      name: get_string_value(zone, [:name, "name"]),
+      type: normalize_type(get_string_value(zone, [:type, "type"], "auth")),
+      view_name: get_string_value(zone, [:view_name, "view_name"], "default"),
+      file: get_string_value(zone, [:file, "file"]),
+      upstreams: get_list_value(zone, [:upstreams, "upstreams"]),
+      ns_records: get_list_value(zone, [:ns_records, "ns_records"]),
+      ttl: get_integer_value(zone, [:ttl, "ttl"])
+    }
+  end
+
+  defp normalize_type(type) when is_atom(type), do: type
+  defp normalize_type("auth"), do: :auth
+  defp normalize_type("forward"), do: :forward
+  defp normalize_type("stub"), do: :stub
+  defp normalize_type("cache"), do: :cache
+  defp normalize_type("root"), do: :root
+  defp normalize_type("rpz"), do: :rpz
+  defp normalize_type(_), do: :auth
+
+  defp get_string_value(map, keys, default \\ nil) do
+    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
+  end
+
+  defp get_integer_value(map, keys, default \\ nil) do
+    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
+      value when is_integer(value) -> value
+      value when is_binary(value) -> String.to_integer(value)
+      _ -> default
+    end
+  end
+
+  defp get_list_value(map, keys, default \\ nil) do
+    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
+      value when is_list(value) -> value
+      _ -> default
+    end
+  end
+
+  defp validate_required_fields(zone) do
+    cond do
+      is_nil(Map.get(zone, :name)) ->
+        {:error, "Missing required field: name"}
+
+      is_nil(Map.get(zone, :type)) ->
+        {:error, "Missing required field: type"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_name(name) when is_binary(name) and byte_size(name) > 0, do: :ok
+  defp validate_name(_), do: {:error, "Invalid zone name"}
+
+  defp validate_type(type) when type in [:auth, :forward, :stub, :cache, :root, :rpz], do: :ok
+  defp validate_type(_), do: {:error, "Invalid zone type"}
+
+  defp validate_type_specific(%{type: :forward, upstreams: upstreams})
+       when is_nil(upstreams) or upstreams == [] do
+    {:error, "Forward zones require upstreams"}
+  end
+
+  defp validate_type_specific(%{type: :stub, ns_records: ns_records})
+       when is_nil(ns_records) or ns_records == [] do
+    {:error, "Stub zones require ns_records"}
+  end
+
+  defp validate_type_specific(_), do: :ok
+
+  defp format_zones(zones) do
+    header = """
+    # DNS Zone Metadata Configuration
+    # Generated by YellowDog DNS
+    #
+    # This file contains zone metadata. Resource records are stored
+    # in standard BIND zone files referenced by the 'file' field.
+    """
+
+    zones_content =
+      zones
+      |> Enum.map(&zone_to_toml/1)
+      |> Enum.join("\n")
+
+    {:ok, header <> "\n" <> zones_content}
+  end
+
+  defp zone_to_toml(zone) do
+    name = zone.name
+    type = Atom.to_string(zone.type)
+    view_name = zone[:view_name] || "default"
+
+    # Use view_name:zone_name as key to ensure uniqueness across views
+    zone_key =
+      if view_name == "default" do
+        name
+      else
+        "#{view_name}:#{name}"
+      end
+
+    lines = [
+      "",
+      "[zones.#{encode_toml_key(zone_key)}]",
+      "type = #{encode_toml_string(type)}",
+      "view_name = #{encode_toml_string(view_name)}"
+    ]
+
+    lines =
+      if zone[:file] do
+        lines ++ ["file = #{encode_toml_string(zone.file)}"]
+      else
+        lines
+      end
+
+    lines =
+      if zone[:upstreams] && length(zone.upstreams) > 0 do
+        upstreams_str = Enum.map_join(zone.upstreams, ", ", &encode_toml_string/1)
+        lines ++ ["upstreams = [#{upstreams_str}]"]
+      else
+        lines
+      end
+
+    lines =
+      if zone[:ns_records] && length(zone.ns_records) > 0 do
+        ns_str = Enum.map_join(zone.ns_records, ", ", &encode_toml_string/1)
+        lines ++ ["ns_records = [#{ns_str}]"]
+      else
+        lines
+      end
+
+    lines =
+      if zone[:ttl] do
+        lines ++ ["ttl = #{zone.ttl}"]
+      else
+        lines
+      end
+
+    Enum.join(lines, "\n")
+  end
+
+  defp encode_toml_key(key) when is_binary(key) do
+    # Zone names may contain dots, so we need to quote them
+    "\"#{String.replace(key, "\"", "\\\"")}\""
+  end
+
+  defp encode_toml_string(value) when is_binary(value) do
+    "\"#{String.replace(value, "\"", "\\\"")}\""
+  end
+
+  defp encode_toml_string(value), do: inspect(value)
+
+  defp ensure_directory(file_path) do
+    dir = Path.dirname(file_path)
+
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      error -> error
+    end
+  end
+
+  defp maybe_create_backup(_file_path, false), do: :ok
+
+  defp maybe_create_backup(file_path, true) do
+    if File.exists?(file_path) do
+      backup_path = file_path <> ".backup"
+      File.cp(file_path, backup_path)
+    else
+      :ok
+    end
+  end
+
+  defp atomic_write(file_path, content) do
+    tmp_path = file_path <> ".tmp"
+
+    with :ok <- File.write(tmp_path, content),
+         :ok <- File.rename(tmp_path, file_path) do
+      :ok
+    else
+      error ->
+        # Clean up temp file on error
+        File.rm(tmp_path)
+        error
+    end
+  end
+end

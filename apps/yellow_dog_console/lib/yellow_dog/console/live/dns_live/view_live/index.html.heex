@@ -82,7 +82,13 @@
                           <% end %>
                         </td>
                         <td>
-                          <span class="font-mono">{view.priority}</span>
+                          <span class="font-mono">
+                            <%= if view.priority == :infinity do %>
+                              ∞
+                            <% else %>
+                              {view.priority}
+                            <% end %>
+                          </span>
                         </td>
                         <td>
                           <%= if view.recursion_enabled do %>
@@ -320,17 +326,32 @@
               <label class="label">
                 <span class="label-text font-semibold">Priority</span>
               </label>
-              <input
-                type="number"
-                name="view[priority]"
-                value={@view_form[:priority].value}
-                class="input input-bordered w-full"
-                min="0"
-                required
-              />
-              <label class="label">
-                <span class="label-text-alt">Lower value = higher priority</span>
-              </label>
+              <%= if @is_default_view do %>
+                <input
+                  type="text"
+                  name="view[priority]"
+                  value="∞ (catch-all)"
+                  class="input input-bordered w-full bg-base-200 font-mono"
+                  disabled
+                />
+                <label class="label">
+                  <span class="label-text-alt text-base-content/60">
+                    Default view priority cannot be changed
+                  </span>
+                </label>
+              <% else %>
+                <input
+                  type="number"
+                  name="view[priority]"
+                  value={@view_form[:priority].value}
+                  class="input input-bordered w-full"
+                  min="0"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt">Lower value = higher priority</span>
+                </label>
+              <% end %>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

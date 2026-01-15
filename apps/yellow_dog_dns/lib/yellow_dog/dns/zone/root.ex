@@ -37,6 +37,7 @@ defmodule YellowDog.Dns.Zone.Root do
 
   defstruct [
     :name,
+    :view_name,
     :root_servers,
     :created_at,
     query_count: 0
@@ -50,12 +51,21 @@ defmodule YellowDog.Dns.Zone.Root do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     zone_name = Keyword.get(opts, :name, ".")
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(zone_name))
+    view_name = Keyword.get(opts, :view_name, "default")
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
   def get_name(pid) do
     GenServer.call(pid, :get_name)
+  end
+
+  @doc """
+  Gets the view name this zone belongs to.
+  """
+  @spec get_view(pid()) :: String.t()
+  def get_view(pid) do
+    GenServer.call(pid, :get_view)
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -86,15 +96,17 @@ defmodule YellowDog.Dns.Zone.Root do
   @impl true
   def init(opts) do
     zone_name = Keyword.get(opts, :name, ".")
+    view_name = Keyword.get(opts, :view_name, "default")
     root_servers = Keyword.get(opts, :root_servers, @default_root_servers)
 
     state = %__MODULE__{
       name: zone_name,
+      view_name: view_name,
       root_servers: root_servers,
       created_at: DateTime.utc_now()
     }
 
-    Telemetry.info("Root zone started", %{name: zone_name, servers: length(root_servers)})
+    Telemetry.info("Root zone started", %{name: zone_name, view: view_name, servers: length(root_servers)})
 
     {:ok, state}
   end
@@ -102,6 +114,11 @@ defmodule YellowDog.Dns.Zone.Root do
   @impl true
   def handle_call(:get_name, _from, state) do
     {:reply, state.name, state}
+  end
+
+  @impl true
+  def handle_call(:get_view, _from, state) do
+    {:reply, state.view_name, state}
   end
 
   @impl true
@@ -134,7 +151,7 @@ defmodule YellowDog.Dns.Zone.Root do
     {:reply, state.root_servers, state}
   end
 
-  defp via_tuple(zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {:root, zone_name}}}
+  defp via_tuple(view_name, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :root, zone_name}}}
   end
 end

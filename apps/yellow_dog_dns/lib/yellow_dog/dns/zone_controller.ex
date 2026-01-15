@@ -9,12 +9,18 @@ defmodule YellowDog.Dns.ZoneController do
   - Root zone (root hints)
   - Cache zones (query caching)
 
+  Zones are scoped to views - each view can have its own set of zones
+  with the same names without conflict.
+
   Zones can be dynamically added, removed, and reloaded.
   """
 
   use DynamicSupervisor
 
   alias YellowDog.Telemetry
+
+  # Default view name for zones not explicitly assigned to a view
+  @default_view "default"
 
   @doc """
   Starts the ZoneController supervisor.
@@ -39,6 +45,8 @@ defmodule YellowDog.Dns.ZoneController do
   - `zone_type` - Type of zone (:auth, :forward, :stub, :root, :cache)
   - `zone_name` - Name of the zone (e.g., "example.com")
   - `config` - Zone-specific configuration
+    - `:view_name` - View this zone belongs to (default: "default")
+    - Other zone-specific options
 
   ## Returns
 
@@ -53,8 +61,9 @@ defmodule YellowDog.Dns.ZoneController do
   @spec start_zone(Supervisor.supervisor(), atom(), String.t(), keyword()) ::
           DynamicSupervisor.on_start_child()
   def start_zone(supervisor, zone_type, zone_name, config) do
+    view_name = Keyword.get(config, :view_name, @default_view)
     module = zone_module(zone_type)
-    opts = Keyword.merge(config, name: zone_name)
+    opts = Keyword.merge(config, name: zone_name, view_name: view_name)
 
     # Add zone_data_path for auth zones to enable persistence
     opts =
@@ -67,8 +76,9 @@ defmodule YellowDog.Dns.ZoneController do
         opts
       end
 
+    # Zone ID is scoped to view: {view_name, zone_type, zone_name}
     child_spec = %{
-      id: {zone_type, zone_name},
+      id: {view_name, zone_type, zone_name},
       start: {module, :start_link, [opts]},
       restart: :permanent,
       type: :worker
@@ -76,11 +86,18 @@ defmodule YellowDog.Dns.ZoneController do
 
     case DynamicSupervisor.start_child(supervisor, child_spec) do
       {:ok, pid} = result ->
-        Telemetry.info("Zone started", %{type: zone_type, name: zone_name, pid: inspect(pid)})
+        Telemetry.info("Zone started", %{
+          view: view_name,
+          type: zone_type,
+          name: zone_name,
+          pid: inspect(pid)
+        })
+
         result
 
       {:error, reason} = error ->
         Telemetry.error("Failed to start zone", %{
+          view: view_name,
           type: zone_type,
           name: zone_name,
           reason: inspect(reason)
@@ -92,19 +109,32 @@ defmodule YellowDog.Dns.ZoneController do
 
   @doc """
   Stops a zone process.
+
+  ## Parameters
+
+  - `view_name` - View the zone belongs to
+  - `zone_type` - Type of zone
+  - `zone_name` - Name of the zone
   """
-  @spec stop_zone(atom(), String.t()) :: :ok | {:error, :not_found}
-  def stop_zone(zone_type, zone_name) do
-    stop_zone(__MODULE__, zone_type, zone_name)
+  @spec stop_zone(String.t(), atom(), String.t()) :: :ok | {:error, :not_found}
+  def stop_zone(view_name, zone_type, zone_name) do
+    stop_zone(__MODULE__, view_name, zone_type, zone_name)
   end
 
-  @spec stop_zone(Supervisor.supervisor(), atom(), String.t()) :: :ok | {:error, :not_found}
-  def stop_zone(supervisor, zone_type, zone_name) do
-    case find_zone(supervisor, zone_type, zone_name) do
+  # Backward compatible version without view_name (uses default view)
+  @spec stop_zone(atom(), String.t()) :: :ok | {:error, :not_found}
+  def stop_zone(zone_type, zone_name) when is_atom(zone_type) do
+    stop_zone(__MODULE__, @default_view, zone_type, zone_name)
+  end
+
+  @spec stop_zone(Supervisor.supervisor(), String.t(), atom(), String.t()) ::
+          :ok | {:error, :not_found}
+  def stop_zone(supervisor, view_name, zone_type, zone_name) do
+    case find_zone(supervisor, view_name, zone_type, zone_name) do
       {:ok, pid} ->
         DynamicSupervisor.terminate_child(supervisor, pid)
 
-        Telemetry.info("Zone stopped", %{type: zone_type, name: zone_name})
+        Telemetry.info("Zone stopped", %{view: view_name, type: zone_type, name: zone_name})
         :ok
 
       :error ->
@@ -113,56 +143,131 @@ defmodule YellowDog.Dns.ZoneController do
   end
 
   @doc """
-  Finds a zone process by type and name.
+  Finds a zone process by view, type and name.
   """
-  @spec find_zone(atom(), String.t()) :: {:ok, pid()} | :error
-  def find_zone(zone_type, zone_name) do
-    find_zone(__MODULE__, zone_type, zone_name)
+  @spec find_zone(String.t(), atom(), String.t()) :: {:ok, pid()} | :error
+  def find_zone(view_name, zone_type, zone_name) do
+    find_zone(__MODULE__, view_name, zone_type, zone_name)
   end
 
-  @spec find_zone(Supervisor.supervisor(), atom(), String.t()) :: {:ok, pid()} | :error
-  def find_zone(supervisor, zone_type, zone_name) do
-    module = zone_module(zone_type)
+  # Backward compatible version without view_name (uses default view)
+  @spec find_zone(atom(), String.t()) :: {:ok, pid()} | :error
+  def find_zone(zone_type, zone_name) when is_atom(zone_type) do
+    find_zone(__MODULE__, @default_view, zone_type, zone_name)
+  end
 
+  @spec find_zone(Supervisor.supervisor(), String.t(), atom(), String.t()) :: {:ok, pid()} | :error
+  def find_zone(supervisor, view_name, zone_type, zone_name) do
+    module = zone_module(zone_type)
     children = DynamicSupervisor.which_children(supervisor)
 
+    # First try exact ID match
     case Enum.find(children, fn {id, _pid, _type, _modules} ->
-           id == {zone_type, zone_name}
+           id == {view_name, zone_type, zone_name}
          end) do
       {_id, pid, _type, _modules} when is_pid(pid) -> {:ok, pid}
-      _ -> find_by_module_and_name(children, module, zone_name)
+      _ -> find_by_module_view_and_name(children, module, view_name, zone_name)
     end
   end
 
   @doc """
   Lists all active zones.
+
+  Returns a list of tuples: `{view_name, zone_type, zone_name, pid}`
   """
-  @spec list_zones() :: [{atom(), String.t(), pid()}]
+  @spec list_zones() :: [{String.t(), atom(), String.t(), pid()}]
   def list_zones do
     list_zones(__MODULE__)
   end
 
-  @spec list_zones(Supervisor.supervisor()) :: [{atom(), String.t(), pid()}]
+  @spec list_zones(Supervisor.supervisor()) :: [{String.t(), atom(), String.t(), pid()}]
   def list_zones(supervisor) do
     DynamicSupervisor.which_children(supervisor)
     |> Enum.filter(fn {_id, pid, _type, _modules} -> is_pid(pid) end)
-    |> Enum.map(fn {{zone_type, zone_name}, pid, _type, _modules} ->
-      {zone_type, zone_name, pid}
+    |> Enum.map(fn {id, pid, _type, modules} ->
+      case id do
+        {view_name, zone_type, zone_name} ->
+          {view_name, zone_type, zone_name, pid}
+
+        # Legacy format without view_name
+        {zone_type, zone_name} ->
+          {@default_view, zone_type, zone_name, pid}
+
+        _ ->
+          # ID is :undefined, extract info from module and process
+          zone_type = module_to_zone_type(List.first(modules))
+          zone_name = get_zone_name_from_pid(modules, pid)
+          view_name = get_zone_view_from_pid(modules, pid)
+          {view_name, zone_type, zone_name, pid}
+      end
     end)
+    |> Enum.filter(fn {_view, _type, name, _pid} -> name != nil end)
+  end
+
+  @doc """
+  Lists zones for a specific view.
+  """
+  @spec list_zones_for_view(String.t()) :: [{atom(), String.t(), pid()}]
+  def list_zones_for_view(view_name) do
+    list_zones_for_view(__MODULE__, view_name)
+  end
+
+  @spec list_zones_for_view(Supervisor.supervisor(), String.t()) :: [{atom(), String.t(), pid()}]
+  def list_zones_for_view(supervisor, view_name) do
+    list_zones(supervisor)
+    |> Enum.filter(fn {v, _type, _name, _pid} -> v == view_name end)
+    |> Enum.map(fn {_view, type, name, pid} -> {type, name, pid} end)
+  end
+
+  # Map module back to zone type
+  defp module_to_zone_type(YellowDog.Dns.Zone.Auth), do: :auth
+  defp module_to_zone_type(YellowDog.Dns.Zone.Forward), do: :forward
+  defp module_to_zone_type(YellowDog.Dns.Zone.Stub), do: :stub
+  defp module_to_zone_type(YellowDog.Dns.Zone.Root), do: :root
+  defp module_to_zone_type(YellowDog.Dns.Zone.Cache), do: :cache
+  defp module_to_zone_type(YellowDog.Dns.Zone.RPZ), do: :rpz
+  defp module_to_zone_type(_), do: :unknown
+
+  # Get zone name from process
+  defp get_zone_name_from_pid(modules, pid) do
+    module = List.first(modules)
+
+    try do
+      module.get_name(pid)
+    catch
+      _, _ -> nil
+    end
+  end
+
+  # Get zone view from process
+  defp get_zone_view_from_pid(modules, pid) do
+    module = List.first(modules)
+
+    try do
+      module.get_view(pid)
+    catch
+      _, _ -> @default_view
+    end
   end
 
   @doc """
   Reloads a zone with new configuration.
   """
-  @spec reload_zone(atom(), String.t(), keyword()) :: :ok | {:error, term()}
-  def reload_zone(zone_type, zone_name, config) do
-    reload_zone(__MODULE__, zone_type, zone_name, config)
+  @spec reload_zone(String.t(), atom(), String.t(), keyword()) :: :ok | {:error, term()}
+  def reload_zone(view_name, zone_type, zone_name, config) do
+    reload_zone(__MODULE__, view_name, zone_type, zone_name, config)
   end
 
-  @spec reload_zone(Supervisor.supervisor(), atom(), String.t(), keyword()) ::
+  # Backward compatible version without view_name
+  @spec reload_zone(atom(), String.t(), keyword()) :: :ok | {:error, term()}
+  def reload_zone(zone_type, zone_name, config) when is_atom(zone_type) do
+    reload_zone(__MODULE__, @default_view, zone_type, zone_name, config)
+  end
+
+  @spec reload_zone(Supervisor.supervisor(), String.t(), atom(), String.t(), keyword()) ::
           :ok | {:error, term()}
-  def reload_zone(supervisor, zone_type, zone_name, config) do
-    case find_zone(supervisor, zone_type, zone_name) do
+  def reload_zone(supervisor, view_name, zone_type, zone_name, config) do
+    case find_zone(supervisor, view_name, zone_type, zone_name) do
       {:ok, pid} ->
         module = zone_module(zone_type)
         module.reload(pid, config)
@@ -180,12 +285,15 @@ defmodule YellowDog.Dns.ZoneController do
   defp zone_module(:cache), do: YellowDog.Dns.Zone.Cache
   defp zone_module(:rpz), do: YellowDog.Dns.Zone.RPZ
 
-  defp find_by_module_and_name(children, module, zone_name) do
+  defp find_by_module_view_and_name(children, module, view_name, zone_name) do
     Enum.find_value(children, :error, fn {_id, pid, _type, modules} ->
       if is_pid(pid) and module in modules do
-        # Check if this is the right zone by calling get_name
+        # Check if this is the right zone by calling get_name and get_view
         try do
-          if module.get_name(pid) == zone_name do
+          pid_name = module.get_name(pid)
+          pid_view = try do module.get_view(pid) catch _, _ -> @default_view end
+
+          if pid_name == zone_name and pid_view == view_name do
             {:ok, pid}
           else
             nil

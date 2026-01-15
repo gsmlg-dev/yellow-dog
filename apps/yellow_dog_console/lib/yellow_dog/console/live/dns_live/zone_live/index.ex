@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ZoneController
+  alias YellowDog.Dns.ConfigPersistence
 
   @impl true
   def mount(_params, _session, socket) do
@@ -69,7 +70,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
 
-    case get_zone_config(zone_type_atom, zone_name) do
+    case get_zone_config(view_name, zone_type_atom, zone_name) do
       {:ok, config} ->
         form_data = %{
           "name" => config.name,
@@ -137,9 +138,13 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     # Build config based on zone type
     config = build_zone_config(zone_type, zone_params)
 
+    # Add view_name to config so zone is scoped to this view
+    config = Keyword.put(config, :view_name, view_name)
+
     result =
       if editing do
-        case ZoneController.reload_zone(editing.type, editing.name, config) do
+        # Pass view_name for view-scoped zone lookup
+        case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
           :ok -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -167,6 +172,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
     case result do
       :ok ->
+        # Persist configuration to files
+        save_config_async()
         action = if editing, do: "updated", else: "created"
 
         {:noreply,
@@ -203,9 +210,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   @impl true
   def handle_event("delete_zone", _params, socket) do
     %{zone_type: zone_type, name: zone_name} = socket.assigns.delete_confirm
+    view_name = socket.assigns.view_name
 
-    case ZoneController.stop_zone(zone_type, zone_name) do
+    # Pass view_name for view-scoped zone deletion
+    case ZoneController.stop_zone(view_name, zone_type, zone_name) do
       :ok ->
+        # Persist configuration to files
+        save_config_async()
+
         {:noreply,
          socket
          |> assign(:delete_confirm, nil)
@@ -296,7 +308,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       case ViewManager.get_view(view_name) do
         {:ok, pid} ->
           stats = View.stats(pid)
-          zones = get_zones_with_details(stats)
+          zones = get_zones_with_details(stats, view_name)
 
           view = %{
             name: view_name,
@@ -313,12 +325,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     end
   end
 
-  defp get_zones_with_details(stats) do
+  defp get_zones_with_details(stats, view_name) do
     zones_config = Map.get(stats, :zones, [])
 
     Enum.map(zones_config, fn
       {type, name} ->
-        zone_stats = get_zone_stats(type, name)
+        zone_stats = get_zone_stats(view_name, type, name)
         Map.merge(%{type: type, name: name}, zone_stats)
 
       name when is_binary(name) ->
@@ -326,9 +338,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     end)
   end
 
-  defp get_zone_stats(type, name) do
+  defp get_zone_stats(view_name, type, name) do
     try do
-      case ZoneController.find_zone(type, name) do
+      # Use view-scoped zone lookup
+      case ZoneController.find_zone(view_name, type, name) do
         {:ok, pid} ->
           module = zone_module(type)
           stats = module.stats(pid)
@@ -346,9 +359,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     end
   end
 
-  defp get_zone_config(zone_type, zone_name) do
+  defp get_zone_config(view_name, zone_type, zone_name) do
     try do
-      case ZoneController.find_zone(zone_type, zone_name) do
+      # Use view-scoped zone lookup
+      case ZoneController.find_zone(view_name, zone_type, zone_name) do
         {:ok, pid} ->
           module = zone_module(zone_type)
           stats = module.stats(pid)
@@ -386,4 +400,17 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   def zone_type_label(:stub), do: "Stub"
   def zone_type_label(:cache), do: "Cache"
   def zone_type_label(_), do: "Unknown"
+
+  defp save_config_async do
+    Task.start(fn ->
+      case ConfigPersistence.save_current() do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          require Logger
+          Logger.warning("Failed to save DNS config: #{inspect(reason)}")
+      end
+    end)
+  end
 end
