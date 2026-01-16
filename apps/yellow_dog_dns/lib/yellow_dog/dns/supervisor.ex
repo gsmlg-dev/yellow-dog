@@ -186,9 +186,17 @@ defmodule YellowDog.Dns.Supervisor do
   end
 
   defp start_view_from_config(view_config) do
+    # Convert 999999 back to :infinity for default view priority
+    priority =
+      case view_config[:priority] do
+        999_999 -> :infinity
+        nil -> 100
+        p -> p
+      end
+
     config = %{
       name: view_config.name,
-      priority: view_config[:priority] || 100,
+      priority: priority,
       acl: view_config[:match_clients] || view_config[:acl] || :any,
       zones: view_config[:zones] || [],
       rpz_zones: view_config[:rpz_zones] || [],

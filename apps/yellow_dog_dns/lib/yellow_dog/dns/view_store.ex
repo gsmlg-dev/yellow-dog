@@ -281,11 +281,20 @@ defmodule YellowDog.Dns.ViewStore do
   end
 
   defp view_to_toml(view) do
+    # Handle :infinity priority (used for default view) by using a large number
+    priority =
+      case view[:priority] do
+        :infinity -> 999_999
+        nil -> 100
+        p when is_integer(p) -> p
+        _ -> 100
+      end
+
     lines = [
       "",
       "[[view]]",
       "name = #{encode_toml_string(view.name)}",
-      "priority = #{view[:priority] || 100}"
+      "priority = #{priority}"
     ]
 
     lines =
@@ -300,7 +309,16 @@ defmodule YellowDog.Dns.ViewStore do
 
     lines =
       if view[:zones] && length(view.zones) > 0 do
-        zones_str = Enum.map_join(view.zones, ", ", &encode_toml_string/1)
+        # Zones may be stored as {type, name} tuples or just names
+        # Convert to just names for TOML storage (type is in zones.toml)
+        zone_names =
+          Enum.map(view.zones, fn
+            {_type, name} when is_binary(name) -> name
+            name when is_binary(name) -> name
+            other -> to_string(other)
+          end)
+
+        zones_str = Enum.map_join(zone_names, ", ", &encode_toml_string/1)
         lines ++ ["zones = [#{zones_str}]"]
       else
         lines
