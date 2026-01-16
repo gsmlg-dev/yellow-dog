@@ -124,7 +124,7 @@ defmodule YellowDog.ServiceHeartbeat do
           service: :dns,
           status: :running,
           zones: get_in(stats, [:zones, :count]) || 0,
-          views: get_in(stats, [:views, :count]) || 0,
+          views: get_in(stats, [:views, :view_count]) || 0,
           connections: get_in(stats, [:connections, :active]) || 0,
           info: status[:info]
         })
