@@ -106,6 +106,46 @@ YellowDog.list_services()
 # => [:dns, :mdns, :dhcpv4, :dhcpv6]
 ```
 
+## Data and Storage
+
+Yellow Dog DNS stores runtime data and configuration in the following locations:
+
+### Data Directory Structure
+
+```
+data/                           # Runtime data (not version controlled)
+├── dns/
+│   ├── views.toml              # DNS views configuration
+│   ├── zones.toml              # DNS zones configuration
+│   └── zones/                  # Zone file storage (BIND format)
+│       └── example.com.zone
+└── mdns_services.toml          # mDNS service registrations
+```
+
+### Configuration Files
+
+| File | Description |
+|------|-------------|
+| `data/dns/views.toml` | DNS view definitions with ACL rules |
+| `data/dns/zones.toml` | Zone metadata (type, name, upstreams) |
+| `data/dns/zones/*.zone` | Zone data files in BIND format |
+| `data/mdns_services.toml` | Registered mDNS services |
+| `config/config.exs` | Application configuration |
+| `config/runtime.exs` | Runtime configuration |
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `YELLOW_DOG_DATA_DIR` | Base directory for runtime data | `./data` |
+| `YELLOW_DOG_CONFIG_FILE` | Path to main config file | `./config.toml` |
+
+### Persistence
+
+- **DNS Zones**: Zone records are persisted to BIND-format zone files in `data/dns/zones/`
+- **Views & Zones Config**: View and zone metadata is saved to TOML files automatically
+- **Backup Files**: `.backup` files are created before each save operation
+
 ## Development
 
 ### Project Structure
