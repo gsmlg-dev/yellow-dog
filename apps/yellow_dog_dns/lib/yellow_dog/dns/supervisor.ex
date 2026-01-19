@@ -95,6 +95,9 @@ defmodule YellowDog.Dns.Supervisor do
       {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.ConnectionRegistry},
 
+      # AclRegistry - manages named ACL definitions
+      {YellowDog.Dns.AclRegistry, acl_file: get_acl_file()},
+
       # ZoneController - supervises zone processes
       {YellowDog.Dns.ZoneController, name: YellowDog.Dns.ZoneController},
 
@@ -296,6 +299,22 @@ defmodule YellowDog.Dns.Supervisor do
 
   defp get_zone_data_path do
     apply(YellowDog.Config, :get, [:dns, :zone_data_path])
+  rescue
+    _ -> nil
+  end
+
+  defp get_acl_file do
+    case apply(YellowDog.Config, :get, [:dns, :acl_file]) do
+      nil ->
+        # Default to data directory if zone_data_path is configured
+        case get_zone_data_path() do
+          nil -> nil
+          path -> Path.join(path, "acls.toml")
+        end
+
+      file ->
+        file
+    end
   rescue
     _ -> nil
   end

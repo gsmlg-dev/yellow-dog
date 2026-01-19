@@ -22,7 +22,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
      |> assign(:delete_confirm, nil)
      |> assign(:view_form, nil)
      |> assign(:editing_view, nil)
-     |> assign(:is_default_view, false)}
+     |> assign(:is_default_view, false)
+     |> assign(:countries, GeoIpDb.list_countries())
+     |> assign(:selected_countries, [])
+     |> assign(:country_search, "")}
   end
 
   @impl true
@@ -40,6 +43,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     |> assign(:view_form, nil)
     |> assign(:editing_view, nil)
     |> assign(:is_default_view, false)
+    |> assign(:selected_countries, [])
+    |> assign(:country_search, "")
     |> refresh_views()
   end
 
@@ -48,12 +53,16 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       "name" => "",
       "priority" => "100",
       "recursion_enabled" => "true",
-      "ecs_enabled" => "false"
+      "ecs_enabled" => "false",
+      "acl_type" => "any"
     }
 
     socket
     |> assign(:page_title, "New View")
     |> assign(:editing_view, nil)
+    |> assign(:is_default_view, false)
+    |> assign(:selected_countries, [])
+    |> assign(:country_search, "")
     |> assign(:view_form, to_form(form_data))
   end
 
@@ -70,17 +79,23 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
             to_string(config.priority)
           end
 
+        # Extract ACL type and selected countries
+        {acl_type, selected_countries} = parse_acl_for_form(config.acl)
+
         form_data = %{
           "name" => config.name,
           "priority" => priority_display,
           "recursion_enabled" => to_string(config.recursion_enabled),
-          "ecs_enabled" => to_string(config.ecs_enabled)
+          "ecs_enabled" => to_string(config.ecs_enabled),
+          "acl_type" => acl_type
         }
 
         socket
         |> assign(:page_title, "Edit View - #{view_name}")
         |> assign(:editing_view, view_name)
         |> assign(:is_default_view, is_default)
+        |> assign(:selected_countries, selected_countries)
+        |> assign(:country_search, "")
         |> assign(:view_form, to_form(form_data))
 
       :error ->
@@ -112,11 +127,20 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         String.to_integer(view_params["priority"])
       end
 
+    # Build ACL config based on type (not for default view)
+    acl_config =
+      if is_default do
+        :any
+      else
+        build_acl_config(view_params["acl_type"], socket.assigns.selected_countries)
+      end
+
     config = %{
       name: view_params["name"],
       priority: priority,
       recursion_enabled: view_params["recursion_enabled"] == "true",
-      ecs_enabled: view_params["ecs_enabled"] == "true"
+      ecs_enabled: view_params["ecs_enabled"] == "true",
+      acl: acl_config
     }
 
     result =
@@ -194,7 +218,50 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   @impl true
   def handle_event("cancel", _params, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/dns/views")}
+    {:noreply,
+     socket
+     |> assign(:selected_countries, [])
+     |> assign(:country_search, "")
+     |> push_navigate(to: ~p"/dns/views")}
+  end
+
+  @impl true
+  def handle_event("toggle_country", %{"code" => code}, socket) do
+    selected = socket.assigns.selected_countries
+
+    updated =
+      if code in selected do
+        List.delete(selected, code)
+      else
+        [code | selected]
+      end
+
+    {:noreply, assign(socket, :selected_countries, Enum.sort(updated))}
+  end
+
+  @impl true
+  def handle_event("search_country", %{"search" => search}, socket) do
+    {:noreply, assign(socket, :country_search, search)}
+  end
+
+  @impl true
+  def handle_event("clear_country_search", _params, socket) do
+    {:noreply, assign(socket, :country_search, "")}
+  end
+
+  @impl true
+  def handle_event("acl_type_changed", %{"view" => %{"acl_type" => acl_type}}, socket) do
+    form = socket.assigns.view_form
+
+    form_data = %{
+      "name" => form[:name].value,
+      "priority" => form[:priority].value,
+      "recursion_enabled" => form[:recursion_enabled].value,
+      "ecs_enabled" => form[:ecs_enabled].value,
+      "acl_type" => acl_type
+    }
+
+    {:noreply, assign(socket, :view_form, to_form(form_data))}
   end
 
   # ============================================================================
@@ -253,7 +320,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
             name: stats.name,
             priority: stats.priority,
             recursion_enabled: stats.recursion_enabled,
-            ecs_enabled: stats.ecs_enabled
+            ecs_enabled: stats.ecs_enabled,
+            acl: Map.get(stats, :acl, :any)
           }
 
           {:ok, config}
@@ -264,6 +332,58 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     rescue
       _ -> :error
     end
+  end
+
+  defp parse_acl_for_form(acl) do
+    case acl do
+      :any -> {"any", []}
+      :none -> {"none", []}
+      "localhost" -> {"localhost", []}
+      "localnets" -> {"localnets", []}
+      rules when is_list(rules) -> extract_acl_type_and_countries(rules)
+      _ -> {"any", []}
+    end
+  end
+
+  defp extract_acl_type_and_countries(rules) do
+    # Check if rules contain geo rules
+    geo_countries =
+      Enum.flat_map(rules, fn
+        {:allow, {:geo, countries}} -> countries
+        {:deny, {:geo, countries}} -> countries
+        _ -> []
+      end)
+
+    if length(geo_countries) > 0 do
+      {"geo", Enum.sort(Enum.uniq(geo_countries))}
+    else
+      {"custom", []}
+    end
+  end
+
+  defp build_acl_config(acl_type, selected_countries) do
+    case acl_type do
+      "any" -> :any
+      "none" -> :none
+      "localhost" -> "localhost"
+      "localnets" -> "localnets"
+      "geo" when selected_countries != [] -> [{:allow, {:geo, selected_countries}}]
+      "geo" -> :any
+      _ -> :any
+    end
+  end
+
+  defp filtered_countries(countries, "") do
+    countries
+  end
+
+  defp filtered_countries(countries, search) do
+    search_lower = String.downcase(search)
+
+    Enum.filter(countries, fn %{code: code, name: name} ->
+      String.contains?(String.downcase(name), search_lower) or
+        String.contains?(String.downcase(code), search_lower)
+    end)
   end
 
   defp save_config_async do

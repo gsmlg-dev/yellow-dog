@@ -168,6 +168,44 @@ defmodule GeoIpDb do
   end
 
   @doc """
+  Lists all available countries with their ISO 3166-1 alpha-2 codes.
+
+  This is useful for building country selection UIs for geo-based ACLs.
+
+  ## Examples
+
+      iex> countries = GeoIpDb.list_countries()
+      iex> length(countries)
+      249
+      iex> hd(countries)
+      %{code: "AD", name: "Andorra"}
+  """
+  @spec list_countries() :: [%{code: String.t(), name: String.t()}]
+  defdelegate list_countries, to: GeoIpDb.Countries, as: :list
+
+  @doc """
+  Gets a country by its ISO 3166-1 alpha-2 code.
+
+  ## Examples
+
+      iex> GeoIpDb.get_country("US")
+      {:ok, %{code: "US", name: "United States"}}
+  """
+  @spec get_country(String.t()) :: {:ok, %{code: String.t(), name: String.t()}} | {:error, :not_found}
+  defdelegate get_country(code), to: GeoIpDb.Countries, as: :get
+
+  @doc """
+  Searches countries by name (case-insensitive).
+
+  ## Examples
+
+      iex> GeoIpDb.search_countries("united")
+      [%{code: "AE", name: "United Arab Emirates"}, ...]
+  """
+  @spec search_countries(String.t()) :: [%{code: String.t(), name: String.t()}]
+  defdelegate search_countries(query), to: GeoIpDb.Countries, as: :search
+
+  @doc """
   Gets database metadata.
 
   ## Examples

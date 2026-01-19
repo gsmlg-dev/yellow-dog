@@ -3,9 +3,9 @@ defmodule YellowDog.Dns.View.ACL do
   Access Control List (ACL) implementation for DNS views.
 
   ACLs define which clients can access specific DNS views based on
-  their IP addresses. An ACL consists of:
+  their IP addresses or geographic location. An ACL consists of:
   - Name (identifier)
-  - Rules (IP addresses, CIDR blocks, or named ACLs)
+  - Rules (IP addresses, CIDR blocks, geographic locations, or named ACLs)
   - Match logic (allow/deny)
 
   ## Built-in ACLs
@@ -14,6 +14,16 @@ defmodule YellowDog.Dns.View.ACL do
   - `"none"` - Matches no clients
   - `"localhost"` - Matches 127.0.0.1 and ::1
   - `"localnets"` - Matches RFC 1918 private networks
+
+  ## Rule Types
+
+  ### IP/CIDR Rules
+      {:allow, {10, 0, 0, 0}, 8}      # Allow 10.0.0.0/8
+      {:deny, "192.168.1.0/24"}       # Deny 192.168.1.0/24
+
+  ### Geo Rules
+      {:allow, {:geo, ["US", "CA"]}}  # Allow from USA and Canada
+      {:deny, {:geo, ["CN", "RU"]}}   # Deny from China and Russia
 
   ## Examples
 
@@ -35,15 +45,23 @@ defmodule YellowDog.Dns.View.ACL do
       ...>   {:allow, "203.0.113.0/24"},
       ...>   {:deny, "203.0.113.100/32"}
       ...> ])
+
+      # Use geo-based rules
+      iex> north_america = ACL.new("north_america", [
+      ...>   {:allow, {:geo, ["US", "CA", "MX"]}}
+      ...> ])
   """
 
   defstruct [:name, :rules]
 
   @type ip_address :: :inet.ip_address()
   @type cidr :: {ip_address(), non_neg_integer()}
+  @type geo_rule :: {:geo, [String.t()]}
   @type rule ::
-          {:allow, ip_address() | cidr() | String.t()}
-          | {:deny, ip_address() | cidr() | String.t()}
+          {:allow, ip_address() | cidr() | String.t() | geo_rule()}
+          | {:deny, ip_address() | cidr() | String.t() | geo_rule()}
+          | {:allow, ip_address(), non_neg_integer()}
+          | {:deny, ip_address(), non_neg_integer()}
   @type t :: %__MODULE__{
           name: String.t(),
           rules: [rule()]
@@ -236,6 +254,24 @@ defmodule YellowDog.Dns.View.ACL do
         end
 
       {:error, _} ->
+        :no_match
+    end
+  end
+
+  # Geo-based rule matching
+  # Matches clients based on their geographic location (country)
+  defp match_rule?({action, {:geo, country_codes}}, client_ip)
+       when action in [:allow, :deny] and is_list(country_codes) do
+    case GeoIpDb.country_code(client_ip) do
+      {:ok, code} when is_binary(code) ->
+        if code in country_codes do
+          {:match, action}
+        else
+          :no_match
+        end
+
+      # IP not found in geo database, no match
+      _ ->
         :no_match
     end
   end

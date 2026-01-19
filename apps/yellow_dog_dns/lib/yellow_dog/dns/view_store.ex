@@ -17,10 +17,22 @@ defmodule YellowDog.Dns.ViewStore do
       ecs_enabled = false
       zones = ["example.com", "internal.example.com"]
 
+      # Network-based ACL
       [[view.acl]]
       action = "allow"
       network = "10.0.0.0/8"
+
+      # Geographic ACL (by country)
+      [[view.acl]]
+      action = "allow"
+      geo_countries = ["US", "CA", "MX"]
   """
+
+  @type acl_entry :: %{
+          action: String.t(),
+          network: String.t() | nil,
+          geo_countries: [String.t()] | nil
+        }
 
   @type view_config :: %{
           name: String.t(),
@@ -29,7 +41,7 @@ defmodule YellowDog.Dns.ViewStore do
           recursion: boolean(),
           ecs_enabled: boolean(),
           zones: [String.t()],
-          acl: [%{action: String.t(), network: String.t()}] | nil
+          acl: [acl_entry()] | nil
         }
 
   @doc """
@@ -196,10 +208,24 @@ defmodule YellowDog.Dns.ViewStore do
   end
 
   defp normalize_acl_entry(entry) when is_map(entry) do
-    %{
-      action: get_string_value(entry, [:action, "action"], "allow"),
-      network: get_string_value(entry, [:network, "network"])
+    base = %{
+      action: get_string_value(entry, [:action, "action"], "allow")
     }
+
+    # Check if this is a geo ACL or network ACL
+    geo_countries = get_list_value(entry, [:geo_countries, "geo_countries"], [])
+    network = get_string_value(entry, [:network, "network"])
+
+    cond do
+      length(geo_countries) > 0 ->
+        Map.put(base, :geo_countries, geo_countries)
+
+      network != nil ->
+        Map.put(base, :network, network)
+
+      true ->
+        base
+    end
   end
 
   defp get_string_value(map, keys, default \\ nil) do
@@ -251,7 +277,8 @@ defmodule YellowDog.Dns.ViewStore do
   defp validate_acl(acl) when is_list(acl) do
     invalid =
       Enum.reject(acl, fn entry ->
-        is_map(entry) and Map.has_key?(entry, :action) and Map.has_key?(entry, :network)
+        is_map(entry) and Map.has_key?(entry, :action) and
+          (Map.has_key?(entry, :network) or Map.has_key?(entry, :geo_countries))
       end)
 
     if Enum.empty?(invalid) do
@@ -328,12 +355,24 @@ defmodule YellowDog.Dns.ViewStore do
       if view[:acl] && length(view.acl) > 0 do
         acl_lines =
           Enum.flat_map(view.acl, fn acl_entry ->
-            [
+            base_lines = [
               "",
               "[[view.acl]]",
-              "action = #{encode_toml_string(acl_entry.action)}",
-              "network = #{encode_toml_string(acl_entry.network)}"
+              "action = #{encode_toml_string(to_string(acl_entry.action))}"
             ]
+
+            # Add either network or geo_countries
+            cond do
+              Map.has_key?(acl_entry, :geo_countries) and is_list(acl_entry.geo_countries) ->
+                countries_str = Enum.map_join(acl_entry.geo_countries, ", ", &encode_toml_string/1)
+                base_lines ++ ["geo_countries = [#{countries_str}]"]
+
+              Map.has_key?(acl_entry, :network) and acl_entry.network != nil ->
+                base_lines ++ ["network = #{encode_toml_string(acl_entry.network)}"]
+
+              true ->
+                base_lines
+            end
           end)
 
         lines ++ acl_lines
