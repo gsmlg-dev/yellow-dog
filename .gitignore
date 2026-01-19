@@ -50,6 +50,7 @@ yellow_dog-*.tar
 
 /apps/yellow_dog_mdns/data/
 /apps/yellow_dog_dns/priv/zones/
+/apps/geo_ip_db/priv/data/*.mmdb
 /data/
 
 
