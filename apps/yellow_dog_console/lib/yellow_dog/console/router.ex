@@ -8,6 +8,7 @@ defmodule YellowDog.Console.Router do
     plug :put_root_layout, {YellowDog.Console.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug YellowDog.Console.Plugs.BasicAuth
   end
 
   pipeline :api do

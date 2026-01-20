@@ -55,6 +55,11 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :yellow_dog_console, dev_routes: true
 
+# Disable basic authentication in development
+# Set CONSOLE_AUTH_ENABLED=true to enable during dev
+config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth,
+  enabled: System.get_env("CONSOLE_AUTH_ENABLED") == "true"
+
 # Settings page configuration path for development
 config :yellow_dog_console, config_path: "priv/yellowdogdns_default_config.toml"
 

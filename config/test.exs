@@ -54,3 +54,7 @@ config :yellow_dog_telemetry,
 
 # Disable Swoosh API client during tests
 config :yellow_dog_console, :swoosh_api_client, false
+
+# Disable basic authentication during tests by default
+config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth,
+  enabled: false
