@@ -1335,8 +1335,19 @@
   - match_domain/2 tests (4): domain matching byte counts
   - Protocol tests (10): String.Chars, Inspect, DNS.Parameter
   - Data format tests (2): binary encoding verification
-- [x] All umbrella tests pass: 1213 + 349 = 1562 tests (14 total skipped)
-- [x] Test expansion: +133 new tests for ex_dns (41 RootHint + 43 RRSet + 49 Name)
+- [x] Expanded DNS.Message.Header tests from 2 to 46 tests
+  - Module structure tests (9): exports verification, struct definition
+  - Struct fields tests (2): field presence and defaults
+  - new/0 tests (9): default values, flags, counts, ID generation
+  - generate_id/0 tests (3): range and uniqueness
+  - from_iodata/1 tests (4): binary parsing for queries and responses
+  - Count extraction tests (5): qdcount, ancount, nscount, arcount
+  - DNS.Parameter protocol tests (4): 12-byte encoding, round-trip
+  - String.Chars protocol tests (4): to_string output
+  - RFC 1035 compliance tests (3): header size, field sizes
+  - Edge case tests (3): zero/max ID, inspection
+- [x] All umbrella tests pass: 1257 + 349 = 1606 tests (14 total skipped)
+- [x] Test expansion: +177 new tests for ex_dns (41 RootHint + 43 RRSet + 49 Name + 44 Header)
 
 ### In Progress
 - [ ] Continue test coverage expansion
