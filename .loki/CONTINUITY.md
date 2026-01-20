@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 15
+**Iteration**: 16
 
 ## Progress
 
@@ -315,6 +315,27 @@
   - Edge cases for Class A/B networks
 - [x] All 1232+ tests pass across umbrella
 
+### Completed (Iteration 16 - mDNS NetworkMonitor Tests)
+- [x] Created comprehensive mDNS NetworkMonitor unit tests
+  - 26 test cases covering all public API functions
+  - log_query/3 - query logging from network
+  - cache_response/3 - response caching
+  - query/2 - domain lookup with type filtering and normalization
+  - get_queries/1 - recent query retrieval with limit and sorting
+  - get_unanswered_queries/0 - filtering queries without responses
+  - list_discovered_services/0 - service enumeration
+  - get_discovered_service/1 - specific service lookup
+  - search_services/1 - service type filtering
+  - network_stats/0 - network statistics and most queried services
+  - list_all/0 and stats/0 - legacy API compatibility
+  - clear/0 - full cache clearing
+  - Query answering (marks queries as answered when responses arrive)
+  - Service discovery from complete announcements (PTR+SRV+TXT+A)
+- [x] Fixed ETS :bag deduplication issue in most_queried test
+  - Issue: Identical tuple entries deduplicated in bag table
+  - Fix: Use different source IPs to make entries unique
+- [x] All tests pass across umbrella
+
 ### In Progress
 - [ ] Additional test coverage opportunities
 
@@ -327,9 +348,9 @@
 6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Add unit tests for NetworkMonitor (mDNS)
-2. Add unit tests for Responder (mDNS)
-3. Add unit tests for LeaseStorage (DHCPv4)
+1. Add unit tests for Responder (mDNS)
+2. Add unit tests for LeaseStorage (DHCPv4)
+3. Add unit tests for ConfigWatcher (DHCPv4)
 4. Implement stub zone resolution (DNS)
 
 ## Key Findings
@@ -412,5 +433,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 15
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45
+- Iteration: 16
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0
