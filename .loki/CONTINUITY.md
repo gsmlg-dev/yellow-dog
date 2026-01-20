@@ -368,6 +368,28 @@
 - [x] Tests marked with @tag :skip for buggy implementations
 - [x] All tests pass across umbrella
 
+### Completed (Iteration 16 continued - DHCPv4 ConfigWatcher Tests)
+- [x] Created comprehensive DHCPv4 ConfigWatcher unit tests
+  - 23 test cases covering all public API functions
+  - start_link/1 - various initialization scenarios
+    - Valid config file and callback
+    - Disabled state when enabled: false
+    - Disabled state when no config file
+    - Disabled state when file doesn't exist
+    - Failure when reload callback missing
+  - status/0 - returns watcher status
+  - reload/0 - manual configuration reload
+    - Callback invocation and error handling
+    - Reload count and timestamp tracking
+    - File read errors and callback failures
+    - JSON and non-JSON config parsing
+  - File watching - automatic reload on file changes
+    - Triggers reload on file modification
+    - Debounces rapid file changes
+    - Ignores changes to other files
+  - Edge cases: empty files, nested JSON, spaces in paths, symlinks
+  - Documented behavior: callback exceptions crash GenServer
+
 ### In Progress
 - [ ] Additional test coverage opportunities
 
