@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 26
+**Iteration**: 27
 
 ## Progress
 
@@ -768,6 +768,45 @@
 - [x] Total project tests: 809 DNS tests (up from 767)
   - Note: Previous iteration had 2612 total, but that appears to include all umbrella apps
   - DNS app now has 809 tests (+42 new Handler.TCP tests)
+
+### Completed (Iteration 27 - Handler.UDP, Operations, Behaviour Tests)
+- [x] Expanded DNS Handler.UDP tests from 10 to 51 tests (09c5dda)
+  - Module structure verification (Abyss.Handler behaviour, init/1, child_spec/1)
+  - State structure tests (socket, connection_pid keys)
+  - DNS query types (A, AAAA, MX, TXT, PTR, SRV, NS, SOA)
+  - DNS header flags (QR, RD, AA, TC, RA)
+  - DNS response codes (NOERROR, NXDOMAIN, SERVFAIL, REFUSED, FORMERR)
+  - IP address representation (IPv4/IPv6 tuples, loopback addresses)
+  - DNS message serialization (query/response binary encoding, ID preservation, domain preservation)
+  - Multiple error types (closed, einval, tuple errors, complex errors)
+  - Timeout scenarios (nil connection_pid, missing connection_pid key)
+- [x] Created comprehensive DNS View.Operations unit tests (09c5dda)
+  - 57 test cases covering Operations facade module
+  - Module exports verification (status, health_check, get_metrics, list_views, get_view_info, test_client_match, trigger_reload)
+  - Status reporting (manager section, watcher status, health section)
+  - Health check (status, checks, details fields)
+  - Metrics collection (views, reloads, operations sections)
+  - View listing (name, match_clients, zone_count, zones, recursion_enabled)
+  - View info retrieval (match_clients_details with type and pattern)
+  - Client match testing (IPv4, IPv6, client_ip formatting)
+  - Configuration reload (watcher not running error)
+  - Exit signal handling when ViewManager not running
+- [x] Created comprehensive DNS Zone.Behaviour unit tests (09c5dda)
+  - 49 test cases covering behaviour definition
+  - Module structure (defined, loadable, @moduledoc)
+  - Behaviour callbacks (get_name/1, resolve/2, reload/2, stats/1)
+  - Callback specifications verification
+  - Zone implementations compliance (Auth, Cache, Forward, Stub, Root, RPZ)
+  - Callback implementations for all 6 zone types
+  - Documentation verification (callback @doc presence)
+  - Fixed attribute parsing for multiple @behaviour declarations
+- [x] Total DNS tests: 955 (up from 849)
+- [x] Key code patterns:
+  - Use `to_string(q.type)` for record type comparisons (DNS types are structs)
+  - Use integers (1/0) for header flags, not booleans
+  - Use `Code.ensure_loaded/1` before `function_exported?/3`
+  - Handle multiple @behaviour attributes with Enum.any
+  - Use try/catch for GenServer exit signals vs try/rescue for exceptions
 
 ### In Progress
 - [ ] Continue test coverage expansion
