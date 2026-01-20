@@ -276,6 +276,21 @@
   - Requested IP handling and allocation
 - [x] All 1529+ tests pass across umbrella
 
+### Completed (Iteration 14 - mDNS RecordBuilder Tests)
+- [x] Created comprehensive mDNS RecordBuilder unit tests (4a2ca45)
+  - 42 test cases covering all public API functions
+  - build_all_records/1 - full record generation
+  - build_ptr_record/1 - PTR record for service enumeration
+  - build_srv_record/1 - SRV record with host/port
+  - build_txt_record/1 - TXT record with metadata
+  - build_a_records/1 - IPv4 address records
+  - build_aaaa_records/1 - IPv6 address records
+  - build_records_for_question/2 - question matching
+  - build_goodbye_records/1 - service removal (TTL=0)
+  - validate_service_for_records/1 - service validation
+  - calculate_record_size/1 - size estimation
+- [x] All tests pass across umbrella
+
 ### In Progress
 - [ ] Additional improvement opportunities
 
@@ -373,5 +388,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 13
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601
+- Iteration: 14
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45
