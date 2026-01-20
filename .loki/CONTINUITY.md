@@ -2,8 +2,8 @@
 
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
-**Task**: Security hardening and additional improvements
-**Iteration**: 12
+**Task**: Test coverage expansion
+**Iteration**: 15
 
 ## Progress
 
@@ -291,8 +291,32 @@
   - calculate_record_size/1 - size estimation
 - [x] All tests pass across umbrella
 
+### Completed (Iteration 15 - Test Coverage Expansion)
+- [x] Fixed stale build causing DNS Server test failures
+- [x] Created comprehensive mDNS MessageCache unit tests
+  - 22 test cases covering all public API functions
+  - cache_message/3 - caching A, AAAA, PTR, SRV, TXT records
+  - query/2 - domain lookup with type filtering
+  - list_all/0 - cache enumeration
+  - stats/0 - cache statistics
+  - clear/0 - cache clearing
+  - Domain normalization (case insensitive, trailing dot handling)
+  - Service discovery caching (PTR, SRV, TXT, A records)
+  - Duplicate entry handling (bag table)
+- [x] Created comprehensive DHCPv4 AddressPool unit tests
+  - 36 test cases covering all public API functions
+  - new/1 - pool creation from legacy and ranges configs
+  - validate_pool_config/1 - config validation
+  - get_available_ip/3 - IP allocation with reservations
+  - in_range?/2 - range checking with exclusions
+  - get_static_reservation/2 - MAC-based reservations
+  - pool_size/1 - pool size calculation
+  - Multiple ranges and excluded ranges handling
+  - Edge cases for Class A/B networks
+- [x] All 1232+ tests pass across umbrella
+
 ### In Progress
-- [ ] Additional improvement opportunities
+- [ ] Additional test coverage opportunities
 
 ### Known Issues (All Security Issues Resolved)
 1. ~~**CRITICAL**: Web console has NO authentication~~ **FIXED (b32bbd7)**
@@ -303,9 +327,9 @@
 6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Add @moduledoc to console modules missing documentation
-2. Evaluate ETS caching benefits for lease lookups
-3. Code documentation improvements
+1. Add unit tests for NetworkMonitor (mDNS)
+2. Add unit tests for Responder (mDNS)
+3. Add unit tests for LeaseStorage (DHCPv4)
 4. Implement stub zone resolution (DNS)
 
 ## Key Findings
@@ -388,5 +412,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 14
+- Iteration: 15
 - Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45
