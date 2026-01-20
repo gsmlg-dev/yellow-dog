@@ -26,12 +26,15 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
   - `CONSOLE_PASSWORD` - The password for basic auth (required in production)
   - `CONSOLE_AUTH_ENABLED` - Set to "false" to disable (default: "true" in production)
 
-  ## Security Notes
+  ## Security Features
 
   - Always use HTTPS in production when using Basic Auth
   - Use strong, unique passwords
-  - Consider rate limiting failed authentication attempts
+  - Rate limiting on failed authentication attempts via `AuthRateLimiter`
+  - IP addresses are locked out after 5 failed attempts (configurable)
   """
+
+  alias YellowDog.Console.Plugs.AuthRateLimiter
 
   import Plug.Conn
   require Logger
@@ -77,6 +80,7 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
     username = Keyword.get(config, :username, @default_username)
     password = Keyword.get(config, :password)
     realm = Keyword.get(config, :realm, @default_realm)
+    client_ip = get_client_ip(conn)
 
     cond do
       is_nil(password) or password == "" ->
@@ -88,12 +92,23 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
         conn
 
       true ->
-        case get_auth_header(conn) do
-          nil ->
-            unauthorized(conn, realm)
+        # Check rate limiting before processing credentials
+        case AuthRateLimiter.check_rate_limit(client_ip) do
+          {:error, :locked_out, seconds_remaining} ->
+            Logger.warning(
+              "[BasicAuth] IP #{client_ip} is locked out for #{seconds_remaining}s due to failed attempts"
+            )
 
-          credentials ->
-            verify_credentials(conn, credentials, username, password, realm)
+            too_many_requests(conn, seconds_remaining)
+
+          {:ok, _attempts_remaining} ->
+            case get_auth_header(conn) do
+              nil ->
+                unauthorized(conn, realm)
+
+              credentials ->
+                verify_credentials(conn, credentials, username, password, realm, client_ip)
+            end
         end
     end
   end
@@ -113,17 +128,27 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
   end
 
   # Verify the provided credentials
-  defp verify_credentials(conn, credentials, username, password, realm) do
+  defp verify_credentials(conn, credentials, username, password, realm, client_ip) do
     case String.split(credentials, ":", parts: 2) do
       [provided_user, provided_pass] ->
         if secure_compare(provided_user, username) and secure_compare(provided_pass, password) do
+          # Successful authentication - reset rate limiter
+          AuthRateLimiter.record_success(client_ip)
           conn
         else
-          Logger.debug("Failed authentication attempt for user: #{provided_user}")
+          # Failed authentication - record for rate limiting
+          AuthRateLimiter.record_failure(client_ip)
+
+          Logger.debug(
+            "Failed authentication attempt for user: #{provided_user} from IP: #{client_ip}"
+          )
+
           unauthorized(conn, realm)
         end
 
       _ ->
+        # Malformed credentials - count as failure
+        AuthRateLimiter.record_failure(client_ip)
         unauthorized(conn, realm)
     end
   end
@@ -134,6 +159,32 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
     |> put_resp_header("www-authenticate", ~s(Basic realm="#{realm}"))
     |> send_resp(401, "Unauthorized")
     |> halt()
+  end
+
+  # Send 429 Too Many Requests response for rate limiting
+  defp too_many_requests(conn, seconds_remaining) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(seconds_remaining))
+    |> send_resp(429, "Too Many Requests. Try again in #{seconds_remaining} seconds.")
+    |> halt()
+  end
+
+  # Extract client IP from connection
+  defp get_client_ip(conn) do
+    # Check X-Forwarded-For header first (for proxy setups)
+    case get_req_header(conn, "x-forwarded-for") do
+      [forwarded | _] ->
+        forwarded
+        |> String.split(",")
+        |> List.first()
+        |> String.trim()
+
+      [] ->
+        # Fall back to direct connection IP
+        conn.remote_ip
+        |> :inet.ntoa()
+        |> to_string()
+    end
   end
 
   # Constant-time string comparison to prevent timing attacks

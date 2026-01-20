@@ -18,6 +18,8 @@ defmodule YellowDog.Console.Application do
       YellowDog.Console.Settings.ConfigurationVersion,
       # Log broadcaster for real-time log streaming to LiveViews
       YellowDog.Console.LogBroadcaster,
+      # Rate limiter for authentication attempts (brute-force protection)
+      YellowDog.Console.Plugs.AuthRateLimiter,
       # Phoenix Endpoint
       YellowDog.Console.Endpoint
     ]

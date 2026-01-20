@@ -4,10 +4,21 @@
     "tool_id": "orchestrator-main",
     "agent_type": "orchestrator",
     "model": "sonnet",
-    "current_task": "Bash: Commit test fix",
+    "current_task": "Bash: Stage all changes and show status",
     "status": "active",
-    "spawned_at": "2026-01-20T10:23:23.979651Z",
+    "spawned_at": "2026-01-20T12:05:52.728988Z",
     "tasks_completed": [],
-    "tool_count": 29
+    "tool_count": 67
+  },
+  {
+    "agent_id": "agent-toolu_01",
+    "tool_id": "toolu_017aewAbAZ8fZWMahUzBSjcc",
+    "agent_type": "Explore",
+    "model": "sonnet",
+    "current_task": "Explore codebase for improvements",
+    "status": "completed",
+    "spawned_at": "2026-01-20T12:07:27.377029Z",
+    "tasks_completed": [],
+    "completed_at": "2026-01-20T12:09:33.669415Z"
   }
 ]

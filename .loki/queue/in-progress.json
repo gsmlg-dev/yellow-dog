@@ -3,7 +3,7 @@
     "id": "todo-0",
     "type": "todo",
     "payload": {
-      "action": "Implement PRD: TOML-based pool configuration loading"
+      "action": "Commit changes and update continuity"
     }
   }
 ]

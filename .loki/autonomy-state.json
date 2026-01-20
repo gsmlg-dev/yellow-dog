@@ -1,8 +1,8 @@
 {
-    "retryCount": 0,
+    "retryCount": 2,
     "status": "running",
     "lastExitCode": 0,
-    "lastRun": "2026-01-20T10:23:23Z",
+    "lastRun": "2026-01-20T12:05:52Z",
     "prdPath": "./prd.md",
     "pid": 3018882,
     "maxRetries": 50,
