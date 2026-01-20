@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 27
+**Iteration**: 31
 
 ## Progress
 
@@ -808,6 +808,169 @@
   - Handle multiple @behaviour attributes with Enum.any
   - Use try/catch for GenServer exit signals vs try/rescue for exceptions
 
+### Completed (Iteration 28 - mDNS Supervisor Tests)
+- [x] Created comprehensive mDNS Supervisor unit tests (989e83c)
+  - 26 test cases covering supervisor functionality
+  - Module structure verification (Supervisor behaviour, start_link/1, init/1 exports)
+  - Supervisor lifecycle (start_link with default name, custom name, stop)
+  - Child process verification (rate_limiter, service_registry, file_watcher, network_monitor, message_cache, server)
+  - Configuration options (storage_file, auto_save, watch_file, load_on_start)
+  - Telemetry events (pre_start, post_start with mode metadata)
+  - Supervisor count_children and which_children
+  - Supervision strategy verification (one_for_one)
+  - Init/1 return value validation (options_map, children_list structure)
+- [x] mDNS test count increased from 283 to 309 tests
+- [x] Total umbrella tests: 2833
+  - abyss: 221 tests
+  - ex_dns: 577 tests (4 doctests + 573 tests)
+  - ex_dhcp: 59 tests
+  - geo_ip_db: 24 tests
+  - yellow_dog: 66 tests
+  - yellow_dog_telemetry: 34 tests
+  - yellow_dog_dns: 955 tests
+  - yellow_dog_dhcpv4: 258 tests
+  - yellow_dog_dhcpv6: 138 tests
+  - yellow_dog_mdns: 309 tests (+26)
+  - yellow_dog_console: 189 tests
+
+### Completed (Iteration 29 - DHCP Supervisor Tests)
+- [x] Created comprehensive DHCPv4 Supervisor unit tests (7436d12)
+  - 24 test cases covering supervisor functionality
+  - Module structure verification (Supervisor behaviour, start_link/1, init/1 exports)
+  - Supervisor lifecycle (start_link with default name, custom name, stop)
+  - Child process verification (rate_limiter, lease_manager, conflict_resolver, server)
+  - Configuration options (pools, server_options)
+  - Telemetry events (starting, pre_start, post_start)
+  - Supervisor count_children and which_children
+  - Supervision strategy verification (one_for_one)
+  - Init/1 return value validation
+- [x] Created comprehensive DHCPv6 Supervisor unit tests (7436d12)
+  - 26 test cases covering supervisor functionality
+  - Module structure verification (Supervisor behaviour, start_link/1, init/1 exports)
+  - Supervisor lifecycle (start_link with default name, custom name, stop)
+  - Child process verification (rate_limiter, lease_manager, server)
+  - Configuration options (pools with IPv6 addresses, server_options)
+  - Telemetry events (starting, pre_start, post_start)
+  - IPv6 address handling tests (full address tuples, link-local, ULA ranges)
+  - Supervisor count_children and which_children
+  - Supervision strategy verification (one_for_one)
+  - Init/1 return value validation
+- [x] DHCPv4 test count increased from 258 to 282 tests
+- [x] DHCPv6 test count increased from 138 to 164 tests
+- [x] Total umbrella tests: 2876 (up from 2833)
+  - abyss: 221 tests
+  - ex_dns: 577 tests (4 doctests + 573 tests)
+  - ex_dhcp: 59 tests
+  - geo_ip_db: 24 tests
+  - yellow_dog: 66 tests
+  - yellow_dog_telemetry: 34 tests
+  - yellow_dog_dns: 955 tests
+  - yellow_dog_dhcpv4: 282 tests (+24)
+  - yellow_dog_dhcpv6: 164 tests (+26)
+  - yellow_dog_mdns: 309 tests
+  - yellow_dog_console: 189 tests
+
+### Completed (Iteration 30 - Core YellowDog Service Tests)
+- [x] Created comprehensive ServiceManager unit tests (0db1973)
+  - 46 test cases covering service management functionality
+  - Module structure verification (7 function exports)
+  - Service listing (list_services returns 4 services)
+  - Service status retrieval for all 4 services
+  - Service statistics (get_service_stats for dns, mdns, dhcpv4, dhcpv6)
+  - Status formatting (single service and all services)
+  - Start/stop service operations (with supervisor error handling)
+  - Unknown service error handling
+  - Config formatting with listen/port display
+- [x] Created comprehensive ServiceHeartbeat unit tests (0db1973)
+  - 23 test cases covering GenServer functionality
+  - Module structure verification (GenServer behaviour, 5 function exports)
+  - GenServer lifecycle (start_link, registration)
+  - Interval management (get_interval, set_interval)
+  - Heartbeat triggering (heartbeat_now)
+  - Timer scheduling and rescheduling
+  - Concurrent access handling
+  - State management
+  - Default interval configuration
+- [x] Yellow_dog test count increased from 66 to 135 tests (+69)
+- [x] Total umbrella tests: 2945 (up from 2876)
+  - abyss: 221 tests
+  - ex_dns: 577 tests (4 doctests + 573 tests)
+  - ex_dhcp: 59 tests
+  - geo_ip_db: 24 tests
+  - yellow_dog: 135 tests (+69)
+  - yellow_dog_telemetry: 34 tests
+  - yellow_dog_dns: 955 tests
+  - yellow_dog_dhcpv4: 282 tests
+  - yellow_dog_dhcpv6: 164 tests
+  - yellow_dog_mdns: 309 tests
+  - yellow_dog_console: 189 tests
+
+### Completed (Iteration 31 - Console Module Test Coverage)
+- [x] Identified 6 console modules lacking dedicated tests:
+  - settings/address_pool.ex (Ecto schema for DHCP pools)
+  - settings/configuration_version.ex (Agent for optimistic locking)
+  - services/process_inspector.ex (OTP supervision tree inspection)
+  - diagnostics/query_result.ex (Struct for diagnostic results)
+  - log_broadcaster.ex (GenServer for telemetry/PubSub)
+- [x] Created comprehensive QueryResult unit tests
+  - 26 test cases covering struct factory functions
+  - new/0, success/2, error/2, timeout/1, multicast_success/2
+  - Auto-generated IDs and timestamps
+  - Field defaults and immutability
+- [x] Created comprehensive ProcessInspector unit tests
+  - 52 test cases covering OTP inspection utilities
+  - parse_pid/1 - PID string parsing with various formats
+  - get_process_status/1 - process status retrieval
+  - format_mfa/1 - MFA tuple formatting
+  - format_memory/1 - human-readable memory sizes (B, KB, MB, GB)
+  - count_nodes/1 - tree node counting
+  - calculate_layout/1,2 - tree layout with coordinates
+  - calculate_dimensions/1,2 - tree dimension calculation
+  - get_tree/0 - supervision tree retrieval
+- [x] Created comprehensive AddressPool unit tests
+  - 35 test cases covering Ecto embedded schema
+  - Module structure and struct fields
+  - Required field validation (name, range_start, range_end, protocol)
+  - IPv4 pool validation (lease_time > 60, gateway validation)
+  - IPv6 pool validation (preferred_lifetime, valid_lifetime, lifetime ordering)
+  - DNS servers validation (protocol-specific address matching)
+  - Range validation (start < end)
+  - Protocol validation (:ipv4, :ipv6)
+- [x] Created comprehensive ConfigurationVersion unit tests
+  - 23 test cases covering optimistic locking Agent
+  - start_link/1 - Agent lifecycle and registration
+  - get_version/1 - version info retrieval with timestamps
+  - compare_and_swap/3 - atomic CAS operations
+  - increment_version/0 - version increment
+  - Concurrent access handling (parallel get_version, increment_version)
+  - CAS atomicity (only one success in concurrent attempts)
+  - File modification detection
+- [x] Created comprehensive LogBroadcaster unit tests
+  - 24 test cases covering telemetry/PubSub integration
+  - Module structure (GenServer behaviour)
+  - start_link/1 - GenServer lifecycle
+  - topic/0 - PubSub topic retrieval
+  - Telemetry attachment/detachment on start/stop
+  - Log event broadcasting via PubSub
+  - handle_log_event/4 callback testing
+- [x] Fixed test isolation issues:
+  - ConfigurationVersion: Changed from nested setup blocks to start_fresh_agent() helper
+  - LogBroadcaster: Added safe_stop_broadcaster() in describe block setups
+  - All tests use async: false for shared named process isolation
+- [x] Console test count increased from 189 to 349 tests (+160)
+- [x] Total umbrella tests: 3105 (up from 2945)
+  - abyss: 221 tests
+  - ex_dns: 577 tests (4 doctests + 573 tests)
+  - ex_dhcp: 59 tests
+  - geo_ip_db: 24 tests
+  - yellow_dog: 135 tests
+  - yellow_dog_telemetry: 34 tests
+  - yellow_dog_dns: 955 tests
+  - yellow_dog_dhcpv4: 282 tests
+  - yellow_dog_dhcpv6: 164 tests
+  - yellow_dog_mdns: 309 tests
+  - yellow_dog_console: 349 tests (+160)
+
 ### In Progress
 - [ ] Continue test coverage expansion
 
@@ -910,5 +1073,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 24
+- Iteration: 31
 - Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0, 77a8983, 9252a14, e5ee8b4, 6381b2f, 0c3b1ea, 17fa5e2, bef6833, 1cffea6, 0a155ff, a095393, c94f01b, 6b23a90, b89313e, 91ca571, 8726640, 2c5c323, 0744fd1, c95c21e, 752e3e4
