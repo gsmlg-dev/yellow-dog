@@ -33,7 +33,18 @@ defmodule YellowDog.Dns.Handler.UDP do
       size: byte_size(data)
     })
 
-    handle_raw_data(data, client_ip, client_port, state)
+    try do
+      handle_raw_data(data, client_ip, client_port, state)
+    rescue
+      error ->
+        Telemetry.error("DNS handler exception", %{
+          client_ip: format_ip(client_ip),
+          client_port: client_port,
+          error: Exception.message(error)
+        })
+
+        {:continue, state}
+    end
   end
 
   @impl true

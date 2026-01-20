@@ -702,7 +702,28 @@ defmodule YellowDog.Dhcpv4.Handler do
   defp binary_to_ip(_), do: nil
 
   defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
-  defp ip_to_binary(_), do: <<192, 168, 1, 1>>
+
+  defp ip_to_binary(nil) do
+    # Log warning for nil IP addresses - this indicates a configuration issue
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config, :warning],
+      %{count: 1},
+      %{issue: "ip_to_binary called with nil, using fallback"}
+    )
+
+    <<0, 0, 0, 0>>
+  end
+
+  defp ip_to_binary(other) do
+    # Log error for invalid IP format - this is a programming error
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config, :error],
+      %{count: 1},
+      %{issue: "ip_to_binary called with invalid format", value: inspect(other)}
+    )
+
+    <<0, 0, 0, 0>>
+  end
 
   # Convert IP tuple to 32-bit integer for DHCPv4 message fields
   defp ip_tuple_to_integer({a, b, c, d})

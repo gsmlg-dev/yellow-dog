@@ -594,10 +594,25 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp encode_domain_name(domain) do
+    # RFC 1035: Each label is limited to 63 octets
     domain
     |> String.split(".")
     |> Enum.map_join(fn label ->
-      <<byte_size(label)::8, label::binary>>
+      # Enforce max label length per DNS specification
+      truncated_label =
+        if byte_size(label) > 63 do
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv6, :config, :warning],
+            %{count: 1},
+            %{issue: "DNS label truncated", original_length: byte_size(label)}
+          )
+
+          binary_part(label, 0, 63)
+        else
+          label
+        end
+
+      <<byte_size(truncated_label)::8, truncated_label::binary>>
     end)
     # Terminating zero
     |> Kernel.<>(<<0>>)
