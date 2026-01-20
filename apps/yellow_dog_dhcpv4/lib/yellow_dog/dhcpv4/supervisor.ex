@@ -56,6 +56,9 @@ defmodule YellowDog.Dhcpv4.Supervisor do
          )
        end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+      # Rate limiter - must start before server for DoS protection
+      YellowDog.Dhcpv4.RateLimiter
+      |> Supervisor.child_spec(id: :rate_limiter),
       # Lease manager - must start before server
       {YellowDog.Dhcpv4.LeaseManager, [pools: pools]}
       |> Supervisor.child_spec(id: :lease_manager),

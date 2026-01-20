@@ -5,11 +5,13 @@ defmodule YellowDog.Dhcpv4.Handler do
   Processes incoming DHCPv4 messages and implements the DHCP server logic
   for handling DHCPDISCOVER, DHCPOFFER, DHCPREQUEST, DHCPACK, and DHCPNAK
   messages. Emits telemetry events for monitoring and debugging.
+
+  Includes rate limiting to prevent pool exhaustion and DoS attacks.
   """
 
   use Abyss.Handler
 
-  alias YellowDog.Dhcpv4.{ACL, ConflictResolver, CustomOptions, LeaseManager}
+  alias YellowDog.Dhcpv4.{ACL, ConflictResolver, CustomOptions, LeaseManager, RateLimiter}
 
   # Telemetry events are handled via :telemetry directly
 
@@ -28,6 +30,23 @@ defmodule YellowDog.Dhcpv4.Handler do
   def handle_data({ip, port, data}, state) do
     start_time = System.monotonic_time(:microsecond)
 
+    # Apply rate limiting to prevent DoS and pool exhaustion attacks
+    case RateLimiter.check_rate(ip) do
+      :ok ->
+        process_message(ip, port, data, state, start_time)
+
+      {:error, :rate_limited} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :rate_limited],
+          %{count: 1},
+          %{client_ip: ip, client_port: port}
+        )
+
+        {:continue, state}
+    end
+  end
+
+  defp process_message(ip, port, data, state, start_time) do
     try do
       message = DHCPv4.Message.from_iodata(data)
 
