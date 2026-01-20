@@ -244,7 +244,14 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    case transport.recv(listener_socket, 0, :infinity) do
+    # Use 100ms timeout to allow GenServer to handle calls (e.g., listener_info/1)
+    # while still polling for incoming data
+    case transport.recv(listener_socket, 0, 100) do
+      {:error, :timeout} ->
+        # Timeout is expected - retry recv to allow processing of GenServer calls
+        Process.send_after(self(), :do_recv, 0)
+        {:noreply, state}
+
       {:ok, {ip, port, data}} ->
         Abyss.Telemetry.untimed_span_event(state.listener_span, :receiving, %{}, %{
           listener_id: state.listener_id,
@@ -375,7 +382,12 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    case transport.recv(listener_socket, 0, :infinity) do
+    # Use 100ms timeout to allow GenServer to handle calls while polling for data
+    case transport.recv(listener_socket, 0, 100) do
+      {:error, :timeout} ->
+        # Timeout is expected - continue listening loop to allow processing of GenServer calls
+        {:noreply, state, {:continue, :listening}}
+
       {:ok, recv_data} ->
         {ip, port, anc_data} =
           case recv_data do
