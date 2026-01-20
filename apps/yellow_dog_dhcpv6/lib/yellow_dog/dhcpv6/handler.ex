@@ -7,6 +7,8 @@ defmodule YellowDog.Dhcpv6.Handler do
   via DUID (DHCP Unique Identifier) and supports IPv6 multicast.
   """
 
+  use Abyss.Handler
+
   alias YellowDog.Dhcpv6.LeaseManager
 
   # DHCPv6 message type constants
@@ -43,6 +45,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles incoming DHCPv6 data from clients.
   """
+  @impl true
   def handle_data({client_ip, client_port, data}, state) do
     start_time = System.monotonic_time(:microsecond)
 
@@ -81,6 +84,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles handler errors (implements Abyss.Handler callback).
   """
+  @impl true
   def handle_error(error, state) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :handler, :error],
@@ -94,6 +98,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles handler timeouts (implements Abyss.Handler callback).
   """
+  @impl true
   def handle_timeout(state) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :handler, :timeout],
