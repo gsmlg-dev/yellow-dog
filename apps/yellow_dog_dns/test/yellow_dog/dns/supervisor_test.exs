@@ -103,11 +103,15 @@ defmodule YellowDog.Dns.SupervisorTest do
 
   describe "stop/1" do
     test "accepts atom name" do
+      # Ensure module is loaded before checking exports
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
       # Function should exist and accept an atom
       assert function_exported?(DnsSupervisor, :stop, 1)
     end
 
     test "stop/0 uses default name YellowDog.Dns" do
+      # Ensure module is loaded before checking exports
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
       # stop/0 with default arg should exist
       assert function_exported?(DnsSupervisor, :stop, 0) or
                function_exported?(DnsSupervisor, :stop, 1)
