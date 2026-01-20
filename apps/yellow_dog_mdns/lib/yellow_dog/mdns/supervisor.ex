@@ -67,6 +67,10 @@ defmodule YellowDog.Mdns.Supervisor do
        end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
 
+      # Rate limiter - must start before server for DoS protection
+      YellowDog.Mdns.RateLimiter
+      |> Supervisor.child_spec(id: :rate_limiter),
+
       # Service Registry - must start first (others depend on it)
       {YellowDog.Mdns.ServiceRegistry, registry_opts}
       |> Supervisor.child_spec(id: :service_registry),
