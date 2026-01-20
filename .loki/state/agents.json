@@ -4,11 +4,11 @@
     "tool_id": "orchestrator-main",
     "agent_type": "orchestrator",
     "model": "sonnet",
-    "current_task": "Bash: Stage changes",
+    "current_task": "Bash: Format code and stage changes",
     "status": "active",
     "spawned_at": "2026-01-20T12:05:52.728988Z",
     "tasks_completed": [],
-    "tool_count": 103
+    "tool_count": 143
   },
   {
     "agent_id": "agent-toolu_01",
