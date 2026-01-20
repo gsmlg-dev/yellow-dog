@@ -282,7 +282,10 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
       {:noreply,
        socket
-       |> put_flash(:info, "Record '#{validated_record.name}' (#{String.upcase(to_string(validated_record.type))}) #{action}")
+       |> put_flash(
+         :info,
+         "Record '#{validated_record.name}' (#{String.upcase(to_string(validated_record.type))}) #{action}"
+       )
        |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
     else
       {:noreply, put_flash(socket, :error, "Zone not available")}
@@ -334,6 +337,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
       else
         []
       end
+
     assign(socket, :rrs, records)
   end
 

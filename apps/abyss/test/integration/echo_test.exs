@@ -1,6 +1,8 @@
 defmodule Abyss.Integration.EchoTest do
   use ExUnit.Case, async: false
 
+  @moduletag :integration
+
   describe "echo server integration" do
     test "echo handler responds correctly" do
       # Start the echo server

@@ -14,6 +14,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "start/6" do
+    @tag :integration
     test "returns :ok when starting connection process", %{config: config} do
       # Start a complete server with proper setup
       assert {:ok, server_pid} =
@@ -45,6 +46,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "start_active/6" do
+    @tag :integration
     test "returns :ok when starting active connection process", %{config: config} do
       # Start a complete server with proper setup
       assert {:ok, server_pid} =
@@ -76,6 +78,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "handler behavior" do
+    @tag :integration
     test "handler processes data correctly", %{config: config} do
       config = %{config | handler_module: Abyss.TestHandler}
 
@@ -112,6 +115,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "connection lifecycle" do
+    @tag :integration
     test "connection terminates gracefully", %{config: config} do
       config = %{config | handler_module: Abyss.TestHandler}
 

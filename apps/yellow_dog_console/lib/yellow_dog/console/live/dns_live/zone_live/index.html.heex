@@ -229,7 +229,12 @@
       <% :new -> %>
         <!-- New Zone Form -->
         <.card title={"Add Zone to #{@view_name}"}>
-          <.form for={@zone_form} phx-submit="save_zone" phx-change="validate_zone" class="space-y-4">
+          <.form
+            for={@zone_form}
+            phx-submit="save_zone"
+            phx-change="validate_zone"
+            class="space-y-4"
+          >
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-semibold">Zone Name</span>
@@ -263,8 +268,8 @@
                 </option>
               </select>
             </div>
-
-            <!-- Upstream Servers - shown for forward zones -->
+            
+<!-- Upstream Servers - shown for forward zones -->
             <%= if @zone_form[:type].value == "forward" do %>
               <div class="form-control">
                 <label class="label">
@@ -282,8 +287,8 @@
                 </label>
               </div>
             <% end %>
-
-            <!-- NS Records - shown for stub zones -->
+            
+<!-- NS Records - shown for stub zones -->
             <%= if @zone_form[:type].value == "stub" do %>
               <div class="form-control">
                 <label class="label">
@@ -301,8 +306,8 @@
                 </label>
               </div>
             <% end %>
-
-            <!-- Info for auth zones -->
+            
+<!-- Info for auth zones -->
             <%= if @zone_form[:type].value == "auth" do %>
               <div class="alert alert-info">
                 <svg
@@ -366,8 +371,8 @@
               </div>
               <input type="hidden" name="zone[type]" value={@editing_zone.type} />
             </div>
-
-            <!-- Upstream Servers - shown for forward zones -->
+            
+<!-- Upstream Servers - shown for forward zones -->
             <%= if @editing_zone.type == :forward do %>
               <div class="form-control">
                 <label class="label">
@@ -385,8 +390,8 @@
                 </label>
               </div>
             <% end %>
-
-            <!-- NS Records - shown for stub zones -->
+            
+<!-- NS Records - shown for stub zones -->
             <%= if @editing_zone.type == :stub do %>
               <div class="form-control">
                 <label class="label">
@@ -404,8 +409,8 @@
                 </label>
               </div>
             <% end %>
-
-            <!-- Info for auth zones -->
+            
+<!-- Info for auth zones -->
             <%= if @editing_zone.type == :auth do %>
               <div class="alert alert-info">
                 <svg

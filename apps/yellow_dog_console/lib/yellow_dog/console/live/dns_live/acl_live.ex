@@ -32,7 +32,10 @@ defmodule YellowDog.Console.DnsLive.AclLive do
      |> assign(:editing_acl, nil)
      |> assign(:delete_confirm, nil)
      |> assign(:acl_form, to_form(%{"acl_type" => "any", "rules" => ""}))
-     |> assign(:create_form, to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""}))}
+     |> assign(
+       :create_form,
+       to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
+     )}
   end
 
   @impl true
@@ -51,7 +54,10 @@ defmodule YellowDog.Console.DnsLive.AclLive do
      |> assign(:editing_acl, nil)
      |> assign(:selected_countries, [])
      |> assign(:country_search, "")
-     |> assign(:create_form, to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""}))}
+     |> assign(
+       :create_form,
+       to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
+     )}
   end
 
   @impl true
@@ -247,7 +253,9 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
   @impl true
   def handle_event("acl_type_changed", %{"acl" => %{"acl_type" => acl_type}}, socket) do
-    acl_form = to_form(%{"acl_type" => acl_type, "rules" => socket.assigns.acl_form[:rules].value})
+    acl_form =
+      to_form(%{"acl_type" => acl_type, "rules" => socket.assigns.acl_form[:rules].value})
+
     {:noreply, assign(socket, :acl_form, acl_form)}
   end
 
@@ -479,7 +487,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     "#{action} #{network}"
   end
 
-  defp format_named_acl_rule(%{action: action, geo_countries: countries}) when is_list(countries) do
+  defp format_named_acl_rule(%{action: action, geo_countries: countries})
+       when is_list(countries) do
     "#{action} geo #{Enum.join(countries, ", ")}"
   end
 
@@ -489,7 +498,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
   defp format_named_acl_rule(_), do: ""
 
-  defp build_named_acl_rules("geo", _rules_text, selected_countries) when selected_countries != [] do
+  defp build_named_acl_rules("geo", _rules_text, selected_countries)
+       when selected_countries != [] do
     [%{action: "allow", geo_countries: selected_countries}]
   end
 

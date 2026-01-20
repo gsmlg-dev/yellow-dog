@@ -364,7 +364,9 @@ defmodule YellowDog.Dns.ViewStore do
             # Add either network or geo_countries
             cond do
               Map.has_key?(acl_entry, :geo_countries) and is_list(acl_entry.geo_countries) ->
-                countries_str = Enum.map_join(acl_entry.geo_countries, ", ", &encode_toml_string/1)
+                countries_str =
+                  Enum.map_join(acl_entry.geo_countries, ", ", &encode_toml_string/1)
+
                 base_lines ++ ["geo_countries = [#{countries_str}]"]
 
               Map.has_key?(acl_entry, :network) and acl_entry.network != nil ->

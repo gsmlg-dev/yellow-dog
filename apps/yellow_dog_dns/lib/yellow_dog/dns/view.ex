@@ -395,7 +395,9 @@ defmodule YellowDog.Dns.View do
     # Try to find forward zone "." in current view, then fall back to default view
     zone_pid =
       case ZoneController.find_zone(view_name, :forward, ".") do
-        {:ok, pid} -> pid
+        {:ok, pid} ->
+          pid
+
         :error ->
           # Fall back to default view's forward zone
           case ZoneController.find_zone("default", :forward, ".") do

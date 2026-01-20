@@ -156,7 +156,8 @@ defmodule YellowDog.Dns.ZoneController do
     find_zone(__MODULE__, @default_view, zone_type, zone_name)
   end
 
-  @spec find_zone(Supervisor.supervisor(), String.t(), atom(), String.t()) :: {:ok, pid()} | :error
+  @spec find_zone(Supervisor.supervisor(), String.t(), atom(), String.t()) ::
+          {:ok, pid()} | :error
   def find_zone(supervisor, view_name, zone_type, zone_name) do
     module = zone_module(zone_type)
     children = DynamicSupervisor.which_children(supervisor)
@@ -291,7 +292,13 @@ defmodule YellowDog.Dns.ZoneController do
         # Check if this is the right zone by calling get_name and get_view
         try do
           pid_name = module.get_name(pid)
-          pid_view = try do module.get_view(pid) catch _, _ -> @default_view end
+
+          pid_view =
+            try do
+              module.get_view(pid)
+            catch
+              _, _ -> @default_view
+            end
 
           if pid_name == zone_name and pid_view == view_name do
             {:ok, pid}

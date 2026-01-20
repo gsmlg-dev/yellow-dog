@@ -191,7 +191,8 @@ defmodule GeoIpDb do
       iex> GeoIpDb.get_country("US")
       {:ok, %{code: "US", name: "United States"}}
   """
-  @spec get_country(String.t()) :: {:ok, %{code: String.t(), name: String.t()}} | {:error, :not_found}
+  @spec get_country(String.t()) ::
+          {:ok, %{code: String.t(), name: String.t()}} | {:error, :not_found}
   defdelegate get_country(code), to: GeoIpDb.Countries, as: :get
 
   @doc """

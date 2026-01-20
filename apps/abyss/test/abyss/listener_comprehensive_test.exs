@@ -125,6 +125,7 @@ defmodule Abyss.ListenerComprehensiveTest do
   end
 
   describe "listener lifecycle" do
+    @tag :integration
     test "starts listening immediately in non-broadcast mode" do
       config =
         ServerConfig.new(
