@@ -1326,8 +1326,17 @@
   - DNS root zone RRSet tests (3): NS records with glue
   - Various record types tests (7): A, AAAA, MX, TXT, SOA, CNAME, SRV
   - Edge cases tests (4): flexible input types, inspection
-- [x] All umbrella tests pass: 1164 + 349 = 1513 tests (14 total skipped)
-- [x] Test expansion: +84 new tests for ex_dns (41 RootHint + 43 RRSet)
+- [x] Expanded DNS.Zone.Name tests from 2 to 51 tests
+  - Module structure tests (6): exports verification, struct definition
+  - Struct fields tests (4): field presence and defaults
+  - new/1 tests (14): root, TLD, subdomains, trailing dots, edge cases
+  - from_domain/1 tests (2): Domain to Name conversion
+  - child?/2 tests (8): parent/child hierarchy detection
+  - match_domain/2 tests (4): domain matching byte counts
+  - Protocol tests (10): String.Chars, Inspect, DNS.Parameter
+  - Data format tests (2): binary encoding verification
+- [x] All umbrella tests pass: 1213 + 349 = 1562 tests (14 total skipped)
+- [x] Test expansion: +133 new tests for ex_dns (41 RootHint + 43 RRSet + 49 Name)
 
 ### In Progress
 - [ ] Continue test coverage expansion
