@@ -245,6 +245,24 @@
 - [x] Added 12 comprehensive unit tests for rate limiter
 - [x] All 1468+ tests pass across umbrella
 
+### Completed (Iteration 12 continued - Documentation & Tests)
+- [x] Added @moduledoc to 11 console modules missing documentation (2c24860)
+  - Router, Endpoint, Telemetry
+  - DashboardLive
+  - Dhcpv4Live.Index, LeasesLive, PoolLive
+  - Dhcpv6Live.Index, LeasesLive, PoolLive
+  - PageController
+- [x] Created comprehensive DHCPv4 LeaseManager unit tests (ec33e3d)
+  - 27 test cases covering all public API functions
+  - start_link with pool configurations
+  - allocate_lease operations (new MAC, existing MAC, pool range)
+  - get_lease retrieval
+  - release_lease and decline_ip
+  - list_leases and get_allocated_ips
+  - stats and pool management functions
+  - static reservations
+- [x] All 1494+ tests pass across umbrella
+
 ### In Progress
 - [ ] Additional improvement opportunities
 
@@ -343,4 +361,4 @@
 ## Session Metadata
 - Started: 2026-01-20
 - Iteration: 12
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d
