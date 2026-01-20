@@ -350,10 +350,6 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
   end
 
   describe "clear_all/0" do
-    # Note: clear_all/0 has a bug - it causes nested transaction errors
-    # when called during a test with Mnesia already in a transaction context.
-    # Skipping these tests until the bug is fixed.
-    @tag :skip
     test "removes all leases" do
       {:ok, _} = LeaseStorage.put(create_lease(@mac1, @ip1))
       {:ok, _} = LeaseStorage.put(create_lease(@mac2, @ip2))
@@ -362,7 +358,6 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
       assert LeaseStorage.list() == []
     end
 
-    @tag :skip
     test "succeeds when already empty" do
       assert :ok = LeaseStorage.clear_all()
     end

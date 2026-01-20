@@ -506,13 +506,11 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
   - `:ok` - Successfully cleared
   """
-  @spec clear_all() :: :ok
+  @spec clear_all() :: :ok | {:error, term()}
   def clear_all do
-    transaction = fn ->
-      :mnesia.clear_table(@table_name)
-    end
-
-    case :mnesia.transaction(transaction) do
+    # Note: :mnesia.clear_table/1 is already atomic, don't wrap in transaction
+    # to avoid nested transaction issues
+    case :mnesia.clear_table(@table_name) do
       {:atomic, :ok} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :lease_storage, :cleared],
