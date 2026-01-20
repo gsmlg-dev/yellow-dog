@@ -1,5 +1,29 @@
 defmodule GeoIpDbTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+
+  alias GeoIpDb.Database
+
+  setup do
+    # Stop any existing database server
+    case Process.whereis(Database) do
+      nil -> :ok
+      pid -> GenServer.stop(pid, :normal)
+    end
+
+    # Clean up any existing ETS table
+    if :ets.whereis(:geo_ip_db_databases) != :undefined do
+      :ets.delete(:geo_ip_db_databases)
+    end
+
+    # Start a fresh database server
+    {:ok, pid} = Database.start_link([])
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: GenServer.stop(pid, :normal)
+    end)
+
+    :ok
+  end
 
   describe "lookup/2" do
     @tag :requires_database
