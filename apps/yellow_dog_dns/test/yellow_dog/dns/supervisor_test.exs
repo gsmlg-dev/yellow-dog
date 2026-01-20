@@ -15,24 +15,32 @@ defmodule YellowDog.Dns.SupervisorTest do
 
   describe "module exports" do
     test "exports start_link/0 and start_link/1" do
+      # Ensure module is loaded before checking exports
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
+
       assert function_exported?(DnsSupervisor, :start_link, 0) or
                function_exported?(DnsSupervisor, :start_link, 1)
     end
 
     test "exports stop/0 and stop/1" do
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
+
       assert function_exported?(DnsSupervisor, :stop, 0) or
                function_exported?(DnsSupervisor, :stop, 1)
     end
 
     test "exports status/0" do
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
       assert function_exported?(DnsSupervisor, :status, 0)
     end
 
     test "exports init/1" do
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
       assert function_exported?(DnsSupervisor, :init, 1)
     end
 
     test "uses Supervisor behaviour" do
+      {:module, _} = Code.ensure_loaded(DnsSupervisor)
       behaviours = DnsSupervisor.__info__(:attributes)[:behaviour] || []
       assert Supervisor in behaviours
     end

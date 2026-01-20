@@ -588,38 +588,48 @@ defmodule YellowDog.Dns.ServerTest do
 
   describe "function exports" do
     test "exports start_link/0" do
+      {:module, _} = Code.ensure_loaded(Server)
+
       assert function_exported?(Server, :start_link, 0) or
                function_exported?(Server, :start_link, 1)
     end
 
     test "exports stop/0 and stop/1" do
+      {:module, _} = Code.ensure_loaded(Server)
+
       assert function_exported?(Server, :stop, 0) or
                function_exported?(Server, :stop, 1)
     end
 
     test "exports get_config/0" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_config, 0)
     end
 
     test "exports status/0" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :status, 0)
     end
 
     test "exports tcp_enabled?/0" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :tcp_enabled?, 0)
     end
 
     test "exports get_port/0 and get_port/1" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_port, 0)
       assert function_exported?(Server, :get_port, 1)
     end
 
     test "exports get_udp_port/0 and get_udp_port/1" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_udp_port, 0)
       assert function_exported?(Server, :get_udp_port, 1)
     end
 
     test "exports get_tcp_port/0 and get_tcp_port/1" do
+      {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_tcp_port, 0)
       assert function_exported?(Server, :get_tcp_port, 1)
     end
