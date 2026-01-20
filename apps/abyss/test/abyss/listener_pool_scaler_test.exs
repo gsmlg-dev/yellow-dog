@@ -1,7 +1,8 @@
 defmodule Abyss.ListenerPoolScalerTest do
   use ExUnit.Case, async: true
 
-  alias Abyss.ListenerPoolScaler
+  # Keeping ListenerPoolScaler alias for future use when testing actual scaling
+  # alias Abyss.ListenerPoolScaler
   alias Abyss.ServerConfig
 
   import Mox

@@ -139,7 +139,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/settings/mdns")
+      {:ok, _mdns_view, _html} = live(conn, ~p"/settings/mdns")
 
       # Navigate back to DNS tab
       {:ok, view, _html} = live(conn, ~p"/settings/dns")
@@ -590,7 +590,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to DNS tab
-      {:ok, view, _html} = live(conn, ~p"/settings/dns")
+      {:ok, _dns_view, _html} = live(conn, ~p"/settings/dns")
 
       # Navigate back to mDNS tab
       {:ok, view, _html} = live(conn, ~p"/settings/mdns")

@@ -4,10 +4,10 @@
     "tool_id": "orchestrator-main",
     "agent_type": "orchestrator",
     "model": "sonnet",
-    "current_task": "Bash: Commit all changes",
+    "current_task": "Bash: Commit test fix",
     "status": "active",
-    "spawned_at": "2026-01-20T09:35:24.053481Z",
+    "spawned_at": "2026-01-20T10:23:23.979651Z",
     "tasks_completed": [],
-    "tool_count": 59
+    "tool_count": 29
   }
 ]

@@ -2,9 +2,9 @@
     "retryCount": 0,
     "status": "running",
     "lastExitCode": 0,
-    "lastRun": "2026-01-20T09:35:24Z",
-    "prdPath": "",
-    "pid": 221925,
+    "lastRun": "2026-01-20T10:23:23Z",
+    "prdPath": "./prd.md",
+    "pid": 3018882,
     "maxRetries": 50,
     "baseWait": 60
 }
