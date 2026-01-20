@@ -29,6 +29,53 @@
 - [x] Security fix: DHCPv6 DNS label length validation (f287c42)
 - [x] All 335 tests pass (172 + 163)
 
+### Completed (Iteration 3 - PRD Implementation)
+- [x] Implemented PRD: TOML-based pool configuration loading (FR1)
+  - Created `YellowDog.Dhcpv4.PoolConfig` module
+  - Subnet CIDR parsing with mask calculation
+  - Range validation and IP tuple conversion
+  - Static reservation support (MAC → IP)
+  - Optional field defaults (enabled, lease_time, max_leases, priority)
+- [x] Implemented PRD: Max lease limits per pool (FR1.6, default 1000)
+  - Added `max_leases` field to pool config
+  - Enforced in LeaseManager allocation logic
+- [x] Implemented PRD: ACL rules enforcement (FR3)
+  - Created `YellowDog.Dhcpv4.ACL` module
+  - MAC pattern matching with glob support (e.g., `aa:bb:cc:*`)
+  - Vendor class and user class matching
+  - Priority-ordered rule evaluation
+  - Actions: allow, deny, custom_options with target pool/option set
+- [x] Implemented PRD: Conflict detection and auto-reassignment (FR2.4)
+  - Created `YellowDog.Dhcpv4.ConflictResolver` GenServer
+  - Quarantine management for conflicted IPs
+  - Stats tracking (total conflicts, active quarantines)
+  - Automatic reassignment via LeaseManager integration
+- [x] Implemented PRD: Custom options with template variables (FR4)
+  - Created `YellowDog.Dhcpv4.CustomOptions` module
+  - Type validation: string, ip, ip_list, uint8/16/32, hex
+  - Template substitution: `${client_mac}`, `${client_hostname}`, `${lease_address}`, `${pool_name}`
+  - Option set merging with scope hierarchy
+  - Binary encoding for DHCP packet generation
+- [x] Fixed LeaseManager bugs discovered via testing
+  - `get_pool_config` used Map.get on list → changed to Enum.find
+  - `get_static_reservations` same issue → fixed
+  - Partial config map missing required fields → return full pool struct
+- [x] Added comprehensive unit tests (all 103 DHCPv4 tests pass)
+  - `acl_test.exs` - 25+ test cases
+  - `custom_options_test.exs` - validation and template tests
+  - `conflict_resolver_test.exs` - quarantine and conflict handling tests
+  - `pool_config_test.exs` - TOML parsing and validation tests
+- [x] Integrated PRD modules with DHCPv4 handler (80c73c1)
+  - ACL evaluation in DISCOVER handling (allow/deny/custom_options)
+  - ConflictResolver integration in DECLINE handling
+  - CustomOptions template substitution in responses
+- [x] Added handler integration tests (68c77b3)
+  - DECLINE triggers ConflictResolver
+  - IP quarantine verification
+  - Conflict stats tracking
+- [x] Fixed format_mac to handle 16-byte chaddr field
+- [x] All 105 DHCPv4 tests pass, 1314 tests across all apps
+
 ### In Progress
 - [ ] Performance optimization review
 
@@ -79,7 +126,42 @@
 - Infrastructure libs: abyss (UDP), ex_dns (DNS protocol), ex_dhcp (DHCP protocol), geo_ip_db (IP geolocation)
 - Web console: Phoenix LiveView with DaisyUI
 
+### PRD Implementation Modules
+
+**New Modules Created**:
+1. `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/pool_config.ex`
+   - TOML pool configuration parsing and validation
+   - Subnet mask calculation from CIDR notation
+   - Range and reservation conversion
+
+2. `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/acl.ex`
+   - ACL rule validation and evaluation
+   - Pattern matching (glob support for MAC addresses)
+   - Priority-based rule ordering
+
+3. `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/conflict_resolver.ex`
+   - GenServer for IP conflict management
+   - Quarantine tracking with expiration
+   - Integration with LeaseManager for reassignment
+
+4. `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/custom_options.ex`
+   - DHCP option validation by type
+   - Template variable substitution
+   - Binary encoding for packet generation
+
+**Modified Modules**:
+- `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/lease_manager.ex`
+  - Fixed bugs in `get_pool_config` and `get_static_reservations` handlers
+  - Changed from Map.get to Enum.find (pools stored as list)
+  - Return full pool struct instead of partial config
+
+- `apps/yellow_dog_dhcpv4/lib/yellow_dog/dhcpv4/handler.ex`
+  - ACL evaluation before lease allocation
+  - ConflictResolver integration for DECLINE
+  - CustomOptions support with template substitution
+  - Build client info from message options
+
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 2
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42
+- Iteration: 3
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3

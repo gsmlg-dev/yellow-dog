@@ -198,7 +198,10 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
       | quarantined: new_quarantined,
         total_conflicts: state.total_conflicts + 1,
         total_reassignments:
-          if(match?({:ok, _}, result), do: state.total_reassignments + 1, else: state.total_reassignments)
+          if(match?({:ok, _}, result),
+            do: state.total_reassignments + 1,
+            else: state.total_reassignments
+          )
     }
 
     {:reply, result, new_state}
@@ -331,9 +334,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
             end
 
           {:error, :pool_exhausted} ->
-            Logger.error(
-              "[DHCPv4] Cannot reassign after conflict: pool #{pool_name} exhausted"
-            )
+            Logger.error("[DHCPv4] Cannot reassign after conflict: pool #{pool_name} exhausted")
 
             {:error, :pool_exhausted}
         end

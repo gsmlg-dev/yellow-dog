@@ -865,7 +865,9 @@ defmodule YellowDog.Dhcpv4.Handler do
   # Get ACL rules from configuration
   defp get_acl_rules do
     # Load ACL rules from configuration file
-    config_path = Application.get_env(:yellow_dog_dhcpv4, :acl_config_path, "config/dhcp_acls.toml")
+    config_path =
+      Application.get_env(:yellow_dog_dhcpv4, :acl_config_path, "config/dhcp_acls.toml")
+
     ACL.load_with_fallback(config_path)
   end
 
@@ -915,7 +917,8 @@ defmodule YellowDog.Dhcpv4.Handler do
     custom_types = MapSet.new(Enum.map(custom_options, & &1.type))
 
     # Filter out base options that are overridden by custom
-    filtered_base = Enum.reject(base_options, fn opt -> MapSet.member?(custom_types, opt.type) end)
+    filtered_base =
+      Enum.reject(base_options, fn opt -> MapSet.member?(custom_types, opt.type) end)
 
     # Combine filtered base with custom options
     filtered_base ++ custom_options
