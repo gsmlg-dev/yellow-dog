@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 38
+**Iteration**: 40
 
 ## Progress
 
@@ -1294,6 +1294,31 @@
   - Total new tests: 156
 - [x] Total ex_dns tests: 1080 (up from 924)
 
+### Completed (Iteration 39 - Test Isolation Fix)
+- [x] Fixed test isolation issues causing ETS table errors (2cd0e5a)
+  - Issue: configuration_version_test.exs and log_broadcaster_test.exs stopped application-managed GenServers
+  - Symptom: 42-50 SettingsLive tests failing with "the table identifier does not refer to an existing ETS table"
+  - Root cause: Stopping ConfigurationVersion/LogBroadcaster caused Console Application supervisor cascade issues
+  - Fix: Updated tests to use ensure_*_running() helpers that don't stop supervised processes
+  - Removed safe_stop_* functions that terminated supervised processes
+  - Skipped tests that require stopping application-managed processes
+  - Updated version assertions to work with non-zero initial state
+- [x] All 349 console tests pass (4 skipped for supervisor safety)
+- [x] All umbrella tests pass: 955 + 349 = 1304 tests (13 total skipped)
+
+### Completed (Iteration 40 - DNS RootHint Test Expansion)
+- [x] Expanded DNS.Zone.RootHint tests from 1 to 42 tests
+  - Module structure tests (6): exports verification, loadable
+  - data_dir/0 tests (2): path validation, directory existence
+  - links/0 tests (5): IANA resource URLs, root_hints, root_zone, trust_anchor, TLDs
+  - root_hints_text/0 tests (5): content validation, NS/A/AAAA record presence
+  - root_hints/0 tests (11): record structure, 13 NS records, IPv4/IPv6 validation, RRSet construction
+  - nameservers/0 tests (8): map structure, 13 servers, IPv4/IPv6 addresses
+  - root server data correctness tests (6): specific IP verification for A/B/F/K/M servers
+- [x] Fixed case sensitivity issue: Server names uppercase (A.ROOT-SERVERS.NET)
+- [x] All umbrella tests pass: 996 + 349 = 1345 tests (13 total skipped)
+- [x] Test expansion: +41 new tests for ex_dns
+
 ### In Progress
 - [ ] Continue test coverage expansion
 
@@ -1346,6 +1371,7 @@
 11. **Concurrent tests with shared ETS**: Tests using shared ETS tables (like DNS.Message.Record.Data.Registry) should use async: false to prevent race conditions during parallel test runs.
 12. **setup_all for shared resources**: When multiple tests need a shared resource (like ZoneRegistry), use setup_all to start it once per module instead of setup which may encounter race conditions.
 13. **Code.ensure_loaded for function_exported?**: When testing if a module exports functions using function_exported?/3, first call Code.ensure_loaded/1 to ensure the module is loaded into the VM.
+14. **Don't stop application-managed processes in tests**: Tests should never stop GenServers/Agents that are children of the Application supervisor - this causes cascade failures in other test modules. Instead, use ensure_*_running() helpers that work with existing processes or start_supervised! for test-scoped processes.
 
 ## Architecture Notes
 - 11-app umbrella project
