@@ -3,7 +3,7 @@
     "id": "todo-0",
     "type": "todo",
     "payload": {
-      "action": "Create DNS ConfigPersistence unit tests"
+      "action": "Update CONTINUITY.md with progress"
     }
   }
 ]

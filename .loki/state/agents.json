@@ -4,10 +4,10 @@
     "tool_id": "orchestrator-main",
     "agent_type": "orchestrator",
     "model": "sonnet",
-    "current_task": "Bash: Commit AclRegistry tests",
+    "current_task": "Bash: Commit ConfigPersistence tests",
     "status": "active",
     "spawned_at": "2026-01-20T14:33:37.001351Z",
     "tasks_completed": [],
-    "tool_count": 68
+    "tool_count": 81
   }
 ]
