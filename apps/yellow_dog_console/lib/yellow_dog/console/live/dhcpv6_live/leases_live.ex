@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
+  @moduledoc """
+  LiveView for DHCPv6 lease management.
+
+  Displays all active IA_NA (address) and IA_PD (prefix) bindings with
+  filtering by DUID, IA type, state, and pool. Shows preferred/valid
+  lifetimes and supports real-time updates via telemetry subscriptions.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

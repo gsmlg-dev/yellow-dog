@@ -1,4 +1,16 @@
 defmodule YellowDog.Console.Telemetry do
+  @moduledoc """
+  Telemetry metrics and periodic measurements for the web console.
+
+  Defines metrics for:
+  - Phoenix endpoint request timing and throughput
+  - LiveView mount and event handling
+  - VM memory usage and process counts
+  - Database query timing (when applicable)
+
+  Metrics are exposed to Phoenix LiveDashboard for real-time monitoring.
+  """
+
   use Supervisor
   import Telemetry.Metrics
 

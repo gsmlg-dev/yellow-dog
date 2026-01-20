@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
+  @moduledoc """
+  LiveView for individual DHCPv6 pool details.
+
+  Shows pool configuration (prefix ranges, lifetimes, DNS servers),
+  utilization statistics, static DUID-to-address bindings, and all
+  IA bindings within the pool.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv6Live.Index do
+  @moduledoc """
+  LiveView for DHCPv6 service overview.
+
+  Displays service status, statistics (active IA_NA/IA_PD bindings, pool
+  utilization), and recent DHCPv6 events. Subscribes to telemetry events
+  for real-time updates when addresses/prefixes are delegated.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

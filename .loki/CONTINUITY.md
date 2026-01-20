@@ -2,8 +2,8 @@
 
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
-**Task**: Performance optimization and additional improvements
-**Iteration**: 11
+**Task**: Security hardening and additional improvements
+**Iteration**: 12
 
 ## Progress
 
@@ -229,8 +229,24 @@
   - Edge case tests
 - [x] All 1456 tests pass across umbrella
 
+### Completed (Iteration 12 - Security: Auth Brute-Force Protection)
+- [x] Created `YellowDog.Console.Plugs.AuthRateLimiter` GenServer (ea14f3c)
+  - ETS-based tracking of failed login attempts per IP
+  - Token bucket style lockout after 5 failed attempts (configurable)
+  - 5-minute lockout period by default (configurable)
+  - Automatic cleanup of expired entries
+  - Returns 429 Too Many Requests with Retry-After header
+  - Support for X-Forwarded-For header (proxy deployments)
+- [x] Integrated rate limiter with BasicAuth plug
+  - Check rate limit before validating credentials
+  - Record failures on invalid credentials
+  - Reset counter on successful authentication
+- [x] Added AuthRateLimiter to Console application supervisor
+- [x] Added 12 comprehensive unit tests for rate limiter
+- [x] All 1468+ tests pass across umbrella
+
 ### In Progress
-- [ ] Additional performance optimization opportunities
+- [ ] Additional improvement opportunities
 
 ### Known Issues (All Security Issues Resolved)
 1. ~~**CRITICAL**: Web console has NO authentication~~ **FIXED (b32bbd7)**
@@ -238,12 +254,13 @@
 3. ~~**MEDIUM**: DNS compression loop vulnerability~~ **ALREADY MITIGATED in ex_dns**
 4. ~~**MEDIUM**: DNS server has no rate limiting~~ **FIXED (a0fcd2b)**
 5. ~~**MEDIUM**: mDNS server has no rate limiting~~ **FIXED (5d535ea)**
+6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Consider similar optimization for DHCPv6 handler (OptionParser pattern)
+1. Add @moduledoc to console modules missing documentation
 2. Evaluate ETS caching benefits for lease lookups
 3. Code documentation improvements
-4. Consider additional security hardening
+4. Implement stub zone resolution (DNS)
 
 ## Key Findings
 
@@ -325,5 +342,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 11
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331
+- Iteration: 12
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c

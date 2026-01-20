@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv4Live.Index do
+  @moduledoc """
+  LiveView for DHCPv4 service overview.
+
+  Displays service status, statistics (active leases, pool utilization),
+  and recent DHCP events. Subscribes to telemetry events for real-time
+  updates when leases are allocated or released.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.DashboardLive do
+  @moduledoc """
+  LiveView for the main service dashboard.
+
+  Displays real-time status of all YellowDog services (DNS, mDNS, DHCPv4, DHCPv6)
+  with auto-refresh every 5 seconds. Shows running/stopped state, uptime,
+  and provides start/stop controls for each service.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

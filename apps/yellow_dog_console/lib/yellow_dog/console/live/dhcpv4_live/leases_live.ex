@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
+  @moduledoc """
+  LiveView for DHCPv4 lease management.
+
+  Displays all active and expired leases with filtering by MAC address,
+  state (bound/offered/expired), and pool. Supports real-time updates
+  via telemetry subscriptions and allows lease release operations.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

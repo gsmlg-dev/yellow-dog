@@ -3,7 +3,7 @@
     "id": "todo-0",
     "type": "todo",
     "payload": {
-      "action": "Commit changes and update continuity"
+      "action": "Continue to next improvement - Add @moduledoc to console modules"
     }
   }
 ]

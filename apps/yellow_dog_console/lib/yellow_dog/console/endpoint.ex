@@ -1,4 +1,16 @@
 defmodule YellowDog.Console.Endpoint do
+  @moduledoc """
+  Phoenix endpoint for the YellowDog web console.
+
+  Handles HTTP/WebSocket connections and configures:
+  - Static file serving from priv/static
+  - LiveView socket connections
+  - Session management via signed cookies
+  - Request logging and parsing
+
+  Configure via `:yellow_dog_console` application environment.
+  """
+
   use Phoenix.Endpoint, otp_app: :yellow_dog_console
 
   # The session will be stored in the cookie and signed,
