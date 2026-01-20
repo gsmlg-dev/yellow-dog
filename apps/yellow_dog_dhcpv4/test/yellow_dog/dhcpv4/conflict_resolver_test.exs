@@ -72,7 +72,9 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
     end
   end
 
+  # Tests in this describe block trigger conflict handling warnings which are expected
   describe "handle_conflict/3 with LeaseManager" do
+    @tag :capture_log
     test "quarantines the conflicted IP address" do
       # First allocate a lease
       mac = <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>
@@ -91,6 +93,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
       assert ConflictResolver.quarantined?(conflicted_ip) == true
     end
 
+    @tag :capture_log
     test "increments conflict count in stats" do
       # First allocate a lease
       mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
@@ -109,6 +112,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
       assert stats.total_conflicts == initial_count + 1
     end
 
+    @tag :capture_log
     test "list_quarantined returns conflict records" do
       # First allocate a lease
       mac = <<0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC>>
@@ -132,6 +136,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
       assert Map.has_key?(record, :expires_at)
     end
 
+    @tag :capture_log
     test "release_quarantine removes IP from quarantine" do
       # First allocate a lease
       mac = <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01>>

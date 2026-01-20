@@ -339,6 +339,11 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
     end)
   end
 
+  defp log_save_error(_zone_pid, "No zone file path configured") do
+    # Expected when no file path is configured - no log needed
+    :ok
+  end
+
   defp log_save_error(zone_pid, reason) do
     try do
       zone_name = Auth.get_name(zone_pid)

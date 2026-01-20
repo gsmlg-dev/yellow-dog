@@ -87,6 +87,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
     end
 
+    @tag :capture_log
     test "handles missing configuration file gracefully", %{conn: conn} do
       # Set non-existent config path
       Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")

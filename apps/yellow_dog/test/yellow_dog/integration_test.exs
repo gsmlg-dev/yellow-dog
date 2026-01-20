@@ -111,6 +111,7 @@ defmodule YellowDog.IntegrationTest do
   end
 
   describe "Configuration Validation" do
+    @tag :capture_log
     test "handles malformed config gracefully" do
       # Load invalid config should return error
       result = ConfigHelper.load_test_config("invalid_config")
@@ -256,6 +257,7 @@ defmodule YellowDog.IntegrationTest do
   end
 
   describe "Error Recovery" do
+    @tag :capture_log
     test "handles missing config file with fallback" do
       # Try to load non-existent file
       result = YellowDog.Config.load("/nonexistent/path/config.toml")
@@ -263,6 +265,7 @@ defmodule YellowDog.IntegrationTest do
       assert {:error, :enoent} = result
     end
 
+    @tag :capture_log
     test "load_with_fallback returns default config on error" do
       # Should not crash, returns empty default config
       config = YellowDog.Config.load_with_fallback("/nonexistent/path.toml")

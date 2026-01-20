@@ -57,12 +57,14 @@ defmodule YellowDog.Dns.Handler.UDPTest do
   end
 
   describe "Error handling" do
+    @tag :capture_log
     test "handle_error/2 returns continue tuple" do
       state = %{socket: :fake_socket}
 
       assert {:continue, ^state} = Handler.handle_error(:some_error, state)
     end
 
+    @tag :capture_log
     test "handle_error/2 handles various error types" do
       state = %{socket: :fake_socket}
 

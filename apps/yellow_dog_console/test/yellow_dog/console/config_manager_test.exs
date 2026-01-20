@@ -43,10 +43,12 @@ defmodule YellowDog.Console.ConfigManagerTest do
       assert %{"dns" => %{"port" => 53}} = config
     end
 
+    @tag :capture_log
     test "returns error for missing file" do
       assert {:error, :file_not_found} = ConfigManager.load_config("/nonexistent/path.toml")
     end
 
+    @tag :capture_log
     test "returns error for corrupted TOML" do
       corrupt_path = Path.join(@test_config_dir, "corrupt.toml")
       File.write!(corrupt_path, "this is not valid TOML {{{")
@@ -112,6 +114,7 @@ defmodule YellowDog.Console.ConfigManagerTest do
       assert backup_path =~ ~r/\.backup\.\d{8}T\d{6,}Z$/
     end
 
+    @tag :capture_log
     test "returns error for nonexistent file" do
       assert {:error, :file_not_found} =
                ConfigManager.create_backup("/nonexistent/file.toml")

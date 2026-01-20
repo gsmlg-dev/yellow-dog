@@ -270,6 +270,7 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  # Tests in this describe block trigger conflict handling warnings which are expected
   describe "PRD integration - ConflictResolver" do
     setup do
       # Start ConflictResolver for these tests
@@ -277,6 +278,7 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       :ok
     end
 
+    @tag :capture_log
     test "DECLINE message triggers conflict resolution" do
       # First allocate a lease
       mac = <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01>>
@@ -305,6 +307,7 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       :gen_udp.close(socket)
     end
 
+    @tag :capture_log
     test "conflict stats are incremented on DECLINE" do
       # Start with fresh stats
       initial_stats = ConflictResolver.stats()
