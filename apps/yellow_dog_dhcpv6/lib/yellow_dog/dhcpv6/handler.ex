@@ -9,7 +9,7 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   use Abyss.Handler
 
-  alias YellowDog.Dhcpv6.LeaseManager
+  alias YellowDog.Dhcpv6.{LeaseManager, RateLimiter}
 
   # DHCPv6 message type constants
   @msg_type_solicit 1
@@ -49,6 +49,23 @@ defmodule YellowDog.Dhcpv6.Handler do
   def handle_data({client_ip, client_port, data}, state) do
     start_time = System.monotonic_time(:microsecond)
 
+    # Check rate limit before processing
+    case RateLimiter.check_rate(client_ip) do
+      :ok ->
+        process_message(client_ip, client_port, data, state, start_time)
+
+      {:error, :rate_limited} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :rate_limited],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port}
+        )
+
+        {:continue, state}
+    end
+  end
+
+  defp process_message(client_ip, client_port, data, state, start_time) do
     try do
       case DHCPv6.Message.from_iodata(data) do
         {:ok, message} ->
