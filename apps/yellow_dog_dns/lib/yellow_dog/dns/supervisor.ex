@@ -95,6 +95,10 @@ defmodule YellowDog.Dns.Supervisor do
       {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.ConnectionRegistry},
 
+      # Rate limiter - must start before server for DoS protection
+      YellowDog.Dns.RateLimiter
+      |> Supervisor.child_spec(id: :rate_limiter),
+
       # AclRegistry - manages named ACL definitions
       {YellowDog.Dns.AclRegistry, acl_file: get_acl_file()},
 
