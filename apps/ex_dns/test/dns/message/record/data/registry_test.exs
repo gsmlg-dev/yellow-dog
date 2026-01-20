@@ -1,8 +1,16 @@
 defmodule DNS.Message.Record.Data.RegistryTest do
-  use ExUnit.Case
+  # Set async: false because tests rely on shared ETS table state
+  use ExUnit.Case, async: false
 
   alias DNS.Message.Record.Data.Registry
   alias DNS.ResourceRecordType
+
+  # Ensure ETS table is initialized before each test
+  setup do
+    # Trigger initialization by calling lookup
+    Registry.lookup(1)
+    :ok
+  end
 
   describe "registry functionality" do
     test "initializes with built-in record types" do

@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 20
+**Iteration**: 22
 
 ## Progress
 
@@ -547,6 +547,55 @@
   - Edge cases: unicode, quotes, many rules, single items, empty names
 - [x] All 478 tests pass across umbrella
 
+### Completed (Iteration 21 - Test Infrastructure & Module Tests)
+- [x] Fixed geo_ip_db database tests (91ca571)
+  - Tests were failing with --no-start because ETS table wasn't created
+  - Added setup block to start Database GenServer for each test
+  - Proper cleanup in on_exit callbacks
+  - Changed from async: true to async: false for test isolation
+- [x] Created comprehensive DNS AclRegistry unit tests (8726640)
+  - 37 test cases covering GenServer lifecycle
+  - ACL CRUD operations with TOML persistence
+  - Reload functionality with file changes
+  - Concurrent operations and edge cases
+  - Fixed [[acl]] format usage (not [[acls]])
+- [x] Created comprehensive DNS ConfigPersistence unit tests (2c5c323)
+  - 33 test cases covering orchestration layer
+  - default_data_path and zones_path functions
+  - zone_file_path for default and named views
+  - load_all/save_all with valid/invalid/missing files
+  - Round-trip persistence tests
+  - Edge cases: unicode, special characters, large datasets
+- [x] Fixed connection_process_test on_exit handlers
+  - Added try/catch to handle already-stopped processes
+- [x] All 2393+ tests pass across umbrella
+
+### Completed (Iteration 22 - DNS Server & Supervisor Tests)
+- [x] Expanded DNS Server unit tests from 22 to 59 tests
+  - Added status/0 tests when server not running
+  - Added tcp_enabled?/0 tests with config defaults
+  - Added get_port, get_udp_port, get_tcp_port error handling tests
+  - Added server lifecycle tests with port 0 (auto-select)
+  - Added TCP enabled tests with both UDP and TCP running
+  - Added IP address handling and validation tests
+  - Added custom options tests (port, listen, IPv6)
+  - Added function export verification tests
+- [x] Fixed ex_dns Registry test race condition
+  - Issue: Concurrent test runs caused ETS table errors
+  - Fix: Set async: false and added setup to ensure ETS initialization
+- [x] Created comprehensive DNS Supervisor unit tests
+  - 41 test cases covering DnsSupervisor functionality
+  - Module exports: start_link, stop, status, init
+  - Status reporting when supervisor not running
+  - Supervisor lifecycle with port 0 (auto-select)
+  - Custom options: port, listen tuple/string, debug, views, zones
+  - Child processes verification (9 children: 3 registries, rate limiter, acl_registry, zone_controller, view_manager, connection_manager, server)
+  - Post-init default view creation verification
+  - which_children and count_children tests
+  - Status aggregation tests
+  - Registration name verification (YellowDog.Dns vs YellowDog.Dns.Supervisor)
+- [x] All 2477+ tests pass across umbrella
+
 ### In Progress
 - [ ] Continue test coverage expansion
 
@@ -559,10 +608,9 @@
 6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Add DNS View module unit tests
-2. Add DNS ZoneManager unit tests
-3. Add DNS NameResolver unit tests
-4. Continue test coverage expansion
+1. Continue test coverage expansion to reach 2500+ tests
+2. Add DNS Zone.Root module unit tests
+3. Add DNS Zone.Cache module unit tests
 
 ## Key Findings
 
@@ -594,6 +642,10 @@
 5. **Compile-time config needs runtime match**: Phoenix endpoints with compile-time config (like code_reloader) need matching runtime config in all environments.
 6. **Silent fallbacks mask bugs**: Functions like ip_to_binary should log errors instead of silently using default values.
 7. **RFC compliance matters**: DNS labels must be ≤63 bytes; validation prevents buffer issues.
+8. **TOML format varies by store**: AclStore uses `[[acl]]` array format, ZoneStore uses `[zones."key"]` table format. Check each store's moduledoc for format.
+9. **ETS-dependent tests need GenServer started**: Tests using ETS tables require starting the GenServer that creates the table, or tests fail with "table identifier does not refer to an existing ETS table".
+10. **on_exit handlers should catch :exit**: When GenServer may already be stopped, use try/catch to handle :exit in on_exit callbacks.
+11. **Concurrent tests with shared ETS**: Tests using shared ETS tables (like DNS.Message.Record.Data.Registry) should use async: false to prevent race conditions during parallel test runs.
 
 ## Architecture Notes
 - 11-app umbrella project
@@ -644,5 +696,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 20
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0, 77a8983, 9252a14, e5ee8b4, 6381b2f, 0c3b1ea, 17fa5e2, bef6833, 1cffea6, 0a155ff, a095393, c94f01b, 6b23a90, b89313e
+- Iteration: 22
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0, 77a8983, 9252a14, e5ee8b4, 6381b2f, 0c3b1ea, 17fa5e2, bef6833, 1cffea6, 0a155ff, a095393, c94f01b, 6b23a90, b89313e, 91ca571, 8726640, 2c5c323
