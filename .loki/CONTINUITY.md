@@ -1306,7 +1306,7 @@
 - [x] All 349 console tests pass (4 skipped for supervisor safety)
 - [x] All umbrella tests pass: 955 + 349 = 1304 tests (13 total skipped)
 
-### Completed (Iteration 40 - DNS RootHint Test Expansion)
+### Completed (Iteration 40 - DNS RootHint & RRSet Test Expansion)
 - [x] Expanded DNS.Zone.RootHint tests from 1 to 42 tests
   - Module structure tests (6): exports verification, loadable
   - data_dir/0 tests (2): path validation, directory existence
@@ -1316,8 +1316,18 @@
   - nameservers/0 tests (8): map structure, 13 servers, IPv4/IPv6 addresses
   - root server data correctness tests (6): specific IP verification for A/B/F/K/M servers
 - [x] Fixed case sensitivity issue: Server names uppercase (A.ROOT-SERVERS.NET)
-- [x] All umbrella tests pass: 996 + 349 = 1345 tests (13 total skipped)
-- [x] Test expansion: +41 new tests for ex_dns
+- [x] Expanded DNS.Zone.RRSet tests from 1 to 44 tests
+  - Module structure tests (5): exports verification, struct definition
+  - Struct fields tests (10): field presence and defaults
+  - new/2 tests (4): basic creation with defaults
+  - new/3 tests (3): data parameter handling
+  - new/4 tests (4): options and TTL extraction
+  - TTL handling tests (4): edge cases, large values, common TTL values
+  - DNS root zone RRSet tests (3): NS records with glue
+  - Various record types tests (7): A, AAAA, MX, TXT, SOA, CNAME, SRV
+  - Edge cases tests (4): flexible input types, inspection
+- [x] All umbrella tests pass: 1164 + 349 = 1513 tests (14 total skipped)
+- [x] Test expansion: +84 new tests for ex_dns (41 RootHint + 43 RRSet)
 
 ### In Progress
 - [ ] Continue test coverage expansion
