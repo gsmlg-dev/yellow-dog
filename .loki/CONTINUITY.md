@@ -390,6 +390,28 @@
   - Edge cases: empty files, nested JSON, spaces in paths, symlinks
   - Documented behavior: callback exceptions crash GenServer
 
+### Completed (Iteration 16 continued - mDNS FileWatcher Tests)
+- [x] Created comprehensive mDNS FileWatcher unit tests
+  - 22 test cases (21 passing, 1 skipped)
+  - start_link/1 - various initialization scenarios
+    - Valid file path with JSON/TOML formats
+    - Disabled state when enabled: false
+    - Graceful handling when file doesn't exist
+    - Format auto-detection from extension
+  - status/0 - returns watcher status
+    - Enabled/watching state
+    - File path, reload count, last_loaded timestamp
+  - reload/0 - manual configuration reload
+    - Callback invocation and timestamp updates
+    - Graceful error handling for invalid content
+    - Handling deleted files
+  - File watching - automatic reload on file changes
+    - Ignores changes to other files in same directory
+    - Handles rapid file changes
+  - Edge cases: empty services, Unicode content, symlinks, spaces in paths, multiple services
+  - Skipped: file modification detection (inotify timing-sensitive)
+  - Note: JSON format requires {"services": [...]} structure
+
 ### In Progress
 - [ ] Additional test coverage opportunities
 
@@ -403,8 +425,8 @@
 
 ### Next Steps
 1. Fix LeaseStorage implementation bugs (cleanup_expired, clear_all)
-2. Add unit tests for ConfigWatcher (DHCPv4)
-3. Add unit tests for FileWatcher (mDNS)
+2. Add unit tests for ServiceStore (mDNS)
+3. Add unit tests for ServiceRegistry (mDNS)
 4. Implement stub zone resolution (DNS)
 
 ## Key Findings
