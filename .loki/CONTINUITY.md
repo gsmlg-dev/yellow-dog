@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Performance optimization and additional improvements
-**Iteration**: 2
+**Iteration**: 11
 
 ## Progress
 
@@ -76,18 +76,174 @@
 - [x] Fixed format_mac to handle 16-byte chaddr field
 - [x] All 105 DHCPv4 tests pass, 1314 tests across all apps
 
-### In Progress
-- [ ] Performance optimization review
+### Completed (Iteration 4 - Test Quality)
+- [x] Reduced test log noise from expected error behaviors
+  - DNS zone auth: Changed to debug level for "No zone file path configured"
+  - ZoneService: Added suppress function for expected save errors
+  - Added `@tag :capture_log` to tests that intentionally trigger errors:
+    - `conflict_resolver_test.exs` - conflict handling tests
+    - `handler_test.exs` (DHCPv4) - DECLINE handling tests
+    - `handler_test.exs` (DNS) - error handling tests
+    - `config_test.exs` - missing file and malformed TOML tests
+    - `integration_test.exs` - error recovery tests
+    - `config_manager_test.exs` - file not found tests
+    - `settings_live_test.exs` - missing configuration tests
+- [x] All 335+ tests pass with clean output (96c582d)
 
-### Known Issues (Documented but not fixed)
-1. **CRITICAL**: Web console has NO authentication - needs Plug.BasicAuth before production
-2. **HIGH**: DHCP lease allocation has no rate limiting - pool exhaustion possible
-3. **MEDIUM**: DNS compression loop vulnerability in ex_dns (documented in CLAUDE.md)
+### Completed (Iteration 5 - Security: Web Console Authentication)
+- [x] Created `YellowDog.Console.Plugs.BasicAuth` module (b32bbd7)
+  - Environment-based configuration (CONSOLE_USERNAME, CONSOLE_PASSWORD)
+  - Constant-time string comparison to prevent timing attacks
+  - Graceful degradation when password not configured (with warning log)
+  - Configurable realm for WWW-Authenticate header
+- [x] Added plug to browser pipeline in router.ex
+- [x] Configured authentication per environment:
+  - Disabled by default in dev (set CONSOLE_AUTH_ENABLED=true to enable)
+  - Disabled by default in test (for automated testing)
+  - Enabled by default in production (requires CONSOLE_PASSWORD env var)
+- [x] Added comprehensive unit tests (14 tests)
+- [x] All 177 tests pass
+
+### Completed (Iteration 6 - Security: DHCP Rate Limiting)
+- [x] Created `YellowDog.Dhcpv4.RateLimiter` module (e8f5f5e)
+  - Token bucket algorithm for per-client and global rate limiting
+  - Configurable burst capacity and refill rates
+  - ETS-based storage for high-performance bucket tracking
+  - Automatic cleanup of expired client buckets
+  - Telemetry events for monitoring rate limit violations
+- [x] Integrated rate limiter with DHCPv4 handler
+  - Rate check before processing any DHCP message
+  - Silent drop of rate-limited requests (per RFC)
+- [x] Added RateLimiter to supervisor child list
+- [x] Added comprehensive unit tests (16 tests)
+- [x] All 121 tests pass (7 excluded)
+
+### Completed (Iteration 7 - DHCPv6 Rate Limiting)
+- [x] Verified DNS compression loop protection is already implemented
+  - `DNS.Message.Domain` has loop detection via visited positions MapSet
+  - Max compression depth limiting (5 levels)
+  - Comprehensive security tests in `dns/security_test.exs`
+- [x] Created `YellowDog.Dhcpv6.RateLimiter` module (b1096df)
+  - Token bucket algorithm for per-client and global rate limiting
+  - ETS-based storage for high-performance bucket tracking
+  - Configurable burst capacity and refill rates
+  - Automatic cleanup of expired client buckets
+  - Telemetry events for monitoring rate limit violations
+  - Graceful handling when not running
+- [x] Integrated rate limiter with DHCPv6 handler
+  - Rate check before processing any DHCPv6 message
+  - Silent drop of rate-limited requests (per RFC)
+- [x] Added RateLimiter to supervisor child list
+- [x] Added comprehensive unit tests (16 tests)
+- [x] All tests pass (734 tests, excluding integration)
+
+### Completed (Iteration 8 - DNS Rate Limiting)
+- [x] Created `YellowDog.Dns.RateLimiter` module (a0fcd2b)
+  - Token bucket algorithm for per-client and global rate limiting
+  - Higher defaults for DNS (50 client tokens, 5000 global vs 10/1000 DHCP)
+  - ETS-based storage for high-performance bucket tracking
+  - Configurable burst capacity and refill rates (20/sec vs 2/sec for DHCP)
+  - Automatic cleanup of expired client buckets
+  - Telemetry events for monitoring rate limit violations
+  - Graceful handling when not running
+- [x] Integrated rate limiter with DNS UDP handler
+  - Rate check before processing any DNS message
+  - Silent drop of rate-limited requests (per RFC best practices)
+- [x] Added RateLimiter to supervisor child list
+- [x] Added comprehensive unit tests (17 tests)
+- [x] All tests pass (751 tests, excluding integration)
+
+### Completed (Iteration 9 - mDNS Rate Limiting)
+- [x] Created `YellowDog.Mdns.RateLimiter` module (5d535ea)
+  - Token bucket algorithm for per-source and global rate limiting
+  - Higher defaults for mDNS (100 source tokens, 10000 global)
+    - mDNS operates only on local network
+    - Legitimate usage can be bursty (service announcements)
+  - ETS-based storage for high-performance bucket tracking
+  - Automatic cleanup of expired source buckets
+  - Telemetry events for monitoring rate limit violations
+  - Graceful handling when not running
+- [x] Integrated rate limiter with mDNS handler
+  - Rate check before processing any mDNS message
+  - Silent drop of rate-limited requests
+- [x] Added RateLimiter to supervisor child list
+- [x] Added comprehensive unit tests (17 tests)
+- [x] All tests pass (768 tests, excluding integration)
+
+### Rate Limiting Summary (All Services Complete)
+| Service | Client Tokens | Client Refill | Global Tokens | Global Refill |
+|---------|--------------|---------------|---------------|---------------|
+| DHCPv4  | 10           | 2/sec         | 1000          | 100/sec       |
+| DHCPv6  | 10           | 2/sec         | 1000          | 100/sec       |
+| DNS     | 50           | 20/sec        | 5000          | 1000/sec      |
+| mDNS    | 100          | 50/sec        | 10000         | 5000/sec      |
+
+### Completed (Iteration 10 - Performance: DHCPv4 Option Parsing)
+- [x] Created `YellowDog.Dhcpv4.OptionParser` module (8b01401)
+  - Single-pass option extraction O(n) vs previous O(n*m)
+  - Extracts 8 commonly needed options in one iteration:
+    - message_type, hostname, client_id, server_id
+    - requested_ip, vendor_class, user_class, client_arch
+  - `extract_common/1` - full option extraction
+  - `extract_message_type/1` - lightweight type-only extraction
+  - `build_client_info/2` - construct ACL evaluation context
+- [x] Refactored DHCPv4 handler to use pre-parsed options
+  - Parse once in `handle_boot_request`, pass to handlers
+  - Modified `handle_dhcp_discover`, `handle_dhcp_request`, `handle_dhcp_decline`
+  - Modified `create_dhcp_offer`, `create_dhcp_ack`
+  - Added `determine_request_state_fast` using pre-parsed options
+- [x] Removed legacy duplicate helper functions
+  - Removed: `get_hostname_from_options`, `get_client_id_from_options`
+  - Removed: `get_server_id_from_options`, `get_requested_ip`
+  - Removed: `get_dhcp_message_type`, `decode_message_type`
+  - Removed: `binary_to_ip`, `build_client_info`
+  - Removed: `get_vendor_class_from_options`, `get_user_class_from_options`
+  - Removed: `get_client_arch_from_options`, `determine_request_state`
+- [x] Added comprehensive OptionParser tests (20 tests)
+  - Message type extraction tests (8 message types + nil)
+  - Option extraction tests (all 8 option types)
+  - Edge case tests (empty options, unknown types)
+  - Client info builder tests
+- [x] All 1441 tests pass across umbrella
+
+### Completed (Iteration 11 - Performance: DHCPv6 Option Parsing)
+- [x] Created `YellowDog.Dhcpv6.OptionParser` module (eda3331)
+  - Single-pass option extraction O(n) vs previous O(n*m)
+  - Extracts 5 commonly needed options in one iteration:
+    - client_id, server_id, ia_na, ia_ta, ia_pd
+  - Parses nested IA structures (IA_NA→IA_ADDR, IA_PD→IA_PREFIX)
+  - `extract_common/1` - full option extraction
+  - `extract_client_id/1` - lightweight client-id-only extraction
+- [x] Refactored DHCPv6 handler to use pre-parsed options
+  - Parse once in `handle_dhcpv6_message`, pass to handlers
+  - Modified all message handlers: solicit, request, renew, rebind,
+    release, decline, inform
+  - Updated `create_reply`, `create_information_reply`, `create_advertise_multi`
+- [x] Removed legacy duplicate helper functions
+  - Removed: `get_client_duid`, `get_ia_na`, `get_ia_ta`, `get_ia_pd`
+  - Removed: `extract_ia_addr`, `extract_ia_prefix`
+- [x] Added comprehensive OptionParser tests (15 tests)
+  - Option extraction tests for all supported types
+  - Nested IA structure parsing tests
+  - Malformed data handling tests
+  - Edge case tests
+- [x] All 1456 tests pass across umbrella
+
+### In Progress
+- [ ] Additional performance optimization opportunities
+
+### Known Issues (All Security Issues Resolved)
+1. ~~**CRITICAL**: Web console has NO authentication~~ **FIXED (b32bbd7)**
+2. ~~**HIGH**: DHCP lease allocation has no rate limiting~~ **FIXED (e8f5f5e, b1096df)**
+3. ~~**MEDIUM**: DNS compression loop vulnerability~~ **ALREADY MITIGATED in ex_dns**
+4. ~~**MEDIUM**: DNS server has no rate limiting~~ **FIXED (a0fcd2b)**
+5. ~~**MEDIUM**: mDNS server has no rate limiting~~ **FIXED (5d535ea)**
 
 ### Next Steps
-1. Performance profiling of DNS/DHCP handlers
-2. Consider adding rate limiting to Abyss
-3. Web console authentication (recommended before production)
+1. Consider similar optimization for DHCPv6 handler (OptionParser pattern)
+2. Evaluate ETS caching benefits for lease lookups
+3. Code documentation improvements
+4. Consider additional security hardening
 
 ## Key Findings
 
@@ -161,7 +317,13 @@
   - CustomOptions support with template substitution
   - Build client info from message options
 
+### Performance Optimization (Iteration 10)
+- **Pattern**: Single-pass option extraction is significantly more efficient
+- **Before**: O(n*m) - iterate options m times for m needed fields
+- **After**: O(n) - single iteration extracts all fields
+- **Impact**: For typical DHCP messages with 10-15 options and 8 needed fields, reduces iterations from ~80-120 to ~10-15
+
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 3
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3
+- Iteration: 11
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331

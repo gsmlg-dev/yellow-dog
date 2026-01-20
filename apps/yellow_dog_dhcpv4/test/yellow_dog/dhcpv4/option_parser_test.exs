@@ -6,12 +6,18 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
   describe "extract_common/1" do
     test "extracts all common options in a single pass" do
       options = [
-        %{type: 53, length: 1, value: <<1>>},  # DISCOVER
-        %{type: 12, length: 7, value: "client1"},  # hostname
-        %{type: 61, length: 7, value: <<1, 0, 1, 2, 3, 4, 5>>},  # client_id
-        %{type: 50, length: 4, value: <<192, 168, 1, 50>>},  # requested IP
-        %{type: 60, length: 9, value: "MSFT 5.0 "},  # vendor class
-        %{type: 77, length: 6, value: "PXE "}  # user class (typically has trailing bytes)
+        # DISCOVER
+        %{type: 53, length: 1, value: <<1>>},
+        # hostname
+        %{type: 12, length: 7, value: "client1"},
+        # client_id
+        %{type: 61, length: 7, value: <<1, 0, 1, 2, 3, 4, 5>>},
+        # requested IP
+        %{type: 50, length: 4, value: <<192, 168, 1, 50>>},
+        # vendor class
+        %{type: 60, length: 9, value: "MSFT 5.0 "},
+        # user class (typically has trailing bytes)
+        %{type: 77, length: 6, value: "PXE "}
       ]
 
       result = OptionParser.extract_common(options)
@@ -87,7 +93,8 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
     end
 
     test "extracts client architecture" do
-      options = [%{type: 93, length: 2, value: <<0, 0>>}]  # Intel x86
+      # Intel x86
+      options = [%{type: 93, length: 2, value: <<0, 0>>}]
       result = OptionParser.extract_common(options)
       assert result.client_arch == <<0, 0>>
     end
@@ -108,10 +115,14 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
 
     test "ignores unknown option types" do
       options = [
-        %{type: 53, length: 1, value: <<1>>},  # DISCOVER
-        %{type: 255, length: 0, value: <<>>},   # END
-        %{type: 0, length: 0, value: <<>>},     # PAD
-        %{type: 1, length: 4, value: <<255, 255, 255, 0>>}  # subnet mask (not extracted)
+        # DISCOVER
+        %{type: 53, length: 1, value: <<1>>},
+        # END
+        %{type: 255, length: 0, value: <<>>},
+        # PAD
+        %{type: 0, length: 0, value: <<>>},
+        # subnet mask (not extracted)
+        %{type: 1, length: 4, value: <<255, 255, 255, 0>>}
       ]
 
       result = OptionParser.extract_common(options)
@@ -120,7 +131,8 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
     end
 
     test "handles malformed requested IP" do
-      options = [%{type: 50, length: 3, value: <<192, 168, 1>>}]  # Too short
+      # Too short
+      options = [%{type: 50, length: 3, value: <<192, 168, 1>>}]
       result = OptionParser.extract_common(options)
       assert result.requested_ip == nil
     end
@@ -146,6 +158,7 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
   describe "build_client_info/2" do
     test "builds client info map from parsed options" do
       message = %{chaddr: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>}
+
       parsed = %{
         message_type: :discover,
         hostname: "client1",
@@ -167,6 +180,7 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
 
     test "handles nil values in parsed options" do
       message = %{chaddr: <<1, 2, 3, 4, 5, 6>>}
+
       parsed = %{
         message_type: :discover,
         hostname: nil,
@@ -190,29 +204,31 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
   describe "performance" do
     test "single pass is more efficient than multiple iterations" do
       # Create a realistic options list
-      options = Enum.concat([
-        [
-          %{type: 53, length: 1, value: <<1>>},
-          %{type: 12, length: 10, value: "workstation"},
-          %{type: 61, length: 7, value: <<1, 0, 1, 2, 3, 4, 5>>},
-          %{type: 50, length: 4, value: <<192, 168, 1, 100>>},
-          %{type: 54, length: 4, value: <<192, 168, 1, 1>>},
-          %{type: 60, length: 8, value: "MSFT 5.0"},
-          %{type: 77, length: 4, value: "TEST"}
-        ],
-        # Add some other options to make the list more realistic
-        Enum.map(1..20, fn i -> %{type: 100 + i, length: 4, value: <<i, i, i, i>>} end)
-      ])
+      options =
+        Enum.concat([
+          [
+            %{type: 53, length: 1, value: <<1>>},
+            %{type: 12, length: 10, value: "workstation"},
+            %{type: 61, length: 7, value: <<1, 0, 1, 2, 3, 4, 5>>},
+            %{type: 50, length: 4, value: <<192, 168, 1, 100>>},
+            %{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+            %{type: 60, length: 8, value: "MSFT 5.0"},
+            %{type: 77, length: 4, value: "TEST"}
+          ],
+          # Add some other options to make the list more realistic
+          Enum.map(1..20, fn i -> %{type: 100 + i, length: 4, value: <<i, i, i, i>>} end)
+        ])
 
       # Warm up
       OptionParser.extract_common(options)
 
       # Measure single-pass extraction
-      {time_single, result} = :timer.tc(fn ->
-        for _ <- 1..1000 do
-          OptionParser.extract_common(options)
-        end
-      end)
+      {time_single, result} =
+        :timer.tc(fn ->
+          for _ <- 1..1000 do
+            OptionParser.extract_common(options)
+          end
+        end)
 
       # Verify extraction works correctly
       assert result |> List.last() |> Map.get(:message_type) == :discover

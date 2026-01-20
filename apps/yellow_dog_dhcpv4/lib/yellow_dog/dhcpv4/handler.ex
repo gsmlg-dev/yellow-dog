@@ -11,7 +11,14 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   use Abyss.Handler
 
-  alias YellowDog.Dhcpv4.{ACL, ConflictResolver, CustomOptions, LeaseManager, OptionParser, RateLimiter}
+  alias YellowDog.Dhcpv4.{
+    ACL,
+    ConflictResolver,
+    CustomOptions,
+    LeaseManager,
+    OptionParser,
+    RateLimiter
+  }
 
   # Telemetry events are handled via :telemetry directly
 
