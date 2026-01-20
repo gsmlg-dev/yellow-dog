@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 36
+**Iteration**: 37
 
 ## Progress
 
@@ -1197,6 +1197,52 @@
   - ex_dhcp parameter_test.exs: new file with 20 tests
   - Total new tests: 80
 - [x] Total ex_dhcp tests: 428 (up from 348)
+
+### Completed (Iteration 37 - DHCP Option Types & UDP Core Tests)
+- [x] Created comprehensive DHCPv4.Message.Option.Types unit tests (82 tests, 2 skipped)
+  - Module structure verification
+  - IP address decoding: subnet mask, router, DNS, broadcast, server identifier
+  - IP list decoding: routers, DNS servers, NTP servers, NetBIOS servers
+  - Integer decoding (8, 16, 32 bit): TTL, MTU, lease time, timeouts
+  - Boolean decoding: IP forwarding, mask discovery, router discovery
+  - String/binary decoding: hostname, domain, paths, TFTP server
+  - IP mask list decoding: policy filter, static routes
+  - DHCP message type decoding (1-8 with descriptions)
+  - Client identifier decoding (Ethernet MAC, non-hardware, unknown types)
+  - Classless static route decoding (option 121)
+  - Unknown option handling
+  - Identified BUG: to_int_list uses float division (b / 8) instead of div(b, 8)
+- [x] Created comprehensive Abyss.Transport.UDP.Core unit tests (38 tests)
+  - Module structure verification (12 function exports)
+  - merge_options/2 - option merging with user precedence
+  - open_socket/2 - socket creation with various options
+  - Socket operations: sockname, getopts, setopts, getstat, close
+  - controlling_process/2 - ownership transfer
+  - send/recv operations between sockets
+  - peername behavior for connectionless UDP
+  - Edge cases: empty options, atom options, invalid options
+- [x] Created comprehensive DHCPv4.Client unit tests (54 tests, 2 skipped)
+  - Module structure verification (6 function exports)
+  - discover/1 - DHCPDISCOVER message creation
+    - Hardware type/length, MAC padding, XID generation
+    - Option 53 (message type), option 12 (hostname), option 50 (requested IP)
+  - request/1 - DHCPREQUEST message creation
+    - Server identifier (option 54), requested IP (option 50)
+  - release/1 - DHCPRELEASE message creation
+    - ciaddr field set to leased IP
+  - decline/1 - DHCPDECLINE message creation
+    - Declined IP in option 50
+  - Transaction ID handling (unique generation, reuse across message types)
+  - Message serialization verification
+  - Edge cases and required parameter validation
+  - Network-dependent tests (send_message, test_lease_cycle) tagged as :skip :integration
+- [x] Test counts:
+  - ex_dhcp types_test.exs: new file with 82 tests (2 skipped)
+  - ex_dhcp client_test.exs: new file with 54 tests (2 skipped)
+  - abyss core_test.exs: new file with 38 tests
+  - Total new tests: 174
+- [x] Total ex_dhcp tests: 562 (up from 428)
+- [x] Total abyss tests: ~283 (added 38)
 
 ### In Progress
 - [ ] Continue test coverage expansion
