@@ -315,7 +315,7 @@
   - Edge cases for Class A/B networks
 - [x] All 1232+ tests pass across umbrella
 
-### Completed (Iteration 16 - mDNS NetworkMonitor Tests)
+### Completed (Iteration 16 - mDNS NetworkMonitor & Responder Tests)
 - [x] Created comprehensive mDNS NetworkMonitor unit tests
   - 26 test cases covering all public API functions
   - log_query/3 - query logging from network
@@ -334,7 +334,19 @@
 - [x] Fixed ETS :bag deduplication issue in most_queried test
   - Issue: Identical tuple entries deduplicated in bag table
   - Fix: Use different source IPs to make entries unique
-- [x] All tests pass across umbrella
+- [x] Created comprehensive mDNS Responder unit tests
+  - 34 test cases covering RFC 6762 response generation
+  - should_respond?/2 - decides whether to respond to queries
+  - build_response/2 - builds complete mDNS response messages
+  - calculate_response_delay/1 - RFC 6762 §6.3 response delay (20-120ms)
+  - has_known_answers?/2 - RFC 6762 §7.1 known-answer suppression
+  - validate_response_size/1 - MTU validation (max 1232 bytes)
+  - filter_answerable_questions/2 - filters questions we can answer
+  - PTR, SRV, TXT, A, AAAA, ANY query type matching
+  - Case-insensitive domain matching
+  - Response deduplication
+  - Edge cases: IPv4-only, IPv6-only, empty TXT records
+- [x] All tests pass across umbrella (1266+ tests)
 
 ### In Progress
 - [ ] Additional test coverage opportunities
@@ -348,9 +360,9 @@
 6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Add unit tests for Responder (mDNS)
-2. Add unit tests for LeaseStorage (DHCPv4)
-3. Add unit tests for ConfigWatcher (DHCPv4)
+1. Add unit tests for LeaseStorage (DHCPv4)
+2. Add unit tests for ConfigWatcher (DHCPv4)
+3. Add unit tests for FileWatcher (mDNS)
 4. Implement stub zone resolution (DNS)
 
 ## Key Findings
