@@ -399,30 +399,19 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   @impl true
   def handle_call({:get_pool_config, pool_name}, _from, state) do
-    case Map.get(state.pools, pool_name) do
+    case Enum.find(state.pools, fn pool -> pool.name == pool_name end) do
       nil ->
         {:reply, {:error, :pool_not_found}, state}
 
       pool ->
-        config = %{
-          name: pool.name,
-          range_start: pool.range_start,
-          range_end: pool.range_end,
-          subnet_mask: pool.subnet_mask,
-          gateway: pool.gateway,
-          dns_servers: pool.dns_servers,
-          domain_name: pool.domain_name,
-          lease_time: pool.lease_time,
-          excluded_ranges: pool.excluded_ranges
-        }
-
-        {:reply, {:ok, config}, state}
+        # Return the full pool struct for use with AddressPool functions
+        {:reply, {:ok, pool}, state}
     end
   end
 
   @impl true
   def handle_call({:get_static_reservations, pool_name}, _from, state) do
-    case Map.get(state.pools, pool_name) do
+    case Enum.find(state.pools, fn pool -> pool.name == pool_name end) do
       nil ->
         {:reply, [], state}
 
@@ -497,6 +486,24 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   defp allocate_new_lease(mac, mac_key, requested_ip, hostname, pool, client_id) do
+    # Check max_leases limit before allocation (PRD FR1.6)
+    max_leases = Map.get(pool, :max_leases, 1000)
+    current_lease_count = count_pool_leases(pool.name)
+
+    if current_lease_count >= max_leases do
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :pool, :limit_exceeded],
+        %{count: 1, current: current_lease_count, max: max_leases},
+        %{pool_name: pool.name}
+      )
+
+      {:error, :pool_limit_exceeded}
+    else
+      do_allocate_new_lease(mac, mac_key, requested_ip, hostname, pool, client_id)
+    end
+  end
+
+  defp do_allocate_new_lease(mac, mac_key, requested_ip, hostname, pool, client_id) do
     allocated_ips = get_allocated_ips()
 
     # Try to honor requested IP if provided and available
@@ -574,6 +581,12 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup_expired_leases, @cleanup_interval)
+  end
+
+  # Count active leases for a pool (PRD FR1.6)
+  defp count_pool_leases(pool_name) do
+    LeaseStorage.list(pool_name: pool_name, active_only: true)
+    |> length()
   end
 
   # Normalize MAC address to consistent binary format

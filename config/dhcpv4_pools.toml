@@ -1,0 +1,31 @@
+# DHCPv4 Pool Configuration
+# This file defines address pools for the DHCPv4 server.
+
+[[pools]]
+name = "office_network"
+enabled = true
+subnet = "192.168.1.0/24"
+ranges = ["192.168.1.100-192.168.1.200"]
+gateway = "192.168.1.1"
+dns_servers = ["8.8.8.8", "8.8.4.4"]
+domain = "office.local"
+lease_time = 86400
+max_leases = 1000
+priority = 100
+
+[[pools.reservations]]
+mac = "aa:bb:cc:dd:ee:ff"
+address = "192.168.1.50"
+hostname = "printer-01"
+
+[[pools]]
+name = "guest_network"
+enabled = true
+subnet = "192.168.10.0/24"
+ranges = ["192.168.10.50-192.168.10.100"]
+gateway = "192.168.10.1"
+dns_servers = ["8.8.8.8"]
+domain = "guest.local"
+lease_time = 3600
+max_leases = 50
+priority = 50

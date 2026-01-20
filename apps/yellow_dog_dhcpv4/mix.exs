@@ -34,6 +34,7 @@ defmodule YellowDog.Dhcpv4.MixProject do
       {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},
+      {:toml, "~> 0.7"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
