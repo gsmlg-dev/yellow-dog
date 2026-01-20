@@ -263,6 +263,19 @@
   - static reservations
 - [x] All 1494+ tests pass across umbrella
 
+### Completed (Iteration 13 - DHCPv6 LeaseManager Tests)
+- [x] Created comprehensive DHCPv6 LeaseManager unit tests (b77d601)
+  - 35 test cases covering all public API functions
+  - start_link with pool configurations
+  - allocate_lease operations with DUID/IAID combinations
+  - get_lease retrieval and error handling
+  - release_lease and decline_ip operations
+  - list_leases and get_allocated_ips
+  - stats and pool statistics functions
+  - Static reservations (DUID → IPv6 binding)
+  - Requested IP handling and allocation
+- [x] All 1529+ tests pass across umbrella
+
 ### In Progress
 - [ ] Additional improvement opportunities
 
@@ -360,5 +373,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 12
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d
+- Iteration: 13
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601
