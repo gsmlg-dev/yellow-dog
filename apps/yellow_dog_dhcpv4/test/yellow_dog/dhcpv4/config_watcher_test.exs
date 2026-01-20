@@ -26,9 +26,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
         result =
           start_supervised!(
             {ConfigWatcher,
-             config_file: config_file,
-             reload_callback: fn _config -> :ok end,
-             enabled: true}
+             config_file: config_file, reload_callback: fn _config -> :ok end, enabled: true}
           )
 
         assert is_pid(result)
@@ -41,9 +39,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       result =
         start_supervised!(
           {ConfigWatcher,
-           config_file: "/some/file.toml",
-           reload_callback: fn _config -> :ok end,
-           enabled: false}
+           config_file: "/some/file.toml", reload_callback: fn _config -> :ok end, enabled: false}
         )
 
       assert is_pid(result)
@@ -52,10 +48,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
     test "starts in disabled state when no config file provided" do
       result =
-        start_supervised!(
-          {ConfigWatcher,
-           reload_callback: fn _config -> :ok end}
-        )
+        start_supervised!({ConfigWatcher, reload_callback: fn _config -> :ok end})
 
       assert is_pid(result)
       assert ConfigWatcher.status() == %{enabled: false}
@@ -65,8 +58,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       result =
         start_supervised!(
           {ConfigWatcher,
-           config_file: "/nonexistent/path/config.toml",
-           reload_callback: fn _config -> :ok end}
+           config_file: "/nonexistent/path/config.toml", reload_callback: fn _config -> :ok end}
         )
 
       assert is_pid(result)
@@ -93,10 +85,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
   describe "status/0" do
     test "returns disabled status when watcher is disabled" do
       start_supervised!(
-        {ConfigWatcher,
-         config_file: nil,
-         reload_callback: fn _config -> :ok end,
-         enabled: false}
+        {ConfigWatcher, config_file: nil, reload_callback: fn _config -> :ok end, enabled: false}
       )
 
       assert ConfigWatcher.status() == %{enabled: false}
@@ -108,9 +97,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       try do
         start_supervised!(
           {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: fn _config -> :ok end,
-           debounce_ms: 500}
+           config_file: config_file, reload_callback: fn _config -> :ok end, debounce_ms: 500}
         )
 
         status = ConfigWatcher.status()
@@ -128,10 +115,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
   describe "reload/0" do
     test "returns error when watcher is disabled" do
-      start_supervised!(
-        {ConfigWatcher,
-         enabled: false}
-      )
+      start_supervised!({ConfigWatcher, enabled: false})
 
       assert {:error, :watcher_disabled} = ConfigWatcher.reload()
     end
@@ -146,11 +130,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         assert :ok = ConfigWatcher.reload()
 
@@ -166,9 +146,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: fn _config -> :ok end}
+          {ConfigWatcher, config_file: config_file, reload_callback: fn _config -> :ok end}
         )
 
         assert ConfigWatcher.status().reload_count == 0
@@ -188,9 +166,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: fn _config -> :ok end}
+          {ConfigWatcher, config_file: config_file, reload_callback: fn _config -> :ok end}
         )
 
         assert ConfigWatcher.status().last_reload == nil
@@ -214,11 +190,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         assert {:error, :callback_failed} = ConfigWatcher.reload()
         # Reload count should not increment on failure
@@ -233,9 +205,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: fn _config -> :ok end}
+          {ConfigWatcher, config_file: config_file, reload_callback: fn _config -> :ok end}
         )
 
         # Delete the file to cause read failure
@@ -249,7 +219,9 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
     end
 
     test "parses JSON config correctly" do
-      config_content = ~s({"pools": [{"name": "default", "range": "192.168.1.100-192.168.1.200"}]})
+      config_content =
+        ~s({"pools": [{"name": "default", "range": "192.168.1.100-192.168.1.200"}]})
+
       config_file = create_temp_config(config_content)
       test_pid = self()
 
@@ -259,11 +231,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         :ok = ConfigWatcher.reload()
 
@@ -285,11 +253,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         # Should not fail, just return raw content
         :ok = ConfigWatcher.reload()
@@ -314,10 +278,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback,
-           debounce_ms: 100}
+          {ConfigWatcher, config_file: config_file, reload_callback: callback, debounce_ms: 100}
         )
 
         # Clear any initial messages
@@ -354,10 +315,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback,
-           debounce_ms: 200}
+          {ConfigWatcher, config_file: config_file, reload_callback: callback, debounce_ms: 200}
         )
 
         # Make multiple rapid changes
@@ -396,10 +354,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
 
       try do
         start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback,
-           debounce_ms: 100}
+          {ConfigWatcher, config_file: config_file, reload_callback: callback, debounce_ms: 100}
         )
 
         # Modify the other file
@@ -428,11 +383,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         :ok = ConfigWatcher.reload()
 
@@ -470,11 +421,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         :ok = ConfigWatcher.reload()
 
@@ -499,11 +446,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: config_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: config_file, reload_callback: callback})
 
         # This will crash the GenServer because exceptions aren't caught
         result =
@@ -532,11 +475,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: file, reload_callback: callback})
 
         :ok = ConfigWatcher.reload()
 
@@ -563,11 +502,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcherTest do
       end
 
       try do
-        start_supervised!(
-          {ConfigWatcher,
-           config_file: link_file,
-           reload_callback: callback}
-        )
+        start_supervised!({ConfigWatcher, config_file: link_file, reload_callback: callback})
 
         :ok = ConfigWatcher.reload()
 

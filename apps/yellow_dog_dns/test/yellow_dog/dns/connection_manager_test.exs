@@ -110,7 +110,8 @@ defmodule YellowDog.Dns.ConnectionManagerTest do
       manager: manager,
       handler: handler
     } do
-      {:ok, conn_pid} = ConnectionManager.start_connection(manager, handler, @client_ip, @client_port, [])
+      {:ok, conn_pid} =
+        ConnectionManager.start_connection(manager, handler, @client_ip, @client_port, [])
 
       assert ConnectionManager.count_connections(manager) == 1
 
@@ -126,7 +127,9 @@ defmodule YellowDog.Dns.ConnectionManagerTest do
 
     test "passes options to connection process", %{manager: manager, handler: handler} do
       opts = [query_timeout: 10_000, socket: self()]
-      {:ok, conn_pid} = ConnectionManager.start_connection(manager, handler, @client_ip, @client_port, opts)
+
+      {:ok, conn_pid} =
+        ConnectionManager.start_connection(manager, handler, @client_ip, @client_port, opts)
 
       assert Process.alive?(conn_pid)
     end
@@ -141,7 +144,9 @@ defmodule YellowDog.Dns.ConnectionManagerTest do
     end
 
     test "handles IPv4 addresses", %{manager: manager, handler: handler} do
-      {:ok, conn} = ConnectionManager.start_connection(manager, handler, {192, 168, 1, 1}, 12345, [])
+      {:ok, conn} =
+        ConnectionManager.start_connection(manager, handler, {192, 168, 1, 1}, 12345, [])
+
       assert Process.alive?(conn)
     end
 
@@ -152,7 +157,9 @@ defmodule YellowDog.Dns.ConnectionManagerTest do
     end
 
     test "handles loopback addresses", %{manager: manager, handler: handler} do
-      {:ok, conn} = ConnectionManager.start_connection(manager, handler, {127, 0, 0, 1}, 12345, [])
+      {:ok, conn} =
+        ConnectionManager.start_connection(manager, handler, {127, 0, 0, 1}, 12345, [])
+
       assert Process.alive?(conn)
     end
   end

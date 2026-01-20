@@ -85,12 +85,13 @@ defmodule YellowDog.Mdns.ResponderTest do
 
     test "returns false when query has known answers with sufficient TTL" do
       # Create a query with a known answer
-      ptr_record = create_record(
-        "_http._tcp.local",
-        :PTR,
-        "My Web Server._http._tcp.local",
-        3000
-      )
+      ptr_record =
+        create_record(
+          "_http._tcp.local",
+          :PTR,
+          "My Web Server._http._tcp.local",
+          3000
+        )
 
       query = %{
         create_query([create_question("_http._tcp.local", :PTR)])
@@ -102,13 +103,14 @@ defmodule YellowDog.Mdns.ResponderTest do
 
     test "returns true when known answer TTL is less than half of our TTL" do
       # Known answer with very low TTL (less than half of 4500)
-      ptr_record = create_record(
-        "_http._tcp.local",
-        :PTR,
-        "My Web Server._http._tcp.local",
-        # Less than 4500/2 = 2250
-        1000
-      )
+      ptr_record =
+        create_record(
+          "_http._tcp.local",
+          :PTR,
+          "My Web Server._http._tcp.local",
+          # Less than 4500/2 = 2250
+          1000
+        )
 
       query = %{
         create_query([create_question("_http._tcp.local", :PTR)])
@@ -156,10 +158,11 @@ defmodule YellowDog.Mdns.ResponderTest do
 
     test "deduplicates records" do
       # Query both services but they might produce duplicate host records
-      query = create_query([
-        create_question("_http._tcp.local", :PTR),
-        create_question("_ssh._tcp.local", :PTR)
-      ])
+      query =
+        create_query([
+          create_question("_http._tcp.local", :PTR),
+          create_question("_ssh._tcp.local", :PTR)
+        ])
 
       response = Responder.build_response(query, [@http_service, @ssh_service])
 
@@ -204,12 +207,13 @@ defmodule YellowDog.Mdns.ResponderTest do
     end
 
     test "returns true when query contains matching PTR record with sufficient TTL" do
-      ptr_record = create_record(
-        "_http._tcp.local",
-        :PTR,
-        "My Web Server._http._tcp.local",
-        3000
-      )
+      ptr_record =
+        create_record(
+          "_http._tcp.local",
+          :PTR,
+          "My Web Server._http._tcp.local",
+          3000
+        )
 
       query = %{
         create_query([create_question("_http._tcp.local", :PTR)])
@@ -220,13 +224,14 @@ defmodule YellowDog.Mdns.ResponderTest do
     end
 
     test "returns false when known answer has low TTL" do
-      ptr_record = create_record(
-        "_http._tcp.local",
-        :PTR,
-        "My Web Server._http._tcp.local",
-        # Very low TTL
-        100
-      )
+      ptr_record =
+        create_record(
+          "_http._tcp.local",
+          :PTR,
+          "My Web Server._http._tcp.local",
+          # Very low TTL
+          100
+        )
 
       query = %{
         create_query([create_question("_http._tcp.local", :PTR)])
@@ -238,12 +243,13 @@ defmodule YellowDog.Mdns.ResponderTest do
 
     test "returns false when known answer does not match our records" do
       # Different service name
-      ptr_record = create_record(
-        "_http._tcp.local",
-        :PTR,
-        "Other Service._http._tcp.local",
-        4000
-      )
+      ptr_record =
+        create_record(
+          "_http._tcp.local",
+          :PTR,
+          "Other Service._http._tcp.local",
+          4000
+        )
 
       query = %{
         create_query([create_question("_http._tcp.local", :PTR)])

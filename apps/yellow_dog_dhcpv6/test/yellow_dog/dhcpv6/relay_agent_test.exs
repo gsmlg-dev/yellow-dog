@@ -88,7 +88,8 @@ defmodule YellowDog.Dhcpv6.RelayAgentTest do
         options: []
       }
 
-      assert {:error, :not_relay_forward} = RelayAgent.decapsulate_relay_forward(non_relay_message)
+      assert {:error, :not_relay_forward} =
+               RelayAgent.decapsulate_relay_forward(non_relay_message)
     end
 
     test "returns error for relay-reply message" do
@@ -112,7 +113,8 @@ defmodule YellowDog.Dhcpv6.RelayAgentTest do
         options: []
       }
 
-      assert {:error, :missing_relay_message} = RelayAgent.decapsulate_relay_forward(relay_forward)
+      assert {:error, :missing_relay_message} =
+               RelayAgent.decapsulate_relay_forward(relay_forward)
     end
 
     test "extracts relay info from valid relay forward" do
@@ -294,7 +296,8 @@ defmodule YellowDog.Dhcpv6.RelayAgentTest do
       }
 
       # Should fail because relay message option is required
-      assert {:error, :missing_relay_message} = RelayAgent.decapsulate_relay_forward(relay_forward)
+      assert {:error, :missing_relay_message} =
+               RelayAgent.decapsulate_relay_forward(relay_forward)
     end
 
     test "validates minimum hop count of 0" do

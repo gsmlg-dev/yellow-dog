@@ -155,8 +155,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -212,8 +214,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -262,8 +266,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -444,8 +450,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -511,8 +519,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -586,8 +596,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 
@@ -655,8 +667,10 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
         )
 
       on_exit(fn ->
-        if Process.alive?(pid) do
-          GenServer.stop(pid)
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
         end
       end)
 

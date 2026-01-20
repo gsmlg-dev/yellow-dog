@@ -3,7 +3,7 @@
 ## Current Status
 **Phase**: CONTINUOUS IMPROVEMENT
 **Task**: Test coverage expansion
-**Iteration**: 16
+**Iteration**: 20
 
 ## Progress
 
@@ -412,8 +412,143 @@
   - Skipped: file modification detection (inotify timing-sensitive)
   - Note: JSON format requires {"services": [...]} structure
 
+### Completed (Iteration 17 - DNS Stub Zone Implementation & Test Coverage)
+- [x] Fixed DHCPv4 LeaseStorage cleanup_expired bug (77a8983)
+  - Bug: Piped `Enum.each` (returns `:ok`) into `length()` causing badarg
+  - Fix: Store filtered expired records in variable, return length
+- [x] Implemented DNS stub zone resolution (9252a14)
+  - UDP socket-based query forwarding to authoritative NS servers
+  - Round-robin NS server selection for load distribution
+  - Glue record management for NS IP address lookup
+  - Timeout and retry handling with configurable parameters
+  - Track query statistics (count, success, errors)
+  - Async UDP responses with pending request tracking
+- [x] Created comprehensive stub zone unit tests
+  - 15 test cases covering start_link, NS records, glue records
+  - resolve/2 with error handling and stats tracking
+  - reload/2 for configuration updates
+  - Timeout handling with retries
+- [x] Fixed DHCPv4 LeaseStorage clear_all bug (e5ee8b4)
+  - Bug: Wrapped mnesia.clear_table in transaction caused nested transaction errors
+  - Fix: Remove redundant transaction wrapper (clear_table is already atomic)
+  - Enabled 2 previously skipped tests
+- [x] Created DHCPv6 RelayAgent unit tests (6381b2f)
+  - 18 test cases covering relay message validation and processing
+  - validate_relay_message/1: hop count, link/peer address validation
+  - decapsulate_relay_forward/1: relay info extraction, option parsing
+  - encapsulate_relay_reply/2: reply construction, multi-hop chains
+  - Edge cases: empty options, hop count boundaries, interface_id/relay_id
+- [x] Created DNS ConnectionManager unit tests (0c3b1ea)
+  - 12 test cases covering DynamicSupervisor functionality
+  - start_link/1: named registration, multiple managers
+  - stats/1 and count_connections/1: connection tracking
+  - start_connection/5: process creation, cleanup on exit
+  - IP address handling: IPv4, IPv6, loopback
+
+### Completed (Iteration 18 - DNS Query State Machine Tests)
+- [x] Created DNS ConnectionProcess unit tests (17fa5e2)
+  - 41 test cases covering query orchestration and state machine
+  - Process lifecycle: start_link with required/optional args, connection_closed
+  - Query submission: submit_query, submit_raw_data with parsing
+  - Query state machine phases: received → firewall → view_routing → zone_lookup → resolving → rpz_evaluation
+  - Concurrent handling: up to 100 queries, max query rejection
+  - Timeout handling: configurable timeouts, SERVFAIL response generation
+  - Error responses: SERVFAIL, REFUSED, NXDOMAIN, FORMERR based on error type
+  - Phase update messages: view_matched, zone_lookup, zone_response, recursive_step, rpz_evaluation
+  - Handler monitoring: process terminates when handler dies
+  - Raw data mode: binary serialization of responses
+- [x] Created DNS RecursionController unit tests (17fa5e2)
+  - 16 test cases covering recursive DNS resolution controller
+  - Process lifecycle: start_link with Registry integration
+  - Stats tracking: query_count, success_count, error_count
+  - Error conditions: format_error for empty queries
+  - UDP message handling: graceful handling of unexpected messages
+  - Concurrent usage: multiple stats calls, format error queries
+  - View name registration: unique names, duplicate detection
+  - Termination: socket cleanup, normal/shutdown handling
+- [x] All tests pass (1250+ tests across umbrella)
+
+### Completed (Iteration 19 - mDNS Public API Facade Tests)
+- [x] Created comprehensive YellowDog.Mdns public API unit tests (bef6833)
+  - 51 test cases covering the public API facade module
+  - Module exports verification (18 tests for all public functions)
+  - Service registration API: register_service, update_service, toggle_service, unregister_service
+  - Network discovery API: list_discovered_services, get_discovered_service, discover_services, network_stats
+  - Cache API: query, list_all, stats, clear_cache
+  - Status API: running state, network_stats, registry_stats
+  - Delegation pattern verification (ensures facade properly delegates to underlying modules)
+  - Edge cases: unicode names, special characters, high ports, empty TXT records
+  - Fixed setup_all/on_exit cleanup to avoid GenServer conflicts with NetworkMonitorTest
+- [x] All 1250+ tests pass across umbrella
+
+### Completed (Iteration 19 continued - DNS View Module Tests)
+- [x] Created comprehensive DNS View unit tests (1cffea6)
+  - 34 test cases covering View GenServer functionality
+  - Process lifecycle: start_link with keyword/map configs, termination cleanup
+  - ACL matching: :any, :all, inline rules, named ACLs, ACL structs
+  - Zone registration: register_zone/3, multiple zones, deduplication
+  - RPZ zone registration: register_rpz_zone/2, multiple zones, deduplication
+  - Configuration reload: priority, zones, recursion_enabled, value preservation
+  - Stats tracking: initial values, configuration included in stats
+  - handle_info: cancel_query, unknown messages
+  - Concurrent usage: parallel stats and matches? calls
+  - Multiple views: independent state, different view names
+- [x] Created comprehensive DNS View.ACL unit tests (1cffea6)
+  - 44 test cases covering Access Control List functionality
+  - ACL struct creation: new/2 with name, rules, empty rules
+  - IPv4 matching: subnet with prefix, exact IP, CIDR string notation
+  - IPv6 matching: subnet with prefix, CIDR string, loopback ::1
+  - Built-in ACLs: any (matches all), none (matches none), localhost, localnets
+  - Rule evaluation: first-match-wins semantics, allow/deny order
+  - CIDR parsing: IPv4/IPv6 formats, error handling for invalid formats
+  - Edge cases: /0 (match all), /32 (exact match), mixed IP versions
+- [x] All 1300+ tests pass across umbrella
+
+### Completed (Iteration 20 - DNS Persistence Layer Tests)
+- [x] Created comprehensive DNS ZoneController unit tests (0a155ff)
+  - 24 test cases covering DynamicSupervisor for zone processes
+  - Process lifecycle: start_link with default/custom names
+  - Zone management: start_zone, stop_zone, find_zone
+  - Zone listing: list_zones, list_zones_for_view
+  - View scoping: same zone name in different views
+  - Concurrent operations: parallel zone starts, parallel list operations
+  - Error handling: duplicate zones, non-existent zones
+- [x] Created comprehensive DNS ViewStore unit tests (a095393)
+  - 34 test cases covering TOML persistence for view configs
+  - TOML loading: valid files, multiple views, network/geo ACLs
+  - View validation: required fields, priority, ACL entries
+  - File saving: atomic writes, backup creation, parent directory creation
+  - Round-trip persistence: complex configs survive save/load cycle
+  - Edge cases: unicode, long zone lists, quotes, :infinity priority
+- [x] Created comprehensive DNS ZoneStore unit tests (c94f01b)
+  - 45 test cases covering TOML persistence for zone metadata
+  - Zone loading: auth, forward, stub zones with specific configs
+  - View-based keys: view_name:zone_name format parsing
+  - Zone validation: type-specific requirements (forward→upstreams, stub→ns_records)
+  - All 6 zone types: auth, forward, stub, cache, root, rpz
+  - File saving: atomic writes, backup, parent directories
+  - Edge cases: root zone (.), dots in names, unicode, many zones
+- [x] Created comprehensive DNS ViewManager unit tests (6b23a90)
+  - 27 test cases covering DynamicSupervisor for View processes
+  - Process lifecycle: start_link with default/custom names
+  - View management: start_view, stop_view, get_view
+  - View listing with priority-based sorting
+  - Statistics gathering: view_count, per-view stats
+  - Configuration updates: add/remove/update views
+  - Default view protection during updates
+  - Concurrent operations: parallel starts, parallel lists
+  - ACL configurations: any, network rules, string references
+- [x] Created comprehensive DNS AclStore unit tests (b89313e)
+  - 24 test cases covering TOML persistence for named ACLs
+  - ACL loading: network rules, geo rules, mixed rules, deny rules
+  - ACL validation: name required, rule normalization
+  - File saving: atomic writes, parent directory creation
+  - Round-trip persistence: complex ACLs survive save/load cycle
+  - Edge cases: unicode, quotes, many rules, single items, empty names
+- [x] All 478 tests pass across umbrella
+
 ### In Progress
-- [ ] Additional test coverage opportunities
+- [ ] Continue test coverage expansion
 
 ### Known Issues (All Security Issues Resolved)
 1. ~~**CRITICAL**: Web console has NO authentication~~ **FIXED (b32bbd7)**
@@ -424,10 +559,10 @@
 6. ~~**MEDIUM**: Basic auth has no brute-force protection~~ **FIXED (ea14f3c)**
 
 ### Next Steps
-1. Fix LeaseStorage implementation bugs (cleanup_expired, clear_all)
-2. Add unit tests for ServiceStore (mDNS)
-3. Add unit tests for ServiceRegistry (mDNS)
-4. Implement stub zone resolution (DNS)
+1. Add DNS View module unit tests
+2. Add DNS ZoneManager unit tests
+3. Add DNS NameResolver unit tests
+4. Continue test coverage expansion
 
 ## Key Findings
 
@@ -509,5 +644,5 @@
 
 ## Session Metadata
 - Started: 2026-01-20
-- Iteration: 16
-- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0
+- Iteration: 20
+- Commits: 226e25e, ff7c617, 4dfa6c4, 5d119ad, f287c42, 43704f2, 80c73c1, 68c77b3, 96c582d, b32bbd7, e8f5f5e, b1096df, a0fcd2b, 8b01401, eda3331, ea14f3c, 2c24860, ec33e3d, 9b24de1, b77d601, 5a5797b, 4a2ca45, e8b90f0, 77a8983, 9252a14, e5ee8b4, 6381b2f, 0c3b1ea, 17fa5e2, bef6833, 1cffea6, 0a155ff, a095393, c94f01b, 6b23a90, b89313e

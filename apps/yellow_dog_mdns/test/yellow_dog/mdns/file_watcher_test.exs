@@ -62,9 +62,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
 
       try do
         result =
-          start_supervised!(
-            {FileWatcher, file_path: file}
-          )
+          start_supervised!({FileWatcher, file_path: file})
 
         assert is_pid(result)
       after
@@ -77,9 +75,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
 
       try do
         result =
-          start_supervised!(
-            {FileWatcher, file_path: file, enabled: false}
-          )
+          start_supervised!({FileWatcher, file_path: file, enabled: false})
 
         assert is_pid(result)
         status = FileWatcher.status()
@@ -93,9 +89,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
     test "starts when file doesn't exist but fails gracefully" do
       # FileWatcher should start but file_watcher won't have a watcher_pid
       result =
-        start_supervised!(
-          {FileWatcher, file_path: "/nonexistent/path/services.json"}
-        )
+        start_supervised!({FileWatcher, file_path: "/nonexistent/path/services.json"})
 
       assert is_pid(result)
       status = FileWatcher.status()
@@ -107,9 +101,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         status = FileWatcher.status()
         assert status.file_path == file
@@ -122,9 +114,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_toml_file(valid_toml_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         status = FileWatcher.status()
         assert status.file_path == file
@@ -137,9 +127,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file, format: :json}
-        )
+        start_supervised!({FileWatcher, file_path: file, format: :json})
 
         status = FileWatcher.status()
         assert status.file_path == file
@@ -154,9 +142,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         status = FileWatcher.status()
 
@@ -179,9 +165,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file()
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file, enabled: false}
-        )
+        start_supervised!({FileWatcher, file_path: file, enabled: false})
 
         status = FileWatcher.status()
 
@@ -198,9 +182,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         status = FileWatcher.status()
         # When enabled and file exists, should be watching
@@ -216,9 +198,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         # Store initial reload count
         initial_status = FileWatcher.status()
@@ -242,9 +222,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         assert FileWatcher.status().last_loaded == nil
 
@@ -263,9 +241,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file("not valid json")
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         _initial_count = FileWatcher.status().reload_count
 
@@ -286,9 +262,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         # Delete the file
         File.rm!(file)
@@ -301,7 +275,8 @@ defmodule YellowDog.Mdns.FileWatcherTest do
         status = FileWatcher.status()
         assert status.enabled == true
       catch
-        :exit, _ -> :ok  # Process may crash on file not found
+        # Process may crash on file not found
+        :exit, _ -> :ok
       end
     end
   end
@@ -315,9 +290,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         initial_count = FileWatcher.status().reload_count
 
@@ -368,9 +341,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       File.write!(other_file, "{}")
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: watched_file}
-        )
+        start_supervised!({FileWatcher, file_path: watched_file})
 
         initial_count = FileWatcher.status().reload_count
 
@@ -393,9 +364,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         # Make multiple rapid changes
         for i <- 1..5 do
@@ -434,9 +403,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(~s({"services": []}))
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         FileWatcher.reload()
         :timer.sleep(200)
@@ -467,9 +434,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(content)
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         FileWatcher.reload()
         :timer.sleep(200)
@@ -490,9 +455,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       File.ln_s!(real_file, link_file)
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: link_file}
-        )
+        start_supervised!({FileWatcher, file_path: link_file})
 
         FileWatcher.reload()
         :timer.sleep(200)
@@ -511,9 +474,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       File.write!(file, valid_json_services())
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         FileWatcher.reload()
         :timer.sleep(200)
@@ -559,9 +520,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
       file = create_temp_services_file(content)
 
       try do
-        start_supervised!(
-          {FileWatcher, file_path: file}
-        )
+        start_supervised!({FileWatcher, file_path: file})
 
         FileWatcher.reload()
         :timer.sleep(200)
@@ -580,9 +539,7 @@ defmodule YellowDog.Mdns.FileWatcherTest do
 
       try do
         pid =
-          start_supervised!(
-            {FileWatcher, file_path: file}
-          )
+          start_supervised!({FileWatcher, file_path: file})
 
         # Stop the process
         stop_supervised!(FileWatcher)

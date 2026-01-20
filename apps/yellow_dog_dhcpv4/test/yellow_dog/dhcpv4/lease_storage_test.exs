@@ -211,9 +211,7 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
 
       # Active but expired (expires_at in the past)
       {:ok, _} =
-        LeaseStorage.put(
-          create_lease(@mac2, @ip2, state: :active, expires_at: now - 100)
-        )
+        LeaseStorage.put(create_lease(@mac2, @ip2, state: :active, expires_at: now - 100))
 
       # Expired state
       {:ok, _} = LeaseStorage.put(create_lease(@mac3, @ip3, state: :expired))
@@ -279,15 +277,11 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
 
       # Create an expired active lease
       {:ok, _} =
-        LeaseStorage.put(
-          create_lease(@mac1, @ip1, state: :active, expires_at: now - 100)
-        )
+        LeaseStorage.put(create_lease(@mac1, @ip1, state: :active, expires_at: now - 100))
 
       # Create a non-expired active lease
       {:ok, _} =
-        LeaseStorage.put(
-          create_lease(@mac2, @ip2, state: :active, expires_at: now + 3600)
-        )
+        LeaseStorage.put(create_lease(@mac2, @ip2, state: :active, expires_at: now + 3600))
 
       {:ok, count} = LeaseStorage.cleanup_expired()
 
@@ -320,9 +314,7 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
 
       # Active but expired
       {:ok, _} =
-        LeaseStorage.put(
-          create_lease(@mac2, @ip2, state: :active, expires_at: now - 100)
-        )
+        LeaseStorage.put(create_lease(@mac2, @ip2, state: :active, expires_at: now - 100))
 
       # Released
       {:ok, _} = LeaseStorage.put(create_lease(@mac3, @ip3, state: :released))
