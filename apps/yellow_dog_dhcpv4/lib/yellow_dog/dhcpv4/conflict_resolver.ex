@@ -347,16 +347,16 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
     Process.send_after(self(), :check_quarantine, @quarantine_check_interval)
   end
 
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
+  defp format_mac(<<a, b, c, d, e, f, _rest::binary>>) do
+    # Handle 6+ byte MAC addresses (e.g., 16-byte chaddr field)
+    [a, b, c, d, e, f]
     |> Enum.map(&Integer.to_string(&1, 16))
     |> Enum.map(&String.pad_leading(&1, 2, "0"))
     |> Enum.join(":")
     |> String.upcase()
   end
 
-  defp format_mac(mac) when is_binary(mac), do: mac
+  defp format_mac(mac) when is_binary(mac) and byte_size(mac) < 6, do: inspect(mac)
   defp format_mac(_), do: "UNKNOWN"
 
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"

@@ -2,9 +2,12 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Dhcpv4.Handler
-  alias YellowDog.Dhcpv4.LeaseManager
+  alias YellowDog.Dhcpv4.{ConflictResolver, LeaseManager, LeaseStorage}
 
   setup do
+    # Initialize lease storage
+    LeaseStorage.init()
+
     # Start LeaseManager before each test
     pool_config = %{
       name: "default",
@@ -14,7 +17,8 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       gateway: {192, 168, 1, 1},
       dns_servers: [{192, 168, 1, 1}],
       domain_name: "test.local",
-      lease_time: 86400
+      lease_time: 86400,
+      static_reservations: %{}
     }
 
     {:ok, lease_manager} = start_supervised({LeaseManager, pools: [pool_config]})
@@ -264,5 +268,97 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       assert function_exported?(Handler, :handle_error, 2)
       assert function_exported?(Handler, :handle_timeout, 1)
     end
+  end
+
+  describe "PRD integration - ConflictResolver" do
+    setup do
+      # Start ConflictResolver for these tests
+      {:ok, _resolver} = start_supervised(ConflictResolver)
+      :ok
+    end
+
+    test "DECLINE message triggers conflict resolution" do
+      # First allocate a lease
+      mac = <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01>>
+      {:ok, lease} = LeaseManager.allocate_lease(mac, nil, nil, "default")
+      declined_ip = lease.ip_address
+
+      # Create a DECLINE message
+      decline_data = create_decline_message(mac, declined_ip)
+      client_ip = declined_ip
+      client_port = 68
+
+      # Create a socket for the handler state
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      # Verify IP is not quarantined before decline
+      assert ConflictResolver.quarantined?(declined_ip) == false
+
+      # Handle the decline message
+      result = Handler.handle_data({client_ip, client_port, decline_data}, state)
+      assert result == {:continue, state}
+
+      # After decline, the IP should be quarantined
+      assert ConflictResolver.quarantined?(declined_ip) == true
+
+      :gen_udp.close(socket)
+    end
+
+    test "conflict stats are incremented on DECLINE" do
+      # Start with fresh stats
+      initial_stats = ConflictResolver.stats()
+      initial_conflicts = initial_stats.total_conflicts
+
+      # Allocate a lease
+      mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+      {:ok, lease} = LeaseManager.allocate_lease(mac, nil, nil, "default")
+      declined_ip = lease.ip_address
+
+      # Create and send DECLINE
+      decline_data = create_decline_message(mac, declined_ip)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      Handler.handle_data({declined_ip, 68, decline_data}, state)
+
+      # Stats should show the conflict
+      final_stats = ConflictResolver.stats()
+      assert final_stats.total_conflicts == initial_conflicts + 1
+
+      :gen_udp.close(socket)
+    end
+  end
+
+  # Helper to create a DECLINE message
+  defp create_decline_message(mac, ip) do
+    {a, b, c, d} = ip
+
+    message = %DHCPv4.Message{
+      op: 1,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: 0xDEC11AE1,
+      secs: 0,
+      flags: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: {0, 0, 0, 0},
+      siaddr: {0, 0, 0, 0},
+      giaddr: {0, 0, 0, 0},
+      chaddr: mac <> <<0::size(10 * 8)>>,
+      sname: <<0::size(64 * 8)>>,
+      file: <<0::size(128 * 8)>>,
+      options: [
+        # DHCPDECLINE
+        %DHCPv4.Message.Option{type: 53, length: 1, value: <<4>>},
+        # Requested IP (the declined address)
+        %DHCPv4.Message.Option{type: 50, length: 4, value: <<a, b, c, d>>},
+        # End
+        %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+      ]
+    }
+
+    DHCP.Parameter.to_iodata(message)
   end
 end
