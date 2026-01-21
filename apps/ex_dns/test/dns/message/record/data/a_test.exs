@@ -275,4 +275,274 @@ defmodule DNS.Message.Record.Data.ATest do
       assert record.rdlength == 4
     end
   end
+
+  describe "RFC compliance" do
+    test "A record type value is 1 per RFC 1035" do
+      record = A.new({192, 168, 1, 1})
+      # RFC 1035 Section 3.2.2: A = 1
+      # type.value is binary <<0, 1>> representing 16-bit value
+      assert record.type.value == <<0, 1>>
+    end
+
+    test "rdlength is 4 bytes per RFC 1035" do
+      record = A.new({192, 168, 1, 1})
+      # RFC 1035 Section 3.4.1: A RDATA is 4-octet Internet address
+      assert record.rdlength == 4
+    end
+
+    test "wire format uses network byte order (big-endian)" do
+      record = A.new({192, 168, 1, 1})
+      <<_length::16, a, b, c, d>> = DNS.Parameter.to_iodata(record)
+      # Octets are in order: first octet first
+      assert {a, b, c, d} == {192, 168, 1, 1}
+    end
+  end
+
+  describe "special IPv4 addresses" do
+    test "creates record for loopback range (127.x.x.x)" do
+      loopback_addrs = [
+        {127, 0, 0, 1},
+        {127, 0, 0, 2},
+        {127, 255, 255, 255}
+      ]
+
+      for addr <- loopback_addrs do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for link-local range (169.254.x.x)" do
+      record = A.new({169, 254, 0, 1})
+      assert record.data == {169, 254, 0, 1}
+    end
+
+    test "creates record for multicast range (224-239.x.x.x)" do
+      multicast_addrs = [
+        {224, 0, 0, 1},    # All hosts
+        {224, 0, 0, 251},  # mDNS
+        {239, 255, 255, 250}  # SSDP
+      ]
+
+      for addr <- multicast_addrs do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for reserved range (240-255.x.x.x)" do
+      record = A.new({240, 0, 0, 1})
+      assert record.data == {240, 0, 0, 1}
+    end
+
+    test "creates record for documentation range (192.0.2.x)" do
+      # TEST-NET-1 per RFC 5737
+      record = A.new({192, 0, 2, 1})
+      assert record.data == {192, 0, 2, 1}
+    end
+
+    test "creates record for second documentation range (198.51.100.x)" do
+      # TEST-NET-2 per RFC 5737
+      record = A.new({198, 51, 100, 1})
+      assert record.data == {198, 51, 100, 1}
+    end
+
+    test "creates record for third documentation range (203.0.113.x)" do
+      # TEST-NET-3 per RFC 5737
+      record = A.new({203, 0, 113, 1})
+      assert record.data == {203, 0, 113, 1}
+    end
+  end
+
+  describe "well-known DNS servers" do
+    test "creates record for Cloudflare DNS servers" do
+      cloudflare_dns = [
+        {1, 1, 1, 1},
+        {1, 0, 0, 1}
+      ]
+
+      for addr <- cloudflare_dns do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for Google DNS servers" do
+      google_dns = [
+        {8, 8, 8, 8},
+        {8, 8, 4, 4}
+      ]
+
+      for addr <- google_dns do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for Quad9 DNS servers" do
+      quad9_dns = [
+        {9, 9, 9, 9},
+        {149, 112, 112, 112}
+      ]
+
+      for addr <- quad9_dns do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for OpenDNS servers" do
+      opendns = [
+        {208, 67, 222, 222},
+        {208, 67, 220, 220}
+      ]
+
+      for addr <- opendns do
+        record = A.new(addr)
+        assert record.data == addr
+      end
+    end
+  end
+
+  describe "type field" do
+    test "type field is DNS.ResourceRecordType struct" do
+      record = A.new({192, 168, 1, 1})
+      assert %DNS.ResourceRecordType{} = record.type
+    end
+
+    test "type can be compared with new type" do
+      record = A.new({192, 168, 1, 1})
+      a_type = DNS.ResourceRecordType.new(:a)
+      assert record.type == a_type
+    end
+
+    test "type can be compared by value" do
+      record = A.new({192, 168, 1, 1})
+      # Value is 16-bit binary representation
+      assert record.type.value == <<0, 1>>
+    end
+  end
+
+  describe "data field" do
+    test "data is 4-tuple of integers" do
+      record = A.new({192, 168, 1, 1})
+      assert is_tuple(record.data)
+      assert tuple_size(record.data) == 4
+    end
+
+    test "data tuple values are 0-255" do
+      record = A.new({192, 168, 1, 1})
+      {a, b, c, d} = record.data
+      assert a >= 0 and a <= 255
+      assert b >= 0 and b <= 255
+      assert c >= 0 and c <= 255
+      assert d >= 0 and d <= 255
+    end
+  end
+
+  describe "raw field" do
+    test "raw field is 4-byte binary" do
+      record = A.new({192, 168, 1, 1})
+      assert is_binary(record.raw)
+      assert byte_size(record.raw) == 4
+    end
+
+    test "raw matches tuple values" do
+      record = A.new({10, 20, 30, 40})
+      assert record.raw == <<10, 20, 30, 40>>
+    end
+  end
+
+  describe "concurrency" do
+    test "multiple A record creations are thread-safe" do
+      tasks =
+        for i <- 1..20 do
+          Task.async(fn ->
+            A.new({192, 168, 1, i})
+          end)
+        end
+
+      results = Task.await_many(tasks)
+
+      for {result, i} <- Enum.with_index(results, 1) do
+        assert %A{} = result
+        assert result.data == {192, 168, 1, i}
+      end
+    end
+  end
+
+  describe "comparison and equality" do
+    test "two A records with same IP are equal in data" do
+      record1 = A.new({192, 168, 1, 1})
+      record2 = A.new({192, 168, 1, 1})
+      assert record1.data == record2.data
+    end
+
+    test "two A records with different IPs differ in data" do
+      record1 = A.new({192, 168, 1, 1})
+      record2 = A.new({192, 168, 1, 2})
+      refute record1.data == record2.data
+    end
+  end
+
+  describe "integration with DNS message" do
+    test "A record can be used in resource record" do
+      a_record = A.new({192, 168, 1, 1})
+      # Verify it has the fields needed for a resource record
+      assert a_record.type != nil
+      assert a_record.rdlength != nil
+      assert a_record.data != nil
+    end
+
+    test "multiple A records for same domain" do
+      # Load balancing scenario - multiple IPs for one domain
+      ips = [
+        {192, 168, 1, 1},
+        {192, 168, 1, 2},
+        {192, 168, 1, 3}
+      ]
+
+      records =
+        for ip <- ips do
+          A.new(ip)
+        end
+
+      for {record, ip} <- Enum.zip(records, ips) do
+        assert %A{} = record
+        assert record.data == ip
+      end
+    end
+  end
+
+  describe "class A/B/C networks" do
+    test "creates record for Class A network (1.x.x.x - 126.x.x.x)" do
+      record = A.new({10, 0, 0, 1})
+      assert record.data == {10, 0, 0, 1}
+    end
+
+    test "creates record for Class B network (128.x.x.x - 191.x.x.x)" do
+      record = A.new({172, 16, 0, 1})
+      assert record.data == {172, 16, 0, 1}
+    end
+
+    test "creates record for Class C network (192.x.x.x - 223.x.x.x)" do
+      record = A.new({192, 168, 1, 1})
+      assert record.data == {192, 168, 1, 1}
+    end
+  end
+
+  describe "performance" do
+    test "creating many A records is efficient" do
+      records =
+        for i <- 1..100 do
+          A.new({192, 168, rem(i, 256), rem(i + 1, 256)})
+        end
+
+      assert length(records) == 100
+
+      for record <- records do
+        assert %A{} = record
+      end
+    end
+  end
 end

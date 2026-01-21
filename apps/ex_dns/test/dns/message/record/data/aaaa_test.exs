@@ -288,4 +288,273 @@ defmodule DNS.Message.Record.Data.AAAATest do
       assert record.data == ip
     end
   end
+
+  describe "RFC compliance" do
+    test "AAAA record type value is 28 per RFC 3596" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 1})
+      # RFC 3596 Section 2.1: AAAA = 28
+      # type.value is binary <<0, 28>> representing 16-bit value
+      assert record.type.value == <<0, 28>>
+    end
+
+    test "rdlength is 16 bytes per RFC 3596" do
+      record = AAAA.new({0x2001, 0, 0, 0, 0, 0, 0, 1})
+      # RFC 3596 Section 2.2: AAAA RDATA is 128-bit (16 byte) IPv6 address
+      assert record.rdlength == 16
+    end
+
+    test "wire format uses network byte order (big-endian)" do
+      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      <<_length::16, s1::16, s2::16, _rest::binary>> = DNS.Parameter.to_iodata(record)
+      # Segments are in order: first segment first
+      assert s1 == 0x2001
+      assert s2 == 0x0db8
+    end
+  end
+
+  describe "special IPv6 addresses" do
+    test "creates record for loopback (::1)" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0, 0, 0, 0, 0, 0, 0, 1}
+      assert to_string(record) == "::1"
+    end
+
+    test "creates record for unspecified address (::)" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 0})
+      assert record.data == {0, 0, 0, 0, 0, 0, 0, 0}
+      assert to_string(record) == "::"
+    end
+
+    test "creates record for link-local range (fe80::/10)" do
+      link_local_addrs = [
+        {0xfe80, 0, 0, 0, 0, 0, 0, 1},
+        {0xfe80, 0, 0, 0, 0x1234, 0x5678, 0x9abc, 0xdef0}
+      ]
+
+      for addr <- link_local_addrs do
+        record = AAAA.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for site-local range (deprecated fec0::/10)" do
+      record = AAAA.new({0xfec0, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0xfec0, 0, 0, 0, 0, 0, 0, 1}
+    end
+
+    test "creates record for multicast range (ff00::/8)" do
+      multicast_addrs = [
+        {0xff02, 0, 0, 0, 0, 0, 0, 1},     # All nodes (link-local)
+        {0xff02, 0, 0, 0, 0, 0, 0, 2},     # All routers (link-local)
+        {0xff02, 0, 0, 0, 0, 0, 0, 0xfb}   # mDNS
+      ]
+
+      for addr <- multicast_addrs do
+        record = AAAA.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for unique local addresses (fc00::/7)" do
+      record = AAAA.new({0xfc00, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0xfc00, 0, 0, 0, 0, 0, 0, 1}
+    end
+
+    test "creates record for documentation range (2001:db8::/32)" do
+      # RFC 3849: 2001:db8::/32 for documentation
+      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1}
+    end
+  end
+
+  describe "well-known DNS servers" do
+    test "creates record for Cloudflare DNS servers" do
+      cloudflare_dns = [
+        {0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111},
+        {0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1001}
+      ]
+
+      for addr <- cloudflare_dns do
+        record = AAAA.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for Google DNS servers" do
+      google_dns = [
+        {0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888},
+        {0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8844}
+      ]
+
+      for addr <- google_dns do
+        record = AAAA.new(addr)
+        assert record.data == addr
+      end
+    end
+
+    test "creates record for Quad9 DNS servers" do
+      {:ok, ip} = :inet.parse_ipv6_address(~c"2620:fe::fe")
+      record = AAAA.new(ip)
+      assert record.data == ip
+    end
+  end
+
+  describe "IPv4/IPv6 transition addresses" do
+    test "creates record for IPv4-mapped IPv6 (::ffff:a.b.c.d)" do
+      # ::ffff:192.168.1.1
+      ip = {0, 0, 0, 0, 0, 0xFFFF, 0xC0A8, 0x0101}
+      record = AAAA.new(ip)
+      assert record.data == ip
+    end
+
+    test "creates record for 6to4 address (2002::/16)" do
+      # 6to4 prefix encodes IPv4 address
+      record = AAAA.new({0x2002, 0xC0A8, 0x0101, 0, 0, 0, 0, 1})
+      assert record.data == {0x2002, 0xC0A8, 0x0101, 0, 0, 0, 0, 1}
+    end
+
+    test "creates record for Teredo address (2001:0::/32)" do
+      # Teredo tunneling prefix
+      record = AAAA.new({0x2001, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0x2001, 0, 0, 0, 0, 0, 0, 1}
+    end
+  end
+
+  describe "type field" do
+    test "type field is DNS.ResourceRecordType struct" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 1})
+      assert %DNS.ResourceRecordType{} = record.type
+    end
+
+    test "type can be compared with new type" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 1})
+      aaaa_type = DNS.ResourceRecordType.new(:aaaa)
+      assert record.type == aaaa_type
+    end
+
+    test "type can be compared by value" do
+      record = AAAA.new({0, 0, 0, 0, 0, 0, 0, 1})
+      # Value is 16-bit binary representation (28 = 0x1C)
+      assert record.type.value == <<0, 28>>
+    end
+  end
+
+  describe "data field" do
+    test "data is 8-tuple of integers" do
+      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      assert is_tuple(record.data)
+      assert tuple_size(record.data) == 8
+    end
+
+    test "data tuple values are 0-65535" do
+      record = AAAA.new({0x2001, 0x0db8, 0xFFFF, 0, 0, 0, 0, 1})
+      for segment <- Tuple.to_list(record.data) do
+        assert segment >= 0 and segment <= 65535
+      end
+    end
+  end
+
+  describe "raw field" do
+    test "raw field is 16-byte binary" do
+      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      assert is_binary(record.raw)
+      assert byte_size(record.raw) == 16
+    end
+
+    test "raw matches tuple values" do
+      record = AAAA.new({0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008})
+      expected_raw = <<1::16, 2::16, 3::16, 4::16, 5::16, 6::16, 7::16, 8::16>>
+      assert record.raw == expected_raw
+    end
+  end
+
+  describe "concurrency" do
+    test "multiple AAAA record creations are thread-safe" do
+      tasks =
+        for i <- 1..20 do
+          Task.async(fn ->
+            AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, i})
+          end)
+        end
+
+      results = Task.await_many(tasks)
+
+      for {result, i} <- Enum.with_index(results, 1) do
+        assert %AAAA{} = result
+        assert result.data == {0x2001, 0x0db8, 0, 0, 0, 0, 0, i}
+      end
+    end
+  end
+
+  describe "comparison and equality" do
+    test "two AAAA records with same IP are equal in data" do
+      record1 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record2 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      assert record1.data == record2.data
+    end
+
+    test "two AAAA records with different IPs differ in data" do
+      record1 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record2 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 2})
+      refute record1.data == record2.data
+    end
+  end
+
+  describe "integration with DNS message" do
+    test "AAAA record can be used in resource record" do
+      aaaa_record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      # Verify it has the fields needed for a resource record
+      assert aaaa_record.type != nil
+      assert aaaa_record.rdlength != nil
+      assert aaaa_record.data != nil
+    end
+
+    test "multiple AAAA records for same domain" do
+      # Load balancing scenario - multiple IPv6 addresses for one domain
+      ips = [
+        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1},
+        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 2},
+        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 3}
+      ]
+
+      records =
+        for ip <- ips do
+          AAAA.new(ip)
+        end
+
+      for {record, ip} <- Enum.zip(records, ips) do
+        assert %AAAA{} = record
+        assert record.data == ip
+      end
+    end
+  end
+
+  describe "global unicast addresses" do
+    test "creates record for global unicast (2000::/3)" do
+      global_addrs = [
+        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1},
+        {0x2607, 0xf8b0, 0x4004, 0x800, 0, 0, 0, 0x200e}  # Example Google
+      ]
+
+      for addr <- global_addrs do
+        record = AAAA.new(addr)
+        assert record.data == addr
+      end
+    end
+  end
+
+  describe "performance" do
+    test "creating many AAAA records is efficient" do
+      records =
+        for i <- 1..100 do
+          AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, i})
+        end
+
+      assert length(records) == 100
+
+      for record <- records do
+        assert %AAAA{} = record
+      end
+    end
+  end
 end

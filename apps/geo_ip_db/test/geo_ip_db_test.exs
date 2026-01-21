@@ -4,24 +4,20 @@ defmodule GeoIpDbTest do
   alias GeoIpDb.Database
 
   setup do
-    # Stop any existing database server
-    case Process.whereis(Database) do
-      nil -> :ok
-      pid -> GenServer.stop(pid, :normal)
-    end
+    # Ensure database server is running - don't stop/restart to avoid race conditions
+    _pid =
+      case Process.whereis(Database) do
+        nil ->
+          # No server running, start one
+          {:ok, new_pid} = Database.start_link([])
+          new_pid
 
-    # Clean up any existing ETS table
-    if :ets.whereis(:geo_ip_db_databases) != :undefined do
-      :ets.delete(:geo_ip_db_databases)
-    end
+        existing_pid ->
+          # Server already running, use it
+          existing_pid
+      end
 
-    # Start a fresh database server
-    {:ok, pid} = Database.start_link([])
-
-    on_exit(fn ->
-      if Process.alive?(pid), do: GenServer.stop(pid, :normal)
-    end)
-
+    # Don't stop the server in on_exit - it may be used by other tests
     :ok
   end
 
