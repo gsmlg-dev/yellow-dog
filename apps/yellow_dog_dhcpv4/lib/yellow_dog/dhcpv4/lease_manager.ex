@@ -10,6 +10,9 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   use GenServer
 
+  # Capture Mix.env() at compile time (Mix is not available in releases)
+  @compile_env Mix.env()
+
   alias YellowDog.Dhcpv4.AddressPool
   alias YellowDog.Dhcpv4.LeaseStorage
 
@@ -233,7 +236,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   @impl true
   def init(opts) do
     # Initialize Mnesia storage
-    storage_type = if Mix.env() == :test, do: :ram_copies, else: :disc_copies
+    storage_type = if @compile_env == :test, do: :ram_copies, else: :disc_copies
 
     case LeaseStorage.init(storage_type: storage_type) do
       :ok ->

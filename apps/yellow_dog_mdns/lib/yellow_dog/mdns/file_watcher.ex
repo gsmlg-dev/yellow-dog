@@ -165,7 +165,11 @@ defmodule YellowDog.Mdns.FileWatcher do
         FileSystem.subscribe(pid)
         {:ok, pid}
 
-      error ->
+      :ignore ->
+        # FileSystem returns :ignore when inotify-tools is not available
+        {:error, :fs_not_available}
+
+      {:error, _reason} = error ->
         error
     end
   end

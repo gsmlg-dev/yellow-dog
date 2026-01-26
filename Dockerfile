@@ -43,7 +43,7 @@ ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
-    musl musl-utils musl-locales tzdata && \
+    musl musl-utils musl-locales tzdata inotify-tools && \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \

@@ -105,7 +105,7 @@ defmodule YellowDog.Dhcpv4.Server do
   # Private helper functions
 
   # DHCP-specific options that should not be passed to Abyss
-  @dhcp_specific_keys [:pools, :static_reservations]
+  @dhcp_specific_keys [:pools, :static_reservations, :data_dir]
 
   defp build_server_config(opts) do
     # Start with defaults, then override with passed options
