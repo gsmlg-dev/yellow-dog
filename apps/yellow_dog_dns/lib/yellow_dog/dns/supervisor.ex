@@ -94,6 +94,7 @@ defmodule YellowDog.Dns.Supervisor do
       {Registry, keys: :unique, name: YellowDog.Dns.ZoneRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.ViewRegistry},
       {Registry, keys: :unique, name: YellowDog.Dns.ConnectionRegistry},
+      {Registry, keys: :unique, name: YellowDog.Dns.RecursionRegistry},
 
       # Rate limiter - must start before server for DoS protection
       YellowDog.Dns.RateLimiter
