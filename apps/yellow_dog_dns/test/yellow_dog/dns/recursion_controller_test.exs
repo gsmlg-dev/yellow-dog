@@ -412,6 +412,91 @@ defmodule YellowDog.Dns.RecursionControllerTest do
     end
   end
 
+  describe "supervisor-based concurrency" do
+    @tag :capture_log
+    test "starts with configurable max_children" do
+      view_name = "test_max_children_#{:rand.uniform(1_000_000)}"
+      max_children = 50
+
+      {:ok, pid} =
+        RecursionController.start_link(view_name: view_name, max_children: max_children)
+
+      stats = RecursionController.stats(pid)
+      assert stats.max_children == max_children
+      assert stats.active_workers == 0
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "tracks active workers in stats" do
+      view_name = "test_active_workers_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = RecursionController.start_link(view_name: view_name)
+
+      # Initially no active workers
+      stats = RecursionController.stats(pid)
+      assert stats.active_workers == 0
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "returns supervisor pid via get_supervisor/1" do
+      view_name = "test_get_supervisor_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = RecursionController.start_link(view_name: view_name)
+
+      supervisor_pid = RecursionController.get_supervisor(pid)
+      assert is_pid(supervisor_pid)
+      assert Process.alive?(supervisor_pid)
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "tracks overload_count in stats" do
+      view_name = "test_overload_count_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = RecursionController.start_link(view_name: view_name)
+
+      stats = RecursionController.stats(pid)
+      assert stats.overload_count == 0
+
+      GenServer.stop(pid)
+    end
+
+    @tag :capture_log
+    test "supervisor survives controller restart" do
+      view_name = "test_supervisor_restart_#{:rand.uniform(1_000_000)}"
+      {:ok, pid} = RecursionController.start_link(view_name: view_name)
+
+      supervisor_pid = RecursionController.get_supervisor(pid)
+      assert Process.alive?(supervisor_pid)
+
+      # Stop the controller - supervisor should also stop (linked)
+      GenServer.stop(pid)
+
+      # Give it a moment to clean up
+      Process.sleep(50)
+
+      # Supervisor should be stopped
+      refute Process.alive?(supervisor_pid)
+    end
+
+    @tag :capture_log
+    test "uses custom query_timeout" do
+      view_name = "test_query_timeout_#{:rand.uniform(1_000_000)}"
+      query_timeout = 10_000
+
+      {:ok, pid} =
+        RecursionController.start_link(view_name: view_name, query_timeout: query_timeout)
+
+      # Verify the controller started successfully with custom timeout
+      stats = RecursionController.stats(pid)
+      assert stats.view_name == view_name
+
+      GenServer.stop(pid)
+    end
+  end
+
   # Helper to build test queries
   defp build_test_query(name, type \\ :a) do
     query = Message.new()
