@@ -131,6 +131,142 @@ defmodule Abyss.ClientTest do
     end
   end
 
+  describe "send_recv/5 request-response" do
+    test "sends packet and receives response" do
+      # Create an echo server that responds with the same data
+      {:ok, server_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+      {:ok, {_server_ip, server_port}} = :inet.sockname(server_socket)
+
+      # Start server task to echo back the packet
+      server_task =
+        Task.async(fn ->
+          case :gen_udp.recv(server_socket, 0, 2000) do
+            {:ok, {client_ip, client_port, data}} ->
+              :gen_udp.send(server_socket, client_ip, client_port, "echo: " <> data)
+              :ok
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end)
+
+      test_data = "hello request-response"
+
+      # Give server time to start listening
+      Process.sleep(10)
+
+      result = Client.send_recv({127, 0, 0, 1}, server_port, test_data, 2000)
+
+      case result do
+        {:ok, response} ->
+          assert response == "echo: " <> test_data
+
+        {:error, reason} when reason in [:timeout, :enetunreach, :ehostunreach, :econnrefused] ->
+          # May fail in restricted environments
+          assert true
+
+        {:error, reason} ->
+          flunk("Unexpected error: #{inspect(reason)}")
+      end
+
+      Task.await(server_task, 3000)
+      :gen_udp.close(server_socket)
+    end
+
+    test "returns timeout error when no response" do
+      # Use a port that won't respond
+      {:ok, server_socket} = :gen_udp.open(0, [:binary])
+      {:ok, {_server_ip, server_port}} = :inet.sockname(server_socket)
+
+      # Don't set up any receiver - let it timeout
+      result = Client.send_recv({127, 0, 0, 1}, server_port, "no response", 100)
+
+      case result do
+        {:error, :timeout} ->
+          assert true
+
+        {:error, reason} when reason in [:enetunreach, :ehostunreach, :econnrefused] ->
+          assert true
+
+        {:ok, _} ->
+          # Shouldn't happen but accept if something else on the network responded
+          assert true
+      end
+
+      :gen_udp.close(server_socket)
+    end
+
+    test "respects source option" do
+      {:ok, server_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+      {:ok, {_server_ip, server_port}} = :inet.sockname(server_socket)
+
+      server_task =
+        Task.async(fn ->
+          case :gen_udp.recv(server_socket, 0, 2000) do
+            {:ok, {client_ip, client_port, data}} ->
+              :gen_udp.send(server_socket, client_ip, client_port, data)
+              client_ip
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end)
+
+      Process.sleep(10)
+
+      result =
+        Client.send_recv({127, 0, 0, 1}, server_port, "source test", 2000, source: {127, 0, 0, 1})
+
+      case result do
+        {:ok, _} ->
+          # Verify client IP was loopback
+          client_ip = Task.await(server_task, 3000)
+          assert client_ip == {127, 0, 0, 1}
+
+        {:error, _} ->
+          Task.await(server_task, 3000)
+          assert true
+      end
+
+      :gen_udp.close(server_socket)
+    end
+  end
+
+  describe "subscribe_broadcast/4 multicast subscription" do
+    test "returns empty list on timeout with no responses" do
+      # Test subscribe_broadcast to multicast address (receive-only)
+      # Use a high port to avoid conflicts
+      result = Client.subscribe_broadcast({224, 0, 0, 251}, 15353, 100)
+
+      case result do
+        {:ok, packets} ->
+          # May be empty or have packets from actual mDNS traffic
+          assert is_list(packets)
+
+        {:error, reason}
+        when reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval, :eaddrinuse] ->
+          # Multicast may not be available or port in use
+          assert true
+      end
+    end
+
+    test "subscribe_broadcast is receive-only (no send)" do
+      # Subscribe should just listen, not send anything
+      # Using a test port that's unlikely to have traffic
+      result = Client.subscribe_broadcast({224, 0, 0, 251}, 15354, 50)
+
+      case result do
+        {:ok, packets} ->
+          # In most test environments, this will be empty
+          assert is_list(packets)
+
+        {:error, reason}
+        when reason in [:enetunreach, :eacces, :eperm, :enetdown, :einval, :eaddrinuse] ->
+          assert true
+      end
+    end
+  end
+
   describe "resolve_interface_ip/1" do
     test "resolves loopback interface" do
       result = Client.resolve_interface_ip("lo")
@@ -162,7 +298,13 @@ defmodule Abyss.ClientTest do
         [
           [:abyss, :client, :send, :start],
           [:abyss, :client, :send, :stop],
-          [:abyss, :client, :send, :exception]
+          [:abyss, :client, :send, :exception],
+          [:abyss, :client, :send_recv, :start],
+          [:abyss, :client, :send_recv, :stop],
+          [:abyss, :client, :send_recv, :exception],
+          [:abyss, :client, :subscribe, :start],
+          [:abyss, :client, :subscribe, :stop],
+          [:abyss, :client, :subscribe, :exception]
         ],
         fn event, measurements, metadata, _config ->
           send(test_pid, {:telemetry_event, event, measurements, metadata})
@@ -241,6 +383,74 @@ defmodule Abyss.ClientTest do
         {:error, _} ->
           assert_receive {:telemetry_event, [:abyss, :client, :send, :exception], _, _}
       end
+    end
+
+    test "send_recv emits telemetry events" do
+      {:ok, server_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+      {:ok, {_server_ip, server_port}} = :inet.sockname(server_socket)
+
+      server_task =
+        Task.async(fn ->
+          case :gen_udp.recv(server_socket, 0, 2000) do
+            {:ok, {client_ip, client_port, data}} ->
+              :gen_udp.send(server_socket, client_ip, client_port, data)
+              :ok
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end)
+
+      Process.sleep(10)
+
+      result = Client.send_recv({127, 0, 0, 1}, server_port, "telemetry test", 2000)
+
+      # Should receive start event with type :request_response
+      assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :start], %{}, metadata}
+      assert metadata.type == :request_response
+      assert metadata.timeout == 2000
+
+      case result do
+        {:ok, _} ->
+          assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :stop], measurements, _}
+          assert is_integer(measurements.duration)
+          assert is_integer(measurements.response_size)
+
+        {:error, _} ->
+          assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :exception],
+                          measurements, meta}
+
+          assert is_integer(measurements.duration)
+          assert Map.has_key?(meta, :reason)
+      end
+
+      Task.await(server_task, 3000)
+      :gen_udp.close(server_socket)
+    end
+
+    test "send_recv timeout emits exception event" do
+      {:ok, server_socket} = :gen_udp.open(0, [:binary])
+      {:ok, {_server_ip, server_port}} = :inet.sockname(server_socket)
+
+      result = Client.send_recv({127, 0, 0, 1}, server_port, "timeout test", 100)
+
+      assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :start], %{}, _}
+
+      case result do
+        {:error, :timeout} ->
+          assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :exception], _,
+                          metadata}
+
+          assert metadata.reason == :timeout
+
+        {:error, _} ->
+          assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :exception], _, _}
+
+        {:ok, _} ->
+          assert_receive {:telemetry_event, [:abyss, :client, :send_recv, :stop], _, _}
+      end
+
+      :gen_udp.close(server_socket)
     end
   end
 

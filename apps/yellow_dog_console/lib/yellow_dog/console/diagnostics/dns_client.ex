@@ -2,11 +2,12 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
   @moduledoc """
   DNS query client for diagnostic testing.
 
-  Sends DNS queries using UDP or TCP and returns parsed results
-  with timing information.
+  Sends DNS queries using UDP or TCP via `YellowDog.Dns.Client` and returns
+  parsed results with timing information.
   """
 
   alias YellowDog.Console.Diagnostics.QueryResult
+  alias YellowDog.Dns.Client, as: DnsClient
 
   @doc """
   Sends a DNS query and returns the result.
@@ -181,34 +182,26 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
     end
   end
 
-  # Query execution
+  # Query execution - delegates to YellowDog.Dns.Client
 
-  defp execute_query(%{protocol: :udp} = params, request_binary) do
-    query_udp(params, request_binary)
+  defp execute_query(%{protocol: :udp} = params, _request_binary) do
+    # Use YellowDog.Dns.Client.query_raw for UDP queries
+    opts = [
+      port: params.port,
+      timeout: params.timeout,
+      recursion_desired: params.recursion_desired
+    ]
+
+    case DnsClient.query_raw(params.query_name, params.record_type, params.server, opts) do
+      {:ok, response} -> {:ok, response}
+      {:error, :timeout} -> {:error, :timeout}
+      {:error, reason} -> {:error, {:socket_error, reason}}
+    end
   end
 
   defp execute_query(%{protocol: :tcp} = params, request_binary) do
+    # TCP queries still use direct gen_tcp (YellowDog.Dns.Client is UDP-only)
     query_tcp(params, request_binary)
-  end
-
-  defp query_udp(params, request_binary) do
-    case :gen_udp.open(0, [:binary, active: false]) do
-      {:ok, socket} ->
-        try do
-          :gen_udp.send(socket, params.server, params.port, request_binary)
-
-          case :gen_udp.recv(socket, 0, params.timeout) do
-            {:ok, {_ip, _port, response}} -> {:ok, response}
-            {:error, :timeout} -> {:error, :timeout}
-            {:error, reason} -> {:error, {:socket_error, reason}}
-          end
-        after
-          :gen_udp.close(socket)
-        end
-
-      {:error, reason} ->
-        {:error, {:socket_error, reason}}
-    end
   end
 
   defp query_tcp(params, request_binary) do

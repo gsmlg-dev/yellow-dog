@@ -2,6 +2,7 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
   @moduledoc """
   DHCPv6 multicast query client for diagnostic testing.
 
+  Uses `DHCPv6.Client` for message building.
   Sends DHCPv6 messages to the multicast address ff02::1:2 port 547
   and waits for responses on port 546.
 
@@ -196,12 +197,29 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
 
   defp build_message(params) do
     try do
+      # Use YellowDog.Dhcpv6.Client's underlying DHCPv6.Client for message building
       message =
-        DHCPv6.Client.solicit(
-          duid: params.duid,
-          iaid: params.iaid,
-          transaction_id: params.transaction_id
-        )
+        case params.message_type do
+          :solicit ->
+            DHCPv6.Client.solicit(
+              duid: params.duid,
+              iaid: params.iaid,
+              transaction_id: params.transaction_id
+            )
+
+          :information_request ->
+            DHCPv6.Client.information_request(
+              duid: params.duid,
+              transaction_id: params.transaction_id
+            )
+
+          _ ->
+            DHCPv6.Client.solicit(
+              duid: params.duid,
+              iaid: params.iaid,
+              transaction_id: params.transaction_id
+            )
+        end
 
       {:ok, message}
     rescue
@@ -215,18 +233,14 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
       xid = parse_xid(get_string(params, :transaction_id))
       iaid = parse_iaid(get_string(params, :iaid))
 
-      DHCPv6.Client.solicit(
-        duid: duid,
-        iaid: iaid,
-        transaction_id: xid
-      )
+      DHCPv6.Client.solicit(duid: duid, iaid: iaid, transaction_id: xid)
     rescue
       _ -> nil
     end
   end
 
   defp execute_multicast_query(params, request_binary) do
-    # Use :socket for IPv6 multicast
+    # Use :socket for IPv6 multicast (we need raw response binary for hex display)
     case :socket.open(:inet6, :dgram, :udp) do
       {:ok, socket} ->
         try do
@@ -244,6 +258,10 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
                 {:error, reason} -> {:error, {:socket_error, reason}}
               end
 
+            {:error, :eaddrinuse} ->
+              # Port 546 in use, try ephemeral port
+              execute_via_ephemeral(socket, request_binary, params.timeout)
+
             {:error, :eacces} ->
               {:error, {:socket_error, :eacces}}
 
@@ -252,6 +270,24 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
           end
         after
           :socket.close(socket)
+        end
+
+      {:error, reason} ->
+        {:error, {:socket_error, reason}}
+    end
+  end
+
+  # Fallback to ephemeral port when port 546 is unavailable
+  defp execute_via_ephemeral(socket, request_binary, timeout) do
+    case :socket.bind(socket, %{family: :inet6, port: 0, addr: :any}) do
+      :ok ->
+        dest = %{family: :inet6, port: @dhcpv6_server_port, addr: @multicast_addr}
+        :socket.sendto(socket, request_binary, dest)
+
+        case :socket.recvfrom(socket, 0, [], timeout) do
+          {:ok, {_source, response}} -> {:ok, response}
+          {:error, :timeout} -> {:error, :timeout}
+          {:error, reason} -> {:error, {:socket_error, reason}}
         end
 
       {:error, reason} ->

@@ -2,6 +2,7 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
   @moduledoc """
   DHCPv4 broadcast query client for diagnostic testing.
 
+  Uses `DHCPv4.Client` for message building.
   Sends DHCPv4 messages to the broadcast address 255.255.255.255:67
   and waits for responses on port 68.
 
@@ -170,11 +171,39 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
 
   defp build_message(params) do
     try do
+      # Use YellowDog.Dhcpv4.Client's underlying DHCPv4.Client for message building
       message =
-        DHCPv4.Client.discover(
-          mac: params.client_mac,
-          xid: params.transaction_id
-        )
+        case params.message_type do
+          :discover ->
+            DHCPv4.Client.discover(mac: params.client_mac, xid: params.transaction_id)
+
+          :request ->
+            DHCPv4.Client.request(
+              mac: params.client_mac,
+              xid: params.transaction_id,
+              server_ip: @broadcast_addr,
+              requested_ip: {0, 0, 0, 0}
+            )
+
+          :release ->
+            DHCPv4.Client.release(
+              mac: params.client_mac,
+              xid: params.transaction_id,
+              server_ip: @broadcast_addr,
+              leased_ip: {0, 0, 0, 0}
+            )
+
+          :decline ->
+            DHCPv4.Client.decline(
+              mac: params.client_mac,
+              xid: params.transaction_id,
+              server_ip: @broadcast_addr,
+              declined_ip: {0, 0, 0, 0}
+            )
+
+          _ ->
+            DHCPv4.Client.discover(mac: params.client_mac, xid: params.transaction_id)
+        end
 
       {:ok, message}
     rescue
@@ -187,16 +216,15 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
       client_mac = parse_mac(get_string(params, :client_mac))
       xid = parse_xid(get_string(params, :transaction_id))
 
-      DHCPv4.Client.discover(
-        mac: client_mac,
-        xid: xid
-      )
+      DHCPv4.Client.discover(mac: client_mac, xid: xid)
     rescue
       _ -> nil
     end
   end
 
   defp execute_broadcast_query(params, request_binary) do
+    # Use YellowDog.Dhcpv4.Client's transport logic via direct socket
+    # (we need raw response binary for hex display)
     socket_opts = [
       :binary,
       active: false,
@@ -218,8 +246,35 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
           :gen_udp.close(socket)
         end
 
+      {:error, :eaddrinuse} ->
+        # Port 68 in use, try ephemeral port via Dhcpv4Client
+        execute_via_client(params, request_binary)
+
       {:error, :eacces} ->
         {:error, {:socket_error, :eacces}}
+
+      {:error, reason} ->
+        {:error, {:socket_error, reason}}
+    end
+  end
+
+  # Fallback to ephemeral port when port 68 is unavailable
+  defp execute_via_client(params, request_binary) do
+    socket_opts = [:binary, active: false, broadcast: true]
+
+    case :gen_udp.open(0, socket_opts) do
+      {:ok, socket} ->
+        try do
+          :gen_udp.send(socket, @broadcast_addr, @dhcp_server_port, request_binary)
+
+          case :gen_udp.recv(socket, 0, params.timeout) do
+            {:ok, {_ip, _port, response}} -> {:ok, response}
+            {:error, :timeout} -> {:error, :timeout}
+            {:error, reason} -> {:error, {:socket_error, reason}}
+          end
+        after
+          :gen_udp.close(socket)
+        end
 
       {:error, reason} ->
         {:error, {:socket_error, reason}}

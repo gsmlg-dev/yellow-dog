@@ -127,6 +127,9 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
   end
 
   defp execute_multicast_query(params, request_binary) do
+    # We need source address info (IP, port) for diagnostics display,
+    # so we keep the direct socket approach here rather than using
+    # MdnsClient.query_raw which doesn't preserve source info
     socket_opts = [
       :binary,
       active: false,
