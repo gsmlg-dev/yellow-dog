@@ -139,7 +139,7 @@ This feature modifies existing files only. No new project setup required.
 - [ ] T039 Run `mix credo --strict` at umbrella root to check code quality
 - [ ] T040 Verify DNS service starts via IEx: `iex -S mix` → `YellowDog.start_service(:dns)`
 - [ ] T041 Verify DNS responds to queries: `dig @127.0.0.1 -p 53 example.com A`
-- [ ] T042 Verify dashboard Start/Stop buttons work for all services via browser at `http://localhost:4000/dashboard`
+- [ ] T042 Verify dashboard Start/Stop buttons work for all services via browser at `http://localhost:4270/dashboard`
 - [ ] T043 [P] Verify periodic refresh (5 seconds) updates status after external changes
 
 ---

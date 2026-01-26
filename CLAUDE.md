@@ -69,7 +69,7 @@ mix app.start yellow_dog_dns
 # Start the Phoenix web console (development mode)
 cd apps/yellow_dog_console
 mix phx.server
-# Then visit http://localhost:4000
+# Then visit http://localhost:4270
 
 # Start Phoenix console with IEx
 cd apps/yellow_dog_console

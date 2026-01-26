@@ -27,7 +27,7 @@ iex -S mix
 # Start the web console (development)
 cd apps/yellow_dog_console
 mix phx.server
-# Visit http://localhost:4000
+# Visit http://localhost:4270
 ```
 
 ### Default Ports
@@ -38,7 +38,7 @@ mix phx.server
 | mDNS    | 5353 | UDP (multicast) |
 | DHCPv4  | 67   | UDP      |
 | DHCPv6  | 547  | UDP      |
-| Web Console | 4000 | HTTP |
+| Web Console | 4270 | HTTP |
 
 ## Architecture
 
@@ -252,7 +252,7 @@ The web console provides a modern interface for managing Yellow Dog DNS:
 ```shell
 cd apps/yellow_dog_console
 mix setup              # Install dependencies
-mix phx.server         # Start server at http://localhost:4000
+mix phx.server         # Start server at http://localhost:4270
 ```
 
 ## Docker
@@ -265,7 +265,7 @@ docker build -t yellowdogdns .
 nix build .#docker
 
 # Run container
-docker run -p 53:53/udp -p 67:67/udp -p 4000:4000 yellowdogdns
+docker run -p 53:53/udp -p 67:67/udp -p 4270:4270 yellowdogdns
 ```
 
 ## License

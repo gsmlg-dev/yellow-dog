@@ -32,7 +32,7 @@ cd apps/yellow_dog_console
 iex -S mix phx.server
 ```
 
-Then visit: http://localhost:4000/process-map
+Then visit: http://localhost:4270/process-map
 
 ### 4. Run Tests
 

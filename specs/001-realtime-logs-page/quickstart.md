@@ -211,7 +211,7 @@ Add to the YellowDog.Console.Application supervisor children:
 cd apps/yellow_dog_console
 iex -S mix phx.server
 
-# Visit http://localhost:4000/logs
+# Visit http://localhost:4270/logs
 
 # Generate test logs from iex
 YellowDog.Telemetry.info("Test message", %{})

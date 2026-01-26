@@ -52,7 +52,7 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
 
-EXPOSE 53 67/udp 547/udp 5353/udp 4000
+EXPOSE 53 67/udp 547/udp 5353/udp 4270
 
 CMD ["/app/bin/yellow_dog", "start"]
 

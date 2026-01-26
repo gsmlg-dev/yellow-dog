@@ -190,7 +190,7 @@ mix test apps/yellow_dog_console/test/
 cd apps/yellow_dog_console
 iex -S mix phx.server
 
-# Open browser to http://localhost:4000/dashboard
+# Open browser to http://localhost:4270/dashboard
 # Click Start on DNS service card
 # Verify status changes to "Running"
 # Click Stop

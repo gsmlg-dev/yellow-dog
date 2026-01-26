@@ -181,11 +181,11 @@ iex -S mix phx.server
 ```
 
 Then visit:
-- http://localhost:4000/dashboard - Main dashboard with mDNS status
-- http://localhost:4000/mdns - mDNS overview
-- http://localhost:4000/mdns/services - Service management
-- http://localhost:4000/mdns/discovery - Network discovery
-- http://localhost:4000/mdns/monitor - Live monitoring
+- http://localhost:4270/dashboard - Main dashboard with mDNS status
+- http://localhost:4270/mdns - mDNS overview
+- http://localhost:4270/mdns/services - Service management
+- http://localhost:4270/mdns/discovery - Network discovery
+- http://localhost:4270/mdns/monitor - Live monitoring
 
 ### Production
 ```bash

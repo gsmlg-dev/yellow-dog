@@ -56,7 +56,7 @@ YellowDog.Dns.Zone.Manager.load_zone("example.com",
 dig @localhost example.com A
 
 # Web console
-open http://localhost:4000/dns
+open http://localhost:4270/dns
 ```
 
 ## ✨ Key Features (Planned)

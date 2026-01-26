@@ -54,7 +54,7 @@ cd apps/yellow_dog_console
 iex -S mix phx.server
 ```
 
-Navigate to: **http://localhost:4000/settings**
+Navigate to: **http://localhost:4270/settings**
 
 ### 4. Watch Mode for Development
 
@@ -76,7 +76,7 @@ mix tailwind default --watch
 
 ### Access Settings Page
 
-1. Navigate to `http://localhost:4000/settings`
+1. Navigate to `http://localhost:4270/settings`
 2. You'll see 4 tabs: **DNS**, **mDNS**, **DHCPv4**, **DHCPv6**
 3. Click any tab to view service configuration
 
@@ -287,7 +287,7 @@ iex> new_dns_pid = Process.whereis(YellowDog.Dns.Supervisor)
 
 ### Scenario 1: Concurrent Administrator Conflict
 
-**Setup**: Open two browser windows at `http://localhost:4000/settings`
+**Setup**: Open two browser windows at `http://localhost:4270/settings`
 
 **Steps**:
 1. **Browser A**: Load page at 14:30:00
@@ -376,7 +376,7 @@ iex> Phoenix.Endpoint.server?()
 true
 
 # Verify WebSocket connection in browser console
-# Should see: "[phoenix] connected to ws://localhost:4000/live/websocket"
+# Should see: "[phoenix] connected to ws://localhost:4270/live/websocket"
 ```
 
 ### Configuration File Not Found
@@ -456,7 +456,7 @@ config :logger, level: :warning  # Reduce test noise
 
 ### Use Phoenix LiveDashboard
 
-Navigate to: **http://localhost:4000/dev/dashboard**
+Navigate to: **http://localhost:4270/dev/dashboard**
 
 - Monitor LiveView processes
 - View Ecto queries (if using database)

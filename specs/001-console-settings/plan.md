@@ -227,7 +227,7 @@ Based on constitution and existing codebase:
 ### Quickstart Guide (to be generated in quickstart.md)
 
 **Developer Quickstart**:
-1. Navigate to http://localhost:4000/settings
+1. Navigate to http://localhost:4270/settings
 2. Select service tab (DNS/mDNS/DHCPv4/DHCPv6)
 3. Edit configuration fields
 4. Click "Save" to stage changes
