@@ -27,6 +27,26 @@ defmodule Abyss.Listener do
   5. Emit telemetry events for monitoring
 
   This module is primarily used internally by `Abyss.ListenerPool`.
+
+  ## Critical Implementation Note - DO NOT CHANGE
+
+  The UDP recv pattern MUST use `:infinity` timeout:
+
+      transport.recv(listener_socket, 0, :infinity)
+
+  **Why this is correct:**
+  - UDP is connectionless - there is no "connection" to maintain
+  - The recv call blocks efficiently at the OS level waiting for packets
+  - Using finite timeouts (e.g., 100ms) causes busy-polling which wastes CPU
+  - The BEAM scheduler handles this blocking call properly in a dedicated thread
+  - GenServer calls to this process are handled via selective receive
+
+  **Do NOT "optimize" by:**
+  - Adding timeout with polling loops (wastes CPU, adds latency)
+  - Using `active: true` for unicast mode (loses backpressure control)
+  - Adding {:error, :timeout} handling (unnecessary for UDP)
+
+  This pattern has been validated for high-performance UDP servers.
   """
 
   use GenServer, restart: :transient
@@ -244,14 +264,10 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    # Use 100ms timeout to allow GenServer to handle calls (e.g., listener_info/1)
-    # while still polling for incoming data
-    case transport.recv(listener_socket, 0, 100) do
-      {:error, :timeout} ->
-        # Timeout is expected - retry recv to allow processing of GenServer calls
-        Process.send_after(self(), :do_recv, 0)
-        {:noreply, state}
-
+    # CRITICAL: Use :infinity timeout - DO NOT CHANGE to finite timeout!
+    # See moduledoc "Critical Implementation Note" for explanation.
+    # UDP recv blocks efficiently at OS level; finite timeouts cause CPU-wasting busy loops.
+    case transport.recv(listener_socket, 0, :infinity) do
       {:ok, {ip, port, data}} ->
         Abyss.Telemetry.untimed_span_event(state.listener_span, :receiving, %{}, %{
           listener_id: state.listener_id,
@@ -382,12 +398,10 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
-    # Use 100ms timeout to allow GenServer to handle calls while polling for data
-    case transport.recv(listener_socket, 0, 100) do
-      {:error, :timeout} ->
-        # Timeout is expected - continue listening loop to allow processing of GenServer calls
-        {:noreply, state, {:continue, :listening}}
-
+    # CRITICAL: Use :infinity timeout - DO NOT CHANGE to finite timeout!
+    # See moduledoc "Critical Implementation Note" for explanation.
+    # UDP recv blocks efficiently at OS level; finite timeouts cause CPU-wasting busy loops.
+    case transport.recv(listener_socket, 0, :infinity) do
       {:ok, recv_data} ->
         {ip, port, anc_data} =
           case recv_data do

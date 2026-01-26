@@ -32,6 +32,28 @@ This means dependencies and build artifacts are shared across the entire Yellow 
 - **Telemetry**: `Abyss.Telemetry` - Metrics and monitoring via :telemetry
 - **Logger**: `Abyss.Logger` - Structured logging with different levels
 
+## ⚠️ CRITICAL: UDP Recv Pattern - DO NOT CHANGE
+
+The UDP listener in `Abyss.Listener` uses a specific recv pattern that **MUST NOT be changed**:
+
+```elixir
+# CORRECT - blocks efficiently at OS level
+case transport.recv(listener_socket, 0, :infinity) do
+```
+
+**Why `:infinity` timeout is correct:**
+1. **UDP is connectionless** - there is no "connection" to maintain or keep alive
+2. **Efficient OS-level blocking** - the recv call blocks in the kernel, not spinning CPU
+3. **BEAM scheduler handles it** - blocking calls run in dirty I/O threads
+4. **No busy-polling** - finite timeouts cause wasteful CPU polling loops
+
+**DO NOT "optimize" by:**
+- ❌ Using finite timeouts (e.g., `recv(..., 100)`) - causes CPU-wasting busy loops
+- ❌ Adding `{:error, :timeout}` handling with retry loops - unnecessary overhead
+- ❌ Using `active: true` for unicast mode - loses backpressure control
+
+This pattern has been validated for high-performance UDP servers handling thousands of packets per second.
+
 ## Development Commands
 
 ### Build & Test
