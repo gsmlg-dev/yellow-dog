@@ -422,4 +422,107 @@ defmodule YellowDog.Config do
   def get_version do
     Agent.get(__MODULE__, fn state -> Map.get(state, :_version, 0) end)
   end
+
+  @doc """
+  Gets the base data directory for all services.
+
+  Priority order:
+  1. CLI argument `--data-dir` (via Application.get_env)
+  2. Environment variable `YELLOW_DOG_DATA_DIR`
+  3. Config file `data_dir` setting
+  4. Default: "data"
+
+  ## Examples
+
+      iex> YellowDog.Config.get_data_dir()
+      "/data/yellowdog"
+  """
+  @spec get_data_dir() :: String.t()
+  def get_data_dir do
+    # Priority: CLI/ENV (set in runtime.exs) > config file > default
+    case Application.get_env(:yellow_dog, :data_dir) do
+      nil ->
+        # Fall back to config file or default
+        case get("data_dir") do
+          nil -> "data"
+          dir -> dir
+        end
+
+      dir ->
+        dir
+    end
+  end
+
+  @doc """
+  Gets the data directory for a specific service.
+
+  Returns the path: `<data_dir>/<service_name>/`
+
+  ## Examples
+
+      iex> YellowDog.Config.get_service_data_dir(:dns)
+      "data/dns"
+
+      iex> YellowDog.Config.get_service_data_dir(:dhcpv4)
+      "/data/yellowdog/dhcpv4"
+  """
+  @spec get_service_data_dir(service_name()) :: String.t()
+  def get_service_data_dir(service) do
+    base_dir = get_data_dir()
+    Path.join(base_dir, to_string(service))
+  end
+
+  @doc """
+  Ensures the data directory for a service exists.
+
+  Creates the directory if it doesn't exist.
+
+  ## Examples
+
+      iex> YellowDog.Config.ensure_service_data_dir(:dns)
+      :ok
+  """
+  @spec ensure_service_data_dir(service_name()) :: :ok | {:error, term()}
+  def ensure_service_data_dir(service) do
+    dir = get_service_data_dir(service)
+
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Gets the Mnesia directory for persistent storage.
+
+  Used by DHCPv4 and DHCPv6 for lease persistence.
+
+  ## Examples
+
+      iex> YellowDog.Config.get_mnesia_dir()
+      "data/mnesia"
+  """
+  @spec get_mnesia_dir() :: String.t()
+  def get_mnesia_dir do
+    base_dir = get_data_dir()
+    Path.join(base_dir, "mnesia")
+  end
+
+  @doc """
+  Ensures the Mnesia directory exists.
+
+  ## Examples
+
+      iex> YellowDog.Config.ensure_mnesia_dir()
+      :ok
+  """
+  @spec ensure_mnesia_dir() :: :ok | {:error, term()}
+  def ensure_mnesia_dir do
+    dir = get_mnesia_dir()
+
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 end

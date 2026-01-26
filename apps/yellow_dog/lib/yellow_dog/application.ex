@@ -237,6 +237,7 @@ defmodule YellowDog.Application do
   # Gets the default configuration
   defp get_default_config do
     %{
+      "data_dir" => "data",
       "core" => %{
         "dns" => Mix.env() != :test,
         "mdns" => true,
@@ -253,7 +254,6 @@ defmodule YellowDog.Application do
         "port" => 5353,
         "mode" => "hybrid",
         "services" => %{
-          "file" => "data/mdns_services.toml",
           "format" => "toml",
           "auto_save" => true,
           "watch_file" => true,
@@ -411,9 +411,14 @@ defmodule YellowDog.Application do
 
     case service_name do
       :dns ->
+        # Get data directory from config
+        data_dir = get_data_dir(config)
+        dns_data_dir = Path.join(data_dir, "dns")
+
         [
           port: Map.get(service_config, "port", 53),
-          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0"))
+          listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
+          data_dir: dns_data_dir
         ]
 
       :mdns ->
@@ -421,16 +426,22 @@ defmodule YellowDog.Application do
         responder_config = Map.get(service_config, "responder", %{})
         monitor_config = Map.get(service_config, "monitor", %{})
 
+        # Get data directory from config
+        data_dir = get_data_dir(config)
+        mdns_data_dir = Path.join(data_dir, "mdns")
+        default_storage_file = Path.join(mdns_data_dir, "services.toml")
+
         [
           port: Map.get(service_config, "port", 5353),
           listen_address: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
           mode: String.to_atom(Map.get(service_config, "mode", "hybrid")),
           # Service registry options
-          storage_file: Map.get(services_config, "file", "data/mdns_services.toml"),
+          storage_file: Map.get(services_config, "file", default_storage_file),
           storage_format: String.to_atom(Map.get(services_config, "format", "toml")),
           auto_save: Map.get(services_config, "auto_save", true),
           watch_file: Map.get(services_config, "watch_file", true),
           load_on_start: Map.get(services_config, "load_on_start", true),
+          data_dir: mdns_data_dir,
           # Responder options
           responder_enabled: Map.get(responder_config, "enabled", true),
           service_ttl: Map.get(responder_config, "service_ttl", 4500),
@@ -451,23 +462,46 @@ defmodule YellowDog.Application do
         pools = parse_dhcpv4_pools(service_config)
         static_reservations = Map.get(service_config, "static_reservations", %{})
 
+        # Get data directory from config
+        data_dir = get_data_dir(config)
+        dhcpv4_data_dir = Path.join(data_dir, "dhcpv4")
+
         [
           port: Map.get(service_config, "port", 67),
           listen: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
           pools: pools,
-          static_reservations: static_reservations
+          static_reservations: static_reservations,
+          data_dir: dhcpv4_data_dir
         ]
 
       :dhcpv6 ->
         pools = parse_dhcpv6_pools(service_config)
         static_reservations = Map.get(service_config, "static_reservations", %{})
 
+        # Get data directory from config
+        data_dir = get_data_dir(config)
+        dhcpv6_data_dir = Path.join(data_dir, "dhcpv6")
+
         [
           port: Map.get(service_config, "port", 547),
           listen: convert_ipv6(Map.get(service_config, "listen", "::")),
           pools: pools,
-          static_reservations: static_reservations
+          static_reservations: static_reservations,
+          data_dir: dhcpv6_data_dir
         ]
+    end
+  end
+
+  # Gets the data directory from config or CLI/ENV override
+  defp get_data_dir(config) do
+    # Priority: CLI/ENV (set in runtime.exs) > config file > default
+    case Application.get_env(:yellow_dog, :data_dir) do
+      nil ->
+        # Fall back to config file or default
+        Map.get(config, "data_dir", "data")
+
+      dir ->
+        dir
     end
   end
 

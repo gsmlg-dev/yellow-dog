@@ -89,7 +89,12 @@ defmodule YellowDog.Dns.RecursionSupervisorTest do
   describe "resolve/2" do
     @tag :capture_log
     test "returns error for non-existent view" do
-      result = RecursionSupervisor.resolve("nonexistent_view_#{:rand.uniform(1_000_000)}", build_empty_query())
+      result =
+        RecursionSupervisor.resolve(
+          "nonexistent_view_#{:rand.uniform(1_000_000)}",
+          build_empty_query()
+        )
+
       assert {:error, :not_found} = result
     end
 

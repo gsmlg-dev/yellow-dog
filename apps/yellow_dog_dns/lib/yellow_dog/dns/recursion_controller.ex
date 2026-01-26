@@ -161,7 +161,12 @@ defmodule YellowDog.Dns.RecursionController do
         {:reply, {:ok, response}, state}
 
       {:error, :overloaded} ->
-        state = %{state | overload_count: state.overload_count + 1, error_count: state.error_count + 1}
+        state = %{
+          state
+          | overload_count: state.overload_count + 1,
+            error_count: state.error_count + 1
+        }
+
         Telemetry.warning("Recursion pool overloaded", %{view: state.view_name})
         {:reply, {:error, :overloaded}, state}
 

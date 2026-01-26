@@ -111,23 +111,22 @@ if config_env() == :prod do
   end
 end
 
-# Helper function to get config path from command line arguments
-get_config_path = fn ->
-  # Parse command line arguments for --config flag
+# Helper function to parse CLI argument value
+get_cli_arg = fn arg_name ->
   case System.argv() do
     args ->
       args
       |> Enum.with_index()
-      |> Enum.find(fn {arg, _index} -> arg == "--config" end)
+      |> Enum.find(fn {arg, _index} -> arg == arg_name end)
       |> case do
         nil ->
           nil
 
-        {_config_arg, index} ->
-          config_file = Enum.at(args, index + 1)
+        {_arg, index} ->
+          value = Enum.at(args, index + 1)
 
-          if config_file && not String.starts_with?(config_file, "-") do
-            config_file
+          if value && not String.starts_with?(value, "-") do
+            value
           else
             nil
           end
@@ -139,11 +138,15 @@ end
 default_config_path =
   Path.expand("../apps/yellow_dog/priv/yellowdogdns_default_config.toml", __DIR__)
 
-# Determine which config file to use
-config_path = get_config_path.()
+# Determine which config file to use (CLI > ENV > default)
+# Priority: --config CLI arg > YELLOW_DOG_CONFIG env > default
+config_path =
+  get_cli_arg.("--config") ||
+    System.get_env("YELLOW_DOG_CONFIG") ||
+    default_config_path
 
 config_to_load =
-  if config_path && File.exists?(config_path) do
+  if File.exists?(config_path) do
     config_path
   else
     default_config_path
@@ -151,6 +154,15 @@ config_to_load =
 
 # Store config file path in application config (the actual TOML reading will be done in the application)
 config :yellow_dog, :config_file_path, config_to_load
+
+# Determine data directory (CLI > ENV > default)
+# Priority: --data-dir CLI arg > YELLOW_DOG_DATA_DIR env > default from config
+data_dir =
+  get_cli_arg.("--data-dir") ||
+    System.get_env("YELLOW_DOG_DATA_DIR")
+
+# Store data directory in application config (nil means use config file value or default)
+config :yellow_dog, :data_dir, data_dir
 
 # Configure Tailwind CSS binary path from environment variable
 if tailwind_bin = System.get_env("TAILWINDCSS_BIN") do

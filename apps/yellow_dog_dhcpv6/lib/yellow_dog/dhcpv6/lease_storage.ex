@@ -81,6 +81,7 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
 
   - `:storage_type` - `:disc_copies` (default) or `:ram_copies`
   - `:nodes` - List of nodes to create table on (default: [node()])
+  - `:data_dir` - Directory for Mnesia data (default: uses YellowDog.Config)
 
   ## Returns
 
@@ -91,6 +92,13 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   def init(opts \\ []) do
     storage_type = Keyword.get(opts, :storage_type, :disc_copies)
     nodes = Keyword.get(opts, :nodes, [node()])
+
+    # Configure Mnesia directory before creating schema (only for disc_copies)
+    data_dir = get_data_dir(opts)
+
+    if storage_type == :disc_copies do
+      :ok = configure_mnesia_dir(data_dir)
+    end
 
     # For ram_copies, skip schema creation (useful for tests)
     result =
@@ -108,7 +116,7 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :lease_storage, :initialized],
           %{count: 1},
-          %{storage_type: storage_type, nodes: nodes}
+          %{storage_type: storage_type, nodes: nodes, data_dir: data_dir}
         )
 
         :ok
@@ -122,6 +130,33 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
 
         error
     end
+  end
+
+  # Gets the data directory from options or YellowDog.Config
+  defp get_data_dir(opts) do
+    case Keyword.get(opts, :data_dir) do
+      nil ->
+        # Try to get from YellowDog.Config if available
+        try do
+          YellowDog.Config.get_service_data_dir(:dhcpv6)
+        rescue
+          _ -> "data/dhcpv6"
+        end
+
+      dir ->
+        dir
+    end
+  end
+
+  # Configures the Mnesia directory
+  defp configure_mnesia_dir(data_dir) do
+    # Ensure the directory exists
+    File.mkdir_p!(data_dir)
+
+    # Set Mnesia directory (must be done before :mnesia.start())
+    mnesia_dir = String.to_charlist(data_dir)
+    Application.put_env(:mnesia, :dir, mnesia_dir)
+    :ok
   end
 
   @doc """

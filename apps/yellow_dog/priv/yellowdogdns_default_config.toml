@@ -1,3 +1,7 @@
+# Base data directory for all services
+# Can be overridden by --data-dir CLI arg or YELLOW_DOG_DATA_DIR env var
+data_dir = "data"
+
 [core]
 # Service enable/disable flags
 dns = true
@@ -10,8 +14,8 @@ listen = "0.0.0.0"
 port = 53
 tcp_enabled = true  # Set to false to disable DNS over TCP
 debug = false  # Set to true to enable Abyss debug logging to console
-data_path = "data/dns"  # Directory for DNS configuration files (views.toml, zones.toml)
-zone_data_path = "data/dns/zones"  # Directory for authoritative zone files
+# Note: DNS data is stored in <data_dir>/dns/
+# Zone files are stored in <data_dir>/dns/zones/
 
 [dns.zones]
 "example.com" = { type = "authoritative", file = "priv/zones/example.com.zone" }
@@ -19,10 +23,12 @@ zone_data_path = "data/dns/zones"  # Directory for authoritative zone files
 [mdns]
 listen = "0.0.0.0"
 port = 5353
+# Note: mDNS services are stored in <data_dir>/mdns/services.toml
 
 [dhcpv4]
 listen = "0.0.0.0"
 port = 67
+# Note: DHCPv4 leases are stored in <data_dir>/dhcpv4/ (Mnesia)
 
 # DHCPv4 address pools
 [[dhcpv4.pools]]
@@ -42,6 +48,7 @@ lease_time = 86400  # 24 hours in seconds
 [dhcpv6]
 listen = "::"
 port = 547
+# Note: DHCPv6 leases are stored in <data_dir>/dhcpv6/ (Mnesia)
 
 # DHCPv6 address pools
 [[dhcpv6.pools]]

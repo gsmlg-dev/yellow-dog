@@ -36,16 +36,23 @@ ENV SECRET_KEY_BASE=boMQsJiXanFZ9e/eym1I/UdZClqxvfARylCaLgM9zutHBe7dgURD9kMW86fe
 
 ENV TZ=Asia/Shanghai
 
+# Configuration paths
+ENV YELLOW_DOG_CONFIG=/etc/yellowdog/config.toml
+ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
+
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
     musl musl-utils musl-locales tzdata && \
-    mkdir -p /data/yellowdog
+    mkdir -p /data/yellowdog/dns/zones \
+             /data/yellowdog/dhcpv4 \
+             /data/yellowdog/dhcpv6 \
+             /data/yellowdog/mdns
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
 
-EXPOSE 53
+EXPOSE 53 67/udp 547/udp 5353/udp 4000
 
 CMD ["/app/bin/yellow_dog", "start"]
 
