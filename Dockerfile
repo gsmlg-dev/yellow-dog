@@ -23,7 +23,8 @@ LABEL org.opencontainers.image.source="https://github.com/gsmlg-dev/yellow-dog"
 LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
 LABEL org.opencontainers.image.title="YellowDog"
 LABEL org.opencontainers.image.description="A DNS, DHCPv4, DHCPv6 and mDNS Server write in Elixir"
-LABEL volume.config="/etc/yellowdog/config.toml"
+LABEL volume.config="/etc/yellowdog"
+LABEL volume.data="/data/yellowdog"
 LABEL maintainer="Jonathan Gao <gsmlg.com@gmail.com>"
 LABEL RELEASE_VERSION="${RELEASE_VERSION}"
 
@@ -35,10 +36,11 @@ ENV SECRET_KEY_BASE=boMQsJiXanFZ9e/eym1I/UdZClqxvfARylCaLgM9zutHBe7dgURD9kMW86fe
 
 ENV TZ=Asia/Shanghai
 
-VOLUME ["/etc/yellowdog"]
+VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
-    musl musl-utils musl-locales tzdata
+    musl musl-utils musl-locales tzdata && \
+    mkdir -p /data/yellowdog
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
