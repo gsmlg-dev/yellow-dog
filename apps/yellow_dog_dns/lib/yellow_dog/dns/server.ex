@@ -154,9 +154,11 @@ defmodule YellowDog.Dns.Server do
                 {:error, :no_listeners}
 
               [listener_pid | _] ->
-                case Abyss.Listener.listener_info(listener_pid) do
-                  {_ip, port} when is_integer(port) -> {:ok, port}
-                  _ -> {:error, :invalid_listener_info}
+                # Use cached lookup to avoid GenServer call timeout when listener is blocked in recv
+                case Abyss.Listener.listener_info_cached(listener_pid) do
+                  {:ok, {_ip, port}} when is_integer(port) -> {:ok, port}
+                  {:ok, _} -> {:error, :invalid_listener_info}
+                  :error -> {:error, :listener_info_not_cached}
                 end
             end
         end

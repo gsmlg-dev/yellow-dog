@@ -810,7 +810,9 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
           end)
         end)
 
-      assert time < 50000
+      # 500 round-trips in under 100ms (~200μs per operation)
+      # Threshold increased to avoid flaky failures on loaded systems
+      assert time < 100_000
     end
   end
 

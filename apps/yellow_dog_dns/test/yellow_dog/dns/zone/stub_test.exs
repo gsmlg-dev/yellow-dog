@@ -199,8 +199,9 @@ defmodule YellowDog.Dns.Zone.StubTest do
         view_name: view_name,
         ns_records: ["ns1.query-count.com"],
         glue_records: %{
-          # Use loopback to avoid actual network
-          "ns1.query-count.com" => {127, 0, 0, 1}
+          # Use TEST-NET-1 (RFC 5737) - non-routable documentation address
+          # This ensures the query times out instead of reaching any local DNS server
+          "ns1.query-count.com" => {192, 0, 2, 1}
         },
         timeout: 100,
         retries: 0
@@ -340,7 +341,8 @@ defmodule YellowDog.Dns.Zone.StubTest do
         view_name: view_name,
         ns_records: ["ns1.timeout-retry.com"],
         glue_records: %{
-          "ns1.timeout-retry.com" => {127, 0, 0, 1}
+          # Use TEST-NET-1 (RFC 5737) - non-routable documentation address
+          "ns1.timeout-retry.com" => {192, 0, 2, 1}
         },
         timeout: 50,
         retries: 2
