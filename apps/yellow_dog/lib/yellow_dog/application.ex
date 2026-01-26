@@ -8,6 +8,9 @@ defmodule YellowDog.Application do
 
   use Application
 
+  # Capture Mix.env() at compile time (Mix is not available in releases)
+  @compile_env Mix.env()
+
   @impl true
   def start(_type, _args) do
     # Attach telemetry logger handlers before starting services
@@ -180,7 +183,7 @@ defmodule YellowDog.Application do
           case Toml.decode(content) do
             {:ok, config} ->
               # Adjust configuration for test environment
-              if Mix.env() == :test do
+              if @compile_env == :test do
                 config
                 |> put_in(["core", "dns"], false)
                 |> put_in(["core", "mdns"], false)
@@ -239,7 +242,7 @@ defmodule YellowDog.Application do
     %{
       "data_dir" => "data",
       "core" => %{
-        "dns" => Mix.env() != :test,
+        "dns" => @compile_env != :test,
         "mdns" => true,
         "dhcpv4" => true,
         "dhcpv6" => true
