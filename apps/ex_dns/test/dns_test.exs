@@ -215,7 +215,9 @@ defmodule DNSTest do
 
     test "converts AAAA record with all 0xFFFF" do
       aaaa_record =
-        DNS.Message.Record.Data.AAAA.new({0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF})
+        DNS.Message.Record.Data.AAAA.new(
+          {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}
+        )
 
       result = DNS.to_iodata(aaaa_record)
       <<rdlength::16, ipv6::128>> = result
@@ -690,7 +692,8 @@ defmodule DNSTest do
       ]
 
       for type <- types do
-        assert DNS.Parameter.impl_for(type) != nil, "#{inspect(type)} should implement DNS.Parameter"
+        assert DNS.Parameter.impl_for(type) != nil,
+               "#{inspect(type)} should implement DNS.Parameter"
       end
     end
 

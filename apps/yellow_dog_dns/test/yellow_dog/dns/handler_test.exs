@@ -298,25 +298,44 @@ defmodule YellowDog.Dns.Handler.UDPTest do
     test "can set NXDOMAIN rcode" do
       response = Message.new()
       # Use the DNS.Message.RCode constant
-      response = %{response | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.nx_domain()}}
+      response = %{
+        response
+        | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.nx_domain()}
+      }
+
       assert response.header.rcode == DNS.Message.RCode.nx_domain()
     end
 
     test "can set SERVFAIL rcode" do
       response = Message.new()
-      response = %{response | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.serv_fail()}}
+
+      response = %{
+        response
+        | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.serv_fail()}
+      }
+
       assert response.header.rcode == DNS.Message.RCode.serv_fail()
     end
 
     test "can set REFUSED rcode" do
       response = Message.new()
-      response = %{response | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.refused()}}
+
+      response = %{
+        response
+        | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.refused()}
+      }
+
       assert response.header.rcode == DNS.Message.RCode.refused()
     end
 
     test "can set FORMERR rcode" do
       response = Message.new()
-      response = %{response | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.form_err()}}
+
+      response = %{
+        response
+        | header: %{response.header | qr: 1, rcode: DNS.Message.RCode.form_err()}
+      }
+
       assert response.header.rcode == DNS.Message.RCode.form_err()
     end
   end
@@ -352,7 +371,8 @@ defmodule YellowDog.Dns.Handler.UDPTest do
       data = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
       assert is_binary(data)
-      assert byte_size(data) > 12  # Minimum DNS header size
+      # Minimum DNS header size
+      assert byte_size(data) > 12
     end
 
     test "response serializes to binary" do

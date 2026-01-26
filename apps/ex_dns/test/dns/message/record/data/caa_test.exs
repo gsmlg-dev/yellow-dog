@@ -412,7 +412,9 @@ defmodule DNS.Message.Record.Data.CAATest do
     end
 
     test "CA with account binding" do
-      record = CAA.new({0, "issue", "letsencrypt.org; accounturi=https://acme.example.com/acct/1"})
+      record =
+        CAA.new({0, "issue", "letsencrypt.org; accounturi=https://acme.example.com/acct/1"})
+
       {_, _, value} = record.data
       assert value =~ "accounturi="
     end

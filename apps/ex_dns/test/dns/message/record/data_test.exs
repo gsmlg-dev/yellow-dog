@@ -80,10 +80,10 @@ defmodule DNS.Message.Record.DataTest do
 
     test "creates AAAA record for type 28" do
       rtype = RRType.new(28)
-      data = Data.new(rtype, {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      data = Data.new(rtype, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
 
       assert %DNS.Message.Record.Data.AAAA{} = data
-      assert data.data == {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1}
+      assert data.data == {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1}
     end
 
     test "creates CNAME record for type 5" do
@@ -134,7 +134,7 @@ defmodule DNS.Message.Record.DataTest do
       # SOA parameters: ns, rp, serial, refresh, retry, expire, negative
       ns = DNS.Message.Domain.new("ns1.example.com.")
       rp = DNS.Message.Domain.new("admin.example.com.")
-      data = Data.new(rtype, {ns, rp, 2024010101, 3600, 600, 604_800, 86400})
+      data = Data.new(rtype, {ns, rp, 2_024_010_101, 3600, 600, 604_800, 86400})
 
       assert %DNS.Message.Record.Data.SOA{} = data
     end
@@ -195,7 +195,7 @@ defmodule DNS.Message.Record.DataTest do
     end
 
     test "parses AAAA record binary" do
-      binary = <<0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>
+      binary = <<0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>
       data = Data.from_iodata(28, binary)
 
       assert %DNS.Message.Record.Data.AAAA{} = data
@@ -244,7 +244,8 @@ defmodule DNS.Message.Record.DataTest do
       data = Data.from_iodata(9999, binary)
 
       assert %RRType{} = data.type
-      assert data.type.value == <<0x27, 0x0F>>  # 9999 in big-endian
+      # 9999 in big-endian
+      assert data.type.value == <<0x27, 0x0F>>
     end
   end
 
@@ -363,7 +364,7 @@ defmodule DNS.Message.Record.DataTest do
 
     test "AAAA record serializes correctly" do
       rtype = RRType.new(28)
-      data = Data.new(rtype, {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      data = Data.new(rtype, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
 
       result = DNS.Parameter.to_iodata(data)
 
@@ -380,7 +381,8 @@ defmodule DNS.Message.Record.DataTest do
 
       # TXT record: 2 bytes rdlen + 1 byte string len + string
       <<rdlen::16, str_len::8, text::binary>> = result
-      assert rdlen == 5  # 1 byte len + 4 bytes "test"
+      # 1 byte len + 4 bytes "test"
+      assert rdlen == 5
       assert str_len == 4
       assert text == "test"
     end

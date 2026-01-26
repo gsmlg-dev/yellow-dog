@@ -290,7 +290,10 @@ defmodule DNS.Message.EDNS0Test do
 
     test "wire format encodes DO bit" do
       edns0 = EDNS0.new({4096, 0, 0, 1, 0, []})
-      <<_::8, _::16, _::16, _::8, _::8, do_bit::1, _rest::bitstring>> = DNS.Parameter.to_iodata(edns0)
+
+      <<_::8, _::16, _::16, _::8, _::8, do_bit::1, _rest::bitstring>> =
+        DNS.Parameter.to_iodata(edns0)
+
       assert do_bit == 1
     end
 

@@ -282,7 +282,8 @@ defmodule DNS.MessageTest do
       msg = Message.from_iodata(query)
 
       assert msg.header.id == 0xABCD
-      assert msg.header.qr == 1  # Response flag set
+      # Response flag set
+      assert msg.header.qr == 1
     end
 
     test "parses question section" do
@@ -339,11 +340,11 @@ defmodule DNS.MessageTest do
   describe "from_iodata/1 - response parsing" do
     test "parses response with answer section" do
       # Response with 1 answer (A record for test.com -> 1.2.3.4)
+      # Question
+      # Answer: pointer to name, type A, class IN, TTL 300, rdlength 4, rdata 1.2.3.4
       response =
         <<0x00, 0x02, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00>> <>
-          # Question
           <<4, "test", 3, "com", 0, 0x00, 0x01, 0x00, 0x01>> <>
-          # Answer: pointer to name, type A, class IN, TTL 300, rdlength 4, rdata 1.2.3.4
           <<0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2C, 0x00, 0x04, 1, 2, 3, 4>>
 
       msg = Message.from_iodata(response)
@@ -538,7 +539,8 @@ defmodule DNS.MessageTest do
       binary = DNS.Parameter.to_iodata(msg)
 
       # Should include the question data
-      assert byte_size(binary) > 12  # Header is 12 bytes
+      # Header is 12 bytes
+      assert byte_size(binary) > 12
     end
 
     test "empty message serializes to header only" do

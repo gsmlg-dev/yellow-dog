@@ -85,7 +85,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
     test "calculates length as 2 bytes per key tag" do
       key_tags = [12345, 23456, 34567]
       option = KeyTag.new(key_tags)
-      assert option.length == 6  # 3 tags * 2 bytes each
+      # 3 tags * 2 bytes each
+      assert option.length == 6
     end
 
     test "creates KeyTag option with empty list" do
@@ -120,7 +121,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
 
     test "creates KeyTag with common DNSSEC key tags" do
       # Real-world key tag examples
-      key_tags = [20326, 19036]  # Example root zone KSK key tags
+      # Example root zone KSK key tags
+      key_tags = [20326, 19036]
       option = KeyTag.new(key_tags)
       assert option.data == key_tags
       assert option.length == 4
@@ -129,7 +131,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
     test "creates KeyTag with many key tags" do
       key_tags = Enum.map(1..10, fn i -> i * 1000 end)
       option = KeyTag.new(key_tags)
-      assert option.length == 20  # 10 tags * 2 bytes
+      # 10 tags * 2 bytes
+      assert option.length == 20
       assert option.data == key_tags
     end
   end
@@ -284,7 +287,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
       test_cases = [
         [12345],
         [0, 65535],
-        [20326, 19036],  # Example root KSK key tags
+        # Example root KSK key tags
+        [20326, 19036],
         Enum.map(1..20, fn i -> i * 3000 end)
       ]
 
@@ -306,7 +310,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
 
     test "key tag is 16-bit value" do
       option = KeyTag.new([65535])
-      assert option.length == 2  # 16 bits = 2 bytes
+      # 16 bits = 2 bytes
+      assert option.length == 2
     end
 
     test "multiple key tags for trust anchors" do
@@ -348,7 +353,8 @@ defmodule DNS.Message.EDNS0.Option.KeyTagTest do
     test "handles many key tags" do
       key_tags = Enum.to_list(1..100)
       option = KeyTag.new(key_tags)
-      assert option.length == 200  # 100 * 2 bytes
+      # 100 * 2 bytes
+      assert option.length == 200
       assert option.data == key_tags
     end
   end

@@ -81,7 +81,7 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "creates SOA record from 7-element tuple" do
       ns = Domain.new("ns1.example.com")
       rp = Domain.new("admin.example.com")
-      soa = {ns, rp, 2024012101, 3600, 600, 604800, 86400}
+      soa = {ns, rp, 2_024_012_101, 3600, 600, 604_800, 86400}
       record = SOA.new(soa)
       assert %SOA{} = record
       assert record.data == soa
@@ -106,8 +106,8 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "stores serial number" do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
-      serial = 2024012101
-      record = SOA.new({ns, rp, serial, 3600, 600, 604800, 86400})
+      serial = 2_024_012_101
+      record = SOA.new({ns, rp, serial, 3600, 600, 604_800, 86400})
       {_, _, s, _, _, _, _} = record.data
       assert s == serial
     end
@@ -116,7 +116,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       refresh = 7200
-      record = SOA.new({ns, rp, 1, refresh, 600, 604800, 86400})
+      record = SOA.new({ns, rp, 1, refresh, 600, 604_800, 86400})
       {_, _, _, r, _, _, _} = record.data
       assert r == refresh
     end
@@ -125,7 +125,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       retry_val = 900
-      record = SOA.new({ns, rp, 1, 3600, retry_val, 604800, 86400})
+      record = SOA.new({ns, rp, 1, 3600, retry_val, 604_800, 86400})
       {_, _, _, _, r, _, _} = record.data
       assert r == retry_val
     end
@@ -133,7 +133,7 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "stores expire time" do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
-      expire = 1209600
+      expire = 1_209_600
       record = SOA.new({ns, rp, 1, 3600, 600, expire, 86400})
       {_, _, _, _, _, e, _} = record.data
       assert e == expire
@@ -143,7 +143,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       minimum = 3600
-      record = SOA.new({ns, rp, 1, 3600, 600, 604800, minimum})
+      record = SOA.new({ns, rp, 1, 3600, 600, 604_800, minimum})
       {_, _, _, _, _, _, m} = record.data
       assert m == minimum
     end
@@ -166,7 +166,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns1.example.com")
       rp = Domain.new("hostmaster.example.com")
       # Typical values: serial YYYYMMDDNN, refresh 3h, retry 15m, expire 1w, minimum 1d
-      record = SOA.new({ns, rp, 2024012101, 10800, 900, 604800, 86400})
+      record = SOA.new({ns, rp, 2_024_012_101, 10800, 900, 604_800, 86400})
       assert %SOA{} = record
     end
   end
@@ -243,7 +243,7 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "formats all SOA fields" do
       ns = Domain.new("ns.example.com")
       rp = Domain.new("admin.example.com")
-      record = SOA.new({ns, rp, 2024012101, 10800, 900, 604800, 86400})
+      record = SOA.new({ns, rp, 2_024_012_101, 10800, 900, 604_800, 86400})
       str = to_string(record)
       assert str == "ns.example.com. admin.example.com. 2024012101 10800 900 604800 86400"
     end
@@ -303,7 +303,9 @@ defmodule DNS.Message.Record.Data.SOATest do
       <<_length::16, rest::binary>> = iodata
       ns_size = byte_size(DNS.to_iodata(ns))
       rp_size = byte_size(DNS.to_iodata(rp))
-      <<_ns::binary-size(ns_size), _rp::binary-size(rp_size), s::32, re::32, rt::32, e::32, m::32>> =
+
+      <<_ns::binary-size(ns_size), _rp::binary-size(rp_size), s::32, re::32, rt::32, e::32,
+        m::32>> =
         rest
 
       assert {s, re, rt, e, m} == {1, 2, 3, 4, 5}
@@ -314,17 +316,17 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "new/1 -> to_iodata -> parse back" do
       ns = Domain.new("ns.example.com")
       rp = Domain.new("admin.example.com")
-      original = {ns, rp, 2024012101, 3600, 600, 604800, 86400}
+      original = {ns, rp, 2_024_012_101, 3600, 600, 604_800, 86400}
       record = SOA.new(original)
       <<_length::16, raw::binary>> = DNS.Parameter.to_iodata(record)
       parsed = SOA.from_iodata(raw)
       {mname, rname, serial, refresh, retry_val, expire, minimum} = parsed.data
       assert mname.value == "ns.example.com."
       assert rname.value == "admin.example.com."
-      assert serial == 2024012101
+      assert serial == 2_024_012_101
       assert refresh == 3600
       assert retry_val == 600
-      assert expire == 604800
+      assert expire == 604_800
       assert minimum == 86400
     end
   end
@@ -333,8 +335,8 @@ defmodule DNS.Message.Record.Data.SOATest do
     test "serial number typical format YYYYMMDDNN" do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
-      serial = 2024012101
-      record = SOA.new({ns, rp, serial, 3600, 600, 604800, 86400})
+      serial = 2_024_012_101
+      record = SOA.new({ns, rp, serial, 3600, 600, 604_800, 86400})
       {_, _, s, _, _, _, _} = record.data
       assert s == serial
     end
@@ -343,7 +345,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       # 3 hours = 10800 seconds
-      record = SOA.new({ns, rp, 1, 10800, 600, 604800, 86400})
+      record = SOA.new({ns, rp, 1, 10800, 600, 604_800, 86400})
       {_, _, _, refresh, _, _, _} = record.data
       assert refresh == 10800
     end
@@ -352,7 +354,7 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       # 15 minutes = 900 seconds
-      record = SOA.new({ns, rp, 1, 10800, 900, 604800, 86400})
+      record = SOA.new({ns, rp, 1, 10800, 900, 604_800, 86400})
       {_, _, _, _, retry_val, _, _} = record.data
       assert retry_val == 900
     end
@@ -361,16 +363,16 @@ defmodule DNS.Message.Record.Data.SOATest do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       # 1 week = 604800 seconds
-      record = SOA.new({ns, rp, 1, 10800, 900, 604800, 86400})
+      record = SOA.new({ns, rp, 1, 10800, 900, 604_800, 86400})
       {_, _, _, _, _, expire, _} = record.data
-      assert expire == 604800
+      assert expire == 604_800
     end
 
     test "minimum TTL for negative caching" do
       ns = Domain.new("ns.test.com")
       rp = Domain.new("admin.test.com")
       # 1 day = 86400 seconds
-      record = SOA.new({ns, rp, 1, 10800, 900, 604800, 86400})
+      record = SOA.new({ns, rp, 1, 10800, 900, 604_800, 86400})
       {_, _, _, _, _, _, minimum} = record.data
       assert minimum == 86400
     end

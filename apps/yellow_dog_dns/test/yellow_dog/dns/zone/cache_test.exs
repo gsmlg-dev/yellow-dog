@@ -223,7 +223,10 @@ defmodule YellowDog.Dns.Zone.CacheTest do
       GenServer.stop(pid)
     end
 
-    test "normalizes domain names (case insensitive)", %{view_name: view_name, zone_name: zone_name} do
+    test "normalizes domain names (case insensitive)", %{
+      view_name: view_name,
+      zone_name: zone_name
+    } do
       {:ok, pid} = Cache.start_link(name: zone_name, view_name: view_name)
 
       query = build_query("Example.COM")
@@ -490,7 +493,10 @@ defmodule YellowDog.Dns.Zone.CacheTest do
       GenServer.stop(pid)
     end
 
-    test "keeps existing config when reload is empty", %{view_name: view_name, zone_name: zone_name} do
+    test "keeps existing config when reload is empty", %{
+      view_name: view_name,
+      zone_name: zone_name
+    } do
       {:ok, pid} = Cache.start_link(name: zone_name, view_name: view_name, max_size: 500)
 
       :ok = Cache.reload(pid, [])

@@ -239,7 +239,12 @@ defmodule DNS.Message.Record.Data.NSTest do
     end
 
     test "round-trip preserves nameserver domain" do
-      nameservers = ["ns1.example.com", "ns-1234.awsdns-12.org", "dns1.p01.nsone.net", "ns.cloudflare.com"]
+      nameservers = [
+        "ns1.example.com",
+        "ns-1234.awsdns-12.org",
+        "dns1.p01.nsone.net",
+        "ns.cloudflare.com"
+      ]
 
       for ns <- nameservers do
         record = NS.new(ns)

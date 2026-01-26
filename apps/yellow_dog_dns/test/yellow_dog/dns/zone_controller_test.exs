@@ -147,10 +147,14 @@ defmodule YellowDog.Dns.ZoneControllerTest do
       zone_name = "dup.#{:rand.uniform(1_000_000)}.local"
 
       {:ok, _pid1} =
-        ZoneController.start_zone(supervisor, :forward, zone_name, upstreams: [{{8, 8, 8, 8}, 53}])
+        ZoneController.start_zone(supervisor, :forward, zone_name,
+          upstreams: [{{8, 8, 8, 8}, 53}]
+        )
 
       {:error, {:already_started, _}} =
-        ZoneController.start_zone(supervisor, :forward, zone_name, upstreams: [{{8, 8, 4, 4}, 53}])
+        ZoneController.start_zone(supervisor, :forward, zone_name,
+          upstreams: [{{8, 8, 4, 4}, 53}]
+        )
     end
   end
 
@@ -160,7 +164,9 @@ defmodule YellowDog.Dns.ZoneControllerTest do
       zone_name = "findme.#{:rand.uniform(1_000_000)}.local"
 
       {:ok, started_pid} =
-        ZoneController.start_zone(supervisor, :forward, zone_name, upstreams: [{{8, 8, 8, 8}, 53}])
+        ZoneController.start_zone(supervisor, :forward, zone_name,
+          upstreams: [{{8, 8, 8, 8}, 53}]
+        )
 
       {:ok, found_pid} = ZoneController.find_zone(supervisor, "default", :forward, zone_name)
 
@@ -219,7 +225,9 @@ defmodule YellowDog.Dns.ZoneControllerTest do
       zone_name = "stopme.#{:rand.uniform(1_000_000)}.local"
 
       {:ok, pid} =
-        ZoneController.start_zone(supervisor, :forward, zone_name, upstreams: [{{8, 8, 8, 8}, 53}])
+        ZoneController.start_zone(supervisor, :forward, zone_name,
+          upstreams: [{{8, 8, 8, 8}, 53}]
+        )
 
       assert Process.alive?(pid)
 

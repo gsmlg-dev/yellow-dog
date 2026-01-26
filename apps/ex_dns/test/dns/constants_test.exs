@@ -187,13 +187,15 @@ defmodule DNS.ConstantsTest do
     test "compression depth prevents DoS" do
       # Limiting compression depth prevents infinite loops from malicious packets
       assert Constants.max_compression_depth() > 0
-      assert Constants.max_compression_depth() <= 10  # Reasonable limit
+      # Reasonable limit
+      assert Constants.max_compression_depth() <= 10
     end
 
     test "compression pointers limit prevents attacks" do
       # Limiting pointer count prevents amplification attacks
       assert Constants.max_compression_pointers() > 0
-      assert Constants.max_compression_pointers() <= 32  # Reasonable limit
+      # Reasonable limit
+      assert Constants.max_compression_pointers() <= 32
     end
   end
 
@@ -212,7 +214,8 @@ defmodule DNS.ConstantsTest do
     test "rdlength limit prevents memory exhaustion" do
       # Limiting rdlength prevents memory exhaustion attacks
       assert Constants.max_rdlength() > 0
-      assert Constants.max_rdlength() < 65536  # Below 16-bit max
+      # Below 16-bit max
+      assert Constants.max_rdlength() < 65536
     end
 
     test "TXT strings limit prevents abuse" do
@@ -249,7 +252,8 @@ defmodule DNS.ConstantsTest do
 
     test "TTL max is signed 32-bit max" do
       # RFC 2181 Section 8: TTL is 32-bit unsigned, but should be treated as signed
-      assert Constants.max_ttl() == 2_147_483_647  # 2^31 - 1
+      # 2^31 - 1
+      assert Constants.max_ttl() == 2_147_483_647
     end
 
     test "TTL min is zero" do
@@ -258,7 +262,9 @@ defmodule DNS.ConstantsTest do
 
     test "TTL range covers practical values" do
       # Common TTL values should be within range
-      common_ttls = [60, 300, 3600, 86400, 604800]  # 1min, 5min, 1hr, 1day, 1week
+      # 1min, 5min, 1hr, 1day, 1week
+      common_ttls = [60, 300, 3600, 86400, 604_800]
+
       for ttl <- common_ttls do
         assert ttl >= Constants.min_ttl()
         assert ttl <= Constants.max_ttl()
@@ -372,6 +378,7 @@ defmodule DNS.ConstantsTest do
 
     test "validates common labels" do
       common_labels = ["www", "mail", "ftp", "ns1", "mx", "api", "localhost"]
+
       for label <- common_labels do
         assert Constants.valid_label_length?(label)
       end
@@ -395,6 +402,7 @@ defmodule DNS.ConstantsTest do
 
     test "validates all values up to max" do
       max_depth = Constants.max_compression_depth()
+
       for depth <- 0..max_depth do
         assert Constants.valid_compression_depth?(depth)
       end
@@ -402,6 +410,7 @@ defmodule DNS.ConstantsTest do
 
     test "rejects values beyond max" do
       max_depth = Constants.max_compression_depth()
+
       for depth <- (max_depth + 1)..(max_depth + 5) do
         refute Constants.valid_compression_depth?(depth)
       end
@@ -422,14 +431,22 @@ defmodule DNS.ConstantsTest do
 
     test "validates common TTL values" do
       common_ttls = [
-        0,        # zero TTL
-        60,       # 1 minute
-        300,      # 5 minutes
-        3600,     # 1 hour
-        7200,     # 2 hours
-        86400,    # 1 day
-        604800,   # 1 week
-        2592000   # 30 days
+        # zero TTL
+        0,
+        # 1 minute
+        60,
+        # 5 minutes
+        300,
+        # 1 hour
+        3600,
+        # 2 hours
+        7200,
+        # 1 day
+        86400,
+        # 1 week
+        604_800,
+        # 30 days
+        2_592_000
       ]
 
       for ttl <- common_ttls do
@@ -467,12 +484,18 @@ defmodule DNS.ConstantsTest do
 
     test "validates common record sizes" do
       common_sizes = [
-        4,      # A record (IPv4)
-        16,     # AAAA record (IPv6)
-        64,     # Small TXT record
-        255,    # Max single TXT string
-        1000,   # Large record
-        4096    # Very large record (still within limit)
+        # A record (IPv4)
+        4,
+        # AAAA record (IPv6)
+        16,
+        # Small TXT record
+        64,
+        # Max single TXT string
+        255,
+        # Large record
+        1000,
+        # Very large record (still within limit)
+        4096
       ]
 
       for size <- common_sizes do
@@ -568,6 +591,7 @@ defmodule DNS.ConstantsTest do
         assert Constants.valid_domain_length?(domain)
         # Also check all labels
         labels = String.split(domain, ".")
+
         for label <- labels do
           assert Constants.valid_label_length?(label)
         end
@@ -577,8 +601,10 @@ defmodule DNS.ConstantsTest do
     test "validates internationalized domain names" do
       # IDN examples (ASCII-compatible encoding)
       idn_domains = [
-        "xn--nxasmq5b.com",  # example.com in Greek
-        "xn--e1afmkfd.xn--p1ai"  # Russian domain
+        # example.com in Greek
+        "xn--nxasmq5b.com",
+        # Russian domain
+        "xn--e1afmkfd.xn--p1ai"
       ]
 
       for domain <- idn_domains do
@@ -602,20 +628,24 @@ defmodule DNS.ConstantsTest do
       # Malicious packets can create compression loops
       # Limited depth prevents infinite loops
       max_depth = Constants.max_compression_depth()
-      assert max_depth <= 10  # Reasonable limit
-      assert max_depth >= 1   # Must allow some compression
+      # Reasonable limit
+      assert max_depth <= 10
+      # Must allow some compression
+      assert max_depth >= 1
     end
 
     test "rdlength prevents memory exhaustion" do
       # Malicious packets can claim huge rdlength
       max_rdlength = Constants.max_rdlength()
-      assert max_rdlength < 65536  # Less than max 16-bit value
+      # Less than max 16-bit value
+      assert max_rdlength < 65536
     end
 
     test "UDP size prevents amplification attacks" do
       # Standard UDP size limits response size
       udp_size = Constants.max_udp_message_size()
-      assert udp_size == 512  # RFC 1035 limit
+      # RFC 1035 limit
+      assert udp_size == 512
     end
   end
 
@@ -624,16 +654,35 @@ defmodule DNS.ConstantsTest do
       assert is_integer(Constants.max_domain_length()) and Constants.max_domain_length() >= 0
       assert is_integer(Constants.max_label_length()) and Constants.max_label_length() >= 0
       assert is_integer(Constants.max_labels_per_name()) and Constants.max_labels_per_name() >= 0
-      assert is_integer(Constants.max_dns_message_size()) and Constants.max_dns_message_size() >= 0
-      assert is_integer(Constants.max_udp_message_size()) and Constants.max_udp_message_size() >= 0
-      assert is_integer(Constants.max_edns0_message_size()) and Constants.max_edns0_message_size() >= 0
-      assert is_integer(Constants.max_compression_depth()) and Constants.max_compression_depth() >= 0
-      assert is_integer(Constants.max_compression_pointers()) and Constants.max_compression_pointers() >= 0
+
+      assert is_integer(Constants.max_dns_message_size()) and
+               Constants.max_dns_message_size() >= 0
+
+      assert is_integer(Constants.max_udp_message_size()) and
+               Constants.max_udp_message_size() >= 0
+
+      assert is_integer(Constants.max_edns0_message_size()) and
+               Constants.max_edns0_message_size() >= 0
+
+      assert is_integer(Constants.max_compression_depth()) and
+               Constants.max_compression_depth() >= 0
+
+      assert is_integer(Constants.max_compression_pointers()) and
+               Constants.max_compression_pointers() >= 0
+
       assert is_integer(Constants.max_rdlength()) and Constants.max_rdlength() >= 0
-      assert is_integer(Constants.max_txt_string_length()) and Constants.max_txt_string_length() >= 0
+
+      assert is_integer(Constants.max_txt_string_length()) and
+               Constants.max_txt_string_length() >= 0
+
       assert is_integer(Constants.max_txt_strings()) and Constants.max_txt_strings() >= 0
-      assert is_integer(Constants.max_edns0_option_code()) and Constants.max_edns0_option_code() >= 0
-      assert is_integer(Constants.max_edns0_option_length()) and Constants.max_edns0_option_length() >= 0
+
+      assert is_integer(Constants.max_edns0_option_code()) and
+               Constants.max_edns0_option_code() >= 0
+
+      assert is_integer(Constants.max_edns0_option_length()) and
+               Constants.max_edns0_option_length() >= 0
+
       assert is_integer(Constants.max_ttl()) and Constants.max_ttl() >= 0
       assert is_integer(Constants.min_ttl()) and Constants.min_ttl() >= 0
       assert is_integer(Constants.dns_port()) and Constants.dns_port() >= 0
@@ -654,7 +703,8 @@ defmodule DNS.ConstantsTest do
     test "RFC 1035 domain limits" do
       # Section 2.3.4: 63 octets per label, 255 total with length octets
       assert Constants.max_label_length() == 63
-      assert Constants.max_domain_length() == 253  # 255 - 2 (root label byte and trailing dot)
+      # 255 - 2 (root label byte and trailing dot)
+      assert Constants.max_domain_length() == 253
     end
 
     test "RFC 1035 message size" do
@@ -664,7 +714,8 @@ defmodule DNS.ConstantsTest do
 
     test "RFC 2181 TTL limits" do
       # Section 8: TTL is 31-bit positive integer
-      assert Constants.max_ttl() == 2_147_483_647  # 2^31 - 1
+      # 2^31 - 1
+      assert Constants.max_ttl() == 2_147_483_647
       assert Constants.min_ttl() == 0
     end
 

@@ -80,7 +80,11 @@ defmodule DNS.Message.Record.Data.NSEC3Test do
       next_hashed_owner_name = "GJEB7TG3VGQ3TQEGK7VJ9K3CD7A6T9T9"
       type_bit_maps = <<0x00, 0x06, 0x40>>
 
-      record = NSEC3.new({hash_algorithm, flags, iterations, salt, next_hashed_owner_name, type_bit_maps})
+      record =
+        NSEC3.new(
+          {hash_algorithm, flags, iterations, salt, next_hashed_owner_name, type_bit_maps}
+        )
+
       assert %NSEC3{} = record
     end
 
@@ -315,7 +319,9 @@ defmodule DNS.Message.Record.Data.NSEC3Test do
       record = NSEC3.new({1, 0, 10, salt, next_hash, type_bit_maps})
       iodata = DNS.Parameter.to_iodata(record)
 
-      expected_size = 1 + 1 + 2 + 1 + byte_size(salt) + 1 + byte_size(next_hash) + byte_size(type_bit_maps)
+      expected_size =
+        1 + 1 + 2 + 1 + byte_size(salt) + 1 + byte_size(next_hash) + byte_size(type_bit_maps)
+
       <<length::16, _rest::binary>> = iodata
       assert length == expected_size
     end

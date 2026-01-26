@@ -631,7 +631,8 @@ defmodule DNS.Message.EDNS0.Option.N3UTest do
       options = [
         N3U.new([1]),
         N3U.new([1, 2]),
-        N3U.new([1]),  # duplicate
+        # duplicate
+        N3U.new([1]),
         N3U.new([2, 1])
       ]
 
@@ -650,12 +651,14 @@ defmodule DNS.Message.EDNS0.Option.N3UTest do
       option = N3U.new([@sha1_algorithm])
 
       iodata = DNS.Parameter.to_iodata(option)
-      assert byte_size(iodata) == 5  # 2 + 2 + 1 bytes
+      # 2 + 2 + 1 bytes
+      assert byte_size(iodata) == 5
     end
 
     test "resolver signaling multiple algorithm support" do
       # Hypothetical resolver supporting multiple hash algorithms
-      option = N3U.new([1, 2])  # SHA-1 and hypothetical algorithm 2
+      # SHA-1 and hypothetical algorithm 2
+      option = N3U.new([1, 2])
 
       iodata = DNS.Parameter.to_iodata(option)
       <<code::16, length::16, _data::binary>> = iodata
@@ -673,12 +676,14 @@ defmodule DNS.Message.EDNS0.Option.N3UTest do
 
       # Verify it can be included in a larger message
       assert byte_size(wire_data) > 0
-      assert byte_size(wire_data) == 2 + 2 + 1  # code + length + 1 algorithm
+      # code + length + 1 algorithm
+      assert byte_size(wire_data) == 2 + 2 + 1
     end
 
     test "parsing N3U from received DNS response" do
       # Simulate parsing N3U from a received EDNS0 option
-      wire_data = <<0, 7, 0, 1, 1>>  # N3U with SHA-1
+      # N3U with SHA-1
+      wire_data = <<0, 7, 0, 1, 1>>
       option = N3U.from_iodata(wire_data)
 
       assert option.data == [1]

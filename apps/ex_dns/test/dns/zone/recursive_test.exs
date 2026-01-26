@@ -123,7 +123,8 @@ defmodule DNS.Zone.RecursiveTest do
       data = DNS.Parameter.to_iodata(message)
 
       assert is_binary(data)
-      assert byte_size(data) > 12  # At least header + question
+      # At least header + question
+      assert byte_size(data) > 12
     end
   end
 
@@ -180,9 +181,12 @@ defmodule DNS.Zone.RecursiveTest do
 
     test "handles common root server addresses" do
       known_root_addresses = [
-        "198.41.0.4",      # a.root-servers.net
-        "199.9.14.201",    # b.root-servers.net
-        "192.33.4.12"      # c.root-servers.net
+        # a.root-servers.net
+        "198.41.0.4",
+        # b.root-servers.net
+        "199.9.14.201",
+        # c.root-servers.net
+        "192.33.4.12"
       ]
 
       for addr_str <- known_root_addresses do
@@ -507,7 +511,8 @@ defmodule DNS.Zone.RecursiveTest do
     test "understands referral concept" do
       # Referrals are responses with NS records in authority section
       message = DNS.Message.new()
-      assert message.nslist == []  # Authority section
+      # Authority section
+      assert message.nslist == []
     end
   end
 

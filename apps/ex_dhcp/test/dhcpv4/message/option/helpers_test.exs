@@ -108,7 +108,8 @@ defmodule DHCPv4.Message.Option.HelpersTest do
     end
 
     test "creates message type option (type 53)" do
-      opt = Helpers.new(53, 1, <<1>>)  # DHCPDISCOVER
+      # DHCPDISCOVER
+      opt = Helpers.new(53, 1, <<1>>)
 
       assert opt.type == 53
       assert opt.value == <<1>>
@@ -335,7 +336,8 @@ defmodule DHCPv4.Message.Option.HelpersTest do
 
   describe "round-trip encoding/decoding" do
     test "message type option survives round-trip" do
-      original = Helpers.new(53, 1, <<3>>)  # DHCPREQUEST
+      # DHCPREQUEST
+      original = Helpers.new(53, 1, <<3>>)
 
       binary = Helpers.to_iodata(original)
       decoded = Helpers.from_iodata(binary)
@@ -375,7 +377,8 @@ defmodule DHCPv4.Message.Option.HelpersTest do
     end
 
     test "lease time option survives round-trip" do
-      original = Helpers.new(51, 4, <<0, 0, 14, 16>>)  # 3600 seconds
+      # 3600 seconds
+      original = Helpers.new(51, 4, <<0, 0, 14, 16>>)
 
       binary = Helpers.to_iodata(original)
       decoded = Helpers.from_iodata(binary)
@@ -450,7 +453,8 @@ defmodule DHCPv4.Message.Option.HelpersTest do
 
     test "time offset option (type 2)" do
       # Signed 32-bit seconds from UTC
-      opt = Helpers.new(2, 4, <<0xFF, 0xFF, 0xB9, 0xB0>>)  # -18000 (EST)
+      # -18000 (EST)
+      opt = Helpers.new(2, 4, <<0xFF, 0xFF, 0xB9, 0xB0>>)
       assert opt.type == 2
     end
 
@@ -485,7 +489,8 @@ defmodule DHCPv4.Message.Option.HelpersTest do
     end
 
     test "IP address lease time option (type 51)" do
-      opt = Helpers.new(51, 4, <<0, 0, 14, 16>>)  # 3600 seconds
+      # 3600 seconds
+      opt = Helpers.new(51, 4, <<0, 0, 14, 16>>)
       assert opt.type == 51
     end
 
@@ -505,17 +510,20 @@ defmodule DHCPv4.Message.Option.HelpersTest do
     end
 
     test "maximum DHCP message size option (type 57)" do
-      opt = Helpers.new(57, 2, <<5, 220>>)  # 1500 bytes
+      # 1500 bytes
+      opt = Helpers.new(57, 2, <<5, 220>>)
       assert opt.type == 57
     end
 
     test "renewal time option (type 58)" do
-      opt = Helpers.new(58, 4, <<0, 0, 7, 8>>)  # T1 = 1800 seconds
+      # T1 = 1800 seconds
+      opt = Helpers.new(58, 4, <<0, 0, 7, 8>>)
       assert opt.type == 58
     end
 
     test "rebinding time option (type 59)" do
-      opt = Helpers.new(59, 4, <<0, 0, 12, 96>>)  # T2 = 3168 seconds
+      # T2 = 3168 seconds
+      opt = Helpers.new(59, 4, <<0, 0, 12, 96>>)
       assert opt.type == 59
     end
 

@@ -134,7 +134,10 @@ defmodule DNS.Message.Record.Data.NSEC3PARAMTest do
       salt = <<0xAB, 0xCD>>
 
       record = NSEC3PARAM.new({hash_algorithm, flags, iterations, salt})
-      expected_raw = <<hash_algorithm::8, flags::8, iterations::16, byte_size(salt)::8, salt::binary>>
+
+      expected_raw =
+        <<hash_algorithm::8, flags::8, iterations::16, byte_size(salt)::8, salt::binary>>
+
       assert record.raw == expected_raw
     end
 
@@ -294,7 +297,11 @@ defmodule DNS.Message.Record.Data.NSEC3PARAMTest do
       iodata = DNS.Parameter.to_iodata(record)
 
       expected_size = 1 + 1 + 2 + 1 + byte_size(salt)
-      expected = <<expected_size::16, hash_algorithm::8, flags::8, iterations::16, byte_size(salt)::8, salt::binary>>
+
+      expected =
+        <<expected_size::16, hash_algorithm::8, flags::8, iterations::16, byte_size(salt)::8,
+          salt::binary>>
+
       assert iodata == expected
     end
 

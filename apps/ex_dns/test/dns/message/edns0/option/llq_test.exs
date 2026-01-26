@@ -232,14 +232,20 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
 
     test "encodes opcode field" do
       option = LLQ.new({1, 3, <<0::64>>, 3600})
-      <<_code::16, _length::16, _version::16, opcode::16, _rest::binary>> = DNS.Parameter.to_iodata(option)
+
+      <<_code::16, _length::16, _version::16, opcode::16, _rest::binary>> =
+        DNS.Parameter.to_iodata(option)
+
       assert opcode == 3
     end
 
     test "encodes id field" do
       id = <<0xABCDEF0123456789::64>>
       option = LLQ.new({1, 1, id, 3600})
-      <<_code::16, _length::16, _version::16, _opcode::16, id_value::64, _rest::binary>> = DNS.Parameter.to_iodata(option)
+
+      <<_code::16, _length::16, _version::16, _opcode::16, id_value::64, _rest::binary>> =
+        DNS.Parameter.to_iodata(option)
+
       assert id_value == 0xABCDEF0123456789
     end
 
@@ -392,8 +398,10 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
       option = LLQ.new({1, 1, <<1::64>>, 3600})
       <<_code::16, length::16, data::binary>> = DNS.Parameter.to_iodata(option)
 
-      assert length == 18  # Length field value
-      assert byte_size(data) == 16  # Actual data size: 2+2+8+4
+      # Length field value
+      assert length == 18
+      # Actual data size: 2+2+8+4
+      assert byte_size(data) == 16
     end
 
     test "wire format: code (16) + length (16) + version (16) + opcode (16) + id (64) + lease (32)" do
@@ -499,7 +507,9 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "encodes id as 8 bytes in network order" do
       option = LLQ.new({1, 1, <<0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08>>, 3600})
       iodata = DNS.Parameter.to_iodata(option)
-      <<_code::16, _length::16, _version::16, _opcode::16, id::binary-size(8), _lease::32>> = iodata
+
+      <<_code::16, _length::16, _version::16, _opcode::16, id::binary-size(8), _lease::32>> =
+        iodata
 
       assert id == <<0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08>>
     end
@@ -566,7 +576,7 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     end
 
     test "parses various lease times" do
-      for lease <- [0, 60, 3600, 86400, 604800, 0xFFFFFFFF] do
+      for lease <- [0, 60, 3600, 86400, 604_800, 0xFFFFFFFF] do
         binary = <<1::16, 18::16, 1::16, 1::16, 1::64, lease::32>>
         option = LLQ.from_iodata(binary)
         {_, _, _, parsed_lease} = option.data
@@ -576,14 +586,18 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
 
     test "parses wire format from simulated DNS traffic" do
       # Simulated LLQ-SETUP request
-      wire_data = <<0, 1, 0, 18, 0, 1, 0, 1, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0, 0, 0x0E, 0x10>>
+      wire_data =
+        <<0, 1, 0, 18, 0, 1, 0, 1, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0, 0, 0x0E,
+          0x10>>
+
       option = LLQ.from_iodata(wire_data)
 
       {version, opcode, id, lease} = option.data
       assert version == 1
       assert opcode == 1
       assert id == <<0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0>>
-      assert lease == 3600  # 0x0E10
+      # 0x0E10
+      assert lease == 3600
     end
   end
 
@@ -623,7 +637,7 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "concurrent parsing" do
       binaries =
         Enum.map(1..20, fn i ->
-          <<1::16, 18::16, 1::16, 1::16, i::64, (i * 1000)::32>>
+          <<1::16, 18::16, 1::16, 1::16, i::64, i * 1000::32>>
         end)
 
       tasks =
@@ -742,7 +756,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
       options = [
         LLQ.new({1, 1, <<1::64>>, 3600}),
         LLQ.new({1, 2, <<1::64>>, 3600}),
-        LLQ.new({1, 1, <<1::64>>, 3600}),  # duplicate
+        # duplicate
+        LLQ.new({1, 1, <<1::64>>, 3600}),
         LLQ.new({1, 3, <<1::64>>, 3600})
       ]
 
@@ -759,7 +774,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "client initiates LLQ-SETUP" do
       # Client generates unique ID and requests subscription
       id = :crypto.strong_rand_bytes(8)
-      option = LLQ.new({1, 1, id, 3600})  # opcode 1 = LLQ-SETUP
+      # opcode 1 = LLQ-SETUP
+      option = LLQ.new({1, 1, id, 3600})
 
       iodata = DNS.Parameter.to_iodata(option)
       assert byte_size(iodata) == 20
@@ -768,7 +784,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "server responds to LLQ-SETUP with assigned ID" do
       # Server assigns its own ID and responds with lease grant
       server_id = :crypto.strong_rand_bytes(8)
-      option = LLQ.new({1, 1, server_id, 1800})  # Grant 30 min lease
+      # Grant 30 min lease
+      option = LLQ.new({1, 1, server_id, 1800})
 
       {_, opcode, _, lease} = option.data
       assert opcode == 1
@@ -778,7 +795,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "client sends LLQ-REFRESH to extend lease" do
       # Client uses existing ID to refresh subscription
       existing_id = <<0x1234567890ABCDEF::64>>
-      option = LLQ.new({1, 2, existing_id, 3600})  # opcode 2 = LLQ-REFRESH
+      # opcode 2 = LLQ-REFRESH
+      option = LLQ.new({1, 2, existing_id, 3600})
 
       {_, opcode, id, _} = option.data
       assert opcode == 2
@@ -788,7 +806,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "server sends LLQ-EVENT notification" do
       # Server sends event notification for DNS change
       subscription_id = <<0xDEADBEEFCAFEBABE::64>>
-      option = LLQ.new({1, 3, subscription_id, 0})  # opcode 3 = LLQ-EVENT, lease 0 for event
+      # opcode 3 = LLQ-EVENT, lease 0 for event
+      option = LLQ.new({1, 3, subscription_id, 0})
 
       {_, opcode, _, _} = option.data
       assert opcode == 3
@@ -797,7 +816,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     test "client cancels subscription with zero lease" do
       # Client cancels subscription by setting lease to 0
       subscription_id = <<0x1234567890ABCDEF::64>>
-      option = LLQ.new({1, 2, subscription_id, 0})  # LLQ-REFRESH with 0 lease = cancel
+      # LLQ-REFRESH with 0 lease = cancel
+      option = LLQ.new({1, 2, subscription_id, 0})
 
       {_, opcode, _, lease} = option.data
       assert opcode == 2
@@ -809,16 +829,21 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
 
       wire_data = DNS.Parameter.to_iodata(llq)
 
-      assert byte_size(wire_data) == 20  # code + length + 16 bytes data
+      # code + length + 16 bytes data
+      assert byte_size(wire_data) == 20
     end
 
     test "parsing LLQ from received DNS response" do
-      wire_data = <<0, 1, 0, 18, 0, 1, 0, 2, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0x0E, 0x10>>
+      wire_data =
+        <<0, 1, 0, 18, 0, 1, 0, 2, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0x0E,
+          0x10>>
+
       option = LLQ.from_iodata(wire_data)
 
       {version, opcode, id, lease} = option.data
       assert version == 1
-      assert opcode == 2  # LLQ-REFRESH
+      # LLQ-REFRESH
+      assert opcode == 2
       assert id == <<0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE>>
       assert lease == 3600
     end
@@ -867,13 +892,20 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
 
     test "common lease values" do
       lease_values = [
-        60,        # 1 minute
-        300,       # 5 minutes
-        1800,      # 30 minutes
-        3600,      # 1 hour
-        7200,      # 2 hours
-        86400,     # 1 day
-        604800     # 1 week
+        # 1 minute
+        60,
+        # 5 minutes
+        300,
+        # 30 minutes
+        1800,
+        # 1 hour
+        3600,
+        # 2 hours
+        7200,
+        # 1 day
+        86400,
+        # 1 week
+        604_800
       ]
 
       for lease <- lease_values do
@@ -898,7 +930,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
         end)
 
       assert length(options) == 1000
-      assert time < 50000  # Should complete in under 50ms
+      # Should complete in under 50ms
+      assert time < 50000
     end
 
     test "serializing many options is efficient" do
@@ -913,7 +946,8 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     end
 
     test "parsing many options is efficient" do
-      binaries = Enum.map(1..1000, fn i -> <<1::16, 18::16, 1::16, 1::16, i::64, (i * 100)::32>> end)
+      binaries =
+        Enum.map(1..1000, fn i -> <<1::16, 18::16, 1::16, 1::16, i::64, i * 100::32>> end)
 
       {time, _results} =
         :timer.tc(fn ->
@@ -987,7 +1021,7 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
     end
 
     test "all fields round-trip correctly" do
-      original = LLQ.new({12345, 54321, <<0xFEDCBA9876543210::64>>, 123456789})
+      original = LLQ.new({12345, 54321, <<0xFEDCBA9876543210::64>>, 123_456_789})
       iodata = DNS.Parameter.to_iodata(original)
       parsed = LLQ.from_iodata(iodata)
 

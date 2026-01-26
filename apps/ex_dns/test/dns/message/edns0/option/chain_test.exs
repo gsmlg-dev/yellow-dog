@@ -23,10 +23,14 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
   # DNSSEC DS Hash Algorithm Constants (RFC 4509, RFC 6605)
   # ============================================================================
 
-  @sha1_algo 1        # SHA-1 (RFC 3658)
-  @sha256_algo 2      # SHA-256 (RFC 4509)
-  @gost_algo 3        # GOST R 34.11-94 (RFC 5933)
-  @sha384_algo 4      # SHA-384 (RFC 6605)
+  # SHA-1 (RFC 3658)
+  @sha1_algo 1
+  # SHA-256 (RFC 4509)
+  @sha256_algo 2
+  # GOST R 34.11-94 (RFC 5933)
+  @gost_algo 3
+  # SHA-384 (RFC 6605)
+  @sha384_algo 4
 
   # Common DS algorithm values used in practice
   @common_algorithms [@sha1_algo, @sha256_algo, @sha384_algo]
@@ -326,7 +330,8 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
     end
 
     test "option data is 16-bit unsigned integer" do
-      option = Chain.new(256)  # > 8 bits, fits in 16
+      # > 8 bits, fits in 16
+      option = Chain.new(256)
       iodata = DNS.Parameter.to_iodata(option)
       <<_code::16, _length::16, value::16>> = iodata
       assert value == 256
@@ -344,7 +349,8 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
       option = Chain.new(@sha256_algo)
       iodata = DNS.Parameter.to_iodata(option)
 
-      assert byte_size(iodata) == 6  # 2 + 2 + 2 bytes
+      # 2 + 2 + 2 bytes
+      assert byte_size(iodata) == 6
 
       <<code::16, length::16, trust_point::16>> = iodata
       assert code == 13
@@ -423,7 +429,8 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
     end
 
     test "encodes trust point as big-endian 16-bit" do
-      option = Chain.new(0x0102)  # 258 decimal
+      # 258 decimal
+      option = Chain.new(0x0102)
       iodata = DNS.Parameter.to_iodata(option)
       <<_code::16, _length::16, high, low>> = iodata
 
@@ -631,7 +638,8 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
       options = [
         Chain.new(1),
         Chain.new(2),
-        Chain.new(1),  # duplicate
+        # duplicate
+        Chain.new(1),
         Chain.new(3)
       ]
 
@@ -673,7 +681,8 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
 
     test "parsing CHAIN from received DNS response" do
       # Simulate parsing CHAIN from received message
-      wire_data = <<0, 13, 0, 2, 0, 2>>  # CHAIN with SHA-256
+      # CHAIN with SHA-256
+      wire_data = <<0, 13, 0, 2, 0, 2>>
       option = Chain.from_iodata(wire_data)
 
       assert option.data == @sha256_algo

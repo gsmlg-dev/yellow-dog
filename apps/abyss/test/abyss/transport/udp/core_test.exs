@@ -75,7 +75,7 @@ defmodule Abyss.Transport.UDP.CoreTest do
 
   describe "merge_options/2" do
     test "returns user options when defaults empty" do
-      result = Core.merge_options([], [active: false, binary: true])
+      result = Core.merge_options([], active: false, binary: true)
 
       assert result == [active: false, binary: true]
     end
@@ -136,8 +136,8 @@ defmodule Abyss.Transport.UDP.CoreTest do
         active: false,
         binary: true,
         buffer: 65536,
-        recbuf: 131072,
-        sndbuf: 131072
+        recbuf: 131_072,
+        sndbuf: 131_072
       ]
 
       user_opts = [
@@ -151,7 +151,7 @@ defmodule Abyss.Transport.UDP.CoreTest do
       assert Keyword.get(result, :active) == true
       assert Keyword.get(result, :buffer) == 32768
       assert Keyword.get(result, :binary) == true
-      assert Keyword.get(result, :recbuf) == 131072
+      assert Keyword.get(result, :recbuf) == 131_072
       assert Keyword.get(result, :reuseaddr) == true
     end
 
@@ -248,7 +248,7 @@ defmodule Abyss.Transport.UDP.CoreTest do
     end
 
     test "setopts sets socket options", %{socket: socket} do
-      result = Core.setopts(socket, [active: true])
+      result = Core.setopts(socket, active: true)
 
       assert :ok = result
     end

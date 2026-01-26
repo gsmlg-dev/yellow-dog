@@ -28,10 +28,12 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
   @thirty_minutes 1800
   @one_hour 3600
   @two_hours 7200
-  @dns_sd_default 4500       # 75 minutes - DNS-SD recommended default
+  # 75 minutes - DNS-SD recommended default
+  @dns_sd_default 4500
   @one_day 86400
-  @one_week 604800
-  @max_lease 0xFFFFFFFF      # ~136 years
+  @one_week 604_800
+  # ~136 years
+  @max_lease 0xFFFFFFFF
 
   # ============================================================================
   # Module Structure Tests
@@ -349,7 +351,8 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
       option = UpdateLease.new(@two_hours)
       iodata = DNS.Parameter.to_iodata(option)
 
-      assert byte_size(iodata) == 8  # 2 + 2 + 4 bytes
+      # 2 + 2 + 4 bytes
+      assert byte_size(iodata) == 8
 
       <<code::16, length::16, lease::32>> = iodata
       assert code == 2
@@ -499,7 +502,8 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
 
     test "parses wire format from simulated DNS traffic" do
       # Simulated wire data: UpdateLease with 2 hours
-      wire_data = <<0, 2, 0, 4, 0, 0, 28, 32>>  # 7200 in big-endian
+      # 7200 in big-endian
+      wire_data = <<0, 2, 0, 4, 0, 0, 28, 32>>
       option = UpdateLease.from_iodata(wire_data)
       assert option.data == @two_hours
     end
@@ -541,7 +545,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     test "concurrent parsing" do
       binaries =
         Enum.map(1..20, fn i ->
-          <<2::16, 4::16, (i * 3600)::32>>
+          <<2::16, 4::16, i * 3600::32>>
         end)
 
       tasks =
@@ -635,7 +639,8 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
       options = [
         UpdateLease.new(@one_hour),
         UpdateLease.new(@two_hours),
-        UpdateLease.new(@one_hour),  # duplicate
+        # duplicate
+        UpdateLease.new(@one_hour),
         UpdateLease.new(@one_day)
       ]
 
@@ -683,7 +688,8 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     end
 
     test "parsing service lease from mDNS response" do
-      wire_data = <<0, 2, 0, 4, 0, 0, 28, 32>>  # 7200 seconds
+      # 7200 seconds
+      wire_data = <<0, 2, 0, 4, 0, 0, 28, 32>>
       option = UpdateLease.from_iodata(wire_data)
 
       assert option.data == @two_hours
@@ -691,9 +697,12 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     end
 
     test "different service types with different leases" do
-      printer_lease = UpdateLease.new(@two_hours)      # Printer
-      speaker_lease = UpdateLease.new(@one_hour)       # Speaker
-      temp_lease = UpdateLease.new(@five_minutes)      # Temp service
+      # Printer
+      printer_lease = UpdateLease.new(@two_hours)
+      # Speaker
+      speaker_lease = UpdateLease.new(@one_hour)
+      # Temp service
+      temp_lease = UpdateLease.new(@five_minutes)
 
       assert printer_lease.data > speaker_lease.data
       assert speaker_lease.data > temp_lease.data
@@ -733,12 +742,18 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
 
     test "values near byte boundaries" do
       boundary_values = [
-        255,        # 1 byte max
-        256,        # 2 bytes
-        65535,      # 2 bytes max
-        65536,      # 3 bytes
-        16777215,   # 3 bytes max
-        16777216    # 4 bytes
+        # 1 byte max
+        255,
+        # 2 bytes
+        256,
+        # 2 bytes max
+        65535,
+        # 3 bytes
+        65536,
+        # 3 bytes max
+        16_777_215,
+        # 4 bytes
+        16_777_216
       ]
 
       for value <- boundary_values do
@@ -775,7 +790,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     end
 
     test "parsing many options is efficient" do
-      binaries = Enum.map(0..999, fn i -> <<2::16, 4::16, (i * 100)::32>> end)
+      binaries = Enum.map(0..999, fn i -> <<2::16, 4::16, i * 100::32>> end)
 
       {time, _results} =
         :timer.tc(fn ->
@@ -829,8 +844,18 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     end
 
     test "all values in 32-bit range work" do
-      test_values = [0, 1, 255, 256, 65535, 65536, 16777215, 16777216,
-                     @max_lease - 1, @max_lease]
+      test_values = [
+        0,
+        1,
+        255,
+        256,
+        65535,
+        65536,
+        16_777_215,
+        16_777_216,
+        @max_lease - 1,
+        @max_lease
+      ]
 
       for value <- test_values do
         option = UpdateLease.new(value)

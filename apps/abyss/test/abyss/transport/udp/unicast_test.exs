@@ -148,7 +148,9 @@ defmodule Abyss.Transport.UDP.UnicastTest do
       result = Unicast.listen(1, [])
 
       case result do
-        {:error, _reason} -> assert true
+        {:error, _reason} ->
+          assert true
+
         {:ok, socket} ->
           Unicast.close(socket)
           # Test passed - we had permissions
@@ -383,7 +385,8 @@ defmodule Abyss.Transport.UDP.UnicastTest do
 
     test "uses default timeout of 5000ms" do
       # Verify function accepts 2 arguments (default timeout)
-      assert function_exported?(Unicast, :send_recv, 2) or function_exported?(Unicast, :send_recv, 3)
+      assert function_exported?(Unicast, :send_recv, 2) or
+               function_exported?(Unicast, :send_recv, 3)
     end
 
     test "handles binary data correctly" do

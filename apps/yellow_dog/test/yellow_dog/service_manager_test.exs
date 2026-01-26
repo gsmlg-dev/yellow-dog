@@ -34,6 +34,7 @@ defmodule YellowDog.ServiceManagerTest do
     case Process.whereis(YellowDog.Config) do
       nil ->
         {:ok, _pid} = YellowDog.Config.start_link(@default_config)
+
         on_exit(fn ->
           try do
             GenServer.stop(YellowDog.Config, :normal, 1000)
@@ -390,7 +391,8 @@ defmodule YellowDog.ServiceManagerTest do
 
       # Config line should be present
       if String.contains?(output, "Config:") do
-        assert String.contains?(output, ":") # port separator
+        # port separator
+        assert String.contains?(output, ":")
       end
     end
 

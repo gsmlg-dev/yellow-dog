@@ -432,8 +432,9 @@ defmodule DNS.Message.EDNS0.OptionTest do
 
       # Build data that matches LLQ.from_iodata's exact pattern
       # version=1, opcode=0, id=12345678, lease_life=3600
-      llq_data = <<1::16, 18::16, 1::16, 0::16, 12345678::64, 3600::32>>
-      assert byte_size(llq_data) == 20  # 2+2+2+2+8+4
+      llq_data = <<1::16, 18::16, 1::16, 0::16, 12_345_678::64, 3600::32>>
+      # 2+2+2+2+8+4
+      assert byte_size(llq_data) == 20
 
       # The LLQ implementation has a mismatch: it declares length=18 but only
       # provides 16 bytes of actual payload. This means Option.from_iodata
@@ -447,7 +448,8 @@ defmodule DNS.Message.EDNS0.OptionTest do
 
   describe "from_iodata/1 - code 2 (UpdateLease)" do
     test "parses as UpdateLease option" do
-      data = <<0, 2, 0, 4, 0, 0, 14, 16>>  # 3600 seconds
+      # 3600 seconds
+      data = <<0, 2, 0, 4, 0, 0, 14, 16>>
 
       opt = Option.from_iodata(data)
 
@@ -526,7 +528,8 @@ defmodule DNS.Message.EDNS0.OptionTest do
 
   describe "from_iodata/1 - code 9 (Expire)" do
     test "parses as Expire option" do
-      data = <<0, 9, 0, 4, 0, 1, 81, 128>>  # 86400 seconds
+      # 86400 seconds
+      data = <<0, 9, 0, 4, 0, 1, 81, 128>>
 
       opt = Option.from_iodata(data)
 

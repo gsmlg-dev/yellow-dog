@@ -193,7 +193,10 @@ defmodule YellowDog.Dns.Zone.ForwardTest do
       GenServer.stop(pid)
     end
 
-    test "increments query_count on resolve attempt", %{view_name: view_name, zone_name: zone_name} do
+    test "increments query_count on resolve attempt", %{
+      view_name: view_name,
+      zone_name: zone_name
+    } do
       {:ok, pid} = Forward.start_link(name: zone_name, view_name: view_name, upstreams: [])
 
       stats_before = Forward.stats(pid)

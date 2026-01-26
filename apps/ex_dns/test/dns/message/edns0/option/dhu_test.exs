@@ -482,7 +482,8 @@ defmodule DNS.Message.EDNS0.Option.DHUTest do
     end
 
     test "parses wire format from simulated DNS traffic" do
-      wire_data = <<0, 6, 0, 2, 2, 4>>  # DHU with SHA-256 and SHA-384
+      # DHU with SHA-256 and SHA-384
+      wire_data = <<0, 6, 0, 2, 2, 4>>
       option = DHU.from_iodata(wire_data)
 
       assert option.data == [2, 4]
@@ -625,7 +626,8 @@ defmodule DNS.Message.EDNS0.Option.DHUTest do
       options = [
         DHU.new([1]),
         DHU.new([1, 2]),
-        DHU.new([1]),  # duplicate
+        # duplicate
+        DHU.new([1]),
         DHU.new([2, 1])
       ]
 
@@ -643,11 +645,13 @@ defmodule DNS.Message.EDNS0.Option.DHUTest do
       option = DHU.new([2])
 
       iodata = DNS.Parameter.to_iodata(option)
-      assert byte_size(iodata) == 5  # 2 + 2 + 1 bytes
+      # 2 + 2 + 1 bytes
+      assert byte_size(iodata) == 5
     end
 
     test "resolver signaling multiple hash support" do
-      option = DHU.new([1, 2, 4])  # SHA-1, SHA-256, SHA-384
+      # SHA-1, SHA-256, SHA-384
+      option = DHU.new([1, 2, 4])
 
       iodata = DNS.Parameter.to_iodata(option)
       <<code::16, length::16, _data::binary>> = iodata
@@ -657,16 +661,19 @@ defmodule DNS.Message.EDNS0.Option.DHUTest do
     end
 
     test "building DHU for EDNS0 OPT record" do
-      dhu = DHU.new([2, 4])  # SHA-256 and SHA-384
+      # SHA-256 and SHA-384
+      dhu = DHU.new([2, 4])
 
       wire_data = DNS.Parameter.to_iodata(dhu)
 
       assert byte_size(wire_data) > 0
-      assert byte_size(wire_data) == 2 + 2 + 2  # code + length + 2 algorithms
+      # code + length + 2 algorithms
+      assert byte_size(wire_data) == 2 + 2 + 2
     end
 
     test "parsing DHU from received DNS response" do
-      wire_data = <<0, 6, 0, 2, 2, 4>>  # DHU with SHA-256 and SHA-384
+      # DHU with SHA-256 and SHA-384
+      wire_data = <<0, 6, 0, 2, 2, 4>>
       option = DHU.from_iodata(wire_data)
 
       assert option.data == [2, 4]

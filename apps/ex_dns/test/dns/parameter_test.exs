@@ -94,8 +94,10 @@ defmodule DNS.ParameterTest do
       <<_id::16, flags::16, _rest::binary>> = binary
 
       # QR flag is bit 15 (0x8000), RD flag is bit 8 (0x0100)
-      assert (flags &&& 0x8000) != 0  # QR set
-      assert (flags &&& 0x0100) != 0  # RD set
+      # QR set
+      assert (flags &&& 0x8000) != 0
+      # RD set
+      assert (flags &&& 0x0100) != 0
     end
   end
 
@@ -239,7 +241,8 @@ defmodule DNS.ParameterTest do
 
       result = DNS.Parameter.to_iodata(header)
       assert is_binary(result)
-      assert byte_size(result) == 12  # DNS header is always 12 bytes
+      # DNS header is always 12 bytes
+      assert byte_size(result) == 12
     end
 
     test "Question implements DNS.Parameter" do

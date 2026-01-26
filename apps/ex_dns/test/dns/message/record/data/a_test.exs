@@ -319,9 +319,12 @@ defmodule DNS.Message.Record.Data.ATest do
 
     test "creates record for multicast range (224-239.x.x.x)" do
       multicast_addrs = [
-        {224, 0, 0, 1},    # All hosts
-        {224, 0, 0, 251},  # mDNS
-        {239, 255, 255, 250}  # SSDP
+        # All hosts
+        {224, 0, 0, 1},
+        # mDNS
+        {224, 0, 0, 251},
+        # SSDP
+        {239, 255, 255, 250}
       ]
 
       for addr <- multicast_addrs do

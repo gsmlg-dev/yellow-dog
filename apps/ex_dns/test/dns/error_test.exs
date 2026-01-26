@@ -244,7 +244,13 @@ defmodule DNS.ErrorTest do
     end
 
     test "handles all error types" do
-      error_types = [:format_error, :parse_error, :validation_error, :compression_error, :security_error]
+      error_types = [
+        :format_error,
+        :parse_error,
+        :validation_error,
+        :compression_error,
+        :security_error
+      ]
 
       for type <- error_types do
         assert :ok = Error.log_detailed_error(type, DNS.Message.Domain, :test)
@@ -268,6 +274,7 @@ defmodule DNS.ErrorTest do
           }
         }
       }
+
       assert :ok = Error.log_detailed_error(:format_error, DNS.Message.Domain, :test, context)
     end
   end
@@ -325,7 +332,13 @@ defmodule DNS.ErrorTest do
         Unknown.Module
       ]
 
-      types = [:format_error, :parse_error, :validation_error, :compression_error, :security_error]
+      types = [
+        :format_error,
+        :parse_error,
+        :validation_error,
+        :compression_error,
+        :security_error
+      ]
 
       for type <- types, module <- modules do
         {message, _} = Error.new(type, module, :test)
@@ -377,6 +390,7 @@ defmodule DNS.ErrorTest do
         nested: %{key: "value"},
         binary: <<1, 2, 3>>
       }
+
       error = Error.new(:format_error, DNS.Message.Domain, :test, context)
 
       {_, error_context} = error
@@ -442,7 +456,14 @@ defmodule DNS.ErrorTest do
       Unknown.Module
     ]
 
-    @error_types [:format_error, :parse_error, :validation_error, :compression_error, :security_error, :unknown_type]
+    @error_types [
+      :format_error,
+      :parse_error,
+      :validation_error,
+      :compression_error,
+      :security_error,
+      :unknown_type
+    ]
 
     test "all combinations produce valid errors" do
       for module <- @modules, type <- @error_types do
@@ -502,6 +523,7 @@ defmodule DNS.ErrorTest do
         max_depth: 5,
         current_depth: 6
       }
+
       error = Error.new(:compression_error, DNS.Message.Domain, :loop_detected, context)
 
       {message, ctx} = error
@@ -516,6 +538,7 @@ defmodule DNS.ErrorTest do
         max_allowed: 8192,
         record_type: :TXT
       }
+
       error = Error.new(:security_error, DNS.Message.Record, :rdlength_exceeds_limit, context)
 
       {message, ctx} = error
@@ -529,6 +552,7 @@ defmodule DNS.ErrorTest do
         content: "$ORIGIN invalid",
         expected: "valid domain name"
       }
+
       error = Error.new(:parse_error, DNS.Zone.FileParser, :invalid_origin, context)
 
       {message, ctx} = error
@@ -541,6 +565,7 @@ defmodule DNS.ErrorTest do
         expected_size: 12,
         actual_size: 10
       }
+
       error = Error.new(:format_error, DNS.Message.Header, :truncated_header, context)
 
       {message, ctx} = error
@@ -554,6 +579,7 @@ defmodule DNS.ErrorTest do
         qtype: 1,
         qclass: 1
       }
+
       error = Error.new(:validation_error, DNS.Message.Question, :invalid_qname, context)
 
       {message, _} = error
@@ -572,9 +598,11 @@ defmodule DNS.ErrorTest do
     end
 
     test "handles deeply nested context" do
-      deep_context = Enum.reduce(1..10, %{value: "deep"}, fn _, acc ->
-        %{nested: acc}
-      end)
+      deep_context =
+        Enum.reduce(1..10, %{value: "deep"}, fn _, acc ->
+          %{nested: acc}
+        end)
+
       error = Error.new(:format_error, DNS.Message.Domain, :test, deep_context)
       {_, context} = error
       assert context.nested != nil
@@ -611,7 +639,8 @@ defmodule DNS.ErrorTest do
       large_context = Map.new(1..1000, fn i -> {"key_#{i}", i} end)
       error = Error.new(:format_error, DNS.Message.Domain, :test, large_context)
       {_, context} = error
-      assert map_size(context) == 1001  # 1000 + internal_reason
+      # 1000 + internal_reason
+      assert map_size(context) == 1001
     end
   end
 

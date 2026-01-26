@@ -226,6 +226,7 @@ defmodule DNS.Message.DomainTest do
 
     test "label length is encoded as single byte" do
       domain = Domain.new("test.com")
+
       <<len1, _::binary-size(4), len2, _::binary-size(3), terminator>> =
         DNS.Parameter.to_iodata(domain)
 
@@ -375,6 +376,7 @@ defmodule DNS.Message.DomainTest do
   describe "DNS protocol compliance" do
     test "encodes each label with length prefix" do
       domain = Domain.new("www.example.com")
+
       <<len1, label1::binary-size(3), len2, label2::binary-size(7), len3, label3::binary-size(3),
         terminator>> = DNS.Parameter.to_iodata(domain)
 

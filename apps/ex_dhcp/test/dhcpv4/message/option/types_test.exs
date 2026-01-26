@@ -57,7 +57,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_time_offset/1 (type 2)" do
     test "decodes positive offset" do
-      result = Types.decode_time_offset(<<0, 0, 0x0E, 0x10>>)  # 3600 seconds
+      # 3600 seconds
+      result = Types.decode_time_offset(<<0, 0, 0x0E, 0x10>>)
 
       assert {"Time Offset", :int, 3600} = result
     end
@@ -125,7 +126,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_boot_file_size/1 (type 13)" do
     test "decodes 16-bit file size" do
-      result = Types.decode_boot_file_size(<<0x01, 0x00>>)  # 256
+      # 256
+      result = Types.decode_boot_file_size(<<0x01, 0x00>>)
 
       assert {"Boot File Size", :int, 256} = result
     end
@@ -164,10 +166,11 @@ defmodule DHCPv4.Message.Option.TypesTest do
       binary = <<10, 0, 0, 0, 255, 0, 0, 0, 172, 16, 0, 0, 255, 255, 0, 0>>
       result = Types.decode_policy_filter(binary, 16)
 
-      assert {"Policy Filter", :ip_mask_list, [
-        {{10, 0, 0, 0}, {255, 0, 0, 0}},
-        {{172, 16, 0, 0}, {255, 255, 0, 0}}
-      ]} = result
+      assert {"Policy Filter", :ip_mask_list,
+              [
+                {{10, 0, 0, 0}, {255, 0, 0, 0}},
+                {{172, 16, 0, 0}, {255, 255, 0, 0}}
+              ]} = result
     end
   end
 
@@ -187,13 +190,15 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_interface_mtu/1 (type 26)" do
     test "decodes standard MTU" do
-      result = Types.decode_interface_mtu(<<0x05, 0xDC>>)  # 1500
+      # 1500
+      result = Types.decode_interface_mtu(<<0x05, 0xDC>>)
 
       assert {"Interface MTU", :int, 1500} = result
     end
 
     test "decodes jumbo MTU" do
-      result = Types.decode_interface_mtu(<<0x23, 0x28>>)  # 9000
+      # 9000
+      result = Types.decode_interface_mtu(<<0x23, 0x28>>)
 
       assert {"Interface MTU", :int, 9000} = result
     end
@@ -217,7 +222,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_ip_address_lease_time/1 (type 51)" do
     test "decodes lease time in seconds" do
-      result = Types.decode_ip_address_lease_time(<<0, 1, 81, 128>>)  # 86400 (1 day)
+      # 86400 (1 day)
+      result = Types.decode_ip_address_lease_time(<<0, 1, 81, 128>>)
 
       assert {"IP Address Lease Time", :int, 86400} = result
     end
@@ -323,7 +329,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_maximum_dhcp_message_size/1 (type 57)" do
     test "decodes message size" do
-      result = Types.decode_maximum_dhcp_message_size(<<0x02, 0x40>>)  # 576
+      # 576
+      result = Types.decode_maximum_dhcp_message_size(<<0x02, 0x40>>)
 
       assert {"Maximum DHCP Message Size", :int, 576} = result
     end
@@ -331,7 +338,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_renewal_time_value/1 (type 58)" do
     test "decodes T1 time" do
-      result = Types.decode_renewal_time_value(<<0, 0, 0xA8, 0xC0>>)  # 43200 (12 hours)
+      # 43200 (12 hours)
+      result = Types.decode_renewal_time_value(<<0, 0, 0xA8, 0xC0>>)
 
       assert {"Renewal (T1) Time Value", :int, 43200} = result
     end
@@ -339,7 +347,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
 
   describe "decode_rebinding_time_value/1 (type 59)" do
     test "decodes T2 time" do
-      result = Types.decode_rebinding_time_value(<<0, 1, 27, 0>>)  # 72000
+      # 72000
+      result = Types.decode_rebinding_time_value(<<0, 1, 27, 0>>)
 
       assert {"Rebinding (T2) Time Value", :int, _} = result
     end
@@ -487,7 +496,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
     end
 
     test "decodes perform router discovery (type 31)" do
-      assert {"Perform Router Discovery", :bool, true} = Types.decode_perform_router_discovery(<<1>>)
+      assert {"Perform Router Discovery", :bool, true} =
+               Types.decode_perform_router_discovery(<<1>>)
     end
 
     test "decodes trailer encapsulation (type 34)" do
@@ -549,7 +559,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
     end
 
     test "decodes TCP keepalive interval (type 38)" do
-      result = Types.decode_tcp_keepalive_interval(<<0, 0, 0x1C, 0x20>>)  # 7200
+      # 7200
+      result = Types.decode_tcp_keepalive_interval(<<0, 0, 0x1C, 0x20>>)
 
       assert {"TCP Keepalive Interval", :int, 7200} = result
     end
@@ -589,7 +600,8 @@ defmodule DHCPv4.Message.Option.TypesTest do
     end
 
     test "decodes NetBIOS node type (type 46)" do
-      result = Types.decode_netbios_node_type(<<2>>)  # P-node
+      # P-node
+      result = Types.decode_netbios_node_type(<<2>>)
 
       assert {"NetBIOS over TCP/IP Node Type", :int, 2} = result
     end

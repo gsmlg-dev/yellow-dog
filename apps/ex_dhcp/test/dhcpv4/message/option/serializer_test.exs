@@ -85,7 +85,8 @@ defmodule DHCPv4.Message.Option.SerializerTest do
     end
 
     test "serializes DHCP message type option" do
-      option = Helpers.new(53, 1, <<1>>)  # DISCOVER
+      # DISCOVER
+      option = Helpers.new(53, 1, <<1>>)
       result = Serializer.to_dhcp_binary([option])
 
       assert is_binary(result)
@@ -95,9 +96,12 @@ defmodule DHCPv4.Message.Option.SerializerTest do
   describe "to_dhcp_binary/1 - multiple options" do
     test "serializes multiple options" do
       options = [
-        Helpers.new(1, 4, <<255, 255, 255, 0>>),   # Subnet mask
-        Helpers.new(3, 4, <<192, 168, 1, 1>>),     # Router
-        Helpers.new(6, 4, <<8, 8, 8, 8>>)          # DNS server
+        # Subnet mask
+        Helpers.new(1, 4, <<255, 255, 255, 0>>),
+        # Router
+        Helpers.new(3, 4, <<192, 168, 1, 1>>),
+        # DNS server
+        Helpers.new(6, 4, <<8, 8, 8, 8>>)
       ]
 
       result = Serializer.to_dhcp_binary(options)
@@ -125,9 +129,12 @@ defmodule DHCPv4.Message.Option.SerializerTest do
     test "serializes standard DHCP message options" do
       # Typical DHCP DISCOVER message options
       options = [
-        Helpers.new(53, 1, <<1>>),              # DHCP Message Type: DISCOVER
-        Helpers.new(55, 4, <<1, 3, 6, 15>>),    # Parameter Request List
-        Helpers.new(61, 7, <<1, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55>>)  # Client Identifier
+        # DHCP Message Type: DISCOVER
+        Helpers.new(53, 1, <<1>>),
+        # Parameter Request List
+        Helpers.new(55, 4, <<1, 3, 6, 15>>),
+        # Client Identifier
+        Helpers.new(61, 7, <<1, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55>>)
       ]
 
       result = Serializer.to_dhcp_binary(options)
@@ -140,14 +147,16 @@ defmodule DHCPv4.Message.Option.SerializerTest do
   describe "to_dhcp_binary/1 - option types" do
     test "handles zero-length option" do
       # Some options have no data
-      option = Helpers.new(80, 0, <<>>)  # Rapid Commit (RFC 4039)
+      # Rapid Commit (RFC 4039)
+      option = Helpers.new(80, 0, <<>>)
       result = Serializer.to_dhcp_binary([option])
 
       assert is_binary(result)
     end
 
     test "handles single-byte option" do
-      option = Helpers.new(53, 1, <<2>>)  # DHCP Message Type: OFFER
+      # DHCP Message Type: OFFER
+      option = Helpers.new(53, 1, <<2>>)
       result = Serializer.to_dhcp_binary([option])
 
       assert is_binary(result)
@@ -164,7 +173,8 @@ defmodule DHCPv4.Message.Option.SerializerTest do
 
     test "handles IP address list option" do
       # Multiple DNS servers
-      dns_servers = <<8, 8, 8, 8, 8, 8, 4, 4>>  # 8.8.8.8 and 8.8.4.4
+      # 8.8.8.8 and 8.8.4.4
+      dns_servers = <<8, 8, 8, 8, 8, 8, 4, 4>>
       option = Helpers.new(6, 8, dns_servers)
       result = Serializer.to_dhcp_binary([option])
 
@@ -183,7 +193,8 @@ defmodule DHCPv4.Message.Option.SerializerTest do
     end
 
     test "option format is TLV (Type-Length-Value)" do
-      option = Helpers.new(53, 1, <<3>>)  # DHCP Message Type: REQUEST
+      # DHCP Message Type: REQUEST
+      option = Helpers.new(53, 1, <<3>>)
       result = Serializer.to_dhcp_binary([option])
 
       <<_cookie::binary-size(4), type, length, value, _end::binary>> = result

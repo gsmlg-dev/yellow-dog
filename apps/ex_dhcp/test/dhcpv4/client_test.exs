@@ -62,7 +62,8 @@ defmodule DHCPv4.ClientTest do
       message = Client.discover(mac: @sample_mac)
 
       assert %Message{} = message
-      assert message.op == 1  # BOOTREQUEST
+      # BOOTREQUEST
+      assert message.op == 1
     end
 
     test "sets hardware type to Ethernet (1)" do
@@ -103,7 +104,8 @@ defmodule DHCPv4.ClientTest do
 
       option_53 = Enum.find(message.options, fn opt -> opt.type == 53 end)
       assert option_53 != nil
-      assert option_53.value == <<1>>  # DHCPDISCOVER
+      # DHCPDISCOVER
+      assert option_53.value == <<1>>
     end
 
     test "includes hostname when provided" do
@@ -139,34 +141,40 @@ defmodule DHCPv4.ClientTest do
 
   describe "request/1" do
     test "creates DHCPREQUEST message" do
-      message = Client.request(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        requested_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          requested_ip: {192, 168, 1, 100}
+        )
 
       assert %Message{} = message
-      assert message.op == 1  # BOOTREQUEST
+      # BOOTREQUEST
+      assert message.op == 1
     end
 
     test "includes DHCP message type option (53) with REQUEST type" do
-      message = Client.request(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        requested_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          requested_ip: {192, 168, 1, 100}
+        )
 
       option_53 = Enum.find(message.options, fn opt -> opt.type == 53 end)
-      assert option_53.value == <<3>>  # DHCPREQUEST
+      # DHCPREQUEST
+      assert option_53.value == <<3>>
     end
 
     test "includes server identifier option (54)" do
       server_ip = {192, 168, 1, 1}
-      message = Client.request(
-        mac: @sample_mac,
-        server_ip: server_ip,
-        requested_ip: {192, 168, 1, 100}
-      )
+
+      message =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: server_ip,
+          requested_ip: {192, 168, 1, 100}
+        )
 
       option_54 = Enum.find(message.options, fn opt -> opt.type == 54 end)
       assert option_54 != nil
@@ -175,11 +183,13 @@ defmodule DHCPv4.ClientTest do
 
     test "includes requested IP option (50)" do
       requested_ip = {192, 168, 1, 100}
-      message = Client.request(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        requested_ip: requested_ip
-      )
+
+      message =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          requested_ip: requested_ip
+        )
 
       option_50 = Enum.find(message.options, fn opt -> opt.type == 50 end)
       assert option_50 != nil
@@ -207,45 +217,53 @@ defmodule DHCPv4.ClientTest do
 
   describe "release/1" do
     test "creates DHCPRELEASE message" do
-      message = Client.release(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        leased_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.release(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          leased_ip: {192, 168, 1, 100}
+        )
 
       assert %Message{} = message
-      assert message.op == 1  # BOOTREQUEST
+      # BOOTREQUEST
+      assert message.op == 1
     end
 
     test "includes DHCP message type option (53) with RELEASE type" do
-      message = Client.release(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        leased_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.release(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          leased_ip: {192, 168, 1, 100}
+        )
 
       option_53 = Enum.find(message.options, fn opt -> opt.type == 53 end)
-      assert option_53.value == <<7>>  # DHCPRELEASE
+      # DHCPRELEASE
+      assert option_53.value == <<7>>
     end
 
     test "sets ciaddr to leased IP" do
       leased_ip = {192, 168, 1, 100}
-      message = Client.release(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        leased_ip: leased_ip
-      )
+
+      message =
+        Client.release(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          leased_ip: leased_ip
+        )
 
       assert message.ciaddr == leased_ip
     end
 
     test "includes server identifier option (54)" do
       server_ip = {192, 168, 1, 1}
-      message = Client.release(
-        mac: @sample_mac,
-        server_ip: server_ip,
-        leased_ip: {192, 168, 1, 100}
-      )
+
+      message =
+        Client.release(
+          mac: @sample_mac,
+          server_ip: server_ip,
+          leased_ip: {192, 168, 1, 100}
+        )
 
       option_54 = Enum.find(message.options, fn opt -> opt.type == 54 end)
       assert option_54 != nil
@@ -261,34 +279,40 @@ defmodule DHCPv4.ClientTest do
 
   describe "decline/1" do
     test "creates DHCPDECLINE message" do
-      message = Client.decline(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        declined_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.decline(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          declined_ip: {192, 168, 1, 100}
+        )
 
       assert %Message{} = message
-      assert message.op == 1  # BOOTREQUEST
+      # BOOTREQUEST
+      assert message.op == 1
     end
 
     test "includes DHCP message type option (53) with DECLINE type" do
-      message = Client.decline(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        declined_ip: {192, 168, 1, 100}
-      )
+      message =
+        Client.decline(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          declined_ip: {192, 168, 1, 100}
+        )
 
       option_53 = Enum.find(message.options, fn opt -> opt.type == 53 end)
-      assert option_53.value == <<4>>  # DHCPDECLINE
+      # DHCPDECLINE
+      assert option_53.value == <<4>>
     end
 
     test "includes server identifier option (54)" do
       server_ip = {192, 168, 1, 1}
-      message = Client.decline(
-        mac: @sample_mac,
-        server_ip: server_ip,
-        declined_ip: {192, 168, 1, 100}
-      )
+
+      message =
+        Client.decline(
+          mac: @sample_mac,
+          server_ip: server_ip,
+          declined_ip: {192, 168, 1, 100}
+        )
 
       option_54 = Enum.find(message.options, fn opt -> opt.type == 54 end)
       assert option_54 != nil
@@ -297,11 +321,13 @@ defmodule DHCPv4.ClientTest do
 
     test "includes requested/declined IP option (50)" do
       declined_ip = {192, 168, 1, 100}
-      message = Client.decline(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        declined_ip: declined_ip
-      )
+
+      message =
+        Client.decline(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          declined_ip: declined_ip
+        )
 
       option_50 = Enum.find(message.options, fn opt -> opt.type == 50 end)
       assert option_50 != nil
@@ -318,9 +344,14 @@ defmodule DHCPv4.ClientTest do
   describe "message structure" do
     test "all messages have hardware type 1 (Ethernet)" do
       discover = Client.discover(mac: @sample_mac)
-      request = Client.request(mac: @sample_mac, server_ip: {1, 1, 1, 1}, requested_ip: {1, 1, 1, 2})
+
+      request =
+        Client.request(mac: @sample_mac, server_ip: {1, 1, 1, 1}, requested_ip: {1, 1, 1, 2})
+
       release = Client.release(mac: @sample_mac, server_ip: {1, 1, 1, 1}, leased_ip: {1, 1, 1, 2})
-      decline = Client.decline(mac: @sample_mac, server_ip: {1, 1, 1, 1}, declined_ip: {1, 1, 1, 2})
+
+      decline =
+        Client.decline(mac: @sample_mac, server_ip: {1, 1, 1, 1}, declined_ip: {1, 1, 1, 2})
 
       assert discover.htype == 1
       assert request.htype == 1
@@ -330,7 +361,9 @@ defmodule DHCPv4.ClientTest do
 
     test "all messages have hardware length 6" do
       discover = Client.discover(mac: @sample_mac)
-      request = Client.request(mac: @sample_mac, server_ip: {1, 1, 1, 1}, requested_ip: {1, 1, 1, 2})
+
+      request =
+        Client.request(mac: @sample_mac, server_ip: {1, 1, 1, 1}, requested_ip: {1, 1, 1, 2})
 
       assert discover.hlen == 6
       assert request.hlen == 6
@@ -368,12 +401,14 @@ defmodule DHCPv4.ClientTest do
     test "same xid can be reused across message types" do
       xid = 99999
       discover = Client.discover(mac: @sample_mac, xid: xid)
-      request = Client.request(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        requested_ip: {192, 168, 1, 100},
-        xid: xid
-      )
+
+      request =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          requested_ip: {192, 168, 1, 100},
+          xid: xid
+        )
 
       assert discover.xid == xid
       assert request.xid == xid
@@ -420,12 +455,13 @@ defmodule DHCPv4.ClientTest do
     end
 
     test "discover with all optional parameters" do
-      message = Client.discover(
-        mac: @sample_mac,
-        hostname: "myhost",
-        requested_ip: {10, 0, 0, 50},
-        xid: 12345
-      )
+      message =
+        Client.discover(
+          mac: @sample_mac,
+          hostname: "myhost",
+          requested_ip: {10, 0, 0, 50},
+          xid: 12345
+        )
 
       assert message.xid == 12345
 
@@ -438,21 +474,27 @@ defmodule DHCPv4.ClientTest do
 
     test "messages can be converted to binary for transmission" do
       discover = Client.discover(mac: @sample_mac)
-      request = Client.request(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        requested_ip: {192, 168, 1, 100}
-      )
-      release = Client.release(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        leased_ip: {192, 168, 1, 100}
-      )
-      decline = Client.decline(
-        mac: @sample_mac,
-        server_ip: {192, 168, 1, 1},
-        declined_ip: {192, 168, 1, 100}
-      )
+
+      request =
+        Client.request(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          requested_ip: {192, 168, 1, 100}
+        )
+
+      release =
+        Client.release(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          leased_ip: {192, 168, 1, 100}
+        )
+
+      decline =
+        Client.decline(
+          mac: @sample_mac,
+          server_ip: {192, 168, 1, 1},
+          declined_ip: {192, 168, 1, 100}
+        )
 
       assert is_binary(DHCP.to_iodata(discover))
       assert is_binary(DHCP.to_iodata(request))

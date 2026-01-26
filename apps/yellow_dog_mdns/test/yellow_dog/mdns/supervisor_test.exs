@@ -72,7 +72,9 @@ defmodule YellowDog.Mdns.SupervisorTest do
 
     test "accepts custom name option" do
       custom_name = :"test_mdns_#{System.unique_integer()}"
-      {:ok, pid} = MdnsSupervisor.start_link(name: custom_name, server_options: [port: 0, mode: :unicast])
+
+      {:ok, pid} =
+        MdnsSupervisor.start_link(name: custom_name, server_options: [port: 0, mode: :unicast])
 
       on_exit(fn -> safe_stop_supervisor(custom_name) end)
 
@@ -80,15 +82,16 @@ defmodule YellowDog.Mdns.SupervisorTest do
     end
 
     test "accepts server_options" do
-      {:ok, pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          storage_file: "test/tmp/mdns_services.toml",
-          auto_save: false,
-          load_on_start: false
-        ]
-      )
+      {:ok, pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            storage_file: "test/tmp/mdns_services.toml",
+            auto_save: false,
+            load_on_start: false
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)
@@ -99,14 +102,15 @@ defmodule YellowDog.Mdns.SupervisorTest do
     setup do
       safe_stop_supervisor()
 
-      {:ok, pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          auto_save: false,
-          load_on_start: false
-        ]
-      )
+      {:ok, pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            auto_save: false,
+            load_on_start: false
+          ]
+        )
 
       # Give time for children to start
       Process.sleep(200)
@@ -144,14 +148,15 @@ defmodule YellowDog.Mdns.SupervisorTest do
     setup do
       safe_stop_supervisor()
 
-      {:ok, pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          auto_save: false,
-          load_on_start: false
-        ]
-      )
+      {:ok, pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            auto_save: false,
+            load_on_start: false
+          ]
+        )
 
       Process.sleep(200)
 
@@ -189,9 +194,10 @@ defmodule YellowDog.Mdns.SupervisorTest do
     end
 
     test "supervisor can be stopped" do
-      {:ok, pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
       assert Process.alive?(pid)
 
@@ -202,9 +208,10 @@ defmodule YellowDog.Mdns.SupervisorTest do
     end
 
     test "children are stopped when supervisor stops" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
       Process.sleep(200)
 
@@ -228,9 +235,10 @@ defmodule YellowDog.Mdns.SupervisorTest do
     end
 
     test "default storage_file is used when not specified" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
       # Supervisor started successfully with default storage_file
       assert Process.whereis(YellowDog.Mdns) != nil
@@ -239,44 +247,47 @@ defmodule YellowDog.Mdns.SupervisorTest do
     test "custom storage_file is passed to children" do
       custom_path = "test/tmp/custom_mdns_#{System.unique_integer()}.toml"
 
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          storage_file: custom_path,
-          auto_save: false,
-          load_on_start: false
-        ]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            storage_file: custom_path,
+            auto_save: false,
+            load_on_start: false
+          ]
+        )
 
       # Supervisor started successfully with custom storage_file
       assert Process.whereis(YellowDog.Mdns) != nil
     end
 
     test "auto_save option is passed to service registry" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          auto_save: true,
-          load_on_start: false
-        ]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            auto_save: true,
+            load_on_start: false
+          ]
+        )
 
       # Supervisor started successfully
       assert Process.whereis(YellowDog.Mdns) != nil
     end
 
     test "watch_file option controls file watcher" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [
-          port: 0,
-          mode: :unicast,
-          watch_file: false,
-          auto_save: false,
-          load_on_start: false
-        ]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [
+            port: 0,
+            mode: :unicast,
+            watch_file: false,
+            auto_save: false,
+            load_on_start: false
+          ]
+        )
 
       # FileWatcher still starts but may be disabled internally
       assert Process.whereis(YellowDog.Mdns.FileWatcher) != nil
@@ -292,9 +303,10 @@ defmodule YellowDog.Mdns.SupervisorTest do
 
     test "uses one_for_one strategy" do
       # Start supervisor
-      {:ok, pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
       Process.sleep(200)
 
@@ -347,19 +359,24 @@ defmodule YellowDog.Mdns.SupervisorTest do
     end
 
     test "emits pre_start telemetry event" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
-      assert_receive {:telemetry, [:yellow_dog, :mdns, :supervisor, :pre_start], %{count: 1}, _}, 1000
+      assert_receive {:telemetry, [:yellow_dog, :mdns, :supervisor, :pre_start], %{count: 1}, _},
+                     1000
     end
 
     test "emits post_start telemetry event with mode" do
-      {:ok, _pid} = MdnsSupervisor.start_link(
-        server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
-      )
+      {:ok, _pid} =
+        MdnsSupervisor.start_link(
+          server_options: [port: 0, mode: :unicast, auto_save: false, load_on_start: false]
+        )
 
-      assert_receive {:telemetry, [:yellow_dog, :mdns, :supervisor, :post_start], %{count: 1}, %{mode: :unicast}}, 1000
+      assert_receive {:telemetry, [:yellow_dog, :mdns, :supervisor, :post_start], %{count: 1},
+                      %{mode: :unicast}},
+                     1000
     end
   end
 

@@ -571,8 +571,7 @@ defmodule DNS.Zone.TransferTest do
           :soa,
           :in,
           3600,
-          {"ns1.serial-extract.com", "admin.serial-extract.com", 12345, 3600, 1800,
-           604_800, 300}
+          {"ns1.serial-extract.com", "admin.serial-extract.com", 12345, 3600, 1800, 604_800, 300}
         )
       ]
 
@@ -687,6 +686,7 @@ defmodule DNS.Zone.TransferTest do
       # With empty records, apply_transfer creates a zone with no records
       assert {:ok, zone} =
                Transfer.apply_transfer("empty.com", [], transfer_type: :axfr)
+
       assert zone.name.value == "empty.com"
       assert zone.records == []
     end
@@ -856,7 +856,9 @@ defmodule DNS.Zone.TransferTest do
       zone_name = "max-serial-req.com"
       max_serial = 4_294_967_295
 
-      assert {:ok, request} = Transfer.create_transfer_request(zone_name, :ixfr, serial: max_serial)
+      assert {:ok, request} =
+               Transfer.create_transfer_request(zone_name, :ixfr, serial: max_serial)
+
       assert request.serial == max_serial
     end
 
@@ -1018,7 +1020,7 @@ defmodule DNS.Zone.TransferTest do
           :soa,
           :in,
           3600,
-          {"ns1.rfc5936.com", "admin.rfc5936.com", 2024010100, 3600, 1800, 604_800, 300}
+          {"ns1.rfc5936.com", "admin.rfc5936.com", 2_024_010_100, 3600, 1800, 604_800, 300}
         )
 
       ns_record = Record.new(zone_name, :ns, :in, 3600, "ns1.rfc5936.com")
@@ -1082,7 +1084,10 @@ defmodule DNS.Zone.TransferTest do
 
       ns_record = Record.new(zone_name, :ns, :in, 3600, "ns1.all-types.com")
       a_record = Record.new("www.all-types.com", :a, :in, 3600, {192, 168, 1, 1})
-      aaaa_record = Record.new("www.all-types.com", :aaaa, :in, 3600, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+
+      aaaa_record =
+        Record.new("www.all-types.com", :aaaa, :in, 3600, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+
       mx_record = Record.new(zone_name, :mx, :in, 3600, {10, "mail.all-types.com"})
       txt_record = Record.new(zone_name, :txt, :in, 3600, ["v=spf1 mx -all"])
       cname_record = Record.new("alias.all-types.com", :cname, :in, 3600, "www.all-types.com")
@@ -1127,7 +1132,13 @@ defmodule DNS.Zone.TransferTest do
       # Create many A records
       a_records =
         Enum.map(1..100, fn i ->
-          Record.new("host#{i}.large-zone.com", :a, :in, 3600, {192, 168, div(i, 256), rem(i, 256)})
+          Record.new(
+            "host#{i}.large-zone.com",
+            :a,
+            :in,
+            3600,
+            {192, 168, div(i, 256), rem(i, 256)}
+          )
         end)
 
       options = Keyword.put(zone.options, :soa_records, [soa_record])

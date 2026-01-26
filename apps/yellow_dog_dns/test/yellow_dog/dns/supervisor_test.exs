@@ -137,6 +137,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         # Give time for cleanup
         Process.sleep(100)
       end)
@@ -215,6 +216,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         Process.sleep(100)
       end)
 
@@ -289,6 +291,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         Process.sleep(100)
       end)
 
@@ -366,6 +369,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         Process.sleep(100)
       end)
 
@@ -420,6 +424,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         Process.sleep(100)
       end)
 
@@ -471,6 +476,7 @@ defmodule YellowDog.Dns.SupervisorTest do
         catch
           :exit, _ -> :ok
         end
+
         Process.sleep(100)
       end)
 

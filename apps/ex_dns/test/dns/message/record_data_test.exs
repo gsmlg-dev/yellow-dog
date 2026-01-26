@@ -114,7 +114,10 @@ defmodule DNS.Message.RecordDataTest do
 
     test "creates SOA record via Registry" do
       rtype = ResourceRecordType.new(6)
-      soa_data = {"ns1.example.com", "admin.example.com", 2024010101, 3600, 1800, 604800, 86400}
+
+      soa_data =
+        {"ns1.example.com", "admin.example.com", 2_024_010_101, 3600, 1800, 604_800, 86400}
+
       data = Data.new(rtype, soa_data)
       assert %DNS.Message.Record.Data.SOA{} = data
     end

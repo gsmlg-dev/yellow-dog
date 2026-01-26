@@ -335,9 +335,10 @@ defmodule DNS.Zone.StorePerformanceTest do
       Enum.each(zones, &Store.put_zone/1)
 
       # Measure update performance
-      updated_zones = Enum.map(zones, fn zone ->
-        %{zone | type: :cache}
-      end)
+      updated_zones =
+        Enum.map(zones, fn zone ->
+          %{zone | type: :cache}
+        end)
 
       {time, _} =
         measure(fn ->
@@ -605,9 +606,7 @@ defmodule DNS.Zone.StorePerformanceTest do
 
       # Verify performance scales reasonably
       Enum.each(times, fn {count, lookup, list, filter} ->
-        IO.puts(
-          "#{count} zones: lookup=#{lookup}μs, list=#{list}μs, filter=#{filter}μs"
-        )
+        IO.puts("#{count} zones: lookup=#{lookup}μs, list=#{list}μs, filter=#{filter}μs")
 
         # Lookups should remain constant time
         assert_performance(lookup, 5000, "10 lookups with #{count} zones")
@@ -805,8 +804,10 @@ defmodule DNS.Zone.StorePerformanceTest do
     test "empty store operations" do
       # Operations on empty store should be fast
       {list_time, list} = measure(fn -> Store.list_zones() end)
+
       {filter_time, filtered} =
         measure(fn -> Store.get_zones_by_type(:authoritative) end)
+
       {lookup_time, lookup} = measure(fn -> Store.get_zone("test.com") end)
 
       assert list == []
@@ -823,6 +824,7 @@ defmodule DNS.Zone.StorePerformanceTest do
       Store.put_zone(zone)
 
       {list_time, list} = measure(fn -> Store.list_zones() end)
+
       {filter_time, filtered} =
         measure(fn -> Store.get_zones_by_type(:authoritative) end)
 
@@ -862,6 +864,7 @@ defmodule DNS.Zone.StorePerformanceTest do
     test "long zone names performance" do
       # Test with unusually long zone names
       long_prefix = String.duplicate("subdomain.", 20)
+
       long_zones =
         Enum.map(1..50, fn i ->
           name = "#{long_prefix}zone#{i}.com"
@@ -886,7 +889,8 @@ defmodule DNS.Zone.StorePerformanceTest do
     test "special characters in zone names" do
       # Test internationalized domain names (IDN) style
       special_zones = [
-        Zone.new("xn--nxasmq5a.com", :authoritative),  # IDN encoded
+        # IDN encoded
+        Zone.new("xn--nxasmq5a.com", :authoritative),
         Zone.new("example-with-dash.com", :authoritative),
         Zone.new("123numeric.com", :authoritative),
         Zone.new("a.b.c.d.e.f.g.h.i.j.k.l.deep.com", :authoritative)

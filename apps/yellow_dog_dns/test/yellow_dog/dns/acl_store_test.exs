@@ -446,9 +446,10 @@ defmodule YellowDog.Dns.AclStoreTest do
     test "handles many rules", %{test_path: test_path} do
       file_path = Path.join(test_path, "many_rules.toml")
 
-      rules = for i <- 1..50 do
-        %{action: "allow", network: "10.#{rem(i, 256)}.0.0/16"}
-      end
+      rules =
+        for i <- 1..50 do
+          %{action: "allow", network: "10.#{rem(i, 256)}.0.0/16"}
+        end
 
       acls = [%{name: "many_rules", rules: rules}]
 

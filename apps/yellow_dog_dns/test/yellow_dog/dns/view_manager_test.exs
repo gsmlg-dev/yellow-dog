@@ -112,7 +112,9 @@ defmodule YellowDog.Dns.ViewManagerTest do
       view_name = "dup_#{:rand.uniform(1_000_000)}"
 
       {:ok, _pid1} = ViewManager.start_view(supervisor, name: view_name, priority: 10, acl: :any)
-      {:error, {:already_started, _}} = ViewManager.start_view(supervisor, name: view_name, priority: 20, acl: :any)
+
+      {:error, {:already_started, _}} =
+        ViewManager.start_view(supervisor, name: view_name, priority: 20, acl: :any)
     end
   end
 
@@ -121,7 +123,9 @@ defmodule YellowDog.Dns.ViewManagerTest do
     test "finds existing view", %{supervisor: supervisor} do
       view_name = "findme_#{:rand.uniform(1_000_000)}"
 
-      {:ok, started_pid} = ViewManager.start_view(supervisor, name: view_name, priority: 10, acl: :any)
+      {:ok, started_pid} =
+        ViewManager.start_view(supervisor, name: view_name, priority: 10, acl: :any)
+
       {:ok, found_pid} = ViewManager.get_view(supervisor, view_name)
 
       assert found_pid == started_pid
@@ -298,7 +302,9 @@ defmodule YellowDog.Dns.ViewManagerTest do
       # Create views with different priorities
       for {name_suffix, priority} <- [{"high", 100}, {"low", 1}, {"medium", 50}] do
         view_name = "prio_#{name_suffix}_#{:rand.uniform(1_000_000)}"
-        {:ok, _} = ViewManager.start_view(supervisor, name: view_name, priority: priority, acl: :any)
+
+        {:ok, _} =
+          ViewManager.start_view(supervisor, name: view_name, priority: priority, acl: :any)
       end
 
       views = ViewManager.list_views(supervisor)

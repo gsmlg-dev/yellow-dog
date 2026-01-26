@@ -91,7 +91,9 @@ defmodule DNS.Message.Record.Data.AAAATest do
     test "stores raw binary" do
       ip = {0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}
       record = AAAA.new(ip)
-      assert record.raw == <<0x2001::16, 0x4860::16, 0x4860::16, 0::16, 0::16, 0::16, 0::16, 0x8888::16>>
+
+      assert record.raw ==
+               <<0x2001::16, 0x4860::16, 0x4860::16, 0::16, 0::16, 0::16, 0::16, 0x8888::16>>
     end
 
     test "creates record for Google DNS" do
@@ -119,11 +121,11 @@ defmodule DNS.Message.Record.Data.AAAATest do
     test "creates record for link-local address" do
       {:ok, ip} = :inet.parse_ipv6_address(~c"fe80::1")
       record = AAAA.new(ip)
-      assert record.data == {0xfe80, 0, 0, 0, 0, 0, 0, 1}
+      assert record.data == {0xFE80, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "creates record with all segments non-zero" do
-      ip = {0x2001, 0x0db8, 0x85a3, 0x0000, 0x0000, 0x8a2e, 0x0370, 0x7334}
+      ip = {0x2001, 0x0DB8, 0x85A3, 0x0000, 0x0000, 0x8A2E, 0x0370, 0x7334}
       record = AAAA.new(ip)
       assert record.data == ip
     end
@@ -162,7 +164,10 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "parses max address" do
-      raw = <<0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF>>
+      raw =
+        <<0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+          0xFF, 0xFF>>
+
       record = AAAA.from_iodata(raw)
       assert record.data == {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}
     end
@@ -238,16 +243,16 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "IP segments are in network byte order" do
-      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       <<16::16, a::16, b::16, _::binary>> = DNS.Parameter.to_iodata(record)
       assert a == 0x2001
-      assert b == 0x0db8
+      assert b == 0x0DB8
     end
   end
 
   describe "round-trip" do
     test "new/1 -> to_iodata -> parse back" do
-      original_ip = {0x2001, 0x0db8, 0x85a3, 0, 0, 0x8a2e, 0x0370, 0x7334}
+      original_ip = {0x2001, 0x0DB8, 0x85A3, 0, 0, 0x8A2E, 0x0370, 0x7334}
       record = AAAA.new(original_ip)
       <<_length::16, raw::binary>> = DNS.Parameter.to_iodata(record)
       parsed = AAAA.from_iodata(raw)
@@ -255,7 +260,7 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "from_iodata -> to_string -> parseable" do
-      raw = <<0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>
+      raw = <<0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>
       record = AAAA.from_iodata(raw)
       str = to_string(record)
       {:ok, _parsed_ip} = :inet.parse_ipv6_address(String.to_charlist(str))
@@ -304,11 +309,11 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "wire format uses network byte order (big-endian)" do
-      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       <<_length::16, s1::16, s2::16, _rest::binary>> = DNS.Parameter.to_iodata(record)
       # Segments are in order: first segment first
       assert s1 == 0x2001
-      assert s2 == 0x0db8
+      assert s2 == 0x0DB8
     end
   end
 
@@ -327,8 +332,8 @@ defmodule DNS.Message.Record.Data.AAAATest do
 
     test "creates record for link-local range (fe80::/10)" do
       link_local_addrs = [
-        {0xfe80, 0, 0, 0, 0, 0, 0, 1},
-        {0xfe80, 0, 0, 0, 0x1234, 0x5678, 0x9abc, 0xdef0}
+        {0xFE80, 0, 0, 0, 0, 0, 0, 1},
+        {0xFE80, 0, 0, 0, 0x1234, 0x5678, 0x9ABC, 0xDEF0}
       ]
 
       for addr <- link_local_addrs do
@@ -338,15 +343,18 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "creates record for site-local range (deprecated fec0::/10)" do
-      record = AAAA.new({0xfec0, 0, 0, 0, 0, 0, 0, 1})
-      assert record.data == {0xfec0, 0, 0, 0, 0, 0, 0, 1}
+      record = AAAA.new({0xFEC0, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0xFEC0, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "creates record for multicast range (ff00::/8)" do
       multicast_addrs = [
-        {0xff02, 0, 0, 0, 0, 0, 0, 1},     # All nodes (link-local)
-        {0xff02, 0, 0, 0, 0, 0, 0, 2},     # All routers (link-local)
-        {0xff02, 0, 0, 0, 0, 0, 0, 0xfb}   # mDNS
+        # All nodes (link-local)
+        {0xFF02, 0, 0, 0, 0, 0, 0, 1},
+        # All routers (link-local)
+        {0xFF02, 0, 0, 0, 0, 0, 0, 2},
+        # mDNS
+        {0xFF02, 0, 0, 0, 0, 0, 0, 0xFB}
       ]
 
       for addr <- multicast_addrs do
@@ -356,14 +364,14 @@ defmodule DNS.Message.Record.Data.AAAATest do
     end
 
     test "creates record for unique local addresses (fc00::/7)" do
-      record = AAAA.new({0xfc00, 0, 0, 0, 0, 0, 0, 1})
-      assert record.data == {0xfc00, 0, 0, 0, 0, 0, 0, 1}
+      record = AAAA.new({0xFC00, 0, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0xFC00, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "creates record for documentation range (2001:db8::/32)" do
       # RFC 3849: 2001:db8::/32 for documentation
-      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
-      assert record.data == {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1}
+      record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+      assert record.data == {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1}
     end
   end
 
@@ -441,13 +449,14 @@ defmodule DNS.Message.Record.Data.AAAATest do
 
   describe "data field" do
     test "data is 8-tuple of integers" do
-      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       assert is_tuple(record.data)
       assert tuple_size(record.data) == 8
     end
 
     test "data tuple values are 0-65535" do
-      record = AAAA.new({0x2001, 0x0db8, 0xFFFF, 0, 0, 0, 0, 1})
+      record = AAAA.new({0x2001, 0x0DB8, 0xFFFF, 0, 0, 0, 0, 1})
+
       for segment <- Tuple.to_list(record.data) do
         assert segment >= 0 and segment <= 65535
       end
@@ -456,7 +465,7 @@ defmodule DNS.Message.Record.Data.AAAATest do
 
   describe "raw field" do
     test "raw field is 16-byte binary" do
-      record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       assert is_binary(record.raw)
       assert byte_size(record.raw) == 16
     end
@@ -473,7 +482,7 @@ defmodule DNS.Message.Record.Data.AAAATest do
       tasks =
         for i <- 1..20 do
           Task.async(fn ->
-            AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, i})
+            AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, i})
           end)
         end
 
@@ -481,28 +490,28 @@ defmodule DNS.Message.Record.Data.AAAATest do
 
       for {result, i} <- Enum.with_index(results, 1) do
         assert %AAAA{} = result
-        assert result.data == {0x2001, 0x0db8, 0, 0, 0, 0, 0, i}
+        assert result.data == {0x2001, 0x0DB8, 0, 0, 0, 0, 0, i}
       end
     end
   end
 
   describe "comparison and equality" do
     test "two AAAA records with same IP are equal in data" do
-      record1 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
-      record2 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      record1 = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+      record2 = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       assert record1.data == record2.data
     end
 
     test "two AAAA records with different IPs differ in data" do
-      record1 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
-      record2 = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 2})
+      record1 = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+      record2 = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 2})
       refute record1.data == record2.data
     end
   end
 
   describe "integration with DNS message" do
     test "AAAA record can be used in resource record" do
-      aaaa_record = AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, 1})
+      aaaa_record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       # Verify it has the fields needed for a resource record
       assert aaaa_record.type != nil
       assert aaaa_record.rdlength != nil
@@ -512,9 +521,9 @@ defmodule DNS.Message.Record.Data.AAAATest do
     test "multiple AAAA records for same domain" do
       # Load balancing scenario - multiple IPv6 addresses for one domain
       ips = [
-        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1},
-        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 2},
-        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 3}
+        {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1},
+        {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 2},
+        {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 3}
       ]
 
       records =
@@ -532,8 +541,9 @@ defmodule DNS.Message.Record.Data.AAAATest do
   describe "global unicast addresses" do
     test "creates record for global unicast (2000::/3)" do
       global_addrs = [
-        {0x2001, 0x0db8, 0, 0, 0, 0, 0, 1},
-        {0x2607, 0xf8b0, 0x4004, 0x800, 0, 0, 0, 0x200e}  # Example Google
+        {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1},
+        # Example Google
+        {0x2607, 0xF8B0, 0x4004, 0x800, 0, 0, 0, 0x200E}
       ]
 
       for addr <- global_addrs do
@@ -547,7 +557,7 @@ defmodule DNS.Message.Record.Data.AAAATest do
     test "creating many AAAA records is efficient" do
       records =
         for i <- 1..100 do
-          AAAA.new({0x2001, 0x0db8, 0, 0, 0, 0, 0, i})
+          AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, i})
         end
 
       assert length(records) == 100

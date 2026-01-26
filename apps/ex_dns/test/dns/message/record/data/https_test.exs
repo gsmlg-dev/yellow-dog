@@ -160,7 +160,10 @@ defmodule DNS.Message.Record.Data.HTTPSTest do
     test "creates record with ipv6hint parameter" do
       target = Domain.new(".")
       # ipv6hint=2606:2800:220:1:248:1893:25c8:1946
-      ipv6_param = <<0, 6, 0, 16, 0x26, 0x06, 0x28, 0x00, 0x02, 0x20, 0x00, 0x01, 0x02, 0x48, 0x18, 0x93, 0x25, 0xC8, 0x19, 0x46>>
+      ipv6_param =
+        <<0, 6, 0, 16, 0x26, 0x06, 0x28, 0x00, 0x02, 0x20, 0x00, 0x01, 0x02, 0x48, 0x18, 0x93,
+          0x25, 0xC8, 0x19, 0x46>>
+
       record = HTTPS.new({1, target, ipv6_param})
       {_, _, params} = record.data
       assert params == ipv6_param
@@ -440,10 +443,44 @@ defmodule DNS.Message.Record.Data.HTTPSTest do
       target = Domain.new(".")
       # alpn=h3,h2, ipv4hint, ipv6hint
       params = <<
-        0, 1, 0, 6, 2, "h3", 2, "h2",
-        0, 4, 0, 4, 192, 168, 1, 1,
-        0, 6, 0, 16, 0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+        0,
+        1,
+        0,
+        6,
+        2,
+        "h3",
+        2,
+        "h2",
+        0,
+        4,
+        0,
+        4,
+        192,
+        168,
+        1,
+        1,
+        0,
+        6,
+        0,
+        16,
+        0x20,
+        0x01,
+        0x0D,
+        0xB8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
       >>
+
       record = HTTPS.new({1, target, params})
       {priority, _, svc_params} = record.data
       assert priority == 1
@@ -553,12 +590,70 @@ defmodule DNS.Message.Record.Data.HTTPSTest do
       target = Domain.new(".")
       # Multiple params
       large_params = <<
-        0, 1, 0, 6, 2, "h3", 2, "h2",
-        0, 3, 0, 2, 1, 187,
-        0, 4, 0, 8, 192, 168, 1, 1, 192, 168, 1, 2,
-        0, 6, 0, 32, 0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-        0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
+        0,
+        1,
+        0,
+        6,
+        2,
+        "h3",
+        2,
+        "h2",
+        0,
+        3,
+        0,
+        2,
+        1,
+        187,
+        0,
+        4,
+        0,
+        8,
+        192,
+        168,
+        1,
+        1,
+        192,
+        168,
+        1,
+        2,
+        0,
+        6,
+        0,
+        32,
+        0x20,
+        0x01,
+        0x0D,
+        0xB8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0x20,
+        0x01,
+        0x0D,
+        0xB8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2
       >>
+
       record = HTTPS.new({1, target, large_params})
       {_, _, params} = record.data
       assert byte_size(params) > 50

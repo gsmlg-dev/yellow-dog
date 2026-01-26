@@ -139,7 +139,8 @@ defmodule DNS.Message.EDNS0.Option.DAUTest do
 
     test "creates DAU with common modern algorithms" do
       # Common modern DNSSEC algorithms
-      algorithms = [8, 13, 15]  # RSA/SHA-256, ECDSA P-256, Ed25519
+      # RSA/SHA-256, ECDSA P-256, Ed25519
+      algorithms = [8, 13, 15]
       option = DAU.new(algorithms)
       assert option.data == algorithms
       assert option.length == 3
@@ -281,10 +282,12 @@ defmodule DNS.Message.EDNS0.Option.DAUTest do
     end
 
     test "round-trip preserves algorithm order" do
-      original = DAU.new([13, 8, 15, 10])  # Out of order
+      # Out of order
+      original = DAU.new([13, 8, 15, 10])
       iodata = DNS.Parameter.to_iodata(original)
       parsed = DAU.from_iodata(iodata)
-      assert parsed.data == [13, 8, 15, 10]  # Order preserved
+      # Order preserved
+      assert parsed.data == [13, 8, 15, 10]
     end
 
     test "round-trip preserves various configurations" do

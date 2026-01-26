@@ -473,7 +473,7 @@ defmodule DNS.Zone.ParserErrorTest do
       assert {:ok, zone} = Parser.parse(content)
       soa_record = Enum.find(zone.records, &(&1.type == "SOA"))
       assert soa_record != nil
-      assert soa_record.rdata.serial == 2024010101
+      assert soa_record.rdata.serial == 2_024_010_101
     end
 
     test "handles SOA with comments inside parentheses" do
@@ -492,7 +492,7 @@ defmodule DNS.Zone.ParserErrorTest do
       assert {:ok, zone} = Parser.parse(content)
       soa_record = Enum.find(zone.records, &(&1.type == "SOA"))
       assert soa_record != nil
-      assert soa_record.rdata.serial == 2024010101
+      assert soa_record.rdata.serial == 2_024_010_101
     end
   end
 
@@ -519,7 +519,8 @@ defmodule DNS.Zone.ParserErrorTest do
     end
 
     test "handles trailing whitespace on lines" do
-      content = "$TTL 3600   \n$ORIGIN example.com.   \n@ IN SOA ns1.example.com. admin.example.com. (
+      content =
+        "$TTL 3600   \n$ORIGIN example.com.   \n@ IN SOA ns1.example.com. admin.example.com. (
           1 3600 1800 604800 86400
       )   "
 
@@ -650,7 +651,7 @@ defmodule DNS.Zone.ParserErrorTest do
       """
 
       assert {:ok, zone} = Parser.parse(content)
-      wildcard_record = Enum.find(zone.records, &(String.contains?(&1.name, "*")))
+      wildcard_record = Enum.find(zone.records, &String.contains?(&1.name, "*"))
       assert wildcard_record != nil
     end
   end

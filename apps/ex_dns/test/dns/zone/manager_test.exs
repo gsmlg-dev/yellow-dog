@@ -254,7 +254,9 @@ defmodule DNS.Zone.ManagerTest do
     end
 
     test "preserves existing options" do
-      {:ok, _} = Manager.create_zone("example.com", :authoritative, ttl: 300, origin: "example.com.")
+      {:ok, _} =
+        Manager.create_zone("example.com", :authoritative, ttl: 300, origin: "example.com.")
+
       {:ok, updated} = Manager.update_zone("example.com", ttl: 600)
 
       assert Keyword.get(updated.options, :ttl) == 600

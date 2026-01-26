@@ -28,10 +28,11 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
   @fifteen_minutes 900
   @one_hour 3600
   @one_day 86400
-  @one_week 604800
+  @one_week 604_800
   @thirty_days 2_592_000
   @one_year 31_536_000
-  @max_expire 0xFFFFFFFF  # ~136 years
+  # ~136 years
+  @max_expire 0xFFFFFFFF
 
   # Common SOA timer values
   @typical_refresh @one_hour
@@ -122,8 +123,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "creates option with 1 week (604800s)" do
-      option = Expire.new(604800)
-      assert option.data == 604800
+      option = Expire.new(604_800)
+      assert option.data == 604_800
     end
 
     test "creates option with max value (4294967295)" do
@@ -258,7 +259,7 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "round-trip preserves various time values" do
-      for time <- [0, 300, 3600, 86400, 604800, 0xFFFFFFFF] do
+      for time <- [0, 300, 3600, 86400, 604_800, 0xFFFFFFFF] do
         original = Expire.new(time)
         iodata = DNS.Parameter.to_iodata(original)
         parsed = Expire.from_iodata(iodata)
@@ -284,8 +285,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "typical zone expire time (1 week)" do
-      option = Expire.new(604800)
-      assert option.data == 604800
+      option = Expire.new(604_800)
+      assert option.data == 604_800
     end
 
     test "typical minimum TTL (1 day)" do
@@ -354,7 +355,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
       option = Expire.new(@one_week)
       iodata = DNS.Parameter.to_iodata(option)
 
-      assert byte_size(iodata) == 8  # 2 + 2 + 4 bytes
+      # 2 + 2 + 4 bytes
+      assert byte_size(iodata) == 8
 
       <<code::16, length::16, expire::32>> = iodata
       assert code == 9
@@ -506,7 +508,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
 
     test "parses wire format from simulated DNS traffic" do
       # Simulated wire data: EXPIRE with 1 week
-      wire_data = <<0, 9, 0, 4, 0, 9, 58, 128>>  # 604800 in big-endian
+      # 604800 in big-endian
+      wire_data = <<0, 9, 0, 4, 0, 9, 58, 128>>
       option = Expire.from_iodata(wire_data)
       assert option.data == @one_week
     end
@@ -548,7 +551,7 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     test "concurrent parsing" do
       binaries =
         Enum.map(1..20, fn i ->
-          <<9::16, 4::16, (i * 3600)::32>>
+          <<9::16, 4::16, i * 3600::32>>
         end)
 
       tasks =
@@ -642,7 +645,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
       options = [
         Expire.new(@one_hour),
         Expire.new(@one_day),
-        Expire.new(@one_hour),  # duplicate
+        # duplicate
+        Expire.new(@one_hour),
         Expire.new(@one_week)
       ]
 
@@ -684,7 +688,8 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "parsing EXPIRE from received zone transfer" do
-      wire_data = <<0, 9, 0, 4, 0, 9, 58, 128>>  # 604800 seconds
+      # 604800 seconds
+      wire_data = <<0, 9, 0, 4, 0, 9, 58, 128>>
       option = Expire.from_iodata(wire_data)
 
       assert option.data == @one_week
@@ -765,12 +770,18 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
 
     test "values near byte boundaries" do
       boundary_values = [
-        255,        # 1 byte max
-        256,        # 2 bytes
-        65535,      # 2 bytes max
-        65536,      # 3 bytes
-        16777215,   # 3 bytes max
-        16777216    # 4 bytes
+        # 1 byte max
+        255,
+        # 2 bytes
+        256,
+        # 2 bytes max
+        65535,
+        # 3 bytes
+        65536,
+        # 3 bytes max
+        16_777_215,
+        # 4 bytes
+        16_777_216
       ]
 
       for value <- boundary_values do
@@ -807,7 +818,7 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "parsing many options is efficient" do
-      binaries = Enum.map(0..999, fn i -> <<9::16, 4::16, (i * 100)::32>> end)
+      binaries = Enum.map(0..999, fn i -> <<9::16, 4::16, i * 100::32>> end)
 
       {time, _results} =
         :timer.tc(fn ->
@@ -861,8 +872,18 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     end
 
     test "all values in 32-bit range work" do
-      test_values = [0, 1, 255, 256, 65535, 65536, 16777215, 16777216,
-                     @max_expire - 1, @max_expire]
+      test_values = [
+        0,
+        1,
+        255,
+        256,
+        65535,
+        65536,
+        16_777_215,
+        16_777_216,
+        @max_expire - 1,
+        @max_expire
+      ]
 
       for value <- test_values do
         option = Expire.new(value)

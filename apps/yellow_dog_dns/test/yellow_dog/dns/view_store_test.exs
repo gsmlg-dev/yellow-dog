@@ -442,7 +442,8 @@ defmodule YellowDog.Dns.ViewStoreTest do
       view = %{
         name: "test",
         acl: [
-          %{action: "allow"}  # Missing network or geo_countries
+          # Missing network or geo_countries
+          %{action: "allow"}
         ]
       }
 

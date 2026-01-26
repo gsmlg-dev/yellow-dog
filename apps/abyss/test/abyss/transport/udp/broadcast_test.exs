@@ -160,7 +160,9 @@ defmodule Abyss.Transport.UDP.BroadcastTest do
       result = Broadcast.listen(1, [])
 
       case result do
-        {:error, _reason} -> assert true
+        {:error, _reason} ->
+          assert true
+
         {:ok, socket} ->
           Broadcast.close(socket)
           # Test passed - we had permissions

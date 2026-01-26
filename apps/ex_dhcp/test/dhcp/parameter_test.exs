@@ -36,7 +36,8 @@ defmodule DHCP.ParameterTest do
     end
 
     test "serializes with correct TLV format" do
-      option = Helpers.new(53, 1, <<1>>)  # DHCP Message Type: DISCOVER
+      # DHCP Message Type: DISCOVER
+      option = Helpers.new(53, 1, <<1>>)
       result = Parameter.to_iodata(option)
 
       <<type, length, value>> = result
@@ -78,7 +79,8 @@ defmodule DHCP.ParameterTest do
     end
 
     test "serializes zero-length option" do
-      option = Helpers.new(80, 0, <<>>)  # Rapid Commit
+      # Rapid Commit
+      option = Helpers.new(80, 0, <<>>)
       result = Parameter.to_iodata(option)
 
       <<type, length>> = result
@@ -122,7 +124,8 @@ defmodule DHCP.ParameterTest do
 
   describe "round-trip compatibility" do
     test "serialized option can be parsed" do
-      original = Helpers.new(53, 1, <<3>>)  # DHCP Request
+      # DHCP Request
+      original = Helpers.new(53, 1, <<3>>)
       binary = Parameter.to_iodata(original)
 
       # Parse back

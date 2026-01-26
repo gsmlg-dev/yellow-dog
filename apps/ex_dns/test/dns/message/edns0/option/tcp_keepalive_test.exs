@@ -404,8 +404,10 @@ defmodule DNS.Message.EDNS0.Option.TcpKeepaliveTest do
       without_timeout = DNS.Parameter.to_iodata(TcpKeepalive.new())
       with_timeout = DNS.Parameter.to_iodata(TcpKeepalive.new(100))
 
-      assert byte_size(without_timeout) == 4  # code(2) + length(2)
-      assert byte_size(with_timeout) == 6     # code(2) + length(2) + timeout(2)
+      # code(2) + length(2)
+      assert byte_size(without_timeout) == 4
+      # code(2) + length(2) + timeout(2)
+      assert byte_size(with_timeout) == 6
     end
   end
 end

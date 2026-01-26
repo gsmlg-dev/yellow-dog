@@ -114,7 +114,7 @@ defmodule DNS.Zone.FileParserTest do
     end
 
     test "handles various TTL values" do
-      for ttl <- [60, 300, 3600, 86400, 604800] do
+      for ttl <- [60, 300, 3600, 86400, 604_800] do
         zone_content = """
         $ORIGIN example.com.
         $TTL #{ttl}

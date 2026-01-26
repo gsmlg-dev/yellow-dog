@@ -484,6 +484,7 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
     test "all IANA assigned codes 0-18 format correctly" do
       Enum.each(@standard_codes, fn {code, expected_name} ->
         oc = OptionCode.new(code)
+
         assert to_string(oc) == expected_name,
                "Expected code #{code} to format as '#{expected_name}', got '#{to_string(oc)}'"
       end)
@@ -492,6 +493,7 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
     test "all special codes format correctly" do
       Enum.each(@special_codes, fn {code, expected_name} ->
         oc = OptionCode.new(code)
+
         assert to_string(oc) == expected_name,
                "Expected code #{code} to format as '#{expected_name}', got '#{to_string(oc)}'"
       end)
@@ -559,22 +561,26 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
     end
 
     test "value byte order is network order (big-endian)" do
-      oc = OptionCode.new(0x0102)  # 258 decimal
+      # 258 decimal
+      oc = OptionCode.new(0x0102)
       assert oc.value == <<1, 2>>
     end
 
     test "high byte encodes correctly" do
-      oc = OptionCode.new(0xFF00)  # 65280 decimal
+      # 65280 decimal
+      oc = OptionCode.new(0xFF00)
       assert oc.value == <<255, 0>>
     end
 
     test "low byte encodes correctly" do
-      oc = OptionCode.new(0x00FF)  # 255 decimal
+      # 255 decimal
+      oc = OptionCode.new(0x00FF)
       assert oc.value == <<0, 255>>
     end
 
     test "both bytes encode correctly" do
-      oc = OptionCode.new(0xABCD)  # 43981 decimal
+      # 43981 decimal
+      oc = OptionCode.new(0xABCD)
       assert oc.value == <<171, 205>>
     end
   end
@@ -727,7 +733,8 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
     end
 
     test "parsing option code from wire format" do
-      wire_data = <<0, 12>>  # Padding option code
+      # Padding option code
+      wire_data = <<0, 12>>
       oc = OptionCode.new(wire_data)
       assert to_string(oc) == "Padding"
     end

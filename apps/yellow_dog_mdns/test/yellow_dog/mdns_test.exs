@@ -40,8 +40,12 @@ defmodule YellowDog.MdnsTest do
 
     # Return cleanup info - only stop processes we started
     on_exit(fn ->
-      if registry_started and Process.alive?(registry_pid), do: GenServer.stop(registry_pid, :normal, 100)
-      if monitor_started and Process.alive?(monitor_pid), do: GenServer.stop(monitor_pid, :normal, 100)
+      if registry_started and Process.alive?(registry_pid),
+        do: GenServer.stop(registry_pid, :normal, 100)
+
+      if monitor_started and Process.alive?(monitor_pid),
+        do: GenServer.stop(monitor_pid, :normal, 100)
+
       if cache_started and Process.alive?(cache_pid), do: GenServer.stop(cache_pid, :normal, 100)
     end)
 
@@ -189,7 +193,9 @@ defmodule YellowDog.MdnsTest do
 
     test "list_registered_services/1 with filter option" do
       name = "Filter Test #{:rand.uniform(1_000_000)}"
-      {:ok, _} = Mdns.register_service(%{name: name, type: "_filter._tcp", port: 5678, enabled: true})
+
+      {:ok, _} =
+        Mdns.register_service(%{name: name, type: "_filter._tcp", port: 5678, enabled: true})
 
       # Filter for enabled services
       enabled = Mdns.list_registered_services(filter: :enabled)
@@ -230,7 +236,9 @@ defmodule YellowDog.MdnsTest do
 
     test "toggle_service/1 toggles enabled state" do
       name = "Toggle Test #{:rand.uniform(1_000_000)}"
-      {:ok, service_id} = Mdns.register_service(%{name: name, type: "_toggle._tcp", port: 3333, enabled: true})
+
+      {:ok, service_id} =
+        Mdns.register_service(%{name: name, type: "_toggle._tcp", port: 3333, enabled: true})
 
       # Get initial state
       service = Mdns.get_registered_service(service_id)
@@ -405,7 +413,9 @@ defmodule YellowDog.MdnsTest do
 
     test "handles high port numbers" do
       name = "High Port #{:rand.uniform(1_000_000)}"
-      {:ok, service_id} = Mdns.register_service(%{name: name, type: "_highport._tcp", port: 65535})
+
+      {:ok, service_id} =
+        Mdns.register_service(%{name: name, type: "_highport._tcp", port: 65535})
 
       service = Mdns.get_registered_service(service_id)
       assert service.port == 65535
@@ -413,7 +423,9 @@ defmodule YellowDog.MdnsTest do
 
     test "handles empty TXT records" do
       name = "Empty TXT #{:rand.uniform(1_000_000)}"
-      {:ok, service_id} = Mdns.register_service(%{name: name, type: "_emptytxt._tcp", port: 8888, txt: %{}})
+
+      {:ok, service_id} =
+        Mdns.register_service(%{name: name, type: "_emptytxt._tcp", port: 8888, txt: %{}})
 
       service = Mdns.get_registered_service(service_id)
       assert service != nil

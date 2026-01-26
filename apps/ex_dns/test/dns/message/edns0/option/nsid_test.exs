@@ -228,7 +228,8 @@ defmodule DNS.Message.EDNS0.Option.NSIDTest do
       nsid_data = "ABC"
       option = NSID.new(nsid_data)
       str = to_string(option)
-      assert str =~ "414243"  # "ABC" in hex
+      # "ABC" in hex
+      assert str =~ "414243"
     end
 
     test "formats empty NSID" do

@@ -95,13 +95,15 @@ defmodule DNS.SecurityTest do
     test "validates compression depth constant" do
       max_depth = Constants.max_compression_depth()
       assert max_depth > 0
-      assert max_depth <= 10  # Reasonable limit
+      # Reasonable limit
+      assert max_depth <= 10
     end
 
     test "validates compression pointers constant" do
       max_pointers = Constants.max_compression_pointers()
       assert max_pointers > 0
-      assert max_pointers <= 32  # Reasonable limit
+      # Reasonable limit
+      assert max_pointers <= 32
     end
 
     test "prevents pointer to future position" do
@@ -312,7 +314,13 @@ defmodule DNS.SecurityTest do
     end
 
     test "error messages are generic for all error types" do
-      error_types = [:format_error, :parse_error, :validation_error, :compression_error, :security_error]
+      error_types = [
+        :format_error,
+        :parse_error,
+        :validation_error,
+        :compression_error,
+        :security_error
+      ]
 
       for type <- error_types do
         {message, _} = Error.new(type, DNS.Message.Domain, :internal_detail)
@@ -361,12 +369,14 @@ defmodule DNS.SecurityTest do
 
     test "validates maximum domain length constant" do
       max_domain = Constants.max_domain_length()
-      assert max_domain == 253  # RFC 1035
+      # RFC 1035
+      assert max_domain == 253
     end
 
     test "validates maximum label length constant" do
       max_label = Constants.max_label_length()
-      assert max_label == 63  # RFC 1035
+      # RFC 1035
+      assert max_label == 63
     end
 
     test "validates boundary domain lengths" do
@@ -435,7 +445,8 @@ defmodule DNS.SecurityTest do
     test "handles maximum length domain name" do
       # Build a domain name at maximum length
       # 253 characters total
-      labels = ["a", "b", "c", "d", "e"]  # Short labels for test
+      # Short labels for test
+      labels = ["a", "b", "c", "d", "e"]
       domain_str = Enum.join(labels, ".")
 
       assert Constants.valid_domain_length?(domain_str)

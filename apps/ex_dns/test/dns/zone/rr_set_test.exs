@@ -199,7 +199,7 @@ defmodule DNS.Zone.RRSetTest do
     end
 
     test "ttl defaults to 0 when not in options" do
-      rrset = RRSet.new(Name.new("."), RRType.new(:a), [], [auth: true])
+      rrset = RRSet.new(Name.new("."), RRType.new(:a), [], auth: true)
 
       assert rrset.ttl == 0
     end

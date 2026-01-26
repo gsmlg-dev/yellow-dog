@@ -455,7 +455,8 @@ defmodule YellowDog.Dns.Zone.RPZTest do
         %{trigger: :qname, pattern: "old.example.com", action: :nxdomain}
       ]
 
-      {:ok, pid} = RPZ.start_link(name: zone_name, view_name: view_name, policies: initial_policies)
+      {:ok, pid} =
+        RPZ.start_link(name: zone_name, view_name: view_name, policies: initial_policies)
 
       # Old policy should match
       assert {:ok, _} = RPZ.check_qname(pid, "old.example.com")
@@ -488,7 +489,10 @@ defmodule YellowDog.Dns.Zone.RPZTest do
       assert stats1.policy_count == 2
 
       # Reload with single policy
-      assert :ok = RPZ.reload(pid, policies: [%{trigger: :qname, pattern: "test3.com", action: :nxdomain}])
+      assert :ok =
+               RPZ.reload(pid,
+                 policies: [%{trigger: :qname, pattern: "test3.com", action: :nxdomain}]
+               )
 
       stats2 = RPZ.stats(pid)
       assert stats2.policy_count == 1

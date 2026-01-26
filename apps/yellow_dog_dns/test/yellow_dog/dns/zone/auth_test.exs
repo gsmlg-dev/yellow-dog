@@ -604,7 +604,10 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert response.anlist == []
     end
 
-    test "returns NODATA for existing name with no matching type", %{zone: pid, zone_name: zone_name} do
+    test "returns NODATA for existing name with no matching type", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
       # Add only A record
       Auth.add_record(pid, %{
         name: "www.#{zone_name}",

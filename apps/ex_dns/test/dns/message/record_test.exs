@@ -203,7 +203,10 @@ defmodule DNS.Message.RecordTest do
       record = Record.new("test.com", 1, 1, 3600, {1, 2, 3, 4})
       iodata = DNS.to_iodata(record)
       domain_size = 10
-      <<_domain::binary-size(domain_size), _type::16, _class::16, ttl::32, _rest::binary>> = iodata
+
+      <<_domain::binary-size(domain_size), _type::16, _class::16, ttl::32, _rest::binary>> =
+        iodata
+
       assert ttl == 3600
     end
 
@@ -388,7 +391,10 @@ defmodule DNS.Message.RecordTest do
       record = Record.new("test.com", 1, 1, 0xFFFFFFFF, {1, 2, 3, 4})
       iodata = DNS.to_iodata(record)
       domain_size = 10
-      <<_domain::binary-size(domain_size), _type::16, _class::16, ttl::32, _rest::binary>> = iodata
+
+      <<_domain::binary-size(domain_size), _type::16, _class::16, ttl::32, _rest::binary>> =
+        iodata
+
       assert ttl == 0xFFFFFFFF
     end
   end

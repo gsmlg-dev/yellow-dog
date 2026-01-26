@@ -252,7 +252,12 @@ defmodule DNS.Message.Record.Data.PTRTest do
     end
 
     test "round-trip preserves domain" do
-      domains = ["host.local", "_http._tcp.local", "1.0.168.192.in-addr.arpa", "server.example.com"]
+      domains = [
+        "host.local",
+        "_http._tcp.local",
+        "1.0.168.192.in-addr.arpa",
+        "server.example.com"
+      ]
 
       for domain <- domains do
         record = PTR.new(domain)

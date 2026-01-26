@@ -80,12 +80,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     end
 
     test "accepts server_options" do
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: []
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: []
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)
@@ -101,12 +102,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
         valid_lifetime: 7200
       }
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: [pool]
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: [pool]
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)
@@ -117,12 +119,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     setup do
       safe_stop_supervisor()
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: []
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: []
+          ]
+        )
 
       # Give time for children to start
       Process.sleep(200)
@@ -148,12 +151,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     setup do
       safe_stop_supervisor()
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: []
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: []
+          ]
+        )
 
       Process.sleep(200)
 
@@ -189,9 +193,7 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     end
 
     test "supervisor can be stopped" do
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
       assert Process.alive?(pid)
 
@@ -202,9 +204,7 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     end
 
     test "children are stopped when supervisor stops" do
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, _pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
       Process.sleep(200)
 
@@ -228,9 +228,7 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     end
 
     test "empty pools is used when not specified" do
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0]
-      )
+      {:ok, _pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0])
 
       # Supervisor started successfully with empty pools
       assert Process.whereis(YellowDog.Dhcpv6) != nil
@@ -244,12 +242,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
         prefix_length: 64
       }
 
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: [pool]
-        ]
-      )
+      {:ok, _pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: [pool]
+          ]
+        )
 
       # Supervisor started successfully with custom pools
       assert Process.whereis(YellowDog.Dhcpv6) != nil
@@ -265,9 +264,7 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
 
     test "uses one_for_one strategy" do
       # Start supervisor
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
       Process.sleep(200)
 
@@ -330,27 +327,26 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
     end
 
     test "emits starting telemetry event" do
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, _pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
-      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :starting], %{count: 1}, _}, 1000
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :starting], %{count: 1}, _},
+                     1000
     end
 
     test "emits pre_start telemetry event" do
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, _pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
-      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :pre_start], %{count: 1}, _}, 1000
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :pre_start], %{count: 1},
+                      _},
+                     1000
     end
 
     test "emits post_start telemetry event" do
-      {:ok, _pid} = Dhcpv6Supervisor.start_link(
-        server_options: [port: 0, pools: []]
-      )
+      {:ok, _pid} = Dhcpv6Supervisor.start_link(server_options: [port: 0, pools: []])
 
-      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :post_start], %{count: 1}, _}, 1000
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :supervisor, :post_start], %{count: 1},
+                      _},
+                     1000
     end
   end
 
@@ -396,12 +392,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
         prefix_length: 64
       }
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: [pool]
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: [pool]
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)
@@ -415,12 +412,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
         prefix_length: 64
       }
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: [pool]
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: [pool]
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)
@@ -434,12 +432,13 @@ defmodule YellowDog.Dhcpv6.SupervisorTest do
         prefix_length: 48
       }
 
-      {:ok, pid} = Dhcpv6Supervisor.start_link(
-        server_options: [
-          port: 0,
-          pools: [pool]
-        ]
-      )
+      {:ok, pid} =
+        Dhcpv6Supervisor.start_link(
+          server_options: [
+            port: 0,
+            pools: [pool]
+          ]
+        )
 
       assert is_pid(pid)
       assert Process.alive?(pid)

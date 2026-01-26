@@ -135,6 +135,7 @@ defmodule DHCPv4.Message.Option.FormatterTest do
         {{10, 0, 0, 0}, {255, 0, 0, 0}},
         {{172, 16, 0, 0}, {255, 255, 0, 0}}
       ]
+
       result = Formatter.parse_decoded_value({"Routes", :ip_mask_list, pairs})
 
       assert String.contains?(result, "10.0.0.0")
@@ -195,7 +196,7 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     end
 
     test "formats large integer" do
-      result = Formatter.parse_decoded_value({"Time", :int, 4294967295})
+      result = Formatter.parse_decoded_value({"Time", :int, 4_294_967_295})
 
       assert String.contains?(result, "4294967295")
     end
@@ -234,7 +235,10 @@ defmodule DHCPv4.Message.Option.FormatterTest do
 
   describe "parse_decoded_value/1 - :type_identifier type" do
     test "formats type identifier tuple" do
-      result = Formatter.parse_decoded_value({"Client ID", :type_identifier, {1, <<0x00, 0x11, 0x22, 0x33, 0x44, 0x55>>}})
+      result =
+        Formatter.parse_decoded_value(
+          {"Client ID", :type_identifier, {1, <<0x00, 0x11, 0x22, 0x33, 0x44, 0x55>>}}
+        )
 
       assert String.contains?(result, "Client ID")
     end
@@ -257,7 +261,8 @@ defmodule DHCPv4.Message.Option.FormatterTest do
   describe "format/1 - common DHCP options" do
     test "formats lease time option" do
       # Option 51: IP Address Lease Time
-      option = Helpers.new(51, 4, <<0, 1, 81, 128>>)  # 86400 seconds
+      # 86400 seconds
+      option = Helpers.new(51, 4, <<0, 1, 81, 128>>)
       result = Formatter.format(option)
 
       assert is_binary(result)

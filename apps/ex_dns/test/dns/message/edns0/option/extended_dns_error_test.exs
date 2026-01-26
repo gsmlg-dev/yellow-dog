@@ -193,7 +193,9 @@ defmodule DNS.Message.EDNS0.Option.ExtendedDNSErrorTest do
       extra_text = "test error"
       option = ExtendedDNSError.new({info_code, extra_text})
       iodata = DNS.Parameter.to_iodata(option)
-      assert iodata == <<15::16, 2 + byte_size(extra_text)::16, info_code::16, extra_text::binary>>
+
+      assert iodata ==
+               <<15::16, 2 + byte_size(extra_text)::16, info_code::16, extra_text::binary>>
     end
 
     test "wire format starts with option code 15" do

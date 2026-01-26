@@ -307,11 +307,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
   describe "parsing various record types" do
     test "parses A records" do
-      content = zone_with_records("a-test.com", """
-      www     IN  A   192.168.1.1
-      mail    IN  A   192.168.1.2
-      ftp     IN  A   10.0.0.1
-      """)
+      content =
+        zone_with_records("a-test.com", """
+        www     IN  A   192.168.1.1
+        mail    IN  A   192.168.1.2
+        ftp     IN  A   10.0.0.1
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       a_records = Enum.filter(zone.records, &(&1.type == :a))
@@ -319,10 +320,11 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses AAAA records" do
-      content = zone_with_records("aaaa-test.com", """
-      www     IN  AAAA    2001:db8::1
-      mail    IN  AAAA    2001:db8::2
-      """)
+      content =
+        zone_with_records("aaaa-test.com", """
+        www     IN  AAAA    2001:db8::1
+        mail    IN  AAAA    2001:db8::2
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       aaaa_records = Enum.filter(zone.records, &(&1.type == :aaaa))
@@ -330,11 +332,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses NS records" do
-      content = zone_with_records("ns-test.com", """
-      @       IN  NS  ns1.ns-test.com.
-      @       IN  NS  ns2.ns-test.com.
-      sub     IN  NS  ns.sub.ns-test.com.
-      """)
+      content =
+        zone_with_records("ns-test.com", """
+        @       IN  NS  ns1.ns-test.com.
+        @       IN  NS  ns2.ns-test.com.
+        sub     IN  NS  ns.sub.ns-test.com.
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       ns_records = Enum.filter(zone.records, &(&1.type == :ns))
@@ -342,11 +345,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses CNAME records" do
-      content = zone_with_records("cname-test.com", """
-      www     IN  CNAME   web.cname-test.com.
-      ftp     IN  CNAME   files.cname-test.com.
-      blog    IN  CNAME   www.cname-test.com.
-      """)
+      content =
+        zone_with_records("cname-test.com", """
+        www     IN  CNAME   web.cname-test.com.
+        ftp     IN  CNAME   files.cname-test.com.
+        blog    IN  CNAME   www.cname-test.com.
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       cname_records = Enum.filter(zone.records, &(&1.type == :cname))
@@ -354,11 +358,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses MX records" do
-      content = zone_with_records("mx-test.com", """
-      @       IN  MX  10  mail1.mx-test.com.
-      @       IN  MX  20  mail2.mx-test.com.
-      @       IN  MX  30  backup.mx-test.com.
-      """)
+      content =
+        zone_with_records("mx-test.com", """
+        @       IN  MX  10  mail1.mx-test.com.
+        @       IN  MX  20  mail2.mx-test.com.
+        @       IN  MX  30  backup.mx-test.com.
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       mx_records = Enum.filter(zone.records, &(&1.type == :mx))
@@ -366,10 +371,11 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses TXT records" do
-      content = zone_with_records("txt-test.com", """
-      @       IN  TXT "v=spf1 include:_spf.google.com ~all"
-      _dmarc  IN  TXT "v=DMARC1; p=reject; rua=mailto:dmarc@txt-test.com"
-      """)
+      content =
+        zone_with_records("txt-test.com", """
+        @       IN  TXT "v=spf1 include:_spf.google.com ~all"
+        _dmarc  IN  TXT "v=DMARC1; p=reject; rua=mailto:dmarc@txt-test.com"
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       txt_records = Enum.filter(zone.records, &(&1.type == :txt))
@@ -378,11 +384,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
     test "parses multiple A records for same host" do
       # Test multiple A records for DNS round-robin
-      content = zone_with_records("multi-a.com", """
-      www     IN  A   192.168.1.1
-      www     IN  A   192.168.1.2
-      www     IN  A   192.168.1.3
-      """)
+      content =
+        zone_with_records("multi-a.com", """
+        www     IN  A   192.168.1.1
+        www     IN  A   192.168.1.2
+        www     IN  A   192.168.1.3
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       a_records = Enum.filter(zone.records, &(&1.type == :a))
@@ -390,11 +397,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "parses SRV records" do
-      content = zone_with_records("srv-test.com", """
-      _http._tcp      IN  SRV 0 5 80 www.srv-test.com.
-      _https._tcp     IN  SRV 0 5 443 www.srv-test.com.
-      _ldap._tcp      IN  SRV 0 0 389 ldap.srv-test.com.
-      """)
+      content =
+        zone_with_records("srv-test.com", """
+        _http._tcp      IN  SRV 0 5 80 www.srv-test.com.
+        _https._tcp     IN  SRV 0 5 443 www.srv-test.com.
+        _ldap._tcp      IN  SRV 0 0 389 ldap.srv-test.com.
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       srv_records = Enum.filter(zone.records, &(&1.type == :srv))
@@ -403,9 +411,10 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
     test "parses CAA records" do
       # CAA parsing may not be fully supported by the parser
-      content = zone_with_records("caa-test.com", """
-      www     IN  A   192.168.1.1
-      """)
+      content =
+        zone_with_records("caa-test.com", """
+        www     IN  A   192.168.1.1
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
 
@@ -452,9 +461,11 @@ defmodule DNS.Zone.ParserIntegrationTest do
       assert zone.ttl == 3600
 
       # Find records by name to check TTLs
-      www = Enum.find(zone.records, fn r ->
-        r.name == "www" or (is_struct(r.name) and r.name.value == "www")
-      end)
+      www =
+        Enum.find(zone.records, fn r ->
+          r.name == "www" or (is_struct(r.name) and r.name.value == "www")
+        end)
+
       assert www != nil
     end
 
@@ -473,7 +484,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       case result do
         {:ok, zone} -> assert zone.ttl == 86400
-        {:error, _} -> assert true  # Parser may not support this format
+        # Parser may not support this format
+        {:error, _} -> assert true
       end
     end
   end
@@ -640,7 +652,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       case result do
         {:ok, zone} -> assert zone.soa != nil
-        {:error, _} -> assert true  # Parser may not support escaped dots
+        # Parser may not support escaped dots
+        {:error, _} -> assert true
       end
     end
 
@@ -683,7 +696,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
         case result do
           {:ok, _zone} -> assert true
-          {:error, _} -> assert true  # Parser may not handle BOM
+          # Parser may not handle BOM
+          {:error, _} -> assert true
         end
       after
         File.rm!(temp_file)
@@ -717,7 +731,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
         case result do
           {:ok, zone} -> assert zone.origin in ["windows.com.", "windows.com"]
-          {:error, _} -> assert true  # Parser may not handle Windows line endings
+          # Parser may not handle Windows line endings
+          {:error, _} -> assert true
         end
       after
         File.rm!(temp_file)
@@ -896,7 +911,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
       result = Zone.parse_zone_string(content)
 
       case result do
-        {:ok, _zone} -> assert true  # Parser may be lenient
+        # Parser may be lenient
+        {:ok, _zone} -> assert true
         {:error, _} -> assert true
       end
     end
@@ -908,7 +924,9 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       @ IN SOA ns1.truncated.com. admin.truncated.com. (
           1 3600
-      """  # Missing closing paren and remaining fields
+      """
+
+      # Missing closing paren and remaining fields
 
       result = Zone.parse_zone_string(content)
       assert match?({:error, _}, result)
@@ -929,7 +947,7 @@ defmodule DNS.Zone.ParserIntegrationTest do
         soa: %DNS.Zone.Parser.SOARecord{
           primary_ns: "ns1.export-test.com",
           admin_email: "admin.export-test.com",
-          serial: 2024010101,
+          serial: 2_024_010_101,
           refresh: 3600,
           retry: 1800,
           expire: 604_800,
@@ -954,7 +972,7 @@ defmodule DNS.Zone.ParserIntegrationTest do
         soa: %DNS.Zone.Parser.SOARecord{
           primary_ns: "ns1.soa-export.com",
           admin_email: "admin.soa-export.com",
-          serial: 2024060100,
+          serial: 2_024_060_100,
           refresh: 10800,
           retry: 3600,
           expire: 604_800,
@@ -1003,18 +1021,24 @@ defmodule DNS.Zone.ParserIntegrationTest do
         |> Enum.map(fn {:ok, zone} -> zone.name.value end)
         |> Enum.sort()
 
-      assert origins == ["concurrent1.com", "concurrent2.com", "concurrent3.com",
-                         "concurrent4.com", "concurrent5.com"]
+      assert origins == [
+               "concurrent1.com",
+               "concurrent2.com",
+               "concurrent3.com",
+               "concurrent4.com",
+               "concurrent5.com"
+             ]
     end
 
     test "concurrent file parsing" do
       # Create multiple temp files
-      file_contents = for i <- 1..5 do
-        {
-          Path.join(System.tmp_dir!(), "concurrent_#{i}_#{System.unique_integer()}.zone"),
-          minimal_zone("file#{i}.com")
-        }
-      end
+      file_contents =
+        for i <- 1..5 do
+          {
+            Path.join(System.tmp_dir!(), "concurrent_#{i}_#{System.unique_integer()}.zone"),
+            minimal_zone("file#{i}.com")
+          }
+        end
 
       # Write files
       Enum.each(file_contents, fn {path, content} ->
@@ -1092,21 +1116,23 @@ defmodule DNS.Zone.ParserIntegrationTest do
     end
 
     test "handles single-character subdomain" do
-      content = zone_with_records("single-char.com", """
-      a IN A 192.168.1.1
-      b IN A 192.168.1.2
-      x IN CNAME a.single-char.com.
-      """)
+      content =
+        zone_with_records("single-char.com", """
+        a IN A 192.168.1.1
+        b IN A 192.168.1.2
+        x IN CNAME a.single-char.com.
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       assert length(zone.records) >= 3
     end
 
     test "handles deep subdomain hierarchy" do
-      content = zone_with_records("deep.com", """
-      a.b.c.d.e.f IN A 192.168.1.1
-      x.y.z       IN A 192.168.1.2
-      """)
+      content =
+        zone_with_records("deep.com", """
+        a.b.c.d.e.f IN A 192.168.1.1
+        x.y.z       IN A 192.168.1.2
+        """)
 
       assert {:ok, zone} = Zone.parse_zone_string(content)
       assert length(zone.records) >= 2
@@ -1142,9 +1168,10 @@ defmodule DNS.Zone.ParserIntegrationTest do
       # SPF records can be very long
       long_spf = "v=spf1 " <> String.duplicate("ip4:192.168.1.0/24 ", 20) <> "-all"
 
-      content = zone_with_records("long-txt.com", """
-      @ IN TXT "#{long_spf}"
-      """)
+      content =
+        zone_with_records("long-txt.com", """
+        @ IN TXT "#{long_spf}"
+        """)
 
       {time, result} = :timer.tc(fn -> Zone.parse_zone_string(content) end)
 

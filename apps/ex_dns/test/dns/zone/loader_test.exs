@@ -33,7 +33,7 @@ defmodule DNS.Zone.LoaderTest do
 
   setup do
     # Create temp directory for test files
-    temp_dir = System.tmp_dir!() |> Path.join("dns_loader_test_#{:rand.uniform(1000000)}")
+    temp_dir = System.tmp_dir!() |> Path.join("dns_loader_test_#{:rand.uniform(1_000_000)}")
     File.mkdir_p!(temp_dir)
 
     on_exit(fn ->
