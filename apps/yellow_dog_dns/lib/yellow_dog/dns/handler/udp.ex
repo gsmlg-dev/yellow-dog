@@ -21,19 +21,53 @@ defmodule YellowDog.Dns.Handler.UDP do
   use Abyss.Handler
 
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.ConnectionManager
+  alias YellowDog.Dns.{ConnectionManager, RateLimiter}
 
   ## Abyss.Handler Callbacks
 
   @impl true
   def handle_data({client_ip, client_port, data}, state) do
+    # Check rate limit before processing
+    case RateLimiter.check_rate(client_ip) do
+      :ok ->
+        process_data(client_ip, client_port, data, state)
+
+      {:error, :rate_limited} ->
+        Telemetry.warning("DNS request rate limited", %{
+          client_ip: format_ip(client_ip),
+          client_port: client_port
+        })
+
+        :telemetry.execute(
+          [:yellow_dog, :dns, :message, :rate_limited],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port}
+        )
+
+        # Drop the request silently (per RFC best practices for DNS)
+        {:continue, state}
+    end
+  end
+
+  defp process_data(client_ip, client_port, data, state) do
     Telemetry.debug("DNS UDP received data", %{
       client_ip: format_ip(client_ip),
       client_port: client_port,
       size: byte_size(data)
     })
 
-    handle_raw_data(data, client_ip, client_port, state)
+    try do
+      handle_raw_data(data, client_ip, client_port, state)
+    rescue
+      error ->
+        Telemetry.error("DNS handler exception", %{
+          client_ip: format_ip(client_ip),
+          client_port: client_port,
+          error: Exception.message(error)
+        })
+
+        {:continue, state}
+    end
   end
 
   @impl true

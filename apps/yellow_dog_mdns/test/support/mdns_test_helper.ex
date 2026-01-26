@@ -52,7 +52,7 @@ defmodule YellowDog.Mdns.TestHelper do
   Creates a basic mDNS response message.
   """
   @spec create_mdns_response(String.t(), String.t()) :: Message.t()
-  def create_mdns_response(domain, ip_address) do
+  def create_mdns_response(domain, _ip_address) do
     header = %DNS.Message.Header{
       id: 0x1234,
       # Response
@@ -238,7 +238,7 @@ defmodule YellowDog.Mdns.TestHelper do
   Captures telemetry events for testing.
   """
   @spec capture_telemetry_events([atom()], function()) :: list()
-  def capture_telemetry_events(event_names, fun) do
+  def capture_telemetry_events(_event_names, fun) do
     # Simplified version that doesn't require actual telemetry
     # Returns empty list since we can't capture real telemetry in test environment
     fun.()

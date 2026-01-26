@@ -56,9 +56,15 @@ defmodule YellowDog.Dhcpv4.Supervisor do
          )
        end}
       |> Supervisor.child_spec(id: :pre_start, restart: :temporary),
+      # Rate limiter - must start before server for DoS protection
+      YellowDog.Dhcpv4.RateLimiter
+      |> Supervisor.child_spec(id: :rate_limiter),
       # Lease manager - must start before server
       {YellowDog.Dhcpv4.LeaseManager, [pools: pools]}
       |> Supervisor.child_spec(id: :lease_manager),
+      # Conflict resolver - handles IP conflicts and quarantine (PRD FR2.4)
+      YellowDog.Dhcpv4.ConflictResolver
+      |> Supervisor.child_spec(id: :conflict_resolver),
       # DHCPv4 server
       {YellowDog.Dhcpv4.Server, server_options}
       |> Supervisor.child_spec(id: :server),

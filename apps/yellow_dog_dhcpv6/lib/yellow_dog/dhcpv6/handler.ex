@@ -7,7 +7,9 @@ defmodule YellowDog.Dhcpv6.Handler do
   via DUID (DHCP Unique Identifier) and supports IPv6 multicast.
   """
 
-  alias YellowDog.Dhcpv6.LeaseManager
+  use Abyss.Handler
+
+  alias YellowDog.Dhcpv6.{LeaseManager, OptionParser, RateLimiter}
 
   # DHCPv6 message type constants
   @msg_type_solicit 1
@@ -43,9 +45,27 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles incoming DHCPv6 data from clients.
   """
+  @impl true
   def handle_data({client_ip, client_port, data}, state) do
     start_time = System.monotonic_time(:microsecond)
 
+    # Check rate limit before processing
+    case RateLimiter.check_rate(client_ip) do
+      :ok ->
+        process_message(client_ip, client_port, data, state, start_time)
+
+      {:error, :rate_limited} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :rate_limited],
+          %{count: 1},
+          %{client_ip: client_ip, client_port: client_port}
+        )
+
+        {:continue, state}
+    end
+  end
+
+  defp process_message(client_ip, client_port, data, state, start_time) do
     try do
       case DHCPv6.Message.from_iodata(data) do
         {:ok, message} ->
@@ -81,6 +101,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles handler errors (implements Abyss.Handler callback).
   """
+  @impl true
   def handle_error(error, state) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :handler, :error],
@@ -94,6 +115,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   @doc """
   Handles handler timeouts (implements Abyss.Handler callback).
   """
+  @impl true
   def handle_timeout(state) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :handler, :timeout],
@@ -107,27 +129,31 @@ defmodule YellowDog.Dhcpv6.Handler do
   # Private functions for handling specific DHCPv6 message types
 
   defp handle_dhcpv6_message(message, client_ip, client_port, state, start_time) do
+    # Single-pass option extraction for better performance
+    # Extracts all commonly needed options in O(n) instead of O(n*m)
+    parsed_opts = OptionParser.extract_common(message.options)
+
     case message.msg_type do
       @msg_type_solicit ->
-        handle_solicit(message, client_ip, client_port, state, start_time)
+        handle_solicit(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_request ->
-        handle_request(message, client_ip, client_port, state, start_time)
+        handle_request(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_renew ->
-        handle_renew(message, client_ip, client_port, state, start_time)
+        handle_renew(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_rebind ->
-        handle_rebind(message, client_ip, client_port, state, start_time)
+        handle_rebind(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_release ->
-        handle_release(message, client_ip, client_port, state, start_time)
+        handle_release(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_decline ->
-        handle_decline(message, client_ip, client_port, state, start_time)
+        handle_decline(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_information_request ->
-        handle_inform(message, client_ip, client_port, state, start_time)
+        handle_inform(message, parsed_opts, client_ip, client_port, state, start_time)
 
       @msg_type_relay_forw ->
         handle_relay_forward(message, client_ip, client_port, state)
@@ -146,17 +172,18 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_solicit(message, client_ip, client_port, state, start_time) do
+  defp handle_solicit(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :requested],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :solicit}
     )
 
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
-    ia_ta = get_ia_ta(message)
-    ia_pd = get_ia_pd(message)
+    # Use pre-parsed options for efficiency
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
+    ia_ta = parsed_opts.ia_ta
+    ia_pd = parsed_opts.ia_pd
 
     # Check if any IA type is present
     case {client_duid, ia_na, ia_ta, ia_pd} do
@@ -232,7 +259,7 @@ defmodule YellowDog.Dhcpv6.Handler do
           end
 
         if length(leases) > 0 do
-          advertise = create_advertise_multi(message, leases)
+          advertise = create_advertise_multi(message, leases, parsed_opts)
           send_dhcpv6_response(advertise, client_ip, client_port, state)
 
           :telemetry.execute(
@@ -246,15 +273,16 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_request(message, client_ip, client_port, state, start_time) do
+  defp handle_request(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :requested],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :request}
     )
 
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
+    # Use pre-parsed options for efficiency
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
 
     case {client_duid, ia_na} do
       {nil, _} ->
@@ -279,7 +307,7 @@ defmodule YellowDog.Dhcpv6.Handler do
         # Allocate or renew lease
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
-            reply = create_reply(message, lease)
+            reply = create_reply(message, lease, parsed_opts)
             send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
@@ -300,22 +328,23 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_renew(message, client_ip, client_port, state, start_time) do
+  defp handle_renew(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :renewed],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :renew}
     )
 
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
+    # Use pre-parsed options for efficiency
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
 
     case {client_duid, ia_na} do
       {duid, %{iaid: iaid}} when duid != nil ->
         # Renew existing lease
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
-            reply = create_reply(message, lease)
+            reply = create_reply(message, lease, parsed_opts)
             send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
@@ -345,22 +374,22 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_rebind(message, client_ip, client_port, state, start_time) do
+  defp handle_rebind(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :rebind],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :rebind}
     )
 
-    # Rebind is similar to renew - reuse the renew logic
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
+    # Rebind is similar to renew - use pre-parsed options
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
 
     case {client_duid, ia_na} do
       {duid, %{iaid: iaid}} when duid != nil ->
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
-            reply = create_reply(message, lease)
+            reply = create_reply(message, lease, parsed_opts)
             send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
@@ -390,15 +419,16 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_release(message, client_ip, client_port, state, start_time) do
+  defp handle_release(_message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :released],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :release}
     )
 
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
+    # Use pre-parsed options for efficiency
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
 
     case {client_duid, ia_na} do
       {duid, %{iaid: iaid}} when duid != nil ->
@@ -421,15 +451,16 @@ defmodule YellowDog.Dhcpv6.Handler do
     {:continue, state}
   end
 
-  defp handle_decline(message, client_ip, client_port, state, start_time) do
+  defp handle_decline(_message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :declined],
       %{count: 1},
       %{client_ip: client_ip, client_port: client_port, message_type: :decline}
     )
 
-    client_duid = get_client_duid(message)
-    ia_na = get_ia_na(message)
+    # Use pre-parsed options for efficiency
+    client_duid = parsed_opts.client_id
+    ia_na = parsed_opts.ia_na
 
     case {client_duid, ia_na} do
       {duid, %{ia_addr: ia_addr}} when duid != nil and ia_addr != nil ->
@@ -452,7 +483,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     {:continue, state}
   end
 
-  defp handle_inform(message, client_ip, client_port, state, start_time) do
+  defp handle_inform(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :inform, :requested],
       %{count: 1},
@@ -460,7 +491,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     )
 
     # INFORMATION-REQUEST - provide configuration without address allocation
-    reply = create_information_reply(message)
+    reply = create_information_reply(message, parsed_opts)
     send_dhcpv6_response(reply, client_ip, client_port, state)
 
     :telemetry.execute(
@@ -494,8 +525,11 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   # Message creation functions
 
-  defp create_reply(request, lease) do
+  defp create_reply(request, lease, parsed_opts) do
     pool = get_pool_for_lease(lease)
+
+    # Use pre-parsed client_id for efficiency
+    client_id = parsed_opts.client_id
 
     %DHCPv6.Message{
       msg_type: @msg_type_reply,
@@ -507,7 +541,7 @@ defmodule YellowDog.Dhcpv6.Handler do
           # Client DUID (echo back)
           %DHCPv6.Message.Option{
             option_code: @option_client_id,
-            option_data: get_client_duid(request)
+            option_data: client_id
           },
           # IA_NA with IA_ADDR
           create_ia_na_option(lease),
@@ -518,8 +552,11 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
   end
 
-  defp create_information_reply(request) do
+  defp create_information_reply(request, parsed_opts) do
     pool = get_default_pool()
+
+    # Use pre-parsed client_id for efficiency
+    client_id = parsed_opts.client_id
 
     %DHCPv6.Message{
       msg_type: @msg_type_reply,
@@ -531,7 +568,7 @@ defmodule YellowDog.Dhcpv6.Handler do
           # Client DUID (echo back)
           %DHCPv6.Message.Option{
             option_code: @option_client_id,
-            option_data: get_client_duid(request)
+            option_data: client_id
           },
           # DNS servers
           create_dns_servers_option(pool.dns_servers)
@@ -589,105 +626,33 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   defp encode_domain_name(domain) do
+    # RFC 1035: Each label is limited to 63 octets
     domain
     |> String.split(".")
     |> Enum.map_join(fn label ->
-      <<byte_size(label)::8, label::binary>>
+      # Enforce max label length per DNS specification
+      truncated_label =
+        if byte_size(label) > 63 do
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv6, :config, :warning],
+            %{count: 1},
+            %{issue: "DNS label truncated", original_length: byte_size(label)}
+          )
+
+          binary_part(label, 0, 63)
+        else
+          label
+        end
+
+      <<byte_size(truncated_label)::8, truncated_label::binary>>
     end)
     # Terminating zero
     |> Kernel.<>(<<0>>)
   end
 
-  # Helper functions for extracting information from messages
-
-  defp get_client_duid(message) do
-    case Enum.find(message.options, fn opt -> opt.option_code == @option_client_id end) do
-      nil -> nil
-      option -> option.option_data
-    end
-  end
-
-  defp get_ia_na(message) do
-    case Enum.find(message.options, fn opt -> opt.option_code == @option_ia_na end) do
-      nil ->
-        nil
-
-      option ->
-        # Parse IA_NA: IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + options
-        case option.option_data do
-          <<iaid::32, _t1::32, _t2::32, rest::binary>> ->
-            # Try to extract IA_ADDR if present
-            ia_addr = extract_ia_addr(rest)
-            %{iaid: iaid, ia_addr: ia_addr, type: :ia_na}
-
-          _ ->
-            nil
-        end
-    end
-  end
-
-  defp get_ia_ta(message) do
-    case Enum.find(message.options, fn opt -> opt.option_code == @option_ia_ta end) do
-      nil ->
-        nil
-
-      option ->
-        # Parse IA_TA: IAID (4 bytes) + options (no T1/T2)
-        case option.option_data do
-          <<iaid::32, rest::binary>> ->
-            ia_addr = extract_ia_addr(rest)
-            %{iaid: iaid, ia_addr: ia_addr, type: :ia_ta}
-
-          _ ->
-            nil
-        end
-    end
-  end
-
-  defp get_ia_pd(message) do
-    case Enum.find(message.options, fn opt -> opt.option_code == @option_ia_pd end) do
-      nil ->
-        nil
-
-      option ->
-        # Parse IA_PD: IAID (4 bytes) + T1 (4 bytes) + T2 (4 bytes) + options
-        case option.option_data do
-          <<iaid::32, _t1::32, _t2::32, rest::binary>> ->
-            ia_prefix = extract_ia_prefix(rest)
-            %{iaid: iaid, ia_prefix: ia_prefix, type: :ia_pd}
-
-          _ ->
-            nil
-        end
-    end
-  end
-
-  defp extract_ia_addr(<<@option_ia_addr::16, len::16, data::binary-size(len), _rest::binary>>) do
-    case data do
-      <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16, _lifetimes::binary>> ->
-        {a, b, c, d, e, f, g, h}
-
-      _ ->
-        nil
-    end
-  end
-
-  defp extract_ia_addr(_), do: nil
-
-  defp extract_ia_prefix(
-         <<@option_ia_prefix::16, len::16, data::binary-size(len), _rest::binary>>
-       ) do
-    case data do
-      <<_preferred::32, _valid::32, prefix_len::8, a::16, b::16, c::16, d::16, e::16, f::16,
-        g::16, h::16>> ->
-        {{a, b, c, d, e, f, g, h}, prefix_len}
-
-      _ ->
-        nil
-    end
-  end
-
-  defp extract_ia_prefix(_), do: nil
+  # NOTE: Helper functions get_client_duid, get_ia_na, get_ia_ta, get_ia_pd,
+  # extract_ia_addr, and extract_ia_prefix have been moved to OptionParser module
+  # for single-pass option extraction. See YellowDog.Dhcpv6.OptionParser.
 
   # Allocation helper functions
 
@@ -738,8 +703,11 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   # Message creation functions with multi-IA support
 
-  defp create_advertise_multi(solicit, leases) do
+  defp create_advertise_multi(solicit, leases, parsed_opts) do
     pool = get_default_pool()
+
+    # Use pre-parsed client_id for efficiency
+    client_id = parsed_opts.client_id
 
     options = [
       # Server DUID
@@ -747,7 +715,7 @@ defmodule YellowDog.Dhcpv6.Handler do
       # Client DUID (echo back)
       %DHCPv6.Message.Option{
         option_code: @option_client_id,
-        option_data: get_client_duid(solicit)
+        option_data: client_id
       },
       # Preference
       %DHCPv6.Message.Option{option_code: @option_preference, option_data: <<255>>}

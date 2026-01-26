@@ -14,6 +14,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "start/6" do
+    @tag :integration
     test "returns :ok when starting connection process", %{config: config} do
       # Start a complete server with proper setup
       assert {:ok, server_pid} =
@@ -45,6 +46,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "start_active/6" do
+    @tag :integration
     test "returns :ok when starting active connection process", %{config: config} do
       # Start a complete server with proper setup
       assert {:ok, server_pid} =
@@ -76,6 +78,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "handler behavior" do
+    @tag :integration
     test "handler processes data correctly", %{config: config} do
       config = %{config | handler_module: Abyss.TestHandler}
 
@@ -112,6 +115,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "connection lifecycle" do
+    @tag :integration
     test "connection terminates gracefully", %{config: config} do
       config = %{config | handler_module: Abyss.TestHandler}
 
@@ -162,7 +166,7 @@ defmodule Abyss.ConnectionTest do
       :ok
     end
 
-    test "immediately succeeds when connection supervisor has capacity", %{config: config} do
+    test "immediately succeeds when connection supervisor has capacity", %{config: _config} do
       # Test that the connection can succeed when not at capacity limit
       # This is simplified since we can't easily mock the server components
       :ok
@@ -213,7 +217,7 @@ defmodule Abyss.ConnectionTest do
   end
 
   describe "error handling" do
-    test "propagates other DynamicSupervisor errors", %{config: config} do
+    test "propagates other DynamicSupervisor errors", %{config: _config} do
       # Simplified test since we can't easily mock the server components
       # This test would verify that DynamicSupervisor errors are properly propagated
       # In the actual implementation, errors from DynamicSupervisor.start_child are returned
@@ -225,7 +229,7 @@ defmodule Abyss.ConnectionTest do
       :ok
     end
 
-    test "handles active connection errors", %{config: config} do
+    test "handles active connection errors", %{config: _config} do
       # Simplified test since we can't easily mock the server components
       # This test would verify that active connection errors are properly handled
       # Both start and start_active should handle errors the same way

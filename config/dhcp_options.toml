@@ -1,0 +1,25 @@
+# DHCP Custom Options
+# This file defines custom option sets for DHCP services.
+
+[[option_sets]]
+name = "windows_clients"
+scope = "acl"
+
+[[option_sets.options]]
+code = 42
+type = "ip_list"
+value = ["192.168.1.10", "192.168.1.11"]
+
+[[option_sets.options]]
+code = 66
+type = "string"
+value = "tftp-${pool_name}.local"
+
+[[option_sets]]
+name = "global_defaults"
+scope = "global"
+
+[[option_sets.options]]
+code = 252
+type = "string"
+value = "http://wpad.${pool_name}.local/wpad.dat"

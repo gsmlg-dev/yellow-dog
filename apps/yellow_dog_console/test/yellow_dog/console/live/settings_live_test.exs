@@ -87,6 +87,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
     end
 
+    @tag :capture_log
     test "handles missing configuration file gracefully", %{conn: conn} do
       # Set non-existent config path
       Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")
@@ -139,7 +140,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to mDNS tab
-      {:ok, view, _html} = live(conn, ~p"/settings/mdns")
+      {:ok, _mdns_view, _html} = live(conn, ~p"/settings/mdns")
 
       # Navigate back to DNS tab
       {:ok, view, _html} = live(conn, ~p"/settings/dns")
@@ -590,7 +591,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       |> render_change()
 
       # Navigate to DNS tab
-      {:ok, view, _html} = live(conn, ~p"/settings/dns")
+      {:ok, _dns_view, _html} = live(conn, ~p"/settings/dns")
 
       # Navigate back to mDNS tab
       {:ok, view, _html} = live(conn, ~p"/settings/mdns")

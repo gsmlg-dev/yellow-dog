@@ -1,5 +1,25 @@
 defmodule GeoIpDbTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+
+  alias GeoIpDb.Database
+
+  setup do
+    # Ensure database server is running - don't stop/restart to avoid race conditions
+    _pid =
+      case Process.whereis(Database) do
+        nil ->
+          # No server running, start one
+          {:ok, new_pid} = Database.start_link([])
+          new_pid
+
+        existing_pid ->
+          # Server already running, use it
+          existing_pid
+      end
+
+    # Don't stop the server in on_exit - it may be used by other tests
+    :ok
+  end
 
   describe "lookup/2" do
     @tag :requires_database

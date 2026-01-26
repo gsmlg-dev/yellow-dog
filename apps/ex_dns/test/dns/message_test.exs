@@ -1,12 +1,30 @@
 defmodule DNS.MessageTest do
-  use ExUnit.Case
+  @moduledoc """
+  Comprehensive unit tests for DNS.Message.
+
+  Tests cover:
+  - Module structure and exports
+  - Message creation (new/0)
+  - Binary parsing (from_iodata/1)
+  - Header attribute updates
+  - Question addition
+  - Option management
+  - DNS.Parameter protocol implementation
+  - String.Chars protocol implementation
+  """
+  use ExUnit.Case, async: true
 
   alias DNS.Message
   alias DNS.Message.Domain
-  # alias DNS.Message.Question
-  # alias DNS.Message.Record
+  alias DNS.Message.Header
+  alias DNS.Message.Question
   alias DNS.ResourceRecordType, as: RRType
   alias DNS.Class
+
+  # Helper to create a Question with proper types
+  defp make_question(name, type \\ 1) do
+    %Question{name: Domain.new(name), type: RRType.new(type), class: Class.new(1)}
+  end
 
   test "DNS message query with cookie from_iodata/1" do
     raw =
@@ -140,5 +158,493 @@ defmodule DNS.MessageTest do
     iodata = DNS.to_iodata(msg)
 
     assert raw1 == iodata
+  end
+
+  describe "module structure" do
+    test "module is defined and loadable" do
+      {:module, _} = Code.ensure_loaded(Message)
+    end
+
+    test "exports new/0" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :new, 0)
+    end
+
+    test "exports from_iodata/1" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :from_iodata, 1)
+    end
+
+    test "exports update_header_attr/3" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :update_header_attr, 3)
+    end
+
+    test "exports add_question/2" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :add_question, 2)
+    end
+
+    test "exports put_option/3" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :put_option, 3)
+    end
+
+    test "exports get_option/2" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :get_option, 2)
+    end
+
+    test "exports get_option/3" do
+      Code.ensure_loaded!(Message)
+      assert Kernel.function_exported?(Message, :get_option, 3)
+    end
+
+    test "defines struct with required fields" do
+      msg = %Message{}
+      assert Map.has_key?(msg, :header)
+      assert Map.has_key?(msg, :qdlist)
+      assert Map.has_key?(msg, :anlist)
+      assert Map.has_key?(msg, :nslist)
+      assert Map.has_key?(msg, :arlist)
+      assert Map.has_key?(msg, :options)
+    end
+  end
+
+  describe "new/0" do
+    test "creates empty message with default header" do
+      msg = Message.new()
+
+      assert %Message{} = msg
+      assert %Header{} = msg.header
+    end
+
+    test "creates message with empty question list" do
+      msg = Message.new()
+
+      assert msg.qdlist == []
+    end
+
+    test "creates message with empty answer list" do
+      msg = Message.new()
+
+      assert msg.anlist == []
+    end
+
+    test "creates message with empty authority list" do
+      msg = Message.new()
+
+      assert msg.nslist == []
+    end
+
+    test "creates message with empty additional list" do
+      msg = Message.new()
+
+      assert msg.arlist == []
+    end
+
+    test "creates message with empty options" do
+      msg = Message.new()
+
+      assert msg.options == []
+    end
+
+    test "header has default counts of zero" do
+      msg = Message.new()
+
+      assert msg.header.qdcount == 0
+      assert msg.header.ancount == 0
+      assert msg.header.nscount == 0
+      assert msg.header.arcount == 0
+    end
+  end
+
+  describe "from_iodata/1 - query parsing" do
+    test "parses minimal DNS query" do
+      # ID: 0x1234, flags: 0x0100 (RD), QDCOUNT: 1, others: 0
+      # Question: example.com A IN
+      query =
+        <<0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<7, "example", 3, "com", 0, 0x00, 0x01, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      assert msg.header.id == 0x1234
+      assert length(msg.qdlist) == 1
+    end
+
+    test "parses header correctly" do
+      # Simple query header
+      query =
+        <<0xAB, 0xCD, 0x85, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<3, "www", 0, 0x00, 0x01, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      assert msg.header.id == 0xABCD
+      # Response flag set
+      assert msg.header.qr == 1
+    end
+
+    test "parses question section" do
+      query =
+        <<0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<4, "test", 3, "org", 0, 0x00, 0x01, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      assert length(msg.qdlist) == 1
+      [question] = msg.qdlist
+      assert to_string(question.name) =~ "test.org"
+    end
+
+    test "parses multiple questions" do
+      # Query with 2 questions
+      query =
+        <<0x00, 0x03, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<3, "foo", 0, 0x00, 0x01, 0x00, 0x01>> <>
+          <<3, "bar", 0, 0x00, 0x01, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      assert length(msg.qdlist) == 2
+    end
+
+    test "parses AAAA query" do
+      # AAAA query (type 28)
+      query =
+        <<0x00, 0x04, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<4, "ipv6", 4, "test", 0, 0x00, 0x1C, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      [question] = msg.qdlist
+      # Type 28 = AAAA
+      assert question.type.value == <<0, 28>>
+    end
+
+    test "parses MX query" do
+      # MX query (type 15)
+      query =
+        <<0x00, 0x05, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<4, "mail", 3, "com", 0, 0x00, 0x0F, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      [question] = msg.qdlist
+      # Type 15 = MX
+      assert question.type.value == <<0, 15>>
+    end
+  end
+
+  describe "from_iodata/1 - response parsing" do
+    test "parses response with answer section" do
+      # Response with 1 answer (A record for test.com -> 1.2.3.4)
+      # Question
+      # Answer: pointer to name, type A, class IN, TTL 300, rdlength 4, rdata 1.2.3.4
+      response =
+        <<0x00, 0x02, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00>> <>
+          <<4, "test", 3, "com", 0, 0x00, 0x01, 0x00, 0x01>> <>
+          <<0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2C, 0x00, 0x04, 1, 2, 3, 4>>
+
+      msg = Message.from_iodata(response)
+
+      assert length(msg.anlist) == 1
+    end
+  end
+
+  describe "update_header_attr/3" do
+    test "updates header id" do
+      msg = Message.new()
+      updated = Message.update_header_attr(msg, :id, 0x5678)
+
+      assert updated.header.id == 0x5678
+    end
+
+    test "updates header qr flag" do
+      msg = Message.new()
+      updated = Message.update_header_attr(msg, :qr, 1)
+
+      assert updated.header.qr == 1
+    end
+
+    test "updates header opcode" do
+      msg = Message.new()
+      updated = Message.update_header_attr(msg, :opcode, 2)
+
+      assert updated.header.opcode == 2
+    end
+
+    test "updates header rcode" do
+      msg = Message.new()
+      updated = Message.update_header_attr(msg, :rcode, 3)
+
+      assert updated.header.rcode == 3
+    end
+
+    test "updates multiple attributes sequentially" do
+      msg =
+        Message.new()
+        |> Message.update_header_attr(:id, 0x1111)
+        |> Message.update_header_attr(:qr, 1)
+        |> Message.update_header_attr(:aa, 1)
+
+      assert msg.header.id == 0x1111
+      assert msg.header.qr == 1
+      assert msg.header.aa == 1
+    end
+
+    test "preserves other message fields" do
+      msg = Message.new() |> Message.put_option(:test, :value)
+      updated = Message.update_header_attr(msg, :id, 0xFFFF)
+
+      assert updated.options == [test: :value]
+    end
+  end
+
+  describe "add_question/2" do
+    test "adds question to empty message" do
+      msg = Message.new()
+      question = make_question("example.com")
+
+      updated = Message.add_question(msg, question)
+
+      assert length(updated.qdlist) == 1
+    end
+
+    test "increments qdcount in header" do
+      msg = Message.new()
+      question = make_question("test.org")
+
+      updated = Message.add_question(msg, question)
+
+      assert updated.header.qdcount == 1
+    end
+
+    test "prepends question to list" do
+      msg = Message.new()
+      q1 = make_question("first.com")
+      q2 = make_question("second.com")
+
+      updated =
+        msg
+        |> Message.add_question(q1)
+        |> Message.add_question(q2)
+
+      assert length(updated.qdlist) == 2
+      # q2 is prepended, so it's first
+      [first, _] = updated.qdlist
+      assert to_string(first.name) =~ "second.com"
+    end
+
+    test "multiple adds increment qdcount correctly" do
+      msg = Message.new()
+      q1 = make_question("a.com")
+      q2 = make_question("b.com")
+      q3 = make_question("c.com")
+
+      updated =
+        msg
+        |> Message.add_question(q1)
+        |> Message.add_question(q2)
+        |> Message.add_question(q3)
+
+      assert updated.header.qdcount == 3
+    end
+  end
+
+  describe "put_option/3" do
+    test "adds option to empty options list" do
+      msg = Message.new()
+      updated = Message.put_option(msg, :key, :value)
+
+      assert updated.options == [key: :value]
+    end
+
+    test "replaces existing option" do
+      msg = Message.new() |> Message.put_option(:key, :old)
+      updated = Message.put_option(msg, :key, :new)
+
+      assert updated.options == [key: :new]
+    end
+
+    test "adds multiple options" do
+      msg =
+        Message.new()
+        |> Message.put_option(:a, 1)
+        |> Message.put_option(:b, 2)
+        |> Message.put_option(:c, 3)
+
+      assert Keyword.get(msg.options, :a) == 1
+      assert Keyword.get(msg.options, :b) == 2
+      assert Keyword.get(msg.options, :c) == 3
+    end
+
+    test "preserves other message fields" do
+      msg = Message.new() |> Message.update_header_attr(:id, 0x9999)
+      updated = Message.put_option(msg, :test, true)
+
+      assert updated.header.id == 0x9999
+    end
+  end
+
+  describe "get_option/2 and get_option/3" do
+    test "returns option value when present" do
+      msg = Message.new() |> Message.put_option(:key, :value)
+
+      assert Message.get_option(msg, :key) == :value
+    end
+
+    test "returns nil for missing option" do
+      msg = Message.new()
+
+      assert Message.get_option(msg, :missing) == nil
+    end
+
+    test "returns default value for missing option" do
+      msg = Message.new()
+
+      assert Message.get_option(msg, :missing, :default) == :default
+    end
+
+    test "returns value over default when present" do
+      msg = Message.new() |> Message.put_option(:key, :actual)
+
+      assert Message.get_option(msg, :key, :default) == :actual
+    end
+  end
+
+  describe "DNS.Parameter protocol" do
+    test "implements DNS.Parameter protocol" do
+      msg = Message.new()
+
+      binary = DNS.Parameter.to_iodata(msg)
+      assert is_binary(binary)
+    end
+
+    test "serializes header" do
+      msg = Message.new() |> Message.update_header_attr(:id, 0x1234)
+
+      binary = DNS.Parameter.to_iodata(msg)
+      <<id::16, _rest::binary>> = binary
+
+      assert id == 0x1234
+    end
+
+    test "serializes questions" do
+      msg = Message.new()
+      question = make_question("test.com")
+      msg = Message.add_question(msg, question)
+
+      binary = DNS.Parameter.to_iodata(msg)
+
+      # Should include the question data
+      # Header is 12 bytes
+      assert byte_size(binary) > 12
+    end
+
+    test "empty message serializes to header only" do
+      msg = Message.new()
+
+      binary = DNS.Parameter.to_iodata(msg)
+
+      # Header is 12 bytes, empty lists add nothing
+      assert byte_size(binary) == 12
+    end
+  end
+
+  describe "String.Chars protocol" do
+    test "implements String.Chars protocol" do
+      msg = Message.new()
+
+      string = to_string(msg)
+      assert is_binary(string)
+    end
+
+    test "includes HEADER SECTION" do
+      msg = Message.new()
+
+      string = to_string(msg)
+      assert String.contains?(string, "HEADER SECTION")
+    end
+
+    test "includes QUESTION SECTION" do
+      msg = Message.new()
+
+      string = to_string(msg)
+      assert String.contains?(string, "QUESTION SECTION")
+    end
+
+    test "includes ANSWER SECTION when answers present" do
+      # Create a response with an answer
+      query =
+        <<0x00, 0x02, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00>> <>
+          <<4, "test", 3, "com", 0, 0x00, 0x01, 0x00, 0x01>> <>
+          <<0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x2C, 0x00, 0x04, 1, 2, 3, 4>>
+
+      msg = Message.from_iodata(query)
+
+      string = to_string(msg)
+      assert String.contains?(string, "ANSWER SECTION")
+    end
+
+    test "excludes ANSWER SECTION when no answers" do
+      msg = Message.new()
+
+      string = to_string(msg)
+      refute String.contains?(string, "ANSWER SECTION")
+    end
+
+    test "includes questions in output" do
+      msg = Message.new()
+      question = make_question("example.org")
+      msg = Message.add_question(msg, question)
+
+      string = to_string(msg)
+      assert String.contains?(string, "example.org")
+    end
+  end
+
+  describe "round-trip encoding" do
+    test "header id preserved" do
+      msg =
+        Message.new()
+        |> Message.update_header_attr(:id, 0xABCD)
+
+      binary = DNS.Parameter.to_iodata(msg)
+      <<id::16, _::binary>> = binary
+
+      assert id == 0xABCD
+    end
+  end
+
+  describe "edge cases" do
+    test "handles empty domain name query (root)" do
+      # Query for root (.)
+      query =
+        <<0x00, 0x06, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>> <>
+          <<0, 0x00, 0x02, 0x00, 0x01>>
+
+      msg = Message.from_iodata(query)
+
+      assert length(msg.qdlist) == 1
+    end
+
+    test "handles maximum id value" do
+      msg = Message.new() |> Message.update_header_attr(:id, 0xFFFF)
+
+      assert msg.header.id == 0xFFFF
+    end
+
+    test "struct defaults work correctly" do
+      msg = %Message{}
+
+      assert is_struct(msg.header, Header)
+      assert is_list(msg.qdlist)
+      assert is_list(msg.anlist)
+      assert is_list(msg.nslist)
+      assert is_list(msg.arlist)
+      assert is_list(msg.options)
+    end
   end
 end

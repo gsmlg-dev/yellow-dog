@@ -51,12 +51,14 @@ defmodule YellowDog.ConfigTest do
       assert Map.has_key?(config, "dhcpv4")
     end
 
+    @tag :capture_log
     test "handles missing config file with error" do
       result = YellowDog.Config.load("/nonexistent/path/config.toml")
 
       assert {:error, :enoent} = result
     end
 
+    @tag :capture_log
     test "handles malformed TOML with error" do
       {:error, reason} = ConfigHelper.load_test_config("invalid_config")
 
@@ -360,6 +362,7 @@ defmodule YellowDog.ConfigTest do
   end
 
   describe "Error Handling" do
+    @tag :capture_log
     test "load_with_fallback/1 uses defaults on error" do
       config = YellowDog.Config.load_with_fallback("/nonexistent/path.toml")
 

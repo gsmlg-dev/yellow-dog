@@ -1,4 +1,12 @@
 defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
+  @moduledoc """
+  LiveView for individual DHCPv4 pool details.
+
+  Shows pool configuration (subnet, ranges, gateway, DNS), utilization
+  statistics, static reservations, and all leases within the pool.
+  Supports filtering and search within the pool's lease list.
+  """
+
   use YellowDog.Console, :live_view
 
   @impl true

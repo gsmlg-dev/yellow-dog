@@ -1,0 +1,19 @@
+# DHCPv6 Pool Configuration
+# This file defines address pools for the DHCPv6 server.
+
+[[pools]]
+name = "ipv6_main"
+enabled = true
+prefix = "2001:db8:1::/64"
+ranges = ["2001:db8:1::100-2001:db8:1::200"]
+dns_servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+domain = "example.local"
+preferred_lifetime = 604800
+valid_lifetime = 2592000
+max_leases = 1000
+priority = 100
+
+[[pools.reservations]]
+duid = "00:01:00:01:2a:2b:2c:2d:2e:2f"
+address = "2001:db8:1::50"
+hostname = "server-01"

@@ -5,11 +5,20 @@ defmodule YellowDog.Dhcpv4.Handler do
   Processes incoming DHCPv4 messages and implements the DHCP server logic
   for handling DHCPDISCOVER, DHCPOFFER, DHCPREQUEST, DHCPACK, and DHCPNAK
   messages. Emits telemetry events for monitoring and debugging.
+
+  Includes rate limiting to prevent pool exhaustion and DoS attacks.
   """
 
   use Abyss.Handler
 
-  alias YellowDog.Dhcpv4.LeaseManager
+  alias YellowDog.Dhcpv4.{
+    ACL,
+    ConflictResolver,
+    CustomOptions,
+    LeaseManager,
+    OptionParser,
+    RateLimiter
+  }
 
   # Telemetry events are handled via :telemetry directly
 
@@ -28,6 +37,23 @@ defmodule YellowDog.Dhcpv4.Handler do
   def handle_data({ip, port, data}, state) do
     start_time = System.monotonic_time(:microsecond)
 
+    # Apply rate limiting to prevent DoS and pool exhaustion attacks
+    case RateLimiter.check_rate(ip) do
+      :ok ->
+        process_message(ip, port, data, state, start_time)
+
+      {:error, :rate_limited} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :message, :rate_limited],
+          %{count: 1},
+          %{client_ip: ip, client_port: port}
+        )
+
+        {:continue, state}
+    end
+  end
+
+  defp process_message(ip, port, data, state, start_time) do
     try do
       message = DHCPv4.Message.from_iodata(data)
 
@@ -105,15 +131,19 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp handle_boot_request(message, client_ip, client_port, state, start_time) do
-    case get_dhcp_message_type(message) do
+    # Single-pass option extraction for better performance
+    # Extracts all commonly needed options in O(n) instead of O(n*m)
+    parsed_options = OptionParser.extract_common(message.options)
+
+    case parsed_options.message_type do
       :discover ->
-        handle_dhcp_discover(message, client_ip, client_port, state, start_time)
+        handle_dhcp_discover(message, parsed_options, client_ip, client_port, state, start_time)
 
       :request ->
-        handle_dhcp_request(message, client_ip, client_port, state, start_time)
+        handle_dhcp_request(message, parsed_options, client_ip, client_port, state, start_time)
 
       :decline ->
-        handle_dhcp_decline(message, client_ip, client_port, state, start_time)
+        handle_dhcp_decline(message, parsed_options, client_ip, client_port, state, start_time)
 
       :release ->
         handle_dhcp_release(message, client_ip, client_port, state, start_time)
@@ -141,24 +171,63 @@ defmodule YellowDog.Dhcpv4.Handler do
     end
   end
 
-  defp handle_dhcp_discover(message, client_ip, client_port, state, start_time) do
+  defp handle_dhcp_discover(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :lease, :requested],
       %{count: 1},
       %{client_ip: client_ip, client_mac: message.chaddr, message_type: :discover}
     )
 
-    # Generate a DHCPOFFER response
-    case create_dhcp_offer(message, client_ip) do
-      nil ->
+    # Build client info for ACL evaluation (using pre-parsed options)
+    client_info = OptionParser.build_client_info(message, parsed_opts)
+
+    # Evaluate ACL rules (FR3)
+    acl_rules = get_acl_rules()
+    acl_result = ACL.evaluate(acl_rules, client_info)
+
+    case acl_result do
+      {:deny, reason} ->
         :telemetry.execute(
-          [:yellow_dog, :dhcpv4, :offer, :failed],
+          [:yellow_dog, :dhcpv4, :acl, :denied],
           %{count: 1},
-          %{client_mac: message.chaddr, reason: "could not create offer"}
+          %{client_mac: message.chaddr, reason: reason}
         )
 
-      offer ->
-        send_dhcp_response(offer, client_ip, client_port, state)
+        # Don't send a response - silently ignore denied clients
+        :ok
+
+      {:allow, target_pool} ->
+        # Determine pool name from ACL or default
+        pool_name = target_pool || "default"
+
+        # Generate a DHCPOFFER response (no custom option set for allow action)
+        # Pass pre-parsed options for efficiency
+        case create_dhcp_offer(message, parsed_opts, pool_name, nil) do
+          nil ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :offer, :failed],
+              %{count: 1},
+              %{client_mac: message.chaddr, reason: "could not create offer"}
+            )
+
+          offer ->
+            send_dhcp_response(offer, client_ip, client_port, state)
+        end
+
+      {:custom_options, option_set_name} ->
+        # Apply custom options and allow the request
+        # Pass pre-parsed options for efficiency
+        case create_dhcp_offer(message, parsed_opts, "default", option_set_name) do
+          nil ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :offer, :failed],
+              %{count: 1},
+              %{client_mac: message.chaddr, reason: "could not create offer with custom options"}
+            )
+
+          offer ->
+            send_dhcp_response(offer, client_ip, client_port, state)
+        end
     end
 
     # Emit telemetry event
@@ -171,9 +240,9 @@ defmodule YellowDog.Dhcpv4.Handler do
     {:continue, state}
   end
 
-  defp handle_dhcp_request(message, client_ip, client_port, state, start_time) do
-    # Determine REQUEST state: SELECTING, INIT-REBOOT, RENEWING, or REBINDING
-    request_state = determine_request_state(message)
+  defp handle_dhcp_request(message, parsed_opts, client_ip, client_port, state, start_time) do
+    # Determine REQUEST state using pre-parsed options
+    request_state = determine_request_state_fast(message, parsed_opts)
 
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :lease, :requested],
@@ -186,8 +255,8 @@ defmodule YellowDog.Dhcpv4.Handler do
       }
     )
 
-    # Generate a DHCPACK or DHCPNAK response based on state
-    case create_dhcp_ack(message, client_ip, request_state) do
+    # Generate a DHCPACK or DHCPNAK response based on state (using pre-parsed options)
+    case create_dhcp_ack(message, parsed_opts, client_ip, request_state) do
       {:ok, ack} ->
         send_dhcp_response(ack, client_ip, client_port, state)
 
@@ -211,9 +280,9 @@ defmodule YellowDog.Dhcpv4.Handler do
     {:continue, state}
   end
 
-  defp handle_dhcp_decline(message, client_ip, _client_port, state, start_time) do
-    # Get the declined IP address
-    declined_ip = get_requested_ip(message) || client_ip
+  defp handle_dhcp_decline(message, parsed_opts, client_ip, _client_port, state, start_time) do
+    # Get the declined IP address from pre-parsed options
+    declined_ip = parsed_opts.requested_ip || client_ip
 
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :lease, :declined],
@@ -221,8 +290,34 @@ defmodule YellowDog.Dhcpv4.Handler do
       %{client_ip: client_ip, client_mac: message.chaddr, declined_ip: declined_ip}
     )
 
-    # Mark the IP as declined in LeaseManager
-    LeaseManager.decline_ip(declined_ip, message.chaddr)
+    # Use ConflictResolver for conflict detection and auto-reassignment (FR2.4)
+    # ConflictResolver will:
+    # 1. Quarantine the declined IP
+    # 2. Attempt to allocate a new address for the client
+    # 3. Log the conflict with client details
+    case ConflictResolver.handle_conflict(declined_ip, message.chaddr, "default") do
+      {:ok, new_ip} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :conflict, :reassigned],
+          %{count: 1},
+          %{
+            client_mac: message.chaddr,
+            declined_ip: declined_ip,
+            new_ip: new_ip
+          }
+        )
+
+      {:error, reason} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :conflict, :reassignment_failed],
+          %{count: 1},
+          %{
+            client_mac: message.chaddr,
+            declined_ip: declined_ip,
+            reason: inspect(reason)
+          }
+        )
+    end
 
     {:continue, state}
   end
@@ -261,22 +356,31 @@ defmodule YellowDog.Dhcpv4.Handler do
     {:continue, state}
   end
 
-  defp create_dhcp_offer(discover, _client_ip) do
-    # Extract hostname and client identifier from options if present
-    hostname = get_hostname_from_options(discover.options)
-    client_id = get_client_id_from_options(discover.options)
+  defp create_dhcp_offer(discover, parsed_opts, pool_name, option_set_name) do
+    # Use pre-parsed hostname and client identifier for efficiency
+    hostname = parsed_opts.hostname
+    client_id = parsed_opts.client_id
 
     # Try to allocate a lease from LeaseManager
-    case LeaseManager.allocate_lease(discover.chaddr, nil, hostname, "default", client_id) do
+    case LeaseManager.allocate_lease(discover.chaddr, nil, hostname, pool_name, client_id) do
       {:ok, lease} ->
-        # Build DHCPOFFER with lease information
-        build_dhcp_offer(discover, lease)
+        # Build DHCPOFFER with lease information and custom options
+        build_dhcp_offer(discover, lease, option_set_name)
 
       {:error, :pool_exhausted} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :pool, :exhausted],
           %{count: 1},
           %{client_mac: discover.chaddr, operation: :offer}
+        )
+
+        nil
+
+      {:error, :pool_limit_exceeded} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :pool, :limit_exceeded],
+          %{count: 1},
+          %{client_mac: discover.chaddr, pool: pool_name, operation: :offer}
         )
 
         nil
@@ -292,9 +396,18 @@ defmodule YellowDog.Dhcpv4.Handler do
     end
   end
 
-  defp build_dhcp_offer(discover, lease) do
+  defp build_dhcp_offer(discover, lease, option_set_name) do
     # Get pool configuration for network parameters
     pool = get_pool_for_lease(lease)
+
+    # Build context for custom options template substitution (FR4.3)
+    # Use hostname from lease (already stored during allocation)
+    context = %{
+      client_mac: discover.chaddr,
+      client_hostname: lease.hostname,
+      lease_address: lease.ip_address,
+      pool_name: lease.pool_name
+    }
 
     DHCPv4.Message.new()
     # BOOTREPLY = 2
@@ -308,14 +421,14 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
     |> Map.put(:giaddr, ip_tuple_to_integer(discover.giaddr))
     |> Map.put(:chaddr, discover.chaddr)
-    |> Map.put(:options, build_dhcp_options(2, pool, lease))
+    |> Map.put(:options, build_dhcp_options(2, pool, lease, context, option_set_name))
   end
 
-  defp create_dhcp_ack(request, _client_ip, request_state) do
-    # Extract hostname, requested IP, and client identifier
-    hostname = get_hostname_from_options(request.options)
-    client_id = get_client_id_from_options(request.options)
-    server_id = get_server_id_from_options(request.options)
+  defp create_dhcp_ack(request, parsed_opts, _client_ip, request_state) do
+    # Use pre-parsed options for efficiency
+    hostname = parsed_opts.hostname
+    client_id = parsed_opts.client_id
+    server_id = parsed_opts.server_id
 
     # Get requested IP based on state
     requested_ip =
@@ -329,8 +442,8 @@ defmodule YellowDog.Dhcpv4.Handler do
           integer_to_ip_tuple(request.ciaddr)
 
         _ ->
-          # For SELECTING and INIT-REBOOT, use Requested IP Address option
-          get_requested_ip(request)
+          # For SELECTING and INIT-REBOOT, use pre-parsed Requested IP Address
+          parsed_opts.requested_ip
       end
 
     # Validate server identifier if present (RFC 2131 Section 4.3.2)
@@ -392,6 +505,15 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Get pool configuration for network parameters
     pool = get_pool_for_lease(lease)
 
+    # Build context for template substitution
+    # Use hostname from lease (already stored during allocation)
+    context = %{
+      client_mac: request.chaddr,
+      client_hostname: lease.hostname,
+      lease_address: lease.ip_address,
+      pool_name: lease.pool_name
+    }
+
     DHCPv4.Message.new()
     # BOOTREPLY = 2
     |> Map.put(:op, 2)
@@ -404,7 +526,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
     |> Map.put(:giaddr, ip_tuple_to_integer(request.giaddr))
     |> Map.put(:chaddr, request.chaddr)
-    |> Map.put(:options, build_dhcp_options(5, pool, lease))
+    |> Map.put(:options, build_dhcp_options(5, pool, lease, context))
   end
 
   defp build_dhcp_nak(request, reason) do
@@ -527,7 +649,7 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   # Helper functions for building DHCP responses
 
-  defp build_dhcp_options(message_type, pool, lease) do
+  defp build_dhcp_options(message_type, pool, lease, context, option_set_name \\ nil) do
     lease_time_binary = <<lease.lease_time::32>>
     dns_servers_binary = encode_dns_servers(pool.dns_servers)
 
@@ -564,8 +686,16 @@ defmodule YellowDog.Dhcpv4.Handler do
             [%DHCPv4.Message.Option{type: 15, length: byte_size(domain), value: domain}]
       end
 
+    # Apply custom options if option_set_name is specified (FR4)
+    options_with_custom =
+      if option_set_name do
+        apply_custom_options(options_with_domain, option_set_name, context)
+      else
+        options_with_domain
+      end
+
     # Add end option
-    options_with_domain ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
+    options_with_custom ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
   end
 
   defp get_pool_for_lease(_lease) do
@@ -595,26 +725,8 @@ defmodule YellowDog.Dhcpv4.Handler do
     |> Enum.join()
   end
 
-  defp get_hostname_from_options(options) do
-    Enum.find_value(options, fn option ->
-      # Option 12 is hostname
-      if option.type == 12, do: option.value, else: nil
-    end)
-  end
-
-  defp get_client_id_from_options(options) do
-    Enum.find_value(options, fn option ->
-      # Option 61 is client identifier
-      if option.type == 61, do: option.value, else: nil
-    end)
-  end
-
-  defp get_server_id_from_options(options) do
-    Enum.find_value(options, fn option ->
-      # Option 54 is server identifier
-      if option.type == 54, do: option.value, else: nil
-    end)
-  end
+  # Note: Option extraction functions moved to OptionParser for single-pass efficiency
+  # Legacy functions removed to avoid code duplication
 
   defp validate_server_identifier(nil, :renewing), do: :ok
   defp validate_server_identifier(nil, :rebinding), do: :ok
@@ -631,10 +743,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     end
   end
 
-  defp determine_request_state(request) do
+  # Optimized version using pre-parsed options
+  defp determine_request_state_fast(request, parsed_opts) do
     # Determine REQUEST state based on RFC 2131 Section 4.3.2
-    server_id = get_server_id_from_options(request.options)
-    requested_ip = get_requested_ip(request)
+    # Uses pre-parsed options for efficiency
+    server_id = parsed_opts.server_id
+    requested_ip = parsed_opts.requested_ip
     ciaddr = request.ciaddr
 
     cond do
@@ -676,33 +790,29 @@ defmodule YellowDog.Dhcpv4.Handler do
     ip_to_binary(pool.gateway)
   end
 
-  defp get_requested_ip(request) do
-    Enum.find_value(request.options, fn option ->
-      if option.type == 50, do: binary_to_ip(option.value), else: nil
-    end)
-  end
-
-  defp get_dhcp_message_type(message) do
-    Enum.find_value(message.options, 0, fn option ->
-      if option.type == 53, do: decode_message_type(option.value), else: nil
-    end)
-  end
-
-  defp decode_message_type(<<1>>), do: :discover
-  defp decode_message_type(<<2>>), do: :offer
-  defp decode_message_type(<<3>>), do: :request
-  defp decode_message_type(<<4>>), do: :decline
-  defp decode_message_type(<<5>>), do: :ack
-  defp decode_message_type(<<6>>), do: :nak
-  defp decode_message_type(<<7>>), do: :release
-  defp decode_message_type(<<8>>), do: :inform
-  defp decode_message_type(_), do: 0
-
-  defp binary_to_ip(<<a, b, c, d>>), do: {a, b, c, d}
-  defp binary_to_ip(_), do: nil
-
   defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
-  defp ip_to_binary(_), do: <<192, 168, 1, 1>>
+
+  defp ip_to_binary(nil) do
+    # Log warning for nil IP addresses - this indicates a configuration issue
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config, :warning],
+      %{count: 1},
+      %{issue: "ip_to_binary called with nil, using fallback"}
+    )
+
+    <<0, 0, 0, 0>>
+  end
+
+  defp ip_to_binary(other) do
+    # Log error for invalid IP format - this is a programming error
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :config, :error],
+      %{count: 1},
+      %{issue: "ip_to_binary called with invalid format", value: inspect(other)}
+    )
+
+    <<0, 0, 0, 0>>
+  end
 
   # Convert IP tuple to 32-bit integer for DHCPv4 message fields
   defp ip_tuple_to_integer({a, b, c, d})
@@ -713,4 +823,69 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
   defp ip_tuple_to_integer(_), do: 0
+
+  # Note: build_client_info moved to OptionParser.build_client_info/2 for single-pass efficiency
+  # Legacy option extraction functions removed to avoid duplication
+
+  # Get ACL rules from configuration
+  defp get_acl_rules do
+    # Load ACL rules from configuration file
+    config_path =
+      Application.get_env(:yellow_dog_dhcpv4, :acl_config_path, "config/dhcp_acls.toml")
+
+    ACL.load_with_fallback(config_path)
+  end
+
+  # Apply custom options to base options list (FR4)
+  defp apply_custom_options(base_options, option_set_name, context) do
+    # Load custom options from configuration
+    config_path =
+      Application.get_env(:yellow_dog_dhcpv4, :options_config_path, "config/dhcp_options.toml")
+
+    option_sets = CustomOptions.load_with_fallback(config_path)
+
+    case CustomOptions.get_option_set(option_sets, option_set_name) do
+      {:ok, option_set} ->
+        # Apply template substitution
+        processed_set = CustomOptions.apply_templates(option_set, context)
+
+        # Encode custom options to DHCP format
+        custom_options = CustomOptions.encode_options(processed_set.options)
+
+        # Convert custom options to DHCPv4.Message.Option format
+        encoded_custom =
+          Enum.map(custom_options, fn opt ->
+            %DHCPv4.Message.Option{
+              type: opt.type,
+              length: byte_size(opt.value),
+              value: opt.value
+            }
+          end)
+
+        # Merge custom options with base options (custom options override base)
+        merge_options(base_options, encoded_custom)
+
+      {:error, :not_found} ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :custom_options, :not_found],
+          %{count: 1},
+          %{option_set: option_set_name}
+        )
+
+        base_options
+    end
+  end
+
+  # Merge options, with later options (custom) overriding earlier (base)
+  defp merge_options(base_options, custom_options) do
+    # Build a map of custom option types for fast lookup
+    custom_types = MapSet.new(Enum.map(custom_options, & &1.type))
+
+    # Filter out base options that are overridden by custom
+    filtered_base =
+      Enum.reject(base_options, fn opt -> MapSet.member?(custom_types, opt.type) end)
+
+    # Combine filtered base with custom options
+    filtered_base ++ custom_options
+  end
 end

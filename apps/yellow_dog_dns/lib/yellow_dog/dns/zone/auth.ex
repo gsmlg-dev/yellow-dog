@@ -411,6 +411,14 @@ defmodule YellowDog.Dns.Zone.Auth do
       :ok ->
         {:reply, :ok, %{state | dirty: false}}
 
+      {:error, "No zone file path configured"} = error ->
+        # Expected when no file path is set - use debug level (common in tests)
+        Telemetry.debug("Zone save skipped (no file path configured)", %{
+          zone: state.name
+        })
+
+        {:reply, error, state}
+
       {:error, reason} = error ->
         Telemetry.error("Failed to save zone", %{
           zone: state.name,
@@ -425,15 +433,21 @@ defmodule YellowDog.Dns.Zone.Auth do
   def terminate(reason, state) do
     # Save zone data on graceful shutdown if dirty
     if state.dirty do
-      case do_save(state) do
-        :ok ->
-          Telemetry.info("Auth zone saved on shutdown", %{name: state.name})
+      # Only attempt save if a file path is configured
+      if state.zone_file != nil || state.zone_data_path != nil do
+        case do_save(state) do
+          :ok ->
+            Telemetry.info("Auth zone saved on shutdown", %{name: state.name})
 
-        {:error, save_reason} ->
-          Telemetry.error("Failed to save zone on shutdown", %{
-            zone: state.name,
-            reason: save_reason
-          })
+          {:error, save_reason} ->
+            Telemetry.error("Failed to save zone on shutdown", %{
+              zone: state.name,
+              reason: save_reason
+            })
+        end
+      else
+        # No file path configured - this is normal for test zones
+        Telemetry.debug("Zone not persisted (no file path configured)", %{name: state.name})
       end
     end
 
@@ -583,7 +597,10 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   # Extract address from A/AAAA records
   defp extract_address(%{data: {_, _, _, _} = ip}), do: ip |> :inet.ntoa() |> to_string()
-  defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}), do: ip |> :inet.ntoa() |> to_string()
+
+  defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}),
+    do: ip |> :inet.ntoa() |> to_string()
+
   defp extract_address({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
   defp extract_address({_, _, _, _, _, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
   defp extract_address(rdata) when is_struct(rdata), do: to_string(rdata)

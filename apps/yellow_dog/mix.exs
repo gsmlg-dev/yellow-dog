@@ -29,6 +29,7 @@ defmodule YellowDog.MixProject do
     [
       # Core dependencies
       {:yellow_dog_telemetry, in_umbrella: true},
+      {:abyss, in_umbrella: true},
 
       # External dependencies for core functionality
       {:telemetry, "~> 1.0"},

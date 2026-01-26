@@ -50,6 +50,17 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  # Configure basic authentication for the web console
+  # CONSOLE_AUTH_ENABLED defaults to true in production
+  # Set CONSOLE_PASSWORD to enable authentication (required for auth to work)
+  auth_enabled = System.get_env("CONSOLE_AUTH_ENABLED", "true") != "false"
+
+  config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth,
+    enabled: auth_enabled,
+    username: System.get_env("CONSOLE_USERNAME", "admin"),
+    password: System.get_env("CONSOLE_PASSWORD"),
+    realm: System.get_env("CONSOLE_REALM", "YellowDog Console")
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

@@ -10,7 +10,7 @@ defmodule YellowDog.Mdns.Handler do
 
   use Abyss.Handler
 
-  alias YellowDog.Mdns.{MessageCache, NetworkMonitor, Responder, ServiceRegistry}
+  alias YellowDog.Mdns.{MessageCache, NetworkMonitor, RateLimiter, Responder, ServiceRegistry}
 
   @doc """
   Handles incoming mDNS data packets.
@@ -21,6 +21,23 @@ defmodule YellowDog.Mdns.Handler do
   """
   @impl true
   def handle_data({ip, port, data}, state) do
+    # Check rate limit before processing
+    case RateLimiter.check_rate(ip) do
+      :ok ->
+        process_data(ip, port, data, state)
+
+      {:error, :rate_limited} ->
+        :telemetry.execute(
+          [:yellow_dog, :mdns, :message, :rate_limited],
+          %{count: 1, bytes: byte_size(data)},
+          %{source_ip: ip, source_port: port}
+        )
+
+        {:continue, state}
+    end
+  end
+
+  defp process_data(ip, port, data, state) do
     start_time = System.monotonic_time(:microsecond)
 
     # Emit telemetry event for message reception

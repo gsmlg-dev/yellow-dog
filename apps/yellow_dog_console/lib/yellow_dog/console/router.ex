@@ -1,4 +1,18 @@
 defmodule YellowDog.Console.Router do
+  @moduledoc """
+  Phoenix router for the YellowDog web console.
+
+  Defines HTTP routes for all console pages including:
+  - Dashboard: Service overview and status monitoring
+  - Settings: DNS, mDNS, DHCPv4, DHCPv6 configuration
+  - mDNS: Service registration, discovery, and monitoring
+  - DHCPv4/v6: Lease management and pool configuration
+  - DNS: Zone and resource record management
+  - System: Logs, process map, telemetry
+
+  All browser routes use basic authentication when enabled in production.
+  """
+
   use YellowDog.Console, :router
 
   pipeline :browser do
@@ -8,6 +22,7 @@ defmodule YellowDog.Console.Router do
     plug :put_root_layout, {YellowDog.Console.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug YellowDog.Console.Plugs.BasicAuth
   end
 
   pipeline :api do

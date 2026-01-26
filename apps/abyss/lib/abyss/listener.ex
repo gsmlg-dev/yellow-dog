@@ -27,9 +27,32 @@ defmodule Abyss.Listener do
   5. Emit telemetry events for monitoring
 
   This module is primarily used internally by `Abyss.ListenerPool`.
+
+  ## Critical Implementation Note - DO NOT CHANGE
+
+  The UDP recv pattern MUST use `:infinity` timeout:
+
+      transport.recv(listener_socket, 0, :infinity)
+
+  **Why this is correct:**
+  - UDP is connectionless - there is no "connection" to maintain
+  - The recv call blocks efficiently at the OS level waiting for packets
+  - Using finite timeouts (e.g., 100ms) causes busy-polling which wastes CPU
+  - The BEAM scheduler handles this blocking call properly in a dedicated thread
+  - While blocked in recv, GenServer calls will timeout - use `listener_info_cached/1` instead
+
+  **Do NOT "optimize" by:**
+  - Adding timeout with polling loops (wastes CPU, adds latency)
+  - Using `active: true` for unicast mode (loses backpressure control)
+  - Adding {:error, :timeout} handling (unnecessary for UDP)
+
+  This pattern has been validated for high-performance UDP servers.
   """
 
   use GenServer, restart: :transient
+
+  # ETS table name for caching listener info (accessible while listener is blocked in recv)
+  @listener_info_table :abyss_listener_info
 
   @typedoc """
   Internal state of a listener process.
@@ -82,6 +105,58 @@ defmodule Abyss.Listener do
   """
   @spec listener_info(GenServer.server()) :: Abyss.Transport.socket_info()
   def listener_info(server), do: GenServer.call(server, :listener_info)
+
+  @doc """
+  Get listener info from the ETS cache without making a GenServer call.
+
+  This is useful when the listener may be blocked in recv(:infinity) and
+  unable to respond to GenServer calls. The info is cached during init.
+
+  ## Parameters
+  - `listener_pid` - The listener process PID
+
+  ## Returns
+  - `{:ok, {ip_address, port}}` if found
+  - `:error` if not found in cache
+  """
+  @spec listener_info_cached(pid()) :: {:ok, Abyss.Transport.socket_info()} | :error
+  def listener_info_cached(listener_pid) when is_pid(listener_pid) do
+    ensure_info_table_exists()
+
+    case :ets.lookup(@listener_info_table, listener_pid) do
+      [{^listener_pid, local_info}] -> {:ok, local_info}
+      [] -> :error
+    end
+  end
+
+  # Ensure the ETS table exists, creating it if necessary
+  defp ensure_info_table_exists do
+    case :ets.whereis(@listener_info_table) do
+      :undefined ->
+        try do
+          :ets.new(@listener_info_table, [:named_table, :public, :set, read_concurrency: true])
+        rescue
+          ArgumentError -> :ok
+        end
+
+      _ref ->
+        :ok
+    end
+  end
+
+  # Store listener info in ETS cache
+  defp cache_listener_info(listener_pid, local_info) do
+    ensure_info_table_exists()
+    :ets.insert(@listener_info_table, {listener_pid, local_info})
+  end
+
+  # Remove listener info from ETS cache
+  defp uncache_listener_info(listener_pid) do
+    case :ets.whereis(@listener_info_table) do
+      :undefined -> :ok
+      _ref -> :ets.delete(@listener_info_table, listener_pid)
+    end
+  end
 
   @doc """
   Get the listener's socket and telemetry span.
@@ -156,6 +231,9 @@ defmodule Abyss.Listener do
         local_info: {ip, port},
         transport: transport
       }
+
+      # Cache listener info in ETS for queries while blocked in recv
+      cache_listener_info(self(), {ip, port})
 
       # Start listening immediately for non-broadcast mode
       if not broadcast do
@@ -244,6 +322,9 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
+    # CRITICAL: Use :infinity timeout - DO NOT CHANGE to finite timeout!
+    # See moduledoc "Critical Implementation Note" for explanation.
+    # UDP recv blocks efficiently at OS level; finite timeouts cause CPU-wasting busy loops.
     case transport.recv(listener_socket, 0, :infinity) do
       {:ok, {ip, port, data}} ->
         Abyss.Telemetry.untimed_span_event(state.listener_span, :receiving, %{}, %{
@@ -375,6 +456,9 @@ defmodule Abyss.Listener do
       local_info: state.local_info
     })
 
+    # CRITICAL: Use :infinity timeout - DO NOT CHANGE to finite timeout!
+    # See moduledoc "Critical Implementation Note" for explanation.
+    # UDP recv blocks efficiently at OS level; finite timeouts cause CPU-wasting busy loops.
     case transport.recv(listener_socket, 0, :infinity) do
       {:ok, recv_data} ->
         {ip, port, anc_data} =
@@ -439,6 +523,8 @@ defmodule Abyss.Listener do
   @spec terminate(reason, state) :: :ok
         when reason: :normal | :shutdown | {:shutdown, term} | term
   def terminate(_reason, state) do
+    # Clean up cached listener info
+    uncache_listener_info(self())
     state.transport.close(state.listener_socket)
     Abyss.Telemetry.stop_span(state.listener_span)
   end

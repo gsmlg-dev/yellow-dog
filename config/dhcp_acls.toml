@@ -1,0 +1,22 @@
+# DHCP Access Control Lists
+# This file defines ACL rules for DHCP services.
+
+[[rules]]
+priority = 10
+type = "mac"
+pattern = "aa:bb:cc:*"
+action = "allow"
+target_pool = "office_network"
+
+[[rules]]
+priority = 20
+type = "vendor_class"
+pattern = "MSFT 5.0"
+action = "custom_options"
+option_set = "windows_clients"
+
+[[rules]]
+priority = 100
+type = "mac"
+pattern = "00:00:00:*"
+action = "deny"

@@ -106,7 +106,11 @@ defmodule YellowDog.Dns.Zone.Root do
       created_at: DateTime.utc_now()
     }
 
-    Telemetry.info("Root zone started", %{name: zone_name, view: view_name, servers: length(root_servers)})
+    Telemetry.info("Root zone started", %{
+      name: zone_name,
+      view: view_name,
+      servers: length(root_servers)
+    })
 
     {:ok, state}
   end

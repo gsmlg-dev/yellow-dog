@@ -5,7 +5,8 @@ import Config
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "uUZt2Ta9p5DqwqmSNhQH5/S21duMx2BXfCxxwEXhzYdLAlGA/sXXpExoD62eacr6",
-  server: false
+  server: false,
+  code_reloader: false
 
 # Print only warnings and errors during test
 config :logger, level: :warning
@@ -25,13 +26,6 @@ config :yellow_dog_console, YellowDog.Console.Repo,
   database: "yellow_dog_console_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
-
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
-config :yellow_dog_console, YellowDog.Console.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "BYWNrViPgoGfdU3ElxUAg5oZ1zzAu2RRVsZ5wjx+zMlmz4I0UioOFdKM3CsH1vtW",
-  server: false
 
 # Print only warnings and errors during test
 config :logger, level: :warning
@@ -60,3 +54,6 @@ config :yellow_dog_telemetry,
 
 # Disable Swoosh API client during tests
 config :yellow_dog_console, :swoosh_api_client, false
+
+# Disable basic authentication during tests by default
+config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth, enabled: false

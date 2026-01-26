@@ -420,12 +420,15 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
     transaction = fn ->
       # Find all active leases that have expired
-      :mnesia.match_object(@table_name, lease_record(state: :active, _: :_), :read)
-      |> Enum.filter(fn record ->
-        lease_record(expires_at: expires_at) = record
-        expires_at <= now
-      end)
-      |> Enum.each(fn record ->
+      expired_records =
+        :mnesia.match_object(@table_name, lease_record(state: :active, _: :_), :read)
+        |> Enum.filter(fn record ->
+          lease_record(expires_at: expires_at) = record
+          expires_at <= now
+        end)
+
+      # Update each expired record
+      Enum.each(expired_records, fn record ->
         updated_record =
           lease_record(record,
             state: :expired,
@@ -434,7 +437,9 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
         :mnesia.write(@table_name, updated_record, :write)
       end)
-      |> length()
+
+      # Return count of expired records
+      length(expired_records)
     end
 
     case :mnesia.transaction(transaction) do
@@ -501,13 +506,11 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
   - `:ok` - Successfully cleared
   """
-  @spec clear_all() :: :ok
+  @spec clear_all() :: :ok | {:error, term()}
   def clear_all do
-    transaction = fn ->
-      :mnesia.clear_table(@table_name)
-    end
-
-    case :mnesia.transaction(transaction) do
+    # Note: :mnesia.clear_table/1 is already atomic, don't wrap in transaction
+    # to avoid nested transaction issues
+    case :mnesia.clear_table(@table_name) do
       {:atomic, :ok} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :lease_storage, :cleared],

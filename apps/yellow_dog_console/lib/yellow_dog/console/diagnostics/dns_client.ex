@@ -76,16 +76,23 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
 
   defp parse_params(params) do
     try do
-      {:ok,
-       %{
-         query_name: get_string(params, :query_name),
-         record_type: parse_record_type(get_string(params, :record_type)),
-         server: parse_ip(get_string(params, :server)),
-         port: get_integer(params, :port, 53),
-         protocol: parse_protocol(get_string(params, :protocol)),
-         recursion_desired: get_boolean(params, :recursion_desired, true),
-         timeout: get_integer(params, :timeout, 5000)
-       }}
+      query_name = get_string(params, :query_name)
+
+      # Validate query name - empty or whitespace-only names are invalid
+      if query_name == "" or String.trim(query_name) == "" do
+        {:error, {:invalid_query_name, "Query name cannot be empty"}}
+      else
+        {:ok,
+         %{
+           query_name: query_name,
+           record_type: parse_record_type(get_string(params, :record_type)),
+           server: parse_ip(get_string(params, :server)),
+           port: get_integer(params, :port, 53),
+           protocol: parse_protocol(get_string(params, :protocol)),
+           recursion_desired: get_boolean(params, :recursion_desired, true),
+           timeout: get_integer(params, :timeout, 5000)
+         }}
+      end
     rescue
       e -> {:error, {:parse_error, Exception.message(e)}}
     end
@@ -238,6 +245,12 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
       {:ok, message}
     rescue
       e -> {:error, {:parse_error, Exception.message(e)}}
+    catch
+      :throw, {reason, _details} when is_binary(reason) ->
+        {:error, {:parse_error, reason}}
+
+      :throw, reason ->
+        {:error, {:parse_error, inspect(reason)}}
     end
   end
 

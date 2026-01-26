@@ -349,10 +349,11 @@ defmodule YellowDog.Dhcpv4.IntegrationTest do
     {a, b, c, d}
   end
 
-  defp ip_to_integer({a, b, c, d}) do
-    <<int::32>> = <<a, b, c, d>>
-    int
-  end
+  # Unused but kept for potential future use in IP range calculations
+  # defp ip_to_integer({a, b, c, d}) do
+  #   <<int::32>> = <<a, b, c, d>>
+  #   int
+  # end
 
   defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
 
