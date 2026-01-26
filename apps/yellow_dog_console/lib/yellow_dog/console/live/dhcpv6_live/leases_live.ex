@@ -137,6 +137,8 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
       true ->
         try do
           YellowDog.Dhcpv6.LeaseManager.get_pools()
+          |> Enum.map(& &1.name)
+          |> Enum.sort()
         rescue
           _ -> []
         catch
