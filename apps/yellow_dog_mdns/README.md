@@ -17,7 +17,7 @@
 
 ### Register Services via File
 
-Create `data/mdns_services.toml`:
+Create `data/mdns/services.toml`:
 
 ```toml
 [[service]]
@@ -70,7 +70,7 @@ port = 5353
 mode = "hybrid"  # listener | responder | hybrid
 
 [mdns.services]
-file = "data/mdns_services.toml"
+file = "data/mdns/services.toml"
 format = "toml"
 auto_save = true
 watch_file = true

@@ -218,7 +218,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     init_table()
 
     # Get configuration
-    storage_file = Keyword.get(opts, :storage_file, "data/mdns_services.toml")
+    storage_file = Keyword.get(opts, :storage_file, "data/mdns/services.toml")
     auto_save = Keyword.get(opts, :auto_save, true)
     load_on_start = Keyword.get(opts, :load_on_start, true)
 

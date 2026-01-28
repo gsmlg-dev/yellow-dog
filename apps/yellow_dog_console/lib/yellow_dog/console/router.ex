@@ -51,11 +51,13 @@ defmodule YellowDog.Console.Router do
     # DHCPv4 Management Routes
     live "/dhcpv4", Dhcpv4Live.Index
     live "/dhcpv4/leases", Dhcpv4Live.LeasesLive
+    live "/dhcpv4/pools", Dhcpv4Live.PoolsLive
     live "/dhcpv4/pools/:pool_name", Dhcpv4Live.PoolLive
 
     # DHCPv6 Management Routes
     live "/dhcpv6", Dhcpv6Live.Index
     live "/dhcpv6/leases", Dhcpv6Live.LeasesLive
+    live "/dhcpv6/pools", Dhcpv6Live.PoolsLive
     live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
 
     # DNS Management Routes (sidebar: Overview, Data, ACL)

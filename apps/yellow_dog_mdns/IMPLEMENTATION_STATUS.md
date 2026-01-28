@@ -80,7 +80,7 @@
 mode = "hybrid"  # listener, responder, or hybrid
 
 [mdns.services]
-file = "data/mdns_services.toml"
+file = "data/mdns/services.toml"
 format = "toml"
 auto_save = true
 watch_file = true
@@ -103,10 +103,10 @@ cleanup_interval = 300
 cache_ttl = 120
 ```
 
-#### 6. Example Configuration
-- ✅ Sample services file (`data/mdns_services.toml.example`)
-- Includes examples for DNS, HTTP, DHCP, SSH services
-- Shows TXT records and addresses configuration
+#### 6. Configuration
+- ✅ Services stored in `data/mdns/services.toml`
+- Includes examples for DNS, HTTP, DHCP services
+- Shows TXT records configuration
 
 #### 7. Dependencies
 - ✅ Added to `mix.exs`: `toml`, `jason`, `file_system`
@@ -229,10 +229,10 @@ YellowDog.Mdns.ServiceRegistry.stats()
 ### File Operations
 ```elixir
 # Load from file
-YellowDog.Mdns.ServiceStore.load_services("data/mdns_services.toml")
+YellowDog.Mdns.ServiceStore.load_services("data/mdns/services.toml")
 
 # Save to file
-YellowDog.Mdns.ServiceStore.save_services("data/mdns_services.toml", services)
+YellowDog.Mdns.ServiceStore.save_services("data/mdns/services.toml", services)
 
 # Validate service
 YellowDog.Mdns.ServiceStore.validate_service(service_def)
@@ -278,7 +278,7 @@ mix test --cover apps/yellow_dog_mdns
 4. `lib/yellow_dog/mdns/record_builder.ex` (315 lines)
 5. `test/yellow_dog/mdns/service_store_test.exs` (300 lines)
 6. `test/yellow_dog/mdns/service_registry_test.exs` (290 lines)
-7. `data/mdns_services.toml.example` (80 lines)
+7. Services file: `data/mdns/services.toml`
 8. `IMPLEMENTATION_STATUS.md` (this file)
 
 **Total: ~2,015 lines of code + documentation**

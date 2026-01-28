@@ -116,6 +116,51 @@ defmodule YellowDog.Console.Validators do
   end
 
   @doc """
+  Validates a CIDR notation network address.
+
+  ## Parameters
+    - cidr: CIDR notation string (e.g., "10.100.0.0/20" or "2001:db8::/32")
+    - protocol: `:ipv4` or `:ipv6`
+
+  ## Returns
+    - `:ok` if valid
+    - `{:error, message}` if invalid
+
+  ## Examples
+
+      iex> YellowDog.Console.Validators.validate_cidr("10.100.0.0/20", :ipv4)
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_cidr("2001:db8::/32", :ipv6)
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_cidr("10.100.0.0/33", :ipv4)
+      {:error, "Invalid CIDR prefix length"}
+  """
+  @spec validate_cidr(String.t(), :ipv4 | :ipv6) :: :ok | {:error, String.t()}
+  def validate_cidr(cidr, protocol) when is_binary(cidr) do
+    case String.split(cidr, "/") do
+      [ip, prefix_str] ->
+        with :ok <- validate_ip(ip, protocol),
+             {prefix, ""} <- Integer.parse(prefix_str),
+             :ok <- validate_prefix_length(prefix, protocol) do
+          :ok
+        else
+          :error -> {:error, "Invalid CIDR prefix"}
+          {:error, msg} -> {:error, msg}
+          {_prefix, _remainder} -> {:error, "Invalid CIDR prefix"}
+        end
+
+      _ ->
+        {:error, "Invalid CIDR format. Use: address/prefix (e.g., 10.0.0.0/24)"}
+    end
+  end
+
+  defp validate_prefix_length(prefix, :ipv4) when prefix >= 0 and prefix <= 32, do: :ok
+  defp validate_prefix_length(prefix, :ipv6) when prefix >= 0 and prefix <= 128, do: :ok
+  defp validate_prefix_length(_, _), do: {:error, "Invalid CIDR prefix length"}
+
+  @doc """
   Checks for overlapping address pools.
 
   ## Parameters

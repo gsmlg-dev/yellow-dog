@@ -1,0 +1,10 @@
+# DHCPv6 Pool Configuration
+# Pool: new_pool
+
+enabled = true
+range_start = "fd00:0:0:0:0:0:0:100"
+range_end = "fd00:0:0:0:0:0:0:1ff"
+preferred_lifetime = 3600
+valid_lifetime = 7200
+max_leases = 1000
+dns_servers = ["2001:4860:4860:0:0:0:0:8888"]

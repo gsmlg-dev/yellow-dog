@@ -35,7 +35,7 @@ defmodule YellowDog.Mdns.Supervisor do
     server_options = Map.get(opts, :server_options, [])
 
     # Extract configuration from server_options
-    storage_file = Keyword.get(server_options, :storage_file, "data/mdns_services.toml")
+    storage_file = Keyword.get(server_options, :storage_file, "data/mdns/services.toml")
     storage_format = Keyword.get(server_options, :storage_format, :toml)
     auto_save = Keyword.get(server_options, :auto_save, true)
     watch_file = Keyword.get(server_options, :watch_file, true)

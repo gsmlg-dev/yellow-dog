@@ -40,49 +40,50 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
     end
   end
 
-  describe "zones_path/1" do
-    test "returns path to zones directory" do
-      path = ConfigPersistence.zones_path("test/data")
-      assert path == "test/data/zones"
+  describe "zones_path/2" do
+    test "returns path to zones directory for a view" do
+      path = ConfigPersistence.zones_path("test/data", "default")
+      assert path == "test/data/views/default/zones"
     end
 
-    test "handles trailing slash" do
-      path = ConfigPersistence.zones_path("test/data/")
-      assert path == "test/data/zones"
+    test "handles different views" do
+      path = ConfigPersistence.zones_path("test/data", "internal")
+      assert path == "test/data/views/internal/zones"
     end
   end
 
   describe "zone_file_path/2" do
-    test "default view zones go in zones/ directly" do
+    test "default view zones go in views/default/zones/" do
       path = ConfigPersistence.zone_file_path("default", "example.com")
-      assert path == "zones/example.com.zone"
+      assert path == "views/default/zones/example.com.zone"
     end
 
     test "other views get their own subdirectory" do
       path = ConfigPersistence.zone_file_path("internal", "example.com")
-      assert path == "zones/internal/example.com.zone"
+      assert path == "views/internal/zones/example.com.zone"
     end
 
     test "handles dots in zone names" do
       path = ConfigPersistence.zone_file_path("default", "sub.example.com")
-      assert path == "zones/sub.example.com.zone"
+      assert path == "views/default/zones/sub.example.com.zone"
     end
 
     test "handles root zone" do
       path = ConfigPersistence.zone_file_path("default", ".")
-      assert path == "zones/..zone"
+      assert path == "views/default/zones/..zone"
     end
 
     test "single-arg version uses default view" do
       path = ConfigPersistence.zone_file_path("example.com")
-      assert path == "zones/example.com.zone"
+      assert path == "views/default/zones/example.com.zone"
     end
   end
 
   describe "load_all/1" do
-    test "loads views and zones from valid files", %{tmp_dir: tmp_dir} do
+    test "loads views, zones, and acls from valid files", %{tmp_dir: tmp_dir} do
       views_file = Path.join(tmp_dir, "views.toml")
       zones_file = Path.join(tmp_dir, "zones.toml")
+      acls_file = Path.join(tmp_dir, "acls.toml")
 
       # Create valid views file
       File.write!(views_file, """
@@ -102,11 +103,21 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
       File.write!(zones_file, """
       [zones."default:example.com"]
       type = "auth"
-      file = "zones/example.com.zone"
+      file = "views/default/zones/example.com.zone"
 
       [zones."internal:internal.example.com"]
       type = "forward"
       upstreams = ["10.0.0.1", "10.0.0.2"]
+      """)
+
+      # Create valid acls file
+      File.write!(acls_file, """
+      [[acl]]
+      name = "internal"
+
+      [[acl.rules]]
+      action = "allow"
+      network = "10.0.0.0/8"
       """)
 
       assert {:ok, config} = ConfigPersistence.load_all(tmp_dir)
@@ -116,6 +127,9 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
 
       assert is_list(config.zones)
       assert length(config.zones) == 2
+
+      assert is_list(config.acls)
+      assert length(config.acls) == 1
     end
 
     test "returns error when views file is invalid", %{tmp_dir: tmp_dir} do
@@ -141,67 +155,91 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
     test "returns empty lists when files are empty", %{tmp_dir: tmp_dir} do
       views_file = Path.join(tmp_dir, "views.toml")
       zones_file = Path.join(tmp_dir, "zones.toml")
+      acls_file = Path.join(tmp_dir, "acls.toml")
 
       File.write!(views_file, "# Empty views\n")
       File.write!(zones_file, "# Empty zones\n")
+      File.write!(acls_file, "# Empty acls\n")
 
       assert {:ok, config} = ConfigPersistence.load_all(tmp_dir)
       assert config.views == []
       assert config.zones == []
+      assert config.acls == []
     end
 
     test "returns empty lists when files don't exist", %{tmp_dir: tmp_dir} do
       assert {:ok, config} = ConfigPersistence.load_all(tmp_dir)
       assert config.views == []
       assert config.zones == []
+      assert config.acls == []
     end
   end
 
-  describe "save_all/4" do
-    test "saves views and zones to files", %{tmp_dir: tmp_dir} do
+  describe "save_all/5" do
+    test "saves views, zones, and acls to files", %{tmp_dir: tmp_dir} do
       views = [
         %{name: "default", priority: 100, recursion: true, match_clients: "any"},
         %{name: "test", priority: 50, recursion: false, match_clients: "10.0.0.0/8"}
       ]
 
       zones = [
-        %{name: "example.com", type: :auth, view_name: "default", file: "zones/example.com.zone"},
+        %{
+          name: "example.com",
+          type: :auth,
+          view_name: "default",
+          file: "views/default/zones/example.com.zone"
+        },
         %{name: "test.local", type: :forward, view_name: "test", upstreams: ["8.8.8.8"]}
       ]
 
-      assert :ok = ConfigPersistence.save_all(tmp_dir, views, zones)
+      acls = [
+        %{
+          name: "internal",
+          description: "Internal networks",
+          rules: [%{action: "allow", network: "10.0.0.0/8"}]
+        }
+      ]
+
+      assert :ok = ConfigPersistence.save_all(tmp_dir, views, zones, acls)
 
       # Verify files were created
       assert File.exists?(Path.join(tmp_dir, "views.toml"))
       assert File.exists?(Path.join(tmp_dir, "zones.toml"))
-      assert File.dir?(Path.join(tmp_dir, "zones"))
+      assert File.exists?(Path.join(tmp_dir, "acls.toml"))
+      assert File.dir?(Path.join(tmp_dir, "views"))
+      assert File.dir?(Path.join(tmp_dir, "acls"))
+      # View-specific zone directories should be created
+      assert File.dir?(Path.join([tmp_dir, "views", "default", "zones"]))
+      assert File.dir?(Path.join([tmp_dir, "views", "test", "zones"]))
     end
 
     test "creates data directory if it doesn't exist", %{tmp_dir: tmp_dir} do
       new_dir = Path.join(tmp_dir, "nested/data/path")
 
-      assert :ok = ConfigPersistence.save_all(new_dir, [], [])
+      assert :ok = ConfigPersistence.save_all(new_dir, [], [], [])
 
       assert File.dir?(new_dir)
-      assert File.dir?(Path.join(new_dir, "zones"))
+      assert File.dir?(Path.join(new_dir, "views"))
+      assert File.dir?(Path.join(new_dir, "acls"))
     end
 
     test "saves empty configuration", %{tmp_dir: tmp_dir} do
-      assert :ok = ConfigPersistence.save_all(tmp_dir, [], [])
+      assert :ok = ConfigPersistence.save_all(tmp_dir, [], [], [])
 
       # Verify files were created (even if empty)
       assert File.exists?(Path.join(tmp_dir, "views.toml"))
       assert File.exists?(Path.join(tmp_dir, "zones.toml"))
+      assert File.exists?(Path.join(tmp_dir, "acls.toml"))
     end
 
     test "overwrites existing files", %{tmp_dir: tmp_dir} do
       # First save
       views1 = [%{name: "original", priority: 100}]
-      :ok = ConfigPersistence.save_all(tmp_dir, views1, [])
+      :ok = ConfigPersistence.save_all(tmp_dir, views1, [], [])
 
       # Second save with different data
       views2 = [%{name: "updated", priority: 200}]
-      :ok = ConfigPersistence.save_all(tmp_dir, views2, [])
+      :ok = ConfigPersistence.save_all(tmp_dir, views2, [], [])
 
       # Verify file contains updated data
       {:ok, loaded} = ConfigPersistence.load_all(tmp_dir)

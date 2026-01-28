@@ -102,7 +102,7 @@ YellowDog.Mdns.register_service(%{
 
 ### 2. Service Registration via File
 
-Create `data/mdns_services.toml`:
+Create `data/mdns/services.toml`:
 ```toml
 [[service]]
 name = "My Web Server"
@@ -251,8 +251,7 @@ apps/yellow_dog_mdns/
 ├── test/
 │   ├── service_store_test.exs     ✅ (300 lines)
 │   └── service_registry_test.exs  ✅ (290 lines)
-├── data/
-│   └── mdns_services.toml.example ✅ (80 lines)
+├── data/                          # Data files stored in data/mdns/
 ├── README.md                       ✅ UPDATED
 ├── IMPLEMENTATION_STATUS.md        ✅ CREATED
 └── FINAL_SUMMARY.md               ✅ THIS FILE
@@ -296,7 +295,7 @@ port = 5353
 mode = "hybrid"  # listener | responder | hybrid
 
 [mdns.services]
-file = "data/mdns_services.toml"
+file = "data/mdns/services.toml"
 format = "toml"
 auto_save = true
 watch_file = true
@@ -365,7 +364,7 @@ The mDNS responder is **production-ready** for:
 ### Quick Start
 
 ```elixir
-# 1. Service auto-loads from data/mdns_services.toml on startup
+# 1. Service auto-loads from data/mdns/services.toml on startup
 
 # 2. Register additional service via API
 YellowDog.Mdns.register_service(%{

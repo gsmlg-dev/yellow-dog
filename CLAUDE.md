@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Sub-App Context
+
+When working on files within a specific sub-app (`apps/<app_name>/`), read that sub-app's `CLAUDE.md` if it exists:
+```
+apps/<app_name>/CLAUDE.md
+```
+
+Always check for and read the relevant sub-app CLAUDE.md before making changes to files in that sub-app directory.
+
 ## Project Overview
 
 Yellow Dog DNS is a distributed DNS and DHCP server written in Erlang/Elixir using an umbrella project structure. The project has been completely refactored to use dot-notation module naming across all applications and now includes 10 applications total - 7 core YellowDog applications and 3 infrastructure libraries.

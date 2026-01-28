@@ -559,8 +559,8 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       query = build_query("www.#{zone_name}", :a)
       {:ok, response} = Auth.resolve(pid, query)
 
-      assert response.header.qr == true
-      assert response.header.aa == true
+      assert response.header.qr == 1
+      assert response.header.aa == 1
       assert length(response.anlist) == 1
 
       [answer] = response.anlist
@@ -949,7 +949,7 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       query = build_query(zone_name, :a)
       {:ok, response} = Auth.resolve(pid, query)
 
-      assert response.header.aa == true
+      assert response.header.aa == 1
     end
 
     test "accepts queries for subdomains", %{zone: pid, zone_name: zone_name} do
@@ -964,7 +964,7 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       query = build_query("sub.sub.#{zone_name}", :a)
       {:ok, response} = Auth.resolve(pid, query)
 
-      assert response.header.aa == true
+      assert response.header.aa == 1
     end
 
     test "refuses queries for unrelated domains", %{zone: pid} do

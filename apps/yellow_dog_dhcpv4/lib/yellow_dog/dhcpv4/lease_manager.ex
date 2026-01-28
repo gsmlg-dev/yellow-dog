@@ -6,18 +6,34 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   and provides persistence across server restarts. Supports multiple lease
   states (offered, active, released, expired, declined) for full DHCP
   protocol compliance.
+
+  ## Persistence Strategy
+
+  Uses dual storage:
+  - **Mnesia**: Primary runtime storage with transactional support
+  - **TOML files**: Human-readable backup, loaded on startup, flushed periodically
+
+  Leases are flushed to TOML files:
+  - Every 30 seconds (configurable via :lease_flush_interval_ms)
+  - On graceful shutdown via terminate/2
   """
 
   use GenServer
+
+  require Logger
 
   # Capture Mix.env() at compile time (Mix is not available in releases)
   @compile_env Mix.env()
 
   alias YellowDog.Dhcpv4.AddressPool
   alias YellowDog.Dhcpv4.LeaseStorage
+  alias YellowDog.Dhcpv4.PoolStore
 
   # Run cleanup every minute
   @cleanup_interval 60_000
+
+  # Default lease flush interval (30 seconds)
+  @default_flush_interval 30_000
 
   @type ip_address :: AddressPool.ip_address()
   @type mac_address :: binary()
@@ -231,6 +247,88 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     GenServer.call(__MODULE__, {:get_static_reservations, pool_name})
   end
 
+  @doc """
+  Adds a new address pool to the LeaseManager.
+
+  ## Parameters
+  - `pool_config` - Pool configuration map with keys like :name, :range_start, :range_end, etc.
+
+  ## Returns
+  - `{:ok, pool}` - Successfully added pool
+  - `{:error, :pool_already_exists}` - Pool with same name already exists
+  - `{:error, :range_overlap}` - Range overlaps with existing pool
+  - `{:error, reason}` - Invalid pool configuration
+  """
+  @spec add_pool(map()) :: {:ok, map()} | {:error, term()}
+  def add_pool(pool_config) do
+    GenServer.call(__MODULE__, {:add_pool, pool_config})
+  end
+
+  @doc """
+  Updates an existing address pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool to update
+  - `pool_config` - New pool configuration (name cannot be changed)
+
+  ## Returns
+  - `{:ok, pool}` - Successfully updated pool
+  - `{:error, :pool_not_found}` - Pool does not exist
+  - `{:error, :range_overlap}` - New range overlaps with other pools
+  - `{:error, reason}` - Invalid pool configuration
+  """
+  @spec update_pool(String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def update_pool(pool_name, pool_config) do
+    GenServer.call(__MODULE__, {:update_pool, pool_name, pool_config})
+  end
+
+  @doc """
+  Removes an address pool.
+
+  ## Parameters
+  - `pool_name` - Name of the pool to remove
+  - `opts` - Options
+    - `:force` - If true, removes pool even if it has active leases (default: false)
+
+  ## Returns
+  - `:ok` - Successfully removed pool
+  - `{:error, :pool_not_found}` - Pool does not exist
+  - `{:error, :has_active_leases}` - Pool has active leases (use force: true to override)
+  """
+  @spec remove_pool(String.t(), keyword()) :: :ok | {:error, term()}
+  def remove_pool(pool_name, opts \\ []) do
+    GenServer.call(__MODULE__, {:remove_pool, pool_name, opts})
+  end
+
+  @doc """
+  Persists current pools to the pools.toml file.
+
+  ## Parameters
+  - `file_path` - Optional file path (defaults to data/dhcpv4/pools.toml)
+
+  ## Returns
+  - `:ok` - Successfully saved
+  - `{:error, reason}` - Failed to save
+  """
+  @spec persist_pools(String.t() | nil) :: :ok | {:error, term()}
+  def persist_pools(file_path \\ nil) do
+    GenServer.call(__MODULE__, {:persist_pools, file_path})
+  end
+
+  @doc """
+  Manually triggers a flush of all leases to TOML files.
+
+  This is useful for ensuring lease data is persisted before a planned
+  maintenance window or when you want to guarantee durability.
+
+  ## Returns
+  - `:ok` - Successfully flushed
+  """
+  @spec flush_leases() :: :ok
+  def flush_leases do
+    GenServer.call(__MODULE__, :flush_leases)
+  end
+
   # Server Callbacks
 
   @impl true
@@ -254,8 +352,34 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         )
     end
 
-    # Extract pools from options
-    pools = Keyword.get(opts, :pools, [])
+    # Extract pools from options or load from storage
+    pools_from_opts = Keyword.get(opts, :pools, [])
+
+    pools =
+      if pools_from_opts == [] do
+        # No pools in options - try loading from storage
+        case PoolStore.load_pools() do
+          {:ok, loaded_pools} ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :pool_store, :pools_loaded_on_init],
+              %{count: length(loaded_pools)},
+              %{}
+            )
+
+            loaded_pools
+
+          {:error, reason} ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :pool_store, :load_failed_on_init],
+              %{count: 1},
+              %{reason: inspect(reason)}
+            )
+
+            []
+        end
+      else
+        pools_from_opts
+      end
 
     # Parse pools into AddressPool configs
     parsed_pools =
@@ -276,17 +400,26 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
       end)
       |> Enum.reject(&is_nil/1)
 
+    # Load leases from TOML files for each pool
+    load_leases_from_toml(parsed_pools)
+
     # Schedule periodic cleanup
     schedule_cleanup()
 
+    # Schedule periodic lease flush to TOML
+    flush_interval = Keyword.get(opts, :lease_flush_interval_ms, @default_flush_interval)
+    schedule_lease_flush(flush_interval)
+
     state = %{
-      pools: parsed_pools
+      pools: parsed_pools,
+      flush_interval: flush_interval,
+      last_flush_at: System.system_time(:second)
     }
 
     :telemetry.execute(
       [:yellow_dog, :dhcpv4, :lease_manager, :started],
       %{count: 1, pool_count: length(parsed_pools)},
-      %{}
+      %{flush_interval_ms: flush_interval}
     )
 
     {:ok, state}
@@ -434,6 +567,174 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   @impl true
+  def handle_call({:add_pool, pool_config}, _from, state) do
+    # Check if pool with same name already exists
+    pool_name = Map.get(pool_config, :name) || Map.get(pool_config, "name") || "default"
+
+    if Enum.any?(state.pools, fn p -> p.name == pool_name end) do
+      {:reply, {:error, :pool_already_exists}, state}
+    else
+      # Validate and create the pool
+      case AddressPool.new(pool_config) do
+        {:ok, new_pool} ->
+          # Check for range overlap with existing pools
+          case check_range_overlap(new_pool, state.pools) do
+            :ok ->
+              updated_pools = state.pools ++ [new_pool]
+
+              # Persist to storage
+              pool_to_save = pool_struct_to_config(new_pool)
+              PoolStore.save_pool(pool_to_save)
+
+              :telemetry.execute(
+                [:yellow_dog, :dhcpv4, :pool, :added],
+                %{count: 1},
+                %{pool_name: pool_name}
+              )
+
+              {:reply, {:ok, new_pool}, %{state | pools: updated_pools}}
+
+            {:error, :range_overlap} = error ->
+              {:reply, error, state}
+          end
+
+        {:error, reason} ->
+          {:reply, {:error, reason}, state}
+      end
+    end
+  end
+
+  @impl true
+  def handle_call({:update_pool, pool_name, pool_config}, _from, state) do
+    case Enum.find_index(state.pools, fn p -> p.name == pool_name end) do
+      nil ->
+        {:reply, {:error, :pool_not_found}, state}
+
+      index ->
+        existing_pool = Enum.at(state.pools, index)
+
+        # Merge updates with existing pool config, preserving the name
+        updated_config = Map.merge(existing_pool, pool_config) |> Map.put(:name, pool_name)
+
+        case AddressPool.new(updated_config) do
+          {:ok, updated_pool} ->
+            # Check for range overlap (excluding the pool being updated)
+            other_pools = List.delete_at(state.pools, index)
+
+            case check_range_overlap(updated_pool, other_pools) do
+              :ok ->
+                updated_pools = List.replace_at(state.pools, index, updated_pool)
+
+                # Persist to storage
+                pool_to_save = pool_struct_to_config(updated_pool)
+                PoolStore.save_pool(pool_to_save)
+
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv4, :pool, :updated],
+                  %{count: 1},
+                  %{pool_name: pool_name}
+                )
+
+                {:reply, {:ok, updated_pool}, %{state | pools: updated_pools}}
+
+              {:error, :range_overlap} = error ->
+                {:reply, error, state}
+            end
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_call({:remove_pool, pool_name, opts}, _from, state) do
+    force = Keyword.get(opts, :force, false)
+
+    case Enum.find_index(state.pools, fn p -> p.name == pool_name end) do
+      nil ->
+        {:reply, {:error, :pool_not_found}, state}
+
+      index ->
+        # Check for active leases unless force is true
+        if force do
+          updated_pools = List.delete_at(state.pools, index)
+
+          # Remove from storage
+          PoolStore.remove_pool(pool_name)
+
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :pool, :removed],
+            %{count: 1},
+            %{pool_name: pool_name, forced: true}
+          )
+
+          {:reply, :ok, %{state | pools: updated_pools}}
+        else
+          active_lease_count = count_pool_leases(pool_name)
+
+          if active_lease_count > 0 do
+            {:reply, {:error, :has_active_leases}, state}
+          else
+            updated_pools = List.delete_at(state.pools, index)
+
+            # Remove from storage
+            PoolStore.remove_pool(pool_name)
+
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :pool, :removed],
+              %{count: 1},
+              %{pool_name: pool_name, forced: false}
+            )
+
+            {:reply, :ok, %{state | pools: updated_pools}}
+          end
+        end
+    end
+  end
+
+  @impl true
+  def handle_call({:persist_pools, _file_path}, _from, state) do
+    # Convert pool structs to serializable format
+    pool_configs =
+      Enum.map(state.pools, fn pool ->
+        %{
+          name: pool.name,
+          range_start: format_ip(pool.range_start),
+          range_end: format_ip(pool.range_end),
+          subnet_mask: format_ip(pool.subnet_mask),
+          gateway: format_ip(pool.gateway),
+          dns_servers: Enum.map(pool.dns_servers, &format_ip/1),
+          domain_name: pool.domain_name,
+          lease_time: pool.lease_time,
+          max_leases: Map.get(pool, :max_leases, 1000),
+          enabled: true
+        }
+      end)
+
+    case PoolStore.save_all_pools(pool_configs) do
+      :ok ->
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:flush_leases, _from, state) do
+    flush_all_leases_to_toml(state.pools)
+
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :lease_manager, :manual_flush],
+      %{count: 1, pool_count: length(state.pools)},
+      %{}
+    )
+
+    {:reply, :ok, %{state | last_flush_at: System.system_time(:second)}}
+  end
+
+  @impl true
   def handle_info(:cleanup_expired_leases, state) do
     case LeaseStorage.cleanup_expired() do
       {:ok, _count} ->
@@ -449,6 +750,38 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
     schedule_cleanup()
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:flush_leases, state) do
+    flush_all_leases_to_toml(state.pools)
+
+    :telemetry.execute(
+      [:yellow_dog, :dhcpv4, :lease_manager, :periodic_flush],
+      %{count: 1, pool_count: length(state.pools)},
+      %{}
+    )
+
+    # Schedule next flush
+    schedule_lease_flush(state.flush_interval)
+
+    {:noreply, %{state | last_flush_at: System.system_time(:second)}}
+  end
+
+  @impl true
+  def terminate(reason, state) do
+    # Flush leases to TOML on graceful shutdown
+    if reason in [:normal, :shutdown] or match?({:shutdown, _}, reason) do
+      flush_all_leases_to_toml(state.pools)
+
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :lease_manager, :shutdown_flush],
+        %{count: 1, pool_count: length(state.pools)},
+        %{reason: inspect(reason)}
+      )
+    end
+
+    :ok
   end
 
   # Private helper functions
@@ -586,6 +919,134 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     Process.send_after(self(), :cleanup_expired_leases, @cleanup_interval)
   end
 
+  # Schedule periodic lease flush to TOML files
+  defp schedule_lease_flush(interval) do
+    Process.send_after(self(), :flush_leases, interval)
+  end
+
+  # Load leases from TOML files into Mnesia storage
+  defp load_leases_from_toml(pools) do
+    Enum.each(pools, fn pool ->
+      case PoolStore.load_leases(pool.name) do
+        {:ok, leases} when leases != [] ->
+          loaded =
+            Enum.reduce(leases, 0, fn lease_data, count ->
+              # Convert TOML lease to Mnesia format
+              lease = convert_toml_lease_to_storage(lease_data, pool.name)
+
+              case LeaseStorage.put(lease) do
+                {:ok, _} -> count + 1
+                {:error, _} -> count
+              end
+            end)
+
+          if loaded > 0 do
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :lease_manager, :leases_loaded_from_toml],
+              %{count: loaded},
+              %{pool_name: pool.name}
+            )
+          end
+
+        {:ok, []} ->
+          :ok
+
+        {:error, reason} ->
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_manager, :toml_load_failed],
+            %{count: 1},
+            %{pool_name: pool.name, reason: inspect(reason)}
+          )
+      end
+    end)
+  end
+
+  # Convert a lease from TOML format to LeaseStorage format
+  defp convert_toml_lease_to_storage(lease_data, pool_name) do
+    now = System.system_time(:second)
+
+    # Parse IP address if it's a string
+    ip =
+      case lease_data.ip do
+        ip when is_tuple(ip) -> ip
+        ip when is_binary(ip) -> parse_ip(ip)
+      end
+
+    # Parse MAC address
+    mac =
+      case lease_data.mac do
+        mac when is_binary(mac) and byte_size(mac) == 6 -> mac
+        mac when is_binary(mac) -> parse_mac(mac)
+      end
+
+    %{
+      mac_address: mac,
+      ip_address: ip,
+      pool_name: pool_name,
+      state: lease_data.state || :active,
+      lease_time: lease_data.lease_time || 3600,
+      expires_at: lease_data.expires_at || now + 3600,
+      hostname: lease_data.hostname,
+      client_id: lease_data.client_id,
+      created_at: lease_data.starts_at || now,
+      updated_at: now
+    }
+  end
+
+  # Parse IP address string to tuple
+  defp parse_ip(ip_string) when is_binary(ip_string) do
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, ip_tuple} -> ip_tuple
+      {:error, _} -> nil
+    end
+  end
+
+  # Parse MAC address from various formats
+  defp parse_mac(mac_string) when is_binary(mac_string) do
+    # Handle formats like "00:11:22:33:44:55" or "00-11-22-33-44-55"
+    mac_string
+    |> String.replace(~r/[:-]/, "")
+    |> String.downcase()
+    |> Base.decode16!(case: :lower)
+  rescue
+    _ -> mac_string
+  end
+
+  # Flush all leases to TOML files
+  defp flush_all_leases_to_toml(pools) do
+    Enum.each(pools, fn pool ->
+      # Get active leases for this pool from Mnesia
+      leases = LeaseStorage.list(pool_name: pool.name, active_only: true)
+
+      # Convert to TOML format
+      toml_leases =
+        Enum.map(leases, fn lease ->
+          %YellowDog.Dhcpv4.Lease{
+            ip: lease.ip_address,
+            mac: lease.mac_address,
+            pool_name: pool.name,
+            hostname: lease.hostname,
+            client_id: lease.client_id,
+            starts_at: lease.created_at,
+            expires_at: lease.expires_at,
+            state: lease.state
+          }
+        end)
+
+      case PoolStore.save_leases(pool.name, toml_leases) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          :telemetry.execute(
+            [:yellow_dog, :dhcpv4, :lease_manager, :flush_failed],
+            %{count: 1},
+            %{pool_name: pool.name, reason: inspect(reason)}
+          )
+      end
+    end)
+  end
+
   # Count active leases for a pool (PRD FR1.6)
   defp count_pool_leases(pool_name) do
     LeaseStorage.list(pool_name: pool_name, active_only: true)
@@ -602,4 +1063,65 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   defp normalize_mac(mac) when is_binary(mac), do: mac
+
+  # Check if a new pool's range overlaps with any existing pools
+  defp check_range_overlap(new_pool, existing_pools) do
+    overlaps =
+      Enum.any?(existing_pools, fn existing ->
+        ranges_overlap?(new_pool.ranges, existing.ranges)
+      end)
+
+    if overlaps do
+      {:error, :range_overlap}
+    else
+      :ok
+    end
+  end
+
+  defp ranges_overlap?(ranges1, ranges2) do
+    Enum.any?(ranges1, fn {start1, end1} ->
+      Enum.any?(ranges2, fn {start2, end2} ->
+        range_intersects?(start1, end1, start2, end2)
+      end)
+    end)
+  end
+
+  defp range_intersects?(start1, end1, start2, end2) do
+    start1_int = ip_to_integer(start1)
+    end1_int = ip_to_integer(end1)
+    start2_int = ip_to_integer(start2)
+    end2_int = ip_to_integer(end2)
+
+    # Ranges overlap if one starts before the other ends and vice versa
+    start1_int <= end2_int and start2_int <= end1_int
+  end
+
+  defp ip_to_integer({a, b, c, d}) do
+    a * 256 * 256 * 256 + b * 256 * 256 + c * 256 + d
+  end
+
+  defp format_ip(nil), do: nil
+
+  defp format_ip({a, b, c, d}) do
+    "#{a}.#{b}.#{c}.#{d}"
+  end
+
+  defp format_ip(ip) when is_binary(ip), do: ip
+
+  # Convert a pool struct to a config map suitable for PoolStore
+  defp pool_struct_to_config(pool) do
+    %{
+      name: pool.name,
+      network: Map.get(pool, :network),
+      range_start: format_ip(pool.range_start),
+      range_end: format_ip(pool.range_end),
+      subnet_mask: format_ip(pool.subnet_mask),
+      gateway: format_ip(pool.gateway),
+      dns_servers: Enum.map(pool.dns_servers || [], &format_ip/1),
+      domain_name: pool.domain_name,
+      lease_time: pool.lease_time,
+      max_leases: Map.get(pool, :max_leases, 1000),
+      enabled: Map.get(pool, :enabled, true)
+    }
+  end
 end

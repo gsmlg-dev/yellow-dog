@@ -1,9 +1,10 @@
-defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
+defmodule YellowDog.Console.Components.PoolFormComponent do
   @moduledoc """
   LiveComponent for address pool form (create/edit).
 
   Provides a modal form for managing DHCP address pools supporting both
-  DHCPv4 (IPv4) and DHCPv6 (IPv6) protocols.
+  DHCPv4 (IPv4) and DHCPv6 (IPv6) protocols. Used by both pool management
+  pages and settings pages.
   """
 
   use YellowDog.Console, :live_component
@@ -95,12 +96,40 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
               name="address_pool[name]"
               value={Ecto.Changeset.get_field(@changeset, :name)}
               placeholder="e.g., office-network"
+              disabled={@mode == :edit}
               class={[
                 "input input-bordered w-full",
+                @mode == :edit && "input-disabled",
                 !Enum.empty?(Keyword.get_values(@changeset.errors, :name)) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:name} />
+            <%= if @mode == :edit do %>
+              <label class="label">
+                <span class="label-text-alt text-base-content/50">Pool name cannot be changed</span>
+              </label>
+            <% end %>
+          </div>
+          
+    <!-- Network (CIDR) -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Network (CIDR notation)</span>
+            </label>
+            <input
+              type="text"
+              name="address_pool[network]"
+              value={Ecto.Changeset.get_field(@changeset, :network)}
+              placeholder={network_placeholder(@protocol)}
+              class={[
+                "input input-bordered w-full",
+                !Enum.empty?(Keyword.get_values(@changeset.errors, :network)) && "input-error"
+              ]}
+            />
+            <.input_error changeset={@changeset} field={:network} />
+            <label class="label">
+              <span class="label-text-alt">The subnet this pool belongs to (optional)</span>
+            </label>
           </div>
           
     <!-- IP Range -->
@@ -262,6 +291,9 @@ defmodule YellowDog.Console.SettingsLive.PoolFormComponent do
 
   defp protocol_name(:ipv4), do: "DHCPv4"
   defp protocol_name(:ipv6), do: "DHCPv6"
+
+  defp network_placeholder(:ipv4), do: "10.100.0.0/20"
+  defp network_placeholder(:ipv6), do: "2001:db8::/48"
 
   defp range_placeholder(:ipv4, :start), do: "192.168.1.100"
   defp range_placeholder(:ipv4, :end), do: "192.168.1.200"

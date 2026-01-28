@@ -2,17 +2,23 @@ defmodule YellowDog.Dns.ConfigPersistence do
   @moduledoc """
   Orchestration layer for DNS configuration persistence.
 
-  Coordinates ViewStore and ZoneStore to provide a unified interface
+  Coordinates ViewStore, ZoneStore, and AclStore to provide a unified interface
   for loading and saving DNS configurations.
 
   ## File Structure
 
       data/dns/
       ├── views.toml              # View configurations
-      ├── zones.toml              # Zone metadata
-      └── zones/
-          ├── example.com.zone    # BIND zone files
-          └── internal.example.com.zone
+      ├── zones.toml              # Zone metadata index
+      ├── views/                  # View-specific data
+      │   ├── default/
+      │   │   └── zones/
+      │   │       └── example.com.zone
+      │   └── internal/
+      │       └── zones/
+      │           └── internal.example.com.zone
+      ├── acls.toml               # Named ACL configurations
+      └── acls/                   # ACL-related data (reserved)
 
   ## Usage
 
@@ -20,23 +26,28 @@ defmodule YellowDog.Dns.ConfigPersistence do
       {:ok, config} = ConfigPersistence.load_all("data/dns")
 
       # Save all configuration
-      :ok = ConfigPersistence.save_all("data/dns", views, zones)
+      :ok = ConfigPersistence.save_all("data/dns", views, zones, acls)
 
       # Save individual components
       :ok = ConfigPersistence.save_views("data/dns", views)
       :ok = ConfigPersistence.save_zones("data/dns", zones)
+      :ok = ConfigPersistence.save_acls("data/dns", acls)
   """
 
   alias YellowDog.Dns.ViewStore
   alias YellowDog.Dns.ZoneStore
+  alias YellowDog.Dns.AclStore
 
   @views_file "views.toml"
   @zones_file "zones.toml"
-  @zones_dir "zones"
+  @views_dir "views"
+  @acls_file "acls.toml"
+  @acls_dir "acls"
 
   @type config :: %{
           views: [ViewStore.view_config()],
-          zones: [ZoneStore.zone_config()]
+          zones: [ZoneStore.zone_config()],
+          acls: [AclStore.acl_config()]
         }
 
   @doc """
@@ -53,11 +64,27 @@ defmodule YellowDog.Dns.ConfigPersistence do
   end
 
   @doc """
-  Returns the path to the zones directory.
+  Returns the path to the views directory.
   """
-  @spec zones_path(String.t()) :: String.t()
-  def zones_path(data_path \\ default_data_path()) do
-    Path.join(data_path, @zones_dir)
+  @spec views_path(String.t()) :: String.t()
+  def views_path(data_path \\ default_data_path()) do
+    Path.join(data_path, @views_dir)
+  end
+
+  @doc """
+  Returns the path to the zones directory for a specific view.
+  """
+  @spec zones_path(String.t(), String.t()) :: String.t()
+  def zones_path(data_path \\ default_data_path(), view_name) do
+    Path.join([data_path, @views_dir, view_name, "zones"])
+  end
+
+  @doc """
+  Returns the path to the acls directory.
+  """
+  @spec acls_path(String.t()) :: String.t()
+  def acls_path(data_path \\ default_data_path()) do
+    Path.join(data_path, @acls_dir)
   end
 
   @doc """
@@ -72,18 +99,20 @@ defmodule YellowDog.Dns.ConfigPersistence do
   """
   @spec load_all(String.t()) :: {:ok, config()} | {:error, term()}
   def load_all(data_path \\ default_data_path()) do
-    views_path = Path.join(data_path, @views_file)
-    zones_path = Path.join(data_path, @zones_file)
+    views_file_path = Path.join(data_path, @views_file)
+    zones_file_path = Path.join(data_path, @zones_file)
+    acls_file_path = Path.join(data_path, @acls_file)
 
-    with {:ok, views} <- ViewStore.load_views(views_path),
-         {:ok, zones} <- ZoneStore.load_zones(zones_path) do
+    with {:ok, views} <- ViewStore.load_views(views_file_path),
+         {:ok, zones} <- ZoneStore.load_zones(zones_file_path),
+         {:ok, acls} <- AclStore.load_acls(acls_file_path) do
       :telemetry.execute(
         [:yellow_dog, :dns, :config_persistence, :loaded],
-        %{view_count: length(views), zone_count: length(zones)},
+        %{view_count: length(views), zone_count: length(zones), acl_count: length(acls)},
         %{data_path: data_path}
       )
 
-      {:ok, %{views: views, zones: zones}}
+      {:ok, %{views: views, zones: zones, acls: acls}}
     else
       {:error, reason} = error ->
         :telemetry.execute(
@@ -103,21 +132,28 @@ defmodule YellowDog.Dns.ConfigPersistence do
   - `data_path` - Path to the DNS data directory
   - `views` - List of view configurations
   - `zones` - List of zone configurations
+  - `acls` - List of ACL configurations (optional, defaults to [])
   - `opts` - Options passed to underlying stores
 
   ## Returns
   - `:ok` on success
   - `{:error, reason}` on failure
   """
-  @spec save_all(String.t(), [ViewStore.view_config()], [ZoneStore.zone_config()], keyword()) ::
-          :ok | {:error, term()}
-  def save_all(data_path \\ default_data_path(), views, zones, opts \\ []) do
-    with :ok <- ensure_data_directory(data_path),
+  @spec save_all(
+          String.t(),
+          [ViewStore.view_config()],
+          [ZoneStore.zone_config()],
+          [AclStore.acl_config()],
+          keyword()
+        ) :: :ok | {:error, term()}
+  def save_all(data_path \\ default_data_path(), views, zones, acls \\ [], opts \\ []) do
+    with :ok <- ensure_data_directory(data_path, views),
          :ok <- save_views(data_path, views, opts),
-         :ok <- save_zones(data_path, zones, opts) do
+         :ok <- save_zones(data_path, zones, opts),
+         :ok <- save_acls(data_path, acls, opts) do
       :telemetry.execute(
         [:yellow_dog, :dns, :config_persistence, :saved],
-        %{view_count: length(views), zone_count: length(zones)},
+        %{view_count: length(views), zone_count: length(zones), acl_count: length(acls)},
         %{data_path: data_path}
       )
 
@@ -152,11 +188,22 @@ defmodule YellowDog.Dns.ConfigPersistence do
   """
   @spec save_zones(String.t(), [ZoneStore.zone_config()], keyword()) :: :ok | {:error, term()}
   def save_zones(data_path \\ default_data_path(), zones, opts \\ []) do
-    zones_path = Path.join(data_path, @zones_file)
+    zones_file_path = Path.join(data_path, @zones_file)
+    ZoneStore.save_zones(zones_file_path, zones, opts)
+  end
 
-    with :ok <- ensure_data_directory(data_path) do
-      ZoneStore.save_zones(zones_path, zones, opts)
-    end
+  @doc """
+  Saves ACL configurations to the data directory.
+
+  ## Parameters
+  - `data_path` - Path to the DNS data directory
+  - `acls` - List of ACL configurations
+  - `opts` - Options (reserved for future use)
+  """
+  @spec save_acls(String.t(), [AclStore.acl_config()], keyword()) :: :ok | {:error, term()}
+  def save_acls(data_path \\ default_data_path(), acls, _opts \\ []) do
+    acls_file_path = Path.join(data_path, @acls_file)
+    AclStore.save_acls(acls_file_path, acls)
   end
 
   @doc """
@@ -228,20 +275,17 @@ defmodule YellowDog.Dns.ConfigPersistence do
   @doc """
   Generates the zone file path for a zone name.
 
-  Zone files are scoped by view to allow same zone names in different views.
-  The default view uses the zone name directly, other views use a prefixed path.
+  Zone files are stored under their respective view directories:
+  `views/{view_name}/zones/{zone_name}.zone`
+
+  This allows the same zone name to exist in different views without conflicts.
   """
   @spec zone_file_path(String.t(), String.t()) :: String.t()
   def zone_file_path(view_name, zone_name) do
-    # Default view zones go in zones/ directly, other views get their own subdirectory
-    if view_name == "default" do
-      Path.join(@zones_dir, "#{zone_name}.zone")
-    else
-      Path.join([@zones_dir, view_name, "#{zone_name}.zone"])
-    end
+    Path.join([@views_dir, view_name, "zones", "#{zone_name}.zone"])
   end
 
-  # Backward compatible version for single-arg calls
+  # Backward compatible version for single-arg calls (assumes "default" view)
   @spec zone_file_path(String.t()) :: String.t()
   def zone_file_path(zone_name) do
     zone_file_path("default", zone_name)
@@ -250,24 +294,59 @@ defmodule YellowDog.Dns.ConfigPersistence do
   @doc """
   Saves the current DNS configuration from running services.
 
-  Collects views and zones from ViewManager and ZoneController,
+  Collects views, zones, and ACLs from ViewManager, ZoneController, and AclRegistry,
   then persists them to the data directory.
   """
   @spec save_current(String.t(), keyword()) :: :ok | {:error, term()}
   def save_current(data_path \\ default_data_path(), opts \\ []) do
     views = collect_views()
     zones = collect_zones()
-    save_all(data_path, views, zones, opts)
+    acls = collect_acls()
+    save_all(data_path, views, zones, acls, opts)
+  end
+
+  @doc """
+  Collects current ACL configurations from AclRegistry.
+
+  Returns ACL configs suitable for persistence.
+  """
+  @spec collect_acls() :: [AclStore.acl_config()]
+  def collect_acls do
+    alias YellowDog.Dns.AclRegistry
+
+    try do
+      AclRegistry.list_acls()
+    rescue
+      _ -> []
+    catch
+      :exit, _ -> []
+    end
   end
 
   # Private functions
 
-  defp ensure_data_directory(data_path) do
-    zones_dir = Path.join(data_path, @zones_dir)
+  defp ensure_data_directory(data_path, views \\ []) do
+    views_dir = Path.join(data_path, @views_dir)
+    acls_dir = Path.join(data_path, @acls_dir)
 
     with :ok <- File.mkdir_p(data_path),
-         :ok <- File.mkdir_p(zones_dir) do
+         :ok <- File.mkdir_p(views_dir),
+         :ok <- File.mkdir_p(acls_dir),
+         :ok <- ensure_view_directories(data_path, views) do
       :ok
     end
+  end
+
+  defp ensure_view_directories(data_path, views) do
+    # Create zones directory for each view
+    Enum.reduce_while(views, :ok, fn view, :ok ->
+      view_name = view[:name] || view.name
+      view_zones_dir = Path.join([data_path, @views_dir, view_name, "zones"])
+
+      case File.mkdir_p(view_zones_dir) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
   end
 end

@@ -1,0 +1,11 @@
+# DHCPv6 Pool Configuration
+# Pool: test_pool
+
+enabled = true
+range_start = "2001:db8:0:0:0:0:0:100"
+range_end = "2001:db8:0:0:0:0:0:1ff"
+preferred_lifetime = 3600
+valid_lifetime = 14400
+max_leases = 1000
+domain_name = "test.local"
+dns_servers = ["2001:4860:4860:0:0:0:0:8888"]

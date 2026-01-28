@@ -4,11 +4,11 @@
 [[pools]]
 name = "office_network"
 enabled = true
-subnet = "192.168.1.0/24"
-ranges = ["192.168.1.100-192.168.1.200"]
-gateway = "192.168.1.1"
-dns_servers = ["8.8.8.8", "8.8.4.4"]
-domain = "office.local"
+subnet = "10.100.0.0/20"
+ranges = ["10.100.2.0-10.100.3.255"]
+gateway = "10.100.0.1"
+dns_servers = ["10.100.0.1", "8.8.8.8"]
+domain = "gsmlg.net"
 lease_time = 86400
 max_leases = 1000
 priority = 100

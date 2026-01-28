@@ -1,0 +1,9 @@
+# DHCPv6 Pool Configuration
+# Pool: non_overlapping
+
+enabled = true
+range_start = "2001:db8:0:1:0:0:0:100"
+range_end = "2001:db8:0:1:0:0:0:1ff"
+preferred_lifetime = 3600
+valid_lifetime = 7200
+max_leases = 1000

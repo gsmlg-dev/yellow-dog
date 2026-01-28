@@ -15,6 +15,8 @@ defmodule YellowDog.Console.Settings.AddressPool do
     # UUID for client-side identification
     field(:id, :string)
     field(:name, :string)
+    # Network in CIDR notation (e.g., 10.100.0.0/20)
+    field(:network, :string)
     field(:range_start, :string)
     field(:range_end, :string)
     # DHCPv4: seconds
@@ -32,6 +34,7 @@ defmodule YellowDog.Console.Settings.AddressPool do
   @type t :: %__MODULE__{
           id: String.t() | nil,
           name: String.t() | nil,
+          network: String.t() | nil,
           range_start: String.t() | nil,
           range_end: String.t() | nil,
           lease_time: integer() | nil,
@@ -56,10 +59,14 @@ defmodule YellowDog.Console.Settings.AddressPool do
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(pool, attrs) do
+    # Handle dns_servers_str conversion to dns_servers list
+    attrs = parse_dns_servers_str(attrs)
+
     pool
     |> cast(attrs, [
       :id,
       :name,
+      :network,
       :range_start,
       :range_end,
       :lease_time,
@@ -70,10 +77,25 @@ defmodule YellowDog.Console.Settings.AddressPool do
       :protocol
     ])
     |> validate_required([:name, :range_start, :range_end, :protocol])
+    |> validate_network()
     |> validate_protocol_specific()
     |> validate_range()
     |> validate_dns_servers()
   end
+
+  defp parse_dns_servers_str(%{"dns_servers_str" => str} = attrs) when is_binary(str) do
+    servers =
+      str
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    attrs
+    |> Map.delete("dns_servers_str")
+    |> Map.put("dns_servers", servers)
+  end
+
+  defp parse_dns_servers_str(attrs), do: attrs
 
   # Private Functions
 
@@ -173,6 +195,20 @@ defmodule YellowDog.Console.Settings.AddressPool do
       add_error(changeset, :preferred_lifetime, "must be less than or equal to valid lifetime")
     else
       changeset
+    end
+  end
+
+  defp validate_network(changeset) do
+    network = get_field(changeset, :network)
+    protocol = get_field(changeset, :protocol)
+
+    if is_nil(network) || network == "" do
+      changeset
+    else
+      case Validators.validate_cidr(network, protocol) do
+        :ok -> changeset
+        {:error, message} -> add_error(changeset, :network, message)
+      end
     end
   end
 end

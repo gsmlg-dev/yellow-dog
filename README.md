@@ -116,10 +116,17 @@ Yellow Dog DNS stores runtime data and configuration in the following locations:
 data/                           # Runtime data (not version controlled)
 ├── dns/
 │   ├── views.toml              # DNS views configuration
-│   ├── zones.toml              # DNS zones configuration
-│   └── zones/                  # Zone file storage (BIND format)
-│       └── example.com.zone
-└── mdns_services.toml          # mDNS service registrations
+│   ├── zones.toml              # DNS zones metadata index
+│   ├── acls.toml               # Named ACL configurations
+│   ├── views/                  # View-specific data
+│   │   └── default/
+│   │       └── zones/          # Zone files for this view
+│   │           └── example.com.zone
+│   └── acls/                   # ACL-related data (reserved)
+├── mdns/
+│   └── services.toml           # mDNS service registrations
+├── dhcpv4/                     # DHCPv4 lease data
+└── dhcpv6/                     # DHCPv6 lease data
 ```
 
 ### Configuration Files
@@ -128,8 +135,9 @@ data/                           # Runtime data (not version controlled)
 |------|-------------|
 | `data/dns/views.toml` | DNS view definitions with ACL rules |
 | `data/dns/zones.toml` | Zone metadata (type, name, upstreams) |
-| `data/dns/zones/*.zone` | Zone data files in BIND format |
-| `data/mdns_services.toml` | Registered mDNS services |
+| `data/dns/acls.toml` | Named ACL configurations |
+| `data/dns/views/*/zones/*.zone` | Zone data files in BIND format (per-view) |
+| `data/mdns/services.toml` | Registered mDNS services |
 | `config/config.exs` | Application configuration |
 | `config/runtime.exs` | Runtime configuration |
 

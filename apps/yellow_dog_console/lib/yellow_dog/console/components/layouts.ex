@@ -263,7 +263,7 @@ defmodule YellowDog.Console.Layouts do
               <ul>
                 <li><a href="/dhcpv4">Overview</a></li>
                 <li><a href="/dhcpv4/leases">Leases</a></li>
-                <li><a href="/dhcpv4">Pools</a></li>
+                <li><a href="/dhcpv4/pools">Pools</a></li>
               </ul>
             </details>
           </li>
@@ -291,7 +291,7 @@ defmodule YellowDog.Console.Layouts do
               <ul>
                 <li><a href="/dhcpv6">Overview</a></li>
                 <li><a href="/dhcpv6/leases">Leases</a></li>
-                <li><a href="/dhcpv6">Pools</a></li>
+                <li><a href="/dhcpv6/pools">Pools</a></li>
               </ul>
             </details>
           </li>

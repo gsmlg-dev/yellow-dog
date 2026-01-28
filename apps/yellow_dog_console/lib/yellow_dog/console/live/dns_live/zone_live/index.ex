@@ -294,16 +294,24 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp load_zones(socket) do
     view_name = socket.assigns.view_name
 
-    zones =
-      case get_view_with_zones(view_name) do
-        {:ok, view} -> view.zones
-        :error -> []
-      end
-
-    assign(socket, :zones, zones)
+    # get_view_with_zones always returns {:ok, view} with fallback to persisted config
+    {:ok, view} = get_view_with_zones(view_name)
+    assign(socket, :zones, view.zones)
   end
 
   defp get_view_with_zones(view_name) do
+    # First try to get from running DNS service
+    case get_view_with_zones_from_service(view_name) do
+      {:ok, view} ->
+        {:ok, view}
+
+      :error ->
+        # Fall back to persisted configuration
+        get_view_with_zones_from_persistence(view_name)
+    end
+  end
+
+  defp get_view_with_zones_from_service(view_name) do
     try do
       case ViewManager.get_view(view_name) do
         {:ok, pid} ->
@@ -322,6 +330,38 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     rescue
       _ -> :error
+    catch
+      :exit, _ -> :error
+    end
+  end
+
+  defp get_view_with_zones_from_persistence(view_name) do
+    try do
+      case ConfigPersistence.load_all() do
+        {:ok, %{zones: zones}} ->
+          # Filter zones for this view
+          view_zones =
+            zones
+            |> Enum.filter(fn z ->
+              z.view_name == view_name || (z.view_name == "default" && view_name == "default")
+            end)
+            |> Enum.map(fn z ->
+              %{
+                type: z.type,
+                name: z.name,
+                record_count: 0,
+                query_count: 0
+              }
+            end)
+
+          {:ok, %{name: view_name, zones: view_zones}}
+
+        _ ->
+          # Return empty zones list if no persisted config
+          {:ok, %{name: view_name, zones: []}}
+      end
+    rescue
+      _ -> {:ok, %{name: view_name, zones: []}}
     end
   end
 
@@ -360,6 +400,18 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   defp get_zone_config(view_name, zone_type, zone_name) do
+    # First try to get config from running DNS service
+    case get_zone_config_from_service(view_name, zone_type, zone_name) do
+      {:ok, config} ->
+        {:ok, config}
+
+      :error ->
+        # Fall back to persisted configuration
+        get_zone_config_from_persistence(view_name, zone_type, zone_name)
+    end
+  end
+
+  defp get_zone_config_from_service(view_name, zone_type, zone_name) do
     try do
       # Use view-scoped zone lookup
       case ZoneController.find_zone(view_name, zone_type, zone_name) do
@@ -377,6 +429,40 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
           {:ok, config}
 
         :error ->
+          :error
+      end
+    rescue
+      _ -> :error
+    catch
+      :exit, _ -> :error
+    end
+  end
+
+  defp get_zone_config_from_persistence(view_name, zone_type, zone_name) do
+    try do
+      case ConfigPersistence.load_all() do
+        {:ok, %{zones: zones}} ->
+          # Find the matching zone in persisted config
+          zone =
+            Enum.find(zones, fn z ->
+              z.name == zone_name &&
+                z.type == zone_type &&
+                (z.view_name == view_name || (z.view_name == "default" && view_name == "default"))
+            end)
+
+          if zone do
+            {:ok,
+             %{
+               name: zone.name,
+               type: zone.type,
+               upstreams: zone[:upstreams] || [],
+               ns_records: zone[:ns_records] || []
+             }}
+          else
+            :error
+          end
+
+        _ ->
           :error
       end
     rescue

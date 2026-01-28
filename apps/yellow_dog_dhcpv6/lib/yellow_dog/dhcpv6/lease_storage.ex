@@ -132,16 +132,13 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
     end
   end
 
-  # Gets the data directory from options or YellowDog.Config
+  # Gets the data directory from options or application env
   defp get_data_dir(opts) do
     case Keyword.get(opts, :data_dir) do
       nil ->
-        # Try to get from YellowDog.Config if available
-        try do
-          YellowDog.Config.get_service_data_dir(:dhcpv6)
-        rescue
-          _ -> "data/dhcpv6"
-        end
+        # Get base data directory from application env or use default
+        base_dir = Application.get_env(:yellow_dog, :data_dir) || "data"
+        Path.join(base_dir, "dhcpv6")
 
       dir ->
         dir

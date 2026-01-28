@@ -27,7 +27,7 @@ config :yellow_dog_console, YellowDog.Console.Endpoint,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.11",
+  version: "4.1.17",
   yellow_dog_console: [
     args: ~w(
       --input=assets/css/app.css
@@ -38,7 +38,7 @@ config :tailwind,
 
 # Configure bun (the version is required)
 config :bun,
-  version: "1.2.13",
+  version: "1.3.2",
   yellow_dog_console: [
     args: ~w(
       build assets/js/app.js

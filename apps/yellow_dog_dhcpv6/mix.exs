@@ -27,12 +27,14 @@ defmodule YellowDog.Dhcpv6.MixProject do
   defp deps do
     [
       # Core dependencies
+      {:yellow_dog, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
 
       # External dependencies for DHCPv6 functionality
       {:ex_dhcp, in_umbrella: true},
       {:abyss, in_umbrella: true},
       {:telemetry, "~> 1.0"},
+      {:toml, "~> 0.7"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

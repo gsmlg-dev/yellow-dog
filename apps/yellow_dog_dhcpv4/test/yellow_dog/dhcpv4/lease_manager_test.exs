@@ -326,6 +326,141 @@ defmodule YellowDog.Dhcpv4.LeaseManagerTest do
     end
   end
 
+  describe "add_pool/1" do
+    setup do
+      {:ok, pid} = LeaseManager.start_link(pools: [@test_pool_config])
+      on_exit(fn -> stop_manager(pid) end)
+      :ok
+    end
+
+    test "adds new pool successfully" do
+      new_pool = %{
+        name: "new_pool",
+        subnet_mask: {255, 255, 255, 0},
+        range_start: {10, 0, 0, 100},
+        range_end: {10, 0, 0, 200},
+        gateway: {10, 0, 0, 1},
+        dns_servers: [{8, 8, 8, 8}],
+        lease_time: 3600,
+        enabled: true
+      }
+
+      assert {:ok, pool} = LeaseManager.add_pool(new_pool)
+      assert pool.name == "new_pool"
+
+      # Verify pool is accessible
+      pools = LeaseManager.get_pools()
+      assert length(pools) == 2
+      assert Enum.any?(pools, fn p -> p.name == "new_pool" end)
+    end
+
+    test "rejects duplicate pool name" do
+      duplicate_pool = %{
+        name: "test_pool",
+        subnet_mask: {255, 255, 255, 0},
+        range_start: {10, 0, 0, 100},
+        range_end: {10, 0, 0, 200},
+        enabled: true
+      }
+
+      assert {:error, :pool_already_exists} = LeaseManager.add_pool(duplicate_pool)
+    end
+
+    test "rejects overlapping IP range" do
+      overlapping_pool = %{
+        name: "overlapping",
+        subnet_mask: {255, 255, 255, 0},
+        # This overlaps with test_pool's range (192.168.1.100-200)
+        range_start: {192, 168, 1, 150},
+        range_end: {192, 168, 1, 250},
+        enabled: true
+      }
+
+      assert {:error, :range_overlap} = LeaseManager.add_pool(overlapping_pool)
+    end
+
+    test "accepts non-overlapping IP range" do
+      non_overlapping_pool = %{
+        name: "non_overlapping",
+        subnet_mask: {255, 255, 255, 0},
+        # This does not overlap with test_pool's range
+        range_start: {192, 168, 2, 100},
+        range_end: {192, 168, 2, 200},
+        enabled: true
+      }
+
+      assert {:ok, pool} = LeaseManager.add_pool(non_overlapping_pool)
+      assert pool.name == "non_overlapping"
+    end
+  end
+
+  describe "update_pool/2" do
+    setup do
+      {:ok, pid} = LeaseManager.start_link(pools: [@test_pool_config])
+      on_exit(fn -> stop_manager(pid) end)
+      :ok
+    end
+
+    test "updates existing pool successfully" do
+      updates = %{lease_time: 7200}
+
+      assert {:ok, pool} = LeaseManager.update_pool("test_pool", updates)
+      assert pool.lease_time == 7200
+    end
+
+    test "returns error for non-existent pool" do
+      updates = %{lease_time: 7200}
+      assert {:error, :pool_not_found} = LeaseManager.update_pool("nonexistent", updates)
+    end
+
+    test "cannot change pool name" do
+      updates = %{name: "new_name"}
+      {:ok, pool} = LeaseManager.update_pool("test_pool", updates)
+      # Pool name should remain unchanged
+      assert pool.name == "test_pool"
+    end
+  end
+
+  describe "remove_pool/2" do
+    setup do
+      {:ok, pid} = LeaseManager.start_link(pools: [@test_pool_config])
+      on_exit(fn -> stop_manager(pid) end)
+      :ok
+    end
+
+    test "removes pool without active leases" do
+      # Add a second pool to remove
+      new_pool = %{
+        name: "removable",
+        subnet_mask: {255, 255, 255, 0},
+        range_start: {10, 0, 0, 100},
+        range_end: {10, 0, 0, 200},
+        enabled: true
+      }
+
+      {:ok, _} = LeaseManager.add_pool(new_pool)
+      assert :ok = LeaseManager.remove_pool("removable", force: false)
+
+      pools = LeaseManager.get_pools()
+      refute Enum.any?(pools, fn p -> p.name == "removable" end)
+    end
+
+    test "returns error for non-existent pool" do
+      assert {:error, :pool_not_found} = LeaseManager.remove_pool("nonexistent", force: false)
+    end
+
+    test "blocks removal of pool with active leases unless forced" do
+      # Allocate a lease in the test_pool
+      {:ok, _lease} = LeaseManager.allocate_lease(@test_mac, nil, nil, "test_pool", nil)
+
+      # Should fail without force
+      assert {:error, :has_active_leases} = LeaseManager.remove_pool("test_pool", force: false)
+
+      # Should succeed with force
+      assert :ok = LeaseManager.remove_pool("test_pool", force: true)
+    end
+  end
+
   # Helper function to stop manager safely
   defp stop_manager(pid) do
     if Process.alive?(pid) do

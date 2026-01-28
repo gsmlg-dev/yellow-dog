@@ -85,9 +85,9 @@ defmodule YellowDog.Dns.Zone.CacheTest do
     %Message{
       header: %Message.Header{
         id: :rand.uniform(65535),
-        qr: true,
+        qr: 1,
         opcode: :query,
-        aa: true,
+        aa: 1,
         rcode: :noerror
       },
       qdlist: [
@@ -294,7 +294,7 @@ defmodule YellowDog.Dns.Zone.CacheTest do
       Process.sleep(10)
 
       {:ok, result} = Cache.resolve(pid, query)
-      assert result.header.qr == true
+      assert result.header.qr == 1
 
       GenServer.stop(pid)
     end

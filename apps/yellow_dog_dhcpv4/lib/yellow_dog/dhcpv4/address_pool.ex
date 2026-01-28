@@ -59,6 +59,7 @@ defmodule YellowDog.Dhcpv4.AddressPool do
 
       pool = %{
         name: Map.get(config, :name, "default"),
+        network: Map.get(config, :network),
         ranges: ranges,
         range_start: validated_config[:range_start],
         range_end: validated_config[:range_end],
@@ -68,6 +69,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
         dns_servers: Map.get(config, :dns_servers, [first_range_start]),
         domain_name: Map.get(config, :domain_name),
         lease_time: Map.get(config, :lease_time, 86400),
+        max_leases: Map.get(config, :max_leases, 1000),
+        enabled: Map.get(config, :enabled, true),
         static_reservations: Map.get(config, :static_reservations, %{})
       }
 
@@ -90,8 +93,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   @spec validate_pool_config(map()) :: {:ok, map()} | {:error, term()}
   def validate_pool_config(config) do
     cond do
-      # New format with ranges
-      Map.has_key?(config, :ranges) && is_list(config.ranges) ->
+      # New format with non-empty ranges list
+      Map.has_key?(config, :ranges) && is_list(config.ranges) && config.ranges != [] ->
         validate_ranges_config(config)
 
       # Legacy format with range_start/range_end

@@ -768,8 +768,8 @@ defmodule YellowDog.Dns.Zone.Auth do
     %Message{
       header: %{
         query.header
-        | qr: true,
-          aa: true,
+        | qr: 1,
+          aa: 1,
           rcode: RCode.no_error()
       },
       qdlist: query.qdlist,
@@ -783,8 +783,8 @@ defmodule YellowDog.Dns.Zone.Auth do
     %Message{
       header: %{
         query.header
-        | qr: true,
-          aa: true,
+        | qr: 1,
+          aa: 1,
           rcode: RCode.no_error()
       },
       qdlist: query.qdlist,
@@ -798,8 +798,8 @@ defmodule YellowDog.Dns.Zone.Auth do
     %Message{
       header: %{
         query.header
-        | qr: true,
-          aa: true,
+        | qr: 1,
+          aa: 1,
           rcode: RCode.nx_domain()
       },
       qdlist: query.qdlist,
@@ -837,6 +837,17 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp load_zone_file(state, zone_file) do
+    # Ensure parent directory exists
+    zone_file
+    |> Path.dirname()
+    |> File.mkdir_p()
+
+    # Create empty zone file if it doesn't exist
+    unless File.exists?(zone_file) do
+      Telemetry.info("Creating empty zone file", %{zone: state.name, file: zone_file})
+      create_empty_zone_file(state.name, zone_file)
+    end
+
     case DNS.Zone.Loader.load_zone_from_file(state.name, zone_file) do
       {:ok, zone} ->
         load_zone_data(state, zone.records)
@@ -850,6 +861,25 @@ defmodule YellowDog.Dns.Zone.Auth do
 
         state
     end
+  end
+
+  defp create_empty_zone_file(zone_name, file_path) do
+    # Create a minimal valid zone file with SOA and NS records
+    content = """
+    ; Zone file for #{zone_name}
+    ; Auto-generated - add your DNS records below
+    $TTL 86400
+    @   IN  SOA ns1.#{zone_name}. hostmaster.#{zone_name}. (
+                #{:os.system_time(:second)}  ; serial
+                3600        ; refresh (1 hour)
+                1800        ; retry (30 minutes)
+                604800      ; expire (1 week)
+                86400       ; minimum (1 day)
+            )
+        IN  NS  ns1.#{zone_name}.
+    """
+
+    File.write(file_path, content)
   end
 
   defp via_tuple(view_name, zone_name) do

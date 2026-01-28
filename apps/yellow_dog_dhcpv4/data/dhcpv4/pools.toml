@@ -1,0 +1,5 @@
+# DHCPv4 Pool Index
+# This file lists all configured address pools.
+# Each pool's configuration is stored in pools/{name}.toml
+
+pools = ["non_overlapping", "new_pool"]

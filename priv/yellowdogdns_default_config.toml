@@ -31,3 +31,18 @@ listen = "::"
 port = 547
 
 
+
+
+[[dhcpv6.pools]]
+name = "ipv6-office"
+preferred_lifetime = 3600
+range_end = "2001:db8:1::200"
+range_start = "2001:db8:1::100"
+valid_lifetime = 7200
+
+[[dhcpv4.pools]]
+gateway = "192.168.50.1"
+lease_time = 3600
+name = "office-lan"
+range_end = "192.168.50.200"
+range_start = "192.168.50.100"

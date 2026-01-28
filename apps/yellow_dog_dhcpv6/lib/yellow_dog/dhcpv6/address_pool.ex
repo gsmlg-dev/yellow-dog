@@ -98,6 +98,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
 
       pool = %{
         name: Map.get(config, :name, "default"),
+        network: Map.get(config, :network),
         ranges: validated_config.ranges,
         range_start: validated_config[:range_start],
         range_end: validated_config[:range_end],
@@ -107,6 +108,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         domain_name: Map.get(config, :domain_name),
         preferred_lifetime: Map.get(config, :preferred_lifetime, 3600),
         valid_lifetime: Map.get(config, :valid_lifetime, 7200),
+        max_leases: Map.get(config, :max_leases, 1000),
+        enabled: Map.get(config, :enabled, true),
         static_reservations: reservations
       }
 
@@ -122,8 +125,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   @spec validate_pool_config(map()) :: {:ok, map()} | {:error, term()}
   def validate_pool_config(config) do
     cond do
-      # New format: multiple ranges
-      Map.has_key?(config, :ranges) && is_list(config.ranges) ->
+      # New format: non-empty ranges list
+      Map.has_key?(config, :ranges) && is_list(config.ranges) && config.ranges != [] ->
         validate_ranges_config(config.ranges)
 
       # Legacy format: single range

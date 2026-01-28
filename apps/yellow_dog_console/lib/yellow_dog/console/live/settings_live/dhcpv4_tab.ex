@@ -6,9 +6,10 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
   - Service enabled/disabled toggle
   - Listen address (IP)
   - Port number
-  - Address pool management (CRUD operations)
   - Real-time validation feedback
   - Save and apply change controls
+
+  Note: Address pool management is handled in the dedicated Pools page at /dhcpv4/pools
   """
 
   use YellowDog.Console, :html
@@ -17,9 +18,6 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
   attr :pending_changes, :boolean, required: true
 
   def dhcpv4_tab(assigns) do
-    pools = Ecto.Changeset.get_field(assigns.changeset, :pools) || []
-    assigns = assign(assigns, :pools, pools)
-
     ~H"""
     <div class="space-y-6">
       <!-- Service Status Header -->
@@ -154,13 +152,16 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
         </.form>
       </.card>
       
-    <!-- Address Pools Section -->
+    <!-- Address Pools Link -->
       <.card title="Address Pools">
-        <:actions>
-          <button phx-click="add_dhcpv4_pool" class="btn btn-primary btn-sm gap-2">
+        <div class="flex items-center justify-between">
+          <p class="text-base-content/70">
+            Manage DHCPv4 address pools including IP ranges, lease times, and DNS settings.
+          </p>
+          <a href="/dhcpv4/pools" class="btn btn-primary gap-2">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
+              class="h-5 w-5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -169,109 +170,16 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M12 4v16m8-8H4"
+                d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
               />
             </svg>
-            Add Pool
-          </button>
-        </:actions>
-
-        <%= if Enum.empty?(@pools) do %>
-          <div class="text-center py-8">
-            <p class="text-gray-500">No address pools configured. Click "Add Pool" to create one.</p>
-          </div>
-        <% else %>
-          <.pool_table pools={@pools} />
-        <% end %>
+            Manage Pools
+          </a>
+        </div>
       </.card>
     </div>
     """
   end
-
-  attr :pools, :list, required: true
-
-  defp pool_table(assigns) do
-    ~H"""
-    <div class="overflow-x-auto">
-      <table class="table table-zebra w-full">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>IP Range</th>
-            <th>Lease Time</th>
-            <th>Gateway</th>
-            <th>DNS Servers</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for pool <- @pools do %>
-            <tr>
-              <td class="font-medium">{pool.name}</td>
-              <td>{pool.range_start} - {pool.range_end}</td>
-              <td>{format_lease_time(pool.lease_time)}</td>
-              <td>{pool.gateway || "-"}</td>
-              <td>{format_dns_servers(pool.dns_servers)}</td>
-              <td class="text-right">
-                <div class="flex gap-2 justify-end">
-                  <button
-                    phx-click="edit_dhcpv4_pool"
-                    phx-value-pool-id={pool.id}
-                    class="btn btn-ghost btn-sm"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    phx-click="delete_dhcpv4_pool"
-                    phx-value-pool-id={pool.id}
-                    class="btn btn-ghost btn-sm text-error"
-                    data-confirm="Delete this pool?"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
-    """
-  end
-
-  defp format_lease_time(nil), do: "-"
-  defp format_lease_time(seconds) when seconds < 60, do: "#{seconds}s"
-  defp format_lease_time(seconds) when seconds < 3600, do: "#{div(seconds, 60)}m"
-  defp format_lease_time(seconds), do: "#{div(seconds, 3600)}h"
-
-  defp format_dns_servers([]), do: "-"
-  defp format_dns_servers(servers), do: Enum.join(servers, ", ")
 
   defp input_error(assigns) do
     assigns =

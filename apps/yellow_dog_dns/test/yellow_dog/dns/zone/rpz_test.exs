@@ -99,7 +99,7 @@ defmodule YellowDog.Dns.Zone.RPZTest do
       end)
 
     %Message{
-      header: %{query.header | qr: true, aa: true, rcode: DNS.Message.RCode.no_error()},
+      header: %{query.header | qr: 1, aa: 1, rcode: DNS.Message.RCode.no_error()},
       qdlist: query.qdlist,
       anlist: anlist,
       nslist: [],
