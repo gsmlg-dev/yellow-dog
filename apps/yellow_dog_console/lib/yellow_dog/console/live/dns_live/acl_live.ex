@@ -292,6 +292,15 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    acls = socket.assigns.named_acls
+    csv = build_csv(acls)
+    filename = "dns_acls_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info({:view_updated, _view_name}, socket) do
     {:noreply, assign(socket, :views, list_views_with_acl())}
   end
@@ -535,4 +544,36 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp build_rule(action, network), do: %{action: action, network: network}
+
+  defp build_csv(acls) do
+    header = "Name,Description,Rules\r\n"
+
+    rows =
+      Enum.map_join(acls, "\r\n", fn acl ->
+        [
+          csv_escape(acl.name),
+          csv_escape(acl.description || ""),
+          csv_escape(format_acl_rules_for_csv(acl.rules))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
+  end
+
+  defp format_acl_rules_for_csv(rules) when is_list(rules) do
+    rules
+    |> Enum.map(&format_named_acl_rule/1)
+    |> Enum.join("; ")
+  end
+
+  defp format_acl_rules_for_csv(_), do: ""
 end
