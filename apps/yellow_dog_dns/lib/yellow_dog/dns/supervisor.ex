@@ -18,8 +18,11 @@ defmodule YellowDog.Dns.Supervisor do
       │   └── Connection Processes (per-connection)
       ├── ViewManager (Supervisor)
       │   └── View processes (GenServer, one per configured view)
-      └── ZoneController (Supervisor)
-          └── Zone processes (Auth, Forward, Stub, Root, Cache, RPZ)
+      ├── ZoneController (Supervisor)
+      │   └── Zone processes (Auth, Forward, Stub, Root, Cache, RPZ)
+      ├── QueryLogger (GenServer) - DNS query/response logging
+      ├── MetricsCollector (GenServer) - Telemetry-driven metrics aggregation
+      └── ConfigWatcher (GenServer) - Polling-based config hot reload
   """
 
   use Supervisor
@@ -115,6 +118,11 @@ defmodule YellowDog.Dns.Supervisor do
 
       # Server - network I/O (Abyss UDP + ThousandIsland TCP)
       {YellowDog.Dns.Server, Keyword.merge(opts, port: port, listen: listen)},
+
+      # Observability services
+      {YellowDog.Dns.QueryLogger, []},
+      {YellowDog.Dns.MetricsCollector, []},
+      {YellowDog.Dns.ConfigWatcher, data_path: get_data_path()},
 
       # Post-init task - set up default view and zones
       # Uses restart: :temporary so it doesn't restart after completion
@@ -337,6 +345,12 @@ defmodule YellowDog.Dns.Supervisor do
       end
 
     YellowDog.Dns.ZoneController.start_zone(type, name, opts)
+  end
+
+  defp get_data_path do
+    ConfigPersistence.default_data_path()
+  rescue
+    _ -> "data/dns"
   end
 
   defp get_zone_data_path do
