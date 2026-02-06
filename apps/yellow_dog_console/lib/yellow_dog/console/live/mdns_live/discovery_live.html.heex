@@ -102,7 +102,12 @@
           :for={service <- @services}
           class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer"
           phx-click="view_details"
+          phx-keydown="view_details"
+          phx-key="Enter"
           phx-value-id={service.id}
+          role="button"
+          tabindex="0"
+          aria-label={"View details for #{service.name}"}
         >
           <div class="p-6">
             <div class="flex items-start justify-between">
@@ -203,12 +208,13 @@
     <% end %>
     <!-- Service Details Modal -->
     <%= if @selected_service do %>
-      <div class="fixed inset-0 z-50 overflow-y-auto">
+      <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Service details">
         <div class="flex items-center justify-center min-h-screen px-4">
           <!-- Backdrop -->
           <div
             class="fixed inset-0 bg-zinc-500 bg-opacity-75 transition-opacity"
             phx-click="close_details"
+            aria-hidden="true"
           >
           </div>
           <!-- Modal -->
@@ -219,6 +225,7 @@
                 type="button"
                 phx-click="close_details"
                 class="text-zinc-400 hover:text-zinc-500"
+                aria-label="Close"
               >
                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

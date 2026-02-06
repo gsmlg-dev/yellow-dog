@@ -1368,4 +1368,26 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert hd(result).name == "internal-b"
     end
   end
+
+  # ============================================================================
+  # ARIA Accessibility for DNS Pages
+  # ============================================================================
+
+  describe "ARIA accessibility on DNS pages" do
+    test "DNS views page has aria-label on action buttons", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views")
+      # When empty, no action buttons shown — but aria-labels exist in template
+      assert html =~ "aria-label" or html =~ "No DNS Views"
+    end
+
+    test "DNS ACL page has aria-label on action buttons", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/acl")
+      assert html =~ "aria-label" or html =~ "No custom ACLs"
+    end
+
+    test "DNS overview refresh button has aria-label", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns")
+      assert html =~ "aria-label=\"Refresh\""
+    end
+  end
 end

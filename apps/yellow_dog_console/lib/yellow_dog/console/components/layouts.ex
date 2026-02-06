@@ -59,7 +59,7 @@ defmodule YellowDog.Console.Layouts do
     ~H"""
     <div class="navbar bg-base-100 shadow-lg">
       <div class="flex-none lg:hidden">
-        <label for="main-drawer" class="btn btn-square btn-ghost">
+        <label for="main-drawer" class="btn btn-square btn-ghost" aria-label="Open menu">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -90,12 +90,13 @@ defmodule YellowDog.Console.Layouts do
           <input
             type="text"
             placeholder="Search..."
+            aria-label="Search"
             class="input input-bordered input-sm w-full max-w-xs"
           />
         </div>
         
     <!-- Theme Toggle -->
-        <label class="swap swap-rotate btn btn-ghost btn-circle">
+        <label class="swap swap-rotate btn btn-ghost btn-circle" aria-label="Toggle theme">
           <input
             type="checkbox"
             id="theme-toggle"
@@ -122,7 +123,7 @@ defmodule YellowDog.Console.Layouts do
         
     <!-- Notifications -->
         <div class="dropdown dropdown-end">
-          <div tabindex="0" role="button" class="btn btn-ghost btn-circle">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-circle" aria-label="Notifications">
             <div class="indicator">
               <svg
                 xmlns="http://www.w3.org/2000/svg"

@@ -144,6 +144,7 @@
                 phx-value-id={service.id}
                 class="btn btn-ghost btn-xs"
                 title={if service.enabled, do: "Disable", else: "Enable"}
+                aria-label={if service.enabled, do: "Disable", else: "Enable"}
               >
                 <%= if service.enabled do %>
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -177,6 +178,7 @@
                 phx-value-id={service.id}
                 class="btn btn-ghost btn-xs"
                 title="Edit"
+                aria-label="Edit"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -194,6 +196,7 @@
                 data-confirm="Are you sure you want to delete this service?"
                 class="btn btn-ghost btn-xs text-error"
                 title="Delete"
+                aria-label="Delete"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

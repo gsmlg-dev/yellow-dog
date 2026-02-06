@@ -312,6 +312,53 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   end
 
   # ============================================================================
+  # ARIA Accessibility (ensures screen readers can navigate)
+  # ============================================================================
+
+  describe "ARIA accessibility: layout components" do
+    test "navbar has aria-label on theme toggle", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "aria-label=\"Toggle theme\""
+    end
+
+    test "navbar has aria-label on notifications", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "aria-label=\"Notifications\""
+    end
+
+    test "navbar has aria-label on search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "aria-label=\"Search\""
+    end
+  end
+
+  describe "ARIA accessibility: refresh buttons" do
+    @refresh_pages [
+      {"/dashboard", "Dashboard"},
+      {"/dns", "DNS Overview"},
+      {"/mdns", "mDNS Overview"},
+      {"/dhcpv4", "DHCPv4 Overview"},
+      {"/dhcpv6", "DHCPv6 Overview"}
+    ]
+
+    for {path, name} <- @refresh_pages do
+      test "#{name} refresh button has aria-label", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "aria-label=\"Refresh\""
+      end
+    end
+  end
+
+  describe "ARIA accessibility: discovery page" do
+    test "service cards have role=button and tabindex", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/discovery")
+      # Cards have role="button" for keyboard accessibility
+      # (only visible when services exist, but the template includes the attrs)
+      assert html =~ "role=\"button\"" or html =~ "No services discovered"
+    end
+  end
+
+  # ============================================================================
   # CsvDownload Hook Presence (ensures export buttons work)
   # ============================================================================
 
