@@ -208,8 +208,19 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
           <div class="flex gap-2 items-center">
             <span class="text-xs text-base-content/50">Auto-refresh: 5s</span>
             <button phx-click="export_csv" class="btn btn-outline btn-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
               </svg>
               Export CSV
             </button>
@@ -518,12 +529,13 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   defp build_response_times_csv(response_times) do
-    header = "Response Time Distribution\r\n" <>
-      "Metric,Value\r\n" <>
-      "Count,#{response_times.count}\r\n" <>
-      "Min,#{format_latency(response_times.min)}\r\n" <>
-      "Avg,#{format_latency(response_times.avg)}\r\n" <>
-      "Max,#{format_latency(response_times.max)}"
+    header =
+      "Response Time Distribution\r\n" <>
+        "Metric,Value\r\n" <>
+        "Count,#{response_times.count}\r\n" <>
+        "Min,#{format_latency(response_times.min)}\r\n" <>
+        "Avg,#{format_latency(response_times.avg)}\r\n" <>
+        "Max,#{format_latency(response_times.max)}"
 
     buckets =
       case response_times[:buckets] do

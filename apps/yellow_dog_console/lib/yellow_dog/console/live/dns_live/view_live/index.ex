@@ -156,17 +156,29 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   @impl true
   def handle_event("toggle_enabled", %{"name" => view_name}, socket) do
-    case ViewManager.get_view(view_name) do
-      {:ok, pid} ->
-        current = View.is_enabled?(pid)
-        View.set_enabled(pid, !current)
-        save_config_async()
-        action = if current, do: "disabled", else: "enabled"
+    result =
+      try do
+        ViewManager.get_view(view_name)
+      catch
+        :exit, _ -> :error
+      end
 
-        {:noreply,
-         socket
-         |> refresh_views()
-         |> put_flash(:info, "View '#{view_name}' #{action}")}
+    case result do
+      {:ok, pid} ->
+        try do
+          current = View.is_enabled?(pid)
+          View.set_enabled(pid, !current)
+          save_config_async()
+          action = if current, do: "disabled", else: "enabled"
+
+          {:noreply,
+           socket
+           |> refresh_views()
+           |> put_flash(:info, "View '#{view_name}' #{action}")}
+        catch
+          :exit, _ ->
+            {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
+        end
 
       :error ->
         {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
@@ -221,20 +233,24 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     }
 
     result =
-      if editing do
-        case ViewManager.get_view(editing) do
-          {:ok, pid} ->
-            View.reload(pid, config)
-            :ok
+      try do
+        if editing do
+          case ViewManager.get_view(editing) do
+            {:ok, pid} ->
+              View.reload(pid, config)
+              :ok
 
-          :error ->
-            {:error, :not_found}
+            :error ->
+              {:error, :not_found}
+          end
+        else
+          case ViewManager.start_view(config) do
+            {:ok, _pid} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
         end
-      else
-        case ViewManager.start_view(config) do
-          {:ok, _pid} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
+      catch
+        :exit, _ -> {:error, :service_unavailable}
       end
 
     case result do
@@ -268,7 +284,14 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
        |> assign(:delete_confirm, nil)
        |> put_flash(:error, "Cannot delete the default view")}
     else
-      case ViewManager.stop_view(view_name) do
+      result =
+        try do
+          ViewManager.stop_view(view_name)
+        catch
+          :exit, _ -> {:error, :service_unavailable}
+        end
+
+      case result do
         :ok ->
           # Persist configuration to files
           save_config_async()
@@ -279,7 +302,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
            |> refresh_views()
            |> put_flash(:info, "View '#{view_name}' deleted successfully")}
 
-        {:error, :not_found} ->
+        {:error, _reason} ->
           {:noreply,
            socket
            |> assign(:delete_confirm, nil)
@@ -474,6 +497,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       end
     rescue
       _ -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 

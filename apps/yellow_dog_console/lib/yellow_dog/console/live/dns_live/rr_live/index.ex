@@ -151,7 +151,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("export_csv", _params, socket) do
-    records = filtered_records(socket.assigns.rrs, socket.assigns.filter, socket.assigns.type_filter)
+    records =
+      filtered_records(socket.assigns.rrs, socket.assigns.filter, socket.assigns.type_filter)
+
     csv = build_records_csv(records)
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     zone = socket.assigns.zone_name |> String.replace(".", "_")
@@ -377,12 +379,16 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
-    case ZoneController.find_zone(view_name, zone_type, zone_name) do
-      {:ok, pid} -> pid
-      :error -> nil
+    try do
+      case ZoneController.find_zone(view_name, zone_type, zone_name) do
+        {:ok, pid} -> pid
+        :error -> nil
+      end
+    rescue
+      _ -> nil
+    catch
+      :exit, _ -> nil
     end
-  rescue
-    _ -> nil
   end
 
   defp records_path(view_name, zone_type, zone_name) do
@@ -431,6 +437,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
       end
     rescue
       _ -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 

@@ -140,7 +140,9 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("export_csv", _params, socket) do
-    zones = filtered_zones(socket.assigns.zones, socket.assigns.filter, socket.assigns.type_filter)
+    zones =
+      filtered_zones(socket.assigns.zones, socket.assigns.filter, socket.assigns.type_filter)
+
     csv = build_zones_csv(zones)
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     filename = "dns_zones_#{socket.assigns.view_name}_#{timestamp}.csv"
@@ -174,32 +176,36 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     config = Keyword.put(config, :view_name, view_name)
 
     result =
-      if editing do
-        # Pass view_name for view-scoped zone lookup
-        case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
-          :ok -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-      else
-        case ZoneController.start_zone(zone_type, zone_name, config) do
-          {:ok, _pid} ->
-            # Register zone with view
-            if view_name do
-              case ViewManager.get_view(view_name) do
-                {:ok, pid} ->
-                  View.register_zone(pid, zone_type, zone_name)
-                  :ok
+      try do
+        if editing do
+          # Pass view_name for view-scoped zone lookup
+          case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
+            :ok -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        else
+          case ZoneController.start_zone(zone_type, zone_name, config) do
+            {:ok, _pid} ->
+              # Register zone with view
+              if view_name do
+                case ViewManager.get_view(view_name) do
+                  {:ok, pid} ->
+                    View.register_zone(pid, zone_type, zone_name)
+                    :ok
 
-                :error ->
-                  :ok
+                  :error ->
+                    :ok
+                end
+              else
+                :ok
               end
-            else
-              :ok
-            end
 
-          {:error, reason} ->
-            {:error, reason}
+            {:error, reason} ->
+              {:error, reason}
+          end
         end
+      catch
+        :exit, _ -> {:error, :service_unavailable}
       end
 
     case result do
@@ -245,7 +251,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     view_name = socket.assigns.view_name
 
     # Pass view_name for view-scoped zone deletion
-    case ZoneController.stop_zone(view_name, zone_type, zone_name) do
+    result =
+      try do
+        ZoneController.stop_zone(view_name, zone_type, zone_name)
+      catch
+        :exit, _ -> {:error, :service_unavailable}
+      end
+
+    case result do
       :ok ->
         # Persist configuration to files
         save_config_async()
@@ -256,7 +269,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
          |> load_zones()
          |> put_flash(:info, "Zone '#{zone_name}' deleted successfully")}
 
-      {:error, :not_found} ->
+      {:error, _reason} ->
         {:noreply,
          socket
          |> assign(:delete_confirm, nil)
@@ -302,16 +315,34 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         zone_name = String.trim_trailing(zone_name, ".")
 
         # Create an auth zone and import the data
-        case ZoneController.start_zone(:auth, zone_name, view_name: view_name) do
+        start_result =
+          try do
+            ZoneController.start_zone(:auth, zone_name, view_name: view_name)
+          catch
+            :exit, _ -> {:error, :service_unavailable}
+          end
+
+        case start_result do
           {:ok, zone_pid} ->
             # Register zone with view
-            case ViewManager.get_view(view_name) do
-              {:ok, view_pid} -> View.register_zone(view_pid, :auth, zone_name)
-              :error -> :ok
+            try do
+              case ViewManager.get_view(view_name) do
+                {:ok, view_pid} -> View.register_zone(view_pid, :auth, zone_name)
+                :error -> :ok
+              end
+            catch
+              :exit, _ -> :ok
             end
 
             # Import the zone data
-            case YellowDog.Dns.Zone.Auth.import_zone_file(zone_pid, zone_data) do
+            import_result =
+              try do
+                YellowDog.Dns.Zone.Auth.import_zone_file(zone_pid, zone_data)
+              catch
+                :exit, _ -> {:error, :service_unavailable}
+              end
+
+            case import_result do
               {:ok, stats} ->
                 save_config_async()
 
@@ -330,7 +361,14 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
           {:error, {:already_started, existing_pid}} ->
             # Zone already exists — import records into it
-            case YellowDog.Dns.Zone.Auth.import_zone_file(existing_pid, zone_data) do
+            import_result =
+              try do
+                YellowDog.Dns.Zone.Auth.import_zone_file(existing_pid, zone_data)
+              catch
+                :exit, _ -> {:error, :service_unavailable}
+              end
+
+            case import_result do
               {:ok, stats} ->
                 save_config_async()
 
@@ -457,6 +495,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     rescue
       _ -> {:ok, %{name: view_name, zones: []}}
+    catch
+      :exit, _ -> {:ok, %{name: view_name, zones: []}}
     end
   end
 
@@ -549,6 +589,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     rescue
       _ -> %{record_count: 0, query_count: 0}
+    catch
+      :exit, _ -> %{record_count: 0, query_count: 0}
     end
   end
 
@@ -620,6 +662,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     rescue
       _ -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 

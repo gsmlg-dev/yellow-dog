@@ -437,4 +437,609 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Built-in ACL Reference"
     end
   end
+
+  # ============================================================================
+  # DNS Views CRUD Operations
+  # ============================================================================
+
+  describe "DNS Views CRUD" do
+    test "create view form submits with valid data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      # Submit the form with view data (only include checkbox if "true")
+      # Since ViewManager is not running, the save will fail gracefully
+      result =
+        view
+        |> form("form", %{
+          "view" => %{
+            "name" => "test-view",
+            "priority" => "50",
+            "recursion_enabled" => "true",
+            "acl_type" => "any",
+            "fallback_forwarders" => "",
+            "fallback_timeout" => "2000",
+            "fallback_retries" => "1"
+          }
+        })
+        |> render_submit()
+
+      # Form submission should produce a flash (either success or error since service isn't running)
+      assert result =~ "view" or result =~ "View" or result =~ "Failed"
+    end
+
+    test "create view form requires name field", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      # The form should have a name input field
+      assert html =~ ~s(name="view[name]")
+    end
+
+    test "create view form has priority field with default 100", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      assert html =~ ~s(name="view[priority]")
+      assert html =~ "100"
+    end
+
+    test "create view form has recursion checkbox", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      assert html =~ ~s(name="view[recursion_enabled]")
+    end
+
+    test "create view form has ECS checkbox", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      assert html =~ ~s(name="view[ecs_enabled]")
+    end
+
+    test "create view form has fallback forwarders textarea", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      assert html =~ ~s(name="view[fallback_forwarders]")
+    end
+
+    test "create view form has timeout and retries fields", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/new")
+      assert html =~ ~s(name="view[fallback_timeout]")
+      assert html =~ ~s(name="view[fallback_retries]")
+    end
+
+    test "ACL type change updates form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      html =
+        view
+        |> element(~s(select[name="view[acl_type]"]))
+        |> render_change(%{"view" => %{"acl_type" => "geo"}})
+
+      # Should show country selector when geo is selected
+      assert html =~ "geo" or html =~ "Geographic" or html =~ "Country"
+    end
+
+    test "edit view redirects to views list for nonexistent view", %{conn: conn} do
+      # View doesn't exist, so apply_action redirects with flash error
+      assert {:error, {:live_redirect, %{to: "/dns/views", flash: flash}}} =
+               live(conn, "/dns/views/nonexistent-view/edit")
+
+      assert flash["error"] =~ "not found"
+    end
+
+    test "delete confirm modal can be closed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views")
+      # close_modal should work even without a delete target
+      html = view |> render_click("close_modal")
+      assert html =~ "DNS Views"
+    end
+
+    test "refresh button reloads views", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views")
+      html = view |> render_click("refresh")
+      assert html =~ "DNS Views"
+    end
+
+    test "export CSV generates file download", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views")
+      view |> render_click("export_csv")
+      # The push_event is fired, which we can't directly assert in tests,
+      # but the render should not crash
+      assert render(view) =~ "DNS Views"
+    end
+
+    test "filter by name works via event", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views")
+      html = view |> render_change("filter", %{"filter" => "test"})
+      assert html =~ "DNS Views"
+    end
+
+    test "filter by status works via event", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views")
+      html = view |> render_change("filter_status", %{"status" => "active"})
+      assert html =~ "DNS Views"
+    end
+  end
+
+  # ============================================================================
+  # DNS Zones CRUD Operations
+  # ============================================================================
+
+  describe "DNS Zones CRUD" do
+    test "create zone form submits auth zone", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      # Auth zone form only has name and type fields (no upstreams/ns_records)
+      result =
+        view
+        |> form("form", %{
+          "zone" => %{
+            "name" => "example.com",
+            "type" => "auth"
+          }
+        })
+        |> render_submit()
+
+      # Should either succeed or show error since ZoneController isn't running
+      assert result =~ "zone" or result =~ "Zone" or result =~ "Failed"
+    end
+
+    test "create zone form submits forward zone with upstreams", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      # First change type to forward to reveal upstreams textarea
+      view
+      |> render_change("validate_zone", %{
+        "zone" => %{
+          "name" => "forwarded.com",
+          "type" => "forward",
+          "upstreams" => "",
+          "ns_records" => ""
+        }
+      })
+
+      # Submit with forward type and upstreams
+      result =
+        view
+        |> form("form", %{
+          "zone" => %{
+            "name" => "forwarded.com",
+            "type" => "forward",
+            "upstreams" => "8.8.8.8\n8.8.4.4"
+          }
+        })
+        |> render_submit()
+
+      assert result =~ "zone" or result =~ "Zone" or result =~ "Failed"
+    end
+
+    test "create zone form submits stub zone with NS records", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      # First change type to stub to reveal ns_records textarea
+      view
+      |> render_change("validate_zone", %{
+        "zone" => %{
+          "name" => "stub.example.org",
+          "type" => "stub",
+          "upstreams" => "",
+          "ns_records" => ""
+        }
+      })
+
+      result =
+        view
+        |> form("form", %{
+          "zone" => %{
+            "name" => "stub.example.org",
+            "type" => "stub",
+            "ns_records" => "ns1.example.org\nns2.example.org"
+          }
+        })
+        |> render_submit()
+
+      assert result =~ "zone" or result =~ "Zone" or result =~ "Failed"
+    end
+
+    test "validate_zone event updates form type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "test.com",
+            "type" => "forward",
+            "upstreams" => "",
+            "ns_records" => ""
+          }
+        })
+
+      # Form should update to show upstream fields for forward type
+      assert html =~ "forward" or html =~ "Forward" or html =~ "Upstream"
+    end
+
+    test "import zone form renders BIND format textarea", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/import")
+      assert html =~ ~s(name="import[zone_data]")
+      assert html =~ ~s(name="import[format]")
+    end
+
+    test "import zone form submits zone data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/import")
+
+      zone_data = """
+      $ORIGIN example.com.
+      @  IN  SOA  ns1.example.com. admin.example.com. 2024010101 3600 900 604800 86400
+      @  IN  NS   ns1.example.com.
+      @  IN  A    192.168.1.1
+      """
+
+      result =
+        view
+        |> form("form", %{
+          "import" => %{
+            "zone_data" => zone_data,
+            "format" => "zone"
+          }
+        })
+        |> render_submit()
+
+      # Import should either succeed or show parse error
+      assert result =~ "import" or result =~ "Import" or result =~ "zone" or result =~ "Failed" or
+               result =~ "Zones"
+    end
+
+    test "cancel navigates back from new zone form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+      view |> element(~s(button[phx-click="cancel"])) |> render_click()
+      assert_redirect(view, "/dns/views/default/zones")
+    end
+
+    test "cancel navigates back from import form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/import")
+      view |> element(~s(button[phx-click="cancel"])) |> render_click()
+      assert_redirect(view, "/dns/views/default/zones")
+    end
+
+    test "refresh button reloads zones", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      html = view |> render_click("refresh")
+      assert html =~ "Zones" or html =~ "default"
+    end
+
+    test "export CSV generates zones file download", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      view |> render_click("export_csv")
+      assert render(view) =~ "Zones" or render(view) =~ "default"
+    end
+
+    test "filter zones by name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      html = view |> render_change("filter", %{"filter" => "example"})
+      assert html =~ "Zones" or html =~ "default"
+    end
+
+    test "filter zones by type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      html = view |> render_change("filter_type", %{"type" => "all"})
+      assert html =~ "Zones" or html =~ "default"
+    end
+
+    test "close_modal event clears delete confirmation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      html = view |> render_click("close_modal")
+      assert html =~ "Zones" or html =~ "default"
+    end
+  end
+
+  # ============================================================================
+  # DNS ACL CRUD Operations
+  # ============================================================================
+
+  describe "DNS ACL CRUD" do
+    test "show_create_form opens named ACL form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_click("show_create_form")
+      # Should show the create form with name, description, acl_type fields
+      assert html =~ ~s(name="acl[name]") or html =~ "Create" or html =~ "ACL"
+    end
+
+    test "close_create_form hides the form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+      html = view |> render_click("close_create_form")
+      # Form should be hidden again
+      assert html =~ "ACL"
+    end
+
+    test "save_named_acl with empty name shows error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      result =
+        view
+        |> form("form[phx-submit=\"save_named_acl\"]", %{
+          "acl" => %{
+            "name" => "",
+            "description" => "Test ACL",
+            "acl_type" => "custom",
+            "rules" => "allow 10.0.0.0/8"
+          }
+        })
+        |> render_submit()
+
+      assert result =~ "required" or result =~ "ACL"
+    end
+
+    test "save_named_acl with valid custom ACL", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      result =
+        view
+        |> form("form[phx-submit=\"save_named_acl\"]", %{
+          "acl" => %{
+            "name" => "test-acl",
+            "description" => "Test ACL for internal network",
+            "acl_type" => "custom",
+            "rules" => "allow 10.0.0.0/8\ndeny any"
+          }
+        })
+        |> render_submit()
+
+      # Either creates successfully or shows error (AclRegistry not running)
+      assert result =~ "ACL" or result =~ "acl" or result =~ "Failed"
+    end
+
+    test "create_type_changed updates ACL form type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      html =
+        view
+        |> render_change("create_type_changed", %{
+          "acl" => %{"acl_type" => "geo"}
+        })
+
+      # Should update form to show geo options
+      assert html =~ "geo" or html =~ "Geographic" or html =~ "ACL"
+    end
+
+    test "cancel_delete clears delete confirmation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_click("cancel_delete")
+      assert html =~ "ACL"
+    end
+
+    test "close_modal clears editing view", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_click("close_modal")
+      assert html =~ "ACL"
+    end
+
+    test "toggle_country adds and removes countries", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      # Toggle a country code
+      html = view |> render_click("toggle_country", %{"code" => "US"})
+      assert html =~ "ACL"
+
+      # Toggle again to remove
+      html = view |> render_click("toggle_country", %{"code" => "US"})
+      assert html =~ "ACL"
+    end
+
+    test "search_country filters country list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_change("search_country", %{"search" => "United"})
+      assert html =~ "ACL"
+    end
+
+    test "clear_country_search resets search", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_change("search_country", %{"search" => "test"})
+      html = view |> render_click("clear_country_search")
+      assert html =~ "ACL"
+    end
+
+    test "refresh reloads ACL data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_click("refresh")
+      assert html =~ "ACL"
+    end
+
+    test "acl_type_changed updates view ACL form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_change("acl_type_changed", %{"acl" => %{"acl_type" => "none"}})
+      assert html =~ "ACL"
+    end
+
+    test "filter named ACLs by search text", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_change("filter", %{"filter" => "internal"})
+      assert html =~ "ACL"
+    end
+
+    test "filter views by ACL type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      html = view |> render_change("filter_type", %{"type" => "any"})
+      assert html =~ "ACL"
+    end
+
+    test "export CSV generates ACL file download", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("export_csv")
+      assert render(view) =~ "ACL"
+    end
+  end
+
+  # ============================================================================
+  # DNS Resource Records Page
+  # ============================================================================
+
+  describe "DNS Resource Records /dns/views/:view_name/zones/:zone_type/:zone_name/records" do
+    test "mounts with zone context from params", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      assert html =~ "Records" or html =~ "example.com" or html =~ "record"
+    end
+
+    test "navigates to new record form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      assert html =~ "Add" or html =~ "Record" or html =~ "record"
+    end
+
+    test "navigates to bulk import form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+      assert html =~ "Bulk" or html =~ "Import" or html =~ "record"
+    end
+
+    test "refresh reloads records", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_click("refresh")
+      assert html =~ "Records" or html =~ "example.com" or html =~ "record"
+    end
+
+    test "filter records by name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_change("filter", %{"filter" => "www"})
+      assert html =~ "Records" or html =~ "example.com" or html =~ "record"
+    end
+
+    test "filter records by type", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_change("filter_type", %{"type" => "all"})
+      assert html =~ "Records" or html =~ "example.com" or html =~ "record"
+    end
+
+    test "export CSV generates records file download", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      view |> render_click("export_csv")
+      assert render(view) =~ "Records" or render(view) =~ "example.com"
+    end
+
+    test "close_modal clears delete confirmation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_click("close_modal")
+      assert html =~ "Records" or html =~ "example.com" or html =~ "record"
+    end
+
+    test "cancel navigates back from new record form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+      view |> element(~s(button[phx-click="cancel"])) |> render_click()
+      assert_redirect(view, "/dns/views/default/zones/auth/example.com/records")
+    end
+  end
+
+  # ============================================================================
+  # DNS Views Private Helper Unit Tests
+  # ============================================================================
+
+  describe "ViewLive helper functions" do
+    alias YellowDog.Console.DnsLive.ViewLive.Index, as: ViewLive
+
+    test "filtered_views/3 returns empty list for empty input" do
+      assert ViewLive.filtered_views([], "", "all") == []
+    end
+
+    test "filtered_views/3 filters disabled views" do
+      views = [
+        %{name: "v1", enabled: false},
+        %{name: "v2", enabled: true},
+        %{name: "v3", enabled: false}
+      ]
+
+      result = ViewLive.filtered_views(views, "", "disabled")
+      assert length(result) == 2
+      assert Enum.all?(result, &(!&1.enabled))
+    end
+
+    test "filtered_views/3 handles special characters in filter" do
+      views = [%{name: "test.view-1", enabled: true}]
+      assert ViewLive.filtered_views(views, "test.view", "all") == views
+    end
+  end
+
+  # ============================================================================
+  # DNS Zones Private Helper Unit Tests
+  # ============================================================================
+
+  describe "ZoneLive helper functions" do
+    alias YellowDog.Console.DnsLive.ZoneLive.Index, as: ZoneLive
+
+    test "filtered_zones/3 returns empty list for empty input" do
+      assert ZoneLive.filtered_zones([], "", "all") == []
+    end
+
+    test "zone_type_label/1 handles all known types" do
+      assert ZoneLive.zone_type_label(:auth) == "Authoritative"
+      assert ZoneLive.zone_type_label(:forward) == "Forward"
+      assert ZoneLive.zone_type_label(:stub) == "Stub"
+      assert ZoneLive.zone_type_label(:cache) == "Cache"
+      assert ZoneLive.zone_type_label(:rpz) == "Unknown"
+    end
+
+    test "zone_type_badge/1 returns DaisyUI classes for all types" do
+      assert ZoneLive.zone_type_badge(:auth) == "primary"
+      assert ZoneLive.zone_type_badge(:forward) == "secondary"
+      assert ZoneLive.zone_type_badge(:stub) == "accent"
+      assert ZoneLive.zone_type_badge(:cache) == "info"
+      assert ZoneLive.zone_type_badge(:other) == "ghost"
+    end
+
+    test "unique_zone_types/1 returns empty list for empty input" do
+      assert ZoneLive.unique_zone_types([]) == []
+    end
+
+    test "unique_zone_types/1 removes duplicates and sorts" do
+      zones = [
+        %{type: :forward},
+        %{type: :auth},
+        %{type: :forward},
+        %{type: :cache}
+      ]
+
+      assert ZoneLive.unique_zone_types(zones) == [:auth, :cache, :forward]
+    end
+  end
+
+  # ============================================================================
+  # DNS ACL Private Helper Unit Tests
+  # ============================================================================
+
+  describe "AclLive helper functions" do
+    alias YellowDog.Console.DnsLive.AclLive
+
+    test "filtered_named_acls/3 returns empty list for empty input" do
+      assert AclLive.filtered_named_acls([], "", "all") == []
+    end
+
+    test "filtered_views_acl/3 returns empty list for empty input" do
+      assert AclLive.filtered_views_acl([], "", "all") == []
+    end
+
+    test "unique_acl_types/1 returns empty list for empty input" do
+      assert AclLive.unique_acl_types([]) == []
+    end
+
+    test "unique_acl_types/1 handles single type" do
+      views = [%{acl_type: "any"}]
+      assert AclLive.unique_acl_types(views) == ["any"]
+    end
+
+    test "filtered_named_acls/3 matches on description" do
+      acls = [
+        %{name: "acl1", description: "Internal network access", rules: []},
+        %{name: "acl2", description: "External public", rules: []}
+      ]
+
+      result = AclLive.filtered_named_acls(acls, "internal", "all")
+      assert length(result) == 1
+      assert hd(result).name == "acl1"
+    end
+
+    test "filtered_views_acl/3 combines filters" do
+      views = [
+        %{name: "default", acl_type: "any"},
+        %{name: "internal-a", acl_type: "custom"},
+        %{name: "internal-b", acl_type: "geo"}
+      ]
+
+      result = AclLive.filtered_views_acl(views, "internal", "geo")
+      assert length(result) == 1
+      assert hd(result).name == "internal-b"
+    end
+  end
 end

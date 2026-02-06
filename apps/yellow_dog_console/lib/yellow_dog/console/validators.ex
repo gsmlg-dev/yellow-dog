@@ -297,8 +297,9 @@ defmodule YellowDog.Console.Validators do
       {:error, "MX priority must be between 0 and 65535"}
   """
   @spec validate_mx_priority(integer()) :: :ok | {:error, String.t()}
-  def validate_mx_priority(priority) when is_integer(priority) and priority >= 0 and priority <= 65_535,
-    do: :ok
+  def validate_mx_priority(priority)
+      when is_integer(priority) and priority >= 0 and priority <= 65_535,
+      do: :ok
 
   def validate_mx_priority(_), do: {:error, "MX priority must be between 0 and 65535"}
 

@@ -84,7 +84,14 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
   @impl true
   def handle_event("edit_named_acl", %{"name" => name}, socket) do
-    case AclRegistry.get_acl(name) do
+    result =
+      try do
+        AclRegistry.get_acl(name)
+      catch
+        :exit, _ -> {:error, :service_unavailable}
+      end
+
+    case result do
       {:ok, acl} ->
         {acl_type, selected_countries} = parse_named_acl_for_form(acl)
 
@@ -104,7 +111,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
          |> assign(:country_search, "")
          |> assign(:create_form, create_form)}
 
-      {:error, :not_found} ->
+      {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "ACL not found")}
     end
   end
@@ -142,10 +149,14 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       }
 
       result =
-        if socket.assigns.editing_acl do
-          AclRegistry.update_acl(socket.assigns.editing_acl, acl)
-        else
-          AclRegistry.create_acl(acl)
+        try do
+          if socket.assigns.editing_acl do
+            AclRegistry.update_acl(socket.assigns.editing_acl, acl)
+          else
+            AclRegistry.create_acl(acl)
+          end
+        catch
+          :exit, _ -> {:error, :service_unavailable}
         end
 
       case result do
@@ -184,7 +195,14 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   def handle_event("delete_named_acl", _params, socket) do
     name = socket.assigns.delete_confirm
 
-    case AclRegistry.delete_acl(name) do
+    result =
+      try do
+        AclRegistry.delete_acl(name)
+      catch
+        :exit, _ -> {:error, :service_unavailable}
+      end
+
+    case result do
       :ok ->
         {:noreply,
          socket
@@ -192,7 +210,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
          |> assign(:delete_confirm, nil)
          |> put_flash(:info, "ACL '#{name}' deleted successfully")}
 
-      {:error, :not_found} ->
+      {:error, _reason} ->
         {:noreply,
          socket
          |> assign(:delete_confirm, nil)
@@ -286,9 +304,20 @@ defmodule YellowDog.Console.DnsLive.AclLive do
         "custom" -> parse_acl_rules(params["rules"] || "")
       end
 
-    case ViewManager.get_view(view_name) do
+    result =
+      try do
+        ViewManager.get_view(view_name)
+      catch
+        :exit, _ -> :error
+      end
+
+    case result do
       {:ok, pid} ->
-        View.reload(pid, %{acl: acl_config})
+        try do
+          View.reload(pid, %{acl: acl_config})
+        catch
+          :exit, _ -> :ok
+        end
 
         {:noreply,
          socket
