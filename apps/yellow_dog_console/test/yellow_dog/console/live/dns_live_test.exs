@@ -157,9 +157,10 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Metrics" or html =~ "DNS"
     end
 
-    test "has export CSV button", %{conn: conn} do
+    test "has export CSV button with CsvDownload hook", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dns/metrics")
       assert html =~ "Export CSV"
+      assert html =~ "CsvDownload"
     end
 
     test "has reset button", %{conn: conn} do
@@ -534,7 +535,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "export CSV generates file download", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views")
+      {:ok, view, html} = live(conn, "/dns/views")
+      assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       # The push_event is fired, which we can't directly assert in tests,
       # but the render should not crash
@@ -702,7 +704,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "export CSV generates zones file download", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/views/default/zones")
+      {:ok, view, html} = live(conn, "/dns/views/default/zones")
+      assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       assert render(view) =~ "Zones" or render(view) =~ "default"
     end
@@ -860,7 +863,8 @@ defmodule YellowDog.Console.DnsLiveTest do
     end
 
     test "export CSV generates ACL file download", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dns/acl")
+      {:ok, view, html} = live(conn, "/dns/acl")
+      assert html =~ "CsvDownload"
       view |> render_click("export_csv")
       assert render(view) =~ "ACL"
     end

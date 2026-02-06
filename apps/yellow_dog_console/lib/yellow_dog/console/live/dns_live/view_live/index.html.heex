@@ -17,7 +17,13 @@
         </p>
       </div>
       <div class="flex gap-2">
-        <button phx-click="export_csv" class="btn btn-ghost btn-sm" title="Export CSV">
+        <button
+          phx-click="export_csv"
+          id="export-csv"
+          phx-hook="CsvDownload"
+          class="btn btn-ghost btn-sm"
+          title="Export CSV"
+        >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"

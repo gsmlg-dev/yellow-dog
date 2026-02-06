@@ -7,7 +7,12 @@
         <p class="mt-2 text-base-content/70">Manage your mDNS service registrations</p>
       </div>
       <div class="flex gap-2">
-        <button phx-click="export_csv" class="btn btn-outline btn-sm">
+        <button
+          phx-click="export_csv"
+          id="export-csv"
+          phx-hook="CsvDownload"
+          class="btn btn-outline btn-sm"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-5 w-5"

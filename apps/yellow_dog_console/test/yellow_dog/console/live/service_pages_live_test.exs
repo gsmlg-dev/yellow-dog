@@ -310,4 +310,28 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert html =~ "Settings" or html =~ "Configuration"
     end
   end
+
+  # ============================================================================
+  # CsvDownload Hook Presence (ensures export buttons work)
+  # ============================================================================
+
+  describe "CsvDownload hook on export pages" do
+    @csv_pages [
+      {"/mdns/services", "mDNS Services"},
+      {"/mdns/discovery", "mDNS Discovery"},
+      {"/mdns/monitor", "mDNS Monitor"},
+      {"/dhcpv4/leases", "DHCPv4 Leases"},
+      {"/dhcpv4/pools", "DHCPv4 Pools"},
+      {"/dhcpv6/leases", "DHCPv6 Leases"},
+      {"/dhcpv6/pools", "DHCPv6 Pools"},
+      {"/logs", "Logs"}
+    ]
+
+    for {path, name} <- @csv_pages do
+      test "#{name} page has CsvDownload hook", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "CsvDownload"
+      end
+    end
+  end
 end

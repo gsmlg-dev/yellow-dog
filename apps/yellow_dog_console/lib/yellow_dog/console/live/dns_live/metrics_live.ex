@@ -209,7 +209,12 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
           <h1 class="text-2xl font-bold">DNS Metrics</h1>
           <div class="flex gap-2 items-center">
             <span class="text-xs text-base-content/50">Auto-refresh: 5s</span>
-            <button phx-click="export_csv" class="btn btn-outline btn-sm">
+            <button
+              phx-click="export_csv"
+              id="export-csv"
+              phx-hook="CsvDownload"
+              class="btn btn-outline btn-sm"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4"
