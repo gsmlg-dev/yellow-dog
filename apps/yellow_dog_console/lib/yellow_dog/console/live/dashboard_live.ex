@@ -141,6 +141,8 @@ defmodule YellowDog.Console.DashboardLive do
         )
 
         get_fallback_status()
+    catch
+      :exit, _ -> get_fallback_status()
     end
   end
 
