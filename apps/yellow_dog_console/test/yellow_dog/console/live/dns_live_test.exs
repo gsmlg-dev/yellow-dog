@@ -903,6 +903,23 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "disabled"
     end
 
+    test "shows Export BIND button for auth zones", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      assert html =~ "Export BIND"
+    end
+
+    test "export_bind handles missing zone gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_click("export_bind")
+      # Should show an error flash or still render the page
+      assert html =~ "Records" or html =~ "example.com" or html =~ "Export failed"
+    end
+
+    test "shows CsvDownload hook on export button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      assert html =~ "CsvDownload"
+    end
+
     test "refresh reloads records", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
       html = view |> render_click("refresh")

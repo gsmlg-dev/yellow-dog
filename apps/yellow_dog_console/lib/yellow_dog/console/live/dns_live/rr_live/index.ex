@@ -168,6 +168,24 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   @impl true
+  def handle_event("export_bind", _params, socket) do
+    view_name = socket.assigns.view_name
+    zone_type = socket.assigns.zone_type
+    zone_name = socket.assigns.zone_name
+
+    case export_zone_bind(view_name, zone_type, zone_name) do
+      {:ok, content} ->
+        timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+        zone = zone_name |> String.replace(".", "_")
+        filename = "#{zone}_#{timestamp}.zone"
+        {:noreply, push_event(socket, "download_csv", %{content: content, filename: filename})}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
+    end
+  end
+
+  @impl true
   def handle_event("validate_rr", %{"rr" => rr_params}, socket) do
     errors = validate_rr_fields(rr_params)
     {:noreply, assign(socket, :form_errors, errors)}
@@ -635,6 +653,30 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp format_rrset_name(name) when is_binary(name), do: name
   defp format_rrset_name(%DNS.Message.Domain{} = d), do: to_string(d)
   defp format_rrset_name(name), do: to_string(name)
+
+  # ============================================================================
+  # BIND Zone Export
+  # ============================================================================
+
+  defp export_zone_bind(view_name, :auth, zone_name) do
+    try do
+      case ZoneController.find_zone(view_name, :auth, zone_name) do
+        {:ok, pid} ->
+          YellowDog.Dns.Zone.Auth.export_zone_file(pid)
+
+        :error ->
+          {:error, "Zone not found"}
+      end
+    rescue
+      _ -> {:error, "Zone not available"}
+    catch
+      :exit, _ -> {:error, "Zone not available"}
+    end
+  end
+
+  defp export_zone_bind(_view_name, _zone_type, _zone_name) do
+    {:error, "Only authoritative zones can be exported as BIND format"}
+  end
 
   # ============================================================================
   # CSV Export
