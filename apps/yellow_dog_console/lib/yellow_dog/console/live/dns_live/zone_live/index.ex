@@ -201,15 +201,15 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   def handle_event("import_zone", %{"import" => import_params}, socket) do
     view_name = socket.assigns.view_name
     zone_data = import_params["zone_data"]
-    _format = import_params["format"]
+    format = import_params["format"]
 
-    # TODO: Implement zone file parsing and import
-    _ = zone_data
+    case format do
+      "zone" ->
+        import_bind_zone(socket, view_name, zone_data)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Zone import feature coming soon - data received")
-     |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+      _ ->
+        {:noreply, put_flash(socket, :error, "Unsupported import format: #{format}")}
+    end
   end
 
   @impl true
@@ -271,6 +271,69 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   # ============================================================================
   # Private Helpers
   # ============================================================================
+
+  defp import_bind_zone(socket, view_name, zone_data) do
+    # Parse the zone data to extract the origin/zone name
+    case DNS.Zone.parse_zone_string(zone_data) do
+      {:ok, zone} ->
+        zone_name = zone.origin || "imported.zone"
+        # Remove trailing dot if present
+        zone_name = String.trim_trailing(zone_name, ".")
+
+        # Create an auth zone and import the data
+        case ZoneController.start_zone(:auth, zone_name, view_name: view_name) do
+          {:ok, zone_pid} ->
+            # Register zone with view
+            case ViewManager.get_view(view_name) do
+              {:ok, view_pid} -> View.register_zone(view_pid, :auth, zone_name)
+              :error -> :ok
+            end
+
+            # Import the zone data
+            case YellowDog.Dns.Zone.Auth.import_zone_file(zone_pid, zone_data) do
+              {:ok, stats} ->
+                save_config_async()
+
+                {:noreply,
+                 socket
+                 |> put_flash(
+                   :info,
+                   "Zone '#{zone_name}' imported with #{stats.records_imported} records"
+                 )
+                 |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+
+              {:error, reason} ->
+                {:noreply,
+                 put_flash(socket, :error, "Failed to import zone data: #{inspect(reason)}")}
+            end
+
+          {:error, {:already_started, existing_pid}} ->
+            # Zone already exists — import records into it
+            case YellowDog.Dns.Zone.Auth.import_zone_file(existing_pid, zone_data) do
+              {:ok, stats} ->
+                save_config_async()
+
+                {:noreply,
+                 socket
+                 |> put_flash(
+                   :info,
+                   "Imported #{stats.records_imported} records into existing zone '#{zone_name}'"
+                 )
+                 |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+
+              {:error, reason} ->
+                {:noreply,
+                 put_flash(socket, :error, "Failed to import zone data: #{inspect(reason)}")}
+            end
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to create zone: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to parse zone data: #{inspect(reason)}")}
+    end
+  end
 
   # Build zone configuration based on zone type
   defp build_zone_config(:auth, _params) do

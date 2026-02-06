@@ -59,6 +59,7 @@
                   <thead>
                     <tr>
                       <th>Name</th>
+                      <th>Status</th>
                       <th>Priority</th>
                       <th>Recursion</th>
                       <th>ECS</th>
@@ -80,6 +81,20 @@
                           <%= if view.name == "default" do %>
                             <span class="badge badge-ghost badge-xs ml-1">default</span>
                           <% end %>
+                        </td>
+                        <td>
+                          <button
+                            phx-click="toggle_enabled"
+                            phx-value-name={view.name}
+                            class="cursor-pointer"
+                            title={if view.enabled, do: "Click to disable", else: "Click to enable"}
+                          >
+                            <%= if view.enabled do %>
+                              <.badge color="success" size="sm">Active</.badge>
+                            <% else %>
+                              <.badge color="error" size="sm">Disabled</.badge>
+                            <% end %>
+                          </button>
                         </td>
                         <td>
                           <span class="font-mono">

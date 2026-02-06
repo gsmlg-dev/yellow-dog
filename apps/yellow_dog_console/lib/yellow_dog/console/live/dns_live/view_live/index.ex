@@ -115,6 +115,25 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   end
 
   @impl true
+  def handle_event("toggle_enabled", %{"name" => view_name}, socket) do
+    case ViewManager.get_view(view_name) do
+      {:ok, pid} ->
+        current = View.is_enabled?(pid)
+        View.set_enabled(pid, !current)
+        save_config_async()
+        action = if current, do: "disabled", else: "enabled"
+
+        {:noreply,
+         socket
+         |> refresh_views()
+         |> put_flash(:info, "View '#{view_name}' #{action}")}
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "View '#{view_name}' not found")}
+    end
+  end
+
+  @impl true
   def handle_event("save_view", %{"view" => view_params}, socket) do
     editing = socket.assigns[:editing_view]
     is_default = socket.assigns[:is_default_view] || false
@@ -298,6 +317,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         %{
           name: view_name,
           priority: priority,
+          enabled: Map.get(stats, :enabled, true),
           recursion_enabled: Map.get(stats, :recursion_enabled, false),
           ecs_enabled: Map.get(stats, :ecs_enabled, false),
           zone_count: length(Map.get(stats, :zones, [])),

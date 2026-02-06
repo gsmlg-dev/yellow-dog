@@ -56,6 +56,10 @@ defmodule YellowDog.Dns.View do
     :ecs_enabled,
     :recursion_controller,
     enabled: true,
+    # Fallback forwarders: list of {ip_tuple, port} for when zone resolution fails
+    fallback_forwarders: [],
+    fallback_timeout: 2000,
+    fallback_retries: 1,
     query_count: 0,
     hit_count: 0,
     miss_count: 0
@@ -189,6 +193,10 @@ defmodule YellowDog.Dns.View do
         read_concurrency: true
       ])
 
+    fallback_forwarders = Map.get(config, :fallback_forwarders, [])
+    fallback_timeout = Map.get(config, :fallback_timeout, 2000)
+    fallback_retries = Map.get(config, :fallback_retries, 1)
+
     state = %__MODULE__{
       name: view_name,
       priority: priority,
@@ -198,7 +206,10 @@ defmodule YellowDog.Dns.View do
       cache_table: cache_table,
       enabled: enabled,
       recursion_enabled: recursion_enabled,
-      ecs_enabled: ecs_enabled
+      ecs_enabled: ecs_enabled,
+      fallback_forwarders: fallback_forwarders,
+      fallback_timeout: fallback_timeout,
+      fallback_retries: fallback_retries
     }
 
     Telemetry.info("View process started", %{
@@ -283,7 +294,10 @@ defmodule YellowDog.Dns.View do
         rpz_zones: Map.get(config, :rpz_zones, state.rpz_zones),
         enabled: Map.get(config, :enabled, state.enabled),
         recursion_enabled: Map.get(config, :recursion_enabled, state.recursion_enabled),
-        ecs_enabled: Map.get(config, :ecs_enabled, state.ecs_enabled)
+        ecs_enabled: Map.get(config, :ecs_enabled, state.ecs_enabled),
+        fallback_forwarders: Map.get(config, :fallback_forwarders, state.fallback_forwarders),
+        fallback_timeout: Map.get(config, :fallback_timeout, state.fallback_timeout),
+        fallback_retries: Map.get(config, :fallback_retries, state.fallback_retries)
     }
 
     Telemetry.info("View reloaded", %{name: state.name})
@@ -324,6 +338,9 @@ defmodule YellowDog.Dns.View do
       rpz_zones: state.rpz_zones,
       recursion_enabled: state.recursion_enabled,
       ecs_enabled: state.ecs_enabled,
+      fallback_forwarders: state.fallback_forwarders,
+      fallback_timeout: state.fallback_timeout,
+      fallback_retries: state.fallback_retries,
       query_count: state.query_count,
       hit_count: state.hit_count,
       miss_count: state.miss_count,
@@ -380,13 +397,21 @@ defmodule YellowDog.Dns.View do
     zone_name = find_zone_for_name(state.zones, question.name)
 
     if zone_name do
-      resolve_in_zone(state, connection_pid, query_id, query, zone_name)
+      case resolve_in_zone(state, connection_pid, query_id, query, zone_name) do
+        {:ok, _} = success ->
+          success
+
+        {:error, _} = error ->
+          # Zone resolution failed - try fallback forwarders if configured
+          try_fallback(state, connection_pid, query_id, query, error)
+      end
     else
       # No matching zone - try recursion if enabled
       if state.recursion_enabled do
         perform_recursion(state, connection_pid, query_id, query)
       else
-        {:error, :refused}
+        # Try fallback forwarders before refusing
+        try_fallback(state, connection_pid, query_id, query, {:error, :refused})
       end
     end
   end
@@ -478,6 +503,73 @@ defmodule YellowDog.Dns.View do
           error ->
             error
         end
+    end
+  end
+
+  defp try_fallback(state, connection_pid, query_id, query, original_error) do
+    if state.fallback_forwarders != [] do
+      Telemetry.debug("Attempting fallback forwarding", %{
+        view: state.name,
+        forwarders: length(state.fallback_forwarders)
+      })
+
+      case forward_to_fallback(state, query) do
+        {:ok, response} ->
+          send(connection_pid, {:zone_response, query_id, response})
+          cache_response(state, query, response)
+          apply_rpz_and_respond(state, connection_pid, query_id, query, response)
+
+        {:error, _} ->
+          original_error
+      end
+    else
+      original_error
+    end
+  end
+
+  defp forward_to_fallback(state, query) do
+    query_data = DNS.to_iodata(query)
+
+    Enum.reduce_while(1..max(state.fallback_retries, 1), {:error, :timeout}, fn _attempt, _acc ->
+      result =
+        Enum.find_value(state.fallback_forwarders, fn {ip, port} ->
+          case send_udp_query(ip, port, query_data, state.fallback_timeout) do
+            {:ok, response_data} ->
+              try do
+                response = DNS.Message.from_iodata(response_data)
+                {:ok, response}
+              rescue
+                _ -> nil
+              end
+
+            _ ->
+              nil
+          end
+        end)
+
+      case result do
+        {:ok, _} = success -> {:halt, success}
+        nil -> {:cont, {:error, :timeout}}
+      end
+    end)
+  end
+
+  defp send_udp_query(ip, port, data, timeout) do
+    case :gen_udp.open(0, [:binary, active: false]) do
+      {:ok, socket} ->
+        try do
+          :gen_udp.send(socket, ip, port, data)
+
+          case :gen_udp.recv(socket, 0, timeout) do
+            {:ok, {_addr, _port, response}} -> {:ok, response}
+            {:error, reason} -> {:error, reason}
+          end
+        after
+          :gen_udp.close(socket)
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

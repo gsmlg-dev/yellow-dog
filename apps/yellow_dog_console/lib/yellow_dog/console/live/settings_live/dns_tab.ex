@@ -176,10 +176,77 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
         </.form>
       </.card>
       
-    <!-- Advanced Configuration (Future) -->
-      <.card title="Advanced DNS Settings" class="opacity-50">
-        <div class="text-center py-8 text-gray-500">
-          <p class="text-sm">Zone management and advanced DNS features coming soon</p>
+    <!-- DNS Runtime Operations -->
+      <.card title="DNS Runtime Operations">
+        <:actions>
+          <.badge color="info" size="sm">Live</.badge>
+        </:actions>
+
+        <div class="space-y-4">
+          <p class="text-sm text-base-content/70">
+            Reload DNS subsystem components from their persisted configuration without restarting the entire service.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- Reload All -->
+            <button
+              type="button"
+              phx-click="dns_reload_all"
+              class="btn btn-outline btn-sm gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Reload All
+            </button>
+            <!-- Reload Views -->
+            <button
+              type="button"
+              phx-click="dns_reload_views"
+              class="btn btn-outline btn-sm gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                />
+              </svg>
+              Reload Views
+            </button>
+            <!-- Reload ACLs -->
+            <button
+              type="button"
+              phx-click="dns_reload_acls"
+              class="btn btn-outline btn-sm gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+              Reload ACLs
+            </button>
+          </div>
+
+          <div class="text-xs text-base-content/50">
+            Hot-reload applies configuration changes to running processes without dropping active connections.
+          </div>
         </div>
       </.card>
     </div>

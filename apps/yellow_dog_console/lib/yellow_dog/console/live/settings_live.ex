@@ -126,6 +126,37 @@ defmodule YellowDog.Console.SettingsLive do
     handle_apply_changes(socket, service_atom)
   end
 
+  def handle_event("dns_reload_all", _params, socket) do
+    case dns_reload(:all) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "DNS configuration reloaded successfully")}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Failed to reload DNS configuration: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("dns_reload_views", _params, socket) do
+    case dns_reload(:views) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "DNS views reloaded successfully")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to reload DNS views: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("dns_reload_acls", _params, socket) do
+    case dns_reload(:acls) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "DNS ACLs reloaded successfully")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to reload DNS ACLs: #{inspect(reason)}")}
+    end
+  end
+
   def handle_event("reload_config", _params, socket) do
     config_path = socket.assigns.config_path
 
@@ -698,4 +729,18 @@ defmodule YellowDog.Console.SettingsLive do
   defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
   defp format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KB"
   defp format_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+
+  defp dns_reload(scope) do
+    try do
+      case scope do
+        :all -> YellowDog.Dns.ConfigWatcher.reload()
+        :views -> YellowDog.Dns.ConfigWatcher.reload_views()
+        :acls -> YellowDog.Dns.ConfigWatcher.reload_acls()
+      end
+    rescue
+      e -> {:error, Exception.message(e)}
+    catch
+      :exit, reason -> {:error, reason}
+    end
+  end
 end
