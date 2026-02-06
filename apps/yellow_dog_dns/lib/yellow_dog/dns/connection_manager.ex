@@ -77,24 +77,36 @@ defmodule YellowDog.Dns.ConnectionManager do
       type: :worker
     }
 
-    case DynamicSupervisor.start_child(supervisor, child_spec) do
-      {:ok, pid} = result ->
-        Telemetry.debug("Connection process started", %{
-          client_ip: format_ip(client_ip),
-          client_port: client_port,
-          pid: inspect(pid)
-        })
+    # Wrap in try-catch to handle supervisor shutdown during test cleanup
+    try do
+      case DynamicSupervisor.start_child(supervisor, child_spec) do
+        {:ok, pid} = result ->
+          Telemetry.debug("Connection process started", %{
+            client_ip: format_ip(client_ip),
+            client_port: client_port,
+            pid: inspect(pid)
+          })
 
-        result
+          result
 
-      {:error, reason} = error ->
-        Telemetry.warning("Failed to start connection process", %{
-          client_ip: format_ip(client_ip),
-          client_port: client_port,
-          reason: inspect(reason)
-        })
+        {:error, reason} = error ->
+          Telemetry.warning("Failed to start connection process", %{
+            client_ip: format_ip(client_ip),
+            client_port: client_port,
+            reason: inspect(reason)
+          })
 
-        error
+          error
+      end
+    catch
+      :exit, {:noproc, _} ->
+        # Supervisor is shutting down (common during test cleanup)
+        Telemetry.debug("ConnectionManager not available (likely shutting down)")
+        {:error, :manager_not_available}
+
+      :exit, reason ->
+        Telemetry.warning("ConnectionManager call failed", %{reason: inspect(reason)})
+        {:error, {:exit, reason}}
     end
   end
 
