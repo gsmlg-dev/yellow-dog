@@ -6,7 +6,7 @@
         <h1 class="text-4xl font-bold">Service Dashboard</h1>
         <p class="mt-2 text-base-content/70">Monitor and manage your Yellow Dog services</p>
       </div>
-      <button class="btn btn-ghost btn-circle" aria-label="Refresh">
+      <button phx-click="refresh" class="btn btn-ghost btn-circle" aria-label="Refresh">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-6 w-6"
@@ -213,7 +213,7 @@
                 Start
               </button>
             <% end %>
-            <button class="btn btn-sm btn-ghost gap-2">
+            <.link navigate={"/settings/#{service.key}"} class="btn btn-sm btn-ghost gap-2">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4"
@@ -235,7 +235,7 @@
                 />
               </svg>
               Configure
-            </button>
+            </.link>
           </:actions>
         </.card>
       </div>
@@ -298,7 +298,7 @@
               mDNS Discovery
             </.link>
 
-            <button class="btn btn-outline btn-block justify-start gap-2">
+            <.link navigate={~p"/settings"} class="btn btn-outline btn-block justify-start gap-2">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -320,34 +320,45 @@
                 />
               </svg>
               Configuration
-            </button>
+            </.link>
           </div>
         </.card>
         <!-- System Health Card -->
-        <.card title="System Health">
+        <.card title="BEAM VM Health">
           <div class="space-y-4">
             <div>
               <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">CPU Usage</span>
-                <span class="text-sm font-semibold">42%</span>
+                <span class="text-sm">Process Memory</span>
+                <span class="text-sm font-semibold">{@system_health.memory_pct}%</span>
               </div>
-              <.progress value={42} color="info" />
+              <.progress
+                value={@system_health.memory_pct}
+                color={if @system_health.memory_pct > 80, do: "error", else: if(@system_health.memory_pct > 60, do: "warning", else: "info")}
+              />
+              <div class="text-xs text-base-content/50 mt-1">
+                {@system_health.memory_processes} of {@system_health.memory_total}
+              </div>
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">Memory</span>
-                <span class="text-sm font-semibold">68%</span>
+                <span class="text-sm">Processes</span>
+                <span class="text-sm font-semibold">{@system_health.process_pct}%</span>
               </div>
-              <.progress value={68} color="warning" />
+              <.progress
+                value={@system_health.process_pct}
+                color={if @system_health.process_pct > 80, do: "error", else: "success"}
+              />
+              <div class="text-xs text-base-content/50 mt-1">
+                {@system_health.process_count} / {@system_health.process_limit}
+              </div>
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-2">
-                <span class="text-sm">Network</span>
-                <span class="text-sm font-semibold">23%</span>
+                <span class="text-sm">VM Uptime</span>
+                <span class="text-sm font-semibold">{@system_health.uptime}</span>
               </div>
-              <.progress value={23} color="success" />
             </div>
           </div>
         </.card>

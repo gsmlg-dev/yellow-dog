@@ -19,12 +19,24 @@ defmodule YellowDog.Console.DashboardLive do
     {:ok,
      socket
      |> assign(:page_title, "Dashboard")
-     |> assign(:services, get_service_status())}
+     |> assign(:services, get_service_status())
+     |> assign(:system_health, get_system_health())}
   end
 
   @impl true
   def handle_info(:refresh_services, socket) do
-    {:noreply, assign(socket, :services, get_service_status())}
+    {:noreply,
+     socket
+     |> assign(:services, get_service_status())
+     |> assign(:system_health, get_system_health())}
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:services, get_service_status())
+     |> assign(:system_health, get_system_health())}
   end
 
   @impl true
@@ -178,6 +190,42 @@ defmodule YellowDog.Console.DashboardLive do
     do: "#{Float.round(bytes / (1024 * 1024 * 1024), 2)}GB"
 
   defp format_memory(_), do: "N/A"
+
+  defp get_system_health do
+    memory = :erlang.memory()
+    total_memory = memory[:total] || 0
+    process_memory = memory[:processes] || 0
+    system_memory = memory[:system] || 0
+    process_count = :erlang.system_info(:process_count)
+    process_limit = :erlang.system_info(:process_limit)
+    {uptime_ms, _} = :erlang.statistics(:wall_clock)
+
+    # Memory percentage: process memory relative to total VM memory
+    memory_pct = if total_memory > 0, do: round(process_memory / total_memory * 100), else: 0
+
+    # Process utilization
+    process_pct = if process_limit > 0, do: round(process_count / process_limit * 100), else: 0
+
+    %{
+      memory_total: format_memory(total_memory),
+      memory_processes: format_memory(process_memory),
+      memory_system: format_memory(system_memory),
+      memory_pct: memory_pct,
+      process_count: process_count,
+      process_limit: process_limit,
+      process_pct: process_pct,
+      uptime: format_uptime(uptime_ms)
+    }
+  end
+
+  defp format_uptime(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
+  defp format_uptime(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)}m #{div(rem(ms, 60_000), 1_000)}s"
+
+  defp format_uptime(ms) do
+    hours = div(ms, 3_600_000)
+    mins = div(rem(ms, 3_600_000), 60_000)
+    "#{hours}h #{mins}m"
+  end
 
   defp get_fallback_status do
     # Return default status when service manager is unavailable

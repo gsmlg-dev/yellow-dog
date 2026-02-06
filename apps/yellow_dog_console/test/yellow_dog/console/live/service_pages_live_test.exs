@@ -33,6 +33,38 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/dashboard")
       assert html =~ "53" or html =~ "67" or html =~ "547" or html =~ "5353"
     end
+
+    test "refresh button has phx-click handler", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "phx-click=\"refresh\""
+    end
+
+    test "refresh event updates dashboard", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+      html = render_click(view, "refresh")
+      assert html =~ "DNS"
+      assert html =~ "DHCPv4"
+    end
+
+    test "configure buttons link to settings", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "/settings/"
+      assert html =~ "Configure"
+    end
+
+    test "system health shows real BEAM VM data", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "BEAM VM Health"
+      assert html =~ "Process Memory"
+      assert html =~ "Processes"
+      assert html =~ "VM Uptime"
+    end
+
+    test "system health shows process count", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      # Should show actual process count (always > 0)
+      assert html =~ ~r/\d+ \/ \d+/
+    end
   end
 
   # ============================================================================
