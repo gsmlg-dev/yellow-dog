@@ -582,7 +582,12 @@
       show
       on_cancel={JS.push("close_create_form")}
     >
-      <.form for={@create_form} phx-submit="save_named_acl" class="space-y-4">
+      <.form
+        for={@create_form}
+        phx-submit="save_named_acl"
+        phx-change="validate_named_acl"
+        class="space-y-4"
+      >
         <div class="form-control">
           <label class="label">
             <span class="label-text font-semibold">ACL Name</span>
@@ -591,13 +596,17 @@
             type="text"
             name="acl[name]"
             value={@create_form[:name].value}
-            class={"input input-bordered w-full #{if @editing_acl, do: "bg-base-200"}"}
+            class={"input input-bordered w-full #{if @editing_acl, do: "bg-base-200"} #{if @form_errors[:name], do: "input-error"}"}
             placeholder="e.g., internal, external, partners"
             disabled={@editing_acl != nil}
             required
           />
           <label class="label">
-            <span class="label-text-alt">Unique identifier for this ACL</span>
+            <%= if @form_errors[:name] do %>
+              <span class="label-text-alt text-error">{@form_errors[:name]}</span>
+            <% else %>
+              <span class="label-text-alt">Unique identifier for this ACL</span>
+            <% end %>
           </label>
         </div>
 
@@ -729,14 +738,18 @@
             </label>
             <textarea
               name="acl[rules]"
-              class="textarea textarea-bordered h-32 font-mono text-sm"
+              class={"textarea textarea-bordered h-32 font-mono text-sm #{if @form_errors[:rules], do: "textarea-error"}"}
               placeholder="allow 10.0.0.0/8\nallow 192.168.0.0/16\ndeny any"
             >{@create_form[:rules].value}</textarea>
             <label class="label">
-              <span class="label-text-alt">
-                Format: <code class="bg-base-300 px-1 rounded">allow|deny IP/prefix</code>
-                or <code class="bg-base-300 px-1 rounded">allow|deny geo US, CA</code>
-              </span>
+              <%= if @form_errors[:rules] do %>
+                <span class="label-text-alt text-error">{@form_errors[:rules]}</span>
+              <% else %>
+                <span class="label-text-alt">
+                  Format: <code class="bg-base-300 px-1 rounded">allow|deny IP/prefix</code>
+                  or <code class="bg-base-300 px-1 rounded">allow|deny geo US, CA</code>
+                </span>
+              <% end %>
             </label>
           </div>
         <% end %>

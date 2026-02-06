@@ -5,6 +5,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ConfigPersistence
@@ -27,7 +28,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
      |> assign(:is_default_view, false)
      |> assign(:countries, GeoIpDb.list_countries())
      |> assign(:selected_countries, [])
-     |> assign(:country_search, "")}
+     |> assign(:country_search, "")
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -186,86 +188,19 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   end
 
   @impl true
+  def handle_event("validate_view", %{"view" => view_params}, socket) do
+    errors = validate_view_fields(view_params)
+    {:noreply, assign(socket, :form_errors, errors)}
+  end
+
+  @impl true
   def handle_event("save_view", %{"view" => view_params}, socket) do
-    editing = socket.assigns[:editing_view]
-    is_default = socket.assigns[:is_default_view] || false
+    errors = validate_view_fields(view_params)
 
-    # Default view always has priority :infinity (not editable)
-    priority =
-      if is_default do
-        :infinity
-      else
-        String.to_integer(view_params["priority"])
-      end
-
-    # Build ACL config based on type (not for default view)
-    acl_config =
-      if is_default do
-        :any
-      else
-        build_acl_config(view_params["acl_type"], socket.assigns.selected_countries)
-      end
-
-    # Parse fallback forwarders from textarea
-    fallback_forwarders = parse_forwarders(view_params["fallback_forwarders"] || "")
-
-    fallback_timeout =
-      case Integer.parse(view_params["fallback_timeout"] || "2000") do
-        {n, _} -> n
-        :error -> 2000
-      end
-
-    fallback_retries =
-      case Integer.parse(view_params["fallback_retries"] || "1") do
-        {n, _} -> n
-        :error -> 1
-      end
-
-    config = %{
-      name: view_params["name"],
-      priority: priority,
-      recursion_enabled: view_params["recursion_enabled"] == "true",
-      ecs_enabled: view_params["ecs_enabled"] == "true",
-      acl: acl_config,
-      fallback_forwarders: fallback_forwarders,
-      fallback_timeout: fallback_timeout,
-      fallback_retries: fallback_retries
-    }
-
-    result =
-      try do
-        if editing do
-          case ViewManager.get_view(editing) do
-            {:ok, pid} ->
-              View.reload(pid, config)
-              :ok
-
-            :error ->
-              {:error, :not_found}
-          end
-        else
-          case ViewManager.start_view(config) do
-            {:ok, _pid} -> :ok
-            {:error, reason} -> {:error, reason}
-          end
-        end
-      catch
-        :exit, _ -> {:error, :service_unavailable}
-      end
-
-    case result do
-      :ok ->
-        # Persist configuration to files
-        save_config_async()
-        action = if editing, do: "updated", else: "created"
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "View '#{config.name}' #{action} successfully")
-         |> push_navigate(to: ~p"/dns/views")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save view: #{inspect(reason)}")}
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :form_errors, errors)}
+    else
+      save_view_impl(socket, view_params)
     end
   end
 
@@ -384,6 +319,130 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   # ============================================================================
   # Private Helpers
   # ============================================================================
+
+  defp save_view_impl(socket, view_params) do
+    editing = socket.assigns[:editing_view]
+    is_default = socket.assigns[:is_default_view] || false
+
+    priority =
+      if is_default do
+        :infinity
+      else
+        String.to_integer(view_params["priority"])
+      end
+
+    acl_config =
+      if is_default do
+        :any
+      else
+        build_acl_config(view_params["acl_type"], socket.assigns.selected_countries)
+      end
+
+    fallback_forwarders = parse_forwarders(view_params["fallback_forwarders"] || "")
+
+    fallback_timeout =
+      case Integer.parse(view_params["fallback_timeout"] || "2000") do
+        {n, _} -> n
+        :error -> 2000
+      end
+
+    fallback_retries =
+      case Integer.parse(view_params["fallback_retries"] || "1") do
+        {n, _} -> n
+        :error -> 1
+      end
+
+    config = %{
+      name: view_params["name"],
+      priority: priority,
+      recursion_enabled: view_params["recursion_enabled"] == "true",
+      ecs_enabled: view_params["ecs_enabled"] == "true",
+      acl: acl_config,
+      fallback_forwarders: fallback_forwarders,
+      fallback_timeout: fallback_timeout,
+      fallback_retries: fallback_retries
+    }
+
+    result =
+      try do
+        if editing do
+          case ViewManager.get_view(editing) do
+            {:ok, pid} ->
+              View.reload(pid, config)
+              :ok
+
+            :error ->
+              {:error, :not_found}
+          end
+        else
+          case ViewManager.start_view(config) do
+            {:ok, _pid} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        end
+      catch
+        :exit, _ -> {:error, :service_unavailable}
+      end
+
+    case result do
+      :ok ->
+        save_config_async()
+        action = if editing, do: "updated", else: "created"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "View '#{config.name}' #{action} successfully")
+         |> push_navigate(to: ~p"/dns/views")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save view: #{inspect(reason)}")}
+    end
+  end
+
+  defp validate_view_fields(params) do
+    errors = %{}
+    name = params["name"] || ""
+    forwarders = params["fallback_forwarders"] || ""
+
+    # Validate view name (alphanumeric, hyphens, underscores)
+    errors =
+      if name != "" and not Regex.match?(~r/^[a-zA-Z0-9_-]+$/, name) do
+        Map.put(errors, :name, "Name must be alphanumeric with hyphens or underscores")
+      else
+        errors
+      end
+
+    # Validate fallback forwarders are valid IPs
+    errors =
+      if forwarders != "" do
+        invalid =
+          forwarders
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.find(fn entry ->
+            # Strip optional :port suffix
+            ip =
+              case String.split(entry, ":", parts: 2) do
+                [ip, _port] -> ip
+                [ip] -> ip
+              end
+
+            Validators.validate_ip(ip, :ipv4) != :ok and
+              Validators.validate_ip(ip, :ipv6) != :ok
+          end)
+
+        if invalid do
+          Map.put(errors, :fallback_forwarders, "Invalid IP address: #{invalid}")
+        else
+          errors
+        end
+      else
+        errors
+      end
+
+    errors
+  end
 
   defp refresh_views(socket) do
     assign(socket, :views, list_views())

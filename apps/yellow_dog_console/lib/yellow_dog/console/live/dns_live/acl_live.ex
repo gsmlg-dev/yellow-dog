@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   """
   use YellowDog.Console, :live_view
 
+  alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.View.ACL
@@ -37,7 +38,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
        to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
      )
      |> assign(:filter, "")
-     |> assign(:type_filter, "all")}
+     |> assign(:type_filter, "all")
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -66,6 +68,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
      |> assign(:editing_acl, nil)
      |> assign(:selected_countries, [])
      |> assign(:country_search, "")
+     |> assign(:form_errors, %{})
      |> assign(
        :create_form,
        to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
@@ -132,51 +135,64 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   @impl true
+  def handle_event("validate_named_acl", %{"acl" => params}, socket) do
+    errors = validate_acl_fields(params)
+    {:noreply, assign(socket, :form_errors, errors)}
+  end
+
+  @impl true
   def handle_event("save_named_acl", %{"acl" => params}, socket) do
     name = String.trim(params["name"] || "")
     description = params["description"] || ""
     acl_type = params["acl_type"]
 
-    if name == "" do
-      {:noreply, put_flash(socket, :error, "ACL name is required")}
+    errors = validate_acl_fields(params)
+
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :form_errors, errors)}
     else
-      rules = build_named_acl_rules(acl_type, params["rules"], socket.assigns.selected_countries)
+      if name == "" do
+        {:noreply, put_flash(socket, :error, "ACL name is required")}
+      else
+        rules =
+          build_named_acl_rules(acl_type, params["rules"], socket.assigns.selected_countries)
 
-      acl = %{
-        name: name,
-        description: description,
-        rules: rules
-      }
+        acl = %{
+          name: name,
+          description: description,
+          rules: rules
+        }
 
-      result =
-        try do
-          if socket.assigns.editing_acl do
-            AclRegistry.update_acl(socket.assigns.editing_acl, acl)
-          else
-            AclRegistry.create_acl(acl)
+        result =
+          try do
+            if socket.assigns.editing_acl do
+              AclRegistry.update_acl(socket.assigns.editing_acl, acl)
+            else
+              AclRegistry.create_acl(acl)
+            end
+          catch
+            :exit, _ -> {:error, :service_unavailable}
           end
-        catch
-          :exit, _ -> {:error, :service_unavailable}
+
+        case result do
+          :ok ->
+            action = if socket.assigns.editing_acl, do: "updated", else: "created"
+
+            {:noreply,
+             socket
+             |> assign(:named_acls, list_named_acls())
+             |> assign(:show_create_form, false)
+             |> assign(:editing_acl, nil)
+             |> assign(:selected_countries, [])
+             |> assign(:country_search, "")
+             |> put_flash(:info, "ACL '#{name}' #{action} successfully")}
+
+          {:error, :already_exists} ->
+            {:noreply, put_flash(socket, :error, "ACL '#{name}' already exists")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to save ACL: #{inspect(reason)}")}
         end
-
-      case result do
-        :ok ->
-          action = if socket.assigns.editing_acl, do: "updated", else: "created"
-
-          {:noreply,
-           socket
-           |> assign(:named_acls, list_named_acls())
-           |> assign(:show_create_form, false)
-           |> assign(:editing_acl, nil)
-           |> assign(:selected_countries, [])
-           |> assign(:country_search, "")
-           |> put_flash(:info, "ACL '#{name}' #{action} successfully")}
-
-        {:error, :already_exists} ->
-          {:noreply, put_flash(socket, :error, "ACL '#{name}' already exists")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Failed to save ACL: #{inspect(reason)}")}
       end
     end
   end
@@ -499,6 +515,54 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   # Named ACL functions
+
+  defp validate_acl_fields(params) do
+    errors = %{}
+    name = String.trim(params["name"] || "")
+    acl_type = params["acl_type"]
+    rules = params["rules"] || ""
+
+    # Validate ACL name (alphanumeric, hyphens, underscores)
+    errors =
+      if name != "" and not Regex.match?(~r/^[a-zA-Z0-9_-]+$/, name) do
+        Map.put(errors, :name, "Name must be alphanumeric with hyphens or underscores")
+      else
+        errors
+      end
+
+    # Validate custom rules contain valid CIDR/IP entries
+    errors =
+      if acl_type == "custom" and rules != "" do
+        invalid =
+          rules
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.find(fn line ->
+            case String.split(line, ~r/\s+/, parts: 2) do
+              [action, target] when action in ["allow", "deny"] ->
+                target != "any" and
+                  Validators.validate_cidr(target, :ipv4) != :ok and
+                  Validators.validate_cidr(target, :ipv6) != :ok and
+                  Validators.validate_ip(target, :ipv4) != :ok and
+                  Validators.validate_ip(target, :ipv6) != :ok
+
+              _ ->
+                true
+            end
+          end)
+
+        if invalid do
+          Map.put(errors, :rules, "Invalid rule: #{invalid}")
+        else
+          errors
+        end
+      else
+        errors
+      end
+
+    errors
+  end
 
   defp list_named_acls do
     try do

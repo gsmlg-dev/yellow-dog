@@ -278,7 +278,12 @@
       <% :new -> %>
         <!-- New View Form -->
         <.card title="Create New View">
-          <.form for={@view_form} phx-submit="save_view" class="space-y-4">
+          <.form
+            for={@view_form}
+            phx-submit="save_view"
+            phx-change="validate_view"
+            class="space-y-4"
+          >
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-semibold">View Name</span>
@@ -287,12 +292,16 @@
                 type="text"
                 name="view[name]"
                 value={@view_form[:name].value}
-                class="input input-bordered w-full"
+                class={"input input-bordered w-full #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., internal, external, guest"
                 required
               />
               <label class="label">
-                <span class="label-text-alt">Unique identifier for this view</span>
+                <%= if @form_errors[:name] do %>
+                  <span class="label-text-alt text-error">{@form_errors[:name]}</span>
+                <% else %>
+                  <span class="label-text-alt">Unique identifier for this view</span>
+                <% end %>
               </label>
             </div>
 
@@ -482,13 +491,19 @@
               </label>
               <textarea
                 name="view[fallback_forwarders]"
-                class="textarea textarea-bordered h-20 font-mono text-sm"
+                class={"textarea textarea-bordered h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
                 placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
               >{@view_form[:fallback_forwarders].value}</textarea>
               <label class="label">
-                <span class="label-text-alt">
-                  Upstream servers used when zone resolution fails (one per line, optional :port)
-                </span>
+                <%= if @form_errors[:fallback_forwarders] do %>
+                  <span class="label-text-alt text-error">
+                    {@form_errors[:fallback_forwarders]}
+                  </span>
+                <% else %>
+                  <span class="label-text-alt">
+                    Upstream servers used when zone resolution fails (one per line, optional :port)
+                  </span>
+                <% end %>
               </label>
             </div>
 
@@ -532,7 +547,12 @@
       <% :edit -> %>
         <!-- Edit View Form -->
         <.card title={"Edit View: #{@editing_view}"}>
-          <.form for={@view_form} phx-submit="save_view" class="space-y-4">
+          <.form
+            for={@view_form}
+            phx-submit="save_view"
+            phx-change="validate_view"
+            class="space-y-4"
+          >
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-semibold">View Name</span>
@@ -767,13 +787,19 @@
               </label>
               <textarea
                 name="view[fallback_forwarders]"
-                class="textarea textarea-bordered h-20 font-mono text-sm"
+                class={"textarea textarea-bordered h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
                 placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
               >{@view_form[:fallback_forwarders].value}</textarea>
               <label class="label">
-                <span class="label-text-alt">
-                  Upstream servers used when zone resolution fails (one per line, optional :port)
-                </span>
+                <%= if @form_errors[:fallback_forwarders] do %>
+                  <span class="label-text-alt text-error">
+                    {@form_errors[:fallback_forwarders]}
+                  </span>
+                <% else %>
+                  <span class="label-text-alt">
+                    Upstream servers used when zone resolution fails (one per line, optional :port)
+                  </span>
+                <% end %>
               </label>
             </div>
 

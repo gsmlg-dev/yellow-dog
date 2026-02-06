@@ -283,12 +283,16 @@
                 type="text"
                 name="zone[name]"
                 value={@zone_form[:name].value}
-                class="input input-bordered w-full font-mono"
+                class={"input input-bordered w-full font-mono #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., example.com"
                 required
               />
               <label class="label">
-                <span class="label-text-alt">Fully qualified domain name</span>
+                <%= if @form_errors[:name] do %>
+                  <span class="label-text-alt text-error">{@form_errors[:name]}</span>
+                <% else %>
+                  <span class="label-text-alt">Fully qualified domain name</span>
+                <% end %>
               </label>
             </div>
 
@@ -317,13 +321,17 @@
                 </label>
                 <textarea
                   name="zone[upstreams]"
-                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  class={"textarea textarea-bordered h-24 font-mono text-sm #{if @form_errors[:upstreams], do: "textarea-error"}"}
                   placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1"
                 >{@zone_form[:upstreams].value}</textarea>
                 <label class="label">
-                  <span class="label-text-alt">
-                    IP addresses of upstream DNS servers (one per line)
-                  </span>
+                  <%= if @form_errors[:upstreams] do %>
+                    <span class="label-text-alt text-error">{@form_errors[:upstreams]}</span>
+                  <% else %>
+                    <span class="label-text-alt">
+                      IP addresses of upstream DNS servers (one per line)
+                    </span>
+                  <% end %>
                 </label>
               </div>
             <% end %>
@@ -336,13 +344,17 @@
                 </label>
                 <textarea
                   name="zone[ns_records]"
-                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  class={"textarea textarea-bordered h-24 font-mono text-sm #{if @form_errors[:ns_records], do: "textarea-error"}"}
                   placeholder="ns1.example.com&#10;ns2.example.com"
                 >{@zone_form[:ns_records].value}</textarea>
                 <label class="label">
-                  <span class="label-text-alt">
-                    Fully qualified names of authoritative NS servers (one per line)
-                  </span>
+                  <%= if @form_errors[:ns_records] do %>
+                    <span class="label-text-alt text-error">{@form_errors[:ns_records]}</span>
+                  <% else %>
+                    <span class="label-text-alt">
+                      Fully qualified names of authoritative NS servers (one per line)
+                    </span>
+                  <% end %>
                 </label>
               </div>
             <% end %>

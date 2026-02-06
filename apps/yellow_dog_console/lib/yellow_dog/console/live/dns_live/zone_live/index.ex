@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
   alias YellowDog.Dns.ZoneController
@@ -27,7 +28,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
      |> assign(:delete_confirm, nil)
      |> assign(:zone_form, nil)
      |> assign(:import_form, nil)
-     |> assign(:editing_zone, nil)}
+     |> assign(:editing_zone, nil)
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -62,6 +64,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     |> assign(:view_name, view_name)
     |> assign(:editing_zone, nil)
     |> assign(:zone_form, to_form(form_data))
+    |> assign(:form_errors, %{})
     |> load_zones()
   end
 
@@ -159,68 +162,32 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       "ns_records" => zone_params["ns_records"] || ""
     }
 
-    {:noreply, assign(socket, :zone_form, to_form(form_data))}
+    errors = validate_zone_fields(form_data)
+
+    {:noreply,
+     socket
+     |> assign(:zone_form, to_form(form_data))
+     |> assign(:form_errors, errors)}
   end
 
   @impl true
   def handle_event("save_zone", %{"zone" => zone_params}, socket) do
-    editing = socket.assigns[:editing_zone]
-    view_name = socket.assigns.view_name
-    zone_name = zone_params["name"]
-    zone_type = String.to_existing_atom(zone_params["type"])
+    form_data = %{
+      "name" => zone_params["name"] || "",
+      "type" => zone_params["type"] || "auth",
+      "upstreams" => zone_params["upstreams"] || "",
+      "ns_records" => zone_params["ns_records"] || ""
+    }
 
-    # Build config based on zone type
-    config = build_zone_config(zone_type, zone_params)
+    errors = validate_zone_fields(form_data)
 
-    # Add view_name to config so zone is scoped to this view
-    config = Keyword.put(config, :view_name, view_name)
-
-    result =
-      try do
-        if editing do
-          # Pass view_name for view-scoped zone lookup
-          case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
-            :ok -> :ok
-            {:error, reason} -> {:error, reason}
-          end
-        else
-          case ZoneController.start_zone(zone_type, zone_name, config) do
-            {:ok, _pid} ->
-              # Register zone with view
-              if view_name do
-                case ViewManager.get_view(view_name) do
-                  {:ok, pid} ->
-                    View.register_zone(pid, zone_type, zone_name)
-                    :ok
-
-                  :error ->
-                    :ok
-                end
-              else
-                :ok
-              end
-
-            {:error, reason} ->
-              {:error, reason}
-          end
-        end
-      catch
-        :exit, _ -> {:error, :service_unavailable}
-      end
-
-    case result do
-      :ok ->
-        # Persist configuration to files
-        save_config_async()
-        action = if editing, do: "updated", else: "created"
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Zone '#{zone_name}' #{action} successfully")
-         |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
+    if map_size(errors) > 0 do
+      {:noreply,
+       socket
+       |> assign(:zone_form, to_form(form_data))
+       |> assign(:form_errors, errors)}
+    else
+      save_zone_impl(socket, zone_params)
     end
   end
 
@@ -305,6 +272,130 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   # ============================================================================
   # Private Helpers
   # ============================================================================
+
+  defp save_zone_impl(socket, zone_params) do
+    editing = socket.assigns[:editing_zone]
+    view_name = socket.assigns.view_name
+    zone_name = zone_params["name"]
+    zone_type = String.to_existing_atom(zone_params["type"])
+
+    # Build config based on zone type
+    config = build_zone_config(zone_type, zone_params)
+
+    # Add view_name to config so zone is scoped to this view
+    config = Keyword.put(config, :view_name, view_name)
+
+    result =
+      try do
+        if editing do
+          case ZoneController.reload_zone(view_name, editing.type, editing.name, config) do
+            :ok -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        else
+          case ZoneController.start_zone(zone_type, zone_name, config) do
+            {:ok, _pid} ->
+              if view_name do
+                case ViewManager.get_view(view_name) do
+                  {:ok, pid} ->
+                    View.register_zone(pid, zone_type, zone_name)
+                    :ok
+
+                  :error ->
+                    :ok
+                end
+              else
+                :ok
+              end
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end
+      catch
+        :exit, _ -> {:error, :service_unavailable}
+      end
+
+    case result do
+      :ok ->
+        save_config_async()
+        action = if editing, do: "updated", else: "created"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Zone '#{zone_name}' #{action} successfully")
+         |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
+    end
+  end
+
+  defp validate_zone_fields(form_data) do
+    errors = %{}
+    name = form_data["name"]
+    zone_type = form_data["type"]
+
+    # Validate zone name (domain name) — only when non-empty
+    errors =
+      if name != "" do
+        case Validators.validate_domain_name(name) do
+          :ok -> errors
+          {:error, msg} -> Map.put(errors, :name, msg)
+        end
+      else
+        errors
+      end
+
+    # Validate upstreams are valid IPs (for forward zones)
+    errors =
+      if zone_type == "forward" do
+        upstreams = form_data["upstreams"] || ""
+
+        invalid =
+          upstreams
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.find(fn ip ->
+            Validators.validate_ip(ip, :ipv4) != :ok and
+              Validators.validate_ip(ip, :ipv6) != :ok
+          end)
+
+        if invalid do
+          Map.put(errors, :upstreams, "Invalid IP address: #{invalid}")
+        else
+          errors
+        end
+      else
+        errors
+      end
+
+    # Validate NS records are valid domain names (for stub zones)
+    errors =
+      if zone_type == "stub" do
+        ns_records = form_data["ns_records"] || ""
+
+        invalid =
+          ns_records
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.find(fn ns ->
+            Validators.validate_domain_name(ns) != :ok
+          end)
+
+        if invalid do
+          Map.put(errors, :ns_records, "Invalid domain name: #{invalid}")
+        else
+          errors
+        end
+      else
+        errors
+      end
+
+    errors
+  end
 
   defp import_bind_zone(socket, view_name, zone_data) do
     # Parse the zone data to extract the origin/zone name

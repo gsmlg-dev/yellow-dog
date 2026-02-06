@@ -924,6 +924,294 @@ defmodule YellowDog.Console.DnsLiveTest do
   end
 
   # ============================================================================
+  # Inline Form Validation Tests
+  # ============================================================================
+
+  describe "Zone form inline validation" do
+    test "validate_zone shows error for invalid domain name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "invalid domain with spaces",
+            "type" => "auth",
+            "upstreams" => "",
+            "ns_records" => ""
+          }
+        })
+
+      assert html =~ "label must contain only" or html =~ "text-error"
+    end
+
+    test "validate_zone clears error for valid domain name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      # First trigger an error
+      view
+      |> render_change("validate_zone", %{
+        "zone" => %{
+          "name" => "bad name!",
+          "type" => "auth",
+          "upstreams" => "",
+          "ns_records" => ""
+        }
+      })
+
+      # Then fix it
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "example.com",
+            "type" => "auth",
+            "upstreams" => "",
+            "ns_records" => ""
+          }
+        })
+
+      refute html =~ "text-error"
+    end
+
+    test "validate_zone shows error for invalid upstream IP in forward zone", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "forward.example.com",
+            "type" => "forward",
+            "upstreams" => "not-an-ip",
+            "ns_records" => ""
+          }
+        })
+
+      assert html =~ "Invalid IP" or html =~ "text-error"
+    end
+
+    test "validate_zone accepts valid upstream IPs", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "forward.example.com",
+            "type" => "forward",
+            "upstreams" => "8.8.8.8\n8.8.4.4",
+            "ns_records" => ""
+          }
+        })
+
+      refute html =~ "Invalid IP"
+    end
+
+    test "validate_zone shows error for invalid NS in stub zone", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> render_change("validate_zone", %{
+          "zone" => %{
+            "name" => "stub.example.com",
+            "type" => "stub",
+            "upstreams" => "",
+            "ns_records" => "bad ns name!"
+          }
+        })
+
+      assert html =~ "label must contain only" or html =~ "text-error"
+    end
+
+    test "save_zone rejects invalid domain name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/new")
+
+      html =
+        view
+        |> form("form", %{
+          "zone" => %{
+            "name" => "invalid domain!",
+            "type" => "auth"
+          }
+        })
+        |> render_submit()
+
+      # Should show validation error, NOT attempt to save
+      assert html =~ "text-error" or html =~ "label must contain only"
+    end
+  end
+
+  describe "View form inline validation" do
+    test "validate_view shows error for invalid view name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      html =
+        view
+        |> render_change("validate_view", %{
+          "view" => %{
+            "name" => "invalid name with spaces!",
+            "fallback_forwarders" => ""
+          }
+        })
+
+      assert html =~ "alphanumeric" or html =~ "text-error"
+    end
+
+    test "validate_view clears error for valid view name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      # Trigger error first
+      view
+      |> render_change("validate_view", %{
+        "view" => %{
+          "name" => "bad name!",
+          "fallback_forwarders" => ""
+        }
+      })
+
+      # Fix it
+      html =
+        view
+        |> render_change("validate_view", %{
+          "view" => %{
+            "name" => "valid-name_123",
+            "fallback_forwarders" => ""
+          }
+        })
+
+      refute html =~ "text-error"
+    end
+
+    test "validate_view shows error for invalid forwarder IP", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      html =
+        view
+        |> render_change("validate_view", %{
+          "view" => %{
+            "name" => "test-view",
+            "fallback_forwarders" => "not-an-ip"
+          }
+        })
+
+      assert html =~ "Invalid IP" or html =~ "text-error"
+    end
+
+    test "validate_view accepts valid forwarder IPs with port", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      html =
+        view
+        |> render_change("validate_view", %{
+          "view" => %{
+            "name" => "test-view",
+            "fallback_forwarders" => "8.8.8.8:53\n1.1.1.1"
+          }
+        })
+
+      refute html =~ "Invalid IP"
+    end
+
+    test "save_view rejects invalid view name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/new")
+
+      html =
+        view
+        |> form("form", %{
+          "view" => %{
+            "name" => "bad name!",
+            "priority" => "50",
+            "recursion_enabled" => "true",
+            "acl_type" => "any",
+            "fallback_forwarders" => "",
+            "fallback_timeout" => "2000",
+            "fallback_retries" => "1"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "alphanumeric" or html =~ "text-error"
+    end
+  end
+
+  describe "ACL form inline validation" do
+    test "validate_named_acl shows error for invalid ACL name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      html =
+        view
+        |> render_change("validate_named_acl", %{
+          "acl" => %{
+            "name" => "bad name with spaces!",
+            "description" => "",
+            "acl_type" => "custom",
+            "rules" => ""
+          }
+        })
+
+      assert html =~ "alphanumeric" or html =~ "text-error"
+    end
+
+    test "validate_named_acl shows error for invalid CIDR in rules", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      html =
+        view
+        |> render_change("validate_named_acl", %{
+          "acl" => %{
+            "name" => "test-acl",
+            "description" => "",
+            "acl_type" => "custom",
+            "rules" => "allow not-a-cidr"
+          }
+        })
+
+      assert html =~ "Invalid" or html =~ "text-error"
+    end
+
+    test "validate_named_acl accepts valid custom rules", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      html =
+        view
+        |> render_change("validate_named_acl", %{
+          "acl" => %{
+            "name" => "valid-acl",
+            "description" => "Test",
+            "acl_type" => "custom",
+            "rules" => "allow 10.0.0.0/8\ndeny any"
+          }
+        })
+
+      refute html =~ "text-error"
+    end
+
+    test "save_named_acl rejects invalid ACL name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      view |> render_click("show_create_form")
+
+      html =
+        view
+        |> form("form[phx-submit=\"save_named_acl\"]", %{
+          "acl" => %{
+            "name" => "bad name!",
+            "description" => "Test",
+            "acl_type" => "custom",
+            "rules" => "allow 10.0.0.0/8"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "alphanumeric" or html =~ "text-error"
+    end
+  end
+
+  # ============================================================================
   # DNS Views Private Helper Unit Tests
   # ============================================================================
 

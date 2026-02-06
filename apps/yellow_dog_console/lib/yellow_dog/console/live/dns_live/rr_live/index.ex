@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  alias YellowDog.Console.Validators
   alias YellowDog.Dns.ZoneController
 
   @impl true
@@ -27,7 +28,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
      |> assign(:delete_confirm, nil)
      |> assign(:rr_form, nil)
      |> assign(:bulk_form, nil)
-     |> assign(:editing_rr, nil)}
+     |> assign(:editing_rr, nil)
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -162,37 +164,49 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   @impl true
+  def handle_event("validate_rr", %{"rr" => rr_params}, socket) do
+    errors = validate_rr_fields(rr_params)
+    {:noreply, assign(socket, :form_errors, errors)}
+  end
+
+  @impl true
   def handle_event("save_rr", %{"rr" => rr_params}, socket) do
-    editing = socket.assigns[:editing_rr]
-    zone_name = socket.assigns.zone_name
-    zone_type = socket.assigns.zone_type
-    view_name = socket.assigns.view_name
+    errors = validate_rr_fields(rr_params)
 
-    with {:ok, pid} <- find_auth_zone(view_name, zone_type, zone_name),
-         {:ok, record} <- build_record(pid, zone_name, rr_params) do
-      if editing do
-        remove_existing_record(pid, editing.original)
-      end
-
-      :ok = YellowDog.Dns.Zone.Auth.add_record(pid, record)
-
-      Phoenix.PubSub.broadcast(
-        YellowDog.Console.PubSub,
-        "dns:records",
-        {:record_updated, zone_name}
-      )
-
-      rr_name = rr_params["name"]
-      rr_type = rr_params["type"]
-      action = if editing, do: "updated", else: "created"
-
-      {:noreply,
-       socket
-       |> put_flash(:info, "Record '#{rr_name}' (#{String.upcase(rr_type)}) #{action}")
-       |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :form_errors, errors)}
     else
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
+      editing = socket.assigns[:editing_rr]
+      zone_name = socket.assigns.zone_name
+      zone_type = socket.assigns.zone_type
+      view_name = socket.assigns.view_name
+
+      with {:ok, pid} <- find_auth_zone(view_name, zone_type, zone_name),
+           {:ok, record} <- build_record(pid, zone_name, rr_params) do
+        if editing do
+          remove_existing_record(pid, editing.original)
+        end
+
+        :ok = YellowDog.Dns.Zone.Auth.add_record(pid, record)
+
+        Phoenix.PubSub.broadcast(
+          YellowDog.Console.PubSub,
+          "dns:records",
+          {:record_updated, zone_name}
+        )
+
+        rr_name = rr_params["name"]
+        rr_type = rr_params["type"]
+        action = if editing, do: "updated", else: "created"
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Record '#{rr_name}' (#{String.upcase(rr_type)}) #{action}")
+         |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+      else
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, reason)}
+      end
     end
   end
 
@@ -376,6 +390,91 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     else
       zone_type_atom
     end
+  end
+
+  defp validate_rr_fields(params) do
+    errors = %{}
+    name = params["name"] || ""
+    type = String.downcase(params["type"] || "a")
+    ttl_str = params["ttl"] || ""
+    rdata = params["rdata"] || ""
+
+    # Validate record name (domain name)
+    errors =
+      if name != "" and name != "@" do
+        case Validators.validate_domain_name(name) do
+          :ok -> errors
+          {:error, msg} -> Map.put(errors, :name, msg)
+        end
+      else
+        errors
+      end
+
+    # Validate TTL
+    errors =
+      if ttl_str != "" do
+        case Integer.parse(ttl_str) do
+          {ttl_val, ""} ->
+            case Validators.validate_ttl(ttl_val) do
+              :ok -> errors
+              {:error, msg} -> Map.put(errors, :ttl, msg)
+            end
+
+          _ ->
+            Map.put(errors, :ttl, "TTL must be a non-negative integer")
+        end
+      else
+        errors
+      end
+
+    # Validate rdata based on type
+    errors =
+      if rdata != "" do
+        case type do
+          "a" ->
+            case Validators.validate_ip(rdata, :ipv4) do
+              :ok -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          "aaaa" ->
+            case Validators.validate_ip(rdata, :ipv6) do
+              :ok -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          "mx" ->
+            case parse_mx(rdata) do
+              {:ok, _} -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          "srv" ->
+            case parse_srv(rdata) do
+              {:ok, _} -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          "cname" ->
+            case Validators.validate_domain_name(rdata) do
+              :ok -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          "ns" ->
+            case Validators.validate_domain_name(rdata) do
+              :ok -> errors
+              {:error, msg} -> Map.put(errors, :rdata, msg)
+            end
+
+          _ ->
+            errors
+        end
+      else
+        errors
+      end
+
+    errors
   end
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
