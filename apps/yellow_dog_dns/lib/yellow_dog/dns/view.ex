@@ -246,7 +246,16 @@ defmodule YellowDog.Dns.View do
 
   @impl true
   def handle_call({:register_zone, zone_type, zone_name}, _from, state) do
-    zones = [{zone_type, zone_name} | state.zones] |> Enum.uniq()
+    # Add the {type, name} tuple and remove any plain string entry for the same zone name
+    # (persisted config may store zone names as strings without type information)
+    zones =
+      [{zone_type, zone_name} | state.zones]
+      |> Enum.reject(fn
+        name when is_binary(name) -> name == zone_name
+        _ -> false
+      end)
+      |> Enum.uniq()
+
     {:reply, :ok, %{state | zones: zones}}
   end
 

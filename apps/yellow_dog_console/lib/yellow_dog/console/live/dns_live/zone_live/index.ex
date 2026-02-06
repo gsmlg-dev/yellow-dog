@@ -70,6 +70,17 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
        }) do
     zone_type_atom = String.to_existing_atom(zone_type)
 
+    # If zone type is :unknown (from stale View state), try to resolve the actual type
+    zone_type_atom =
+      if zone_type_atom == :unknown do
+        case resolve_zone_type(view_name, zone_name) do
+          {:ok, resolved_type} -> resolved_type
+          :error -> :unknown
+        end
+      else
+        zone_type_atom
+      end
+
     case get_zone_config(view_name, zone_type_atom, zone_name) do
       {:ok, config} ->
         form_data = %{
@@ -374,8 +385,64 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         Map.merge(%{type: type, name: name}, zone_stats)
 
       name when is_binary(name) ->
-        %{type: :unknown, name: name, record_count: 0, query_count: 0}
+        # View has a plain string zone (from TOML persistence without type info).
+        # Try to resolve the actual type from running ZoneController processes.
+        case resolve_zone_type(view_name, name) do
+          {:ok, type} ->
+            zone_stats = get_zone_stats(view_name, type, name)
+            Map.merge(%{type: type, name: name}, zone_stats)
+
+          :error ->
+            %{type: :unknown, name: name, record_count: 0, query_count: 0}
+        end
     end)
+  end
+
+  # Resolve zone type by checking running zone processes, then persisted config
+  defp resolve_zone_type(view_name, zone_name) do
+    # Try 1: Check running ZoneController processes
+    case resolve_zone_type_from_controller(view_name, zone_name) do
+      {:ok, _type} = result -> result
+      :error ->
+        # Try 2: Check persisted zone config (zones.toml)
+        resolve_zone_type_from_persistence(view_name, zone_name)
+    end
+  end
+
+  defp resolve_zone_type_from_controller(view_name, zone_name) do
+    try do
+      ZoneController.list_zones_for_view(view_name)
+      |> Enum.find_value(fn
+        {type, name, _pid} when name == zone_name -> {:ok, type}
+        _ -> nil
+      end)
+      |> Kernel.||(:error)
+    rescue
+      _ -> :error
+    catch
+      :exit, _ -> :error
+    end
+  end
+
+  defp resolve_zone_type_from_persistence(view_name, zone_name) do
+    case ConfigPersistence.load_all() do
+      {:ok, %{zones: zones}} ->
+        case Enum.find(zones, fn z ->
+               z.name == zone_name &&
+                 (z.view_name == view_name ||
+                    (z.view_name == "default" && view_name == "default"))
+             end) do
+          %{type: type} -> {:ok, type}
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  rescue
+    _ -> :error
+  catch
+    :exit, _ -> :error
   end
 
   defp get_zone_stats(view_name, type, name) do

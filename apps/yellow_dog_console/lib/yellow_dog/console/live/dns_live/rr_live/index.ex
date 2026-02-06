@@ -44,7 +44,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_type" => zone_type,
          "zone_name" => zone_name
        }) do
-    zone_type_atom = String.to_existing_atom(zone_type)
+    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
     zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
     socket
@@ -64,7 +64,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_type" => zone_type,
          "zone_name" => zone_name
        }) do
-    zone_type_atom = String.to_existing_atom(zone_type)
+    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
     zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
     socket
@@ -83,7 +83,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "zone_name" => zone_name,
          "rr_index" => rr_index_str
        }) do
-    zone_type_atom = String.to_existing_atom(zone_type)
+    zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
     zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
     rr_index = String.to_integer(rr_index_str)
 
@@ -309,6 +309,29 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   # ============================================================================
   # Private Helpers
   # ============================================================================
+
+  # Resolve zone type from URL param, falling back to ZoneController lookup
+  # when the URL contains "unknown" (from stale View state with string zones)
+  defp resolve_zone_type_atom(view_name, zone_type_str, zone_name) do
+    zone_type_atom = String.to_existing_atom(zone_type_str)
+
+    if zone_type_atom == :unknown do
+      try do
+        ZoneController.list_zones_for_view(view_name)
+        |> Enum.find_value(fn
+          {type, name, _pid} when name == zone_name -> type
+          _ -> nil
+        end)
+        |> Kernel.||(:unknown)
+      rescue
+        _ -> :unknown
+      catch
+        :exit, _ -> :unknown
+      end
+    else
+      zone_type_atom
+    end
+  end
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
     case ZoneController.find_zone(view_name, zone_type, zone_name) do

@@ -26,6 +26,7 @@ defmodule YellowDog.Dns.Supervisor do
 
   alias YellowDog.Telemetry
   alias YellowDog.Dns.ConfigPersistence
+  alias YellowDog.Dns.View
 
   @doc """
   Starts the DNS supervisor.
@@ -174,8 +175,21 @@ defmodule YellowDog.Dns.Supervisor do
     if upstreams != [] do
       # Only start if not already started from persisted config
       case YellowDog.Dns.ZoneController.find_zone(:forward, ".") do
-        {:ok, _pid} -> :ok
-        :error -> YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams)
+        {:ok, _pid} ->
+          :ok
+
+        :error ->
+          case YellowDog.Dns.ZoneController.start_zone(:forward, ".", upstreams: upstreams) do
+            {:ok, _pid} ->
+              # Register with default view
+              case YellowDog.Dns.ViewManager.get_view("default") do
+                {:ok, view_pid} -> View.register_zone(view_pid, :forward, ".")
+                :error -> :ok
+              end
+
+            {:error, _reason} ->
+              :ok
+          end
       end
     end
 
@@ -280,7 +294,30 @@ defmodule YellowDog.Dns.Supervisor do
         opts
       end
 
-    YellowDog.Dns.ZoneController.start_zone(type, name, opts)
+    case YellowDog.Dns.ZoneController.start_zone(type, name, opts) do
+      {:ok, _pid} ->
+        # Register zone with its view so the View's state has proper {type, name} tuples
+        # (persisted views only store zone names as strings, not {type, name} tuples)
+        case YellowDog.Dns.ViewManager.get_view(view_name) do
+          {:ok, view_pid} ->
+            View.register_zone(view_pid, type, name)
+
+          :error ->
+            Telemetry.warning("View not found for zone registration", %{
+              view: view_name,
+              zone: name,
+              type: type
+            })
+        end
+
+      {:error, reason} ->
+        Telemetry.error("Failed to start zone from config", %{
+          name: name,
+          type: type,
+          view: view_name,
+          reason: inspect(reason)
+        })
+    end
   end
 
   defp start_zone(zone_config) do

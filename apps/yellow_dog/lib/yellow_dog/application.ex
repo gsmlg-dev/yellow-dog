@@ -36,22 +36,32 @@ defmodule YellowDog.Application do
       %{source: __MODULE__, severity: :debug}
     )
 
+    # Only start essential children in the supervisor init.
+    # Protocol services are started asynchronously in a post-init task
+    # so that one service failure (e.g., DNS can't bind port 53) doesn't
+    # prevent other services from starting.
     children = [
       # Configuration manager - must start first
-      {YellowDog.Config, config}
+      {YellowDog.Config, config},
+      # Service heartbeat for periodic status logging
+      YellowDog.ServiceHeartbeat
     ]
-
-    # Add protocol supervisors conditionally based on configuration
-    children = children ++ get_enabled_services(config)
-
-    # Add service heartbeat for periodic status logging
-    children = children ++ [YellowDog.ServiceHeartbeat]
 
     # Note: YellowDog.Console and YellowDog.Telemetry have their own Application
     # modules and start separately as OTP applications (required for Phoenix dependencies)
 
     opts = [strategy: :one_for_one, name: YellowDog.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        # Start protocol services asynchronously after supervisor is up.
+        # Each service is started independently so failures are isolated.
+        start_services_async(config)
+        {:ok, pid}
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -160,6 +170,39 @@ defmodule YellowDog.Application do
 
         error
     end
+  end
+
+  # Starts enabled services asynchronously after the supervisor is running.
+  # Each service is started independently so one failure doesn't block others.
+  defp start_services_async(config) do
+    Task.start(fn ->
+      enabled_services = get_enabled_services(config)
+
+      Enum.each(enabled_services, fn {module, opts} ->
+        child_spec = {module, opts}
+
+        case Supervisor.start_child(YellowDog.Supervisor, child_spec) do
+          {:ok, pid} ->
+            :telemetry.execute(
+              [:yellow_dog, :service, :started],
+              %{count: 1},
+              %{source: __MODULE__, service: module, pid: inspect(pid), severity: :info}
+            )
+
+          {:error, reason} ->
+            :telemetry.execute(
+              [:yellow_dog, :application, :error],
+              %{count: 1},
+              %{
+                source: __MODULE__,
+                service: module,
+                reason: inspect(reason),
+                severity: :error
+              }
+            )
+        end
+      end)
+    end)
   end
 
   # Maps service atom to app module

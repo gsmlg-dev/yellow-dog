@@ -32,6 +32,12 @@ defmodule YellowDog.Dhcpv6.LeaseManagerTest do
       end
     end
 
+    # Use a temporary data directory so PoolStore doesn't load real pools
+    tmp_dir = Path.join(System.tmp_dir!(), "dhcpv6_lease_mgr_test_#{:rand.uniform(100_000)}")
+    File.mkdir_p!(tmp_dir)
+    original_data_dir = Application.get_env(:yellow_dog, :data_dir)
+    Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
     # Give Mnesia time to clean up
     Process.sleep(50)
 
@@ -40,6 +46,16 @@ defmodule YellowDog.Dhcpv6.LeaseManagerTest do
 
     # Clear any existing leases
     LeaseStorage.clear_all()
+
+    on_exit(fn ->
+      if original_data_dir do
+        Application.put_env(:yellow_dog, :data_dir, original_data_dir)
+      else
+        Application.delete_env(:yellow_dog, :data_dir)
+      end
+
+      File.rm_rf(tmp_dir)
+    end)
 
     :ok
   end
