@@ -169,6 +169,79 @@ defmodule YellowDog.Dns.ViewManager do
   end
 
   @doc """
+  Enables a view by name.
+  """
+  @spec enable_view(String.t()) :: :ok | {:error, :not_found}
+  def enable_view(view_name), do: enable_view(__MODULE__, view_name)
+
+  @spec enable_view(Supervisor.supervisor(), String.t()) :: :ok | {:error, :not_found}
+  def enable_view(supervisor, view_name) do
+    case find_view(supervisor, view_name) do
+      {:ok, pid} ->
+        View.set_enabled(pid, true)
+        Telemetry.info("View enabled", %{name: view_name})
+        :ok
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Disables a view by name. Disabled views do not match any queries.
+  """
+  @spec disable_view(String.t()) :: :ok | {:error, :not_found}
+  def disable_view(view_name), do: disable_view(__MODULE__, view_name)
+
+  @spec disable_view(Supervisor.supervisor(), String.t()) :: :ok | {:error, :not_found}
+  def disable_view(supervisor, view_name) do
+    case find_view(supervisor, view_name) do
+      {:ok, pid} ->
+        View.set_enabled(pid, false)
+        Telemetry.info("View disabled", %{name: view_name})
+        :ok
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Deletes a view and its associated zones.
+
+  This is a destructive operation that:
+  1. Stops all zones belonging to the view
+  2. Terminates the view process
+  """
+  @spec delete_view(String.t()) :: :ok | {:error, :not_found}
+  def delete_view(view_name), do: delete_view(__MODULE__, view_name)
+
+  @spec delete_view(Supervisor.supervisor(), String.t()) :: :ok | {:error, :not_found}
+  def delete_view(supervisor, view_name) do
+    case find_view(supervisor, view_name) do
+      {:ok, _pid} ->
+        # Stop associated zones first
+        try do
+          zones = YellowDog.Dns.ZoneController.list_zones_for_view(view_name)
+
+          Enum.each(zones, fn {zone_type, zone_name, _pid} ->
+            YellowDog.Dns.ZoneController.stop_zone(view_name, zone_type, zone_name)
+          end)
+        rescue
+          _ -> :ok
+        catch
+          :exit, _ -> :ok
+        end
+
+        # Stop the view
+        stop_view(supervisor, view_name)
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
   Gets a view process by name.
   """
   @spec get_view(String.t()) :: {:ok, pid()} | :error

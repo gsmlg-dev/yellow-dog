@@ -55,6 +55,7 @@ defmodule YellowDog.Dns.View do
     :recursion_enabled,
     :ecs_enabled,
     :recursion_controller,
+    enabled: true,
     query_count: 0,
     hit_count: 0,
     miss_count: 0
@@ -135,6 +136,22 @@ defmodule YellowDog.Dns.View do
   end
 
   @doc """
+  Enables or disables this view.
+  """
+  @spec set_enabled(pid(), boolean()) :: :ok
+  def set_enabled(pid, enabled) do
+    GenServer.call(pid, {:set_enabled, enabled})
+  end
+
+  @doc """
+  Returns whether this view is enabled.
+  """
+  @spec is_enabled?(pid()) :: boolean()
+  def is_enabled?(pid) do
+    GenServer.call(pid, :is_enabled?)
+  end
+
+  @doc """
   Registers a zone with this view.
   """
   @spec register_zone(pid(), atom(), String.t()) :: :ok
@@ -159,6 +176,7 @@ defmodule YellowDog.Dns.View do
     acl = parse_acl(Map.get(config, :acl, :any))
     zones = Map.get(config, :zones, [])
     rpz_zones = Map.get(config, :rpz_zones, [])
+    enabled = Map.get(config, :enabled, true)
     recursion_enabled = Map.get(config, :recursion_enabled, true)
     ecs_enabled = Map.get(config, :ecs_enabled, false)
     _cache_size = Map.get(config, :cache_size, @default_cache_size)
@@ -178,6 +196,7 @@ defmodule YellowDog.Dns.View do
       zones: zones,
       rpz_zones: rpz_zones,
       cache_table: cache_table,
+      enabled: enabled,
       recursion_enabled: recursion_enabled,
       ecs_enabled: ecs_enabled
     }
@@ -205,9 +224,32 @@ defmodule YellowDog.Dns.View do
   end
 
   @impl true
+  def handle_call({:matches?, client_ip}, _from, %{enabled: false} = state) do
+    # Disabled views never match
+    _ = client_ip
+    {:reply, false, state}
+  end
+
+  @impl true
   def handle_call({:matches?, client_ip}, _from, state) do
     result = acl_matches?(state.acl, client_ip)
     {:reply, result, state}
+  end
+
+  @impl true
+  def handle_call({:set_enabled, enabled}, _from, state) do
+    Telemetry.info("View #{if enabled, do: "enabled", else: "disabled"}", %{name: state.name})
+    {:reply, :ok, %{state | enabled: enabled}}
+  end
+
+  @impl true
+  def handle_call(:is_enabled?, _from, state) do
+    {:reply, state.enabled, state}
+  end
+
+  @impl true
+  def handle_call({:resolve, _connection_pid, _query_id, _query}, _from, %{enabled: false} = state) do
+    {:reply, {:error, :disabled}, state}
   end
 
   @impl true
@@ -235,6 +277,7 @@ defmodule YellowDog.Dns.View do
         acl: parse_acl(Map.get(config, :acl, state.acl)),
         zones: Map.get(config, :zones, state.zones),
         rpz_zones: Map.get(config, :rpz_zones, state.rpz_zones),
+        enabled: Map.get(config, :enabled, state.enabled),
         recursion_enabled: Map.get(config, :recursion_enabled, state.recursion_enabled),
         ecs_enabled: Map.get(config, :ecs_enabled, state.ecs_enabled)
     }
@@ -272,6 +315,7 @@ defmodule YellowDog.Dns.View do
     stats = %{
       name: state.name,
       priority: state.priority,
+      enabled: state.enabled,
       zones: state.zones,
       rpz_zones: state.rpz_zones,
       recursion_enabled: state.recursion_enabled,
