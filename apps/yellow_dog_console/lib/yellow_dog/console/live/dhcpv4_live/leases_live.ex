@@ -73,6 +73,15 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    leases = socket.assigns.filtered_leases
+    csv = build_csv(leases)
+    filename = "dhcpv4_leases_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info({:telemetry_event, _event, _measurements, _metadata}, socket) do
     {:noreply, load_leases(socket)}
   end
@@ -224,5 +233,35 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     |> Base.decode16!()
   rescue
     _ -> <<0, 0, 0, 0, 0, 0>>
+  end
+
+  defp build_csv(leases) do
+    header =
+      "MAC Address,IP Address,Hostname,State,Pool,Allocated At,Expires At,Time Remaining\r\n"
+
+    rows =
+      Enum.map_join(leases, "\r\n", fn lease ->
+        [
+          csv_escape(format_mac(lease.mac_address)),
+          csv_escape(format_ip(lease.ip_address)),
+          csv_escape(lease.hostname || ""),
+          csv_escape(to_string(lease.state)),
+          csv_escape(lease.pool_name || ""),
+          csv_escape(format_expiration(lease.allocated_at)),
+          csv_escape(format_expiration(lease.expires_at)),
+          csv_escape(format_time_remaining(lease.expires_at))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
   end
 end
