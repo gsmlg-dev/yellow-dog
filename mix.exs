@@ -111,8 +111,8 @@ defmodule YellowDog.Umbrella.MixProject do
     # Ensure test environment
     Mix.env(:test)
 
-    # Compile the umbrella apps first
-    Mix.Task.run("compile", [])
+    # Compile the umbrella apps first (skip compile env validation for E2E)
+    Mix.Task.run("compile", ["--no-validate-compile-env"])
 
     # Load and compile test helper
     Code.compile_file("e2e_test/test_helper.exs")
