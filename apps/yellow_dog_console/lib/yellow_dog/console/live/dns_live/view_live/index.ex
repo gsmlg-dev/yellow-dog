@@ -19,6 +19,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
      socket
      |> assign(:page_title, "DNS Views")
      |> assign(:views, list_views())
+     |> assign(:filter, "")
+     |> assign(:status_filter, "all")
      |> assign(:delete_confirm, nil)
      |> assign(:view_form, nil)
      |> assign(:editing_view, nil)
@@ -129,6 +131,27 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, refresh_views(socket)}
+  end
+
+  @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("filter_status", %{"status" => status}, socket) do
+    {:noreply, assign(socket, :status_filter, status)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    views =
+      filtered_views(socket.assigns.views, socket.assigns.filter, socket.assigns.status_filter)
+
+    csv = build_views_csv(views)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    filename = "dns_views_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
   @impl true
@@ -342,6 +365,63 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   defp refresh_views(socket) do
     assign(socket, :views, list_views())
   end
+
+  # ============================================================================
+  # Filtering & CSV Export
+  # ============================================================================
+
+  def filtered_views(views, filter, status_filter) do
+    views
+    |> filter_views_by_name(filter)
+    |> filter_views_by_status(status_filter)
+  end
+
+  defp filter_views_by_name(views, ""), do: views
+
+  defp filter_views_by_name(views, filter) do
+    filter_lower = String.downcase(filter)
+
+    Enum.filter(views, fn view ->
+      String.contains?(String.downcase(view.name), filter_lower)
+    end)
+  end
+
+  defp filter_views_by_status(views, "all"), do: views
+  defp filter_views_by_status(views, "active"), do: Enum.filter(views, & &1.enabled)
+  defp filter_views_by_status(views, "disabled"), do: Enum.reject(views, & &1.enabled)
+
+  defp build_views_csv(views) do
+    header = "View Name,Status,Priority,Recursion,ECS,Zones,Queries\r\n"
+
+    rows =
+      Enum.map_join(views, "\r\n", fn view ->
+        priority_str =
+          if view.priority == :infinity, do: "infinity", else: to_string(view.priority)
+
+        [
+          csv_escape(view.name),
+          if(view.enabled, do: "Active", else: "Disabled"),
+          priority_str,
+          if(view.recursion_enabled, do: "Enabled", else: "Disabled"),
+          if(view.ecs_enabled, do: "Enabled", else: "Disabled"),
+          to_string(view.zone_count),
+          to_string(view.query_count)
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(value) when is_binary(value) do
+    if String.contains?(value, [",", "\"", "\n", "\r"]) do
+      "\"" <> String.replace(value, "\"", "\"\"") <> "\""
+    else
+      value
+    end
+  end
+
+  defp csv_escape(value), do: csv_escape(to_string(value))
 
   defp is_default_view?(view_name), do: view_name == "default"
 

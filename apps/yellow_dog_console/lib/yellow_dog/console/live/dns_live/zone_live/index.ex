@@ -22,6 +22,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
      |> assign(:page_title, "DNS Zones")
      |> assign(:view_name, nil)
      |> assign(:zones, [])
+     |> assign(:filter, "")
+     |> assign(:type_filter, "all")
      |> assign(:delete_confirm, nil)
      |> assign(:zone_form, nil)
      |> assign(:import_form, nil)
@@ -124,6 +126,25 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_zones(socket)}
+  end
+
+  @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("filter_type", %{"type" => type}, socket) do
+    {:noreply, assign(socket, :type_filter, type)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    zones = filtered_zones(socket.assigns.zones, socket.assigns.filter, socket.assigns.type_filter)
+    csv = build_zones_csv(zones)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    filename = "dns_zones_#{socket.assigns.view_name}_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
   @impl true
@@ -606,6 +627,67 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp zone_module(:forward), do: YellowDog.Dns.Zone.Forward
   defp zone_module(:stub), do: YellowDog.Dns.Zone.Stub
   defp zone_module(:cache), do: YellowDog.Dns.Zone.Cache
+
+  # ============================================================================
+  # Filtering & CSV Export
+  # ============================================================================
+
+  def filtered_zones(zones, filter, type_filter) do
+    zones
+    |> filter_by_name(filter)
+    |> filter_by_type(type_filter)
+  end
+
+  defp filter_by_name(zones, ""), do: zones
+
+  defp filter_by_name(zones, filter) do
+    filter_lower = String.downcase(filter)
+
+    Enum.filter(zones, fn zone ->
+      String.contains?(String.downcase(zone.name), filter_lower)
+    end)
+  end
+
+  defp filter_by_type(zones, "all"), do: zones
+
+  defp filter_by_type(zones, type) do
+    type_atom = String.to_existing_atom(type)
+    Enum.filter(zones, fn zone -> zone.type == type_atom end)
+  end
+
+  def unique_zone_types(zones) do
+    zones
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp build_zones_csv(zones) do
+    header = "Zone Name,Type,Records,Queries\r\n"
+
+    rows =
+      Enum.map_join(zones, "\r\n", fn zone ->
+        [
+          csv_escape(zone.name),
+          csv_escape(zone_type_label(zone.type)),
+          to_string(Map.get(zone, :record_count, 0)),
+          to_string(Map.get(zone, :query_count, 0))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(value) when is_binary(value) do
+    if String.contains?(value, [",", "\"", "\n", "\r"]) do
+      "\"" <> String.replace(value, "\"", "\"\"") <> "\""
+    else
+      value
+    end
+  end
+
+  defp csv_escape(value), do: csv_escape(to_string(value))
 
   def zone_type_badge(:auth), do: "primary"
   def zone_type_badge(:forward), do: "secondary"

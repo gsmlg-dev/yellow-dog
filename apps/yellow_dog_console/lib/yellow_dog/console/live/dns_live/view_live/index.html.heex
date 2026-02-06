@@ -17,6 +17,17 @@
         </p>
       </div>
       <div class="flex gap-2">
+        <button phx-click="export_csv" class="btn btn-ghost btn-sm" title="Export CSV">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+            />
+          </svg>
+          Export
+        </button>
         <button phx-click="refresh" class="btn btn-ghost btn-sm" title="Refresh">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -54,6 +65,27 @@
         <div class="card bg-base-100 shadow">
           <div class="card-body p-0">
             <%= if length(@views) > 0 do %>
+              <!-- Filter Bar -->
+              <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
+                <input
+                  type="text"
+                  placeholder="Filter by view name..."
+                  class="input input-bordered input-sm flex-1 min-w-48"
+                  phx-change="filter"
+                  phx-debounce="300"
+                  name="filter"
+                  value={@filter}
+                />
+                <select
+                  class="select select-bordered select-sm"
+                  phx-change="filter_status"
+                  name="status"
+                >
+                  <option value="all" selected={@status_filter == "all"}>All Status</option>
+                  <option value="active" selected={@status_filter == "active"}>Active</option>
+                  <option value="disabled" selected={@status_filter == "disabled"}>Disabled</option>
+                </select>
+              </div>
               <div class="overflow-x-auto">
                 <table class="table table-zebra">
                   <thead>
@@ -69,7 +101,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <%= for view <- @views do %>
+                    <%= for view <- filtered_views(@views, @filter, @status_filter) do %>
                       <tr class="hover">
                         <td>
                           <.link
@@ -200,7 +232,12 @@
                 </table>
               </div>
               <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
-                {length(@views)} view(s)
+                <% filtered = filtered_views(@views, @filter, @status_filter) %>
+                <%= if length(filtered) == length(@views) do %>
+                  {length(@views)} view(s)
+                <% else %>
+                  Showing {length(filtered)} of {length(@views)} view(s)
+                <% end %>
               </div>
             <% else %>
               <div class="text-center py-12">
