@@ -20,6 +20,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
      |> assign(:queries, get_recent_queries(50))
      |> assign(:stats, get_network_stats())
      |> assign(:limit, 50)
+     |> assign(:search, "")
      |> assign(:auto_refresh, true)}
   end
 
@@ -44,6 +45,11 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
     filename = "mdns_monitor_#{timestamp}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => search}, socket) do
+    {:noreply, assign(socket, :search, search)}
   end
 
   @impl true
@@ -75,6 +81,19 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     else
       {:noreply, socket}
     end
+  end
+
+  @doc "Filters queries by search term against name, type, or source IP. Public for testability."
+  def filtered_queries(queries, ""), do: queries
+
+  def filtered_queries(queries, search) do
+    term = String.downcase(search)
+
+    Enum.filter(queries, fn query ->
+      String.contains?(String.downcase(query.name || ""), term) or
+        String.contains?(String.downcase(to_string(query.type)), term) or
+        String.contains?(String.downcase(format_ip(query.source_ip)), term)
+    end)
   end
 
   defp get_recent_queries(limit) do

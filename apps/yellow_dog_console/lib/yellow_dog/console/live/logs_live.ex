@@ -7,6 +7,8 @@ defmodule YellowDog.Console.LogsLive do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.LogBroadcaster
 
   @max_logs 1000
@@ -46,6 +48,7 @@ defmodule YellowDog.Console.LogsLive do
        paused: false,
        min_level: :debug,
        selected_apps: MapSet.new(),
+       search: "",
        expanded_log_id: nil,
        available_apps: @available_apps,
        available_levels: @available_levels,
@@ -120,6 +123,20 @@ defmodule YellowDog.Console.LogsLive do
   def handle_event("set_level", %{"level" => level_string}, socket) do
     level = String.to_existing_atom(level_string)
     {:noreply, assign(socket, min_level: level)}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => search}, socket) do
+    {:noreply, assign(socket, search: search)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    logs = filtered_logs(socket.assigns.logs, socket.assigns.search)
+    csv = build_logs_csv(logs)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    filename = "logs_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
   @impl true
@@ -210,6 +227,42 @@ defmodule YellowDog.Console.LogsLive do
     MapSet.size(selected_apps) == 0 or MapSet.member?(selected_apps, app)
   end
 
+  @doc "Filters logs by search term against message text. Public for testability."
+  def filtered_logs(logs, ""), do: logs
+
+  def filtered_logs(logs, search) do
+    term = String.downcase(search)
+
+    Enum.filter(logs, fn log ->
+      String.contains?(String.downcase(log.message || ""), term)
+    end)
+  end
+
+  defp build_logs_csv(logs) do
+    header = "Timestamp,Level,App,Module,Message\n"
+
+    rows =
+      Enum.map_join(Enum.reverse(logs), "\n", fn log ->
+        [
+          csv_escape(format_csv_timestamp(log.timestamp)),
+          csv_escape(to_string(log.level)),
+          csv_escape(app_name(log.app)),
+          csv_escape(if(log.module, do: inspect(log.module), else: "")),
+          csv_escape(log.message || "")
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp format_csv_timestamp(system_time) when is_integer(system_time) do
+    datetime = DateTime.from_unix!(system_time, :nanosecond)
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S") <> "." <> format_milliseconds(system_time)
+  end
+
+  defp format_csv_timestamp(_), do: ""
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -220,69 +273,92 @@ defmodule YellowDog.Console.LogsLive do
           <h1 class="text-2xl font-bold">Real-time Logs</h1>
 
           <%!-- Stream Controls --%>
-          <div class="join">
+          <div class="flex items-center gap-2">
             <button
-              phx-click="toggle_pause"
-              class={"btn btn-sm join-item " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
+              class="btn btn-sm btn-outline"
+              phx-click="export_csv"
+              id="export-csv"
+              phx-hook="CsvDownload"
             >
-              <%= if @paused do %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Resume
-              <% else %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Pause
-              <% end %>
+              Export CSV
             </button>
-            <button phx-click="clear" class="btn btn-sm btn-ghost join-item">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <div class="join">
+              <button
+                phx-click="toggle_pause"
+                class={"btn btn-sm join-item " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-              Clear
-            </button>
+                <%= if @paused do %>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Resume
+                <% else %>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Pause
+                <% end %>
+              </button>
+              <button phx-click="clear" class="btn btn-sm btn-ghost join-item">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                Clear
+              </button>
+            </div>
           </div>
+        </div>
+
+        <%!-- Search --%>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            placeholder="Search log messages..."
+            value={@search}
+            phx-change="search"
+            phx-debounce="300"
+            name="search"
+            class="input input-bordered input-sm flex-1"
+          />
         </div>
 
         <%!-- Pending Badge --%>
@@ -395,7 +471,7 @@ defmodule YellowDog.Console.LogsLive do
               </div>
             </div>
           <% else %>
-            <%= for log <- Enum.reverse(@logs) do %>
+            <%= for log <- Enum.reverse(filtered_logs(@logs, @search)) do %>
               <div
                 class={"py-1 px-2 border-b border-base-300 hover:bg-base-300/50 cursor-pointer " <> level_color(log.level)}
                 phx-click="toggle_expand"
@@ -445,7 +521,9 @@ defmodule YellowDog.Console.LogsLive do
 
         <%!-- Stats Bar --%>
         <div class="text-xs text-base-content/50 flex justify-between">
-          <span>Showing {length(@logs)} log entries (max {@max_logs})</span>
+          <span>
+            Showing {length(filtered_logs(@logs, @search))} of {length(@logs)} log entries (max {@max_logs})
+          </span>
           <span :if={connected?(@socket)} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
           </span>

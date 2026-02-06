@@ -80,6 +80,11 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/mdns/monitor")
       assert html =~ "Export CSV"
     end
+
+    test "has search input for queries", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/monitor")
+      assert html =~ "Search queries"
+    end
   end
 
   # ============================================================================
@@ -177,6 +182,36 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     test "mounts successfully", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/logs")
       assert html =~ "Log" or html =~ "log"
+    end
+
+    test "has search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/logs")
+      assert html =~ "Search log messages"
+    end
+
+    test "has export CSV button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/logs")
+      assert html =~ "Export CSV"
+    end
+
+    test "has pause/resume button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/logs")
+      assert html =~ "Pause"
+    end
+
+    test "has level filter buttons", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/logs")
+      assert html =~ "debug"
+      assert html =~ "info"
+      assert html =~ "warning"
+      assert html =~ "error"
+    end
+
+    test "has module filter badges", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/logs")
+      assert html =~ "DNS"
+      assert html =~ "DHCPv4"
+      assert html =~ "mDNS"
     end
   end
 

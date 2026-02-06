@@ -129,8 +129,17 @@
     <% end %>
     <!-- Query Log -->
     <div class="bg-white rounded-lg shadow">
-      <div class="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
-        <h2 class="text-lg font-medium text-zinc-900">Recent Queries</h2>
+      <div class="px-6 py-4 border-b border-zinc-200 flex items-center justify-between gap-4">
+        <h2 class="text-lg font-medium text-zinc-900 shrink-0">Recent Queries</h2>
+        <input
+          type="text"
+          placeholder="Search queries..."
+          value={@search}
+          phx-change="search"
+          phx-debounce="300"
+          name="search"
+          class="rounded-md border-zinc-300 text-sm flex-1 max-w-xs"
+        />
         <select phx-change="set_limit" name="limit" class="rounded-md border-zinc-300 text-sm">
           <option value="50" selected={@limit == 50}>50 queries</option>
           <option value="100" selected={@limit == 100}>100 queries</option>
@@ -196,7 +205,7 @@
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-zinc-200">
-              <tr :for={query <- @queries} class="hover:bg-zinc-50">
+              <tr :for={query <- filtered_queries(@queries, @search)} class="hover:bg-zinc-50">
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">
                   {format_timestamp(query.timestamp)}
                 </td>
@@ -219,6 +228,11 @@
           </table>
         <% end %>
       </div>
+      <%= if @search != "" do %>
+        <div class="px-6 py-2 text-sm text-zinc-500">
+          Showing {length(filtered_queries(@queries, @search))} of {length(@queries)} queries
+        </div>
+      <% end %>
     </div>
   </div>
 </Layouts.app>

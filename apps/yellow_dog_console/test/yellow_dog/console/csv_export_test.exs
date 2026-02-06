@@ -381,6 +381,117 @@ defmodule YellowDog.Console.CsvExportTest do
     end
   end
 
+  describe "Logs filtered_logs/2" do
+    alias YellowDog.Console.LogsLive
+
+    @logs [
+      %{
+        id: 1,
+        timestamp: 1_000_000_000,
+        level: :info,
+        app: :yellow_dog_dns,
+        module: nil,
+        message: "DNS query received for example.com"
+      },
+      %{
+        id: 2,
+        timestamp: 2_000_000_000,
+        level: :error,
+        app: :yellow_dog_dhcpv4,
+        module: nil,
+        message: "Pool exhausted: no available addresses"
+      },
+      %{
+        id: 3,
+        timestamp: 3_000_000_000,
+        level: :warning,
+        app: :yellow_dog_mdns,
+        module: nil,
+        message: "Duplicate service registration attempt"
+      },
+      %{
+        id: 4,
+        timestamp: 4_000_000_000,
+        level: :debug,
+        app: :yellow_dog,
+        module: nil,
+        message: "Config reload complete"
+      }
+    ]
+
+    test "returns all logs with empty search" do
+      assert LogsLive.filtered_logs(@logs, "") == @logs
+    end
+
+    test "filters by message content" do
+      result = LogsLive.filtered_logs(@logs, "example.com")
+      assert length(result) == 1
+      assert hd(result).message =~ "example.com"
+    end
+
+    test "search is case-insensitive" do
+      result = LogsLive.filtered_logs(@logs, "DNS QUERY")
+      assert length(result) == 1
+    end
+
+    test "returns empty list when no match" do
+      assert LogsLive.filtered_logs(@logs, "nonexistent") == []
+    end
+
+    test "matches partial terms" do
+      result = LogsLive.filtered_logs(@logs, "pool")
+      assert length(result) == 1
+      assert hd(result).message =~ "Pool exhausted"
+    end
+  end
+
+  describe "mDNS monitor filtered_queries/2" do
+    alias YellowDog.Console.MdnsLive.MonitorLive
+
+    @queries [
+      %{
+        name: "_http._tcp.local",
+        type: :PTR,
+        class: :IN,
+        source_ip: {192, 168, 1, 10},
+        timestamp: 1_000
+      },
+      %{
+        name: "_ssh._tcp.local",
+        type: :PTR,
+        class: :IN,
+        source_ip: {192, 168, 1, 20},
+        timestamp: 2_000
+      },
+      %{name: "myhost.local", type: :A, class: :IN, source_ip: {10, 0, 0, 5}, timestamp: 3_000}
+    ]
+
+    test "returns all queries with empty search" do
+      assert MonitorLive.filtered_queries(@queries, "") == @queries
+    end
+
+    test "filters by query name" do
+      result = MonitorLive.filtered_queries(@queries, "http")
+      assert length(result) == 1
+      assert hd(result).name == "_http._tcp.local"
+    end
+
+    test "filters by source IP" do
+      result = MonitorLive.filtered_queries(@queries, "10.0.0")
+      assert length(result) == 1
+      assert hd(result).name == "myhost.local"
+    end
+
+    test "filters by type" do
+      result = MonitorLive.filtered_queries(@queries, "ptr")
+      assert length(result) == 2
+    end
+
+    test "returns empty list when no match" do
+      assert MonitorLive.filtered_queries(@queries, "nonexistent") == []
+    end
+  end
+
   describe "large dataset performance" do
     @tag :performance
     test "handles 10,000 DHCPv4 leases efficiently" do
