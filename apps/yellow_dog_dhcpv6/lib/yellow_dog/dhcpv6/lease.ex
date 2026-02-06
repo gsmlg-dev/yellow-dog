@@ -235,7 +235,10 @@ defmodule YellowDog.Dhcpv6.Lease do
   defp parse_ipv6(_), do: {:error, "Invalid IPv6 address"}
 
   defp parse_duid(nil), do: {:error, "DUID is required"}
-  defp parse_duid(duid) when is_binary(duid) and byte_size(duid) >= 2, do: {:ok, normalize_duid(duid)}
+
+  defp parse_duid(duid) when is_binary(duid) and byte_size(duid) >= 2,
+    do: {:ok, normalize_duid(duid)}
+
   defp parse_duid(_), do: {:error, "Invalid DUID"}
 
   defp parse_iaid(nil), do: {:error, "IAID is required"}

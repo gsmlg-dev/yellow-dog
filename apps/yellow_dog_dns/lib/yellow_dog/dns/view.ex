@@ -248,7 +248,11 @@ defmodule YellowDog.Dns.View do
   end
 
   @impl true
-  def handle_call({:resolve, _connection_pid, _query_id, _query}, _from, %{enabled: false} = state) do
+  def handle_call(
+        {:resolve, _connection_pid, _query_id, _query},
+        _from,
+        %{enabled: false} = state
+      ) do
     {:reply, {:error, :disabled}, state}
   end
 

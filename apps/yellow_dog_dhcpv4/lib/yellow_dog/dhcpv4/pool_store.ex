@@ -413,7 +413,9 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     found_key = Enum.find(keys, fn key -> Map.has_key?(map, key) end)
 
     case found_key do
-      nil -> default
+      nil ->
+        default
+
       key ->
         case Map.get(map, key) do
           value when is_boolean(value) -> value
@@ -472,7 +474,8 @@ defmodule YellowDog.Dhcpv4.PoolStore do
              true <- prefix_int >= 0 and prefix_int <= 32 do
           :ok
         else
-          _ -> {:error, "Invalid network CIDR format: #{network}. Expected format: '192.168.1.0/24'"}
+          _ ->
+            {:error, "Invalid network CIDR format: #{network}. Expected format: '192.168.1.0/24'"}
         end
 
       _ ->
@@ -865,7 +868,10 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   defp format_mac_for_toml(_), do: "00:00:00:00:00:00"
 
   defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-  defp format_datetime(unix) when is_integer(unix), do: DateTime.to_iso8601(DateTime.from_unix!(unix))
+
+  defp format_datetime(unix) when is_integer(unix),
+    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
+
   defp format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
 
   defp format_client_id(nil), do: nil

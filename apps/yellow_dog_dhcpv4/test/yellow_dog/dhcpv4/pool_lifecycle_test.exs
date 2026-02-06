@@ -130,15 +130,36 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
 
     test "multiple pools persist independently" do
       pools = [
-        %{name: "pool_a", range_start: "10.1.0.100", range_end: "10.1.0.200",
-          subnet_mask: "255.255.255.0", gateway: "10.1.0.1", dns_servers: ["8.8.8.8"],
-          lease_time: 3600, enabled: true},
-        %{name: "pool_b", range_start: "10.2.0.100", range_end: "10.2.0.200",
-          subnet_mask: "255.255.255.0", gateway: "10.2.0.1", dns_servers: ["8.8.8.8"],
-          lease_time: 7200, enabled: true},
-        %{name: "pool_c", range_start: "10.3.0.100", range_end: "10.3.0.200",
-          subnet_mask: "255.255.255.0", gateway: "10.3.0.1", dns_servers: ["8.8.8.8"],
-          lease_time: 1800, enabled: false}
+        %{
+          name: "pool_a",
+          range_start: "10.1.0.100",
+          range_end: "10.1.0.200",
+          subnet_mask: "255.255.255.0",
+          gateway: "10.1.0.1",
+          dns_servers: ["8.8.8.8"],
+          lease_time: 3600,
+          enabled: true
+        },
+        %{
+          name: "pool_b",
+          range_start: "10.2.0.100",
+          range_end: "10.2.0.200",
+          subnet_mask: "255.255.255.0",
+          gateway: "10.2.0.1",
+          dns_servers: ["8.8.8.8"],
+          lease_time: 7200,
+          enabled: true
+        },
+        %{
+          name: "pool_c",
+          range_start: "10.3.0.100",
+          range_end: "10.3.0.200",
+          subnet_mask: "255.255.255.0",
+          gateway: "10.3.0.1",
+          dns_servers: ["8.8.8.8"],
+          lease_time: 1800,
+          enabled: false
+        }
       ]
 
       # Save all
@@ -175,10 +196,12 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
         lease_time: 3600,
         enabled: true
       }
+
       PoolStore.save_pool(pool_config)
 
       # Create test leases
       now = DateTime.utc_now()
+
       leases = [
         %YellowDog.Dhcpv4.Lease{
           ip: {192, 168, 10, 101},
@@ -231,10 +254,12 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
         lease_time: 3600,
         enabled: true
       }
+
       PoolStore.save_pool(pool_config)
 
       now = DateTime.utc_now()
-      past = DateTime.add(now, -7200, :second)  # 2 hours ago
+      # 2 hours ago
+      past = DateTime.add(now, -7200, :second)
 
       leases = [
         # Active lease (expires in future)
@@ -254,7 +279,8 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
           pool_name: pool_name,
           hostname: "expired_client",
           starts_at: past,
-          expires_at: DateTime.add(past, 3600, :second),  # Expired 1 hour ago
+          # Expired 1 hour ago
+          expires_at: DateTime.add(past, 3600, :second),
           state: :active
         }
       ]
@@ -269,13 +295,14 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
       assert length(loaded_leases) == 2
 
       # But filtering for active shows only non-expired
-      active_leases = Enum.filter(loaded_leases, fn lease ->
-        case lease.expires_at do
-          %DateTime{} = dt -> DateTime.compare(dt, DateTime.utc_now()) == :gt
-          unix when is_integer(unix) -> unix > System.system_time(:second)
-          _ -> false
-        end
-      end)
+      active_leases =
+        Enum.filter(loaded_leases, fn lease ->
+          case lease.expires_at do
+            %DateTime{} = dt -> DateTime.compare(dt, DateTime.utc_now()) == :gt
+            unix when is_integer(unix) -> unix > System.system_time(:second)
+            _ -> false
+          end
+        end)
 
       assert length(active_leases) == 1
       assert hd(active_leases).hostname == "active_client"
@@ -295,9 +322,11 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
         lease_time: 3600,
         enabled: true
       }
+
       PoolStore.save_pool(pool_config)
 
       now = DateTime.utc_now()
+
       leases = [
         %YellowDog.Dhcpv4.Lease{
           ip: {192, 168, 30, 101},
@@ -309,6 +338,7 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
           state: :active
         }
       ]
+
       PoolStore.save_leases(pool_name, leases)
 
       # Verify exists
@@ -343,21 +373,24 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
         max_leases: 100,
         enabled: true
       }
+
       assert :ok = PoolStore.save_pool(pool_config)
 
       # 2. Simulate lease allocations
       now = DateTime.utc_now()
-      allocated_leases = for i <- 1..5 do
-        %YellowDog.Dhcpv4.Lease{
-          ip: {10, 100, 0, 100 + i},
-          mac: <<0x00, 0x00, 0x00, 0x00, 0x00, i>>,
-          pool_name: pool_name,
-          hostname: "client#{i}",
-          starts_at: now,
-          expires_at: DateTime.add(now, 3600, :second),
-          state: :active
-        }
-      end
+
+      allocated_leases =
+        for i <- 1..5 do
+          %YellowDog.Dhcpv4.Lease{
+            ip: {10, 100, 0, 100 + i},
+            mac: <<0x00, 0x00, 0x00, 0x00, 0x00, i>>,
+            pool_name: pool_name,
+            hostname: "client#{i}",
+            starts_at: now,
+            expires_at: DateTime.add(now, 3600, :second),
+            state: :active
+          }
+        end
 
       # 3. Save leases (simulating periodic flush)
       assert :ok = PoolStore.save_leases(pool_name, allocated_leases)

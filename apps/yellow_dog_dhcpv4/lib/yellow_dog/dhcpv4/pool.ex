@@ -266,7 +266,10 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp parse_ip(_), do: nil
 
   defp parse_ip_list(nil), do: []
-  defp parse_ip_list(list) when is_list(list), do: Enum.map(list, &parse_ip/1) |> Enum.reject(&is_nil/1)
+
+  defp parse_ip_list(list) when is_list(list),
+    do: Enum.map(list, &parse_ip/1) |> Enum.reject(&is_nil/1)
+
   defp parse_ip_list(_), do: []
 
   defp parse_lease_time(config) do
@@ -286,40 +289,51 @@ defmodule YellowDog.Dhcpv4.Pool do
   end
 
   defp parse_reservations(nil), do: %{}
+
   defp parse_reservations(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {mac, ip}, acc ->
       parsed_ip = parse_ip(ip)
       if parsed_ip, do: Map.put(acc, normalize_mac(mac), parsed_ip), else: acc
     end)
   end
+
   defp parse_reservations(_), do: %{}
 
   defp parse_options(nil), do: %{}
+
   defp parse_options(map) when is_map(map) do
     Enum.reduce(map, %{}, fn {code, value}, acc ->
       code_int = if is_integer(code), do: code, else: String.to_integer("#{code}")
       Map.put(acc, code_int, value)
     end)
   end
+
   defp parse_options(_), do: %{}
 
   defp parse_acl(nil), do: %{allow: [], deny: []}
+
   defp parse_acl(%{} = acl) do
     allow = parse_acl_rules(get_value(acl, :allow, []))
     deny = parse_acl_rules(get_value(acl, :deny, []))
     %{allow: allow, deny: deny}
   end
+
   defp parse_acl(_), do: %{allow: [], deny: []}
 
   defp parse_acl_rules(nil), do: []
+
   defp parse_acl_rules(rules) when is_list(rules) do
     Enum.map(rules, &parse_acl_rule/1) |> Enum.reject(&is_nil/1)
   end
+
   defp parse_acl_rules(_), do: []
 
   defp parse_acl_rule(%{"type" => "mac", "pattern" => pattern}), do: {:mac, pattern}
   defp parse_acl_rule(%{type: "mac", pattern: pattern}), do: {:mac, pattern}
-  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}), do: {:option, code, value}
+
+  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}),
+    do: {:option, code, value}
+
   defp parse_acl_rule(%{type: "option", code: code, value: value}), do: {:option, code, value}
   defp parse_acl_rule(%{"type" => "vendor_class", "value" => value}), do: {:vendor_class, value}
   defp parse_acl_rule(%{type: "vendor_class", value: value}), do: {:vendor_class, value}
@@ -338,6 +352,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp validate_range({start_ip, end_ip}) when is_tuple(start_ip) and is_tuple(end_ip) do
     if ip_to_int(start_ip) <= ip_to_int(end_ip), do: :ok, else: {:error, "Invalid range"}
   end
+
   defp validate_range(_), do: {:error, "Invalid range"}
 
   defp validate_range_in_subnet({start_ip, end_ip}, {subnet_ip, prefix}) do
@@ -376,6 +391,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp format_ip(ip) when is_binary(ip), do: ip
 
   defp format_reservations(map) when map == %{}, do: nil
+
   defp format_reservations(map) do
     Enum.reduce(map, %{}, fn {mac, ip}, acc ->
       Map.put(acc, mac, format_ip(ip))
@@ -406,7 +422,10 @@ defmodule YellowDog.Dhcpv4.Pool do
   end
 
   defp format_acl_rule({:mac, pattern}), do: %{"type" => "mac", "pattern" => pattern}
-  defp format_acl_rule({:option, code, value}), do: %{"type" => "option", "code" => code, "value" => value}
+
+  defp format_acl_rule({:option, code, value}),
+    do: %{"type" => "option", "code" => code, "value" => value}
+
   defp format_acl_rule({:vendor_class, value}), do: %{"type" => "vendor_class", "value" => value}
   defp format_acl_rule({:user_class, value}), do: %{"type" => "user_class", "value" => value}
 

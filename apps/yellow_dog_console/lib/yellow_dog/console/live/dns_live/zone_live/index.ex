@@ -402,7 +402,9 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp resolve_zone_type(view_name, zone_name) do
     # Try 1: Check running ZoneController processes
     case resolve_zone_type_from_controller(view_name, zone_name) do
-      {:ok, _type} = result -> result
+      {:ok, _type} = result ->
+        result
+
       :error ->
         # Try 2: Check persisted zone config (zones.toml)
         resolve_zone_type_from_persistence(view_name, zone_name)

@@ -23,7 +23,10 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
 
     # Start the global ZoneController (View.resolve_in_zone uses ZoneController module name)
     zc_pid =
-      case DynamicSupervisor.start_link(strategy: :one_for_one, name: YellowDog.Dns.ZoneController) do
+      case DynamicSupervisor.start_link(
+             strategy: :one_for_one,
+             name: YellowDog.Dns.ZoneController
+           ) do
         {:ok, pid} -> pid
         {:error, {:already_started, pid}} -> pid
       end
@@ -193,7 +196,13 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
           zone_data: [
             %{name: "example.com", type: :a, class: :in, ttl: 3600, rdata: {192, 168, 1, 10}},
             %{name: "sub.example.com", type: :a, class: :in, ttl: 3600, rdata: {192, 168, 1, 20}},
-            %{name: "deep.sub.example.com", type: :a, class: :in, ttl: 3600, rdata: {192, 168, 1, 30}}
+            %{
+              name: "deep.sub.example.com",
+              type: :a,
+              class: :in,
+              ttl: 3600,
+              rdata: {192, 168, 1, 30}
+            }
           ]
         )
 

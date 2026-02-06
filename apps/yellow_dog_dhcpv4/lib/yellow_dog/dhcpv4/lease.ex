@@ -192,7 +192,9 @@ defmodule YellowDog.Dhcpv4.Lease do
     case String.split(ip, ".") do
       [a, b, c, d] ->
         try do
-          {:ok, {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}}
+          {:ok,
+           {String.to_integer(a), String.to_integer(b), String.to_integer(c),
+            String.to_integer(d)}}
         rescue
           _ -> {:error, "Invalid IP address format"}
         end
@@ -264,6 +266,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   defp parse_state(_), do: :active
 
   defp parse_client_id(nil), do: nil
+
   defp parse_client_id(str) when is_binary(str) do
     # Try hex decode, otherwise use as-is
     case Base.decode16(str, case: :mixed) do
@@ -308,7 +311,8 @@ defmodule YellowDog.Dhcpv4.Lease do
   # Validation helpers
 
   defp validate_ip({a, b, c, d})
-       when a >= 0 and a <= 255 and b >= 0 and b <= 255 and c >= 0 and c <= 255 and d >= 0 and d <= 255,
+       when a >= 0 and a <= 255 and b >= 0 and b <= 255 and c >= 0 and c <= 255 and d >= 0 and
+              d <= 255,
        do: :ok
 
   defp validate_ip(_), do: {:error, "Invalid IP address"}

@@ -353,7 +353,10 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_acl_rule(%{"type" => "duid", "pattern" => pattern}), do: {:duid, pattern}
   defp parse_acl_rule(%{type: "duid", pattern: pattern}), do: {:duid, pattern}
-  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}), do: {:option, code, value}
+
+  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}),
+    do: {:option, code, value}
+
   defp parse_acl_rule(%{type: "option", code: code, value: value}), do: {:option, code, value}
   defp parse_acl_rule(%{"type" => "vendor_class", "value" => value}), do: {:vendor_class, value}
   defp parse_acl_rule(%{type: "vendor_class", value: value}), do: {:vendor_class, value}
@@ -439,7 +442,10 @@ defmodule YellowDog.Dhcpv6.Pool do
   end
 
   defp format_acl_rule({:duid, pattern}), do: %{"type" => "duid", "pattern" => pattern}
-  defp format_acl_rule({:option, code, value}), do: %{"type" => "option", "code" => code, "value" => value}
+
+  defp format_acl_rule({:option, code, value}),
+    do: %{"type" => "option", "code" => code, "value" => value}
+
   defp format_acl_rule({:vendor_class, value}), do: %{"type" => "vendor_class", "value" => value}
 
   defp normalize_duid(duid) when is_binary(duid), do: String.upcase(duid)

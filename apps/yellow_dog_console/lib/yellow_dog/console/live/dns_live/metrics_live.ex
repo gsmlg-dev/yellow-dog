@@ -151,7 +151,10 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   defp format_latency(us) when is_float(us), do: "#{Float.round(us, 0)}us"
-  defp format_latency(us) when is_integer(us) and us >= 1_000, do: "#{Float.round(us / 1_000, 1)}ms"
+
+  defp format_latency(us) when is_integer(us) and us >= 1_000,
+    do: "#{Float.round(us / 1_000, 1)}ms"
+
   defp format_latency(us) when is_integer(us), do: "#{us}us"
   defp format_latency(_), do: "0us"
 
@@ -217,7 +220,11 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
             <div class="stat-title">Cache Hit Rate</div>
             <div class="stat-value text-success">{Float.round(@summary.cache_hit_rate, 1)}%</div>
             <div class="stat-desc">
-              {Map.get(@metrics.counters, :cache_hits, 0)} hits / {Map.get(@metrics.counters, :cache_misses, 0)} misses
+              {Map.get(@metrics.counters, :cache_hits, 0)} hits / {Map.get(
+                @metrics.counters,
+                :cache_misses,
+                0
+              )} misses
             </div>
           </div>
           <div class="stat">
@@ -236,11 +243,14 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
               <%= if Enum.empty?(@metrics.responses_by_code) do %>
                 <p class="text-base-content/50 text-sm">No responses recorded yet</p>
               <% else %>
-                <% max_rcode = @metrics.responses_by_code |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+                <% max_rcode =
+                  @metrics.responses_by_code |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
                 <div class="space-y-2">
                   <%= for {code, count} <- Enum.sort_by(@metrics.responses_by_code, fn {_, c} -> -c end) do %>
                     <div class="flex items-center gap-2">
-                      <span class="w-24 text-sm font-mono">{code |> to_string() |> String.upcase()}</span>
+                      <span class="w-24 text-sm font-mono">
+                        {code |> to_string() |> String.upcase()}
+                      </span>
                       <div class="flex-1 bg-base-200 rounded-full h-4">
                         <div
                           class={"h-4 rounded-full " <> rcode_color(to_string(code))}
@@ -263,11 +273,14 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
               <%= if Enum.empty?(@metrics.queries_by_type) do %>
                 <p class="text-base-content/50 text-sm">No queries recorded yet</p>
               <% else %>
-                <% max_type = @metrics.queries_by_type |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+                <% max_type =
+                  @metrics.queries_by_type |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
                 <div class="space-y-2">
                   <%= for {type, count} <- Enum.sort_by(@metrics.queries_by_type, fn {_, c} -> -c end) do %>
                     <div class="flex items-center gap-2">
-                      <span class="w-16 text-sm font-mono">{type |> to_string() |> String.upcase()}</span>
+                      <span class="w-16 text-sm font-mono">
+                        {type |> to_string() |> String.upcase()}
+                      </span>
                       <div class="flex-1 bg-base-200 rounded-full h-4">
                         <div
                           class={"h-4 rounded-full " <> type_color(to_string(type))}
@@ -305,7 +318,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                   <div class="font-mono">{format_latency(@response_times.max)}</div>
                 </div>
               </div>
-              <% max_bucket = @response_times.buckets |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+              <% max_bucket =
+                @response_times.buckets |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
               <div class="flex items-end gap-1 h-32">
                 <%= for {label, count} <- @response_times.buckets do %>
                   <div class="flex-1 flex flex-col items-center">
@@ -394,7 +408,9 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
           <div class="stat">
             <div class="stat-title">Rate Limited</div>
-            <div class="stat-value text-lg text-warning">{Map.get(@metrics.counters, :rate_limit_rejected, 0)}</div>
+            <div class="stat-value text-lg text-warning">
+              {Map.get(@metrics.counters, :rate_limit_rejected, 0)}
+            </div>
           </div>
           <div class="stat">
             <div class="stat-title">Fallbacks Used</div>
@@ -424,7 +440,10 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   defp format_bucket_label(:inf), do: "+inf"
-  defp format_bucket_label(us) when is_integer(us) and us >= 1_000_000, do: "#{div(us, 1_000_000)}s"
+
+  defp format_bucket_label(us) when is_integer(us) and us >= 1_000_000,
+    do: "#{div(us, 1_000_000)}s"
+
   defp format_bucket_label(us) when is_integer(us) and us >= 1_000, do: "#{div(us, 1_000)}ms"
   defp format_bucket_label(us) when is_integer(us), do: "#{us}us"
   defp format_bucket_label(other), do: to_string(other)

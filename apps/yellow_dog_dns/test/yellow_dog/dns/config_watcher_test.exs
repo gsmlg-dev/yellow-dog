@@ -169,7 +169,10 @@ defmodule YellowDog.Dns.ConfigWatcherTest do
   end
 
   describe "parse_zone_file_path detection" do
-    test "zone files in correct path structure are detected", %{views_dir: views_dir, tmp_dir: tmp_dir} do
+    test "zone files in correct path structure are detected", %{
+      views_dir: views_dir,
+      tmp_dir: tmp_dir
+    } do
       File.write!(Path.join(views_dir, "example.com.zone"), "; zone\n")
 
       {_pid, name} = start_watcher(data_path: tmp_dir, enabled: false)

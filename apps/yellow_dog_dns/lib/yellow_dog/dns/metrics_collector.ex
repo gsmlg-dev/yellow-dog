@@ -449,15 +449,25 @@ defmodule YellowDog.Dns.MetricsCollector do
 
   defp update_min_max(table, value) do
     case :ets.lookup(table, {:histogram, :response_time, :min}) do
-      [{_, nil}] -> :ets.insert(table, {{:histogram, :response_time, :min}, value})
-      [{_, current}] when value < current -> :ets.insert(table, {{:histogram, :response_time, :min}, value})
-      _ -> :ok
+      [{_, nil}] ->
+        :ets.insert(table, {{:histogram, :response_time, :min}, value})
+
+      [{_, current}] when value < current ->
+        :ets.insert(table, {{:histogram, :response_time, :min}, value})
+
+      _ ->
+        :ok
     end
 
     case :ets.lookup(table, {:histogram, :response_time, :max}) do
-      [{_, nil}] -> :ets.insert(table, {{:histogram, :response_time, :max}, value})
-      [{_, current}] when value > current -> :ets.insert(table, {{:histogram, :response_time, :max}, value})
-      _ -> :ok
+      [{_, nil}] ->
+        :ets.insert(table, {{:histogram, :response_time, :max}, value})
+
+      [{_, current}] when value > current ->
+        :ets.insert(table, {{:histogram, :response_time, :max}, value})
+
+      _ ->
+        :ok
     end
   end
 

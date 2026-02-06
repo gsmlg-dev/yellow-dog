@@ -306,7 +306,7 @@ defmodule YellowDog.DHCP.SafeWriter do
           %{
             tx_id: tx_id,
             has_backup: has_backup,
-            files: [file | (if has_backup, do: ["#{tx_id}.backup"], else: [])]
+            files: [file | if(has_backup, do: ["#{tx_id}.backup"], else: [])]
           }
         end)
 
