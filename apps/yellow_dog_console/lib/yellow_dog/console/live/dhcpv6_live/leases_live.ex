@@ -88,6 +88,15 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    leases = socket.assigns.filtered_leases
+    csv = build_csv(leases)
+    filename = "dhcpv6_leases_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info({:telemetry_event, _event, _measurements, _metadata}, socket) do
     {:noreply, load_leases(socket)}
   end
@@ -254,4 +263,64 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   defp get_state_color(:expired), do: "error"
   defp get_state_color(:declined), do: "error"
   defp get_state_color(_), do: "ghost"
+
+  defp build_csv(leases) do
+    header =
+      "DUID,IAID,IA Type,IPv6 Address/Prefix,State,Pool,Preferred Lifetime,Valid Lifetime,Allocated At\r\n"
+
+    rows =
+      Enum.map_join(leases, "\r\n", fn lease ->
+        [
+          csv_escape(format_duid(lease.duid)),
+          csv_escape(to_string(lease.iaid)),
+          csv_escape(to_string(lease.ia_type)),
+          csv_escape(format_ipv6_or_prefix(lease)),
+          csv_escape(to_string(lease.state)),
+          csv_escape(lease.pool_name || ""),
+          csv_escape(format_lifetime(lease.preferred_lifetime)),
+          csv_escape(format_lifetime(lease.valid_lifetime)),
+          csv_escape(format_timestamp(lease.allocated_at))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
+  end
+
+  defp format_ipv6_or_prefix(%{ia_type: :ia_na, ipv6_address: addr}) when addr != nil do
+    format_ipv6(addr)
+  end
+
+  defp format_ipv6_or_prefix(%{ia_type: :ia_pd, prefix: prefix, prefix_length: len})
+       when prefix != nil and len != nil do
+    "#{format_ipv6(prefix)}/#{len}"
+  end
+
+  defp format_ipv6_or_prefix(_), do: "N/A"
+
+  defp format_lifetime(lifetime) when is_integer(lifetime) do
+    cond do
+      lifetime < 60 -> "#{lifetime}s"
+      lifetime < 3600 -> "#{div(lifetime, 60)}m"
+      lifetime < 86400 -> "#{div(lifetime, 3600)}h"
+      true -> "#{div(lifetime, 86400)}d"
+    end
+  end
+
+  defp format_lifetime(_), do: "N/A"
+
+  defp format_timestamp(timestamp) when is_integer(timestamp) do
+    DateTime.from_unix!(timestamp)
+    |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
+  end
+
+  defp format_timestamp(_), do: "N/A"
 end
