@@ -90,6 +90,7 @@ defmodule YellowDog.Console.Router do
          :edit
 
     live "/dns/acl", DnsLive.AclLive
+    live "/dns/logs", DnsLive.QueryLogsLive
 
     # Service Diagnostics
     live "/diagnostics", DiagnosticsLive

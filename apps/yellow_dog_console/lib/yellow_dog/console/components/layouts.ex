@@ -236,6 +236,7 @@ defmodule YellowDog.Console.Layouts do
                 <li><a href="/dns">Overview</a></li>
                 <li><a href="/dns/views">Views</a></li>
                 <li><a href="/dns/acl">ACL</a></li>
+                <li><a href="/dns/logs">Query Logs</a></li>
               </ul>
             </details>
           </li>
