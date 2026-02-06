@@ -50,6 +50,24 @@ Hooks.CopyToClipboard = {
   }
 }
 
+// CSV Download Hook
+// Triggers a file download from server-pushed CSV content
+Hooks.CsvDownload = {
+  mounted() {
+    this.handleEvent("download_csv", ({content, filename}) => {
+      const blob = new Blob([content], {type: "text/csv;charset=utf-8;"})
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.setAttribute("href", url)
+      link.setAttribute("download", filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    })
+  }
+}
+
 // Log Auto-Scroll Hook
 // Automatically scrolls to bottom when new logs arrive, unless user has scrolled up
 Hooks.LogAutoScroll = {

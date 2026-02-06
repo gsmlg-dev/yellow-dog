@@ -87,7 +87,9 @@
                             phx-click="toggle_enabled"
                             phx-value-name={view.name}
                             class="cursor-pointer"
-                            title={if view.enabled, do: "Click to disable", else: "Click to enable"}
+                            title={
+                              if view.enabled, do: "Click to disable", else: "Click to enable"
+                            }
                           >
                             <%= if view.enabled do %>
                               <.badge color="success" size="sm">Active</.badge>
@@ -431,6 +433,54 @@
                 </div>
               </div>
             <% end %>
+            
+<!-- Fallback Forwarders -->
+            <div class="divider">Fallback Forwarding</div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Fallback DNS Servers</span>
+              </label>
+              <textarea
+                name="view[fallback_forwarders]"
+                class="textarea textarea-bordered h-20 font-mono text-sm"
+                placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
+              >{@view_form[:fallback_forwarders].value}</textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  Upstream servers used when zone resolution fails (one per line, optional :port)
+                </span>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Timeout (ms)</span>
+                </label>
+                <input
+                  type="number"
+                  name="view[fallback_timeout]"
+                  value={@view_form[:fallback_timeout].value}
+                  class="input input-bordered w-full"
+                  min="100"
+                  max="30000"
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Retries</span>
+                </label>
+                <input
+                  type="number"
+                  name="view[fallback_retries]"
+                  value={@view_form[:fallback_retries].value}
+                  class="input input-bordered w-full"
+                  min="0"
+                  max="5"
+                />
+              </div>
+            </div>
 
             <div class="divider"></div>
 
@@ -668,6 +718,54 @@
                 <span>The default view always accepts all clients (ACL: any)</span>
               </div>
             <% end %>
+            
+<!-- Fallback Forwarders -->
+            <div class="divider">Fallback Forwarding</div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-semibold">Fallback DNS Servers</span>
+              </label>
+              <textarea
+                name="view[fallback_forwarders]"
+                class="textarea textarea-bordered h-20 font-mono text-sm"
+                placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
+              >{@view_form[:fallback_forwarders].value}</textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  Upstream servers used when zone resolution fails (one per line, optional :port)
+                </span>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Timeout (ms)</span>
+                </label>
+                <input
+                  type="number"
+                  name="view[fallback_timeout]"
+                  value={@view_form[:fallback_timeout].value}
+                  class="input input-bordered w-full"
+                  min="100"
+                  max="30000"
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Retries</span>
+                </label>
+                <input
+                  type="number"
+                  name="view[fallback_retries]"
+                  value={@view_form[:fallback_retries].value}
+                  class="input input-bordered w-full"
+                  min="0"
+                  max="5"
+                />
+              </div>
+            </div>
 
             <div class="divider"></div>
 

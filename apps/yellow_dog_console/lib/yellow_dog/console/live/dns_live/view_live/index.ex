@@ -54,7 +54,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       "priority" => "100",
       "recursion_enabled" => "true",
       "ecs_enabled" => "false",
-      "acl_type" => "any"
+      "acl_type" => "any",
+      "fallback_forwarders" => "",
+      "fallback_timeout" => "2000",
+      "fallback_retries" => "1"
     }
 
     socket
@@ -82,12 +85,26 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         # Extract ACL type and selected countries
         {acl_type, selected_countries} = parse_acl_for_form(config.acl)
 
+        # Format fallback forwarders for display
+        fallback_display =
+          (config.fallback_forwarders || [])
+          |> Enum.map(fn
+            {ip, port} when port == 53 -> format_ip(ip)
+            {ip, port} -> "#{format_ip(ip)}:#{port}"
+            ip when is_tuple(ip) -> format_ip(ip)
+            s when is_binary(s) -> s
+          end)
+          |> Enum.join("\n")
+
         form_data = %{
           "name" => config.name,
           "priority" => priority_display,
           "recursion_enabled" => to_string(config.recursion_enabled),
           "ecs_enabled" => to_string(config.ecs_enabled),
-          "acl_type" => acl_type
+          "acl_type" => acl_type,
+          "fallback_forwarders" => fallback_display,
+          "fallback_timeout" => to_string(config.fallback_timeout || 2000),
+          "fallback_retries" => to_string(config.fallback_retries || 1)
         }
 
         socket
@@ -154,12 +171,30 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         build_acl_config(view_params["acl_type"], socket.assigns.selected_countries)
       end
 
+    # Parse fallback forwarders from textarea
+    fallback_forwarders = parse_forwarders(view_params["fallback_forwarders"] || "")
+
+    fallback_timeout =
+      case Integer.parse(view_params["fallback_timeout"] || "2000") do
+        {n, _} -> n
+        :error -> 2000
+      end
+
+    fallback_retries =
+      case Integer.parse(view_params["fallback_retries"] || "1") do
+        {n, _} -> n
+        :error -> 1
+      end
+
     config = %{
       name: view_params["name"],
       priority: priority,
       recursion_enabled: view_params["recursion_enabled"] == "true",
       ecs_enabled: view_params["ecs_enabled"] == "true",
-      acl: acl_config
+      acl: acl_config,
+      fallback_forwarders: fallback_forwarders,
+      fallback_timeout: fallback_timeout,
+      fallback_retries: fallback_retries
     }
 
     result =
@@ -277,7 +312,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       "priority" => form[:priority].value,
       "recursion_enabled" => form[:recursion_enabled].value,
       "ecs_enabled" => form[:ecs_enabled].value,
-      "acl_type" => acl_type
+      "acl_type" => acl_type,
+      "fallback_forwarders" => form[:fallback_forwarders].value,
+      "fallback_timeout" => form[:fallback_timeout].value,
+      "fallback_retries" => form[:fallback_retries].value
     }
 
     {:noreply, assign(socket, :view_form, to_form(form_data))}
@@ -341,7 +379,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
             priority: stats.priority,
             recursion_enabled: stats.recursion_enabled,
             ecs_enabled: stats.ecs_enabled,
-            acl: Map.get(stats, :acl, :any)
+            acl: Map.get(stats, :acl, :any),
+            fallback_forwarders: Map.get(stats, :fallback_forwarders, []),
+            fallback_timeout: Map.get(stats, :fallback_timeout, 2000),
+            fallback_retries: Map.get(stats, :fallback_retries, 1)
           }
 
           {:ok, config}
@@ -405,6 +446,39 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         String.contains?(String.downcase(code), search_lower)
     end)
   end
+
+  defp parse_forwarders(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn entry ->
+      case String.split(entry, ":") do
+        [ip, port_str] ->
+          case Integer.parse(port_str) do
+            {port, _} -> {parse_ip_tuple(ip), port}
+            :error -> {parse_ip_tuple(ip), 53}
+          end
+
+        [ip] ->
+          {parse_ip_tuple(ip), 53}
+      end
+    end)
+  end
+
+  defp parse_ip_tuple(ip_str) do
+    case :inet.parse_address(String.to_charlist(ip_str)) do
+      {:ok, ip} -> ip
+      {:error, _} -> {0, 0, 0, 0}
+    end
+  end
+
+  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
+  defp format_ip({a, b, c, d, e, f, g, h}),
+    do: Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))
+
+  defp format_ip(other), do: to_string(other)
 
   defp save_config_async do
     Task.start(fn ->

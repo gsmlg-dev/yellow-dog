@@ -83,6 +83,15 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    entries = socket.assigns.entries
+    csv = build_csv(entries)
+    filename = "dns_queries_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info({:query_logged, _entry}, %{assigns: %{paused: true}} = socket) do
     {:noreply, socket}
   end
@@ -206,6 +215,37 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   defp protocol_badge("tcp"), do: "badge-primary"
   defp protocol_badge(_), do: "badge-ghost"
 
+  defp build_csv(entries) do
+    header =
+      "Timestamp,Client IP,Query Name,Type,Protocol,Response Code,Latency (us),Cache Hit,View\r\n"
+
+    rows =
+      Enum.map_join(entries, "\r\n", fn e ->
+        [
+          csv_escape(format_timestamp(e.timestamp)),
+          csv_escape(format_ip(e.client_ip)),
+          csv_escape(to_string(e.qname || "")),
+          csv_escape(to_string(e.qtype || "")),
+          csv_escape(to_string(e.protocol || "")),
+          csv_escape(to_string(e.response_code || "")),
+          to_string(e.response_time_us || ""),
+          to_string(e.cache_hit || false),
+          csv_escape(to_string(e.view || ""))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -275,6 +315,28 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 />
               </svg>
               Clear
+            </button>
+            <button
+              phx-click="export_csv"
+              class="btn btn-sm btn-ghost join-item"
+              id="csv-export"
+              phx-hook="CsvDownload"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              Export CSV
             </button>
           </div>
         </div>
