@@ -191,20 +191,33 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     zone_name = socket.assigns.zone_name
     records_text = bulk_params["records"]
 
-    # Parse records (one per line in zone file format)
-    lines =
-      records_text
-      |> String.split("\n")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == "" || String.starts_with?(&1, ";")))
+    case find_auth_zone(view_name, zone_type, zone_name) do
+      {:ok, pid} ->
+        # Prepend $ORIGIN so the zone parser knows the zone name
+        zone_text = "$ORIGIN #{zone_name}.\n#{records_text}"
 
-    # TODO: Implement actual bulk add via zone API
-    count = length(lines)
+        case YellowDog.Dns.Zone.Auth.import_zone_file(pid, zone_text) do
+          {:ok, stats} ->
+            count = Map.get(stats, :imported, 0)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Parsed #{count} records - bulk add pending backend implementation")
-     |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+            Phoenix.PubSub.broadcast(
+              YellowDog.Console.PubSub,
+              "dns:records",
+              {:record_updated, zone_name}
+            )
+
+            {:noreply,
+             socket
+             |> put_flash(:info, "Imported #{count} records successfully")
+             |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Import failed: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, reason)}
+    end
   end
 
   @impl true
@@ -222,12 +235,32 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   @impl true
   def handle_event("delete_rr", _params, socket) do
     %{rr: rr} = socket.assigns.delete_confirm
+    view_name = socket.assigns.view_name
+    zone_type = socket.assigns.zone_type
+    zone_name = socket.assigns.zone_name
 
-    # TODO: Implement actual RR delete via zone API
-    {:noreply,
-     socket
-     |> assign(:delete_confirm, nil)
-     |> put_flash(:info, "Record '#{rr.name}' deleted - delete pending backend implementation")}
+    case find_auth_zone(view_name, zone_type, zone_name) do
+      {:ok, pid} ->
+        :ok = remove_existing_record(pid, rr)
+
+        Phoenix.PubSub.broadcast(
+          YellowDog.Console.PubSub,
+          "dns:records",
+          {:record_updated, zone_name}
+        )
+
+        {:noreply,
+         socket
+         |> assign(:delete_confirm, nil)
+         |> load_records()
+         |> put_flash(:info, "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:delete_confirm, nil)
+         |> put_flash(:error, reason)}
+    end
   end
 
   @impl true
