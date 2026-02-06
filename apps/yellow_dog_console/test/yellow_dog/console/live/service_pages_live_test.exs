@@ -28,6 +28,11 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/dashboard")
       assert html =~ "Stopped"
     end
+
+    test "shows port numbers for services", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "53" or html =~ "67" or html =~ "547" or html =~ "5353"
+    end
   end
 
   # ============================================================================
@@ -85,6 +90,30 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/mdns/monitor")
       assert html =~ "Search queries"
     end
+
+    test "has auto-refresh toggle", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/monitor")
+      assert html =~ "Auto-Refresh"
+    end
+
+    test "toggle_auto_refresh switches state", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      html = render_click(view, "toggle_auto_refresh")
+      assert html =~ "Auto-Refresh Off"
+    end
+
+    test "has query limit selector", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/monitor")
+      assert html =~ "50 queries"
+      assert html =~ "100 queries"
+    end
+
+    test "shows network statistics", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/monitor")
+      assert html =~ "Total Queries"
+      assert html =~ "Total Responses"
+      assert html =~ "Unique Hosts"
+    end
   end
 
   # ============================================================================
@@ -107,6 +136,16 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     test "has export button", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dhcpv4/leases")
       assert html =~ "Export"
+    end
+
+    test "has search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/leases")
+      assert html =~ "search" or html =~ "Search"
+    end
+
+    test "has state filter", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/leases")
+      assert html =~ "All States" or html =~ "state"
     end
   end
 
@@ -147,6 +186,16 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     test "has export button", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dhcpv6/leases")
       assert html =~ "Export"
+    end
+
+    test "has search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/leases")
+      assert html =~ "search" or html =~ "Search"
+    end
+
+    test "has state filter", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/leases")
+      assert html =~ "All States" or html =~ "state"
     end
   end
 
@@ -212,6 +261,39 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert html =~ "DNS"
       assert html =~ "DHCPv4"
       assert html =~ "mDNS"
+    end
+
+    test "toggle_pause switches to paused state", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      html = render_click(view, "toggle_pause")
+      assert html =~ "Resume"
+    end
+
+    test "toggle_pause back to streaming", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      render_click(view, "toggle_pause")
+      html = render_click(view, "toggle_pause")
+      assert html =~ "Pause"
+    end
+
+    test "set_level changes minimum log level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      html = render_click(view, "set_level", %{"level" => "warning"})
+      assert html =~ "warning"
+    end
+
+    test "clear removes all logs", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      html = render_click(view, "clear")
+      assert html =~ "Showing 0"
+    end
+
+    test "select_all_apps and select_no_apps toggle module filters", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      html = render_click(view, "select_all_apps")
+      assert html =~ "Showing:"
+      html = render_click(view, "select_no_apps")
+      refute html =~ "Showing:"
     end
   end
 
