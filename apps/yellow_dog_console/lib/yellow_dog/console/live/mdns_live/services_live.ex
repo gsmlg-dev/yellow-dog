@@ -133,6 +133,15 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    services = socket.assigns.services
+    csv = build_csv(services)
+    filename = "mdns_services_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info({:service_registered, _service_id}, socket) do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
   end
@@ -193,4 +202,48 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   defp format_txt_for_form(_), do: ""
+
+  defp build_csv(services) do
+    header =
+      "Service Name,Type,Port,Domain,Enabled,Source,IP Addresses,TXT Records\r\n"
+
+    rows =
+      Enum.map_join(services, "\r\n", fn service ->
+        [
+          csv_escape(service.name),
+          csv_escape(service.type),
+          csv_escape(to_string(service.port)),
+          csv_escape(service.domain || "local"),
+          csv_escape(to_string(service.enabled)),
+          csv_escape(to_string(service.source)),
+          csv_escape(format_addresses_for_csv(service.addresses)),
+          csv_escape(format_txt_for_csv(service.txt))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
+  end
+
+  defp format_addresses_for_csv(addresses) when is_list(addresses) do
+    Enum.join(addresses, "; ")
+  end
+
+  defp format_addresses_for_csv(_), do: ""
+
+  defp format_txt_for_csv(txt_map) when is_map(txt_map) do
+    txt_map
+    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
+    |> Enum.join("; ")
+  end
+
+  defp format_txt_for_csv(_), do: ""
 end
