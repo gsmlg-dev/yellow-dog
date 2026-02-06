@@ -150,6 +150,16 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    records = filtered_records(socket.assigns.rrs, socket.assigns.filter, socket.assigns.type_filter)
+    csv = build_records_csv(records)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    zone = socket.assigns.zone_name |> String.replace(".", "_")
+    filename = "dns_records_#{zone}_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_event("save_rr", %{"rr" => rr_params}, socket) do
     editing = socket.assigns[:editing_rr]
     zone_name = socket.assigns.zone_name
@@ -460,6 +470,37 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     |> Enum.uniq()
     |> Enum.sort_by(&record_type_order/1)
   end
+
+  # ============================================================================
+  # CSV Export
+  # ============================================================================
+
+  defp build_records_csv(records) do
+    header = "Name,Type,TTL,Data\r\n"
+
+    rows =
+      Enum.map_join(records, "\r\n", fn rr ->
+        [
+          csv_escape(rr.name),
+          csv_escape(String.upcase(to_string(rr.type))),
+          to_string(rr.ttl),
+          csv_escape(rr.rdata)
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp csv_escape(value) when is_binary(value) do
+    if String.contains?(value, [",", "\"", "\n", "\r"]) do
+      "\"" <> String.replace(value, "\"", "\"\"") <> "\""
+    else
+      value
+    end
+  end
+
+  defp csv_escape(value), do: csv_escape(to_string(value))
 
   # ============================================================================
   # Formatting
