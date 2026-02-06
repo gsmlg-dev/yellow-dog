@@ -91,7 +91,8 @@ defmodule YellowDog.Umbrella.MixProject do
   end
 
   defp run_e2e_dns(_args) do
-    run_e2e_test_files(["e2e_test/dns_e2e_test.exs"])
+    files = Path.wildcard("e2e_test/dns*_e2e_test.exs")
+    run_e2e_test_files(files)
   end
 
   defp run_e2e_mdns(_args) do

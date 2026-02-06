@@ -423,7 +423,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp get_qname(query) do
     case query.qdlist do
-      [question | _] -> question.name
+      [question | _] -> to_string(question.name)
       [] -> ""
     end
   end

@@ -118,6 +118,130 @@ defmodule E2ETest.ServiceHelper do
   end
 
   @doc """
+  Starts the full DNS subsystem (Supervisor + Server + ViewManager + ZoneController).
+
+  Unlike `start_dns_server/1` which only starts the bare Server, this starts
+  the complete DNS process hierarchy including views, zones, registries, etc.
+
+  ## Options
+  - `:listen` - IP address to bind to (default: {127, 0, 0, 1})
+  - `:views` - Initial view configurations (default: [])
+  - `:zones` - Initial zone configurations (default: [])
+  - `:timeout` - Startup timeout in ms (default: 15_000)
+
+  ## Returns
+  - `{:ok, %{server_pid: pid, port: udp_port, tcp_port: tcp_port, host: ip, service: :dns_system}}`
+  - `{:error, reason}`
+  """
+  @spec start_dns_system(keyword()) :: {:ok, map()} | {:error, term()}
+  def start_dns_system(opts \\ []) do
+    host = Keyword.get(opts, :listen, {127, 0, 0, 1})
+    views = Keyword.get(opts, :views, [])
+    zones = Keyword.get(opts, :zones, [])
+
+    # Stop existing DNS supervisor if running
+    if pid = Process.whereis(YellowDog.Dns) do
+      try do
+        Supervisor.stop(pid, :normal, 5_000)
+      catch
+        _, _ -> :ok
+      end
+
+      Process.sleep(200)
+    end
+
+    # Also stop any standalone registries left over from previous tests
+    for name <- [
+          YellowDog.Dns.ZoneRegistry,
+          YellowDog.Dns.ViewRegistry,
+          YellowDog.Dns.ConnectionRegistry,
+          YellowDog.Dns.RecursionRegistry
+        ] do
+      if pid = Process.whereis(name) do
+        try do
+          GenServer.stop(pid, :normal, 1_000)
+        catch
+          _, _ -> :ok
+        end
+      end
+    end
+
+    Process.sleep(100)
+
+    sup_opts = [
+      port: 0,
+      listen: host,
+      views: views,
+      zones: zones,
+      skip_persistence: true,
+      transport_options: [ip: host, reuseaddr: true]
+    ]
+
+    case YellowDog.Dns.Supervisor.start_link(sup_opts) do
+      {:ok, sup_pid} ->
+        # Wait for post-init to complete
+        Process.sleep(500)
+
+        # Get the Server pid and ports from the supervisor tree
+        server_pid = Process.whereis(YellowDog.Dns.Server)
+
+        if server_pid && Process.alive?(server_pid) do
+          udp_port_result = get_dns_udp_port(server_pid)
+          tcp_port_result = get_dns_tcp_port(server_pid)
+
+          udp_port =
+            case udp_port_result do
+              {:ok, p} -> p
+              _ -> nil
+            end
+
+          tcp_port =
+            case tcp_port_result do
+              {:ok, p} -> p
+              _ -> nil
+            end
+
+          if udp_port do
+            {:ok,
+             %{
+               server_pid: sup_pid,
+               port: udp_port,
+               tcp_port: tcp_port,
+               host: host,
+               service: :dns_system
+             }}
+          else
+            Supervisor.stop(sup_pid, :normal, 5_000)
+            {:error, :udp_port_detection_failed}
+          end
+        else
+          Supervisor.stop(sup_pid, :normal, 5_000)
+          {:error, :server_not_started}
+        end
+
+      {:error, reason} ->
+        {:error, {:start_failed, reason}}
+    end
+  end
+
+  @doc """
+  Stops the full DNS subsystem.
+  """
+  def stop_dns_system(%{server_pid: pid, service: :dns_system}) do
+    if Process.alive?(pid) do
+      try do
+        Supervisor.stop(pid, :normal, 5_000)
+      catch
+        :exit, _ -> :ok
+      end
+    end
+
+    :ok
+  end
+
+  def stop_dns_system(ctx), do: stop_service(ctx)
+
+  @doc """
   Starts the mDNS server with auto-selected port using unicast mode.
 
   For E2E tests in CI, mDNS uses unicast to loopback instead of multicast.

@@ -362,7 +362,7 @@ defmodule YellowDog.Dns.View do
             # Notify connection process of cache hit
             send(connection_pid, {:zone_lookup, query_id, :hit})
             response = update_response_id(cached_response, query.header.id)
-            apply_rpz_and_respond(state, connection_pid, query_id, response)
+            apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
           :miss ->
             # Notify connection process of cache miss
@@ -437,7 +437,7 @@ defmodule YellowDog.Dns.View do
         end
 
       {:ok, response} ->
-        apply_rpz_and_respond(state, connection_pid, query_id, response)
+        apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
       error ->
         error
@@ -473,7 +473,7 @@ defmodule YellowDog.Dns.View do
           {:ok, response} ->
             send(connection_pid, {:zone_response, query_id, response})
             cache_response(state, query, response)
-            apply_rpz_and_respond(state, connection_pid, query_id, response)
+            apply_rpz_and_respond(state, connection_pid, query_id, query, response)
 
           error ->
             error
@@ -481,13 +481,13 @@ defmodule YellowDog.Dns.View do
     end
   end
 
-  defp apply_rpz_and_respond(state, connection_pid, query_id, response) do
+  defp apply_rpz_and_respond(state, connection_pid, query_id, query, response) do
     # Apply RPZ policies if configured
     final_response =
       if Enum.empty?(state.rpz_zones) do
         response
       else
-        apply_rpz_policies(state, response)
+        apply_rpz_policies(state, query, response)
       end
 
     # Notify connection process of RPZ evaluation
@@ -496,10 +496,23 @@ defmodule YellowDog.Dns.View do
     {:ok, final_response}
   end
 
-  defp apply_rpz_policies(_state, response) do
-    # TODO: Implement RPZ policy evaluation
-    # For now, pass through unmodified
-    response
+  defp apply_rpz_policies(state, query, response) do
+    alias YellowDog.Dns.Zone.RPZ
+    alias YellowDog.Dns.ZoneController
+
+    Enum.reduce_while(state.rpz_zones, response, fn rpz_zone_name, acc ->
+      case ZoneController.find_zone(state.name, :rpz, rpz_zone_name) do
+        {:ok, rpz_pid} ->
+          case RPZ.evaluate(rpz_pid, query, acc) do
+            {:ok, modified_response} -> {:halt, modified_response}
+            {:drop, nil} -> {:halt, acc}
+            {:passthru, _} -> {:cont, acc}
+          end
+
+        :error ->
+          {:cont, acc}
+      end
+    end)
   end
 
   defp find_zone_for_name(zones, query_name) do

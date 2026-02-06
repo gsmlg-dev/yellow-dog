@@ -143,8 +143,13 @@ defmodule YellowDog.Dns.Supervisor do
     wait_for_process(YellowDog.Dns.ViewManager)
     wait_for_process(YellowDog.Dns.ZoneController)
 
-    # Try to load persisted configuration first
-    {persisted_views, persisted_zones} = load_persisted_config()
+    # Try to load persisted configuration first (unless skip_persistence is set)
+    {persisted_views, persisted_zones} =
+      if Keyword.get(opts, :skip_persistence, false) do
+        {[], []}
+      else
+        load_persisted_config()
+      end
 
     # Start views: persisted > opts
     views = Keyword.get(opts, :views, [])

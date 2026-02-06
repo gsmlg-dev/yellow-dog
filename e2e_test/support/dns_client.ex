@@ -205,7 +205,12 @@ defmodule E2ETest.DnsClient do
   """
   @spec get_rcode(Message.t()) :: atom() | integer()
   def get_rcode(%Message{header: header}) do
-    rcode_value = header.rcode.value
+    rcode_value =
+      case header.rcode.value do
+        <<n::4>> -> n
+        n when is_integer(n) -> n
+        other -> other
+      end
 
     case rcode_value do
       0 -> :NOERROR

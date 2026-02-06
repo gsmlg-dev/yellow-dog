@@ -519,14 +519,16 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp extract_soa_map(nil), do: nil
 
   defp extract_soa_map(soa_record) do
+    soa_data = record_data(soa_record)
+
     %{
-      primary_ns: soa_record.rdata.mname,
-      admin_email: soa_record.rdata.rname,
-      serial: soa_record.rdata.serial,
-      refresh: soa_record.rdata.refresh,
-      retry: soa_record.rdata.retry,
-      expire: soa_record.rdata.expire,
-      minimum: soa_record.rdata.minimum
+      primary_ns: soa_data.mname,
+      admin_email: soa_data.rname,
+      serial: soa_data.serial,
+      refresh: soa_data.refresh,
+      retry: soa_data.retry,
+      expire: soa_data.expire,
+      minimum: soa_data.minimum
     }
   end
 
@@ -538,11 +540,15 @@ defmodule YellowDog.Dns.Zone.Auth do
         name: name,
         type: type,
         ttl: List.first(recs).ttl || 3600,
-        data: Enum.map(recs, &rdata_to_bind_map(normalize_type(&1.type), &1.rdata)),
+        data: Enum.map(recs, &rdata_to_bind_map(normalize_type(&1.type), record_data(&1))),
         options: []
       }
     end)
   end
+
+  # Extract record data from either DNS.Message.Record (.data) or map-based records (.rdata)
+  defp record_data(%{data: data}) when not is_nil(data), do: data
+  defp record_data(%{rdata: rdata}), do: rdata
 
   # Convert rdata structs to the map format expected by DNS.Zone.to_bind_format
   defp rdata_to_bind_map(:a, rdata) do
@@ -761,59 +767,58 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp normalize_type(type) when is_binary(type), do: String.downcase(type) |> String.to_atom()
   defp normalize_type(_), do: :unknown
 
-  defp build_response(query, answers, state) do
-    # Get NS records for authority section
-    ns_records = state.ns_records || []
-
+  defp build_response(query, answers, _state) do
     %Message{
       header: %{
         query.header
         | qr: 1,
           aa: 1,
-          rcode: RCode.no_error()
+          rcode: RCode.no_error(),
+          ancount: length(answers),
+          nscount: 0,
+          arcount: 0
       },
       qdlist: query.qdlist,
       anlist: answers,
-      nslist: ns_records,
+      nslist: [],
       arlist: []
     }
   end
 
-  defp build_nodata_response(query, state) do
+  defp build_nodata_response(query, _state) do
     %Message{
       header: %{
         query.header
         | qr: 1,
           aa: 1,
-          rcode: RCode.no_error()
+          rcode: RCode.no_error(),
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: soa_authority(state),
+      nslist: [],
       arlist: []
     }
   end
 
-  defp build_nxdomain_response(query, state) do
+  defp build_nxdomain_response(query, _state) do
     %Message{
       header: %{
         query.header
         | qr: 1,
           aa: 1,
-          rcode: RCode.nx_domain()
+          rcode: RCode.nx_domain(),
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: soa_authority(state),
+      nslist: [],
       arlist: []
     }
-  end
-
-  defp soa_authority(state) do
-    case state.soa do
-      nil -> []
-      soa -> [soa]
-    end
   end
 
   defp load_zone_data(state, zone_data) when is_list(zone_data) do

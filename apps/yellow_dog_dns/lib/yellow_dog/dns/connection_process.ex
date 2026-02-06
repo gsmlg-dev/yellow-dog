@@ -502,7 +502,10 @@ defmodule YellowDog.Dns.ConnectionProcess do
           aa: 0,
           tc: 0,
           ra: 1,
-          rcode: rcode
+          rcode: rcode,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
