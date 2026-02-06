@@ -1,19 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 4, continued)
+**Phase**: IN_PROGRESS (Iteration 6)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 4 of 1000
+**Iteration**: 6 of 1000
 
 ## Session Summary
-Extended iteration 4 with metrics CSV export, ACL search/filter, DNS validators, and 41 new tests:
-- ✅ **451 Console tests passing** (410 prior + 41 new)
+Iteration 6: Integrated DNS validators into all 4 LiveView forms for real-time inline validation:
+- ✅ **531 Console tests passing** (516 prior + 15 new validation tests)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
-- ✅ CSV export added to DNS metrics page (now 10 total pages with CSV)
-- ✅ Search/filter added to DNS ACL page (all data pages now have search/filter)
-- ✅ DNS-specific validators: domain name (RFC 1035), TTL (RFC 2181), MX priority, SRV
-- ✅ 41 new tests: 20 validator tests + 15 ACL filter tests + 6 metrics page tests
-- ✅ **6 commits this iteration**: 4 prior + 2 this session
+- ✅ Zone form: validates domain names (RFC 1035), upstream IPs (forward), NS records (stub)
+- ✅ View form: validates name format (alphanumeric), fallback forwarder IPs with :port
+- ✅ ACL form: validates name format, CIDR/IP rules for custom ACLs
+- ✅ RR form: validates domain names, TTL, type-specific rdata (A/AAAA/MX/SRV/CNAME/NS)
+- ✅ All forms: phx-change validation, save blocked on errors, inline error display
+- ✅ **8 commits this iteration**: 7 prior + 1 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -43,20 +44,22 @@ Extended iteration 4 with metrics CSV export, ACL search/filter, DNS validators,
 - [x] DNS Overview, Views, Zones, Records, ACLs, Query Logs, Metrics
 - [x] DHCPv4 Leases, DHCPv6 Leases, mDNS Services, mDNS Discovery
 
-#### Input Validation
-- [x] IP address validation (IPv4/IPv6)
+#### Input Validation (Integrated into Forms)
+- [x] IP address validation (IPv4/IPv6) — used in zone upstreams, view forwarders
 - [x] Port validation
-- [x] CIDR validation (IPv4/IPv6)
+- [x] CIDR validation (IPv4/IPv6) — used in ACL custom rules
 - [x] Pool range overlap detection
-- [x] Domain name validation (RFC 1035)
-- [x] TTL validation (RFC 2181)
-- [x] MX priority validation
-- [x] SRV record validation (priority, weight, port, target)
+- [x] Domain name validation (RFC 1035) — used in zone names, NS records, RR names
+- [x] TTL validation (RFC 2181) — used in resource record forms
+- [x] MX priority validation — used in RR form for MX type
+- [x] SRV record validation — used in RR form for SRV type
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 451 Console tests (95 LiveView + 18 CSV + 20 validator + 318 existing)
+- [x] 531 Console tests (175 LiveView + 18 CSV + 20 validator + 318 existing)
 - [x] All pages mountable without DNS service running (graceful exit handling)
+- [x] 65 CRUD tests for DNS views, zones, ACLs, records
+- [x] 15 inline validation tests (zone, view, ACL form validation)
 
 ### PRD Completion: ~99%
 
@@ -71,6 +74,8 @@ Extended iteration 4 with metrics CSV export, ACL search/filter, DNS validators,
 4. `25b3746` - feat(console): add CSV export to DNS resource records page
 5. `c18b444` - feat(console): add metrics CSV export, ACL search/filter, DNS validators
 6. `00e3025` - test(console): add 41 tests for metrics CSV, ACL filter, DNS validators
+7. `06fdcaf` - fix(console): add exit signal handling to DNS CRUD handlers
+8. `00cf3f6` - feat(console): integrate DNS validators into LiveView forms
 
 ## Mistakes & Learnings
 
@@ -86,9 +91,14 @@ Extended iteration 4 with metrics CSV export, ACL search/filter, DNS validators,
 
 6. **Multi-section CSV**: For pages with multiple data sections (like metrics), use section headers + empty lines to separate CSV sections for readability.
 
+7. **Clause grouping warnings**: When extracting private helper functions from handle_event clauses, move them BELOW all handle_event clauses to avoid "clauses with the same name should be grouped" warnings.
+
+8. **Form validation without Ecto**: Use `form_errors` assign (map) to track errors. Pattern: `phx-change` handler runs validators → stores in assigns → template shows inline errors with `text-error` class. Gate `save` handler with `if map_size(errors) > 0`.
+
 ## Next Steps
-1. Add LiveView tests for CRUD operations (view create/edit/delete, ACL create/edit/delete)
-2. Performance testing / load testing
-3. Security audit (input validation integrated into forms, ACL bypass)
-4. Prometheus/OpenTelemetry integration
-5. Bulk import preview/validation UI for zone file imports
+1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
+2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
+3. Performance testing / load testing
+4. Security audit (input validation integrated into forms, ACL bypass)
+5. Prometheus/OpenTelemetry integration
+6. Bulk import preview/validation UI for zone file imports
