@@ -4,6 +4,8 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -34,6 +36,14 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   @impl true
   def handle_event("toggle_auto_refresh", _params, socket) do
     {:noreply, assign(socket, :auto_refresh, !socket.assigns.auto_refresh)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    csv = build_monitor_csv(socket.assigns.stats, socket.assigns.queries)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    filename = "mdns_monitor_#{timestamp}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
   @impl true
@@ -110,6 +120,51 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
 
   defp format_ip(ip) when is_binary(ip), do: ip
   defp format_ip(_), do: "Unknown"
+
+  defp build_monitor_csv(stats, queries) do
+    # Section 1: Network Statistics
+    stats_section =
+      "Network Statistics\n" <>
+        "Metric,Value\n" <>
+        "Total Queries,#{stats.total_queries}\n" <>
+        "Total Responses,#{stats.total_responses}\n" <>
+        "Queries/Min,#{Float.round(stats.queries_per_minute, 1)}\n" <>
+        "Unique Hosts,#{stats.unique_hosts}\n" <>
+        "Active Services,#{stats.active_services}\n"
+
+    # Section 2: Most Queried Services
+    services_section =
+      if stats.most_queried_services && length(stats.most_queried_services) > 0 do
+        "\nMost Queried Services\n" <>
+          "Service,Query Count\n" <>
+          Enum.map_join(stats.most_queried_services, "\n", fn {name, count} ->
+            "#{csv_escape(name)},#{count}"
+          end) <> "\n"
+      else
+        ""
+      end
+
+    # Section 3: Recent Queries
+    queries_section =
+      if Enum.any?(queries) do
+        "\nRecent Queries\n" <>
+          "Time,Source IP,Query Name,Type,Class\n" <>
+          Enum.map_join(queries, "\n", fn query ->
+            [
+              csv_escape(format_timestamp(query.timestamp)),
+              csv_escape(format_ip(query.source_ip)),
+              csv_escape(query.name),
+              csv_escape(to_string(query.type)),
+              csv_escape(to_string(query.class))
+            ]
+            |> Enum.join(",")
+          end) <> "\n"
+      else
+        ""
+      end
+
+    stats_section <> services_section <> queries_section
+  end
 
   defp calculate_percentage(count, services) do
     max_count = services |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 1 end)

@@ -11,6 +11,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.Components.PoolFormComponent
   alias YellowDog.Console.Settings.AddressPool
 
@@ -22,6 +24,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
      |> assign(:show_form, false)
      |> assign(:form_mode, :create)
      |> assign(:editing_pool, nil)
+     |> assign(:filter, "")
      |> assign(:service_running, service_running?())
      |> load_pools()}
   end
@@ -103,6 +106,23 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   end
 
   @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    pools = filtered_pools(socket.assigns.pools, socket.assigns.filter)
+    csv = build_pools_csv(pools)
+
+    {:noreply,
+     push_event(socket, "download_csv", %{
+       content: csv,
+       filename: "dhcpv4_pools_#{Date.to_iso8601(Date.utc_today())}.csv"
+     })}
+  end
+
+  @impl true
   def handle_info(:close_pool_form, socket) do
     {:noreply,
      socket
@@ -179,6 +199,29 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
               />
             </svg>
             Add Pool
+          </button>
+        </div>
+        
+    <!-- Filter Bar -->
+        <div class="flex flex-wrap gap-4 items-center">
+          <div class="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Search pools..."
+              value={@filter}
+              phx-change="filter"
+              phx-debounce="300"
+              name="filter"
+              class="input input-bordered w-full"
+            />
+          </div>
+          <button
+            class="btn btn-outline btn-sm"
+            phx-click="export_csv"
+            id="export-csv"
+            phx-hook="CsvDownload"
+          >
+            Export CSV
           </button>
         </div>
         
@@ -264,7 +307,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                 </tr>
               </thead>
               <tbody>
-                <%= for pool <- @pools do %>
+                <%= for pool <- filtered_pools(@pools, @filter) do %>
                   <tr>
                     <td class="font-medium">
                       <.link navigate={~p"/dhcpv4/pools/#{pool.name}"} class="link link-primary">
@@ -350,6 +393,11 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
               </tbody>
             </table>
           </div>
+          <%= if @filter != "" do %>
+            <div class="text-sm text-base-content/60 mt-2">
+              Showing {length(filtered_pools(@pools, @filter))} of {length(@pools)} pools
+            </div>
+          <% end %>
         <% end %>
         
     <!-- Pool Form Modal -->
@@ -368,7 +416,45 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
     """
   end
 
+  @doc """
+  Filters pools by name, network, or range start IP address.
+  Public for testability.
+  """
+  def filtered_pools(pools, filter) do
+    if filter == "" do
+      pools
+    else
+      term = String.downcase(filter)
+
+      Enum.filter(pools, fn pool ->
+        String.contains?(String.downcase(pool.name), term) or
+          String.contains?(String.downcase(pool[:network] || ""), term) or
+          String.contains?(String.downcase(format_ip(pool.range_start) || ""), term)
+      end)
+    end
+  end
+
   # Private Functions
+
+  defp build_pools_csv(pools) do
+    header = "Name,Network,Range Start,Range End,Lease Time,Gateway,Status\n"
+
+    rows =
+      Enum.map_join(pools, "\n", fn pool ->
+        [
+          csv_escape(pool.name),
+          csv_escape(pool[:network] || ""),
+          csv_escape(format_ip(pool.range_start) || ""),
+          csv_escape(format_ip(pool.range_end) || ""),
+          csv_escape(format_lease_time(pool.lease_time)),
+          csv_escape(format_ip(pool[:gateway]) || ""),
+          csv_escape(if pool[:enabled] != false, do: "Active", else: "Disabled")
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
 
   defp load_pools(socket) do
     pools = get_pools()

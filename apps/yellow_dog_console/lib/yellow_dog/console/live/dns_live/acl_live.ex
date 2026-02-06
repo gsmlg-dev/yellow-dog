@@ -6,6 +6,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
@@ -711,14 +713,6 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       end)
 
     header <> rows
-  end
-
-  defp csv_escape(str) do
-    if String.contains?(str, [",", "\"", "\n"]) do
-      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
-    else
-      str
-    end
   end
 
   defp format_acl_rules_for_csv(rules) when is_list(rules) do

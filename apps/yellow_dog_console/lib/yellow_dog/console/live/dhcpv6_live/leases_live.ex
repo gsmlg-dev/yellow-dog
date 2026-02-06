@@ -9,6 +9,8 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -285,14 +287,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
       end)
 
     header <> rows
-  end
-
-  defp csv_escape(str) do
-    if String.contains?(str, [",", "\"", "\n"]) do
-      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
-    else
-      str
-    end
   end
 
   defp format_ipv6_or_prefix(%{ia_type: :ia_na, ipv6_address: addr}) when addr != nil do

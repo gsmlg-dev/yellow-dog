@@ -75,6 +75,11 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/mdns/monitor")
       assert html =~ "Monitor" or html =~ "Network"
     end
+
+    test "has export CSV button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/monitor")
+      assert html =~ "Export CSV"
+    end
   end
 
   # ============================================================================
@@ -105,6 +110,16 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/dhcpv4/pools")
       assert html =~ "Pool" or html =~ "DHCPv4"
     end
+
+    test "has search filter input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/pools")
+      assert html =~ "Search pools"
+    end
+
+    test "has export CSV button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/pools")
+      assert html =~ "Export CSV"
+    end
   end
 
   # ============================================================================
@@ -134,6 +149,16 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     test "mounts successfully", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dhcpv6/pools")
       assert html =~ "Pool" or html =~ "DHCPv6"
+    end
+
+    test "has search filter input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/pools")
+      assert html =~ "Search pools"
+    end
+
+    test "has export CSV button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/pools")
+      assert html =~ "Export CSV"
     end
   end
 

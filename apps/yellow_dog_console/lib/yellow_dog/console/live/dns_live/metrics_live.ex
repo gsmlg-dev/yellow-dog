@@ -8,6 +8,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.Layouts
   alias YellowDog.Dns.MetricsCollector
 
@@ -552,16 +554,6 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
     header <> buckets
   end
-
-  defp csv_escape(str) when is_binary(str) do
-    if String.contains?(str, [",", "\"", "\n"]) do
-      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
-    else
-      str
-    end
-  end
-
-  defp csv_escape(val), do: to_string(val)
 
   defp format_bucket_label(:inf), do: "+inf"
 

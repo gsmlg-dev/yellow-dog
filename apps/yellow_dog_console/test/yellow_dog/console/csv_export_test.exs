@@ -7,41 +7,44 @@ defmodule YellowDog.Console.CsvExportTest do
   """
   use ExUnit.Case, async: true
 
-  describe "CSV escaping" do
+  import YellowDog.Console.CsvHelper
+
+  describe "CsvHelper.csv_escape/1" do
     test "escapes commas in values" do
-      input = "value,with,commas"
-      expected = "\"value,with,commas\""
-      assert csv_escape(input) == expected
+      assert csv_escape("value,with,commas") == "\"value,with,commas\""
     end
 
     test "escapes double quotes in values" do
-      input = "value\"with\"quotes"
-      expected = "\"value\"\"with\"\"quotes\""
-      assert csv_escape(input) == expected
+      assert csv_escape("value\"with\"quotes") == "\"value\"\"with\"\"quotes\""
     end
 
     test "escapes newlines in values" do
-      input = "value\nwith\nnewlines"
-      expected = "\"value\nwith\nnewlines\""
-      assert csv_escape(input) == expected
+      assert csv_escape("value\nwith\nnewlines") == "\"value\nwith\nnewlines\""
+    end
+
+    test "escapes carriage returns" do
+      assert csv_escape("value\rwith\rreturns") == "\"value\rwith\rreturns\""
     end
 
     test "escapes combined special characters" do
-      input = "value,with\"special\nchars"
-      expected = "\"value,with\"\"special\nchars\""
-      assert csv_escape(input) == expected
+      assert csv_escape("value,with\"special\nchars") == "\"value,with\"\"special\nchars\""
     end
 
     test "does not escape simple values" do
-      input = "simple_value"
-      expected = "simple_value"
-      assert csv_escape(input) == expected
+      assert csv_escape("simple_value") == "simple_value"
     end
 
     test "handles empty strings" do
-      input = ""
-      expected = ""
-      assert csv_escape(input) == expected
+      assert csv_escape("") == ""
+    end
+
+    test "handles nil" do
+      assert csv_escape(nil) == ""
+    end
+
+    test "converts non-binary values to string" do
+      assert csv_escape(42) == "42"
+      assert csv_escape(:atom) == "atom"
     end
   end
 
@@ -285,6 +288,99 @@ defmodule YellowDog.Console.CsvExportTest do
     end
   end
 
+  describe "DHCPv4 pools filtered_pools/2" do
+    alias YellowDog.Console.Dhcpv4Live.PoolsLive
+
+    @pools [
+      %{
+        name: "office-pool",
+        network: "192.168.1.0/24",
+        range_start: {192, 168, 1, 100},
+        range_end: {192, 168, 1, 200},
+        lease_time: 3600
+      },
+      %{
+        name: "guest-wifi",
+        network: "10.0.0.0/24",
+        range_start: {10, 0, 0, 50},
+        range_end: {10, 0, 0, 150},
+        lease_time: 1800
+      },
+      %{
+        name: "server-vlan",
+        network: "172.16.0.0/16",
+        range_start: {172, 16, 0, 10},
+        range_end: {172, 16, 0, 50},
+        lease_time: 86400
+      }
+    ]
+
+    test "returns all pools with empty filter" do
+      assert PoolsLive.filtered_pools(@pools, "") == @pools
+    end
+
+    test "filters by pool name" do
+      result = PoolsLive.filtered_pools(@pools, "office")
+      assert length(result) == 1
+      assert hd(result).name == "office-pool"
+    end
+
+    test "filters by network" do
+      result = PoolsLive.filtered_pools(@pools, "172.16")
+      assert length(result) == 1
+      assert hd(result).name == "server-vlan"
+    end
+
+    test "filter is case-insensitive" do
+      result = PoolsLive.filtered_pools(@pools, "GUEST")
+      assert length(result) == 1
+      assert hd(result).name == "guest-wifi"
+    end
+
+    test "returns empty list when no match" do
+      assert PoolsLive.filtered_pools(@pools, "nonexistent") == []
+    end
+  end
+
+  describe "DHCPv6 pools filtered_pools/2" do
+    alias YellowDog.Console.Dhcpv6Live.PoolsLive
+
+    @v6_pools [
+      %{
+        name: "ipv6-main",
+        network: "2001:db8::/32",
+        range_start: {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1},
+        range_end: {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0xFF}
+      },
+      %{
+        name: "ipv6-guest",
+        network: "fd00::/64",
+        range_start: {0xFD00, 0, 0, 0, 0, 0, 0, 1},
+        range_end: {0xFD00, 0, 0, 0, 0, 0, 0, 0xFF}
+      }
+    ]
+
+    test "returns all pools with empty filter" do
+      assert PoolsLive.filtered_pools(@v6_pools, "") == @v6_pools
+    end
+
+    test "filters by pool name" do
+      result = PoolsLive.filtered_pools(@v6_pools, "guest")
+      assert length(result) == 1
+      assert hd(result).name == "ipv6-guest"
+    end
+
+    test "filters by network prefix" do
+      result = PoolsLive.filtered_pools(@v6_pools, "2001")
+      assert length(result) == 1
+      assert hd(result).name == "ipv6-main"
+    end
+
+    test "returns empty list when no match" do
+      assert PoolsLive.filtered_pools(@v6_pools, "nonexistent") == []
+    end
+  end
+
   describe "large dataset performance" do
     @tag :performance
     test "handles 10,000 DHCPv4 leases efficiently" do
@@ -311,14 +407,6 @@ defmodule YellowDog.Console.CsvExportTest do
   end
 
   # Helper functions that mirror the actual implementations
-
-  defp csv_escape(str) do
-    if String.contains?(str, [",", "\"", "\n"]) do
-      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
-    else
-      str
-    end
-  end
 
   defp build_dhcpv4_csv(leases) do
     header =

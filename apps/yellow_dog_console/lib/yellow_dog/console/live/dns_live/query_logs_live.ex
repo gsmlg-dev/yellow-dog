@@ -8,6 +8,8 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.Layouts
   alias YellowDog.Dns.QueryLogger
 
@@ -236,14 +238,6 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
       end)
 
     header <> rows
-  end
-
-  defp csv_escape(str) do
-    if String.contains?(str, [",", "\"", "\n"]) do
-      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
-    else
-      str
-    end
   end
 
   @impl true

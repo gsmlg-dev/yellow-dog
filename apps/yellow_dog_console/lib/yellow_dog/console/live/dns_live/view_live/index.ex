@@ -5,6 +5,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
+
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
@@ -494,16 +496,6 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
     header <> rows
   end
-
-  defp csv_escape(value) when is_binary(value) do
-    if String.contains?(value, [",", "\"", "\n", "\r"]) do
-      "\"" <> String.replace(value, "\"", "\"\"") <> "\""
-    else
-      value
-    end
-  end
-
-  defp csv_escape(value), do: csv_escape(to_string(value))
 
   defp is_default_view?(view_name), do: view_name == "default"
 
