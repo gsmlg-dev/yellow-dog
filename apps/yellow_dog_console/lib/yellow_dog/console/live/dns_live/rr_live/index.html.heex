@@ -255,7 +255,12 @@
       <% :bulk -> %>
         <!-- Bulk Add Records Form -->
         <.card title={"Bulk Add Records to #{@zone_name}"}>
-          <.form for={@bulk_form} phx-submit="bulk_add_rrs" class="space-y-4">
+          <.form
+            for={@bulk_form}
+            phx-submit="bulk_add_rrs"
+            phx-change="preview_bulk"
+            class="space-y-4"
+          >
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-semibold">Records</span>
@@ -263,6 +268,7 @@
               <textarea
                 name="bulk[records]"
                 class="textarea textarea-bordered h-64 font-mono text-sm"
+                phx-debounce="500"
                 placeholder={"www     3600  IN  A     192.0.2.1\nmail    3600  IN  A     192.0.2.2\nmail    3600  IN  MX    10 mail.example.com.\n@       3600  IN  TXT   \"v=spf1 mx -all\""}
               >{@bulk_form[:records].value}</textarea>
               <label class="label">
@@ -271,6 +277,58 @@
                 </span>
               </label>
             </div>
+            
+<!-- Live Preview -->
+            <%= if @bulk_preview do %>
+              <%= case @bulk_preview.status do %>
+                <% :ok -> %>
+                  <div class="alert alert-success">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="stroke-current shrink-0 w-6 h-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <div>
+                      <p class="font-semibold">
+                        Preview: {@bulk_preview.count} record(s) to add
+                      </p>
+                      <p class="text-sm">
+                        Types: {Enum.map_join(@bulk_preview.types, ", ", fn {type, count} ->
+                          "#{type} (#{count})"
+                        end)}
+                      </p>
+                    </div>
+                  </div>
+                <% :error -> %>
+                  <div class="alert alert-error">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="stroke-current shrink-0 w-6 h-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <div>
+                      <p class="font-semibold">Parse error</p>
+                      <p class="text-sm">{@bulk_preview.message}</p>
+                    </div>
+                  </div>
+              <% end %>
+            <% end %>
 
             <div class="alert alert-info">
               <svg
@@ -297,7 +355,15 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary">Add Records</button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={
+                  @bulk_preview == nil || @bulk_preview.status != :ok || @bulk_preview.count == 0
+                }
+              >
+                Import {@bulk_preview && @bulk_preview.status == :ok && "#{@bulk_preview.count} "}Record(s)
+              </button>
             </div>
           </.form>
         </.card>

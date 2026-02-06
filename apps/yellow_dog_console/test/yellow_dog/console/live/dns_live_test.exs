@@ -886,6 +886,23 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Bulk" or html =~ "Import" or html =~ "record"
     end
 
+    test "bulk form shows preview on text change", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+
+      html =
+        view
+        |> render_change("preview_bulk", %{
+          "bulk" => %{"records" => "www  3600  IN  A  192.0.2.1\nmail  3600  IN  A  192.0.2.2"}
+        })
+
+      assert html =~ "Preview" or html =~ "record(s) to add"
+    end
+
+    test "bulk form submit button disabled until valid preview", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+      assert html =~ "disabled"
+    end
+
     test "refresh reloads records", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
       html = view |> render_click("refresh")

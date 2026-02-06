@@ -492,6 +492,63 @@ defmodule YellowDog.Console.CsvExportTest do
     end
   end
 
+  describe "DNS RR bulk import parse_bulk_preview/2" do
+    alias YellowDog.Console.DnsLive.RrLive.Index, as: RrIndex
+
+    test "returns nil for empty text" do
+      assert RrIndex.parse_bulk_preview("", "example.com") == nil
+    end
+
+    test "returns nil for nil text" do
+      assert RrIndex.parse_bulk_preview(nil, "example.com") == nil
+    end
+
+    test "parses valid A records" do
+      text = "www  3600  IN  A  192.0.2.1\nmail  3600  IN  A  192.0.2.2"
+      result = RrIndex.parse_bulk_preview(text, "example.com")
+
+      assert result.status == :ok
+      assert result.count == 2
+      assert result.types["A"] == 2
+    end
+
+    test "parses mixed record types" do
+      text = """
+      www   3600  IN  A     192.0.2.1
+      mail  3600  IN  MX    10 mail.example.com.
+      @     3600  IN  TXT   "v=spf1 mx -all"
+      """
+
+      result = RrIndex.parse_bulk_preview(text, "example.com")
+
+      assert result.status == :ok
+      assert result.count == 3
+      assert result.types["A"] == 1
+      assert result.types["MX"] == 1
+      assert result.types["TXT"] == 1
+    end
+
+    test "returns error for invalid zone text" do
+      result = RrIndex.parse_bulk_preview("not valid {{{{ bind format @@@@", "example.com")
+
+      # Either returns an error or parses with 0 records
+      case result do
+        %{status: :error, message: msg} -> assert is_binary(msg)
+        %{status: :ok, count: 0} -> :ok
+      end
+    end
+
+    test "includes record details in preview" do
+      text = "www  3600  IN  A  192.0.2.1"
+      result = RrIndex.parse_bulk_preview(text, "example.com")
+
+      assert result.status == :ok
+      assert length(result.records) == 1
+      [record] = result.records
+      assert record.type == "A"
+    end
+  end
+
   describe "large dataset performance" do
     @tag :performance
     test "handles 10,000 DHCPv4 leases efficiently" do

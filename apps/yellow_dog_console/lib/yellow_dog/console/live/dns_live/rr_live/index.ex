@@ -31,7 +31,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
      |> assign(:rr_form, nil)
      |> assign(:bulk_form, nil)
      |> assign(:editing_rr, nil)
-     |> assign(:form_errors, %{})}
+     |> assign(:form_errors, %{})
+     |> assign(:bulk_preview, nil)}
   end
 
   @impl true
@@ -131,6 +132,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     |> assign(:zone_name, zone_name)
     |> assign(:zone_pid, zone_pid)
     |> assign(:bulk_form, to_form(form_data))
+    |> assign(:bulk_preview, nil)
     |> load_records()
   end
 
@@ -210,6 +212,12 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
           {:noreply, put_flash(socket, :error, reason)}
       end
     end
+  end
+
+  @impl true
+  def handle_event("preview_bulk", %{"bulk" => %{"records" => records_text}}, socket) do
+    preview = parse_bulk_preview(records_text, socket.assigns.zone_name)
+    {:noreply, assign(socket, :bulk_preview, preview)}
   end
 
   @impl true
@@ -579,6 +587,54 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     |> Enum.uniq()
     |> Enum.sort_by(&record_type_order/1)
   end
+
+  # ============================================================================
+  # Bulk Preview
+  # ============================================================================
+
+  @doc "Parses zone text and returns a preview map. Public for testability."
+  def parse_bulk_preview("", _zone_name), do: nil
+  def parse_bulk_preview(nil, _zone_name), do: nil
+
+  def parse_bulk_preview(text, zone_name) do
+    zone_text = "$ORIGIN #{zone_name}.\n#{text}"
+
+    case DNS.Zone.parse_zone_string(zone_text) do
+      {:ok, zone} ->
+        records = zone.records || []
+
+        record_details =
+          Enum.flat_map(records, fn rrset ->
+            data_list = if is_list(rrset.data), do: rrset.data, else: [rrset.data]
+
+            Enum.map(data_list, fn _d ->
+              %{
+                name: format_rrset_name(rrset.name),
+                type: String.upcase(to_string(rrset.type)),
+                ttl: rrset.ttl
+              }
+            end)
+          end)
+
+        type_counts =
+          record_details
+          |> Enum.frequencies_by(& &1.type)
+
+        %{
+          status: :ok,
+          count: length(record_details),
+          types: type_counts,
+          records: record_details
+        }
+
+      {:error, reason} ->
+        %{status: :error, message: to_string(reason)}
+    end
+  end
+
+  defp format_rrset_name(name) when is_binary(name), do: name
+  defp format_rrset_name(%DNS.Message.Domain{} = d), do: to_string(d)
+  defp format_rrset_name(name), do: to_string(name)
 
   # ============================================================================
   # CSV Export
