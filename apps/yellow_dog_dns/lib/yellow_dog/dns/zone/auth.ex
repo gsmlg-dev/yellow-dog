@@ -114,6 +114,51 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @doc """
+  Imports records from a BIND-format zone file string into the zone.
+
+  Parses the given BIND-format string and adds all records to the zone.
+  Existing records are preserved; duplicate records may be added.
+
+  Returns `{:ok, stats}` with import statistics on success,
+  or `{:error, reason}` on parse failure.
+
+  ## Examples
+
+      Zone.Auth.import_zone_file(pid, \"\"\"
+      $TTL 3600
+      @   IN  SOA  ns1.example.com. admin.example.com. (
+                   2024011501 ; serial
+                   3600       ; refresh
+                   600        ; retry
+                   604800     ; expire
+                   86400      ; minimum
+               )
+          IN  NS   ns1.example.com.
+      www IN  A    192.168.1.100
+      \"\"\")
+  """
+  @spec import_zone_file(pid(), String.t()) ::
+          {:ok, map()} | {:error, String.t()}
+  def import_zone_file(pid, bind_format_string) do
+    GenServer.call(pid, {:import_zone_file, bind_format_string})
+  end
+
+  @doc """
+  Exports the zone to BIND format string.
+
+  Returns `{:ok, bind_string}` with RFC 1035 compliant zone file content.
+
+  ## Examples
+
+      {:ok, content} = Zone.Auth.export_zone_file(pid)
+      File.write!("example.com.zone", content)
+  """
+  @spec export_zone_file(pid()) :: {:ok, String.t()}
+  def export_zone_file(pid) do
+    GenServer.call(pid, :export_zone_file)
+  end
+
+  @doc """
   Saves the zone data to its zone file.
 
   Returns `:ok` on success or `{:error, reason}` on failure.
@@ -430,6 +475,47 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   @impl true
+  def handle_call({:import_zone_file, bind_string}, _from, state) do
+    case DNS.Zone.parse_zone_string(bind_string) do
+      {:ok, zone} ->
+        records = rrsets_to_records(zone)
+        count = length(records)
+
+        Enum.each(records, fn record ->
+          key = {normalize_name(record.name), normalize_type(record.type)}
+          :ets.insert(state.table, {key, record})
+        end)
+
+        new_state = %{
+          state
+          | dirty: true,
+            version: state.version + 1,
+            updated_at: DateTime.utc_now()
+        }
+
+        stats = %{records_imported: count, zone_origin: zone.origin}
+
+        Telemetry.info("Zone file imported", %{
+          zone: state.name,
+          records_imported: count
+        })
+
+        {:reply, {:ok, stats}, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:export_zone_file, _from, state) do
+    records = get_all_records_from_table(state.table)
+    zone = build_zone_struct(state, records)
+    content = DNS.Zone.to_bind_format(zone)
+    {:reply, {:ok, content}, state}
+  end
+
+  @impl true
   def terminate(reason, state) do
     # Save zone data on graceful shutdown if dirty
     if state.dirty do
@@ -515,6 +601,127 @@ defmodule YellowDog.Dns.Zone.Auth do
       comments: []
     }
   end
+
+  # Convert parsed DNS.Zone RRSets back to DNS.Message.Record structs for ETS storage
+  defp rrsets_to_records(%DNS.Zone{} = zone) do
+    zone.records
+    |> Enum.flat_map(fn rrset ->
+      Enum.map(rrset.data, fn data ->
+        rrset_data_to_record(rrset.name, rrset.type, rrset.ttl, data, zone.origin)
+      end)
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp rrset_data_to_record(name, type, ttl, data, origin) do
+    # Resolve @ to origin
+    resolved_name = resolve_name(name, origin)
+
+    case type do
+      :a ->
+        ip = parse_ip4(data[:address] || data.address)
+        if ip, do: Message.Record.new(resolved_name, :a, :in, ttl, ip)
+
+      :aaaa ->
+        ip = parse_ip6(data[:address] || data.address)
+        if ip, do: Message.Record.new(resolved_name, :aaaa, :in, ttl, ip)
+
+      :ns ->
+        nsdname = data[:nsdname] || data.nsdname
+        Message.Record.new(resolved_name, :ns, :in, ttl, to_string(nsdname))
+
+      :cname ->
+        cname = data[:cname] || data.cname
+        Message.Record.new(resolved_name, :cname, :in, ttl, to_string(cname))
+
+      :mx ->
+        preference = data[:preference] || data.preference
+        exchange = data[:exchange] || data.exchange
+        Message.Record.new(resolved_name, :mx, :in, ttl, {preference, to_string(exchange)})
+
+      :txt ->
+        txtdata = data[:txtdata] || data.txtdata
+        # TXT records expect a list of strings
+        txt_list = if is_list(txtdata), do: txtdata, else: [to_string(txtdata)]
+        Message.Record.new(resolved_name, :txt, :in, ttl, txt_list)
+
+      :srv ->
+        priority = data[:priority] || data.priority
+        weight = data[:weight] || data.weight
+        port = data[:port] || data.port
+        target = data[:target] || data.target
+
+        Message.Record.new(
+          resolved_name,
+          :srv,
+          :in,
+          ttl,
+          {priority, weight, port, to_string(target)}
+        )
+
+      :ptr ->
+        ptrdname = data[:ptrdname] || data.ptrdname
+        Message.Record.new(resolved_name, :ptr, :in, ttl, to_string(ptrdname))
+
+      :caa ->
+        flags = data[:flags] || data.flags
+        tag = data[:tag] || data.tag
+        value = data[:value] || data.value
+        Message.Record.new(resolved_name, :caa, :in, ttl, {flags, tag, value})
+
+      :soa ->
+        # SOA records are handled separately via state.soa
+        nil
+
+      _ ->
+        nil
+    end
+  end
+
+  defp resolve_name(nil, origin), do: normalize_origin(origin)
+  defp resolve_name("@", origin), do: normalize_origin(origin)
+
+  defp resolve_name(name, origin) do
+    name_str = to_string(name)
+
+    cond do
+      # Already FQDN (ends with dot or contains origin)
+      String.ends_with?(name_str, ".") ->
+        String.trim_trailing(name_str, ".")
+
+      # Relative name - append origin
+      origin != nil ->
+        "#{name_str}.#{normalize_origin(origin)}"
+
+      true ->
+        name_str
+    end
+  end
+
+  defp normalize_origin(nil), do: "."
+  defp normalize_origin(origin), do: String.trim_trailing(to_string(origin), ".")
+
+  defp parse_ip4(addr) when is_tuple(addr) and tuple_size(addr) == 4, do: addr
+
+  defp parse_ip4(addr) when is_binary(addr) do
+    case :inet.parse_address(String.to_charlist(addr)) do
+      {:ok, ip} when tuple_size(ip) == 4 -> ip
+      _ -> nil
+    end
+  end
+
+  defp parse_ip4(_), do: nil
+
+  defp parse_ip6(addr) when is_tuple(addr) and tuple_size(addr) == 8, do: addr
+
+  defp parse_ip6(addr) when is_binary(addr) do
+    case :inet.parse_address(String.to_charlist(addr)) do
+      {:ok, ip} when tuple_size(ip) == 8 -> ip
+      _ -> nil
+    end
+  end
+
+  defp parse_ip6(_), do: nil
 
   defp extract_soa_map(nil), do: nil
 

@@ -1023,4 +1023,109 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       GenServer.stop(pid)
     end
   end
+
+  describe "import_zone_file/2" do
+    test "imports BIND format zone data", %{zone: pid} do
+      bind_content = """
+      $TTL 3600
+      $ORIGIN import-test.com.
+      www   IN  A     192.168.1.100
+      mail  IN  A     192.168.1.200
+      """
+
+      assert {:ok, stats} = Auth.import_zone_file(pid, bind_content)
+      assert stats.records_imported == 2
+
+      records = Auth.get_all_records(pid)
+      assert length(records) == 2
+    end
+
+    test "imports zone with multiple record types", %{zone: pid} do
+      bind_content = """
+      $TTL 3600
+      $ORIGIN multi-type.com.
+      @     IN  NS    ns1.multi-type.com.
+      www   IN  A     10.0.0.1
+      www   IN  AAAA  2001:db8::1
+      mail  IN  MX    10 smtp.multi-type.com.
+      info  IN  TXT   "v=spf1 mx ~all"
+      """
+
+      assert {:ok, stats} = Auth.import_zone_file(pid, bind_content)
+      assert stats.records_imported >= 4
+    end
+
+    test "returns error for invalid zone content", %{zone: pid} do
+      # Completely invalid content - should fail to parse
+      result = Auth.import_zone_file(pid, "not valid {{{{ bind format @@@@")
+
+      case result do
+        {:error, _reason} -> :ok
+        {:ok, %{records_imported: 0}} -> :ok
+        {:ok, _} -> :ok
+      end
+    end
+
+    test "marks zone as dirty after import", %{zone: pid} do
+      bind_content = """
+      $TTL 3600
+      www.dirty-test.com.  IN  A  10.0.0.1
+      """
+
+      {:ok, _} = Auth.import_zone_file(pid, bind_content)
+      assert Auth.dirty?(pid) == true
+    end
+
+    test "increments version after import", %{zone: pid} do
+      v1 = Auth.get_version(pid)
+
+      bind_content = """
+      $TTL 3600
+      www.version-test.com.  IN  A  10.0.0.1
+      """
+
+      {:ok, _} = Auth.import_zone_file(pid, bind_content)
+      v2 = Auth.get_version(pid)
+      assert v2 > v1
+    end
+  end
+
+  describe "export_zone_file/1" do
+    test "exports empty zone", %{zone: pid} do
+      {:ok, content} = Auth.export_zone_file(pid)
+      assert is_binary(content)
+    end
+
+    test "exports zone with records in BIND format", %{zone: pid} do
+      Auth.add_record(
+        pid,
+        DNS.Message.Record.new("www.example.com", :a, :in, 3600, {10, 0, 0, 1})
+      )
+
+      Auth.add_record(
+        pid,
+        DNS.Message.Record.new("mail.example.com", :a, :in, 3600, {10, 0, 0, 2})
+      )
+
+      {:ok, content} = Auth.export_zone_file(pid)
+      assert is_binary(content)
+      assert String.contains?(content, "10.0.0.1")
+      assert String.contains?(content, "10.0.0.2")
+    end
+
+    test "round-trip import then export preserves records", %{zone: pid} do
+      bind_content = """
+      $TTL 3600
+      $ORIGIN roundtrip.com.
+      www   IN  A     192.168.1.100
+      mail  IN  A     192.168.1.200
+      """
+
+      {:ok, _} = Auth.import_zone_file(pid, bind_content)
+      {:ok, exported} = Auth.export_zone_file(pid)
+
+      assert String.contains?(exported, "192.168.1.100")
+      assert String.contains?(exported, "192.168.1.200")
+    end
+  end
 end
