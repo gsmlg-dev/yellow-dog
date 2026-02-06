@@ -427,34 +427,102 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
   end
 
   describe "collect_views/1" do
-    # These tests would require ViewManager to be running
-    # Skip if ViewManager integration is not available in test environment
-
-    @tag :skip
     test "collects views from ViewManager" do
-      # This test requires ViewManager to be started
-      views = ConfigPersistence.collect_views()
+      ensure_registry(YellowDog.Dns.ViewRegistry)
+
+      vm_name = :"test_vm_#{:erlang.unique_integer([:positive])}"
+      {:ok, vm} = YellowDog.Dns.ViewManager.start_link(name: vm_name)
+
+      {:ok, _} =
+        YellowDog.Dns.ViewManager.start_view(vm, %{
+          name: "collect_test_#{:erlang.unique_integer([:positive])}",
+          priority: 10,
+          acl: :any,
+          zones: [],
+          recursion_enabled: false
+        })
+
+      views = ConfigPersistence.collect_views(vm)
       assert is_list(views)
+      assert length(views) == 1
+      assert hd(views).priority == 10
+
+      DynamicSupervisor.stop(vm)
     end
   end
 
   describe "collect_zones/1" do
-    # These tests would require ZoneController to be running
-    # Skip if ZoneController integration is not available in test environment
-
-    @tag :skip
     test "collects zones from ZoneController" do
-      # This test requires ZoneController to be started
-      zones = ConfigPersistence.collect_zones()
+      ensure_registry(YellowDog.Dns.ZoneRegistry)
+
+      zc_name = :"test_zc_#{:erlang.unique_integer([:positive])}"
+      {:ok, zc} = YellowDog.Dns.ZoneController.start_link(name: zc_name)
+
+      view_name = "collect_zones_#{:erlang.unique_integer([:positive])}"
+
+      {:ok, _} =
+        YellowDog.Dns.ZoneController.start_zone(zc, :auth, "collect.example.com",
+          view_name: view_name,
+          zone_data: []
+        )
+
+      zones = ConfigPersistence.collect_zones(zc)
       assert is_list(zones)
+      assert length(zones) == 1
+      assert hd(zones).name == "collect.example.com"
+      assert hd(zones).type == :auth
+
+      DynamicSupervisor.stop(zc)
     end
   end
 
   describe "save_current/2" do
-    @tag :skip
-    test "saves current configuration from running services" do
-      # This test requires ViewManager and ZoneController to be started
-      # Would verify that save_current properly collects and persists
+    test "saves current configuration from running services", %{tmp_dir: tmp_dir} do
+      ensure_registry(YellowDog.Dns.ViewRegistry)
+      ensure_registry(YellowDog.Dns.ZoneRegistry)
+
+      # Start global-named ViewManager and ZoneController for save_current/2
+      vm_pid =
+        case YellowDog.Dns.ViewManager.start_link(name: YellowDog.Dns.ViewManager) do
+          {:ok, pid} -> pid
+          {:error, {:already_started, pid}} -> pid
+        end
+
+      zc_pid =
+        case DynamicSupervisor.start_link(
+               strategy: :one_for_one,
+               name: YellowDog.Dns.ZoneController
+             ) do
+          {:ok, pid} -> pid
+          {:error, {:already_started, pid}} -> pid
+        end
+
+      view_name = "save_current_#{:erlang.unique_integer([:positive])}"
+
+      {:ok, view_pid} =
+        YellowDog.Dns.ViewManager.start_view(vm_pid, %{
+          name: view_name,
+          priority: 5,
+          acl: :any,
+          zones: [{:auth, "save.example.com"}],
+          recursion_enabled: false
+        })
+
+      {:ok, zone_pid} =
+        YellowDog.Dns.ZoneController.start_zone(:auth, "save.example.com",
+          view_name: view_name,
+          zone_data: []
+        )
+
+      result = ConfigPersistence.save_current(tmp_dir)
+      assert result == :ok
+
+      # Verify files were created
+      assert File.exists?(Path.join(tmp_dir, "views"))
+
+      # Clean up
+      GenServer.stop(view_pid)
+      GenServer.stop(zone_pid)
     end
   end
 
@@ -476,6 +544,13 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
         # Restore permissions for cleanup
         File.chmod!(readonly_dir, 0o755)
       end
+    end
+  end
+
+  defp ensure_registry(name) do
+    case Process.whereis(name) do
+      nil -> Registry.start_link(keys: :unique, name: name)
+      _pid -> {:ok, name}
     end
   end
 end
