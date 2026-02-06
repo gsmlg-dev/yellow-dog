@@ -1,9 +1,28 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <!-- Header -->
-    <div>
-      <h1 class="text-3xl font-bold text-zinc-900">Network Discovery</h1>
-      <p class="mt-2 text-zinc-600">Browse mDNS services discovered on your local network</p>
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-zinc-900">Network Discovery</h1>
+        <p class="mt-2 text-zinc-600">Browse mDNS services discovered on your local network</p>
+      </div>
+      <button phx-click="export_csv" class="btn btn-outline btn-sm">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+          />
+        </svg>
+        Export CSV
+      </button>
     </div>
     <!-- Search and Filter -->
     <div class="flex items-center space-x-4">
