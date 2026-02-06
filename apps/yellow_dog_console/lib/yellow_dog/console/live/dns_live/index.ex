@@ -58,6 +58,8 @@ defmodule YellowDog.Console.DnsLive.Index do
       YellowDog.Dns.status()
     rescue
       _ -> %{running: false, info: "DNS service not running"}
+    catch
+      :exit, _ -> %{running: false, info: "DNS service not running"}
     end
   end
 
@@ -92,6 +94,17 @@ defmodule YellowDog.Console.DnsLive.Index do
       }
     rescue
       _ ->
+        %{
+          view_count: 0,
+          total_zones: 0,
+          total_queries: 0,
+          total_hits: 0,
+          total_misses: 0,
+          total_cache: 0,
+          views: []
+        }
+    catch
+      :exit, _ ->
         %{
           view_count: 0,
           total_zones: 0,
@@ -137,6 +150,16 @@ defmodule YellowDog.Console.DnsLive.Index do
       }
     rescue
       _ ->
+        %{
+          total_entries: 0,
+          hit_count: 0,
+          miss_count: 0,
+          insert_count: 0,
+          eviction_count: 0,
+          max_entries: @max_cache_entries
+        }
+    catch
+      :exit, _ ->
         %{
           total_entries: 0,
           hit_count: 0,

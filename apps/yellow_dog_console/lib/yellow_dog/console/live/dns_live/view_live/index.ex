@@ -445,6 +445,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       |> Enum.sort_by(& &1.priority)
     rescue
       _ -> []
+    catch
+      :exit, _ -> []
     end
   end
 

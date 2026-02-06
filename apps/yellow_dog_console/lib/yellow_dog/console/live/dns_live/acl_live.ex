@@ -330,6 +330,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       |> Enum.sort_by(& &1.priority)
     rescue
       _ -> []
+    catch
+      :exit, _ -> []
     end
   end
 
