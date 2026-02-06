@@ -79,7 +79,35 @@
         </div>
       </div>
     </div>
-    
+
+    <!-- Filter Bar -->
+    <div class="flex flex-wrap gap-3 items-center">
+      <div class="flex-1 min-w-[200px]">
+        <input
+          type="text"
+          placeholder="Search ACLs and views..."
+          value={@filter}
+          phx-keyup="filter"
+          phx-value-filter={@filter}
+          phx-debounce="300"
+          name="filter"
+          class="input input-bordered input-sm w-full"
+        />
+      </div>
+      <select
+        name="type"
+        class="select select-bordered select-sm"
+        phx-change="filter_type"
+      >
+        <option value="all" selected={@type_filter == "all"}>All Types</option>
+        <%= for type <- unique_acl_types(@views) do %>
+          <option value={type} selected={@type_filter == type}>
+            {acl_type_label(type)}
+          </option>
+        <% end %>
+      </select>
+    </div>
+
 <!-- Named ACLs Section -->
     <.card title="Named ACLs">
       <:actions>
@@ -95,7 +123,8 @@
           Add ACL
         </button>
       </:actions>
-      <%= if length(@named_acls) > 0 do %>
+      <% filtered_acls = filtered_named_acls(@named_acls, @filter, @type_filter) %>
+      <%= if length(filtered_acls) > 0 do %>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
@@ -107,7 +136,7 @@
               </tr>
             </thead>
             <tbody>
-              <%= for acl <- @named_acls do %>
+              <%= for acl <- filtered_acls do %>
                 <tr class="hover">
                   <td class="font-mono font-semibold">{acl.name}</td>
                   <td class="text-sm text-base-content/70">{acl.description || "—"}</td>
@@ -185,6 +214,13 @@
             </tbody>
           </table>
         </div>
+        <div class="text-xs text-base-content/50 mt-2 px-1">
+          <%= if length(filtered_acls) < length(@named_acls) do %>
+            Showing {length(filtered_acls)} of {length(@named_acls)} ACL(s)
+          <% else %>
+            {length(@named_acls)} ACL(s)
+          <% end %>
+        </div>
       <% else %>
         <div class="text-center py-8">
           <svg
@@ -200,19 +236,27 @@
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
             />
           </svg>
-          <h3 class="mt-2 text-sm font-semibold">No custom ACLs</h3>
-          <p class="mt-1 text-sm text-base-content/60">
-            Create named ACLs to reuse across views.
-          </p>
-          <button phx-click="show_create_form" class="btn btn-primary btn-sm mt-4">
-            Create ACL
-          </button>
+          <%= if @filter != "" do %>
+            <h3 class="mt-2 text-sm font-semibold">No matching ACLs</h3>
+            <p class="mt-1 text-sm text-base-content/60">
+              No ACLs match your search criteria.
+            </p>
+          <% else %>
+            <h3 class="mt-2 text-sm font-semibold">No custom ACLs</h3>
+            <p class="mt-1 text-sm text-base-content/60">
+              Create named ACLs to reuse across views.
+            </p>
+            <button phx-click="show_create_form" class="btn btn-primary btn-sm mt-4">
+              Create ACL
+            </button>
+          <% end %>
         </div>
       <% end %>
     </.card>
     
 <!-- Views ACL Table -->
-    <%= if length(@views) > 0 do %>
+    <% filtered_view_acls = filtered_views_acl(@views, @filter, @type_filter) %>
+    <%= if length(filtered_view_acls) > 0 do %>
       <.card title="View ACL Configuration" class="overflow-x-auto">
         <table class="table table-zebra">
           <thead>
@@ -225,7 +269,7 @@
             </tr>
           </thead>
           <tbody>
-            <%= for view <- @views do %>
+            <%= for view <- filtered_view_acls do %>
               <tr class="hover">
                 <td class="font-mono font-semibold">{view.name}</td>
                 <td>{view.priority}</td>
@@ -281,6 +325,13 @@
             <% end %>
           </tbody>
         </table>
+        <div class="text-xs text-base-content/50 mt-2 px-1">
+          <%= if length(filtered_view_acls) < length(@views) do %>
+            Showing {length(filtered_view_acls)} of {length(@views)} view(s)
+          <% else %>
+            {length(@views)} view(s)
+          <% end %>
+        </div>
       </.card>
     <% else %>
       <div class="card bg-base-100 shadow-xl">
@@ -298,10 +349,17 @@
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
             />
           </svg>
-          <h3 class="mt-4 text-xl font-semibold">No DNS Views</h3>
-          <p class="mt-2 text-base-content/60">
-            No views have been configured yet.
-          </p>
+          <%= if @filter != "" or @type_filter != "all" do %>
+            <h3 class="mt-4 text-xl font-semibold">No matching views</h3>
+            <p class="mt-2 text-base-content/60">
+              No views match your filter criteria.
+            </p>
+          <% else %>
+            <h3 class="mt-4 text-xl font-semibold">No DNS Views</h3>
+            <p class="mt-2 text-base-content/60">
+              No views have been configured yet.
+            </p>
+          <% end %>
         </div>
       </div>
     <% end %>

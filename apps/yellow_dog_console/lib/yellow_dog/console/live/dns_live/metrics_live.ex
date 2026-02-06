@@ -48,6 +48,15 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   @impl true
+  def handle_event("export_csv", _params, socket) do
+    csv = build_metrics_csv(socket.assigns)
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
+    filename = "dns_metrics_#{timestamp}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
   def handle_info(:refresh, socket) do
     socket =
       socket
@@ -198,6 +207,12 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
           <h1 class="text-2xl font-bold">DNS Metrics</h1>
           <div class="flex gap-2 items-center">
             <span class="text-xs text-base-content/50">Auto-refresh: 5s</span>
+            <button phx-click="export_csv" class="btn btn-outline btn-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
             <button phx-click="reset" class="btn btn-sm btn-ghost" data-confirm="Reset all metrics?">
               Reset
             </button>
@@ -438,6 +453,103 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     </Layouts.app>
     """
   end
+
+  defp build_metrics_csv(assigns) do
+    sections = [
+      build_summary_csv(assigns.summary),
+      build_counters_csv(assigns.metrics.counters),
+      build_response_codes_csv(assigns.metrics.responses_by_code),
+      build_query_types_csv(assigns.metrics.queries_by_type),
+      build_top_domains_csv(assigns.top_domains),
+      build_top_clients_csv(assigns.top_clients),
+      build_response_times_csv(assigns.response_times)
+    ]
+
+    Enum.join(sections, "\r\n\r\n")
+  end
+
+  defp build_summary_csv(summary) do
+    "Summary\r\n" <>
+      "Metric,Value\r\n" <>
+      "Total Queries,#{summary.queries_total}\r\n" <>
+      "Cache Hit Rate,#{Float.round(summary.cache_hit_rate, 1)}%\r\n" <>
+      "Avg Response Time,#{format_latency(summary.avg_response_time_us)}\r\n" <>
+      "Uptime,#{format_uptime(summary.uptime_seconds)}"
+  end
+
+  defp build_counters_csv(counters) do
+    "Counters\r\n" <>
+      "Counter,Value\r\n" <>
+      Enum.map_join(counters, "\r\n", fn {key, value} ->
+        "#{key},#{value}"
+      end)
+  end
+
+  defp build_response_codes_csv(codes) do
+    "Response Codes\r\n" <>
+      "Code,Count\r\n" <>
+      Enum.map_join(Enum.sort_by(codes, fn {_, c} -> -c end), "\r\n", fn {code, count} ->
+        "#{code |> to_string() |> String.upcase()},#{count}"
+      end)
+  end
+
+  defp build_query_types_csv(types) do
+    "Query Types\r\n" <>
+      "Type,Count\r\n" <>
+      Enum.map_join(Enum.sort_by(types, fn {_, c} -> -c end), "\r\n", fn {type, count} ->
+        "#{type |> to_string() |> String.upcase()},#{count}"
+      end)
+  end
+
+  defp build_top_domains_csv(domains) do
+    "Top Queried Domains\r\n" <>
+      "Rank,Domain,Queries\r\n" <>
+      Enum.map_join(Enum.with_index(domains, 1), "\r\n", fn {{domain, count}, idx} ->
+        "#{idx},#{csv_escape(to_string(domain))},#{count}"
+      end)
+  end
+
+  defp build_top_clients_csv(clients) do
+    "Top Clients\r\n" <>
+      "Rank,Client IP,Queries\r\n" <>
+      Enum.map_join(Enum.with_index(clients, 1), "\r\n", fn {{ip, count}, idx} ->
+        "#{idx},#{csv_escape(to_string(ip))},#{count}"
+      end)
+  end
+
+  defp build_response_times_csv(response_times) do
+    header = "Response Time Distribution\r\n" <>
+      "Metric,Value\r\n" <>
+      "Count,#{response_times.count}\r\n" <>
+      "Min,#{format_latency(response_times.min)}\r\n" <>
+      "Avg,#{format_latency(response_times.avg)}\r\n" <>
+      "Max,#{format_latency(response_times.max)}"
+
+    buckets =
+      case response_times[:buckets] do
+        buckets when is_list(buckets) and buckets != [] ->
+          "\r\n\r\nResponse Time Buckets\r\n" <>
+            "Bucket,Count\r\n" <>
+            Enum.map_join(buckets, "\r\n", fn {label, count} ->
+              "#{format_bucket_label(label)},#{count}"
+            end)
+
+        _ ->
+          ""
+      end
+
+    header <> buckets
+  end
+
+  defp csv_escape(str) when is_binary(str) do
+    if String.contains?(str, [",", "\"", "\n"]) do
+      "\"" <> String.replace(str, "\"", "\"\"") <> "\""
+    else
+      str
+    end
+  end
+
+  defp csv_escape(val), do: to_string(val)
 
   defp format_bucket_label(:inf), do: "+inf"
 

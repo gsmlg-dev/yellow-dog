@@ -196,6 +196,139 @@ defmodule YellowDog.Console.Validators do
     end
   end
 
+  @doc """
+  Validates a DNS domain name per RFC 1035.
+
+  ## Rules
+    - Total length max 253 characters
+    - Labels separated by dots, each max 63 characters
+    - Labels contain alphanumeric characters and hyphens
+    - Labels cannot start or end with a hyphen
+    - Wildcard `*` allowed only as first label
+
+  ## Examples
+
+      iex> YellowDog.Console.Validators.validate_domain_name("example.com")
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_domain_name("*.example.com")
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_domain_name("-invalid.com")
+      {:error, "Label cannot start or end with a hyphen"}
+  """
+  @spec validate_domain_name(String.t()) :: :ok | {:error, String.t()}
+  def validate_domain_name(name) when is_binary(name) do
+    name = String.trim_trailing(name, ".")
+
+    cond do
+      name == "" ->
+        {:error, "Domain name cannot be empty"}
+
+      byte_size(name) > 253 ->
+        {:error, "Domain name exceeds 253 characters"}
+
+      true ->
+        labels = String.split(name, ".")
+        validate_labels(labels)
+    end
+  end
+
+  defp validate_labels([]), do: {:error, "Domain name cannot be empty"}
+
+  defp validate_labels(["*" | rest]) do
+    # Wildcard only as first label
+    validate_labels_strict(rest)
+  end
+
+  defp validate_labels(labels), do: validate_labels_strict(labels)
+
+  defp validate_labels_strict([]), do: :ok
+
+  defp validate_labels_strict([label | rest]) do
+    cond do
+      label == "" ->
+        {:error, "Empty label in domain name"}
+
+      byte_size(label) > 63 ->
+        {:error, "Label exceeds 63 characters"}
+
+      String.starts_with?(label, "-") or String.ends_with?(label, "-") ->
+        {:error, "Label cannot start or end with a hyphen"}
+
+      not Regex.match?(~r/^[a-zA-Z0-9_-]+$/, label) ->
+        {:error, "Label contains invalid characters (allowed: a-z, 0-9, hyphen, underscore)"}
+
+      true ->
+        validate_labels_strict(rest)
+    end
+  end
+
+  @doc """
+  Validates a DNS TTL value.
+
+  TTL must be between 0 and 2^31 - 1 (2147483647) per RFC 2181.
+
+  ## Examples
+
+      iex> YellowDog.Console.Validators.validate_ttl(3600)
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_ttl(-1)
+      {:error, "TTL must be between 0 and 2147483647"}
+  """
+  @max_ttl 2_147_483_647
+
+  @spec validate_ttl(integer()) :: :ok | {:error, String.t()}
+  def validate_ttl(ttl) when is_integer(ttl) and ttl >= 0 and ttl <= @max_ttl, do: :ok
+  def validate_ttl(_), do: {:error, "TTL must be between 0 and 2147483647"}
+
+  @doc """
+  Validates an MX priority value.
+
+  Priority must be between 0 and 65535.
+
+  ## Examples
+
+      iex> YellowDog.Console.Validators.validate_mx_priority(10)
+      :ok
+
+      iex> YellowDog.Console.Validators.validate_mx_priority(70000)
+      {:error, "MX priority must be between 0 and 65535"}
+  """
+  @spec validate_mx_priority(integer()) :: :ok | {:error, String.t()}
+  def validate_mx_priority(priority) when is_integer(priority) and priority >= 0 and priority <= 65_535,
+    do: :ok
+
+  def validate_mx_priority(_), do: {:error, "MX priority must be between 0 and 65535"}
+
+  @doc """
+  Validates an SRV record.
+
+  ## Parameters
+    - priority: 0-65535
+    - weight: 0-65535
+    - port: 1-65535
+    - target: valid domain name
+
+  ## Examples
+
+      iex> YellowDog.Console.Validators.validate_srv(10, 20, 443, "server.example.com")
+      :ok
+  """
+  @spec validate_srv(integer(), integer(), integer(), String.t()) :: :ok | {:error, String.t()}
+  def validate_srv(priority, weight, port, target) do
+    with :ok <- validate_uint16(priority, "SRV priority"),
+         :ok <- validate_uint16(weight, "SRV weight"),
+         :ok <- validate_port(port),
+         :ok <- validate_domain_name(target) do
+      :ok
+    end
+  end
+
+  defp validate_uint16(val, _label) when is_integer(val) and val >= 0 and val <= 65_535, do: :ok
+  defp validate_uint16(_, label), do: {:error, "#{label} must be between 0 and 65535"}
+
   # Private Functions
 
   defp compare_ip_addresses(start_tuple, end_tuple) do

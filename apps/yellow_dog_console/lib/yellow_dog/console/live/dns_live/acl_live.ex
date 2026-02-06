@@ -35,7 +35,9 @@ defmodule YellowDog.Console.DnsLive.AclLive do
      |> assign(
        :create_form,
        to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
-     )}
+     )
+     |> assign(:filter, "")
+     |> assign(:type_filter, "all")}
   end
 
   @impl true
@@ -44,6 +46,16 @@ defmodule YellowDog.Console.DnsLive.AclLive do
      socket
      |> assign(:views, list_views_with_acl())
      |> assign(:named_acls, list_named_acls())}
+  end
+
+  @impl true
+  def handle_event("filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :filter, filter)}
+  end
+
+  @impl true
+  def handle_event("filter_type", %{"type" => type}, socket) do
+    {:noreply, assign(socket, :type_filter, type)}
   end
 
   @impl true
@@ -546,6 +558,51 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp build_rule(action, network), do: %{action: action, network: network}
+
+  def filtered_named_acls(acls, filter, _type_filter) do
+    acls
+    |> filter_acls_by_name(filter)
+  end
+
+  defp filter_acls_by_name(acls, ""), do: acls
+
+  defp filter_acls_by_name(acls, filter) do
+    filter_lower = String.downcase(filter)
+
+    Enum.filter(acls, fn acl ->
+      String.contains?(String.downcase(acl.name), filter_lower) or
+        String.contains?(String.downcase(acl.description || ""), filter_lower)
+    end)
+  end
+
+  def filtered_views_acl(views, filter, type_filter) do
+    views
+    |> filter_views_by_name(filter)
+    |> filter_views_by_acl_type(type_filter)
+  end
+
+  defp filter_views_by_name(views, ""), do: views
+
+  defp filter_views_by_name(views, filter) do
+    filter_lower = String.downcase(filter)
+
+    Enum.filter(views, fn view ->
+      String.contains?(String.downcase(view.name), filter_lower)
+    end)
+  end
+
+  defp filter_views_by_acl_type(views, "all"), do: views
+
+  defp filter_views_by_acl_type(views, type) do
+    Enum.filter(views, fn view -> view.acl_type == type end)
+  end
+
+  def unique_acl_types(views) do
+    views
+    |> Enum.map(& &1.acl_type)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
 
   defp build_csv(acls) do
     header = "Name,Description,Rules\r\n"
