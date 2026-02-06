@@ -156,6 +156,22 @@ defmodule YellowDog.Console.DnsLiveTest do
       {:ok, _view, html} = live(conn, "/dns/metrics")
       assert html =~ "Metrics" or html =~ "DNS"
     end
+
+    test "has export CSV button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/metrics")
+      assert html =~ "Export CSV"
+    end
+
+    test "has reset button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/metrics")
+      assert html =~ "Reset"
+    end
+
+    test "shows summary stats section", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/metrics")
+      assert html =~ "Total Queries"
+      assert html =~ "Cache Hit Rate"
+    end
   end
 
   # ============================================================================
@@ -305,6 +321,120 @@ defmodule YellowDog.Console.DnsLiveTest do
     test "filtered_views/3 is case-insensitive" do
       views = [%{name: "Internal-VIEW", enabled: true}]
       assert ViewLive.filtered_views(views, "internal", "all") == views
+    end
+  end
+
+  describe "AclLive filtering" do
+    alias YellowDog.Console.DnsLive.AclLive
+
+    test "filtered_named_acls/3 returns all acls with empty filter" do
+      acls = [
+        %{name: "internal", description: "Corporate network", rules: []},
+        %{name: "external", description: "Public access", rules: []}
+      ]
+
+      assert AclLive.filtered_named_acls(acls, "", "all") == acls
+    end
+
+    test "filtered_named_acls/3 filters by name" do
+      acls = [
+        %{name: "internal", description: "Corporate network", rules: []},
+        %{name: "external", description: "Public access", rules: []},
+        %{name: "vpn-clients", description: "VPN users", rules: []}
+      ]
+
+      filtered = AclLive.filtered_named_acls(acls, "internal", "all")
+      assert length(filtered) == 1
+      assert hd(filtered).name == "internal"
+    end
+
+    test "filtered_named_acls/3 filters by description" do
+      acls = [
+        %{name: "internal", description: "Corporate network", rules: []},
+        %{name: "external", description: "Public access", rules: []}
+      ]
+
+      filtered = AclLive.filtered_named_acls(acls, "corporate", "all")
+      assert length(filtered) == 1
+      assert hd(filtered).name == "internal"
+    end
+
+    test "filtered_named_acls/3 is case-insensitive" do
+      acls = [%{name: "Internal-ACL", description: "Test", rules: []}]
+      assert AclLive.filtered_named_acls(acls, "internal", "all") == acls
+    end
+
+    test "filtered_views_acl/3 returns all views with empty filter" do
+      views = [
+        %{name: "default", acl_type: "any", priority: 0, acl_rules: []},
+        %{name: "internal", acl_type: "custom", priority: 10, acl_rules: []}
+      ]
+
+      assert AclLive.filtered_views_acl(views, "", "all") == views
+    end
+
+    test "filtered_views_acl/3 filters by view name" do
+      views = [
+        %{name: "default", acl_type: "any", priority: 0, acl_rules: []},
+        %{name: "internal", acl_type: "custom", priority: 10, acl_rules: []}
+      ]
+
+      filtered = AclLive.filtered_views_acl(views, "internal", "all")
+      assert length(filtered) == 1
+      assert hd(filtered).name == "internal"
+    end
+
+    test "filtered_views_acl/3 filters by ACL type" do
+      views = [
+        %{name: "default", acl_type: "any", priority: 0, acl_rules: []},
+        %{name: "internal", acl_type: "custom", priority: 10, acl_rules: []},
+        %{name: "geo-view", acl_type: "geo", priority: 20, acl_rules: []}
+      ]
+
+      filtered = AclLive.filtered_views_acl(views, "", "custom")
+      assert length(filtered) == 1
+      assert hd(filtered).name == "internal"
+    end
+
+    test "filtered_views_acl/3 combines name and type filters" do
+      views = [
+        %{name: "default", acl_type: "any", priority: 0, acl_rules: []},
+        %{name: "internal-1", acl_type: "custom", priority: 10, acl_rules: []},
+        %{name: "internal-2", acl_type: "geo", priority: 20, acl_rules: []}
+      ]
+
+      filtered = AclLive.filtered_views_acl(views, "internal", "custom")
+      assert length(filtered) == 1
+      assert hd(filtered).name == "internal-1"
+    end
+
+    test "unique_acl_types/1 returns sorted unique types" do
+      views = [
+        %{name: "a", acl_type: "any"},
+        %{name: "b", acl_type: "custom"},
+        %{name: "c", acl_type: "any"},
+        %{name: "d", acl_type: "geo"}
+      ]
+
+      types = AclLive.unique_acl_types(views)
+      assert types == ["any", "custom", "geo"]
+    end
+  end
+
+  describe "DNS ACL /dns/acl search and filter" do
+    test "has search/filter input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/acl")
+      assert html =~ "Search" or html =~ "search"
+    end
+
+    test "has create ACL button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/acl")
+      assert html =~ "Add ACL"
+    end
+
+    test "shows built-in ACL reference", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/acl")
+      assert html =~ "Built-in ACL Reference"
     end
   end
 end

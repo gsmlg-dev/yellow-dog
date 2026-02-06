@@ -124,4 +124,139 @@ defmodule YellowDog.Console.ValidatorsTest do
       assert :ok == Validators.check_overlapping_pools([], :ipv4)
     end
   end
+
+  describe "validate_domain_name/1" do
+    test "validates standard domain names" do
+      assert :ok == Validators.validate_domain_name("example.com")
+      assert :ok == Validators.validate_domain_name("sub.example.com")
+      assert :ok == Validators.validate_domain_name("a.b.c.d.example.com")
+    end
+
+    test "validates domain with trailing dot" do
+      assert :ok == Validators.validate_domain_name("example.com.")
+    end
+
+    test "validates wildcard domain" do
+      assert :ok == Validators.validate_domain_name("*.example.com")
+    end
+
+    test "validates domain with underscore (SRV records)" do
+      assert :ok == Validators.validate_domain_name("_sip._tcp.example.com")
+    end
+
+    test "validates domain with hyphens" do
+      assert :ok == Validators.validate_domain_name("my-server.example.com")
+    end
+
+    test "rejects empty domain" do
+      assert {:error, _} = Validators.validate_domain_name("")
+    end
+
+    test "rejects label starting with hyphen" do
+      assert {:error, msg} = Validators.validate_domain_name("-invalid.com")
+      assert msg =~ "hyphen"
+    end
+
+    test "rejects label ending with hyphen" do
+      assert {:error, msg} = Validators.validate_domain_name("invalid-.com")
+      assert msg =~ "hyphen"
+    end
+
+    test "rejects label over 63 characters" do
+      long_label = String.duplicate("a", 64) <> ".com"
+      assert {:error, msg} = Validators.validate_domain_name(long_label)
+      assert msg =~ "63 characters"
+    end
+
+    test "rejects domain over 253 characters" do
+      # Build a domain that exceeds 253 chars
+      long_domain = Enum.map_join(1..50, ".", fn _ -> "abcde" end)
+      assert {:error, msg} = Validators.validate_domain_name(long_domain)
+      assert msg =~ "253 characters"
+    end
+
+    test "rejects domain with invalid characters" do
+      assert {:error, msg} = Validators.validate_domain_name("exam ple.com")
+      assert msg =~ "invalid characters"
+    end
+  end
+
+  describe "validate_ttl/1" do
+    test "validates valid TTL values" do
+      assert :ok == Validators.validate_ttl(0)
+      assert :ok == Validators.validate_ttl(300)
+      assert :ok == Validators.validate_ttl(3600)
+      assert :ok == Validators.validate_ttl(86_400)
+      assert :ok == Validators.validate_ttl(2_147_483_647)
+    end
+
+    test "rejects negative TTL" do
+      assert {:error, msg} = Validators.validate_ttl(-1)
+      assert msg =~ "between 0 and"
+    end
+
+    test "rejects TTL above max" do
+      assert {:error, _} = Validators.validate_ttl(2_147_483_648)
+    end
+  end
+
+  describe "validate_mx_priority/1" do
+    test "validates valid MX priorities" do
+      assert :ok == Validators.validate_mx_priority(0)
+      assert :ok == Validators.validate_mx_priority(10)
+      assert :ok == Validators.validate_mx_priority(65_535)
+    end
+
+    test "rejects negative MX priority" do
+      assert {:error, msg} = Validators.validate_mx_priority(-1)
+      assert msg =~ "MX priority"
+    end
+
+    test "rejects MX priority above 65535" do
+      assert {:error, _} = Validators.validate_mx_priority(70_000)
+    end
+  end
+
+  describe "validate_srv/4" do
+    test "validates valid SRV record" do
+      assert :ok == Validators.validate_srv(10, 20, 443, "server.example.com")
+    end
+
+    test "rejects invalid SRV priority" do
+      assert {:error, _} = Validators.validate_srv(-1, 20, 443, "server.example.com")
+    end
+
+    test "rejects invalid SRV weight" do
+      assert {:error, _} = Validators.validate_srv(10, 70_000, 443, "server.example.com")
+    end
+
+    test "rejects invalid SRV port" do
+      assert {:error, _} = Validators.validate_srv(10, 20, 0, "server.example.com")
+    end
+
+    test "rejects invalid SRV target" do
+      assert {:error, _} = Validators.validate_srv(10, 20, 443, "-invalid.com")
+    end
+  end
+
+  describe "validate_cidr/2" do
+    test "validates valid IPv4 CIDR" do
+      assert :ok == Validators.validate_cidr("10.0.0.0/8", :ipv4)
+      assert :ok == Validators.validate_cidr("192.168.1.0/24", :ipv4)
+      assert :ok == Validators.validate_cidr("0.0.0.0/0", :ipv4)
+    end
+
+    test "validates valid IPv6 CIDR" do
+      assert :ok == Validators.validate_cidr("2001:db8::/32", :ipv6)
+      assert :ok == Validators.validate_cidr("::/0", :ipv6)
+    end
+
+    test "rejects invalid CIDR prefix for IPv4" do
+      assert {:error, _} = Validators.validate_cidr("10.0.0.0/33", :ipv4)
+    end
+
+    test "rejects invalid CIDR format" do
+      assert {:error, _} = Validators.validate_cidr("10.0.0.0", :ipv4)
+    end
+  end
 end
