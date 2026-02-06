@@ -6,15 +6,15 @@
 **Iteration**: 8 of 1000
 
 ## Session Summary
-Iteration 8: Added bulk import preview with live validation:
-- ✅ **586 Console tests passing** (578 prior + 8 new)
+Iteration 8: Bulk preview, BIND export, CsvDownload hook fix:
+- ✅ **597 Console tests passing** (578 prior + 19 new)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
 - ✅ Bulk import preview: parses zone text on change, shows record count + types
 - ✅ Submit button disabled until valid preview, shows "Import N Record(s)"
-- ✅ Parse error feedback: shows alert-error with parse error message
-- ✅ Uses DNS.Zone.parse_zone_string/1 for validation without side effects
-- ✅ 6 unit tests for parse_bulk_preview/2, 2 LiveView integration tests
-- ✅ **12 commits this iteration**: 11 prior + 1 this session
+- ✅ BIND zone file export: "Export BIND" button on auth zone Records page
+- ✅ Fixed CsvDownload hook missing on 8 pages (CSV export was silently broken)
+- ✅ 6 bulk preview unit tests, 2 LiveView tests, 3 BIND export tests, 8 hook regression tests
+- ✅ **14 commits this iteration**: 11 prior + 3 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -57,7 +57,7 @@ Iteration 8: Added bulk import preview with live validation:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 586 Console tests (192 LiveView + 46 CSV/filter/preview + 20 validator + 328 existing)
+- [x] 597 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 328 existing)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -82,7 +82,9 @@ Iteration 8: Added bulk import preview with live validation:
 9. `23b2c10` - refactor(console): extract CsvHelper, add pools search/filter/export
 10. `868d408` - feat(console): add CSV export and search to Logs and mDNS monitor
 11. `e7b675a` - test(console): add 14 interaction tests for dashboard, DHCP, mDNS, logs
-12. `TBD` - feat(console): add bulk import preview with live validation
+12. `99bfd66` - feat(console): add bulk import preview with live validation
+13. `9b40e3f` - feat(console): add BIND zone file export to Records page
+14. `e39f8bd` - fix(console): add missing CsvDownload hook to 8 export buttons
 
 ## Mistakes & Learnings
 
@@ -104,12 +106,16 @@ Iteration 8: Added bulk import preview with live validation:
 
 9. **Shared helpers via import**: When a utility function is duplicated across 10+ files, extract to a dedicated module (e.g., `CsvHelper`) and use `import`. This eliminates private defp duplication and keeps the shared logic testable in one place.
 
+10. **CsvDownload hook must be on an element**: `push_event("download_csv", ...)` requires a mounted CsvDownload JS hook. Without `id` + `phx-hook="CsvDownload"` on an element, the download silently fails. Always add the hook when adding CSV export.
+
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
 2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
 3. ~~Extract CsvHelper, add pools search/filter/export~~ ✅ Done (17 tests)
 4. ~~Add CSV export/search to Logs and mDNS monitor~~ ✅ Done (16 tests)
 5. ~~Bulk import preview/validation UI for zone file imports~~ ✅ Done (8 tests)
-6. Performance testing / load testing
-7. Security audit (input validation integrated into forms, ACL bypass)
-8. Prometheus/OpenTelemetry integration
+6. ~~BIND zone file export~~ ✅ Done (3 tests)
+7. ~~Fix CsvDownload hook on 8 broken export pages~~ ✅ Done (8 regression tests)
+8. Performance testing / load testing
+9. Security audit (input validation integrated into forms, ACL bypass)
+10. Prometheus/OpenTelemetry integration
