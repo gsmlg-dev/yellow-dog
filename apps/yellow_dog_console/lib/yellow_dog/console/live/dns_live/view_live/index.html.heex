@@ -450,6 +450,7 @@
                     aria-label="Search countries"
                     value={@country_search}
                     phx-keyup="search_country"
+                    phx-debounce="300"
                     phx-value-search={@country_search}
                     name="search"
                   />
@@ -735,6 +736,7 @@
                       aria-label="Search countries"
                       value={@country_search}
                       phx-keyup="search_country"
+                      phx-debounce="300"
                       phx-value-search={@country_search}
                       name="search"
                     />
