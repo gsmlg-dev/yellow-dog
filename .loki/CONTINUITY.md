@@ -1,18 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 47)
+**Phase**: IN_PROGRESS (Iteration 49)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 47 of 1000
+**Iteration**: 49 of 1000
 
 ## Session Summary
-Iteration 47: Replace Enum.sum(Enum.map) with single-pass Enum.reduce + misc Enum optimizations:
+Iteration 48: Extract RFC 6762 magic numbers into named module attributes:
 - ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ 7× `Enum.sum(Enum.map(...))` → single-pass `Enum.reduce` (eliminates intermediate list)
-- ✅ 1× `Enum.count() > 0` → `!= []` (O(n) → O(1)) in nsec.ex
-- ✅ 1× `Enum.at(@errors, 0)` → `hd(@errors)` in core_components.ex
-- ✅ Files: record_builder.ex, responder.ex, process_inspector.ex, validator.ex, nsec.ex, core_components.ex
-- ✅ **1 commit this iteration** — net -2 lines
+- ✅ Added `@mdns_multicast_ttl` (255), `@mdns_max_packet_size` (1232), `@response_delay_min_ms`/`@response_delay_range_ms`
+- ✅ Normalized hardcoded 5353 → `@mdns_port` in server init; simplified boolean expression in responder
+- ✅ Files: server.ex, client.ex, responder.ex — **1 commit** — net +3 lines
+
+Previous iteration 47: Enum micro-optimizations:
+- ✅ 7× `Enum.sum(Enum.map)` → `Enum.reduce`, 1× `Enum.count>0` → `!=[]`, 1× `Enum.at(0)` → `hd` — net -2 lines
 
 Previous iteration 46: Replace manual IPv4 parsing with :inet.parse_address/1:
 - ✅ Replaced 7 duplicate manual IPv4 parse functions across 7 files — net -54 lines
