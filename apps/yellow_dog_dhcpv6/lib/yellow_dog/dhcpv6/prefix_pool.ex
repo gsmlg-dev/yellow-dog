@@ -367,12 +367,5 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
     end
   end
 
-  defp format_duid(duid) when is_binary(duid) do
-    duid
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
-  end
-
-  defp format_duid(_), do: "UNKNOWN"
+  defp format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format(duid) || "UNKNOWN"
 end

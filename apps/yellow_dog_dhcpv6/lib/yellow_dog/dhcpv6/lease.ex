@@ -293,11 +293,7 @@ defmodule YellowDog.Dhcpv6.Lease do
     if String.contains?(duid, ":") or duid =~ ~r/^[0-9a-fA-F]+$/ do
       duid
     else
-      # Binary DUID - encode as hex
-      duid
-      |> :binary.bin_to_list()
-      |> Enum.map_join("", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-      |> String.downcase()
+      YellowDog.Dhcpv6.DuidFormat.format(duid, separator: "", case: :lower) || duid
     end
   end
 

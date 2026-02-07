@@ -736,14 +736,11 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   defp maybe_field(name, value), do: "#{name} = \"#{value}\"\n"
 
   defp format_duid(duid) when is_binary(duid) do
-    # If it's raw binary, convert to hex
+    # If it's already hex-encoded, strip colons and upcase
     if String.printable?(duid) and duid =~ ~r/^[0-9a-fA-F:]+$/ do
       String.replace(duid, ":", "") |> String.upcase()
     else
-      duid
-      |> :binary.bin_to_list()
-      |> Enum.map_join(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-      |> String.upcase()
+      YellowDog.Dhcpv6.DuidFormat.format(duid, separator: "") || ""
     end
   end
 
