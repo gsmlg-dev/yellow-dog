@@ -110,6 +110,52 @@ defmodule YellowDog.Dhcpv4.PoolTest do
 
       assert {:error, _} = Pool.new(config)
     end
+
+    test "parses options with integer keys" do
+      config = Map.put(@valid_config, :options, %{6 => "value", 15 => "domain"})
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.options == %{6 => "value", 15 => "domain"}
+    end
+
+    test "parses options with string keys" do
+      config = Map.put(@valid_config, :options, %{"6" => "value", "15" => "domain"})
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.options == %{6 => "value", 15 => "domain"}
+    end
+
+    test "defaults to enabled true" do
+      assert {:ok, pool} = Pool.new(@valid_config)
+      assert pool.enabled == true
+    end
+
+    test "sets domain_name" do
+      config = Map.put(@valid_config, :domain_name, "example.com")
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.domain_name == "example.com"
+    end
+
+    test "supports legacy range_start/range_end fields" do
+      config = %{
+        name: "lan",
+        subnet: "192.168.1.0/24",
+        range_start: "192.168.1.100",
+        range_end: "192.168.1.200"
+      }
+
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.range == {{192, 168, 1, 100}, {192, 168, 1, 200}}
+    end
+
+    test "supports legacy network field" do
+      config = %{
+        name: "lan",
+        network: "192.168.1.0/24",
+        range: %{start: "192.168.1.100", end: "192.168.1.200"}
+      }
+
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.subnet == {{192, 168, 1, 0}, 24}
+    end
   end
 
   describe "validate/1" do

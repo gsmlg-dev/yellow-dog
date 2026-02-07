@@ -110,6 +110,57 @@ defmodule YellowDog.Dhcpv6.PoolTest do
     test "returns error for invalid prefix address" do
       assert {:error, _} = Pool.new(%{name: "pool", prefix: "not-valid/48"})
     end
+
+    test "parses options with integer keys" do
+      config = Map.put(@valid_config, :options, %{23 => "dns-servers", 24 => "domain-list"})
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.options == %{23 => "dns-servers", 24 => "domain-list"}
+    end
+
+    test "parses options with string keys" do
+      config = Map.put(@valid_config, :options, %{"23" => "dns-servers", "24" => "domain-list"})
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.options == %{23 => "dns-servers", 24 => "domain-list"}
+    end
+
+    test "parses stateless mode" do
+      config = Map.put(@valid_config, :mode, "stateless")
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.mode == :stateless
+    end
+
+    test "defaults to enabled true" do
+      assert {:ok, pool} = Pool.new(@valid_config)
+      assert pool.enabled == true
+    end
+
+    test "sets domain_name" do
+      config = Map.put(@valid_config, :domain_name, "example.com")
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.domain_name == "example.com"
+    end
+
+    test "supports legacy network field" do
+      config = %{
+        name: "v6-pool",
+        network: "2001:db8::/48",
+        range: %{start: "2001:db8::100", end: "2001:db8::200"}
+      }
+
+      assert {:ok, pool} = Pool.new(config)
+      assert {_, 48} = pool.prefix
+    end
+
+    test "parses option ACL rules from string-keyed maps" do
+      config = Map.put(@valid_config, :acl, %{
+        "allow" => [%{"type" => "duid", "pattern" => "0001*"}],
+        "deny" => [%{"type" => "option", "code" => 16, "value" => "test"}]
+      })
+
+      assert {:ok, pool} = Pool.new(config)
+      assert pool.acl.allow == [{:duid, "0001*"}]
+      assert pool.acl.deny == [{:option, 16, "test"}]
+    end
   end
 
   describe "validate/1" do
