@@ -523,10 +523,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         }
       end)
       |> Enum.sort_by(& &1.priority)
-    rescue
-      _ -> []
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -552,10 +550,8 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         :error ->
           :error
       end
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 

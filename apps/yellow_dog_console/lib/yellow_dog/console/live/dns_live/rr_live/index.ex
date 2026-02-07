@@ -376,10 +376,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
           _ -> nil
         end)
         |> Kernel.||(:unknown)
-      rescue
-        _ -> :unknown
       catch
-        :exit, _ -> :unknown
+        _, _ -> :unknown
       end
     else
       zone_type_atom
@@ -394,10 +392,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
         {:ok, pid} -> pid
         :error -> nil
       end
-    rescue
-      _ -> nil
     catch
-      :exit, _ -> nil
+      _, _ -> nil
     end
   end
 
@@ -445,10 +441,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
         :error ->
           :error
       end
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 
@@ -550,10 +544,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
         :error ->
           {:error, "Zone not found"}
       end
-    rescue
-      _ -> {:error, "Zone not available"}
     catch
-      :exit, _ -> {:error, "Zone not available"}
+      _, _ -> {:error, "Zone not available"}
     end
   end
 

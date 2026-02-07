@@ -121,8 +121,6 @@ defmodule YellowDog.Console.ProcessInspector do
     try do
       pid = :erlang.list_to_pid(String.to_charlist(cleaned))
       {:ok, pid}
-    rescue
-      _ -> {:error, :invalid_pid}
     catch
       _, _ -> {:error, :invalid_pid}
     end
@@ -281,10 +279,8 @@ defmodule YellowDog.Console.ProcessInspector do
           build_child_node(id, child_pid, type)
         end)
         |> Enum.reject(&is_nil/1)
-      rescue
-        _ -> []
       catch
-        :exit, _ -> []
+        _, _ -> []
       end
 
     %{
@@ -309,10 +305,8 @@ defmodule YellowDog.Console.ProcessInspector do
             build_child_node(child_id, child_pid, child_type)
           end)
           |> Enum.reject(&is_nil/1)
-        rescue
-          _ -> []
         catch
-          :exit, _ -> []
+          _, _ -> []
         end
       else
         []

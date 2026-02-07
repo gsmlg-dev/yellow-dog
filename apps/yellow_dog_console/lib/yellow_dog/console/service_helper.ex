@@ -23,10 +23,8 @@ defmodule YellowDog.Console.ServiceHelper do
     if Code.ensure_loaded?(module) do
       try do
         fun.()
-      rescue
-        _ -> default
       catch
-        :exit, _ -> default
+        _, _ -> default
       end
     else
       default

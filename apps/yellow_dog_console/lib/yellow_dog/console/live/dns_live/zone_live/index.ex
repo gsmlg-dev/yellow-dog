@@ -576,10 +576,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         :error ->
           :error
       end
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 
@@ -608,10 +606,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
           # Return empty zones list if no persisted config
           {:ok, %{name: view_name, zones: []}}
       end
-    rescue
-      _ -> {:ok, %{name: view_name, zones: []}}
     catch
-      :exit, _ -> {:ok, %{name: view_name, zones: []}}
+      _, _ -> {:ok, %{name: view_name, zones: []}}
     end
   end
 
@@ -658,10 +654,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         _ -> nil
       end)
       |> Kernel.||(:error)
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 
@@ -680,10 +674,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       _ ->
         :error
     end
-  rescue
-    _ -> :error
   catch
-    :exit, _ -> :error
+    _, _ -> :error
   end
 
   defp get_zone_stats(view_name, type, name) do
@@ -702,10 +694,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         :error ->
           %{record_count: 0, query_count: 0}
       end
-    rescue
-      _ -> %{record_count: 0, query_count: 0}
     catch
-      :exit, _ -> %{record_count: 0, query_count: 0}
+      _, _ -> %{record_count: 0, query_count: 0}
     end
   end
 
@@ -741,10 +731,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         :error ->
           :error
       end
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 
@@ -775,10 +763,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         _ ->
           :error
       end
-    rescue
-      _ -> :error
     catch
-      :exit, _ -> :error
+      _, _ -> :error
     end
   end
 

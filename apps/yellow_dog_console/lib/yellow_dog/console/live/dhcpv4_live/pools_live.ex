@@ -478,10 +478,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
         _pid ->
           YellowDog.Dhcpv4.LeaseManager.get_pools()
       end
-    rescue
-      _ -> []
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -495,10 +493,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
         {:ok, stats} -> stats
         _ -> default_stats()
       end
-    rescue
-      _ -> default_stats()
     catch
-      :exit, _ -> default_stats()
+      _, _ -> default_stats()
     end
   end
 

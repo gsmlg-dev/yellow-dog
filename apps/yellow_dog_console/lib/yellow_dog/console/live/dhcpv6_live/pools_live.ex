@@ -471,10 +471,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
         _pid ->
           YellowDog.Dhcpv6.LeaseManager.get_pools()
       end
-    rescue
-      _ -> []
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -486,10 +484,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
     try do
       all_stats = YellowDog.Dhcpv6.LeaseManager.get_all_pool_stats()
       Map.get(all_stats, pool_name, default_stats())
-    rescue
-      _ -> default_stats()
     catch
-      :exit, _ -> default_stats()
+      _, _ -> default_stats()
     end
   end
 

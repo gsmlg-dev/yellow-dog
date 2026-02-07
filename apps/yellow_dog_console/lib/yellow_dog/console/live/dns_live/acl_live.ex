@@ -389,10 +389,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
         }
       end)
       |> Enum.sort_by(& &1.priority)
-    rescue
-      _ -> []
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -569,10 +567,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   defp list_named_acls do
     try do
       AclRegistry.list_acls()
-    rescue
-      _ -> []
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
