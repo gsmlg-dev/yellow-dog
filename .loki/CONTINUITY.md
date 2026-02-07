@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 63)
+**Phase**: IN_PROGRESS (Iteration 64)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 63 of 1000
+**Iteration**: 64 of 1000
 
 ## Session Summary
-Iteration 63: Multi-pass pattern elimination (Map.to_list, for comprehensions):
+Iteration 64: Move inline `require Logger` to module level:
+- ✅ **2020 tests (1058 dns + 962 console), 0 failures, 0 warnings, 0 credo issues**
+- ✅ Moved 5 inline `require Logger` statements from function bodies to module-level declarations
+- ✅ Files: acl_registry.ex, zone_service.ex, acl_store.ex, view_live/index.ex, zone_live/index.ex
+- ✅ 5 files — **1 commit** — net +5 lines (module-level require adds clarity)
+
+Previous iteration 63: Multi-pass pattern elimination (Map.to_list, for comprehensions):
 - ✅ **7601+ tests (1058 dns + 4764 ex_dns + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Replaced identity `Enum.map(fn {k,v} -> {k,v} end)` with `Map.to_list` in 2 DHCP server files
 - ✅ Replaced triple `map|reject|map` validation chains with `for` + pattern-match filter in 3 DNS store files
