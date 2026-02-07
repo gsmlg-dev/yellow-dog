@@ -97,11 +97,9 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   """
   @spec get_all_pool_stats([AddressPool.pool_config()]) :: %{String.t() => pool_stats()}
   def get_all_pool_stats(pools) do
-    pools
-    |> Enum.map(fn pool ->
+    Map.new(pools, fn pool ->
       {pool.name, get_pool_stats(pool)}
     end)
-    |> Map.new()
   end
 
   @doc """
@@ -259,8 +257,7 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   defp count_leases_by_state(leases) do
     leases
     |> Enum.group_by(& &1.state)
-    |> Enum.map(fn {state, state_leases} -> {state, length(state_leases)} end)
-    |> Map.new()
+    |> Map.new(fn {state, state_leases} -> {state, length(state_leases)} end)
   end
 
   defp format_leases_by_state(leases_by_state) do

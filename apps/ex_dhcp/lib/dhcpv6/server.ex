@@ -104,8 +104,7 @@ defmodule DHCPv6.Server do
       |> Enum.group_by(fn {{duid, _iaid}, _lease} -> duid end, fn {{_duid, iaid}, lease} ->
         {iaid, lease}
       end)
-      |> Enum.map(fn {duid, leases} -> {duid, Map.new(leases)} end)
-      |> Map.new()
+      |> Map.new(fn {duid, leases} -> {duid, Map.new(leases)} end)
 
     %{
       state

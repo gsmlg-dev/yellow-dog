@@ -729,12 +729,10 @@ defmodule YellowDog.Console.Components.RecordForm do
   end
 
   defp errors_to_map(errors) when is_list(errors) do
-    errors
-    |> Enum.map(fn
+    Map.new(errors, fn
       %{field: field, message: message} -> {field, message}
       error -> {:general, inspect(error)}
     end)
-    |> Map.new()
   end
 
   defp errors_to_map(_), do: %{}

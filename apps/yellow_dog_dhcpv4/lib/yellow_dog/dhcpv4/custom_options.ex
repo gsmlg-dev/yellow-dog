@@ -177,10 +177,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
     # Merge options, later sets override earlier ones
     merged =
       Enum.reduce(processed_sets, %{}, fn set, acc ->
-        options_map =
-          set.options
-          |> Enum.map(fn opt -> {opt.code, opt} end)
-          |> Map.new()
+        options_map = Map.new(set.options, fn opt -> {opt.code, opt} end)
 
         Map.merge(acc, options_map)
       end)

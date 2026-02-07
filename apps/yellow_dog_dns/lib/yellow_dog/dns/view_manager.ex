@@ -285,10 +285,9 @@ defmodule YellowDog.Dns.ViewManager do
     views = list_views(supervisor)
 
     view_stats =
-      Enum.map(views, fn {name, pid, priority} ->
+      Map.new(views, fn {name, pid, priority} ->
         {name, Map.put(View.stats(pid), :priority, priority)}
       end)
-      |> Map.new()
 
     %{
       view_count: length(views),

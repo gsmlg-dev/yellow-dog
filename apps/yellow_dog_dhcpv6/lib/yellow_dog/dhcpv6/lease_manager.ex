@@ -182,15 +182,13 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     by_state =
       all_entries
       |> Enum.group_by(& &1.state)
-      |> Enum.map(fn {state, leases} -> {state, length(leases)} end)
-      |> Map.new()
+      |> Map.new(fn {state, leases} -> {state, length(leases)} end)
 
     # Group by IA type
     by_ia_type =
       all_entries
       |> Enum.group_by(& &1.ia_type)
-      |> Enum.map(fn {ia_type, leases} -> {ia_type, length(leases)} end)
-      |> Map.new()
+      |> Map.new(fn {ia_type, leases} -> {ia_type, length(leases)} end)
 
     %{
       total_leases: length(all_entries),
@@ -472,12 +470,10 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   @impl true
   def handle_call(:get_all_pool_stats, _from, state) do
     pool_stats =
-      state.pools
-      |> Enum.map(fn pool ->
+      Map.new(state.pools, fn pool ->
         stats = calculate_pool_stats(pool)
         {pool.name, stats}
       end)
-      |> Map.new()
 
     {:reply, pool_stats, state}
   end
@@ -1050,8 +1046,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     leases_by_state =
       all_leases
       |> Enum.group_by(& &1.state)
-      |> Enum.map(fn {state, leases} -> {state, length(leases)} end)
-      |> Map.new()
+      |> Map.new(fn {state, leases} -> {state, length(leases)} end)
 
     # Calculate pool size based on pool type
     total_count =

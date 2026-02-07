@@ -329,10 +329,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
         errors = Enum.filter(parsed, &match?({:error, _}, &1))
 
         if Enum.empty?(errors) do
-          map =
-            parsed
-            |> Enum.map(fn {:ok, {mac, ip}} -> {mac, ip} end)
-            |> Map.new()
+          map = Map.new(parsed, fn {:ok, {mac, ip}} -> {mac, ip} end)
 
           {:ok, map}
         else
