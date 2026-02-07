@@ -5,6 +5,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1]
   import YellowDog.Console.ServiceHelper
 
   @impl true
@@ -136,19 +137,6 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   end
 
   defp format_timestamp(_), do: "Unknown"
-
-  defp format_ip({a, b, c, d}) do
-    "#{a}.#{b}.#{c}.#{d}"
-  end
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
-  end
-
-  defp format_ip(ip) when is_binary(ip), do: ip
-  defp format_ip(_), do: "Unknown"
 
   defp build_monitor_csv(stats, queries) do
     # Section 1: Network Statistics

@@ -17,8 +17,14 @@ defmodule YellowDog.Console.FormatHelper do
 
   def format_mac(_), do: "Unknown"
 
-  @doc "Formats an IPv4 tuple as dotted decimal."
+  @doc "Formats an IP address (IPv4 or IPv6 tuple, binary, or nil) as a string."
   def format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
+  def format_ip({a, b, c, d, e, f, g, h}),
+    do: Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))
+
+  def format_ip(ip) when is_binary(ip), do: ip
+  def format_ip(nil), do: nil
   def format_ip(_), do: "Unknown"
 
   @doc "Formats a DHCPv6 DUID binary as colon-separated hex."

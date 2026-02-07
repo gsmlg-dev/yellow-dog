@@ -6,6 +6,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Validators
@@ -635,13 +636,6 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       {:error, _} -> {0, 0, 0, 0}
     end
   end
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-
-  defp format_ip({a, b, c, d, e, f, g, h}),
-    do: Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))
-
-  defp format_ip(other), do: to_string(other)
 
   defp save_config_async do
     Task.start(fn ->

@@ -169,19 +169,4 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     header <> rows
   end
 
-  defp format_addresses_for_csv(addresses) when is_list(addresses) do
-    Enum.join(addresses, "; ")
-  end
-
-  defp format_addresses_for_csv(_), do: ""
-
-  defp format_txt_for_csv(txt_map) when is_map(txt_map) do
-    txt_map
-    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
-    |> Enum.join("; ")
-  end
-
-  defp format_txt_for_csv(_), do: ""
-
-
 end

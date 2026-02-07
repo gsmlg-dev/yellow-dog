@@ -12,6 +12,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
@@ -550,10 +551,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
     |> Enum.map(&parse_ip/1)
     |> Enum.reject(&is_nil/1)
   end
-
-  defp format_ip(nil), do: nil
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-  defp format_ip(ip) when is_binary(ip), do: ip
 
   defp format_dns_servers(nil), do: []
 
