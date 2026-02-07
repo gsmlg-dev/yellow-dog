@@ -801,12 +801,12 @@ defmodule YellowDog.Dns.Zone.AuthTest do
         rdata: {192, 168, 1, 1}
       })
 
-      assert Auth.dirty?(pid) == true
+      assert Auth.dirty?(pid)
 
       # Save should work and clear dirty flag
       case Auth.save(pid) do
         :ok ->
-          assert Auth.dirty?(pid) == false
+          refute Auth.dirty?(pid)
 
         {:error, _reason} ->
           # If save fails (e.g., zone file format issues), that's ok for this test
@@ -1073,7 +1073,7 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       """
 
       {:ok, _} = Auth.import_zone_file(pid, bind_content)
-      assert Auth.dirty?(pid) == true
+      assert Auth.dirty?(pid)
     end
 
     test "increments version after import", %{zone: pid} do

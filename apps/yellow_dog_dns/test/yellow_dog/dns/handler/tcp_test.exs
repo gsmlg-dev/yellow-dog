@@ -21,7 +21,7 @@ defmodule YellowDog.Dns.Handler.TCPTest do
 
   describe "Handler behaviour compliance" do
     test "handler module uses ThousandIsland.Handler behaviour" do
-      assert Code.ensure_loaded?(Handler) == true
+      assert Code.ensure_loaded?(Handler)
     end
 
     test "exports handle_connection/2 callback" do

@@ -273,7 +273,7 @@ defmodule DNS.Zone.Validator.ResultTest do
   describe "valid?/1" do
     test "returns true for new result" do
       result = Result.new()
-      assert Result.valid?(result) == true
+      assert Result.valid?(result)
     end
 
     test "returns false when errors present" do
@@ -281,7 +281,7 @@ defmodule DNS.Zone.Validator.ResultTest do
         Result.new()
         |> Result.add_error(:missing_soa, "No SOA")
 
-      assert Result.valid?(result) == false
+      refute Result.valid?(result)
     end
 
     test "returns true when only warnings present" do
@@ -289,7 +289,7 @@ defmodule DNS.Zone.Validator.ResultTest do
         Result.new()
         |> Result.add_warning(:single_ns, "Only 1 NS")
 
-      assert Result.valid?(result) == true
+      assert Result.valid?(result)
     end
   end
 

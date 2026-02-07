@@ -295,14 +295,14 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       state = %{socket: socket}
 
       # Verify IP is not quarantined before decline
-      assert ConflictResolver.quarantined?(declined_ip) == false
+      refute ConflictResolver.quarantined?(declined_ip)
 
       # Handle the decline message
       result = Handler.handle_data({client_ip, client_port, decline_data}, state)
       assert result == {:continue, state}
 
       # After decline, the IP should be quarantined
-      assert ConflictResolver.quarantined?(declined_ip) == true
+      assert ConflictResolver.quarantined?(declined_ip)
 
       :gen_udp.close(socket)
     end

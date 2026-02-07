@@ -146,9 +146,9 @@ defmodule YellowDog.Dns.ViewTest do
       view_name = "test_match_any_#{:rand.uniform(1_000_000)}"
       {:ok, pid} = View.start_link(name: view_name, acl: :any)
 
-      assert View.matches?(pid, {192, 168, 1, 1}) == true
-      assert View.matches?(pid, {10, 0, 0, 1}) == true
-      assert View.matches?(pid, {8, 8, 8, 8}) == true
+      assert View.matches?(pid, {192, 168, 1, 1})
+      assert View.matches?(pid, {10, 0, 0, 1})
+      assert View.matches?(pid, {8, 8, 8, 8})
 
       GenServer.stop(pid)
     end
@@ -158,7 +158,7 @@ defmodule YellowDog.Dns.ViewTest do
       view_name = "test_match_all_#{:rand.uniform(1_000_000)}"
       {:ok, pid} = View.start_link(name: view_name, acl: :all)
 
-      assert View.matches?(pid, {192, 168, 1, 1}) == true
+      assert View.matches?(pid, {192, 168, 1, 1})
 
       GenServer.stop(pid)
     end
@@ -169,9 +169,9 @@ defmodule YellowDog.Dns.ViewTest do
       acl_rules = [{:allow, {10, 0, 0, 0}, 8}, {:allow, {192, 168, 0, 0}, 16}]
       {:ok, pid} = View.start_link(name: view_name, acl: acl_rules)
 
-      assert View.matches?(pid, {10, 1, 2, 3}) == true
-      assert View.matches?(pid, {192, 168, 1, 100}) == true
-      assert View.matches?(pid, {8, 8, 8, 8}) == false
+      assert View.matches?(pid, {10, 1, 2, 3})
+      assert View.matches?(pid, {192, 168, 1, 100})
+      refute View.matches?(pid, {8, 8, 8, 8})
 
       GenServer.stop(pid)
     end
@@ -181,8 +181,8 @@ defmodule YellowDog.Dns.ViewTest do
       view_name = "test_match_localhost_#{:rand.uniform(1_000_000)}"
       {:ok, pid} = View.start_link(name: view_name, acl: "localhost")
 
-      assert View.matches?(pid, {127, 0, 0, 1}) == true
-      assert View.matches?(pid, {192, 168, 1, 1}) == false
+      assert View.matches?(pid, {127, 0, 0, 1})
+      refute View.matches?(pid, {192, 168, 1, 1})
 
       GenServer.stop(pid)
     end
@@ -193,8 +193,8 @@ defmodule YellowDog.Dns.ViewTest do
       acl = ACL.new("custom", [{:allow, {172, 16, 0, 0}, 12}])
       {:ok, pid} = View.start_link(name: view_name, acl: acl)
 
-      assert View.matches?(pid, {172, 16, 5, 10}) == true
-      assert View.matches?(pid, {172, 32, 1, 1}) == false
+      assert View.matches?(pid, {172, 16, 5, 10})
+      refute View.matches?(pid, {172, 32, 1, 1})
 
       GenServer.stop(pid)
     end

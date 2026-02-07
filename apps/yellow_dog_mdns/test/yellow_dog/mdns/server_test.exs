@@ -28,7 +28,7 @@ defmodule YellowDog.Mdns.ServerTest do
       # Test that the server module exists and is accessible
       # Since the Config module isn't available in test environment, we verify the module is loaded
       assert is_atom(Server)
-      assert Code.ensure_loaded?(Server) == true
+      assert Code.ensure_loaded?(Server)
     end
   end
 

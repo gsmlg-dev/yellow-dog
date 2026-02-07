@@ -30,10 +30,10 @@ defmodule YellowDog.IntegrationTest do
       {:ok, _pid} = YellowDog.Config.start_link(config)
 
       # Verify config is accessible
-      assert YellowDog.Config.service_enabled?(:dns) == true
-      assert YellowDog.Config.service_enabled?(:mdns) == true
-      assert YellowDog.Config.service_enabled?(:dhcpv4) == true
-      assert YellowDog.Config.service_enabled?(:dhcpv6) == false
+      assert YellowDog.Config.service_enabled?(:dns)
+      assert YellowDog.Config.service_enabled?(:mdns)
+      assert YellowDog.Config.service_enabled?(:dhcpv4)
+      refute YellowDog.Config.service_enabled?(:dhcpv6)
 
       # Verify service configs are loaded correctly
       dns_config = YellowDog.Config.get_service(:dns)
@@ -52,9 +52,9 @@ defmodule YellowDog.IntegrationTest do
       {:ok, _pid} = YellowDog.Config.start_link(config)
 
       # Verify service states from minimal config
-      assert YellowDog.Config.service_enabled?(:dns) == true
-      assert YellowDog.Config.service_enabled?(:mdns) == false
-      assert YellowDog.Config.service_enabled?(:dhcpv4) == false
+      assert YellowDog.Config.service_enabled?(:dns)
+      refute YellowDog.Config.service_enabled?(:mdns)
+      refute YellowDog.Config.service_enabled?(:dhcpv4)
 
       # Verify DNS config values
       dns_config = YellowDog.Config.get_service(:dns)
@@ -69,10 +69,10 @@ defmodule YellowDog.IntegrationTest do
       {:ok, _pid} = YellowDog.Config.start_link(config)
 
       # Verify all services are disabled
-      assert YellowDog.Config.service_enabled?(:dns) == false
-      assert YellowDog.Config.service_enabled?(:mdns) == false
-      assert YellowDog.Config.service_enabled?(:dhcpv4) == false
-      assert YellowDog.Config.service_enabled?(:dhcpv6) == false
+      refute YellowDog.Config.service_enabled?(:dns)
+      refute YellowDog.Config.service_enabled?(:mdns)
+      refute YellowDog.Config.service_enabled?(:dhcpv4)
+      refute YellowDog.Config.service_enabled?(:dhcpv6)
     end
   end
 

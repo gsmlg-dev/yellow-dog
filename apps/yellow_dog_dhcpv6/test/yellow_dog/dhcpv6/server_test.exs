@@ -14,7 +14,7 @@ defmodule YellowDog.Dhcpv6.ServerTest do
       assert is_function(&Server.start_link/1)
 
       # Test that server module is accessible
-      assert Code.ensure_loaded?(Server) == true
+      assert Code.ensure_loaded?(Server)
       assert is_atom(Server)
     end
 
@@ -22,7 +22,7 @@ defmodule YellowDog.Dhcpv6.ServerTest do
       # Test that the server module exists and is accessible
       # Since the Config module isn't available in test environment, we verify the module is loaded
       assert is_atom(Server)
-      assert Code.ensure_loaded?(Server) == true
+      assert Code.ensure_loaded?(Server)
     end
   end
 

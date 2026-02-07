@@ -711,7 +711,7 @@ defmodule DNS.Zone.StorePerformanceTest do
       # Delete with different case
       {time, _} = measure(fn -> Store.delete_zone("TODELETE.NET") end)
 
-      assert Store.zone_exists?("todelete.net") == false
+      refute Store.zone_exists?("todelete.net")
       assert_performance(time, 1000, "Case-insensitive delete")
     end
   end

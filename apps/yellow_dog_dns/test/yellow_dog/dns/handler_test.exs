@@ -89,7 +89,7 @@ defmodule YellowDog.Dns.Handler.UDPTest do
     test "handler module uses Abyss.Handler behaviour" do
       # The handler uses Abyss.Handler which provides the behaviour
       # We verify the module is loaded and can be called
-      assert Code.ensure_loaded?(Handler) == true
+      assert Code.ensure_loaded?(Handler)
     end
 
     test "exports handle_data/2 callback" do

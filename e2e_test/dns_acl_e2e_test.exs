@@ -123,30 +123,30 @@ defmodule E2ETest.DnsAclE2ETest do
     test "any ACL matches everything" do
       alias YellowDog.Dns.View.ACL
 
-      assert ACL.matches?("any", {192, 168, 1, 1}) == true
-      assert ACL.matches?("any", {10, 0, 0, 1}) == true
+      assert ACL.matches?("any", {192, 168, 1, 1})
+      assert ACL.matches?("any", {10, 0, 0, 1})
     end
 
     test "none ACL matches nothing" do
       alias YellowDog.Dns.View.ACL
 
-      assert ACL.matches?("none", {192, 168, 1, 1}) == false
-      assert ACL.matches?("none", {10, 0, 0, 1}) == false
+      refute ACL.matches?("none", {192, 168, 1, 1})
+      refute ACL.matches?("none", {10, 0, 0, 1})
     end
 
     test "localhost ACL matches loopback" do
       alias YellowDog.Dns.View.ACL
 
-      assert ACL.matches?("localhost", {127, 0, 0, 1}) == true
-      assert ACL.matches?("localhost", {192, 168, 1, 1}) == false
+      assert ACL.matches?("localhost", {127, 0, 0, 1})
+      refute ACL.matches?("localhost", {192, 168, 1, 1})
     end
 
     test "custom ACL with CIDR rules" do
       alias YellowDog.Dns.View.ACL
 
       acl = ACL.new("test-cidr", [{:allow, {192, 168, 0, 0}, 16}])
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == true
-      assert ACL.matches?(acl, {10, 0, 0, 1}) == false
+      assert ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {10, 0, 0, 1})
     end
   end
 end

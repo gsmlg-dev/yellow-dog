@@ -31,7 +31,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
   describe "quarantined?/1" do
     test "returns false for non-quarantined IP" do
       ip = {10, 0, 0, 1}
-      assert ConflictResolver.quarantined?(ip) == false
+      refute ConflictResolver.quarantined?(ip)
     end
   end
 
@@ -82,7 +82,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
       conflicted_ip = lease.ip_address
 
       # Before conflict, IP should not be quarantined
-      assert ConflictResolver.quarantined?(conflicted_ip) == false
+      refute ConflictResolver.quarantined?(conflicted_ip)
 
       # Handle the conflict - note: order is (ip, mac, pool_name)
       result = ConflictResolver.handle_conflict(conflicted_ip, mac, "default")
@@ -90,7 +90,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
       assert match?({:ok, _new_ip}, result) or match?({:error, _reason}, result)
 
       # After conflict, original IP should be quarantined
-      assert ConflictResolver.quarantined?(conflicted_ip) == true
+      assert ConflictResolver.quarantined?(conflicted_ip)
     end
 
     @tag :capture_log
@@ -145,14 +145,14 @@ defmodule YellowDog.Dhcpv4.ConflictResolverTest do
 
       # Handle the conflict
       ConflictResolver.handle_conflict(conflicted_ip, mac, "default")
-      assert ConflictResolver.quarantined?(conflicted_ip) == true
+      assert ConflictResolver.quarantined?(conflicted_ip)
 
       # Release the quarantine
       result = ConflictResolver.release_quarantine(conflicted_ip)
       assert result == :ok
 
       # Should no longer be quarantined
-      assert ConflictResolver.quarantined?(conflicted_ip) == false
+      refute ConflictResolver.quarantined?(conflicted_ip)
     end
   end
 end

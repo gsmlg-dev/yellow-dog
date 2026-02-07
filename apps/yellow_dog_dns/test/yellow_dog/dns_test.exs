@@ -4,9 +4,9 @@ defmodule YellowDog.DnsTest do
   describe "DNS application modules" do
     test "DNS server modules exist" do
       # Test that core DNS modules exist and are properly defined
-      assert Code.ensure_loaded?(YellowDog.Dns) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.Server) == true
-      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
+      assert Code.ensure_loaded?(YellowDog.Dns)
+      assert Code.ensure_loaded?(YellowDog.Dns.Server)
+      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP)
     end
 
     test "DNS module exports required functions" do
@@ -60,14 +60,14 @@ defmodule YellowDog.DnsTest do
   describe "DNS handler" do
     test "handler module is available" do
       # Test that the handler module exists and can be loaded
-      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
+      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP)
     end
 
     test "handler implements Abyss.Handler behaviour" do
       # Test that the handler uses the Abyss.Handler behaviour
       # Note: These are callbacks implemented via 'use Abyss.Handler', not public exports
       # We verify the module is properly loaded
-      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP) == true
+      assert Code.ensure_loaded?(YellowDog.Dns.Handler.UDP)
     end
   end
 

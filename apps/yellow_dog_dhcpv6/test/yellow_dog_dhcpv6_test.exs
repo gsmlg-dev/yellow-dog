@@ -3,7 +3,7 @@ defmodule YellowDog.Dhcpv6Test do
 
   test "DHCPv6 modules are available" do
     # Test that DHCPv6 modules can be loaded and used
-    assert Code.ensure_loaded?(YellowDog.Dhcpv6) == true
+    assert Code.ensure_loaded?(YellowDog.Dhcpv6)
     assert function_exported?(YellowDog.Dhcpv6, :start_link, 1)
     assert function_exported?(YellowDog.Dhcpv6, :child_spec, 1)
   end

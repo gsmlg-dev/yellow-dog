@@ -294,8 +294,8 @@ defmodule DNS.Zone.StoreTest do
       zone = create_test_zone("example.com.")
       Store.put_zone(zone)
 
-      assert Store.zone_exists?("EXAMPLE.COM.") == true
-      assert Store.zone_exists?("Example.Com.") == true
+      assert Store.zone_exists?("EXAMPLE.COM.")
+      assert Store.zone_exists?("Example.Com.")
     end
   end
 
@@ -305,10 +305,10 @@ defmodule DNS.Zone.StoreTest do
       Store.put_zone(zone)
 
       name = %Name{value: "example.com."}
-      assert Store.zone_exists?(name) == true
+      assert Store.zone_exists?(name)
 
       name2 = %Name{value: "nonexistent.com."}
-      assert Store.zone_exists?(name2) == false
+      refute Store.zone_exists?(name2)
     end
   end
 

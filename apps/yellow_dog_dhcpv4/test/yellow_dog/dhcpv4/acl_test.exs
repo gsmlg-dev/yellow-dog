@@ -220,7 +220,7 @@ defmodule YellowDog.Dhcpv4.ACLTest do
         client_arch: nil
       }
 
-      assert ACL.allowed?(rules, client_info) == true
+      assert ACL.allowed?(rules, client_info)
     end
 
     test "returns false for deny action" do
@@ -242,7 +242,7 @@ defmodule YellowDog.Dhcpv4.ACLTest do
         client_arch: nil
       }
 
-      assert ACL.allowed?(rules, client_info) == false
+      refute ACL.allowed?(rules, client_info)
     end
 
     test "returns true for custom_options action" do
@@ -264,7 +264,7 @@ defmodule YellowDog.Dhcpv4.ACLTest do
         client_arch: nil
       }
 
-      assert ACL.allowed?(rules, client_info) == true
+      assert ACL.allowed?(rules, client_info)
     end
   end
 

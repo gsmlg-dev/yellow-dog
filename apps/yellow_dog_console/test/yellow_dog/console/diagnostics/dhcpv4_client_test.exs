@@ -5,7 +5,7 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4ClientTest do
 
   describe "requires_privileged_port?/0" do
     test "returns true" do
-      assert Dhcpv4Client.requires_privileged_port?() == true
+      assert Dhcpv4Client.requires_privileged_port?()
     end
   end
 

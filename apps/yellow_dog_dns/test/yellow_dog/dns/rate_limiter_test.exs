@@ -184,7 +184,7 @@ defmodule YellowDog.Dns.RateLimiterTest do
 
   describe "enabled?/0" do
     test "returns true when enabled" do
-      assert RateLimiter.enabled?() == true
+      assert RateLimiter.enabled?()
     end
   end
 
@@ -210,7 +210,7 @@ defmodule YellowDog.Dns.RateLimiterTest do
         assert :ok = RateLimiter.check_rate(client_ip)
       end
 
-      assert RateLimiter.enabled?() == false
+      refute RateLimiter.enabled?()
     end
   end
 
@@ -235,7 +235,7 @@ defmodule YellowDog.Dns.RateLimiterTest do
       GenServer.stop(RateLimiter, :normal)
       Process.sleep(10)
 
-      assert RateLimiter.enabled?() == false
+      refute RateLimiter.enabled?()
     end
   end
 end

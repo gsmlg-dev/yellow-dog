@@ -48,21 +48,21 @@ defmodule YellowDog.Dns.View.ACLTest do
     test "matches IP in allowed subnet" do
       acl = ACL.new("internal", [{:allow, {10, 0, 0, 0}, 8}])
 
-      assert ACL.matches?(acl, {10, 1, 2, 3}) == true
-      assert ACL.matches?(acl, {10, 255, 255, 255}) == true
+      assert ACL.matches?(acl, {10, 1, 2, 3})
+      assert ACL.matches?(acl, {10, 255, 255, 255})
     end
 
     test "does not match IP outside allowed subnet" do
       acl = ACL.new("internal", [{:allow, {10, 0, 0, 0}, 8}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
-      assert ACL.matches?(acl, {8, 8, 8, 8}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 1})
+      refute ACL.matches?(acl, {8, 8, 8, 8})
     end
 
     test "deny rule blocks matching IP" do
       acl = ACL.new("blocked", [{:deny, {192, 168, 1, 0}, 24}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 100})
     end
 
     test "allow after deny - first match wins" do
@@ -72,35 +72,35 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, {192, 168, 0, 0}, 16}
         ])
 
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
-      assert ACL.matches?(acl, {192, 168, 2, 1}) == true
+      refute ACL.matches?(acl, {192, 168, 1, 1})
+      assert ACL.matches?(acl, {192, 168, 2, 1})
     end
 
     test "default deny when no rules match" do
       acl = ACL.new("specific", [{:allow, {10, 0, 0, 0}, 8}])
 
-      assert ACL.matches?(acl, {172, 16, 1, 1}) == false
+      refute ACL.matches?(acl, {172, 16, 1, 1})
     end
 
     test "exact IP match with allow" do
       acl = ACL.new("exact", [{:allow, {192, 168, 1, 100}}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 101}) == false
+      assert ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {192, 168, 1, 101})
     end
 
     test "exact IP match with deny" do
       acl = ACL.new("blacklist", [{:deny, {192, 168, 1, 100}}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == false
-      assert ACL.matches?(acl, {192, 168, 1, 101}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {192, 168, 1, 101})
     end
 
     test "CIDR string notation in rules" do
       acl = ACL.new("cidr_string", [{:allow, "10.0.0.0/8"}])
 
-      assert ACL.matches?(acl, {10, 1, 2, 3}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
+      assert ACL.matches?(acl, {10, 1, 2, 3})
+      refute ACL.matches?(acl, {192, 168, 1, 1})
     end
 
     test "multiple CIDR ranges" do
@@ -111,23 +111,23 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, "192.168.0.0/16"}
         ])
 
-      assert ACL.matches?(acl, {10, 1, 2, 3}) == true
-      assert ACL.matches?(acl, {172, 16, 5, 10}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == true
-      assert ACL.matches?(acl, {8, 8, 8, 8}) == false
+      assert ACL.matches?(acl, {10, 1, 2, 3})
+      assert ACL.matches?(acl, {172, 16, 5, 10})
+      assert ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {8, 8, 8, 8})
     end
 
     test "handles any rule" do
       acl = ACL.new("any", [{:allow, :any}])
 
-      assert ACL.matches?(acl, {1, 2, 3, 4}) == true
-      assert ACL.matches?(acl, {255, 255, 255, 255}) == true
+      assert ACL.matches?(acl, {1, 2, 3, 4})
+      assert ACL.matches?(acl, {255, 255, 255, 255})
     end
 
     test "handles deny any rule" do
       acl = ACL.new("none", [{:deny, :any}])
 
-      assert ACL.matches?(acl, {1, 2, 3, 4}) == false
+      refute ACL.matches?(acl, {1, 2, 3, 4})
     end
   end
 
@@ -135,60 +135,60 @@ defmodule YellowDog.Dns.View.ACLTest do
     test "matches IPv6 in allowed subnet" do
       acl = ACL.new("ipv6", [{:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 32}])
 
-      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0x5678, 0, 0, 0, 1}) == true
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0x5678, 0, 0, 0, 1})
     end
 
     test "does not match IPv6 outside allowed subnet" do
       acl = ACL.new("ipv6", [{:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 32}])
 
-      assert ACL.matches?(acl, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 1}) == false
+      refute ACL.matches?(acl, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 1})
     end
 
     test "IPv6 CIDR string notation" do
       acl = ACL.new("ipv6_cidr", [{:allow, "2001:db8::/32"}])
 
-      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0, 0, 0, 0, 1}) == true
-      assert ACL.matches?(acl, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 1}) == false
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0, 0, 0, 0, 1})
+      refute ACL.matches?(acl, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 1})
     end
 
     test "IPv6 loopback matching" do
       acl = ACL.new("loopback", [{:allow, {0, 0, 0, 0, 0, 0, 0, 1}, 128}])
 
-      assert ACL.matches?(acl, {0, 0, 0, 0, 0, 0, 0, 1}) == true
-      assert ACL.matches?(acl, {0, 0, 0, 0, 0, 0, 0, 2}) == false
+      assert ACL.matches?(acl, {0, 0, 0, 0, 0, 0, 0, 1})
+      refute ACL.matches?(acl, {0, 0, 0, 0, 0, 0, 0, 2})
     end
   end
 
   describe "matches?/2 with built-in ACL names" do
     test "'any' matches all IPs" do
-      assert ACL.matches?("any", {1, 2, 3, 4}) == true
-      assert ACL.matches?("any", {192, 168, 1, 1}) == true
-      assert ACL.matches?("any", {0, 0, 0, 0}) == true
+      assert ACL.matches?("any", {1, 2, 3, 4})
+      assert ACL.matches?("any", {192, 168, 1, 1})
+      assert ACL.matches?("any", {0, 0, 0, 0})
     end
 
     test "'none' matches no IPs" do
-      assert ACL.matches?("none", {1, 2, 3, 4}) == false
-      assert ACL.matches?("none", {192, 168, 1, 1}) == false
+      refute ACL.matches?("none", {1, 2, 3, 4})
+      refute ACL.matches?("none", {192, 168, 1, 1})
     end
 
     test "'localhost' matches loopback addresses" do
-      assert ACL.matches?("localhost", {127, 0, 0, 1}) == true
-      assert ACL.matches?("localhost", {0, 0, 0, 0, 0, 0, 0, 1}) == true
-      assert ACL.matches?("localhost", {192, 168, 1, 1}) == false
+      assert ACL.matches?("localhost", {127, 0, 0, 1})
+      assert ACL.matches?("localhost", {0, 0, 0, 0, 0, 0, 0, 1})
+      refute ACL.matches?("localhost", {192, 168, 1, 1})
     end
 
     test "'localnets' matches RFC 1918 private networks" do
-      assert ACL.matches?("localnets", {10, 0, 0, 1}) == true
-      assert ACL.matches?("localnets", {10, 255, 255, 255}) == true
-      assert ACL.matches?("localnets", {172, 16, 0, 1}) == true
-      assert ACL.matches?("localnets", {172, 31, 255, 255}) == true
-      assert ACL.matches?("localnets", {192, 168, 0, 1}) == true
-      assert ACL.matches?("localnets", {192, 168, 255, 255}) == true
-      assert ACL.matches?("localnets", {8, 8, 8, 8}) == false
+      assert ACL.matches?("localnets", {10, 0, 0, 1})
+      assert ACL.matches?("localnets", {10, 255, 255, 255})
+      assert ACL.matches?("localnets", {172, 16, 0, 1})
+      assert ACL.matches?("localnets", {172, 31, 255, 255})
+      assert ACL.matches?("localnets", {192, 168, 0, 1})
+      assert ACL.matches?("localnets", {192, 168, 255, 255})
+      refute ACL.matches?("localnets", {8, 8, 8, 8})
     end
 
     test "unknown ACL name returns false" do
-      assert ACL.matches?("unknown_acl", {192, 168, 1, 1}) == false
+      refute ACL.matches?("unknown_acl", {192, 168, 1, 1})
     end
   end
 
@@ -197,28 +197,28 @@ defmodule YellowDog.Dns.View.ACLTest do
       {:ok, acl} = ACL.get_builtin("any")
 
       assert acl.name == "any"
-      assert ACL.matches?(acl, {1, 2, 3, 4}) == true
+      assert ACL.matches?(acl, {1, 2, 3, 4})
     end
 
     test "returns built-in ACL for 'none'" do
       {:ok, acl} = ACL.get_builtin("none")
 
       assert acl.name == "none"
-      assert ACL.matches?(acl, {1, 2, 3, 4}) == false
+      refute ACL.matches?(acl, {1, 2, 3, 4})
     end
 
     test "returns built-in ACL for 'localhost'" do
       {:ok, acl} = ACL.get_builtin("localhost")
 
       assert acl.name == "localhost"
-      assert ACL.matches?(acl, {127, 0, 0, 1}) == true
+      assert ACL.matches?(acl, {127, 0, 0, 1})
     end
 
     test "returns built-in ACL for 'localnets'" do
       {:ok, acl} = ACL.get_builtin("localnets")
 
       assert acl.name == "localnets"
-      assert ACL.matches?(acl, {10, 0, 0, 1}) == true
+      assert ACL.matches?(acl, {10, 0, 0, 1})
     end
 
     test "returns error for unknown ACL" do
@@ -283,27 +283,27 @@ defmodule YellowDog.Dns.View.ACLTest do
     test "empty rules list returns false for any IP" do
       acl = ACL.new("empty", [])
 
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 1})
     end
 
     test "handles /0 prefix (matches all)" do
       acl = ACL.new("all", [{:allow, {0, 0, 0, 0}, 0}])
 
-      assert ACL.matches?(acl, {1, 2, 3, 4}) == true
-      assert ACL.matches?(acl, {255, 255, 255, 255}) == true
+      assert ACL.matches?(acl, {1, 2, 3, 4})
+      assert ACL.matches?(acl, {255, 255, 255, 255})
     end
 
     test "handles /32 prefix (exact match)" do
       acl = ACL.new("exact", [{:allow, {192, 168, 1, 100}, 32}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 101}) == false
+      assert ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {192, 168, 1, 101})
     end
 
     test "invalid CIDR string in rules is ignored" do
       acl = ACL.new("invalid_cidr", [{:allow, "not-a-cidr"}])
 
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 1})
     end
 
     test "mixed IPv4 and IPv6 rules" do
@@ -313,15 +313,15 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0}, 32}
         ])
 
-      assert ACL.matches?(acl, {10, 1, 2, 3}) == true
-      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0, 0, 0, 0, 1}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 1}) == false
+      assert ACL.matches?(acl, {10, 1, 2, 3})
+      assert ACL.matches?(acl, {0x2001, 0xDB8, 0x1234, 0, 0, 0, 0, 1})
+      refute ACL.matches?(acl, {192, 168, 1, 1})
     end
 
     test "handles mismatched IP versions in subnet check" do
       acl = ACL.new("ipv4_only", [{:allow, {10, 0, 0, 0}, 8}])
 
-      assert ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}) == false
+      refute ACL.matches?(acl, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
     end
   end
 
@@ -333,9 +333,9 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, {192, 168, 0, 0}, 16}
         ])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == false
-      assert ACL.matches?(acl, {192, 168, 1, 99}) == true
-      assert ACL.matches?(acl, {192, 168, 1, 101}) == true
+      refute ACL.matches?(acl, {192, 168, 1, 100})
+      assert ACL.matches?(acl, {192, 168, 1, 99})
+      assert ACL.matches?(acl, {192, 168, 1, 101})
     end
 
     test "broader deny before specific allow" do
@@ -345,8 +345,8 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, {192, 168, 1, 100}, 32}
         ])
 
-      assert ACL.matches?(acl, {192, 168, 1, 100}) == false
-      assert ACL.matches?(acl, {192, 168, 1, 99}) == false
+      refute ACL.matches?(acl, {192, 168, 1, 100})
+      refute ACL.matches?(acl, {192, 168, 1, 99})
     end
 
     test "first matching rule wins" do
@@ -357,8 +357,8 @@ defmodule YellowDog.Dns.View.ACLTest do
           {:allow, {192, 168, 2, 0}, 24}
         ])
 
-      assert ACL.matches?(acl, {192, 168, 1, 50}) == true
-      assert ACL.matches?(acl, {192, 168, 2, 50}) == true
+      assert ACL.matches?(acl, {192, 168, 1, 50})
+      assert ACL.matches?(acl, {192, 168, 2, 50})
     end
   end
 end

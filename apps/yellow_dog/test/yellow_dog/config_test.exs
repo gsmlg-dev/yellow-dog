@@ -214,10 +214,10 @@ defmodule YellowDog.ConfigTest do
     end
 
     test "service_enabled?/1 correctly identifies enabled services" do
-      assert YellowDog.Config.service_enabled?(:dns) == true
-      assert YellowDog.Config.service_enabled?(:mdns) == true
-      assert YellowDog.Config.service_enabled?(:dhcpv4) == true
-      assert YellowDog.Config.service_enabled?(:dhcpv6) == false
+      assert YellowDog.Config.service_enabled?(:dns)
+      assert YellowDog.Config.service_enabled?(:mdns)
+      assert YellowDog.Config.service_enabled?(:dhcpv4)
+      refute YellowDog.Config.service_enabled?(:dhcpv6)
     end
 
     test "concurrent access to config from multiple processes" do
@@ -303,8 +303,8 @@ defmodule YellowDog.ConfigTest do
     end
 
     test "dns_zone_enabled?/1 checks if zone is configured" do
-      assert YellowDog.Config.dns_zone_enabled?("example_com") == true
-      assert YellowDog.Config.dns_zone_enabled?("nonexistent.com") == false
+      assert YellowDog.Config.dns_zone_enabled?("example_com")
+      refute YellowDog.Config.dns_zone_enabled?("nonexistent.com")
     end
 
     test "get_dns_zone_type/1 returns zone type" do
