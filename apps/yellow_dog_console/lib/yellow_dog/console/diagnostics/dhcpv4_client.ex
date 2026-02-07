@@ -112,12 +112,20 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
   defp parse_mac(""), do: generate_mac()
 
   defp parse_mac(mac_string) when is_binary(mac_string) do
-    mac_string
-    |> String.split(":")
-    |> Enum.map(&String.to_integer(&1, 16))
-    |> :erlang.list_to_binary()
-  rescue
-    _ -> generate_mac()
+    parts = String.split(mac_string, ":")
+
+    case parts do
+      [_, _, _, _, _, _] ->
+        hex = parts |> Enum.map_join(&String.pad_leading(&1, 2, "0")) |> String.upcase()
+
+        case Base.decode16(hex) do
+          {:ok, bytes} -> bytes
+          :error -> generate_mac()
+        end
+
+      _ ->
+        generate_mac()
+    end
   end
 
   defp parse_mac(mac) when is_binary(mac) and byte_size(mac) == 6, do: mac
