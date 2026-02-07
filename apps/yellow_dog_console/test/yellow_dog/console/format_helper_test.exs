@@ -230,4 +230,47 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.filtered_countries(@countries, "xyz") == []
     end
   end
+
+  describe "filtered_pools/2" do
+    @pools [
+      %{name: "office", network: "192.168.1.0/24", range_start: {192, 168, 1, 100}},
+      %{name: "guest", network: "10.0.0.0/24", range_start: {10, 0, 0, 50}},
+      %{name: "server", network: "172.16.0.0/16", range_start: {172, 16, 0, 10}}
+    ]
+
+    test "returns all pools for empty filter" do
+      assert FormatHelper.filtered_pools(@pools, "") == @pools
+    end
+
+    test "filters by pool name" do
+      result = FormatHelper.filtered_pools(@pools, "office")
+      assert length(result) == 1
+      assert hd(result).name == "office"
+    end
+
+    test "filters by network" do
+      result = FormatHelper.filtered_pools(@pools, "172.16")
+      assert length(result) == 1
+      assert hd(result).name == "server"
+    end
+
+    test "filters by range start IP" do
+      result = FormatHelper.filtered_pools(@pools, "10.0.0")
+      assert length(result) == 1
+      assert hd(result).name == "guest"
+    end
+
+    test "filter is case-insensitive" do
+      result = FormatHelper.filtered_pools(@pools, "GUEST")
+      assert length(result) == 1
+    end
+
+    test "returns empty list for no matches" do
+      assert FormatHelper.filtered_pools(@pools, "xyz") == []
+    end
+
+    test "handles empty pools list" do
+      assert FormatHelper.filtered_pools([], "test") == []
+    end
+  end
 end
