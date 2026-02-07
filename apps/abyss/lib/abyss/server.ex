@@ -52,8 +52,9 @@ defmodule Abyss.Server do
         pid -> Abyss.ListenerPool.resume(pid)
       end
     rescue
-      ArgumentError -> nil
-      _ -> nil
+      _e in [ArgumentError, UndefinedFunctionError] -> nil
+    catch
+      :exit, _ -> nil
     end
   end
 
@@ -75,8 +76,9 @@ defmodule Abyss.Server do
         pid -> Abyss.ListenerPool.suspend(pid)
       end
     rescue
-      ArgumentError -> nil
-      _ -> nil
+      _e in [ArgumentError, UndefinedFunctionError] -> nil
+    catch
+      :exit, _ -> nil
     end
   end
 
@@ -108,8 +110,9 @@ defmodule Abyss.Server do
           end)
       end
     rescue
-      ArgumentError -> nil
-      _ -> nil
+      _e in [ArgumentError, UndefinedFunctionError] -> nil
+    catch
+      :exit, _ -> nil
     end
   end
 
@@ -141,8 +144,9 @@ defmodule Abyss.Server do
           end)
       end
     rescue
-      ArgumentError -> nil
-      _ -> nil
+      _e in [ArgumentError, UndefinedFunctionError] -> nil
+    catch
+      :exit, _ -> nil
     end
   end
 

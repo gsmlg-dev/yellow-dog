@@ -60,8 +60,9 @@ defmodule Abyss.ListenerPool do
           end)
       end
     rescue
-      ArgumentError -> []
-      _ -> []
+      _e in [ArgumentError, UndefinedFunctionError] -> []
+    catch
+      :exit, _ -> []
     end
   end
 
@@ -92,8 +93,9 @@ defmodule Abyss.ListenerPool do
           :ok
       end
     rescue
-      ArgumentError -> :error
-      _ -> :error
+      _e in [ArgumentError, UndefinedFunctionError] -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 
@@ -122,8 +124,9 @@ defmodule Abyss.ListenerPool do
           :ok
       end
     rescue
-      ArgumentError -> :error
-      _ -> :error
+      _e in [ArgumentError, UndefinedFunctionError] -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 

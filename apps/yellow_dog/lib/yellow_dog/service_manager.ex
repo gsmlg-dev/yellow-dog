@@ -191,11 +191,7 @@ defmodule YellowDog.ServiceManager do
   @spec get_service_stats(atom()) :: map()
   def get_service_stats(:mdns) do
     if YellowDog.Config.service_enabled?(:mdns) do
-      try do
-        apply(YellowDog.Mdns.MessageCache, :stats, [])
-      rescue
-        _ -> %{error: "Service not running"}
-      end
+      safe_service_call(YellowDog.Mdns.MessageCache, :stats, [])
     else
       %{error: "Service disabled"}
     end
@@ -203,11 +199,7 @@ defmodule YellowDog.ServiceManager do
 
   def get_service_stats(:dhcpv4) do
     if YellowDog.Config.service_enabled?(:dhcpv4) do
-      try do
-        apply(YellowDog.Dhcpv4.LeaseManager, :stats, [])
-      rescue
-        _ -> %{error: "Service not running"}
-      end
+      safe_service_call(YellowDog.Dhcpv4.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
     end
@@ -215,11 +207,7 @@ defmodule YellowDog.ServiceManager do
 
   def get_service_stats(:dhcpv6) do
     if YellowDog.Config.service_enabled?(:dhcpv6) do
-      try do
-        apply(YellowDog.Dhcpv6.LeaseManager, :stats, [])
-      rescue
-        _ -> %{error: "Service not running"}
-      end
+      safe_service_call(YellowDog.Dhcpv6.LeaseManager, :stats, [])
     else
       %{error: "Service disabled"}
     end
@@ -308,7 +296,8 @@ defmodule YellowDog.ServiceManager do
              stats: stats
            }}
         rescue
-          _ -> {:error, :info_unavailable}
+          e in [ArgumentError, UndefinedFunctionError] ->
+            {:error, {:info_unavailable, Exception.message(e)}}
         end
     end
   end
@@ -453,4 +442,13 @@ defmodule YellowDog.ServiceManager do
     do: "#{Float.round(bytes / (1024 * 1024), 2)}MB"
 
   defp format_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024 * 1024), 2)}GB"
+
+  defp safe_service_call(module, function, args) do
+    apply(module, function, args)
+  rescue
+    e in [UndefinedFunctionError, ArgumentError] ->
+      %{error: "Service not running: #{Exception.message(e)}"}
+  catch
+    :exit, {:noproc, _} -> %{error: "Service not running"}
+  end
 end

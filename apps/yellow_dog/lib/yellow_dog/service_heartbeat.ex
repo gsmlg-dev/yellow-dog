@@ -193,9 +193,9 @@ defmodule YellowDog.ServiceHeartbeat do
       try do
         apply(module, function, args)
       rescue
-        _ -> nil
+        _e in [UndefinedFunctionError, ArgumentError] -> nil
       catch
-        :exit, _ -> nil
+        :exit, {:noproc, _} -> nil
       end
     else
       nil
