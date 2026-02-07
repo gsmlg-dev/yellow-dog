@@ -1,12 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 26)
+**Phase**: IN_PROGRESS (Iteration 27)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 26 of 1000
+**Iteration**: 27 of 1000
 
 ## Session Summary
-Iteration 26: O(n) length() → O(1) pattern matching across codebase:
+Iteration 27: filter|>map → for comprehensions + String.split trim: true:
+- ✅ **4,764 ex_dns + 1,052 DNS + 309 mDNS + 155 core + 201 DHCPv6 + 962 console tests, 0 failures**
+- ✅ Converted **15 `Enum.filter |> Enum.map` chains** to single-pass `for` comprehensions across **12 files** in 6 apps
+- ✅ Replaced 4 `String.split |> Enum.filter(&(&1 != ""))` with `String.split(trim: true)` in domain.ex, name.ex
+- ✅ Merged double `Enum.filter` into single predicate in root_hint.ex
+- ✅ Used `for` with pattern matching to combine filter+map (e.g., `{key, [_, _ | _]}` in validators)
+- ✅ Cached `root_hints()` call to avoid redundant computation in `nameservers/0`
+- ✅ **1 commit this iteration** — net -41 lines
+
+Previous iteration 26: O(n) length() → O(1) pattern matching across codebase:
 - ✅ **4,764 ex_dns + 1,052 DNS + 319 DHCPv4 + 155 core + 962 console tests, 0 failures**
 - ✅ Replaced `length(records) > 1` with `match?([_, _ | _], records)` in validator.ex, validator/zone.ex (×2), file_parser.ex
 - ✅ Replaced `length(parts) >= 7` + `Enum.at` with case destructuring in file_parser.ex SOA parser
