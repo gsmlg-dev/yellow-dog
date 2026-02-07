@@ -1,18 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 73)
+**Phase**: IN_PROGRESS (Iteration 74)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 73 of 1000
+**Iteration**: 74 of 1000
 
 ## Session Summary
-Iteration 73: Replace `String.contains?` with `=~` operator in test assertions:
-- ✅ **Full umbrella passes: 0 failures, 0 warnings, 0 credo issues**
+Iteration 74: Enable `async: true` for pure-function test modules:
+- ✅ **All individual app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ 11 test modules identified as safe for concurrent execution (no shared state)
+- ✅ Excluded 4 unsafe modules: security_test (ETS), dhcpv4_test (start_link), dhcpv4/server_test, dhcpv6/server_test
+- ✅ Files: cache_test, editor_test, manager_test, parser_error_test, parser_test, validator_test (ex_dns); config_test x2, option_test (ex_dhcp); dhcpv6_test, dns_test
+- ✅ 11 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 73: Replace `String.contains?` with `=~` operator in test assertions:
 - ✅ 214 instances replaced across 41 test files (all apps + e2e)
-- ✅ `assert String.contains?(str, substr)` → `assert str =~ substr`
-- ✅ `refute String.contains?(str, substr)` → `refute str =~ substr`
-- ✅ Also converted `if String.contains?` guards and `or`-chained patterns
-- ✅ 24 instances kept as-is (callback captures: `Enum.any?(&String.contains?(...))`)
 - ✅ 41 files — **1 commit** — net -2 lines
 
 Previous iteration 72: Replace verbose boolean assertions with idiomatic `assert`/`refute`:
