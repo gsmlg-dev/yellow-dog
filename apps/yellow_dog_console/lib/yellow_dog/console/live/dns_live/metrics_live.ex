@@ -39,7 +39,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.reset()
     catch
-      :exit, _ -> :ok
+      _, _ -> :ok
     end
 
     {:noreply,
@@ -84,7 +84,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.get_metrics()
     catch
-      :exit, _ -> default_metrics()
+      _, _ -> default_metrics()
     end
   end
 
@@ -92,7 +92,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.summary()
     catch
-      :exit, _ -> default_summary()
+      _, _ -> default_summary()
     end
   end
 
@@ -100,7 +100,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.get_top_domains(limit: 10)
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -108,7 +108,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.get_top_clients(limit: 10)
     catch
-      :exit, _ -> []
+      _, _ -> []
     end
   end
 
@@ -116,7 +116,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     try do
       MetricsCollector.get_response_times()
     catch
-      :exit, _ -> %{count: 0, sum: 0, min: 0, max: 0, avg: 0.0, buckets: []}
+      _, _ -> %{count: 0, sum: 0, min: 0, max: 0, avg: 0.0, buckets: []}
     end
   end
 

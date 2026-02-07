@@ -94,7 +94,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       try do
         AclRegistry.get_acl(name)
       catch
-        :exit, _ -> {:error, :service_unavailable}
+        _, _ -> {:error, :service_unavailable}
       end
 
     case result do
@@ -174,7 +174,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
               AclRegistry.create_acl(acl)
             end
           catch
-            :exit, _ -> {:error, :service_unavailable}
+            _, _ -> {:error, :service_unavailable}
           end
 
         case result do
@@ -218,7 +218,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       try do
         AclRegistry.delete_acl(name)
       catch
-        :exit, _ -> {:error, :service_unavailable}
+        _, _ -> {:error, :service_unavailable}
       end
 
     case result do
@@ -327,7 +327,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       try do
         ViewManager.get_view(view_name)
       catch
-        :exit, _ -> :error
+        _, _ -> :error
       end
 
     case result do
@@ -335,7 +335,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
         try do
           View.reload(pid, %{acl: acl_config})
         catch
-          :exit, _ -> :ok
+          _, _ -> :ok
         end
 
         {:noreply,

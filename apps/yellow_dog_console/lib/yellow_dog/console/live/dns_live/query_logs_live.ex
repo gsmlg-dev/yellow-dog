@@ -82,7 +82,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     try do
       QueryLogger.clear_buffer()
     catch
-      :exit, _ -> :ok
+      _, _ -> :ok
     end
 
     {:noreply, assign(socket, :entries, [])}
@@ -133,7 +133,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
         all = QueryLogger.get_recent_logs(limit: @max_display)
         filter_entries(all, socket.assigns)
       catch
-        :exit, _ -> []
+        _, _ -> []
       end
 
     assign(socket, :entries, entries)
@@ -180,7 +180,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     try do
       QueryLogger.stats()
     catch
-      :exit, _ -> default_stats()
+      _, _ -> default_stats()
     end
   end
 
