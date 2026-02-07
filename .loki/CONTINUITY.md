@@ -6,13 +6,14 @@
 **Iteration**: 62 of 1000
 
 ## Session Summary
-Iteration 61: for comprehension conversions in mDNS:
-- ✅ **309 mDNS tests, 0 failures, 0 warnings, 0 credo issues**
-- ✅ Replaced `Enum.map(&elem(&1, 1)) |> Enum.filter(...)` with `for {_key, entry} <- ...` in message_cache.ex (2), network_monitor.ex (5)
+Iteration 61–62: for comprehension ETS pattern sweep (codebase-wide):
+- ✅ **6023+ tests (1058 dns + 4764 ex_dns + 201 dhcpv6), 0 failures, 0 warnings, 0 credo issues**
+- ✅ Replaced `Enum.map(&elem(&1, 1)) |> Enum.filter(...)` → `for {_key, entry} <- ...` in 6 files
 - ✅ Replaced triple `map|>reject|>map` with `for` + pattern-match filter in service_store.ex
 - ✅ Replaced `Enum.map |> Enum.uniq |> length` with `Enum.uniq_by |> length` in network_monitor.ex
-- ✅ 3 files — **1 commit** — net -11 lines
-- ✅ Full credo --strict passes with 0 issues
+- ✅ Files: message_cache.ex, network_monitor.ex, service_store.ex, lease_manager.ex (dhcpv6), zone/store.ex, zone/auth.ex
+- ✅ 6 files — **2 commits** — net -20 lines
+- ✅ Only 1 instance remains (service_registry.ex — delegates to `apply_filters/3`, cannot inline)
 
 Previous iteration 60: Style + performance sweep:
 - ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
