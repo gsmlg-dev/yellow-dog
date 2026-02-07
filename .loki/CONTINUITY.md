@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 32)
+**Phase**: IN_PROGRESS (Iteration 33)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 32 of 1000
+**Iteration**: 33 of 1000
 
 ## Session Summary
-Iteration 32: Test coverage + DRY input_error extraction:
+Iteration 33: DRY lease_state_color extraction + orphaned attr cleanup:
+- ✅ **962 console tests, 0 failures**
+- ✅ Extracted **6 duplicate `get_state_color/1`** from DHCPv4/v6 LiveViews to `lease_state_color/1` in CoreComponents — **net -33 lines**
+- ✅ Fixed **orphaned `attr` declarations** in dns_tab.ex left from iteration 32's input_error removal
+- ✅ **1 commit this iteration**
+
+Previous iteration 32: Test coverage + DRY input_error extraction:
 - ✅ **1,058 umbrella + 962 console tests, 0 failures** (+6 new tests)
 - ✅ Added **7 tests** for 3 untested ConfigPersistence ACL functions (`acls_path/1`, `save_acls/3`, `collect_acls/0`) + ACL round-trip
 - ✅ Extracted **duplicate `input_error/1`** from 5 modules to CoreComponents — **net -45 lines**
