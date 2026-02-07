@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 58)
+**Phase**: IN_PROGRESS (Iteration 59)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 58 of 1000
+**Iteration**: 59 of 1000
 
 ## Session Summary
-Iteration 57: Style fix for credo compliance:
+Iteration 58: DRY duration formatting in DHCP pools:
+- ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
+- ✅ Replaced `format_lifetime` (dhcpv6) and `format_lease_time` (dhcpv4) with shared `FormatHelper.format_duration`
+- ✅ Both functions had identical logic: seconds → s/m/h/d format with cond-based thresholds
+- ✅ 2 files — **1 commit** — net -25 lines
+
+Previous iteration 57: Style fix for credo compliance:
 - ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6 + 309 mdns), 0 failures, 0 warnings**
 - ✅ Removed extra blank line in service_store.ex (mdns) to pass credo --strict
 - ✅ 1 file — **1 commit** — net -1 line
@@ -381,10 +387,12 @@ Previous iteration 16 commits:
 28. `c4b63fc` - fix(console): add maxlength to 7 form inputs per RFC limits
 29. `8a16003` - fix(console): disable submit buttons when form has validation errors
 
-Previous iteration 17 commits (iterations 56-57):
+Previous iteration 18 commits (iterations 56-58):
 1. `40d5706` - refactor(console): replace catch :exit, _ with catch _, _ in DNS LiveViews
 2. `914e178` - docs: update CONTINUITY for iteration 56 (catch :exit, _ → catch _, _)
 3. `732a26c` - style(mdns): remove extra blank line per credo
+4. `c26c2c9` - docs: update CONTINUITY for iteration 57 (credo fix)
+5. `a82bbc7` - refactor(console): replace format_lifetime/format_lease_time with FormatHelper.format_duration
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
