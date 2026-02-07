@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 20)
+**Phase**: IN_PROGRESS (Iteration 21)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 20 of 1000
+**Iteration**: 21 of 1000
 
 ## Session Summary
-Iteration 20: Code quality hardening + atom safety + version alignment:
+Iteration 21: Performance + correctness sweep across entire codebase:
+- ✅ **4,764 ex_dns + 962 console tests, 0 failures**
+- ✅ Replaced **37 instances** of O(n) `length(list) > 0` with O(1) `list != []` across **29 files** in all 10 apps
+- ✅ Fixed latent bug: `length(views) >= 0` (always true) → `is_list(views)` in view/operations.ex
+- ✅ Added 2 missing `@spec` annotations to core `YellowDog` module (`get_config/1`, `get_all_config/0`)
+- ✅ **2 commits this iteration**
+
+Previous iteration 20: Code quality hardening + atom safety + version alignment:
 - ✅ **4,764 ex_dns + 962 console tests, 0 failures**
 - ✅ Standardized Elixir version constraint to `~> 1.18` across all 5 apps (abyss, ex_dns, ex_dhcp, geo_ip_db, console — were ~> 1.13 or ~> 1.15)
 - ✅ Replaced bare `rescue e ->` with explicit exception lists in 5 ex_dns locations (parser, file_parser ×2, dnssec, header)
