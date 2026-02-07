@@ -36,6 +36,9 @@ defmodule YellowDog.Dns.AclStore do
           geo_countries: [String.t()] | nil
         }
 
+  import YellowDog.Config.TomlHelpers,
+    only: [parse_toml: 1, get_value: 2, get_value: 3, get_list: 3, encode_toml_string: 1, ensure_directory: 1, atomic_write: 2]
+
   @type acl_config :: %{
           name: String.t(),
           description: String.t() | nil,
@@ -93,12 +96,6 @@ defmodule YellowDog.Dns.AclStore do
 
   # Private functions
 
-  defp parse_toml(content) do
-    case Toml.decode(content) do
-      {:ok, data} -> {:ok, data}
-      {:error, reason} -> {:error, {:toml_parse_error, reason}}
-    end
-  end
 
   defp extract_acls(data) do
     case Map.get(data, "acl") do
@@ -120,8 +117,8 @@ defmodule YellowDog.Dns.AclStore do
 
   defp normalize_acl_keys(acl) when is_map(acl) do
     %{
-      name: get_string_value(acl, [:name, "name"]),
-      description: get_string_value(acl, [:description, "description"]),
+      name: get_value(acl, [:name, "name"]),
+      description: get_value(acl, [:description, "description"]),
       rules: normalize_rules(acl)
     }
   end
@@ -136,11 +133,11 @@ defmodule YellowDog.Dns.AclStore do
 
   defp normalize_rule(rule) when is_map(rule) do
     base = %{
-      action: get_string_value(rule, [:action, "action"], "allow")
+      action: get_value(rule, [:action, "action"], "allow")
     }
 
-    geo_countries = get_list_value(rule, [:geo_countries, "geo_countries"], [])
-    network = get_string_value(rule, [:network, "network"])
+    geo_countries = get_list(rule, [:geo_countries, "geo_countries"], [])
+    network = get_value(rule, [:network, "network"])
 
     cond do
       geo_countries != [] ->
@@ -154,16 +151,6 @@ defmodule YellowDog.Dns.AclStore do
     end
   end
 
-  defp get_string_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
-  end
-
-  defp get_list_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_list(value) -> value
-      _ -> default
-    end
-  end
 
   defp format_acls(acls) do
     header = """
@@ -218,31 +205,4 @@ defmodule YellowDog.Dns.AclStore do
     Enum.join(lines ++ rules_lines, "\n")
   end
 
-  defp encode_toml_string(value) when is_binary(value) do
-    "\"#{String.replace(value, "\"", "\\\"")}\""
-  end
-
-  defp encode_toml_string(value), do: inspect(value)
-
-  defp ensure_directory(file_path) do
-    dir = Path.dirname(file_path)
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      error -> error
-    end
-  end
-
-  defp atomic_write(file_path, content) do
-    tmp_path = file_path <> ".tmp"
-
-    with :ok <- File.write(tmp_path, content),
-         :ok <- File.rename(tmp_path, file_path) do
-      :ok
-    else
-      error ->
-        File.rm(tmp_path)
-        error
-    end
-  end
 end

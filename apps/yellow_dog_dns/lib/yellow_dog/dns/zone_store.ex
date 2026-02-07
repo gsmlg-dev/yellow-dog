@@ -22,6 +22,19 @@ defmodule YellowDog.Dns.ZoneStore do
       upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
   """
 
+  import YellowDog.Config.TomlHelpers,
+    only: [
+      parse_toml: 1,
+      get_value: 2,
+      get_value: 3,
+      get_integer: 3,
+      get_list: 2,
+      encode_toml_string: 1,
+      ensure_directory: 1,
+      maybe_create_backup: 2,
+      atomic_write: 2
+    ]
+
   @type zone_type :: :auth | :forward | :stub | :cache | :root | :rpz
   @type zone_config :: %{
           name: String.t(),
@@ -147,12 +160,6 @@ defmodule YellowDog.Dns.ZoneStore do
 
   # Private functions
 
-  defp parse_toml(content) do
-    case Toml.decode(content) do
-      {:ok, data} -> {:ok, data}
-      {:error, reason} -> {:error, {:toml_parse_error, reason}}
-    end
-  end
 
   defp extract_zones(data) do
     case Map.get(data, "zones") do
@@ -208,13 +215,13 @@ defmodule YellowDog.Dns.ZoneStore do
 
   defp normalize_zone_keys(zone) when is_map(zone) do
     %{
-      name: get_string_value(zone, [:name, "name"]),
-      type: normalize_type(get_string_value(zone, [:type, "type"], "auth")),
-      view_name: get_string_value(zone, [:view_name, "view_name"], "default"),
-      file: get_string_value(zone, [:file, "file"]),
-      upstreams: get_list_value(zone, [:upstreams, "upstreams"]),
-      ns_records: get_list_value(zone, [:ns_records, "ns_records"]),
-      ttl: get_integer_value(zone, [:ttl, "ttl"])
+      name: get_value(zone, [:name, "name"]),
+      type: normalize_type(get_value(zone, [:type, "type"], "auth")),
+      view_name: get_value(zone, [:view_name, "view_name"], "default"),
+      file: get_value(zone, [:file, "file"]),
+      upstreams: get_list(zone, [:upstreams, "upstreams"]),
+      ns_records: get_list(zone, [:ns_records, "ns_records"]),
+      ttl: get_integer(zone, [:ttl, "ttl"], nil)
     }
   end
 
@@ -227,24 +234,6 @@ defmodule YellowDog.Dns.ZoneStore do
   defp normalize_type("rpz"), do: :rpz
   defp normalize_type(_), do: :auth
 
-  defp get_string_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
-  end
-
-  defp get_integer_value(map, keys, default \\ nil) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
-      _ -> default
-    end
-  end
-
-  defp get_list_value(map, keys, default \\ nil) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_list(value) -> value
-      _ -> default
-    end
-  end
 
   defp validate_required_fields(zone) do
     cond do
@@ -349,43 +338,4 @@ defmodule YellowDog.Dns.ZoneStore do
     "\"#{String.replace(key, "\"", "\\\"")}\""
   end
 
-  defp encode_toml_string(value) when is_binary(value) do
-    "\"#{String.replace(value, "\"", "\\\"")}\""
-  end
-
-  defp encode_toml_string(value), do: inspect(value)
-
-  defp ensure_directory(file_path) do
-    dir = Path.dirname(file_path)
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      error -> error
-    end
-  end
-
-  defp maybe_create_backup(_file_path, false), do: :ok
-
-  defp maybe_create_backup(file_path, true) do
-    if File.exists?(file_path) do
-      backup_path = file_path <> ".backup"
-      File.cp(file_path, backup_path)
-    else
-      :ok
-    end
-  end
-
-  defp atomic_write(file_path, content) do
-    tmp_path = file_path <> ".tmp"
-
-    with :ok <- File.write(tmp_path, content),
-         :ok <- File.rename(tmp_path, file_path) do
-      :ok
-    else
-      error ->
-        # Clean up temp file on error
-        File.rm(tmp_path)
-        error
-    end
-  end
 end

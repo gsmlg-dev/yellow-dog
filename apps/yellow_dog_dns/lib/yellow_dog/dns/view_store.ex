@@ -28,6 +28,20 @@ defmodule YellowDog.Dns.ViewStore do
       geo_countries = ["US", "CA", "MX"]
   """
 
+  import YellowDog.Config.TomlHelpers,
+    only: [
+      parse_toml: 1,
+      get_value: 2,
+      get_value: 3,
+      get_integer: 3,
+      get_boolean: 3,
+      get_list: 3,
+      encode_toml_string: 1,
+      ensure_directory: 1,
+      maybe_create_backup: 2,
+      atomic_write: 2
+    ]
+
   @type acl_entry :: %{
           action: String.t(),
           network: String.t() | nil,
@@ -163,12 +177,6 @@ defmodule YellowDog.Dns.ViewStore do
 
   # Private functions
 
-  defp parse_toml(content) do
-    case Toml.decode(content) do
-      {:ok, data} -> {:ok, data}
-      {:error, reason} -> {:error, {:toml_parse_error, reason}}
-    end
-  end
 
   defp extract_views(data) do
     case Map.get(data, "view") do
@@ -189,12 +197,12 @@ defmodule YellowDog.Dns.ViewStore do
 
   defp normalize_view_keys(view) when is_map(view) do
     %{
-      name: get_string_value(view, [:name, "name"]),
-      priority: get_integer_value(view, [:priority, "priority"], 100),
-      match_clients: get_string_value(view, [:match_clients, "match_clients"]),
-      recursion: get_boolean_value(view, [:recursion, "recursion"], false),
-      ecs_enabled: get_boolean_value(view, [:ecs_enabled, "ecs_enabled"], false),
-      zones: get_list_value(view, [:zones, "zones"], []),
+      name: get_value(view, [:name, "name"]),
+      priority: get_integer(view, [:priority, "priority"], 100),
+      match_clients: get_value(view, [:match_clients, "match_clients"]),
+      recursion: get_boolean(view, [:recursion, "recursion"], false),
+      ecs_enabled: get_boolean(view, [:ecs_enabled, "ecs_enabled"], false),
+      zones: get_list(view, [:zones, "zones"], []),
       acl: normalize_acl(view)
     }
   end
@@ -209,12 +217,12 @@ defmodule YellowDog.Dns.ViewStore do
 
   defp normalize_acl_entry(entry) when is_map(entry) do
     base = %{
-      action: get_string_value(entry, [:action, "action"], "allow")
+      action: get_value(entry, [:action, "action"], "allow")
     }
 
     # Check if this is a geo ACL or network ACL
-    geo_countries = get_list_value(entry, [:geo_countries, "geo_countries"], [])
-    network = get_string_value(entry, [:network, "network"])
+    geo_countries = get_list(entry, [:geo_countries, "geo_countries"], [])
+    network = get_value(entry, [:network, "network"])
 
     cond do
       geo_countries != [] ->
@@ -228,33 +236,6 @@ defmodule YellowDog.Dns.ViewStore do
     end
   end
 
-  defp get_string_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
-  end
-
-  defp get_integer_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
-      _ -> default
-    end
-  end
-
-  defp get_boolean_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_boolean(value) -> value
-      "true" -> true
-      "false" -> false
-      _ -> default
-    end
-  end
-
-  defp get_list_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_list(value) -> value
-      _ -> default
-    end
-  end
 
   defp validate_required_fields(view) do
     if is_nil(Map.get(view, :name)) do
@@ -382,43 +363,4 @@ defmodule YellowDog.Dns.ViewStore do
     Enum.join(lines, "\n")
   end
 
-  defp encode_toml_string(value) when is_binary(value) do
-    "\"#{String.replace(value, "\"", "\\\"")}\""
-  end
-
-  defp encode_toml_string(value), do: inspect(value)
-
-  defp ensure_directory(file_path) do
-    dir = Path.dirname(file_path)
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      error -> error
-    end
-  end
-
-  defp maybe_create_backup(_file_path, false), do: :ok
-
-  defp maybe_create_backup(file_path, true) do
-    if File.exists?(file_path) do
-      backup_path = file_path <> ".backup"
-      File.cp(file_path, backup_path)
-    else
-      :ok
-    end
-  end
-
-  defp atomic_write(file_path, content) do
-    tmp_path = file_path <> ".tmp"
-
-    with :ok <- File.write(tmp_path, content),
-         :ok <- File.rename(tmp_path, file_path) do
-      :ok
-    else
-      error ->
-        # Clean up temp file on error
-        File.rm(tmp_path)
-        error
-    end
-  end
 end

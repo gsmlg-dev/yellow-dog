@@ -72,6 +72,19 @@ defmodule YellowDog.Config.TomlHelpers do
   end
 
   # ──────────────────────────────────────────────────────────────────
+  # TOML Parsing
+  # ──────────────────────────────────────────────────────────────────
+
+  @doc "Decodes a TOML string, wrapping parse errors in `{:error, {:toml_parse_error, reason}}`."
+  @spec parse_toml(String.t()) :: {:ok, map()} | {:error, {:toml_parse_error, term()}}
+  def parse_toml(content) do
+    case Toml.decode(content) do
+      {:ok, data} -> {:ok, data}
+      {:error, reason} -> {:error, {:toml_parse_error, reason}}
+    end
+  end
+
+  # ──────────────────────────────────────────────────────────────────
   # TOML Serialization Helpers
   # ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +117,30 @@ defmodule YellowDog.Config.TomlHelpers do
       error ->
         File.rm(tmp_path)
         error
+    end
+  end
+
+  @doc "Ensures the parent directory of `file_path` exists."
+  @spec ensure_directory(Path.t()) :: :ok | {:error, term()}
+  def ensure_directory(file_path) do
+    dir = Path.dirname(file_path)
+
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      error -> error
+    end
+  end
+
+  @doc "Creates a `.backup` copy of `file_path` if `backup?` is true and the file exists."
+  @spec maybe_create_backup(Path.t(), boolean()) :: :ok | {:ok, String.t()} | {:error, term()}
+  def maybe_create_backup(_file_path, false), do: :ok
+
+  def maybe_create_backup(file_path, true) do
+    if File.exists?(file_path) do
+      backup_path = file_path <> ".backup"
+      File.cp(file_path, backup_path)
+    else
+      :ok
     end
   end
 end

@@ -6,6 +6,19 @@ defmodule YellowDog.Mdns.ServiceStore do
   Supports file watching for hot-reload and atomic writes with backup.
   """
 
+  import YellowDog.Config.TomlHelpers,
+    only: [
+      parse_toml: 1,
+      get_value: 2,
+      get_integer: 3,
+      get_boolean: 3,
+      get_map: 3,
+      encode_toml_string: 1,
+      ensure_directory: 1,
+      maybe_create_backup: 2,
+      atomic_write: 2
+    ]
+
   @type service_def :: %{
           name: String.t(),
           type: String.t(),
@@ -160,12 +173,7 @@ defmodule YellowDog.Mdns.ServiceStore do
     end
   end
 
-  defp parse_content(content, :toml) do
-    case Toml.decode(content) do
-      {:ok, data} -> {:ok, data}
-      {:error, reason} -> {:error, {:toml_parse_error, reason}}
-    end
-  end
+  defp parse_content(content, :toml), do: parse_toml(content)
 
   defp parse_content(content, :json) do
     case Jason.decode(content, keys: :atoms) do
@@ -201,43 +209,16 @@ defmodule YellowDog.Mdns.ServiceStore do
 
   defp normalize_service_keys(service) when is_map(service) do
     %{
-      name: get_string_value(service, [:name, "name"]),
-      type: get_string_value(service, [:type, "type"]),
-      port: get_integer_value(service, [:port, "port"]),
-      host: get_string_value(service, [:host, "host"]),
-      txt: get_map_value(service, [:txt, "txt"]),
+      name: get_value(service, [:name, "name"]),
+      type: get_value(service, [:type, "type"]),
+      port: get_integer(service, [:port, "port"], nil),
+      host: get_value(service, [:host, "host"]),
+      txt: get_map(service, [:txt, "txt"], %{}),
       addresses: get_addresses(service),
-      enabled: get_boolean_value(service, [:enabled, "enabled"], true)
+      enabled: get_boolean(service, [:enabled, "enabled"], true)
     }
   end
 
-  defp get_string_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
-  end
-
-  defp get_integer_value(map, keys, default \\ nil) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
-      _ -> default
-    end
-  end
-
-  defp get_boolean_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_boolean(value) -> value
-      "true" -> true
-      "false" -> false
-      _ -> default
-    end
-  end
-
-  defp get_map_value(map, keys) do
-    case Enum.find_value(keys, fn key -> Map.get(map, key) end) do
-      value when is_map(value) -> value
-      _ -> %{}
-    end
-  end
 
   defp get_addresses(service) do
     # Try different key formats
@@ -400,43 +381,4 @@ defmodule YellowDog.Mdns.ServiceStore do
     Enum.join(lines, "\n")
   end
 
-  defp encode_toml_string(value) when is_binary(value) do
-    "\"#{String.replace(value, "\"", "\\\"")}\""
-  end
-
-  defp encode_toml_string(value), do: inspect(value)
-
-  defp ensure_directory(file_path) do
-    dir = Path.dirname(file_path)
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      error -> error
-    end
-  end
-
-  defp maybe_create_backup(_file_path, false), do: :ok
-
-  defp maybe_create_backup(file_path, true) do
-    if File.exists?(file_path) do
-      backup_path = file_path <> ".backup"
-      File.cp(file_path, backup_path)
-    else
-      :ok
-    end
-  end
-
-  defp atomic_write(file_path, content) do
-    tmp_path = file_path <> ".tmp"
-
-    with :ok <- File.write(tmp_path, content),
-         :ok <- File.rename(tmp_path, file_path) do
-      :ok
-    else
-      error ->
-        # Clean up temp file on error
-        File.rm(tmp_path)
-        error
-    end
-  end
 end
