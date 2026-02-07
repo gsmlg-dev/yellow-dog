@@ -134,7 +134,7 @@ defmodule YellowDog.Console.ConfigManager do
       {:ok, files} ->
         for(
           f <- files,
-          String.match?(f, ~r/^#{Regex.escape(base)}\.backup\.\d{8}T\d{6,}Z$/),
+          f =~ ~r/^#{Regex.escape(base)}\.backup\.\d{8}T\d{6,}Z$/,
           do: Path.join(dir, f)
         )
         |> Enum.sort()
@@ -328,7 +328,7 @@ defmodule YellowDog.Console.ConfigManager do
               {[line | acc], true, false, idx}
 
             # Leaving section (entering another section)
-            in_sect && String.match?(trimmed, ~r/^\[/) && trimmed != array_table_header ->
+            in_sect && trimmed =~ ~r/^\[/ && trimmed != array_table_header ->
               {[line | acc], false, false, sect_end}
 
             # Entering array table in our section
@@ -340,9 +340,9 @@ defmodule YellowDog.Console.ConfigManager do
               # Empty line might end array table
               {acc, in_sect, false, idx}
 
-            in_arr && String.match?(trimmed, ~r/^\[/) ->
+            in_arr && trimmed =~ ~r/^\[/ ->
               # Next section/array table starts
-              {[line | acc], String.match?(trimmed, ~r/^\[#{section}\]/),
+              {[line | acc], trimmed =~ ~r/^\[#{section}\]/,
                trimmed == array_table_header, idx}
 
             in_arr ->
@@ -383,11 +383,11 @@ defmodule YellowDog.Console.ConfigManager do
     |> Enum.with_index()
     |> Enum.reduce({[], nil}, fn {line, idx}, {tokens, section} ->
       cond do
-        String.match?(line, ~r/^\[(.+)\]$/) ->
+        line =~ ~r/^\[(.+)\]$/ ->
           section_name = Regex.run(~r/^\[(.+)\]$/, line) |> List.last()
           {tokens, section_name}
 
-        String.match?(line, ~r/^(\w+)\s*=/) ->
+        line =~ ~r/^(\w+)\s*=/ ->
           [key | _] = String.split(line, "=")
           key = String.trim(key)
           full_key = if section, do: "#{section}.#{key}", else: key

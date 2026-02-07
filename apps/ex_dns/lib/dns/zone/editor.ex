@@ -322,7 +322,7 @@ defmodule DNS.Zone.Editor do
 
   defp valid_zone_name?(name) do
     # Basic zone name validation
-    String.match?(name, ~r/^[a-zA-Z0-9.-]+$/)
+    name =~ ~r/^[a-zA-Z0-9.-]+$/
   end
 
   defp add_initial_records(zone, options) do

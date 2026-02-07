@@ -290,7 +290,7 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   defp format_duid_string(duid) when is_binary(duid) do
     # If it's already hex-encoded (contains colons or all hex chars), return as-is
-    if String.contains?(duid, ":") or String.match?(duid, ~r/^[0-9a-fA-F]+$/) do
+    if String.contains?(duid, ":") or duid =~ ~r/^[0-9a-fA-F]+$/ do
       duid
     else
       # Binary DUID - encode as hex

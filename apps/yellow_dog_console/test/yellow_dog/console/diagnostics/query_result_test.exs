@@ -278,7 +278,7 @@ defmodule YellowDog.Console.Diagnostics.QueryResultTest do
       result = QueryResult.new()
 
       assert String.length(result.id) == 16
-      assert String.match?(result.id, ~r/^[0-9a-f]+$/)
+      assert result.id =~ ~r/^[0-9a-f]+$/
     end
 
     test "IDs are cryptographically random" do

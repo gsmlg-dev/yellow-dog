@@ -276,13 +276,13 @@ defmodule Abyss.ListenerPoolScalerTest do
       assert id1 != id2
       # 8 bytes = 16 hex chars
       assert String.length(id1) == 16
-      assert String.match?(id1, ~r/^[a-f0-9]+$/)
+      assert id1 =~ ~r/^[a-f0-9]+$/
     end
 
     test "generates valid hex strings" do
       for _i <- 1..100 do
         id = generate_listener_id()
-        assert String.match?(id, ~r/^[a-f0-9]{16}$/)
+        assert id =~ ~r/^[a-f0-9]{16}$/
       end
     end
   end

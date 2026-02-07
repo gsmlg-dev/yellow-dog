@@ -254,7 +254,7 @@ defmodule YellowDog.Console.ProcessInspectorTest do
     test "rounds to 2 decimal places" do
       # 1.234 KB
       result = ProcessInspector.format_memory(1263)
-      assert String.match?(result, ~r/^\d+\.\d{1,2} KB$/)
+      assert result =~ ~r/^\d+\.\d{1,2} KB$/
     end
   end
 
