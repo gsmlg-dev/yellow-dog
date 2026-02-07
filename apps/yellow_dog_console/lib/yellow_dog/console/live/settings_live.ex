@@ -28,6 +28,7 @@ defmodule YellowDog.Console.SettingsLive do
          version_info <- ConfigurationVersion.get_version(config_path) do
       socket =
         socket
+        |> assign(:page_title, "Settings")
         |> assign(:config_path, config_path)
         |> assign(:config, config)
         |> assign(:version_info, version_info)
@@ -52,6 +53,7 @@ defmodule YellowDog.Console.SettingsLive do
 
         socket =
           socket
+          |> assign(:page_title, "Settings")
           |> put_flash(:error, "Failed to load configuration: #{inspect(reason)}")
           |> assign(:config_path, config_path)
           |> assign(:config, %{})

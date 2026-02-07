@@ -5,22 +5,19 @@
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-zinc-900">Network Monitor</h1>
-        <p class="mt-2 text-zinc-600">Real-time mDNS query and response monitoring</p>
+        <h1 class="text-3xl font-bold">Network Monitor</h1>
+        <p class="mt-2 text-base-content/60">Real-time mDNS query and response monitoring</p>
       </div>
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center gap-2">
         <button
           type="button"
           phx-click="toggle_auto_refresh"
           class={[
-            "inline-flex items-center px-4 py-2 rounded-lg transition-colors",
-            if(@auto_refresh,
-              do: "bg-green-600 text-white hover:bg-green-700",
-              else: "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
-            )
+            "btn btn-sm",
+            if(@auto_refresh, do: "btn-success", else: "btn-ghost")
           ]}
         >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <%= if @auto_refresh do %>
               <path
                 stroke-linecap="round"
@@ -43,9 +40,9 @@
           type="button"
           phx-click="clear_cache"
           data-confirm="Are you sure you want to clear all cached data?"
-          class="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          class="btn btn-sm btn-error"
         >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -60,9 +57,9 @@
           phx-click="export_csv"
           id="export-csv"
           phx-hook="CsvDownload"
-          class="inline-flex items-center px-4 py-2 bg-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-300 transition-colors"
+          class="btn btn-sm btn-ghost"
         >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -76,53 +73,50 @@
     </div>
     <!-- Network Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <div class="bg-white rounded-lg shadow p-4">
-        <p class="text-sm text-zinc-500">Total Queries</p>
-        <p class="mt-1 text-2xl font-semibold text-zinc-900">{@stats.total_queries}</p>
+      <div class="card bg-base-100 shadow-sm p-4">
+        <p class="text-sm text-base-content/60">Total Queries</p>
+        <p class="mt-1 text-2xl font-semibold">{@stats.total_queries}</p>
       </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <p class="text-sm text-zinc-500">Total Responses</p>
-        <p class="mt-1 text-2xl font-semibold text-zinc-900">{@stats.total_responses}</p>
+      <div class="card bg-base-100 shadow-sm p-4">
+        <p class="text-sm text-base-content/60">Total Responses</p>
+        <p class="mt-1 text-2xl font-semibold">{@stats.total_responses}</p>
       </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <p class="text-sm text-zinc-500">Queries/Min</p>
-        <p class="mt-1 text-2xl font-semibold text-blue-600">
+      <div class="card bg-base-100 shadow-sm p-4">
+        <p class="text-sm text-base-content/60">Queries/Min</p>
+        <p class="mt-1 text-2xl font-semibold text-info">
           {Float.round(@stats.queries_per_minute, 1)}
         </p>
       </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <p class="text-sm text-zinc-500">Unique Hosts</p>
-        <p class="mt-1 text-2xl font-semibold text-purple-600">{@stats.unique_hosts}</p>
+      <div class="card bg-base-100 shadow-sm p-4">
+        <p class="text-sm text-base-content/60">Unique Hosts</p>
+        <p class="mt-1 text-2xl font-semibold text-secondary">{@stats.unique_hosts}</p>
       </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <p class="text-sm text-zinc-500">Active Services</p>
-        <p class="mt-1 text-2xl font-semibold text-green-600">{@stats.active_services}</p>
+      <div class="card bg-base-100 shadow-sm p-4">
+        <p class="text-sm text-base-content/60">Active Services</p>
+        <p class="mt-1 text-2xl font-semibold text-success">{@stats.active_services}</p>
       </div>
     </div>
     <!-- Most Queried Services -->
     <%= if @stats.most_queried_services && length(@stats.most_queried_services) > 0 do %>
-      <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-zinc-200">
-          <h2 class="text-lg font-medium text-zinc-900">Most Queried Services</h2>
-        </div>
-        <div class="p-6">
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">Most Queried Services</h2>
           <div class="space-y-3">
             <div
               :for={service <- Enum.take(@stats.most_queried_services, 5)}
               class="flex items-center justify-between"
             >
               <div class="flex-1">
-                <p class="text-sm font-medium text-zinc-900">{elem(service, 0)}</p>
-                <div class="mt-1 w-full bg-zinc-200 rounded-full h-2">
-                  <div
-                    class="bg-blue-600 h-2 rounded-full"
-                    style={"width: #{calculate_percentage(elem(service, 1), @stats.most_queried_services)}%"}
-                  >
-                  </div>
-                </div>
+                <p class="text-sm font-medium">{elem(service, 0)}</p>
+                <progress
+                  class="progress progress-primary w-full"
+                  value={calculate_percentage(elem(service, 1), @stats.most_queried_services)}
+                  max="100"
+                >
+                </progress>
               </div>
               <div class="ml-4">
-                <span class="text-sm font-semibold text-zinc-900">{elem(service, 1)}</span>
+                <span class="text-sm font-semibold">{elem(service, 1)}</span>
               </div>
             </div>
           </div>
@@ -130,111 +124,88 @@
       </div>
     <% end %>
     <!-- Query Log -->
-    <div class="bg-white rounded-lg shadow">
-      <div class="px-6 py-4 border-b border-zinc-200 flex items-center justify-between gap-4">
-        <h2 class="text-lg font-medium text-zinc-900 shrink-0">Recent Queries</h2>
-        <input
-          type="text"
-          placeholder="Search queries..."
-          value={@search}
-          phx-change="search"
-          phx-debounce="300"
-          name="search"
-          class="rounded-md border-zinc-300 text-sm flex-1 max-w-xs"
-        />
-        <select phx-change="set_limit" name="limit" class="rounded-md border-zinc-300 text-sm">
-          <option value="50" selected={@limit == 50}>50 queries</option>
-          <option value="100" selected={@limit == 100}>100 queries</option>
-          <option value="200" selected={@limit == 200}>200 queries</option>
-          <option value="500" selected={@limit == 500}>500 queries</option>
-        </select>
-      </div>
-      <div class="overflow-x-auto">
-        <%= if Enum.empty?(@queries) do %>
-          <div class="p-12 text-center">
-            <svg
-              class="mx-auto h-12 w-12 text-zinc-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
-            <h3 class="mt-2 text-sm font-medium text-zinc-900">No queries logged yet</h3>
-            <p class="mt-1 text-sm text-zinc-500">
-              mDNS queries will appear here as they are detected on the network
-            </p>
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-0">
+        <div class="flex items-center justify-between gap-4 px-6 py-4">
+          <h2 class="card-title shrink-0">Recent Queries</h2>
+          <input
+            type="text"
+            placeholder="Search queries..."
+            value={@search}
+            phx-change="search"
+            phx-debounce="300"
+            name="search"
+            class="input input-bordered input-sm flex-1 max-w-xs"
+          />
+          <select phx-change="set_limit" name="limit" class="select select-bordered select-sm">
+            <option value="50" selected={@limit == 50}>50 queries</option>
+            <option value="100" selected={@limit == 100}>100 queries</option>
+            <option value="200" selected={@limit == 200}>200 queries</option>
+            <option value="500" selected={@limit == 500}>500 queries</option>
+          </select>
+        </div>
+        <div class="overflow-x-auto">
+          <%= if Enum.empty?(@queries) do %>
+            <div class="p-12 text-center">
+              <svg
+                class="mx-auto h-12 w-12 text-base-content/30"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+              <h3 class="mt-2 text-sm font-medium">No queries logged yet</h3>
+              <p class="mt-1 text-sm text-base-content/50">
+                mDNS queries will appear here as they are detected on the network
+              </p>
+            </div>
+          <% else %>
+            <table class="table table-zebra">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Source IP</th>
+                  <th>Query Name</th>
+                  <th>Type</th>
+                  <th>Class</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={query <- filtered_queries(@queries, @search)}>
+                  <td class="text-base-content/60">
+                    {format_timestamp(query.timestamp)}
+                  </td>
+                  <td class="font-medium">
+                    {format_ip(query.source_ip)}
+                  </td>
+                  <td>
+                    {query.name}
+                  </td>
+                  <td>
+                    <span class="badge badge-info badge-sm">
+                      {query.type}
+                    </span>
+                  </td>
+                  <td class="text-base-content/60">
+                    {query.class}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          <% end %>
+        </div>
+        <%= if @search != "" do %>
+          <div class="px-6 py-2 text-sm text-base-content/50">
+            Showing {length(filtered_queries(@queries, @search))} of {length(@queries)} queries
           </div>
-        <% else %>
-          <table class="min-w-full divide-y divide-zinc-200">
-            <thead class="bg-zinc-50">
-              <tr>
-                <th
-                  scope="col"
-                  class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider"
-                >
-                  Time
-                </th>
-                <th
-                  scope="col"
-                  class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider"
-                >
-                  Source IP
-                </th>
-                <th
-                  scope="col"
-                  class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider"
-                >
-                  Query Name
-                </th>
-                <th
-                  scope="col"
-                  class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider"
-                >
-                  Type
-                </th>
-                <th
-                  scope="col"
-                  class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider"
-                >
-                  Class
-                </th>
-              </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-zinc-200">
-              <tr :for={query <- filtered_queries(@queries, @search)} class="hover:bg-zinc-50">
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">
-                  {format_timestamp(query.timestamp)}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-zinc-900">
-                  {format_ip(query.source_ip)}
-                </td>
-                <td class="px-6 py-4 text-sm text-zinc-900">
-                  {query.name}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    {query.type}
-                  </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">
-                  {query.class}
-                </td>
-              </tr>
-            </tbody>
-          </table>
         <% end %>
       </div>
-      <%= if @search != "" do %>
-        <div class="px-6 py-2 text-sm text-zinc-500">
-          Showing {length(filtered_queries(@queries, @search))} of {length(@queries)} queries
-        </div>
-      <% end %>
     </div>
   </div>
 </Layouts.app>

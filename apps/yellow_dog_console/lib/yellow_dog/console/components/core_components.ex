@@ -199,6 +199,8 @@ defmodule YellowDog.Console.CoreComponents do
       id={@id}
       class={["modal", @show && "modal-open"]}
       phx-remove={hide_modal(@id)}
+      phx-window-keydown={@on_cancel}
+      phx-key="Escape"
     >
       <div class="modal-box">
         <h3 :if={@title} class="font-bold text-lg mb-4">{@title}</h3>

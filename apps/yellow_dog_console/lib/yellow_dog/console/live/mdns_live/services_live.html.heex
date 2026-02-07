@@ -216,7 +216,13 @@
     <% end %>
     
 <!-- Service Form Modal -->
-    <dialog :if={@show_form} id="service-modal" class="modal modal-open">
+    <dialog
+      :if={@show_form}
+      id="service-modal"
+      class="modal modal-open"
+      phx-window-keydown="hide_form"
+      phx-key="Escape"
+    >
       <div class="modal-box max-w-2xl">
         <h3 class="font-bold text-2xl mb-4">
           {if @form_mode == :new, do: "Register New Service", else: "Edit Service"}

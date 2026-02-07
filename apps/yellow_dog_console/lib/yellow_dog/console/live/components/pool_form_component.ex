@@ -63,7 +63,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
     assigns = assign(assigns, :mode, mode)
 
     ~H"""
-    <div class="modal modal-open">
+    <div class="modal modal-open" phx-window-keydown="close" phx-key="Escape" phx-target={@myself}>
       <div class="modal-box w-11/12 max-w-2xl">
         <h3 class="font-bold text-lg mb-4">
           {if @mode == :create, do: "Add", else: "Edit"} {protocol_name(@protocol)} Pool
