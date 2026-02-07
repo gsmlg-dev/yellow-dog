@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 31)
+**Phase**: IN_PROGRESS (Iteration 32)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 31 of 1000
+**Iteration**: 32 of 1000
 
 ## Session Summary
-Iteration 31: Enum.map_join + structured Logger metadata across 11 files:
+Iteration 32: Test coverage + DRY input_error extraction:
+- ✅ **1,058 umbrella + 962 console tests, 0 failures** (+6 new tests)
+- ✅ Added **7 tests** for 3 untested ConfigPersistence ACL functions (`acls_path/1`, `save_acls/3`, `collect_acls/0`) + ACL round-trip
+- ✅ Extracted **duplicate `input_error/1`** from 5 modules to CoreComponents — **net -45 lines**
+- ✅ **2 commits this iteration**
+
+Previous iteration 31: Enum.map_join + structured Logger metadata across 11 files:
 - ✅ **1,052 umbrella + 962 console tests, 0 failures**
 - ✅ Replaced **11 `Enum.map |> Enum.join` chains** with single-pass `Enum.map_join` across **6 files** in ex_dhcp (5), ex_dns (3), dhcpv4 message (1)
 - ✅ Converted **11 Logger string interpolation** calls to structured metadata across **4 files** (conflict_resolver, basic_auth, abyss/logger, geo_ip_db)
