@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 96)
+**Phase**: IN_PROGRESS (Iteration 97)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 96 of 1000
+**Iteration**: 97 of 1000
 
 ## Session Summary
-Iteration 96: Replace String.to_existing_atom with to_string comparison in DHCPv4 leases filter:
+Iteration 97: Replace bare String.to_existing_atom with @valid_record_types allowlist in diagnostic clients:
+- ✅ **All 1045 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ dns_client `parse_record_type` used `String.to_existing_atom` + `rescue _ -> :a` (unsafe)
+- ✅ mdns_client `parse_record_type` used `String.to_existing_atom` + `rescue _ -> :ptr` (unsafe)
+- ✅ Both replaced with `@valid_record_types ~w(...)` allowlist check before atom conversion
+- ✅ 2 files — **1 commit** — net -4 lines
+
+Previous iteration 96: Replace String.to_existing_atom with to_string comparison in DHCPv4 leases filter:
 - ✅ **All 1045 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ DHCPv4 leases_live `filter_by_state` used `String.to_existing_atom` + `rescue` block (anti-pattern)
 - ✅ Replaced with `to_string(l.state) == state` — matches DHCPv6 leases_live pattern
