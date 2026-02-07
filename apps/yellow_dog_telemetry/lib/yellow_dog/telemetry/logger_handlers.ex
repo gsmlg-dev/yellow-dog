@@ -26,6 +26,20 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   require Logger
 
+  # Error-safe wrapper for all telemetry handlers.
+  # Prevents handler crashes from propagating to the service.
+  defp safe_handle(fun) do
+    try do
+      fun.()
+    rescue
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
+        Logger.error("Telemetry handler error", error: inspect(error))
+    catch
+      kind, value ->
+        Logger.error("Telemetry handler caught", kind: kind, error: inspect(value))
+    end
+  end
+
   # Handler IDs for tracking attached handlers
   @handler_ids [
     "yellow-dog-dns-logger",
@@ -246,15 +260,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_dns_event(event, measurements, metadata, config) do
-    try do
-      do_handle_dns_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_dns_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_dns_event([:yellow_dog, :dns, :query, :received], _measurements, metadata, config) do
@@ -323,15 +329,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_dhcpv4_event(event, measurements, metadata, config) do
-    try do
-      do_handle_dhcpv4_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_dhcpv4_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_dhcpv4_event([:yellow_dog, :dhcpv4, :lease, :requested], _measurements, metadata, config) do
@@ -388,15 +386,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_dhcpv6_event(event, measurements, metadata, config) do
-    try do
-      do_handle_dhcpv6_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_dhcpv6_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_dhcpv6_event([:yellow_dog, :dhcpv6, :lease, :requested], _measurements, metadata, config) do
@@ -457,15 +447,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_mdns_event(event, measurements, metadata, config) do
-    try do
-      do_handle_mdns_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_mdns_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_mdns_event([:yellow_dog, :mdns, :service, :registered], _measurements, metadata, config) do
@@ -522,15 +504,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_service_event(event, _measurements, metadata, config) do
-    try do
-      do_handle_service_event(event, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_service_event(event, metadata, config) end)
   end
 
   defp do_handle_service_event([:yellow_dog, :service, :started], metadata, config) do
@@ -555,15 +529,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_dns_query_event(event, measurements, metadata, config) do
-    try do
-      do_handle_dns_query_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_dns_query_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_dns_query_event([:yellow_dog, :dns, :query, :start], _measurements, metadata, _config) do
@@ -650,15 +616,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_root_zone_event(event, measurements, metadata, config) do
-    try do
-      do_handle_root_zone_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_root_zone_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_root_zone_event([:yellow_dog, :dns, :root_zone, :fetch], measurements, metadata, config) do
@@ -696,15 +654,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_application_event(event, measurements, metadata, config) do
-    try do
-      do_handle_application_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_application_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_application_event([:yellow_dog, :application, :start], _measurements, metadata, config) do
@@ -737,15 +687,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_config_event(event, _measurements, metadata, config) do
-    try do
-      do_handle_config_event(event, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_config_event(event, metadata, config) end)
   end
 
   defp do_handle_config_event([:yellow_dog, :config, :loaded], metadata, config) do
@@ -777,15 +719,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_console_event(event, measurements, metadata, config) do
-    try do
-      do_handle_console_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_console_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_console_event([:yellow_dog, :console, :dashboard, :load], measurements, metadata, config) do
@@ -844,15 +778,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
 
   @doc false
   def handle_infrastructure_event(event, measurements, metadata, config) do
-    try do
-      do_handle_infrastructure_event(event, measurements, metadata, config)
-    rescue
-      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
-        Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
-    catch
-      kind, value ->
-        Logger.error(fn -> "Telemetry handler #{kind}: #{inspect(value)}" end)
-    end
+    safe_handle(fn -> do_handle_infrastructure_event(event, measurements, metadata, config) end)
   end
 
   defp do_handle_infrastructure_event([:ex_dns, :error], _measurements, metadata, _config) do

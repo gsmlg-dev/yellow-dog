@@ -134,7 +134,7 @@ defmodule YellowDog.Telemetry.Application do
     %{span_id: _span_id, name: name, app: app} = metadata
 
     if get_config(:show_span_start, false) do
-      Logger.debug("[SPAN START] [#{app}] #{name}")
+      Logger.debug("[SPAN START]", app: app, name: name)
     end
   end
 
@@ -150,7 +150,12 @@ defmodule YellowDog.Telemetry.Application do
     threshold = get_config(:span_threshold_ms, 0)
 
     if duration_ms >= threshold do
-      Logger.info("[SPAN #{status_icon}] [#{app}] #{name} (#{format_duration(duration_ms)})")
+      Logger.info("[SPAN]",
+        status: status_icon,
+        app: app,
+        name: name,
+        duration: format_duration(duration_ms)
+      )
     end
   end
 
