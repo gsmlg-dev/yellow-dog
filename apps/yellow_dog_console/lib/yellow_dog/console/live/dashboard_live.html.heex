@@ -161,6 +161,7 @@
                 class="btn btn-sm btn-error gap-2"
                 phx-click="stop_service"
                 phx-value-service={service.key}
+                phx-disable-with="Stopping..."
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -189,6 +190,7 @@
                 class="btn btn-sm btn-success gap-2"
                 phx-click="start_service"
                 phx-value-service={service.key}
+                phx-disable-with="Starting..."
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

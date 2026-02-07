@@ -93,8 +93,11 @@ defmodule YellowDog.Console.LogsLive do
     {:noreply, assign(socket, logs: [], pending_logs: [], pending_count: 0)}
   end
 
+  @valid_apps ~w(yellow_dog_dns yellow_dog_dhcpv4 yellow_dog_dhcpv6 yellow_dog_mdns yellow_dog_console yellow_dog yellow_dog_telemetry)
+
   @impl true
-  def handle_event("toggle_app", %{"app" => app_string}, socket) do
+  def handle_event("toggle_app", %{"app" => app_string}, socket)
+      when app_string in @valid_apps do
     app = String.to_existing_atom(app_string)
     selected = socket.assigns.selected_apps
 
@@ -109,6 +112,11 @@ defmodule YellowDog.Console.LogsLive do
   end
 
   @impl true
+  def handle_event("toggle_app", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("select_all_apps", _params, socket) do
     all_apps = @available_apps |> Enum.map(&elem(&1, 0)) |> MapSet.new()
     {:noreply, assign(socket, selected_apps: all_apps)}
@@ -119,10 +127,18 @@ defmodule YellowDog.Console.LogsLive do
     {:noreply, assign(socket, selected_apps: MapSet.new())}
   end
 
+  @valid_levels ~w(debug info warning error)
+
   @impl true
-  def handle_event("set_level", %{"level" => level_string}, socket) do
+  def handle_event("set_level", %{"level" => level_string}, socket)
+      when level_string in @valid_levels do
     level = String.to_existing_atom(level_string)
     {:noreply, assign(socket, min_level: level)}
+  end
+
+  @impl true
+  def handle_event("set_level", _params, socket) do
+    {:noreply, socket}
   end
 
   @impl true

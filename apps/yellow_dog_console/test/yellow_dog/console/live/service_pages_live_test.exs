@@ -483,6 +483,45 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   end
 
   # ============================================================================
+  # Input Validation / Atom Safety Guards
+  # ============================================================================
+
+  describe "Dashboard atom safety guards" do
+    test "start_service with invalid service name shows error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+      html = render_click(view, "start_service", %{"service" => "nonexistent"})
+      assert html =~ "Invalid service name"
+    end
+
+    test "stop_service with invalid service name shows error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+      html = render_click(view, "stop_service", %{"service" => "nonexistent"})
+      assert html =~ "Invalid service name"
+    end
+
+    test "start/stop buttons have phx-disable-with", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dashboard")
+      assert html =~ "Starting..." or html =~ "Stopping..."
+    end
+  end
+
+  describe "Logs atom safety guards" do
+    test "toggle_app with invalid app is ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      # Should not crash, just ignore
+      html = render_click(view, "toggle_app", %{"app" => "nonexistent_app"})
+      assert html =~ "Log" or html =~ "log"
+    end
+
+    test "set_level with invalid level is ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      # Should not crash, just ignore
+      html = render_click(view, "set_level", %{"level" => "nonexistent_level"})
+      assert html =~ "Log" or html =~ "log"
+    end
+  end
+
+  # ============================================================================
   # Active Sidebar Highlighting (CurrentPath hook)
   # ============================================================================
 

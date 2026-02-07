@@ -39,8 +39,11 @@ defmodule YellowDog.Console.DashboardLive do
      |> assign(:system_health, get_system_health())}
   end
 
+  @valid_services ~w(dns mdns dhcpv4 dhcpv6)
+
   @impl true
-  def handle_event("start_service", %{"service" => service_str}, socket) do
+  def handle_event("start_service", %{"service" => service_str}, socket)
+      when service_str in @valid_services do
     service = String.to_existing_atom(service_str)
 
     case YellowDog.start_service(service) do
@@ -67,7 +70,13 @@ defmodule YellowDog.Console.DashboardLive do
   end
 
   @impl true
-  def handle_event("stop_service", %{"service" => service_str}, socket) do
+  def handle_event("start_service", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Invalid service name")}
+  end
+
+  @impl true
+  def handle_event("stop_service", %{"service" => service_str}, socket)
+      when service_str in @valid_services do
     service = String.to_existing_atom(service_str)
 
     case YellowDog.stop_service(service) do
@@ -91,6 +100,11 @@ defmodule YellowDog.Console.DashboardLive do
            "Failed to stop #{String.upcase(service_str)}: #{inspect(reason)}"
          )}
     end
+  end
+
+  @impl true
+  def handle_event("stop_service", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Invalid service name")}
   end
 
   # Service configuration

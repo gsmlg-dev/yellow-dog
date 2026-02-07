@@ -25,7 +25,13 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   @impl true
   def handle_event("filter", %{"filter" => filter}, socket) do
-    filter_atom = String.to_atom(filter)
+    filter_atom =
+      case filter do
+        "all" -> :all
+        "enabled" -> :enabled
+        "disabled" -> :disabled
+        _ -> :all
+      end
 
     {:noreply,
      socket
