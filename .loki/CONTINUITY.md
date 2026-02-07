@@ -1,12 +1,23 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 18)
+**Phase**: IN_PROGRESS (Iteration 19)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 18 of 1000
+**Iteration**: 19 of 1000
 
 ## Session Summary
-Iteration 18: Atom safety hardening + skipped test recovery + dead code:
+Iteration 19: Bug fixes + OTP reliability hardening + error handling:
+- ✅ **6,400+ umbrella tests, 0 failures** (recovered 15 previously-skipped tests)
+- ✅ Fixed `SecureRandom.uniform/2` — `:math.ceil` returns floats, used `Kernel.ceil/1` + `:binary.decode_unsigned/1` to fix type mismatch
+- ✅ Fixed `to_int_list/3` in DHCP option decoder — parameters were swapped (binary used as bit size), float division `b/8` → `div(b, 8)`
+- ✅ Un-skipped **15 tests** tagged `:known_bug` across 3 test files (all now passing)
+- ✅ Fixed mDNS `status/0` hardcoded `:hybrid` mode — reads from Application env, server stores mode on init
+- ✅ Tightened bare `rescue _` to `rescue _e in [ArgumentError, UndefinedFunctionError]` + `catch :exit` across service_manager, service_heartbeat, abyss server/listener_pool
+- ✅ Implemented DNS zone cache hit ratio tracking with ETS counters (resolves TODO)
+- ✅ Added catch-all `handle_info(_msg, state)` to **17 GenServers** — prevents FunctionClauseError on unexpected messages
+- ✅ **6 commits this iteration**
+
+Previous iteration 18: Atom safety hardening + skipped test recovery + dead code:
 - ✅ **6,000+ umbrella tests, 0 failures** (verified full suite)
 - ✅ Replaced unsafe `String.to_atom` with safe alternatives across **12 files** — DHCP pool/lease, DNS auth/forward/zone, ex_dns zone/editor, config transform/config.ex, application.ex
 - ✅ Un-skipped 2 DHCPv4 `cleanup_expired` tests (bug was fixed in 77a8983, skip tags left behind)
