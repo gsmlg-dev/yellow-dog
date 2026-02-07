@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 79)
+**Phase**: IN_PROGRESS (Iteration 80)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 79 of 1000
+**Iteration**: 80 of 1000
 
 ## Session Summary
-Iteration 79: Use `DateTime.after?/before?` instead of `DateTime.compare`:
+Iteration 80: Use `sort_by :desc` instead of negation for descending sort:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `Enum.sort_by(list, fn x -> x end, :desc)` is more idiomatic than `fn x -> -x end`
+- ✅ 5 instances across 2 files: metrics_live.ex (4), rpz.ex (1)
+- ✅ 2 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 79: Use `DateTime.after?/before?` instead of `DateTime.compare`:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `DateTime.after?/2` and `DateTime.before?/2` (Elixir 1.15+) are more readable than `DateTime.compare(a, b) == :gt`
 - ✅ 14 instances across 8 files: lease.ex (dhcpv4/dhcpv6), transfer.ex, plus 5 test files
