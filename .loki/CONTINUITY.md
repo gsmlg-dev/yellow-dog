@@ -7,14 +7,16 @@
 
 ## Session Summary
 Iteration 16 (continued): Comprehensive polishing + UX + test coverage:
-- ✅ **940 Console tests passing**, 0 failures
+- ✅ **940 Console tests, 4764 umbrella tests passing**, 0 failures
 - ✅ Applied `mix format` to 11 files for CI compliance
 - ✅ Added `apps/*/data/` to `.gitignore`, removed tracked data files
 - ✅ Added `phx-debounce="300"` to 4 country search inputs (ACL + View pages)
 - ✅ Added `phx-debounce="blur"` to 8 validation forms (zone, view, ACL, record, pool, mDNS service)
 - ✅ Added `phx-disable-with` to 5 remaining action buttons (DHCPv4/v6 lease release, mDNS toggle/delete)
+- ✅ Added `maxlength` to 7 form inputs per RFC limits (domain=253, label=63, description=255)
+- ✅ Added disabled state to 6 form submit buttons when validation errors exist
 - ✅ Previous in iteration: atom safety, 77 filter/helper tests, 12 ProcessMapLive tests, diagnostics hardening
-- ✅ **26 commits this iteration**
+- ✅ **30 commits this iteration**
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -135,6 +137,9 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 24. `2a30291` - fix(console): add phx-debounce to country search inputs, gitignore data dirs
 25. `b8b5a36` - fix(console): add phx-debounce="blur" to 8 validation forms
 26. `e2acea9` - fix(console): add phx-disable-with to 5 lease/service action buttons
+27. `007cb06` - docs: update CONTINUITY with UX polishing
+28. `c4b63fc` - fix(console): add maxlength to 7 form inputs per RFC limits
+29. `8a16003` - fix(console): disable submit buttons when form has validation errors
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
