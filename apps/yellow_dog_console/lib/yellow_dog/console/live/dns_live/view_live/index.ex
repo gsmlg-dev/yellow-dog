@@ -428,7 +428,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       if forwarders != "" do
         invalid =
           forwarders
-          |> String.split("\n")
+          |> String.split("\n", trim: true)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&(&1 == ""))
           |> Enum.find(fn entry ->
@@ -599,7 +599,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   defp parse_forwarders(text) do
     text
-    |> String.split("\n")
+    |> String.split("\n", trim: true)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(fn entry ->

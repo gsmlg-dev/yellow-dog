@@ -463,7 +463,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
   defp parse_acl_rules(text) when is_binary(text) do
     text
-    |> String.split("\n")
+    |> String.split("\n", trim: true)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(&parse_acl_rule_line/1)
@@ -522,7 +522,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       if acl_type == "custom" and rules != "" do
         invalid =
           rules
-          |> String.split("\n")
+          |> String.split("\n", trim: true)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&(&1 == ""))
           |> Enum.find(fn line ->
@@ -604,7 +604,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
   defp build_named_acl_rules("custom", rules_text, _selected_countries) do
     rules_text
-    |> String.split("\n")
+    |> String.split("\n", trim: true)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.map(&parse_named_acl_rule_line/1)
@@ -626,7 +626,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   defp build_rule(action, "geo " <> countries_str) do
     countries =
       countries_str
-      |> String.split(~r/[,\s]+/)
+      |> String.split(~r/[,\s]+/, trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 

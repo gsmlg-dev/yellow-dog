@@ -86,7 +86,7 @@ defmodule YellowDog.Console.Settings.AddressPool do
   defp parse_dns_servers_str(%{"dns_servers_str" => str} = attrs) when is_binary(str) do
     servers =
       str
-      |> String.split(",")
+      |> String.split(",", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 

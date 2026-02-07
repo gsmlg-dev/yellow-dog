@@ -381,7 +381,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
         invalid =
           upstreams
-          |> String.split("\n")
+          |> String.split("\n", trim: true)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&(&1 == ""))
           |> Enum.find(fn ip ->
@@ -405,7 +405,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
         invalid =
           ns_records
-          |> String.split("\n")
+          |> String.split("\n", trim: true)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&(&1 == ""))
           |> Enum.find(fn ns ->
@@ -521,7 +521,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp build_zone_config(:forward, params) do
     upstreams =
       params["upstreams"]
-      |> String.split("\n")
+      |> String.split("\n", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 
@@ -531,7 +531,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp build_zone_config(:stub, params) do
     ns_records =
       params["ns_records"]
-      |> String.split("\n")
+      |> String.split("\n", trim: true)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 
