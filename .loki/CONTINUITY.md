@@ -1,17 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 74)
+**Phase**: IN_PROGRESS (Iteration 75)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 74 of 1000
+**Iteration**: 75 of 1000
 
 ## Session Summary
-Iteration 74: Enable `async: true` for pure-function test modules:
-- ✅ **All individual app suites pass: 0 failures, 0 warnings, 0 credo issues**
-- ✅ 11 test modules identified as safe for concurrent execution (no shared state)
-- ✅ Excluded 4 unsafe modules: security_test (ETS), dhcpv4_test (start_link), dhcpv4/server_test, dhcpv6/server_test
-- ✅ Files: cache_test, editor_test, manager_test, parser_error_test, parser_test, validator_test (ex_dns); config_test x2, option_test (ex_dhcp); dhcpv6_test, dns_test
-- ✅ 11 files — **1 commit** — net 0 lines (in-place replacement)
+Iteration 75: Replace `unless ... else` with `if` (Credo anti-pattern):
+- ✅ **All 4 affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `unless` with `else` branch is harder to read — Credo recommends `if` with swapped branches
+- ✅ 4 instances across 4 files: config_manager.ex, pool_store.ex (dhcpv4/dhcpv6), validator.ex
+- ✅ 4 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 74: Enable `async: true` for pure-function test modules:
+- ✅ 11 test modules made async-safe (no shared state)
+- ✅ 11 files — **1 commit** — net 0 lines
 
 Previous iteration 73: Replace `String.contains?` with `=~` operator in test assertions:
 - ✅ 214 instances replaced across 41 test files (all apps + e2e)
