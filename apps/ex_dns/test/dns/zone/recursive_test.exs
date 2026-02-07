@@ -87,6 +87,7 @@ defmodule DNS.Zone.RecursiveTest do
     test "creates valid DNS query structure" do
       # We can't easily test resolve/2 without network access,
       # but we can verify it exists and has the right arity
+      Code.ensure_loaded!(Recursive)
       assert Kernel.function_exported?(Recursive, :resolve, 2)
     end
   end
