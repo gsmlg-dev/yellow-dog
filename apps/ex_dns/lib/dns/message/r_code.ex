@@ -70,29 +70,42 @@ defmodule DNS.Message.RCode do
 
   @type t :: %__MODULE__{value: <<_::4>>, extended: <<_::8>>}
 
+  @spec new(integer() | bitstring()) :: t()
   def new(value) when is_integer(value) and value in 0..15, do: new(<<value::4>>)
 
   def new(value) do
     %RCode{value: value}
   end
 
-  @spec extend(DNS.Message.RCode.t(), any()) :: DNS.Message.RCode.t()
+  @spec extend(t(), integer() | binary()) :: t()
   def extend(rcode = %RCode{}, extended) when is_integer(extended),
     do: extend(rcode, <<extended::8>>)
 
   def extend(rcode = %RCode{}, extended), do: %{rcode | extended: extended}
 
+  @spec no_error() :: t()
   def no_error(), do: new(0)
+  @spec form_err() :: t()
   def form_err(), do: new(1)
+  @spec serv_fail() :: t()
   def serv_fail(), do: new(2)
+  @spec nx_domain() :: t()
   def nx_domain(), do: new(3)
+  @spec not_imp() :: t()
   def not_imp(), do: new(4)
+  @spec refused() :: t()
   def refused(), do: new(5)
+  @spec yx_domain() :: t()
   def yx_domain(), do: new(6)
+  @spec yx_rrset() :: t()
   def yx_rrset(), do: new(7)
+  @spec nx_rrset() :: t()
   def nx_rrset(), do: new(8)
+  @spec not_auth() :: t()
   def not_auth(), do: new(9)
+  @spec not_zone() :: t()
   def not_zone(), do: new(10)
+  @spec dso_type_ni() :: t()
   def dso_type_ni(), do: new(11)
 
   defimpl DNS.Parameter, for: DNS.Message.RCode do

@@ -180,6 +180,7 @@ defmodule DNS.Message.Header do
             nscount: 0,
             arcount: 0
 
+  @spec generate_id() :: non_neg_integer()
   def generate_id, do: Enum.random(0..0xFFFF)
 
   @spec new() :: DNS.Message.Header.t()
@@ -227,9 +228,13 @@ defmodule DNS.Message.Header do
     }
   end
 
+  @spec qdcount(binary()) :: non_neg_integer()
   def qdcount(<<_::32, count::16, _::binary>>), do: count
+  @spec ancount(binary()) :: non_neg_integer()
   def ancount(<<_::48, count::16, _::binary>>), do: count
+  @spec nscount(binary()) :: non_neg_integer()
   def nscount(<<_::64, count::16, _::binary>>), do: count
+  @spec arcount(binary()) :: non_neg_integer()
   def arcount(<<_::80, count::16, _>>), do: count
 
   defimpl DNS.Parameter, for: DNS.Message.Header do
