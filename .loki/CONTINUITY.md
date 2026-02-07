@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 34)
+**Phase**: IN_PROGRESS (Iteration 35)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 34 of 1000
+**Iteration**: 35 of 1000
 
 ## Session Summary
-Iteration 34: DRY color helpers + Enum.map_join:
+Iteration 35: Extract shared FormatHelper module:
+- ✅ **962 console tests, 0 failures**
+- ✅ Created `YellowDog.Console.FormatHelper` with 8 shared functions (format_mac, format_ip, format_duid, format_ipv6, format_expiration, format_time_remaining, expiration_color, parse_mac_string)
+- ✅ Removed duplicate definitions from **6 DHCPv4/v6 LiveView modules** — **net -71 lines**
+- ✅ Renamed `get_expiration_color` → `expiration_color` in 2 .heex templates for consistency
+- ✅ Used `Enum.map_join` in extracted helpers (single-pass improvement over originals)
+- ✅ **1 commit this iteration**
+
+Previous iteration 34: DRY color helpers + Enum.map_join:
 - ✅ **4,764 ex_dns + 962 console tests, 0 failures**
 - ✅ Extracted **4 `get_state_text_color` + 4 `get_utilization_color` + 1 `get_utilization_text_color`** to CoreComponents — **net -23 lines**
 - ✅ Converted **5 `Enum.map |> Enum.join`** to `Enum.map_join` in ex_dns (message.ex ×3, txt.ex, editor.ex)
