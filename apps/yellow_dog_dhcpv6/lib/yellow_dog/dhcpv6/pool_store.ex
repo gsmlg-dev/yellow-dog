@@ -386,12 +386,10 @@ defmodule YellowDog.Dhcpv6.PoolStore do
       excluded_ranges: get_list(pool, [:excluded_ranges, "excluded_ranges"]),
       dns_servers: get_list(pool, [:dns_servers, "dns_servers"], []),
       domain_name: get_value(pool, [:domain_name, "domain_name", :domain, "domain"]),
-      preferred_lifetime:
-        get_integer(pool, [:preferred_lifetime, "preferred_lifetime"], 3600),
+      preferred_lifetime: get_integer(pool, [:preferred_lifetime, "preferred_lifetime"], 3600),
       valid_lifetime: get_integer(pool, [:valid_lifetime, "valid_lifetime"], 7200),
       max_leases: get_integer(pool, [:max_leases, "max_leases"], 1000),
-      static_reservations:
-        get_map(pool, [:static_reservations, "static_reservations"], %{}),
+      static_reservations: get_map(pool, [:static_reservations, "static_reservations"], %{}),
       enabled: get_boolean(pool, [:enabled, "enabled"], true)
     }
   end

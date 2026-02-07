@@ -238,10 +238,7 @@ defmodule YellowDog.Dns.RecursionWorker do
 
       case do_resolve(socket, ns_query, default_root_servers(), timeout, depth) do
         {:ok, response} ->
-          addresses =
-            response.anlist
-            |> Enum.filter(&(&1.type == :a))
-            |> Enum.map(&{&1.rdata, 53})
+          addresses = for(r <- response.anlist, r.type == :a, do: {r.rdata, 53})
 
           if Enum.empty?(addresses) do
             resolve_ns_addresses(socket, rest, timeout, depth)

@@ -391,8 +391,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
       domain_name: get_value(pool, [:domain_name, "domain_name", :domain, "domain"]),
       lease_time: get_integer(pool, [:lease_time, "lease_time"], 86400),
       max_leases: get_integer(pool, [:max_leases, "max_leases"], 1000),
-      static_reservations:
-        get_map(pool, [:static_reservations, "static_reservations"], %{}),
+      static_reservations: get_map(pool, [:static_reservations, "static_reservations"], %{}),
       enabled: get_boolean(pool, [:enabled, "enabled"], true)
     }
   end

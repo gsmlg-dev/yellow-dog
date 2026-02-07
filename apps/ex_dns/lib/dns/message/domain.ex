@@ -140,7 +140,7 @@ defmodule DNS.Message.Domain do
   end
 
   defp domain_byte_size(domain) do
-    case String.split(domain, ".") |> Enum.filter(&(&1 != "")) do
+    case String.split(domain, ".", trim: true) do
       [] ->
         <<0>>
 
@@ -158,7 +158,7 @@ defmodule DNS.Message.Domain do
   defimpl DNS.Parameter, for: Domain do
     @impl true
     def to_iodata(%Domain{value: domain}) do
-      case String.split(domain, ".") |> Enum.filter(&(&1 != "")) do
+      case String.split(domain, ".", trim: true) do
         [] ->
           <<0>>
 

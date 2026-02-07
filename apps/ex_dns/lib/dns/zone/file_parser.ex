@@ -749,13 +749,14 @@ defmodule DNS.Zone.FileParser do
     duplicates =
       records
       |> Enum.group_by(fn rr -> {rr.name, rr.type, rr.data} end)
-      |> Enum.filter(fn {_, records} -> match?([_, _ | _], records) end)
-      |> Enum.map(fn {{name, type, data}, _records} ->
-        %{
-          line: 0,
-          message: "Duplicate record: #{name} #{type} #{inspect(data)}",
-          context: "record validation"
-        }
+      |> then(fn groups ->
+        for {{name, type, data}, [_, _ | _]} <- groups do
+          %{
+            line: 0,
+            message: "Duplicate record: #{name} #{type} #{inspect(data)}",
+            context: "record validation"
+          }
+        end
       end)
 
     errors ++ duplicates

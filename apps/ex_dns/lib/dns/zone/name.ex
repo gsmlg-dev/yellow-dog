@@ -19,7 +19,7 @@ defmodule DNS.Zone.Name do
     value = value |> String.trim(".")
 
     data =
-      case value |> String.split(".") |> Enum.filter(&(&1 != "")) do
+      case String.split(value, ".", trim: true) do
         [] ->
           <<0>>
 
@@ -72,7 +72,7 @@ defmodule DNS.Zone.Name do
   defimpl DNS.Parameter, for: Name do
     @impl true
     def to_iodata(%Name{value: domain}) do
-      case String.split(domain, ".") |> Enum.filter(&(&1 != "")) do
+      case String.split(domain, ".", trim: true) do
         [] ->
           <<0>>
 

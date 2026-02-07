@@ -324,10 +324,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
   defp check_response_ips(state, response) do
     # Extract A/AAAA records from response
-    ips =
-      response.anlist
-      |> Enum.filter(fn rr -> rr.type in [:a, :aaaa] end)
-      |> Enum.map(fn rr -> rr.rdata end)
+    ips = for(rr <- response.anlist, rr.type in [:a, :aaaa], do: rr.rdata)
 
     # Check each IP against policies
     Enum.find_value(ips, :no_match, fn ip ->

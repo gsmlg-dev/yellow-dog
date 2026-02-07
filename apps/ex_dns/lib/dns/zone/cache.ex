@@ -190,10 +190,9 @@ defmodule DNS.Zone.Cache do
     now = System.system_time(:second)
 
     expired_keys =
-      @meta_table
-      |> :ets.tab2list()
-      |> Enum.filter(fn {_key, meta} -> meta.expires_at <= now end)
-      |> Enum.map(fn {key, _} -> key end)
+      for {key, meta} <- :ets.tab2list(@meta_table),
+          meta.expires_at <= now,
+          do: key
 
     Enum.each(expired_keys, &delete_zone/1)
     length(expired_keys)

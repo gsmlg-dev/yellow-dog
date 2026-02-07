@@ -215,9 +215,7 @@ defmodule YellowDog.Dns.ZoneController do
 
   @spec list_zones_for_view(Supervisor.supervisor(), String.t()) :: [{atom(), String.t(), pid()}]
   def list_zones_for_view(supervisor, view_name) do
-    list_zones(supervisor)
-    |> Enum.filter(fn {v, _type, _name, _pid} -> v == view_name end)
-    |> Enum.map(fn {_view, type, name, pid} -> {type, name, pid} end)
+    for {^view_name, type, name, pid} <- list_zones(supervisor), do: {type, name, pid}
   end
 
   # Map module back to zone type

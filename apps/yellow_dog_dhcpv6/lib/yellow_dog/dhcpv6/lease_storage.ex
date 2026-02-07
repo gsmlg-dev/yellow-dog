@@ -471,9 +471,7 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   """
   @spec get_allocated_ips() :: MapSet.t(ipv6_address())
   def get_allocated_ips do
-    list_active()
-    |> Enum.filter(fn lease -> lease.ip_address != nil end)
-    |> Enum.map(& &1.ip_address)
+    for(lease <- list_active(), lease.ip_address != nil, do: lease.ip_address)
     |> MapSet.new()
   end
 
@@ -486,9 +484,9 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   """
   @spec get_allocated_prefixes() :: MapSet.t({ipv6_address(), pos_integer()})
   def get_allocated_prefixes do
-    list(ia_type: :ia_pd, active_only: true)
-    |> Enum.filter(fn lease -> lease.delegated_prefix != nil end)
-    |> Enum.map(& &1.delegated_prefix)
+    leases = list(ia_type: :ia_pd, active_only: true)
+
+    for(lease <- leases, lease.delegated_prefix != nil, do: lease.delegated_prefix)
     |> MapSet.new()
   end
 

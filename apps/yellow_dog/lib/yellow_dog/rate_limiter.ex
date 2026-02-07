@@ -139,7 +139,10 @@ defmodule YellowDog.RateLimiter do
           :telemetry.execute(
             @telemetry_prefix ++ [:denied],
             %{count: 1},
-            %{reason: :global_limit, client_id: YellowDog.RateLimiter.normalize_client_id(client_id)}
+            %{
+              reason: :global_limit,
+              client_id: YellowDog.RateLimiter.normalize_client_id(client_id)
+            }
           )
 
           new_state = %{

@@ -527,11 +527,8 @@ defmodule DNS.Zone.Validator do
 
   defp find_duplicates(records) do
     records
-    |> Enum.group_by(fn record ->
-      {record.type, record.data}
-    end)
-    |> Enum.filter(fn {_key, records} -> match?([_, _ | _], records) end)
-    |> Enum.map(fn {key, _records} -> key end)
+    |> Enum.group_by(fn record -> {record.type, record.data} end)
+    |> then(fn groups -> for({key, [_, _ | _]} <- groups, do: key) end)
   end
 
   defp has_dnssec?(zone) do

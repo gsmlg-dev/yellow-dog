@@ -136,17 +136,9 @@ defmodule YellowDog.Mdns.RecordBuilder do
   """
   @spec build_a_records(service()) :: [Record.t()]
   def build_a_records(service) do
-    service.addresses
-    |> Enum.filter(&is_ipv4?/1)
-    |> Enum.map(fn ip ->
-      %Record{
-        name: service.host,
-        type: :A,
-        class: :IN,
-        ttl: @default_host_ttl,
-        data: ip
-      }
-    end)
+    for ip <- service.addresses, is_ipv4?(ip) do
+      %Record{name: service.host, type: :A, class: :IN, ttl: @default_host_ttl, data: ip}
+    end
   end
 
   @doc """
@@ -159,17 +151,9 @@ defmodule YellowDog.Mdns.RecordBuilder do
   """
   @spec build_aaaa_records(service()) :: [Record.t()]
   def build_aaaa_records(service) do
-    service.addresses
-    |> Enum.filter(&is_ipv6?/1)
-    |> Enum.map(fn ip ->
-      %Record{
-        name: service.host,
-        type: :AAAA,
-        class: :IN,
-        ttl: @default_host_ttl,
-        data: ip
-      }
-    end)
+    for ip <- service.addresses, is_ipv6?(ip) do
+      %Record{name: service.host, type: :AAAA, class: :IN, ttl: @default_host_ttl, data: ip}
+    end
   end
 
   @doc """

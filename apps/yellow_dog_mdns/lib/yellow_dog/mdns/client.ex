@@ -469,27 +469,27 @@ defmodule YellowDog.Mdns.Client do
   end
 
   defp extract_ptr_targets(responses) do
-    responses
-    |> Enum.flat_map(fn msg -> msg.anlist end)
-    |> Enum.filter(fn record -> record.type == :PTR end)
-    |> Enum.map(fn record -> to_string(record.data) end)
-    |> Enum.uniq()
+    for msg <- responses,
+        record <- msg.anlist,
+        record.type == :PTR,
+        uniq: true,
+        do: to_string(record.data)
   end
 
   defp extract_a_records(responses) do
-    responses
-    |> Enum.flat_map(fn msg -> msg.anlist ++ msg.arlist end)
-    |> Enum.filter(fn record -> record.type == :A end)
-    |> Enum.map(fn record -> record.data end)
-    |> Enum.uniq()
+    for msg <- responses,
+        record <- msg.anlist ++ msg.arlist,
+        record.type == :A,
+        uniq: true,
+        do: record.data
   end
 
   defp extract_aaaa_records(responses) do
-    responses
-    |> Enum.flat_map(fn msg -> msg.anlist ++ msg.arlist end)
-    |> Enum.filter(fn record -> record.type == :AAAA end)
-    |> Enum.map(fn record -> record.data end)
-    |> Enum.uniq()
+    for msg <- responses,
+        record <- msg.anlist ++ msg.arlist,
+        record.type == :AAAA,
+        uniq: true,
+        do: record.data
   end
 
   defp fetch_service_details(instance_name, opts) do

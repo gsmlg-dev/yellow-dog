@@ -29,7 +29,8 @@ defmodule YellowDog.Dns.View.Operations do
          health: check_health_status()
        }}
     rescue
-      _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError] -> {:error, :system_unavailable}
+      _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError] ->
+        {:error, :system_unavailable}
     end
   end
 

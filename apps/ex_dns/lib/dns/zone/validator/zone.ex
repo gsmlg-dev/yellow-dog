@@ -232,9 +232,7 @@ defmodule DNS.Zone.Validator.Zone do
   defp check_mx_ns_targets(result, records) do
     # Build a set of names that have CNAME records
     cnames =
-      records
-      |> Enum.filter(&(get_type(&1) == :cname))
-      |> Enum.map(&normalize_name(get_name(&1)))
+      for(r <- records, get_type(r) == :cname, do: normalize_name(get_name(r)))
       |> MapSet.new()
 
     # Check MX and NS targets
@@ -281,9 +279,7 @@ defmodule DNS.Zone.Validator.Zone do
   defp check_orphaned_targets(result, records) do
     # Get all defined names with A/AAAA records
     names_with_address =
-      records
-      |> Enum.filter(&(get_type(&1) in [:a, :aaaa]))
-      |> Enum.map(&normalize_name(get_name(&1)))
+      for(r <- records, get_type(r) in [:a, :aaaa], do: normalize_name(get_name(r)))
       |> MapSet.new()
 
     # Check MX, NS, SRV targets

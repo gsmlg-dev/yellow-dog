@@ -354,15 +354,9 @@ defmodule YellowDog.Application do
     # Log enabled services
     case Map.get(config, "core") do
       %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
-        enabled_services =
-          [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
-          |> Enum.filter(fn {_name, enabled} -> enabled end)
-          |> Enum.map(fn {name, _enabled} -> name end)
-
-        disabled_services =
-          [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
-          |> Enum.filter(fn {_name, enabled} -> not enabled end)
-          |> Enum.map(fn {name, _enabled} -> name end)
+        services = [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
+        enabled_services = for({name, true} <- services, do: name)
+        disabled_services = for({name, false} <- services, do: name)
 
         :telemetry.execute(
           [:yellow_dog, :config, :validated],

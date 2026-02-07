@@ -47,8 +47,7 @@ defmodule DNS.Zone.RootHint do
   def root_hints() do
     root_hints_text()
     |> String.split("\n")
-    |> Enum.filter(&(!String.starts_with?(&1, ";")))
-    |> Enum.filter(&(&1 != ""))
+    |> Enum.filter(&(&1 != "" and not String.starts_with?(&1, ";")))
     |> Enum.map(fn line ->
       type_map = %{"A" => :a, "AAAA" => :aaaa, "NS" => :ns}
       [name, ttl, type, data] = line |> String.split(~r[\s+])
@@ -75,20 +74,18 @@ defmodule DNS.Zone.RootHint do
   def root_hints_text, do: File.read!(Path.join(data_dir(), "named.root"))
 
   def nameservers() do
-    root_hints()
-    |> Enum.filter(fn record -> record[:type] == RRType.new(:ns) end)
-    |> Enum.map(fn record -> record[:rdata] end)
-    |> Enum.into(%{}, fn name ->
-      glue = root_hints() |> Enum.filter(fn record -> record[:name] == to_string(name) end)
+    hints = root_hints()
+    ns_names = for(r <- hints, r[:type] == RRType.new(:ns), do: r[:rdata])
 
-      glue_a = glue |> Enum.filter(fn record -> record[:type] == RRType.new(:a) end)
-      glue_aaaa = glue |> Enum.filter(fn record -> record[:type] == RRType.new(:aaaa) end)
+    Map.new(ns_names, fn name ->
+      name_str = to_string(name)
+      glue = for(r <- hints, r[:name] == name_str, do: r)
 
-      {to_string(name),
+      {name_str,
        %{
          name: name,
-         ipv4: glue_a |> Enum.map(fn record -> record[:rdata] end),
-         ipv6: glue_aaaa |> Enum.map(fn record -> record[:rdata] end)
+         ipv4: for(r <- glue, r[:type] == RRType.new(:a), do: r[:rdata]),
+         ipv6: for(r <- glue, r[:type] == RRType.new(:aaaa), do: r[:rdata])
        }}
     end)
   end
