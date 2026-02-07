@@ -135,12 +135,10 @@ defmodule YellowDog.Console.FormatHelper do
   @doc "Parses a colon-separated hex MAC string into a 6-byte binary."
   @spec parse_mac_string(String.t()) :: binary()
   def parse_mac_string(mac_string) do
-    mac_string
-    |> String.replace(":", "")
-    |> String.upcase()
-    |> Base.decode16!()
-  rescue
-    _ -> <<0, 0, 0, 0, 0, 0>>
+    case mac_string |> String.replace(":", "") |> String.upcase() |> Base.decode16() do
+      {:ok, binary} -> binary
+      :error -> <<0, 0, 0, 0, 0, 0>>
+    end
   end
 
   @doc "Filters a list of country maps by search query (case-insensitive code/name match)."
