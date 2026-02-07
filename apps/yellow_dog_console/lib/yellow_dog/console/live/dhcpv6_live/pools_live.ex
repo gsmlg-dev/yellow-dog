@@ -11,7 +11,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   use YellowDog.Console, :live_view
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_duration: 1]
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_duration: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
@@ -52,8 +52,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
         name: pool_name,
         protocol: :ipv6,
         network: pool[:network],
-        range_start: format_ipv6(pool.range_start),
-        range_end: format_ipv6(pool.range_end),
+        range_start: format_ip(pool.range_start),
+        range_end: format_ip(pool.range_end),
         preferred_lifetime: pool[:preferred_lifetime],
         valid_lifetime: pool[:valid_lifetime],
         dns_servers: format_dns_servers(pool[:dns_servers])
@@ -314,8 +314,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
                     </td>
                     <td class="font-mono text-sm">{pool[:network] || "-"}</td>
                     <td class="font-mono text-sm">
-                      <div>{format_ipv6(pool.range_start)}</div>
-                      <div class="text-base-content/50">to {format_ipv6(pool.range_end)}</div>
+                      <div>{format_ip(pool.range_start)}</div>
+                      <div class="text-base-content/50">to {format_ip(pool.range_end)}</div>
                     </td>
                     <td>
                       {format_duration(pool[:preferred_lifetime])} / {format_duration(
@@ -428,7 +428,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
       Enum.filter(pools, fn pool ->
         String.contains?(String.downcase(pool.name), term) or
           String.contains?(String.downcase(pool[:network] || ""), term) or
-          String.contains?(String.downcase(format_ipv6(pool.range_start) || ""), term)
+          String.contains?(String.downcase(format_ip(pool.range_start) || ""), term)
       end)
     end
   end
@@ -443,8 +443,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
         [
           csv_escape(pool.name),
           csv_escape(pool[:network] || ""),
-          csv_escape(format_ipv6(pool.range_start) || ""),
-          csv_escape(format_ipv6(pool.range_end) || ""),
+          csv_escape(format_ip(pool.range_start) || ""),
+          csv_escape(format_ip(pool.range_end) || ""),
           csv_escape(format_duration(pool[:preferred_lifetime])),
           csv_escape(format_duration(pool[:valid_lifetime] || pool[:lease_time])),
           csv_escape(if pool[:enabled] != false, do: "Active", else: "Disabled")
@@ -520,21 +520,6 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
   defp parse_dns_servers([]), do: nil
   defp parse_dns_servers(servers) when is_list(servers), do: servers
 
-  defp format_ipv6(nil), do: nil
-
-  defp format_ipv6(addr) when is_tuple(addr) do
-    addr
-    |> Tuple.to_list()
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
-    |> String.downcase()
-  end
-
-  defp format_ipv6(addr) when is_binary(addr), do: addr
-
   defp format_dns_servers(nil), do: []
-
-  defp format_dns_servers(servers) when is_list(servers) do
-    Enum.map(servers, &format_ipv6/1)
-  end
-
+  defp format_dns_servers(servers) when is_list(servers), do: Enum.map(servers, &format_ip/1)
 end
