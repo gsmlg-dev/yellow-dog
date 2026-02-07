@@ -1,12 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 106)
+**Phase**: IN_PROGRESS (Iteration 108)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 106 of 1000
+**Iteration**: 108 of 1000
 
 ## Session Summary
-Iteration 106: Add unit tests for Config.TomlHelpers (33 tests):
+Iteration 108: Add unit tests for RateLimiter shared functions (15 tests):
+- ✅ **All 15 tests pass: 0 failures**
+- ✅ Tests: normalize_client_id (4), check_global_limit (4), load_config (2), check_client_limit (3), cleanup_expired_buckets (2)
+- ✅ 1 new file — **1 commit** — net +162 lines
+
+Previous iteration 107: Fix @spec for maybe_create_backup:
+- ✅ Removed unreachable `{:ok, String.t()}` from @spec — File.cp returns `:ok`
+- ✅ All callers use `:ok <-` in `with` chains — no behavior change
+- ✅ 1 file — **1 commit** — net 0 lines
+
+Previous iteration 106: Add unit tests for Config.TomlHelpers (33 tests):
 - ✅ **All 33 tests pass: 0 failures**
 - ✅ Covers all 10 public functions: get_value, get_integer, get_boolean, get_list, get_map, parse_toml, encode_toml_string, atomic_write, ensure_directory, maybe_create_backup
 - ✅ Found @spec bug: maybe_create_backup says `{:ok, String.t()}` but File.cp returns `:ok`
