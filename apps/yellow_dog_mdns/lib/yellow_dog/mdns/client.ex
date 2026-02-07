@@ -23,6 +23,8 @@ defmodule YellowDog.Mdns.Client do
   @mdns_ipv4_addr {224, 0, 0, 251}
   @mdns_ipv6_addr {0xFF02, 0, 0, 0, 0, 0, 0, 0x00FB}
   @mdns_port 5353
+  # RFC 6762 §11: mDNS multicast TTL must be 255
+  @mdns_multicast_ttl 255
   @default_timeout 2000
 
   @typedoc "Query options"
@@ -322,7 +324,7 @@ defmodule YellowDog.Mdns.Client do
     multicast_addr = if use_ipv6, do: @mdns_ipv6_addr, else: @mdns_ipv4_addr
 
     # Use Abyss.Client.broadcast for announcements
-    Abyss.Client.broadcast(multicast_addr, @mdns_port, binary, ttl: 255)
+    Abyss.Client.broadcast(multicast_addr, @mdns_port, binary, ttl: @mdns_multicast_ttl)
   end
 
   # Private functions
@@ -387,13 +389,13 @@ defmodule YellowDog.Mdns.Client do
         [
           {:add_membership, {multicast_addr, {0, 0, 0, 0, 0, 0, 0, 0}}},
           {:multicast_loop, true},
-          {:multicast_ttl, 255}
+          {:multicast_ttl, @mdns_multicast_ttl}
         ]
       else
         [
           {:add_membership, {multicast_addr, {0, 0, 0, 0}}},
           {:multicast_loop, true},
-          {:multicast_ttl, 255}
+          {:multicast_ttl, @mdns_multicast_ttl}
         ]
       end
 

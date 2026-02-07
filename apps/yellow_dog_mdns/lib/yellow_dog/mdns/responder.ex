@@ -13,6 +13,12 @@ defmodule YellowDog.Mdns.Responder do
   alias DNS.Message
   alias DNS.Message.{Header, Question, Record}
 
+  # RFC 6762 §17: mDNS messages should fit in a single packet
+  @mdns_max_packet_size 1232
+  # RFC 6762 §6.3: Response delay range for shared records
+  @response_delay_min_ms 20
+  @response_delay_range_ms 100
+
   @doc """
   Checks if we should respond to a query.
 
@@ -23,14 +29,7 @@ defmodule YellowDog.Mdns.Responder do
   def should_respond?(_query, []), do: false
 
   def should_respond?(query, matching_services) do
-    # Check if query is already answered (known-answer suppression)
-    has_known_answers = has_known_answers?(query, matching_services)
-
-    if has_known_answers do
-      false
-    else
-      true
-    end
+    not has_known_answers?(query, matching_services)
   end
 
   @doc """
@@ -97,8 +96,7 @@ defmodule YellowDog.Mdns.Responder do
   """
   @spec calculate_response_delay([ServiceRegistry.service()]) :: non_neg_integer()
   def calculate_response_delay(_services) do
-    # Random delay between 20-120ms
-    :rand.uniform(100) + 20
+    :rand.uniform(@response_delay_range_ms) + @response_delay_min_ms
   end
 
   @doc """
@@ -181,7 +179,7 @@ defmodule YellowDog.Mdns.Responder do
     # Rough estimate of message size
     estimated_size = estimate_message_size(message)
 
-    if estimated_size > 1232 do
+    if estimated_size > @mdns_max_packet_size do
       :telemetry.execute(
         [:yellow_dog, :mdns, :responder, :response_too_large],
         %{size: estimated_size},

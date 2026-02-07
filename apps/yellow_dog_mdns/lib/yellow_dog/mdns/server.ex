@@ -12,9 +12,13 @@ defmodule YellowDog.Mdns.Server do
   @type options :: keyword()
   @type server_config :: map()
 
-  # mDNS multicast address and port
+  # mDNS multicast address and port (RFC 6762)
   @mdns_multicast_address {224, 0, 0, 251}
   @mdns_port 5353
+  # RFC 6762 §11: mDNS multicast TTL must be 255
+  @mdns_multicast_ttl 255
+  # RFC 6762 §17: mDNS messages should fit in a single packet
+  @mdns_max_packet_size 1232
 
   @doc """
   Starts the mDNS server with the given options.
@@ -99,7 +103,7 @@ defmodule YellowDog.Mdns.Server do
       # Single listener for broadcast mode
       num_listeners: Keyword.get(opts, :num_listeners, 1),
       # mDNS MTU limit
-      max_packet_size: Keyword.get(opts, :max_packet_size, 1232)
+      max_packet_size: Keyword.get(opts, :max_packet_size, @mdns_max_packet_size)
     ]
   end
 
@@ -108,8 +112,7 @@ defmodule YellowDog.Mdns.Server do
       {:ip, listen_address},
       {:multicast_if, listen_address},
       {:add_membership, {multicast_address, listen_address}},
-      # mDNS uses TTL 255
-      {:multicast_ttl, 255}
+      {:multicast_ttl, @mdns_multicast_ttl}
     ]
 
     # Add any additional transport options from opts
@@ -128,11 +131,11 @@ defmodule YellowDog.Mdns.Server do
         ip: {0, 0, 0, 0},
         multicast_if: {0, 0, 0, 0},
         add_membership: {@mdns_multicast_address, {0, 0, 0, 0}},
-        multicast_ttl: 255
+        multicast_ttl: @mdns_multicast_ttl
       ],
       read_timeout: 5000,
       num_listeners: 1,
-      max_packet_size: 1232
+      max_packet_size: @mdns_max_packet_size
     ]
   end
 
@@ -145,7 +148,7 @@ defmodule YellowDog.Mdns.Server do
 
     try do
       server_config = build_server_config(opts)
-      port = Keyword.get(server_config, :port, 5353)
+      port = Keyword.get(server_config, :port, @mdns_port)
       multicast_address = Keyword.get(opts, :multicast_address, @mdns_multicast_address)
 
       :telemetry.execute(
