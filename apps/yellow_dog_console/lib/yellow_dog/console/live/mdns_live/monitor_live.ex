@@ -58,8 +58,9 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     try do
       YellowDog.Mdns.clear_cache()
       {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
-    rescue
-      _ -> {:noreply, put_flash(socket, :error, "Failed to clear cache")}
+    catch
+      kind, _ when kind in [:exit, :error] ->
+        {:noreply, put_flash(socket, :error, "mDNS service is not running")}
     end
   end
 
@@ -100,24 +101,27 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   defp get_recent_queries(limit) do
     try do
       YellowDog.Mdns.get_recent_queries(limit: limit)
-    rescue
-      _ -> []
+    catch
+      :exit, _ -> []
+      :error, _ -> []
     end
   end
 
   defp get_network_stats do
+    default = %{
+      total_responses: 0,
+      total_queries: 0,
+      active_services: 0,
+      unique_hosts: 0,
+      queries_per_minute: 0.0,
+      most_queried_services: []
+    }
+
     try do
       YellowDog.Mdns.network_stats()
-    rescue
-      _ ->
-        %{
-          total_responses: 0,
-          total_queries: 0,
-          active_services: 0,
-          unique_hosts: 0,
-          queries_per_minute: 0.0,
-          most_queried_services: []
-        }
+    catch
+      :exit, _ -> default
+      :error, _ -> default
     end
   end
 

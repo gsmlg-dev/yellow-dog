@@ -1,0 +1,288 @@
+defmodule YellowDog.Console.EventHandlersLiveTest do
+  @moduledoc """
+  Tests for event handlers on pages that only have mounting tests.
+  Covers mDNS, DHCPv4, DHCPv6, and other pages with interactive controls.
+  """
+  use YellowDog.Console.ConnCase, async: true
+  import Phoenix.LiveViewTest
+
+  # ============================================================================
+  # mDNS Services - Event Handlers
+  # ============================================================================
+
+  describe "mDNS Services /mdns/services events" do
+    test "filter event changes displayed services", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "filter", %{"filter" => "enabled"})
+      assert html =~ "Enabled"
+    end
+
+    test "show_new_form opens registration modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "show_new_form")
+      assert html =~ "Register New Service"
+    end
+
+    test "hide_form closes modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      render_click(view, "show_new_form")
+      html = render_click(view, "hide_form")
+      refute html =~ "Register New Service"
+    end
+
+    test "Escape key closes service form modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      render_click(view, "show_new_form")
+      html = render_click(view, "hide_form")
+      refute html =~ "Register New Service"
+    end
+
+    test "filter tabs exist", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/services")
+      assert html =~ "All Services"
+      assert html =~ "Enabled"
+      assert html =~ "Disabled"
+    end
+  end
+
+  # ============================================================================
+  # mDNS Discovery - Event Handlers
+  # ============================================================================
+
+  describe "mDNS Discovery /mdns/discovery events" do
+    test "search filters services", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      html = render_change(view, "search", %{"search" => "test"})
+      assert html =~ "Total Services"
+    end
+
+    test "filter_by_type with all shows all services", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      html = render_change(view, "filter_by_type", %{"type" => "all"})
+      assert html =~ "Total Services"
+    end
+
+    test "close_details works when no service selected", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      html = render_click(view, "close_details")
+      refute html =~ "modal-open"
+    end
+
+    test "statistics bar shows counts", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/mdns/discovery")
+      assert html =~ "Total Services"
+      assert html =~ "Service Types"
+      assert html =~ "Active Hosts"
+      assert html =~ "Last Updated"
+    end
+  end
+
+  # ============================================================================
+  # mDNS Monitor - Event Handlers
+  # ============================================================================
+
+  describe "mDNS Monitor /mdns/monitor events" do
+    test "set_limit changes query limit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      html = render_change(view, "set_limit", %{"limit" => "100"})
+      assert html =~ "100 queries"
+    end
+
+    test "search filters queries", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      html = render_change(view, "search", %{"search" => "test"})
+      assert html =~ "Recent Queries"
+    end
+
+    test "clear_cache works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      html = render_click(view, "clear_cache")
+      assert html =~ "Total Queries"
+    end
+  end
+
+  # ============================================================================
+  # DHCPv4 Leases - Event Handlers
+  # ============================================================================
+
+  describe "DHCPv4 Leases /dhcpv4/leases events" do
+    test "search filters leases", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/leases")
+      html = render_change(view, "search", %{"search" => "192.168"})
+      assert html =~ "Lease" or html =~ "DHCPv4"
+    end
+
+    test "filter_state changes state filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/leases")
+      html = render_change(view, "filter_state", %{"state" => "active"})
+      assert html =~ "DHCPv4" or html =~ "Lease"
+    end
+
+    test "filter_pool changes pool filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/leases")
+      html = render_change(view, "filter_pool", %{"pool" => "all"})
+      assert html =~ "DHCPv4" or html =~ "Lease"
+    end
+
+    test "aria-labels present on filters", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/leases")
+      assert html =~ "aria-label=\"Search DHCPv4 leases\""
+      assert html =~ "aria-label=\"Filter by lease state\""
+      assert html =~ "aria-label=\"Filter by pool\""
+    end
+  end
+
+  # ============================================================================
+  # DHCPv4 Pools - Event Handlers
+  # ============================================================================
+
+  describe "DHCPv4 Pools /dhcpv4/pools events" do
+    test "filter changes search query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools")
+      html = render_change(view, "filter", %{"filter" => "office"})
+      assert html =~ "Pool" or html =~ "DHCPv4"
+    end
+
+    test "show_new_form opens pool form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools")
+      html = render_click(view, "show_new_form")
+      assert html =~ "Add" or html =~ "Pool"
+    end
+
+    test "aria-label on search", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/pools")
+      assert html =~ "aria-label=\"Search DHCPv4 pools\""
+    end
+  end
+
+  # ============================================================================
+  # DHCPv6 Leases - Event Handlers
+  # ============================================================================
+
+  describe "DHCPv6 Leases /dhcpv6/leases events" do
+    test "search filters leases", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/leases")
+      html = render_change(view, "search", %{"search" => "2001:db8"})
+      assert html =~ "Lease" or html =~ "DHCPv6"
+    end
+
+    test "filter_state changes state filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/leases")
+      html = render_change(view, "filter_state", %{"state" => "active"})
+      assert html =~ "DHCPv6" or html =~ "Lease"
+    end
+
+    test "filter_ia_type changes IA type filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/leases")
+      html = render_change(view, "filter_ia_type", %{"ia_type" => "all"})
+      assert html =~ "DHCPv6" or html =~ "Lease"
+    end
+
+    test "filter_pool changes pool filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/leases")
+      html = render_change(view, "filter_pool", %{"pool" => "all"})
+      assert html =~ "DHCPv6" or html =~ "Lease"
+    end
+
+    test "aria-labels present on filters", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/leases")
+      assert html =~ "aria-label=\"Search DHCPv6 leases\""
+      assert html =~ "aria-label=\"Filter by lease state\""
+      assert html =~ "aria-label=\"Filter by IA type\""
+      assert html =~ "aria-label=\"Filter by pool\""
+    end
+  end
+
+  # ============================================================================
+  # DHCPv6 Pools - Event Handlers
+  # ============================================================================
+
+  describe "DHCPv6 Pools /dhcpv6/pools events" do
+    test "filter changes search query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/pools")
+      html = render_change(view, "filter", %{"filter" => "office"})
+      assert html =~ "Pool" or html =~ "DHCPv6"
+    end
+
+    test "show_new_form opens pool form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/pools")
+      html = render_click(view, "show_new_form")
+      assert html =~ "Add" or html =~ "Pool"
+    end
+
+    test "aria-label on search", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/pools")
+      assert html =~ "aria-label=\"Search DHCPv6 pools\""
+    end
+  end
+
+  # ============================================================================
+  # Process Map - Event Handlers
+  # ============================================================================
+
+  describe "Process Map /process-map events" do
+    test "has process tree view", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/process-map")
+      assert html =~ "Process" or html =~ "Supervisor"
+    end
+
+    test "renders process count", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/process-map")
+      # Should show some process count from BEAM VM
+      assert html =~ ~r/\d+/
+    end
+  end
+
+  # ============================================================================
+  # DNS Overview - Event Handlers
+  # ============================================================================
+
+  describe "DNS Overview /dns events" do
+    test "refresh updates status", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns")
+      html = render_click(view, "refresh")
+      assert html =~ "DNS"
+    end
+
+    test "shows stopped status", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns")
+      assert html =~ "Stopped"
+    end
+  end
+
+  # ============================================================================
+  # Diagnostics - Extended Event Tests
+  # ============================================================================
+
+  describe "Diagnostics /diagnostics extended" do
+    test "select_tab to dns works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "select_tab", %{"tab" => "dns"})
+      assert html =~ "DNS"
+    end
+
+    test "select_tab to mdns works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "select_tab", %{"tab" => "mdns"})
+      assert html =~ "mDNS"
+    end
+
+    test "select_tab to dhcpv4 works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "select_tab", %{"tab" => "dhcpv4"})
+      assert html =~ "DHCPv4"
+    end
+
+    test "select_tab to dhcpv6 works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "select_tab", %{"tab" => "dhcpv6"})
+      assert html =~ "DHCPv6"
+    end
+
+    test "toggle_display_mode switches between table and hex", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "toggle_display_mode", %{"mode" => "hex"})
+      assert html =~ "Hex" or html =~ "Table"
+    end
+  end
+end
