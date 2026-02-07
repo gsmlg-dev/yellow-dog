@@ -231,7 +231,7 @@ defmodule YellowDog.Console.ProcessInspector do
   def count_nodes(nil), do: 0
 
   def count_nodes(%{children: children}) do
-    1 + Enum.sum(Enum.map(children, &count_nodes/1))
+    Enum.reduce(children, 1, fn child, acc -> acc + count_nodes(child) end)
   end
 
   def count_nodes(_), do: 1

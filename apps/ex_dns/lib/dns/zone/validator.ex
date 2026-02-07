@@ -589,7 +589,7 @@ defmodule DNS.Zone.Validator do
     if all_records == [] do
       0.0
     else
-      total_ttl = Enum.sum(Enum.map(all_records, & &1.ttl))
+      total_ttl = Enum.reduce(all_records, 0, fn rec, acc -> acc + rec.ttl end)
       avg_ttl = total_ttl / length(all_records)
 
       # Normalize to 0-1 scale based on typical TTL ranges

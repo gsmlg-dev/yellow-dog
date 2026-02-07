@@ -304,8 +304,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
     ptr_size = record_size(records.ptr)
     srv_size = record_size(records.srv)
     txt_size = record_size(records.txt)
-    a_size = Enum.sum(Enum.map(records.a, &record_size/1))
-    aaaa_size = Enum.sum(Enum.map(records.aaaa, &record_size/1))
+    a_size = Enum.reduce(records.a, 0, fn rec, acc -> acc + record_size(rec) end)
+    aaaa_size = Enum.reduce(records.aaaa, 0, fn rec, acc -> acc + record_size(rec) end)
 
     ptr_size + srv_size + txt_size + a_size + aaaa_size
   end
@@ -317,7 +317,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
     data_size =
       case data do
         s when is_binary(s) -> byte_size(s)
-        list when is_list(list) -> Enum.sum(Enum.map(list, &byte_size(to_string(&1))))
+        list when is_list(list) -> Enum.reduce(list, 0, fn item, acc -> acc + byte_size(to_string(item)) end)
         {_, _, _, _} -> 4
         {_, _, _, _, _, _, _, _} -> 16
         %{} -> 20

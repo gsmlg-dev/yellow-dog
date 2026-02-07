@@ -78,7 +78,7 @@ defmodule YellowDog.Console.CoreComponents do
     <%= if @errors != [] do %>
       <div class="label">
         <span class="label-text-alt text-error">
-          {translate_error(Enum.at(@errors, 0))}
+          {translate_error(hd(@errors))}
         </span>
       </div>
     <% end %>

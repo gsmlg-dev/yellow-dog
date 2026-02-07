@@ -84,7 +84,7 @@ defmodule DNS.Message.Record.Data.NSEC do
           step = i * 256
           {types_to_go, values} = move_types_to_go([], values, step)
 
-          if types_to_go |> Enum.count() > 0 do
+          if types_to_go != [] do
             bitmap = <<>>
             pos = 0
             outputs = consume_types_to_go(types_to_go, pos, bitmap, window, step)

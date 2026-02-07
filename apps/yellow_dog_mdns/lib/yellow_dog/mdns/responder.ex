@@ -200,17 +200,15 @@ defmodule YellowDog.Mdns.Responder do
 
     # Questions
     questions_size =
-      Enum.sum(
-        Enum.map(message.qdlist, fn q ->
-          byte_size(to_string(q.name)) + 4
-        end)
-      )
+      Enum.reduce(message.qdlist, 0, fn q, acc ->
+        acc + byte_size(to_string(q.name)) + 4
+      end)
 
     # Records
     records_size =
-      (message.anlist ++ message.nslist ++ message.arlist)
-      |> Enum.map(&estimate_record_size/1)
-      |> Enum.sum()
+      Enum.reduce(message.anlist ++ message.nslist ++ message.arlist, 0, fn rec, acc ->
+        acc + estimate_record_size(rec)
+      end)
 
     header_size + questions_size + records_size
   end
@@ -225,7 +223,7 @@ defmodule YellowDog.Mdns.Responder do
         {:A, {_, _, _, _}} -> 4
         {:AAAA, {_, _, _, _, _, _, _, _}} -> 16
         {:PTR, target} -> byte_size(to_string(target))
-        {:TXT, list} when is_list(list) -> Enum.sum(Enum.map(list, &byte_size/1))
+        {:TXT, list} when is_list(list) -> Enum.reduce(list, 0, fn item, acc -> acc + byte_size(item) end)
         {:SRV, %{target: target}} -> byte_size(to_string(target)) + 6
         _ -> 20
       end
