@@ -132,7 +132,7 @@ defmodule YellowDog.Config.TomlHelpers do
   end
 
   @doc "Creates a `.backup` copy of `file_path` if `backup?` is true and the file exists."
-  @spec maybe_create_backup(Path.t(), boolean()) :: :ok | {:ok, String.t()} | {:error, term()}
+  @spec maybe_create_backup(Path.t(), boolean()) :: :ok | {:error, term()}
   def maybe_create_backup(_file_path, false), do: :ok
 
   def maybe_create_backup(file_path, true) do
