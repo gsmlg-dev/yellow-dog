@@ -558,7 +558,9 @@ defmodule YellowDog.Application do
   defp parse_mdns_mode(_), do: :hybrid
 
   @valid_storage_formats ~w(toml json)
-  defp parse_storage_format(fmt) when fmt in @valid_storage_formats, do: String.to_existing_atom(fmt)
+  defp parse_storage_format(fmt) when fmt in @valid_storage_formats,
+    do: String.to_existing_atom(fmt)
+
   defp parse_storage_format(_), do: :toml
 
   # Converts IP address string to tuple format for mDNS

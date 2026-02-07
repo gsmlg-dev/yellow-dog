@@ -971,6 +971,7 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp normalize_type(%{type: type}), do: normalize_type(type)
+
   @valid_rr_types ~w(a ns cname soa ptr mx txt aaaa srv ds rrsig nsec dnskey nsec3 nsec3param tlsa https spf any uri caa)
   defp normalize_type(type) when is_binary(type) do
     downcased = String.downcase(type)
