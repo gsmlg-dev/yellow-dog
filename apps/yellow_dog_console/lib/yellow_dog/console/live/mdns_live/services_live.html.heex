@@ -308,7 +308,10 @@
               name="addresses"
               rows="2"
               placeholder="192.168.1.100&#10;192.168.1.101"
-              class={["textarea textarea-bordered w-full", @form_errors[:addresses] && "textarea-error"]}
+              class={[
+                "textarea textarea-bordered w-full",
+                @form_errors[:addresses] && "textarea-error"
+              ]}
             ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
             <label :if={@form_errors[:addresses]} class="label">
               <span class="label-text-alt text-error">{@form_errors[:addresses]}</span>

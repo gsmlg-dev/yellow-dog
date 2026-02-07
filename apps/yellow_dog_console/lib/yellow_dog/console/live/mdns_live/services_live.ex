@@ -226,7 +226,9 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
             |> String.split("\n", trim: true)
             |> Enum.map(&String.trim/1)
             |> Enum.reject(&(&1 == ""))
-            |> Enum.reject(fn addr -> match?({:ok, _}, :inet.parse_address(String.to_charlist(addr))) end)
+            |> Enum.reject(fn addr ->
+              match?({:ok, _}, :inet.parse_address(String.to_charlist(addr)))
+            end)
 
           if invalid == [] do
             errors

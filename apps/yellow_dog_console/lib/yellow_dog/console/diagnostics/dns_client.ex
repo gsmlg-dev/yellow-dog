@@ -107,7 +107,8 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
     value = Map.get(params, key) || Map.get(params, to_string(key)) || default
 
     case value do
-      v when is_integer(v) -> v
+      v when is_integer(v) ->
+        v
 
       v when is_binary(v) ->
         case Integer.parse(v) do

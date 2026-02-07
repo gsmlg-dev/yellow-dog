@@ -656,6 +656,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
   describe "SettingsLive atom safety guards" do
     test "validate_ event with valid service works correctly", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings/dns")
+
       html =
         render_change(view, "validate_dns", %{
           "service_configuration" => %{"port" => "5353", "listen" => "0.0.0.0"}
