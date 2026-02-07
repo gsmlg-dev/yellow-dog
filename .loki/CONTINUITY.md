@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 86)
+**Phase**: IN_PROGRESS (Iteration 87)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 86 of 1000
+**Iteration**: 87 of 1000
 
 ## Session Summary
-Iteration 86: Extract shared MAC formatting to MacFormat module:
+Iteration 87: Extract shared DUID formatting to DuidFormat module:
+- ✅ **All 201 DHCPv6 tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Created `YellowDog.Dhcpv6.DuidFormat.format/2` with `:separator` and `:case` options
+- ✅ Replaced 3 identical `format_duid` in: address_pool, lease_manager, prefix_pool (colon-separated uppercase)
+- ✅ pool_store: kept already-encoded check, delegates binary conversion to DuidFormat (no-separator uppercase)
+- ✅ lease.ex: kept already-encoded check, delegates binary conversion to DuidFormat (no-separator lowercase)
+- ✅ 6 files (1 new + 5 modified) — **1 commit** — net +6 lines (new module) but -28 lines from clients
+
+Previous iteration 86: Extract shared MAC formatting to MacFormat module:
 - ✅ **All 319 DHCPv4 tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Created `YellowDog.Dhcpv4.MacFormat.format/2` with `:upper`/`:lower` case option
 - ✅ Handles both exact 6-byte and 6+ byte (chaddr field) MAC binaries
