@@ -141,4 +141,34 @@ defmodule YellowDog.Console.DiagnosticsLiveTest do
       assert html =~ "Query History"
     end
   end
+
+  # ============================================================================
+  # Atom Safety Guards
+  # ============================================================================
+
+  describe "atom safety guards" do
+    test "select_tab with invalid tab name is silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "select_tab", %{"tab" => "nonexistent_evil_tab"})
+      # Should still show DNS tab (the default), no crash
+      assert html =~ "Service Diagnostics"
+      assert html =~ "Domain Name"
+    end
+
+    test "toggle_display_mode with invalid mode is silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      html = render_click(view, "toggle_display_mode", %{"mode" => "evil_mode"})
+      # Should still render, no crash
+      assert html =~ "Service Diagnostics"
+    end
+
+    test "valid tabs still work after guard addition", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+
+      for tab <- ~w(dns mdns dhcpv4 dhcpv6) do
+        html = render_click(view, "select_tab", %{"tab" => tab})
+        assert html =~ "Service Diagnostics"
+      end
+    end
+  end
 end

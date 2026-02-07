@@ -14,6 +14,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   alias YellowDog.Dns.ZoneController
   alias YellowDog.Dns.ConfigPersistence
 
+  @valid_zone_types ~w(auth forward stub cache rpz)
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -75,7 +77,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
          "view_name" => view_name,
          "zone_type" => zone_type,
          "zone_name" => zone_name
-       }) do
+       })
+       when zone_type in @valid_zone_types do
     zone_type_atom = String.to_existing_atom(zone_type)
 
     # If zone type is :unknown (from stale View state), try to resolve the actual type
@@ -110,6 +113,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
         |> put_flash(:error, "Zone '#{zone_name}' not found")
         |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")
     end
+  end
+
+  defp apply_action(socket, :edit, %{"view_name" => view_name}) do
+    socket
+    |> put_flash(:error, "Invalid zone type")
+    |> push_navigate(to: ~p"/dns/views/#{view_name}/zones")
   end
 
   defp apply_action(socket, :import, %{"view_name" => view_name}) do
@@ -210,9 +219,15 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   end
 
   @impl true
-  def handle_event("confirm_delete", %{"type" => type, "name" => zone_name}, socket) do
+  def handle_event("confirm_delete", %{"type" => type, "name" => zone_name}, socket)
+      when type in @valid_zone_types do
     {:noreply,
      assign(socket, :delete_confirm, %{zone_type: String.to_existing_atom(type), name: zone_name})}
+  end
+
+  @impl true
+  def handle_event("confirm_delete", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Invalid zone type")}
   end
 
   @impl true
@@ -276,11 +291,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   # Private Helpers
   # ============================================================================
 
-  defp save_zone_impl(socket, zone_params) do
+  defp save_zone_impl(socket, %{"type" => zone_type_str} = zone_params)
+       when zone_type_str in @valid_zone_types do
     editing = socket.assigns[:editing_zone]
     view_name = socket.assigns.view_name
     zone_name = zone_params["name"]
-    zone_type = String.to_existing_atom(zone_params["type"])
+    zone_type = String.to_existing_atom(zone_type_str)
 
     # Build config based on zone type
     config = build_zone_config(zone_type, zone_params)
@@ -332,6 +348,10 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to save zone: #{inspect(reason)}")}
     end
+  end
+
+  defp save_zone_impl(socket, _zone_params) do
+    {:noreply, put_flash(socket, :error, "Invalid zone type")}
   end
 
   defp validate_zone_fields(form_data) do
@@ -788,10 +808,12 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   defp filter_by_type(zones, "all"), do: zones
 
-  defp filter_by_type(zones, type) do
+  defp filter_by_type(zones, type) when type in @valid_zone_types do
     type_atom = String.to_existing_atom(type)
     Enum.filter(zones, fn zone -> zone.type == type_atom end)
   end
+
+  defp filter_by_type(zones, _type), do: zones
 
   def unique_zone_types(zones) do
     zones

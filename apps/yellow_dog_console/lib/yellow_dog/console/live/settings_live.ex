@@ -78,8 +78,11 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, assign(socket, :active_tab, socket.assigns.live_action)}
   end
 
+  @valid_settings_services ~w(dns mdns dhcpv4 dhcpv6)
+
   @impl true
-  def handle_event("validate_" <> service, %{"service_configuration" => params}, socket) do
+  def handle_event("validate_" <> service, %{"service_configuration" => params}, socket)
+      when service in @valid_settings_services do
     service_atom = String.to_existing_atom(service)
     changeset = validate_service_config(service_atom, params)
 
@@ -91,7 +94,8 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
-  def handle_event("save_" <> service, %{"service_configuration" => params}, socket) do
+  def handle_event("save_" <> service, %{"service_configuration" => params}, socket)
+      when service in @valid_settings_services do
     service_atom = String.to_existing_atom(service)
 
     # Get existing changeset to preserve pools
@@ -123,7 +127,8 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
-  def handle_event("apply_changes_" <> service, _params, socket) do
+  def handle_event("apply_changes_" <> service, _params, socket)
+      when service in @valid_settings_services do
     service_atom = String.to_existing_atom(service)
     handle_apply_changes(socket, service_atom)
   end
@@ -201,8 +206,11 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @valid_pool_events ~w(dhcpv4_pool dhcpv6_pool)
+
   # Pool management events
-  def handle_event("add_" <> service_and_pool, _params, socket) do
+  def handle_event("add_" <> service_and_pool, _params, socket)
+      when service_and_pool in @valid_pool_events do
     # Parse service type from event name (e.g., "dhcpv4_pool" -> :dhcpv4)
     service =
       service_and_pool
@@ -222,7 +230,8 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
-  def handle_event("edit_" <> service_and_pool, %{"pool-id" => pool_id}, socket) do
+  def handle_event("edit_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
+      when service_and_pool in @valid_pool_events do
     # Parse service type from event name
     service =
       service_and_pool
@@ -249,7 +258,8 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
-  def handle_event("delete_" <> service_and_pool, %{"pool-id" => pool_id}, socket) do
+  def handle_event("delete_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
+      when service_and_pool in @valid_pool_events do
     # Parse service type from event name
     service =
       service_and_pool

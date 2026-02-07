@@ -126,14 +126,28 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
   # Event Handlers
 
+  @valid_tabs ~w(dns mdns dhcpv4 dhcpv6)
+  @valid_display_modes ~w(struct raw)
+
   @impl true
-  def handle_event("select_tab", %{"tab" => tab}, socket) do
+  def handle_event("select_tab", %{"tab" => tab}, socket) when tab in @valid_tabs do
     {:noreply, assign(socket, :active_tab, String.to_existing_atom(tab))}
   end
 
   @impl true
-  def handle_event("toggle_display_mode", %{"mode" => mode}, socket) do
+  def handle_event("select_tab", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_display_mode", %{"mode" => mode}, socket)
+      when mode in @valid_display_modes do
     {:noreply, assign(socket, :display_mode, String.to_existing_atom(mode))}
+  end
+
+  @impl true
+  def handle_event("toggle_display_mode", _params, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -417,10 +431,18 @@ defmodule YellowDog.Console.DiagnosticsLive do
   defp format_error({:parse_error, reason}), do: "Parse error: #{reason}"
   defp format_error(reason), do: inspect(reason)
 
+  @valid_form_keys ~w(query_name record_type server port protocol recursion_desired timeout
+    service_type query_type message_type client_mac transaction_id requested_options
+    duid iaid)
+
   defp atomize_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {atomize_key(k), v} end)
   end
 
-  defp atomize_key(key) when is_binary(key), do: String.to_existing_atom(key)
+  defp atomize_key(key) when is_binary(key) and key in @valid_form_keys do
+    String.to_existing_atom(key)
+  end
+
+  defp atomize_key(key) when is_binary(key), do: key
   defp atomize_key(key) when is_atom(key), do: key
 end

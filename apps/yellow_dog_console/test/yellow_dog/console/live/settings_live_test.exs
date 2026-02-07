@@ -648,4 +648,27 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert html =~ "Manage Pools"
     end
   end
+
+  # ============================================================================
+  # Atom Safety Guards
+  # ============================================================================
+
+  describe "SettingsLive atom safety guards" do
+    test "validate_ event with valid service works correctly", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/dns")
+      html =
+        render_change(view, "validate_dns", %{
+          "service_configuration" => %{"port" => "5353", "listen" => "0.0.0.0"}
+        })
+
+      assert html =~ "Settings"
+    end
+
+    test "valid service tabs all mount correctly", %{conn: conn} do
+      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
+        {:ok, _view, html} = live(conn, "/settings/#{service}")
+        assert html =~ "Settings"
+      end
+    end
+  end
 end

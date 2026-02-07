@@ -11,6 +11,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.ZoneController
 
+  @valid_zone_types ~w(auth forward stub cache rpz unknown)
+  @valid_rr_types ~w(a aaaa cname mx ns txt soa srv ptr cap naptr hinfo rp loc)
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -118,7 +121,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          "view_name" => view_name,
          "zone_type" => zone_type,
          "zone_name" => zone_name
-       }) do
+       })
+       when zone_type in @valid_zone_types do
     zone_type_atom = String.to_existing_atom(zone_type)
     zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
 
@@ -400,7 +404,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   # Resolve zone type from URL param, falling back to ZoneController lookup
   # when the URL contains "unknown" (from stale View state with string zones)
-  defp resolve_zone_type_atom(view_name, zone_type_str, zone_name) do
+  defp resolve_zone_type_atom(view_name, zone_type_str, zone_name)
+       when zone_type_str in @valid_zone_types do
     zone_type_atom = String.to_existing_atom(zone_type_str)
 
     if zone_type_atom == :unknown do
@@ -420,6 +425,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
       zone_type_atom
     end
   end
+
+  defp resolve_zone_type_atom(_view_name, _zone_type_str, _zone_name), do: :unknown
 
   defp validate_rr_fields(params) do
     errors = %{}
@@ -593,12 +600,12 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   defp filter_by_type(records, "all"), do: records
 
-  defp filter_by_type(records, type_str) do
-    type = String.to_atom(type_str)
+  defp filter_by_type(records, type_str) when type_str in @valid_rr_types do
+    type = String.to_existing_atom(type_str)
     Enum.filter(records, fn r -> r.type == type end)
-  rescue
-    _ -> records
   end
+
+  defp filter_by_type(records, _type_str), do: records
 
   def unique_record_types(records) do
     records
@@ -734,17 +741,28 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     type
     |> to_string()
     |> String.downcase()
-    |> String.to_atom()
+    |> safe_type_atom()
   end
 
   defp normalize_record_type(type) when is_binary(type) do
     type
     |> String.downcase()
-    |> String.to_atom()
+    |> safe_type_atom()
   end
 
   defp normalize_record_type(type) when is_atom(type), do: type
   defp normalize_record_type(type), do: type
+
+  defp safe_type_atom(type_str) when type_str in @valid_rr_types,
+    do: String.to_existing_atom(type_str)
+
+  defp safe_type_atom(type_str) do
+    try do
+      String.to_existing_atom(type_str)
+    rescue
+      ArgumentError -> String.to_atom(type_str)
+    end
+  end
 
   defp extract_rdata(%{rdata: rdata}), do: rdata
   defp extract_rdata(%{data: data}), do: data
@@ -815,11 +833,15 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
       |> Map.get("name", "")
       |> normalize_record_name(zone_name)
 
-    type =
+    type_str =
       rr_params
       |> Map.get("type", "a")
       |> String.downcase()
-      |> String.to_atom()
+
+    type =
+      if type_str in @valid_rr_types,
+        do: String.to_existing_atom(type_str),
+        else: :a
 
     ttl = parse_ttl(Map.get(rr_params, "ttl", "3600"))
     rdata_input = Map.get(rr_params, "rdata", "")

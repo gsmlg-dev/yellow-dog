@@ -1414,4 +1414,101 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "Go to Dashboard"
     end
   end
+
+  # ============================================================================
+  # ZoneLive Atom Safety Guards
+  # ============================================================================
+
+  describe "ZoneLive atom safety - filter_by_type" do
+    alias YellowDog.Console.DnsLive.ZoneLive.Index, as: ZoneLive
+
+    test "filtered_zones with valid type filter returns matching zones" do
+      zones = [
+        %{name: "example.com", type: :auth},
+        %{name: "other.com", type: :forward}
+      ]
+
+      result = ZoneLive.filtered_zones(zones, "", "auth")
+      assert length(result) == 1
+      assert hd(result).type == :auth
+    end
+
+    test "filtered_zones with 'all' type filter returns all zones" do
+      zones = [
+        %{name: "example.com", type: :auth},
+        %{name: "other.com", type: :forward}
+      ]
+
+      result = ZoneLive.filtered_zones(zones, "", "all")
+      assert length(result) == 2
+    end
+
+    test "filtered_zones with invalid type filter returns all zones (fallback)" do
+      zones = [
+        %{name: "example.com", type: :auth},
+        %{name: "other.com", type: :forward}
+      ]
+
+      result = ZoneLive.filtered_zones(zones, "", "evil_type")
+      assert length(result) == 2
+    end
+  end
+
+  describe "ZoneLive atom safety - valid zone types" do
+    alias YellowDog.Console.DnsLive.ZoneLive.Index, as: ZoneLive
+
+    test "filtered_zones accepts all valid zone type strings" do
+      zones = [
+        %{name: "example.com", type: :auth},
+        %{name: "fwd.com", type: :forward},
+        %{name: "stub.com", type: :stub},
+        %{name: "cache.com", type: :cache},
+        %{name: "rpz.com", type: :rpz}
+      ]
+
+      for type <- ~w(auth forward stub cache rpz) do
+        result = ZoneLive.filtered_zones(zones, "", type)
+        assert length(result) == 1, "Expected 1 zone for type #{type}"
+      end
+    end
+  end
+
+  # ============================================================================
+  # RrLive Atom Safety Guards
+  # ============================================================================
+
+  describe "RrLive atom safety - filter_by_type" do
+    alias YellowDog.Console.DnsLive.RrLive.Index, as: RrLive
+
+    test "filtered_records with valid type filter returns matching records" do
+      records = [
+        %{name: "www", type: :a, ttl: 300, rdata: "1.2.3.4"},
+        %{name: "mail", type: :mx, ttl: 300, rdata: "10 mail.example.com"}
+      ]
+
+      result = RrLive.filtered_records(records, "", "a")
+      assert length(result) == 1
+      assert hd(result).type == :a
+    end
+
+    test "filtered_records with 'all' type filter returns all records" do
+      records = [
+        %{name: "www", type: :a, ttl: 300, rdata: "1.2.3.4"},
+        %{name: "mail", type: :mx, ttl: 300, rdata: "10 mail.example.com"}
+      ]
+
+      result = RrLive.filtered_records(records, "", "all")
+      assert length(result) == 2
+    end
+
+    test "filtered_records with invalid type filter returns all records (fallback)" do
+      records = [
+        %{name: "www", type: :a, ttl: 300, rdata: "1.2.3.4"},
+        %{name: "mail", type: :mx, ttl: 300, rdata: "10 mail.example.com"}
+      ]
+
+      result = RrLive.filtered_records(records, "", "evil_type")
+      assert length(result) == 2
+    end
+  end
 end
