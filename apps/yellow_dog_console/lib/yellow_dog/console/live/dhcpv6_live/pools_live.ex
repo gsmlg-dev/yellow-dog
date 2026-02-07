@@ -169,7 +169,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
         <!-- Header -->
         <div class="flex justify-between items-center">

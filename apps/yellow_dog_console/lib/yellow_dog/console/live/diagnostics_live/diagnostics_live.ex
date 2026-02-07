@@ -30,7 +30,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="max-w-7xl">
         <h1 class="text-2xl font-bold mb-4">Service Diagnostics</h1>
 

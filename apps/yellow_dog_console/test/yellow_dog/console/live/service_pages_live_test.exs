@@ -481,4 +481,42 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       end
     end
   end
+
+  # ============================================================================
+  # Active Sidebar Highlighting (CurrentPath hook)
+  # ============================================================================
+
+  describe "active sidebar highlighting" do
+    @active_pages [
+      {"/dashboard", "Services"},
+      {"/dns", "Overview"},
+      {"/dns/views", "Views"},
+      {"/dns/acl", "ACL"},
+      {"/dns/logs", "Query Logs"},
+      {"/dns/metrics", "Metrics"},
+      {"/dhcpv4", "Overview"},
+      {"/dhcpv4/leases", "Leases"},
+      {"/dhcpv4/pools", "Pools"},
+      {"/dhcpv6", "Overview"},
+      {"/dhcpv6/leases", "Leases"},
+      {"/dhcpv6/pools", "Pools"},
+      {"/mdns", "Overview"},
+      {"/mdns/services", "Services"},
+      {"/mdns/discovery", "Discovery"},
+      {"/mdns/monitor", "Monitor"},
+      {"/settings", "Settings"},
+      {"/logs", "Logs"},
+      {"/diagnostics", "Service Diagnostics"},
+      {"/process-map", "Process Map"}
+    ]
+
+    for {path, _name} <- @active_pages do
+      test "sidebar has active class on #{path}", %{conn: conn} do
+        {:ok, view, _html} = live(conn, unquote(path))
+        # Use render(view) to get the connected HTML after handle_params fires
+        html = render(view)
+        assert html =~ ~r/class="[^"]*active[^"]*"/
+      end
+    end
+  end
 end
