@@ -39,6 +39,7 @@ defmodule YellowDog do
   @doc """
   Get configuration value
   """
+  @spec get_config(atom()) :: term()
   def get_config(name) do
     YellowDog.Config.get(name)
   end
@@ -46,6 +47,7 @@ defmodule YellowDog do
   @doc """
   Get all configuration
   """
+  @spec get_all_config() :: map()
   def get_all_config do
     YellowDog.Config.get_all()
   end
