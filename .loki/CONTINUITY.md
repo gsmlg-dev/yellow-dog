@@ -1,17 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 71)
+**Phase**: IN_PROGRESS (Iteration 72)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 71 of 1000
+**Iteration**: 72 of 1000
 
 ## Session Summary
-Iteration 71: Replace `length()` emptiness checks with O(1) list equality in HEEx templates:
-- ✅ **962 console tests, 0 failures, 0 warnings, 0 credo issues**
+Iteration 72: Replace verbose boolean assertions with idiomatic `assert`/`refute`:
+- ✅ **Full umbrella passes: 0 failures, 0 warnings, 0 credo issues**
+- ✅ 147 instances replaced across 25 test files (all apps + e2e)
+- ✅ `assert func?() == true` → `assert func?()` (84 instances)
+- ✅ `assert func?() == false` → `refute func?()` (63 instances)
+- ✅ Only targeted `?`-suffix functions (boolean by Elixir convention)
+- ✅ Key files: acl_test (64 changes), view_test (11), config_test (6), integration_test (11), dns_acl_e2e_test (8)
+- ✅ 25 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 71: Replace `length()` emptiness checks with O(1) list equality in HEEx templates:
 - ✅ 22 instances of `length(list) == 0` / `> 0` replaced with `== []` / `!= []` across 10 HEEx files
-- ✅ `length/1` is O(n) — traverses the entire list; `== []` / `!= []` is O(1) pattern match
-- ✅ Nil-safe patterns preserved: `x && length(x) > 0` → `x && x != []`
-- ✅ Files: leases_live, pool_live (dhcpv4), pool_live (dhcpv6), acl_live, dns/index, rr_live/index, zone_live/index, view_live/index, discovery_live, monitor_live
 - ✅ 10 files — **1 commit** — net 0 lines (in-place replacement)
 
 Previous iteration 70: Replace `Map.merge` with map update syntax / `Map.put`:
