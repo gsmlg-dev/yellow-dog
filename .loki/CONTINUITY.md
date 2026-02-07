@@ -8,7 +8,7 @@
 ## Session Summary
 Iteration 16 (continued): Comprehensive atom safety + test coverage:
 - ✅ **1095+ umbrella tests passing**, 0 failures
-- ✅ **851 Console tests passing**, 0 failures
+- ✅ **940 Console tests passing**, 0 failures
 - ✅ Wired QueryLogger into ConnectionProcess (complete_query + complete_query_error)
 - ✅ Fixed `String.to_atom/1` in mDNS ServicesLive filter (atom leak vulnerability)
 - ✅ Added allowlist guards to `String.to_existing_atom/1` in DashboardLive, LogsLive
@@ -27,7 +27,14 @@ Iteration 16 (continued): Comprehensive atom safety + test coverage:
 - ✅ Fixed 7 String.to_integer crash vulnerabilities in event handlers (Integer.parse pattern)
 - ✅ Fixed String.to_atom fallback in rr_live safe_type_atom (atom exhaustion prevention)
 - ✅ Fixed hex parse crash in DHCPv6 parse_duid_string
-- ✅ **14 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests, flaky fix, aria-labels, mDNS form validation, input safety
+- ✅ Added phx-disable-with to 7 settings action buttons (Apply Changes ×4, DNS reload ×3)
+- ✅ Hardened 4 diagnostics client get_integer helpers (Integer.parse)
+- ✅ 12 ProcessMapLive tests (mounting, events, error handling)
+- ✅ Added phx-disable-with to 4 DNS delete confirmation buttons
+- ✅ Added phx-change="validate_zone" to zone edit form
+- ✅ 59 DNS filter/helper unit tests (zones, records, views, ACLs, badges, parse_bulk_preview)
+- ✅ 18 service filter unit tests (mDNS monitor, DHCPv4/v6 pools)
+- ✅ **22 commits this iteration**
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -108,7 +115,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 851 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 44 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs + 12 pool detail + 63 dashboard/logs/diagnostics + 31 mDNS services)
+- [x] 940 Console tests (prior 851 + 12 ProcessMapLive + 59 DNS filter/helper + 18 service filters)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -136,6 +143,13 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 12. `1823ee9` - feat(console): add real-time form validation to mDNS service registration
 13. `c27f2e2` - docs: update CONTINUITY with mDNS form validation (851 tests)
 14. `d90b030` - fix(console): replace String.to_integer with Integer.parse in 7 event handlers
+15. `d6aafcf` - docs: update CONTINUITY with input safety fixes
+16. `010cec0` - fix(console): add phx-disable-with to 7 settings action buttons
+17. `93fe2c2` - fix(console): replace String.to_integer with Integer.parse in 4 diagnostics clients
+18. `1ec3c25` - fix(console): harden diagnostics clients, add 12 ProcessMapLive tests
+19. `6c74f70` - fix(console): add phx-disable-with to 4 DNS delete confirmation buttons
+20. `19bb39b` - fix(console): add phx-change validation to zone edit form
+21. `7e3d7f3` - test(console): add 77 unit tests for filter/helper functions across all LiveViews
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
