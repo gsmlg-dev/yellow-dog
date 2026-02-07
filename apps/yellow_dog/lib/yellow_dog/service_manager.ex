@@ -32,11 +32,7 @@ defmodule YellowDog.ServiceManager do
   """
   @spec get_all_status() :: %{atom() => map()}
   def get_all_status do
-    @services
-    |> Enum.map(fn service ->
-      {service, get_service_status(service)}
-    end)
-    |> Enum.into(%{})
+    Map.new(@services, fn service -> {service, get_service_status(service)} end)
   end
 
   @doc """
