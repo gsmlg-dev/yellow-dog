@@ -190,7 +190,7 @@
                       <div class="text-sm">
                         {format_expiration(lease.expires_at)}
                       </div>
-                      <div class={"text-xs " <> get_expiration_color(lease.expires_at)}>
+                      <div class={"text-xs " <> expiration_color(lease.expires_at)}>
                         {format_time_remaining(lease.expires_at)}
                       </div>
                     <% else %>

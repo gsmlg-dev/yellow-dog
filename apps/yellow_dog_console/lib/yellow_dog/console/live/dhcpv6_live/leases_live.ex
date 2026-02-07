@@ -10,6 +10,7 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -202,16 +203,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     send(pid, {:telemetry_event, event, measurements, metadata})
   end
 
-  defp format_duid(duid) when is_binary(duid) do
-    duid
-    |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
-    |> String.upcase()
-  end
-
-  defp format_duid(_), do: "Unknown"
-
   defp parse_duid_string(duid_str) do
     duid_str
     |> String.split(":")
@@ -223,14 +214,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     end)
     |> :binary.list_to_bin()
   end
-
-  defp format_ipv6({a, b, c, d, e, f, g, h}) do
-    [a, b, c, d, e, f, g, h]
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.downcase() end)
-    |> Enum.join(":")
-  end
-
-  defp format_ipv6(_), do: "Unknown"
 
   defp format_prefix({{a, b, c, d, e, f, g, h}, len}) do
     "#{format_ipv6({a, b, c, d, e, f, g, h})}/#{len}"

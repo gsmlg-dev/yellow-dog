@@ -9,6 +9,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.FormatHelper
+
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
     {:ok,
@@ -93,24 +95,6 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
       formatted
     end
   end
-
-  defp format_duid(duid) when is_binary(duid) do
-    duid
-    |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
-    |> String.upcase()
-  end
-
-  defp format_duid(_), do: "Unknown"
-
-  defp format_ipv6({a, b, c, d, e, f, g, h}) do
-    [a, b, c, d, e, f, g, h]
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.downcase() end)
-    |> Enum.join(":")
-  end
-
-  defp format_ipv6(_), do: "Unknown"
 
   defp format_prefix({{a, b, c, d, e, f, g, h}, len}) do
     "#{format_ipv6({a, b, c, d, e, f, g, h})}/#{len}"

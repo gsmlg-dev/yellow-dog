@@ -9,6 +9,8 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.FormatHelper
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -117,19 +119,6 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
     send(pid, {:telemetry_event, event, measurements, metadata})
   end
-
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
-    |> String.upcase()
-  end
-
-  defp format_mac(_), do: "Unknown"
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-  defp format_ip(_), do: "Unknown"
 
   defp get_status do
     case Code.ensure_loaded?(YellowDog.Dhcpv4) do

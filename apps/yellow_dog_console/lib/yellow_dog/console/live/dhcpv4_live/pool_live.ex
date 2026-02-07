@@ -9,6 +9,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.FormatHelper
+
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
     if connected?(socket) do
@@ -241,36 +243,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
     end
   end
 
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
-    |> String.upcase()
-  end
-
-  defp format_mac(_), do: "Unknown"
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-  defp format_ip(_), do: "Unknown"
-
-  defp format_expiration(timestamp) do
-    DateTime.from_unix!(timestamp)
-    |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
-  end
-
-  defp format_time_remaining(expires_at) do
-    now = System.system_time(:second)
-    remaining = expires_at - now
-
-    cond do
-      remaining <= 0 -> "Expired"
-      remaining < 3600 -> "#{div(remaining, 60)}m remaining"
-      remaining < 86400 -> "#{div(remaining, 3600)}h remaining"
-      true -> "#{div(remaining, 86400)}d remaining"
-    end
-  end
-
   defp format_lease_time(seconds) when is_integer(seconds) do
     cond do
       seconds < 60 -> "#{seconds}s"
@@ -282,24 +254,4 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
 
   defp format_lease_time(_), do: "Unknown"
 
-  defp get_expiration_color(expires_at) do
-    now = System.system_time(:second)
-    remaining = expires_at - now
-
-    cond do
-      remaining <= 0 -> "text-error"
-      remaining < 3600 -> "text-error"
-      remaining < 7200 -> "text-warning"
-      true -> "text-base-content/50"
-    end
-  end
-
-  defp parse_mac_string(mac_string) do
-    mac_string
-    |> String.replace(":", "")
-    |> String.upcase()
-    |> Base.decode16!()
-  rescue
-    _ -> <<0, 0, 0, 0, 0, 0>>
-  end
 end
