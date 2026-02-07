@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 60)
+**Phase**: IN_PROGRESS (Iteration 61)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 60 of 1000
+**Iteration**: 61 of 1000
 
 ## Session Summary
-Iteration 59: Credo fixes in DNS app:
+Iteration 60: Style + performance sweep:
+- ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
+- ✅ Fixed 9 consecutive blank line violations across 9 console LiveView files per credo --strict
+- ✅ Replaced 7× `Enum.count(services, &predicate)` with single-pass `Enum.reduce` in mDNS service_registry.ex
+- ✅ Replaced 4× `Enum.map |> Enum.join` with `Enum.map_join` across 3 files (pools_live, lease.ex, logger_handlers)
+- ✅ 12 files — **3 commits** — net -17 lines
+- ✅ Full credo --strict passes with 0 issues
+
+Previous iteration 59: Credo fixes in DNS app:
 - ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
 - ✅ Fixed 6 consecutive blank line violations in DNS app per credo --strict
 - ✅ Files: zone_store.ex (2), view_store.ex (2), acl_store.ex (2)
