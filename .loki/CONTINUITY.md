@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 81)
+**Phase**: IN_PROGRESS (Iteration 82)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 81 of 1000
+**Iteration**: 82 of 1000
 
 ## Session Summary
-Iteration 81: Use `Enum.sum_by` instead of `Enum.reduce` for summation:
+Iteration 82: DRY zone transfer record type handling with `@record_type_keys`:
+- ✅ **All ex_dns tests pass: 4764 tests, 0 failures, 0 warnings, 0 credo issues**
+- ✅ Extracted `@record_type_keys` mapping (18 record types) as module attribute
+- ✅ `get_zone_records/1`: 38 lines → 4 lines using `Enum.flat_map`
+- ✅ `update_zone_with_records/2`: 22 lines → 8 lines using `Keyword.merge`
+- ✅ 1 file — **1 commit** — net -28 lines
+
+Previous iteration 81: Use `Enum.sum_by` instead of `Enum.reduce` for summation:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `Enum.sum_by(list, &f/1)` (Elixir 1.18) replaces `Enum.reduce(list, 0, fn x, acc -> acc + f(x) end)`
 - ✅ 6 instances across 4 files: record_builder.ex (3), responder.ex (1), client.ex (1), validator.ex (1)
