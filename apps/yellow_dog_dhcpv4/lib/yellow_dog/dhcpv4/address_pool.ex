@@ -388,18 +388,9 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   end
 
   defp parse_ip_string(ip_string) do
-    case String.split(ip_string, ".") do
-      [a, b, c, d] ->
-        try do
-          {:ok,
-           {String.to_integer(a), String.to_integer(b), String.to_integer(c),
-            String.to_integer(d)}}
-        rescue
-          _e in [ArgumentError] -> {:error, "Invalid IP address string: #{ip_string}"}
-        end
-
-      _ ->
-        {:error, "Invalid IP address string format: #{ip_string}"}
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
+      _ -> {:error, "Invalid IP address string: #{ip_string}"}
     end
   end
 

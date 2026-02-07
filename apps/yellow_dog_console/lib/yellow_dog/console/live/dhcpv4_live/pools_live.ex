@@ -530,15 +530,10 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   defp parse_ip(""), do: nil
 
   defp parse_ip(ip_string) when is_binary(ip_string) do
-    case String.split(ip_string, ".") do
-      [a, b, c, d] ->
-        {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
-
-      _ ->
-        nil
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> ip_tuple
+      _ -> nil
     end
-  rescue
-    _ -> nil
   end
 
   defp parse_ip(ip_tuple) when is_tuple(ip_tuple), do: ip_tuple

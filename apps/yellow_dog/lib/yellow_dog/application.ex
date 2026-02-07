@@ -548,13 +548,9 @@ defmodule YellowDog.Application do
 
   # Converts IP address string to tuple format for mDNS
   defp convert_ip(ip_string) when is_binary(ip_string) do
-    case String.split(ip_string, ".") do
-      [a, b, c, d] ->
-        {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
-
-      _ ->
-        # fallback
-        {0, 0, 0, 0}
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> ip_tuple
+      _ -> {0, 0, 0, 0}
     end
   end
 

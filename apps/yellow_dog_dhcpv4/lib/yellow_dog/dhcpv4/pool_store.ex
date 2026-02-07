@@ -462,18 +462,9 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   end
 
   defp parse_ipv4(ip) when is_binary(ip) do
-    case String.split(ip, ".") do
-      [a, b, c, d] ->
-        try do
-          {:ok,
-           {String.to_integer(a), String.to_integer(b), String.to_integer(c),
-            String.to_integer(d)}}
-        rescue
-          _e in [ArgumentError] -> {:error, "Invalid IPv4 address: #{ip}"}
-        end
-
-      _ ->
-        {:error, "Invalid IPv4 address format: #{ip}"}
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
+      _ -> {:error, "Invalid IPv4 address: #{ip}"}
     end
   end
 

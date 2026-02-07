@@ -361,20 +361,9 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   defp validate_mac(_), do: {:error, :invalid_mac_type}
 
   defp parse_ip_string(ip_string) when is_binary(ip_string) do
-    case String.split(ip_string, ".") do
-      [a, b, c, d] ->
-        with {ai, ""} <- Integer.parse(a),
-             {bi, ""} <- Integer.parse(b),
-             {ci, ""} <- Integer.parse(c),
-             {di, ""} <- Integer.parse(d),
-             true <- ai in 0..255 and bi in 0..255 and ci in 0..255 and di in 0..255 do
-          {:ok, {ai, bi, ci, di}}
-        else
-          _ -> {:error, {:invalid_ip_format, ip_string}}
-        end
-
-      _ ->
-        {:error, {:invalid_ip_format, ip_string}}
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
+      _ -> {:error, {:invalid_ip_format, ip_string}}
     end
   end
 
