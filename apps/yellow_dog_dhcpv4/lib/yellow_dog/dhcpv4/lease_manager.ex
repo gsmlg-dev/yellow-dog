@@ -1009,12 +1009,12 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   # Parse MAC address from various formats
   defp parse_mac(mac_string) when is_binary(mac_string) do
     # Handle formats like "00:11:22:33:44:55" or "00-11-22-33-44-55"
-    mac_string
-    |> String.replace(~r/[:-]/, "")
-    |> String.downcase()
-    |> Base.decode16!(case: :lower)
-  rescue
-    _e in [ArgumentError, MatchError] -> mac_string
+    hex = mac_string |> String.replace(~r/[:-]/, "") |> String.downcase()
+
+    case Base.decode16(hex, case: :lower) do
+      {:ok, bytes} -> bytes
+      :error -> mac_string
+    end
   end
 
   # Flush all leases to TOML files
