@@ -11,7 +11,8 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
 
   alias YellowDog.Console.Diagnostics.QueryResult
 
-  import YellowDog.Console.Diagnostics.ParamHelper
+  alias YellowDog.Console.Diagnostics.ParamHelper
+  import ParamHelper, except: [format_error: 1]
 
   @dhcp_server_port 67
   @dhcp_client_port 68
@@ -278,10 +279,6 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
     end
   end
 
-  defp format_error(:timeout), do: "Query timed out"
   defp format_error({:socket_error, :eacces}), do: "Permission denied (port 68 requires root)"
-  defp format_error({:socket_error, reason}), do: "Socket error: #{inspect(reason)}"
-  defp format_error({:parse_error, msg}), do: "Parse error: #{msg}"
-  defp format_error({:build_error, msg}), do: "Build error: #{msg}"
-  defp format_error(reason), do: inspect(reason)
+  defp format_error(reason), do: ParamHelper.format_error(reason)
 end

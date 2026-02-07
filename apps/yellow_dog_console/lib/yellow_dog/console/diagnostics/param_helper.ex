@@ -1,6 +1,6 @@
 defmodule YellowDog.Console.Diagnostics.ParamHelper do
   @moduledoc """
-  Shared parameter parsing helpers for diagnostics clients.
+  Shared parameter parsing and error formatting helpers for diagnostics clients.
 
   Handles mixed atom/string key maps from LiveView form params,
   with type coercion for integers and booleans.
@@ -41,4 +41,11 @@ defmodule YellowDog.Console.Diagnostics.ParamHelper do
       _ -> default
     end
   end
+
+  @doc "Formats common diagnostics error reasons into human-readable strings."
+  def format_error(:timeout), do: "Query timed out"
+  def format_error({:socket_error, reason}), do: "Socket error: #{inspect(reason)}"
+  def format_error({:parse_error, msg}), do: "Parse error: #{msg}"
+  def format_error({:build_error, msg}), do: "Build error: #{msg}"
+  def format_error(reason), do: inspect(reason)
 end

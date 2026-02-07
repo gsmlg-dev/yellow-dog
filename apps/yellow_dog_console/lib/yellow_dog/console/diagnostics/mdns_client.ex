@@ -176,8 +176,4 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
     end
   end
 
-  defp format_error({:socket_error, reason}), do: "Socket error: #{inspect(reason)}"
-  defp format_error({:parse_error, msg}), do: "Parse error: #{msg}"
-  defp format_error({:build_error, msg}), do: "Build error: #{msg}"
-  defp format_error(reason), do: inspect(reason)
 end

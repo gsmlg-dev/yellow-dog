@@ -9,7 +9,8 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
   alias YellowDog.Console.Diagnostics.QueryResult
   alias YellowDog.Dns.Client, as: DnsClient
 
-  import YellowDog.Console.Diagnostics.ParamHelper
+  alias YellowDog.Console.Diagnostics.ParamHelper
+  import ParamHelper, except: [format_error: 1]
 
   @doc """
   Sends a DNS query and returns the result.
@@ -224,11 +225,7 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
     end
   end
 
-  defp format_error(:timeout), do: "Query timed out"
   defp format_error({:socket_error, :eacces}), do: "Permission denied"
   defp format_error({:socket_error, :econnrefused}), do: "Connection refused"
-  defp format_error({:socket_error, reason}), do: "Socket error: #{inspect(reason)}"
-  defp format_error({:parse_error, msg}), do: "Parse error: #{msg}"
-  defp format_error({:build_error, msg}), do: "Build error: #{msg}"
-  defp format_error(reason), do: inspect(reason)
+  defp format_error(reason), do: ParamHelper.format_error(reason)
 end
