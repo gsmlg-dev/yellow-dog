@@ -226,12 +226,14 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
 
   defp filter_by_state(leases, "all"), do: leases
 
-  defp filter_by_state(leases, state) do
+  @valid_lease_states ~w(active offered released expired declined)
+
+  defp filter_by_state(leases, state) when state in @valid_lease_states do
     state_atom = String.to_existing_atom(state)
     Enum.filter(leases, &(&1.state == state_atom))
-  rescue
-    _ -> leases
   end
+
+  defp filter_by_state(leases, _state), do: leases
 
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid, pool_name: pool_name}) do
     if metadata[:pool_name] == pool_name do
