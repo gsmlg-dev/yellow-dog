@@ -480,10 +480,10 @@ defmodule YellowDog.Application do
         [
           port: Map.get(service_config, "port", 5353),
           listen_address: convert_ip(Map.get(service_config, "listen", "0.0.0.0")),
-          mode: String.to_atom(Map.get(service_config, "mode", "hybrid")),
+          mode: parse_mdns_mode(Map.get(service_config, "mode", "hybrid")),
           # Service registry options
           storage_file: Map.get(services_config, "file", default_storage_file),
-          storage_format: String.to_atom(Map.get(services_config, "format", "toml")),
+          storage_format: parse_storage_format(Map.get(services_config, "format", "toml")),
           auto_save: Map.get(services_config, "auto_save", true),
           watch_file: Map.get(services_config, "watch_file", true),
           load_on_start: Map.get(services_config, "load_on_start", true),
@@ -552,6 +552,14 @@ defmodule YellowDog.Application do
         dir
     end
   end
+
+  @valid_mdns_modes ~w(hybrid responder browser)
+  defp parse_mdns_mode(mode) when mode in @valid_mdns_modes, do: String.to_existing_atom(mode)
+  defp parse_mdns_mode(_), do: :hybrid
+
+  @valid_storage_formats ~w(toml json)
+  defp parse_storage_format(fmt) when fmt in @valid_storage_formats, do: String.to_existing_atom(fmt)
+  defp parse_storage_format(_), do: :toml
 
   # Converts IP address string to tuple format for mDNS
   defp convert_ip(ip_string) when is_binary(ip_string) do

@@ -118,7 +118,7 @@ defmodule YellowDog.Config do
         # Convert string keys to atoms for easier access
         # If keys are already atoms (from transformer), keep them as-is
         for {key, val} <- service_config, into: %{} do
-          atom_key = if is_binary(key), do: String.to_atom(key), else: key
+          atom_key = if is_binary(key), do: safe_to_atom(key), else: key
           {atom_key, val}
         end
 
@@ -213,13 +213,19 @@ defmodule YellowDog.Config do
         %{}
 
       config ->
-        for {key, val} <- config, into: %{}, do: {String.to_atom(key), val}
+        for {key, val} <- config, into: %{}, do: {safe_to_atom(key), val}
     end
   end
 
   defp get_default_value(service, key) do
     service_config = get_default_service_config(service)
     Map.get(service_config, key)
+  end
+
+  defp safe_to_atom(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> key
   end
 
   @doc """

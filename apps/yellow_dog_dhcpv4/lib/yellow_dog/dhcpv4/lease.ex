@@ -177,12 +177,14 @@ defmodule YellowDog.Dhcpv4.Lease do
   # Parsing helpers
 
   defp get_value(config, key, default \\ nil) do
-    atom_key = if is_atom(key), do: key, else: String.to_atom(key)
+    atom_key = if is_atom(key), do: key, else: String.to_existing_atom(key)
     string_key = if is_binary(key), do: key, else: Atom.to_string(key)
 
     Map.get(config, atom_key) ||
       Map.get(config, string_key) ||
       default
+  rescue
+    ArgumentError -> Map.get(config, key, default)
   end
 
   defp parse_ip(nil), do: {:error, "IP address is required"}

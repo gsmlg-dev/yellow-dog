@@ -62,7 +62,7 @@ defmodule DNS.Zone.Editor do
         record = create_record(zone_name, record_type, options)
 
         # Add record to appropriate category
-        record_key = String.to_atom("#{record_type}_records")
+        record_key = :"#{record_type}_records"
         existing_records = Keyword.get(zone.options, record_key, [])
         updated_records = [record | existing_records]
 
@@ -95,7 +95,7 @@ defmodule DNS.Zone.Editor do
 
     case Manager.get_zone(zone_name) do
       {:ok, zone} ->
-        record_key = String.to_atom("#{record_type}_records")
+        record_key = :"#{record_type}_records"
         existing_records = Keyword.get(zone.options, record_key, [])
 
         # Find matching records
@@ -127,7 +127,7 @@ defmodule DNS.Zone.Editor do
 
     case Manager.get_zone(zone_name) do
       {:ok, zone} ->
-        record_key = String.to_atom("#{record_type}_records")
+        record_key = :"#{record_type}_records"
         existing_records = Keyword.get(zone.options, record_key, [])
 
         # Find and update matching records

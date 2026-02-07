@@ -474,8 +474,14 @@ defmodule DNS.Zone do
 
   ## Private functions
 
+  @known_rr_types_str ~w(a aaaa cname ns mx txt srv soa ptr caa ds rrsig nsec dnskey nsec3 nsec3param tlsa https spf uri)
   defp record_from_ast(%Parser.ResourceRecord{} = record) do
-    type = String.downcase(record.type) |> String.to_atom()
+    downcased = String.downcase(record.type)
+
+    type =
+      if downcased in @known_rr_types_str,
+        do: String.to_existing_atom(downcased),
+        else: String.to_atom(downcased)
 
     data =
       case type do

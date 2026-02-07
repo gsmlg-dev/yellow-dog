@@ -506,11 +506,12 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   # Legacy API helpers
 
-  defp get_required(config, key) do
+  @valid_required_keys %{"name" => :missing_name, "forwarders" => :missing_forwarders}
+  defp get_required(config, key) when is_map_key(@valid_required_keys, key) do
     case Map.get(config, key) do
-      nil -> {:error, :"missing_#{String.to_atom(key)}"}
-      "" -> {:error, :"missing_#{String.to_atom(key)}"}
-      [] -> {:error, :"missing_#{String.to_atom(key)}"}
+      nil -> {:error, @valid_required_keys[key]}
+      "" -> {:error, @valid_required_keys[key]}
+      [] -> {:error, @valid_required_keys[key]}
       value -> {:ok, value}
     end
   end

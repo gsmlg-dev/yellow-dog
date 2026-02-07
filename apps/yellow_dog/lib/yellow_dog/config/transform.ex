@@ -52,7 +52,7 @@ defmodule YellowDog.Config.Transform do
         "mdns" -> {:mdns, value}
         "dhcpv4" -> {:dhcpv4, value}
         "dhcpv6" -> {:dhcpv6, value}
-        _ -> {String.to_atom(key), value}
+        _ -> {safe_to_atom(key), value}
       end
     end
   end
@@ -107,7 +107,7 @@ defmodule YellowDog.Config.Transform do
           {:zones, transformed_zones}
 
         _ ->
-          {String.to_atom(key), value}
+          {safe_to_atom(key), value}
       end
     end
   end
@@ -129,7 +129,7 @@ defmodule YellowDog.Config.Transform do
           {:file, value}
 
         _ ->
-          {String.to_atom(key), value}
+          {safe_to_atom(key), value}
       end
     end
   end
@@ -153,7 +153,7 @@ defmodule YellowDog.Config.Transform do
           end
 
         _ ->
-          {String.to_atom(key), value}
+          {safe_to_atom(key), value}
       end
     end
   end
@@ -178,7 +178,7 @@ defmodule YellowDog.Config.Transform do
           {:pools, transformed_pools}
 
         _ ->
-          {String.to_atom(key), value}
+          {safe_to_atom(key), value}
       end
     end
   end
@@ -193,7 +193,7 @@ defmodule YellowDog.Config.Transform do
         "gateway" -> {:gateway, parse_ipv4!(value)}
         "dns_servers" -> {:dns_servers, Enum.map(value, &parse_ipv4!/1)}
         "lease_time" -> {:lease_time, value}
-        _ -> {String.to_atom(key), value}
+        _ -> {safe_to_atom(key), value}
       end
     end
   end
@@ -218,7 +218,7 @@ defmodule YellowDog.Config.Transform do
           {:pools, transformed_pools}
 
         _ ->
-          {String.to_atom(key), value}
+          {safe_to_atom(key), value}
       end
     end
   end
@@ -230,7 +230,7 @@ defmodule YellowDog.Config.Transform do
         "prefix" -> {:prefix, value}
         "dns_servers" -> {:dns_servers, Enum.map(value, &parse_ipv6!/1)}
         "lease_time" -> {:lease_time, value}
-        _ -> {String.to_atom(key), value}
+        _ -> {safe_to_atom(key), value}
       end
     end
   end
@@ -241,13 +241,20 @@ defmodule YellowDog.Config.Transform do
     # This is for backward compatibility with tests
     # The real transformation happens in apply/1
     case path do
-      ["core"] -> {String.to_atom(key), value}
-      ["dns"] -> {String.to_atom(key), value}
-      ["mdns"] -> {String.to_atom(key), value}
-      ["dhcpv4"] -> {String.to_atom(key), value}
-      ["dhcpv6"] -> {String.to_atom(key), value}
+      ["core"] -> {safe_to_atom(key), value}
+      ["dns"] -> {safe_to_atom(key), value}
+      ["mdns"] -> {safe_to_atom(key), value}
+      ["dhcpv4"] -> {safe_to_atom(key), value}
+      ["dhcpv6"] -> {safe_to_atom(key), value}
       _ -> {key, value}
     end
+  end
+
+  # Safe atom conversion — uses existing atoms to prevent atom table exhaustion
+  defp safe_to_atom(key) when is_binary(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> key
   end
 
   # IPv4 parsing helpers

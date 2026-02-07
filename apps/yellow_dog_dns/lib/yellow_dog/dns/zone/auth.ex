@@ -971,7 +971,12 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp normalize_type(%{type: type}), do: normalize_type(type)
-  defp normalize_type(type) when is_binary(type), do: String.downcase(type) |> String.to_atom()
+  @valid_rr_types ~w(a ns cname soa ptr mx txt aaaa srv ds rrsig nsec dnskey nsec3 nsec3param tlsa https spf any uri caa)
+  defp normalize_type(type) when is_binary(type) do
+    downcased = String.downcase(type)
+    if downcased in @valid_rr_types, do: String.to_existing_atom(downcased), else: :unknown
+  end
+
   defp normalize_type(_), do: :unknown
 
   defp build_response(query, answers, _state) do
