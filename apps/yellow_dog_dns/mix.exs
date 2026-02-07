@@ -27,6 +27,7 @@ defmodule YellowDog.Dns.MixProject do
   defp deps do
     [
       # Core dependencies
+      {:yellow_dog, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
 
       # Geo IP database for geo-based ACLs
