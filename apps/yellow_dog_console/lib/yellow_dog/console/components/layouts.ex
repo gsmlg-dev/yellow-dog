@@ -78,10 +78,10 @@ defmodule YellowDog.Console.Layouts do
       </div>
 
       <div class="flex-1">
-        <a href="/" class="btn btn-ghost text-xl font-bold">
+        <.link navigate="/" class="btn btn-ghost text-xl font-bold">
           <span class="text-primary">Yellow</span>
           <span class="text-warning">Dog</span>
-        </a>
+        </.link>
       </div>
 
       <div class="flex items-center flex-none gap-2">
@@ -160,7 +160,7 @@ defmodule YellowDog.Console.Layouts do
             <span>Dashboard</span>
           </li>
           <li>
-            <a href="/" class="gap-3">
+            <.link navigate="/" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -176,10 +176,10 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Overview</span>
-            </a>
+            </.link>
           </li>
           <li>
-            <a href="/dashboard" class="gap-3">
+            <.link navigate="/dashboard" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -195,7 +195,7 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Services</span>
-            </a>
+            </.link>
           </li>
           
     <!-- Services Section -->
@@ -224,11 +224,11 @@ defmodule YellowDog.Console.Layouts do
                 <span>DNS</span>
               </summary>
               <ul>
-                <li><a href="/dns">Overview</a></li>
-                <li><a href="/dns/views">Views</a></li>
-                <li><a href="/dns/acl">ACL</a></li>
-                <li><a href="/dns/logs">Query Logs</a></li>
-                <li><a href="/dns/metrics">Metrics</a></li>
+                <li><.link navigate="/dns">Overview</.link></li>
+                <li><.link navigate="/dns/views">Views</.link></li>
+                <li><.link navigate="/dns/acl">ACL</.link></li>
+                <li><.link navigate="/dns/logs">Query Logs</.link></li>
+                <li><.link navigate="/dns/metrics">Metrics</.link></li>
               </ul>
             </details>
           </li>
@@ -254,9 +254,9 @@ defmodule YellowDog.Console.Layouts do
                 <span>DHCPv4</span>
               </summary>
               <ul>
-                <li><a href="/dhcpv4">Overview</a></li>
-                <li><a href="/dhcpv4/leases">Leases</a></li>
-                <li><a href="/dhcpv4/pools">Pools</a></li>
+                <li><.link navigate="/dhcpv4">Overview</.link></li>
+                <li><.link navigate="/dhcpv4/leases">Leases</.link></li>
+                <li><.link navigate="/dhcpv4/pools">Pools</.link></li>
               </ul>
             </details>
           </li>
@@ -282,9 +282,9 @@ defmodule YellowDog.Console.Layouts do
                 <span>DHCPv6</span>
               </summary>
               <ul>
-                <li><a href="/dhcpv6">Overview</a></li>
-                <li><a href="/dhcpv6/leases">Leases</a></li>
-                <li><a href="/dhcpv6/pools">Pools</a></li>
+                <li><.link navigate="/dhcpv6">Overview</.link></li>
+                <li><.link navigate="/dhcpv6/leases">Leases</.link></li>
+                <li><.link navigate="/dhcpv6/pools">Pools</.link></li>
               </ul>
             </details>
           </li>
@@ -310,10 +310,10 @@ defmodule YellowDog.Console.Layouts do
                 <span>mDNS</span>
               </summary>
               <ul>
-                <li><a href="/mdns">Overview</a></li>
-                <li><a href="/mdns/services">Services</a></li>
-                <li><a href="/mdns/discovery">Discovery</a></li>
-                <li><a href="/mdns/monitor">Monitor</a></li>
+                <li><.link navigate="/mdns">Overview</.link></li>
+                <li><.link navigate="/mdns/services">Services</.link></li>
+                <li><.link navigate="/mdns/discovery">Discovery</.link></li>
+                <li><.link navigate="/mdns/monitor">Monitor</.link></li>
               </ul>
             </details>
           </li>
@@ -323,7 +323,7 @@ defmodule YellowDog.Console.Layouts do
             <span>System</span>
           </li>
           <li>
-            <a href="/settings" class="gap-3">
+            <.link navigate="/settings" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -345,10 +345,10 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Settings</span>
-            </a>
+            </.link>
           </li>
           <li>
-            <a href="/logs" class="gap-3">
+            <.link navigate="/logs" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -364,10 +364,10 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Logs</span>
-            </a>
+            </.link>
           </li>
           <li>
-            <a href="/diagnostics" class="gap-3">
+            <.link navigate="/diagnostics" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -383,10 +383,10 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Service Diagnostics</span>
-            </a>
+            </.link>
           </li>
           <li>
-            <a href="/process-map" class="gap-3">
+            <.link navigate="/process-map" class="gap-3">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -402,7 +402,7 @@ defmodule YellowDog.Console.Layouts do
                 />
               </svg>
               <span>Process Map</span>
-            </a>
+            </.link>
           </li>
         </ul>
       </div>
