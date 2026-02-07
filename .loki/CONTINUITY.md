@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 77)
+**Phase**: IN_PROGRESS (Iteration 78)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 77 of 1000
+**Iteration**: 78 of 1000
 
 ## Session Summary
-Iteration 77: Replace `Regex.match?` with `=~` operator:
+Iteration 78: Replace `String.match?` with `=~` operator:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `string =~ ~r/pattern/` is more idiomatic than `String.match?(string, ~r/pattern/)`
+- ✅ 13 instances across 7 files: config_manager (5), pool_store, lease, editor, plus 3 test files
+- ✅ 7 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 77: Replace `Regex.match?` with `=~` operator:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `string =~ ~r/pattern/` is more idiomatic than `Regex.match?(~r/pattern/, string)`
 - ✅ 7 instances across 6 files: pool_config, acl, validators, services_live, view_live, acl_live, record validator
