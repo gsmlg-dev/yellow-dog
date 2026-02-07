@@ -63,6 +63,8 @@ defmodule YellowDog.Console do
     quote do
       use Phoenix.LiveView
 
+      on_mount YellowDog.Console.Hooks.CurrentPath
+
       unquote(html_helpers())
     end
   end

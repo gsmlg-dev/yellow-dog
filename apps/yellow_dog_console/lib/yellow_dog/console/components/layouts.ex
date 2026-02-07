@@ -19,6 +19,7 @@ defmodule YellowDog.Console.Layouts do
   """
   attr :flash, :map, default: %{}, doc: "the map of flash messages"
   attr :current_user, :any, default: nil, doc: "the current user"
+  attr :current_path, :string, default: nil, doc: "current page path for sidebar highlighting"
   slot :inner_block, doc: "the inner content when used as a component"
 
   def app(assigns) do
@@ -31,6 +32,8 @@ defmodule YellowDog.Console.Layouts do
           nil
         end
       end)
+
+    assigns = assign_new(assigns, :current_path, fn -> nil end)
 
     ~H"""
     <div class="drawer lg:drawer-open h-full">
@@ -49,7 +52,7 @@ defmodule YellowDog.Console.Layouts do
           </div>
         </div>
       </div>
-      <.sidebar />
+      <.sidebar current_path={@current_path} />
     </div>
     """
   end
@@ -160,7 +163,7 @@ defmodule YellowDog.Console.Layouts do
             <span>Dashboard</span>
           </li>
           <li>
-            <.link navigate="/" class="gap-3">
+            <.link navigate="/" class={["gap-3", active?(@current_path, "/", :exact)]}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -179,7 +182,7 @@ defmodule YellowDog.Console.Layouts do
             </.link>
           </li>
           <li>
-            <.link navigate="/dashboard" class="gap-3">
+            <.link navigate="/dashboard" class={["gap-3", active?(@current_path, "/dashboard")]}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -197,12 +200,12 @@ defmodule YellowDog.Console.Layouts do
               <span>Services</span>
             </.link>
           </li>
-          
+
     <!-- Services Section -->
           <li class="menu-title mt-4">
             <span>Services</span>
           </li>
-          
+
     <!-- DNS -->
           <li>
             <details open>
@@ -224,15 +227,33 @@ defmodule YellowDog.Console.Layouts do
                 <span>DNS</span>
               </summary>
               <ul>
-                <li><.link navigate="/dns">Overview</.link></li>
-                <li><.link navigate="/dns/views">Views</.link></li>
-                <li><.link navigate="/dns/acl">ACL</.link></li>
-                <li><.link navigate="/dns/logs">Query Logs</.link></li>
-                <li><.link navigate="/dns/metrics">Metrics</.link></li>
+                <li>
+                  <.link navigate="/dns" class={active?(@current_path, "/dns", :exact)}>
+                    Overview
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dns/views" class={active?(@current_path, "/dns/views")}>
+                    Views
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dns/acl" class={active?(@current_path, "/dns/acl")}>ACL</.link>
+                </li>
+                <li>
+                  <.link navigate="/dns/logs" class={active?(@current_path, "/dns/logs")}>
+                    Query Logs
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dns/metrics" class={active?(@current_path, "/dns/metrics")}>
+                    Metrics
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
-          
+
     <!-- DHCPv4 -->
           <li>
             <details open>
@@ -254,13 +275,25 @@ defmodule YellowDog.Console.Layouts do
                 <span>DHCPv4</span>
               </summary>
               <ul>
-                <li><.link navigate="/dhcpv4">Overview</.link></li>
-                <li><.link navigate="/dhcpv4/leases">Leases</.link></li>
-                <li><.link navigate="/dhcpv4/pools">Pools</.link></li>
+                <li>
+                  <.link navigate="/dhcpv4" class={active?(@current_path, "/dhcpv4", :exact)}>
+                    Overview
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dhcpv4/leases" class={active?(@current_path, "/dhcpv4/leases")}>
+                    Leases
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dhcpv4/pools" class={active?(@current_path, "/dhcpv4/pools")}>
+                    Pools
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
-          
+
     <!-- DHCPv6 -->
           <li>
             <details open>
@@ -282,13 +315,25 @@ defmodule YellowDog.Console.Layouts do
                 <span>DHCPv6</span>
               </summary>
               <ul>
-                <li><.link navigate="/dhcpv6">Overview</.link></li>
-                <li><.link navigate="/dhcpv6/leases">Leases</.link></li>
-                <li><.link navigate="/dhcpv6/pools">Pools</.link></li>
+                <li>
+                  <.link navigate="/dhcpv6" class={active?(@current_path, "/dhcpv6", :exact)}>
+                    Overview
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dhcpv6/leases" class={active?(@current_path, "/dhcpv6/leases")}>
+                    Leases
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/dhcpv6/pools" class={active?(@current_path, "/dhcpv6/pools")}>
+                    Pools
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
-          
+
     <!-- mDNS -->
           <li>
             <details open>
@@ -310,20 +355,39 @@ defmodule YellowDog.Console.Layouts do
                 <span>mDNS</span>
               </summary>
               <ul>
-                <li><.link navigate="/mdns">Overview</.link></li>
-                <li><.link navigate="/mdns/services">Services</.link></li>
-                <li><.link navigate="/mdns/discovery">Discovery</.link></li>
-                <li><.link navigate="/mdns/monitor">Monitor</.link></li>
+                <li>
+                  <.link navigate="/mdns" class={active?(@current_path, "/mdns", :exact)}>
+                    Overview
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/mdns/services" class={active?(@current_path, "/mdns/services")}>
+                    Services
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    navigate="/mdns/discovery"
+                    class={active?(@current_path, "/mdns/discovery")}
+                  >
+                    Discovery
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/mdns/monitor" class={active?(@current_path, "/mdns/monitor")}>
+                    Monitor
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
-          
+
     <!-- Settings -->
           <li class="menu-title mt-4">
             <span>System</span>
           </li>
           <li>
-            <.link navigate="/settings" class="gap-3">
+            <.link navigate="/settings" class={["gap-3", active?(@current_path, "/settings")]}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -348,7 +412,7 @@ defmodule YellowDog.Console.Layouts do
             </.link>
           </li>
           <li>
-            <.link navigate="/logs" class="gap-3">
+            <.link navigate="/logs" class={["gap-3", active?(@current_path, "/logs")]}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -367,7 +431,7 @@ defmodule YellowDog.Console.Layouts do
             </.link>
           </li>
           <li>
-            <.link navigate="/diagnostics" class="gap-3">
+            <.link navigate="/diagnostics" class={["gap-3", active?(@current_path, "/diagnostics")]}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -386,7 +450,10 @@ defmodule YellowDog.Console.Layouts do
             </.link>
           </li>
           <li>
-            <.link navigate="/process-map" class="gap-3">
+            <.link
+              navigate="/process-map"
+              class={["gap-3", active?(@current_path, "/process-map")]}
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-5 w-5"
@@ -409,6 +476,17 @@ defmodule YellowDog.Console.Layouts do
     </div>
     """
   end
+
+  # Returns "active" class when current_path matches the target path.
+  # :exact mode requires exact match (for overview pages that share a prefix).
+  # Default mode uses prefix matching (e.g. /dns/views/... matches /dns/views).
+  defp active?(nil, _target), do: nil
+  defp active?(current, target), do: if(String.starts_with?(current, target), do: "active")
+
+  defp active?(nil, _target, _mode), do: nil
+
+  defp active?(current, target, :exact),
+    do: if(current == target, do: "active")
 
   @doc """
   Renders flash notices using DaisyUI alerts.
