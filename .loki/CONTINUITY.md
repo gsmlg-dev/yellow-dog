@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 90)
+**Phase**: IN_PROGRESS (Iteration 91)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 90 of 1000
+**Iteration**: 91 of 1000
 
 ## Session Summary
-Iteration 90: Add @spec to remaining console utility modules + fix flaky test + credo:
+Iteration 91: DRY filtered_countries extraction:
+- ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Extracted duplicate `filtered_countries/2` from acl_live + view_live/index to FormatHelper
+- ✅ Both modules had identical 12-line country filter implementation
+- ✅ acl_live: added `import FormatHelper, only: [filtered_countries: 2]`
+- ✅ view_live/index: expanded existing import to include `filtered_countries: 2`
+- ✅ 3 files — **1 commit** — net -12 lines
+
+Previous iteration 90: Add @spec to remaining console utility modules + fix flaky test + credo:
 - ✅ **All 962 console + 319 DHCPv4 + 201 DHCPv6 + 4764 ex_dns tests pass: 0 failures, 0 credo issues**
 - ✅ Added `@spec` to CsvHelper (3 functions), ServiceHelper (2 functions), ParamHelper (4 functions)
 - ✅ Fixed flaky `function_exported?` in recursive_test.exs with `Code.ensure_loaded!`
