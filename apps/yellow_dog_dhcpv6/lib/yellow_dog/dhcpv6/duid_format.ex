@@ -14,6 +14,7 @@ defmodule YellowDog.Dhcpv6.DuidFormat do
 
   Returns `nil` for non-binary or empty inputs.
   """
+  @spec format(binary(), keyword()) :: String.t() | nil
   def format(duid, opts \\ [])
 
   def format(duid, opts) when is_binary(duid) and byte_size(duid) > 0 do

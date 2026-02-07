@@ -23,6 +23,7 @@ defmodule YellowDog.Dhcpv4.MacFormat do
       iex> MacFormat.format(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, case: :lower)
       "aa:bb:cc:dd:ee:ff"
   """
+  @spec format(binary(), keyword()) :: String.t() | nil
   def format(mac, opts \\ [])
 
   def format(<<mac::binary-size(6), _rest::binary>>, opts) do
