@@ -1,16 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 24)
+**Phase**: IN_PROGRESS (Iteration 25)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 24 of 1000
+**Iteration**: 25 of 1000
 
 ## Session Summary
-Iteration 24: Enum pattern optimization + @spec annotations:
-- ✅ **All tests passing, 0 failures**
-- ✅ Replaced 6 `Enum.map |> Enum.reject(&is_nil/1)` patterns with single-pass `for` comprehensions across DHCPv4/v6 pool.ex and address_pool.ex
-- ✅ Added `@spec` to 17 public DNS message helpers (RCode constructors, Header helpers)
+Iteration 25: Error consistency + bare rescue hardening (round 2) + magic numbers:
+- ✅ **1,052 DNS + 319 DHCPv4 + 201 DHCPv6 + 309 mDNS + 962 console tests, 0 failures**
+- ✅ Fixed inconsistent `store_lease_to_mnesia` returning bare `:error` → `{:error, reason}` in DHCPv6
+- ✅ Tightened **24 bare `rescue _ ->`** clauses across **15 files** in DNS, DHCPv4, DHCPv6, mDNS core modules
+- ✅ Added `@default_port`, `@default_listen`, `@default_data_path` to DNS supervisor — replaced 5 hardcoded `53` literals
+- ✅ Converted `Enum.map |> Enum.reject` to `for` comprehension in `parse_upstreams`
 - ✅ **2 commits this iteration**
+
+Previous iteration 24: Enum pattern optimization + @spec annotations:
+- ✅ Replaced 6 `Enum.map |> Enum.reject` patterns with `for` comprehensions
+- ✅ Added `@spec` to 17 public DNS message helpers
 
 Previous iteration 23: DRY refactoring + bare rescue hardening:
 - ✅ Extracted `YellowDog.Config.TomlHelpers` — 7 shared functions from identical DHCPv4/v6 PoolStore private helpers (~90 lines deduplication)
@@ -165,6 +171,10 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
+1. `027e136` - fix(dhcpv6): return {:error, reason} instead of bare :error in store_lease_to_mnesia
+2. `67ead22` - refactor: replace bare rescue with explicit exception types, add @default_port
+
+Previous iteration 24 commits:
 1. `0ac2898` - perf(dhcp): replace Enum.map |> Enum.reject with for comprehensions
 2. `2bc1968` - refactor(ex_dns): add @spec to 17 public DNS message helpers
 
