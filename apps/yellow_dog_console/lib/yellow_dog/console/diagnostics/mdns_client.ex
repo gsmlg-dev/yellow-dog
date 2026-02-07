@@ -73,12 +73,10 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
     end
   end
 
+  @valid_record_types ~w(a aaaa ptr srv txt)
   defp parse_record_type(type) when is_binary(type) do
-    type
-    |> String.downcase()
-    |> String.to_existing_atom()
-  rescue
-    _ -> :ptr
+    downcased = String.downcase(type)
+    if downcased in @valid_record_types, do: String.to_existing_atom(downcased), else: :ptr
   end
 
   defp parse_record_type(type) when is_atom(type), do: type

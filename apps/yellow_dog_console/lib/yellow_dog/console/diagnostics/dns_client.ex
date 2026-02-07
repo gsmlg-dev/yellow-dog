@@ -102,12 +102,10 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
     end
   end
 
+  @valid_record_types ~w(a aaaa cname mx ns ptr soa srv txt naptr caa dnskey ds rrsig nsec)
   defp parse_record_type(type) when is_binary(type) do
-    type
-    |> String.downcase()
-    |> String.to_existing_atom()
-  rescue
-    _ -> :a
+    downcased = String.downcase(type)
+    if downcased in @valid_record_types, do: String.to_existing_atom(downcased), else: :a
   end
 
   defp parse_record_type(type) when is_atom(type), do: type
