@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 99)
+**Phase**: IN_PROGRESS (Iteration 100)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 99 of 1000
+**Iteration**: 100 of 1000
 
 ## Session Summary
-Iteration 99: Fix DHCPv6 leases CSV export KeyError bug:
+Iteration 100: Simplify filter_by_state in DHCPv4 pool_live to to_string pattern:
+- ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Removed @valid_lease_states allowlist + String.to_existing_atom + fallback clause
+- ✅ Replaced with `to_string(l.state) == state` — consistent with all other filter_by_state implementations
+- ✅ All 3 DHCPv4/v6 filter_by_state functions now use identical pattern
+- ✅ 1 file — **1 commit** — net -6 lines
+
+Previous iteration 99: Fix DHCPv6 leases CSV export KeyError bug:
 - ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Bug: `export_csv` handler read `socket.assigns.filtered_leases` but `load_leases` assigned to `:leases`
 - ✅ Would crash with `KeyError: key :filtered_leases not found` when clicking Export CSV
