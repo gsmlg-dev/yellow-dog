@@ -1,17 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 46)
+**Phase**: IN_PROGRESS (Iteration 47)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 46 of 1000
+**Iteration**: 47 of 1000
 
 ## Session Summary
-Iteration 46: Replace manual IPv4 parsing with :inet.parse_address/1:
+Iteration 47: Replace Enum.sum(Enum.map) with single-pass Enum.reduce + misc Enum optimizations:
 - ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ Replaced 7 duplicate manual IPv4 parse functions across 7 files with `:inet.parse_address/1`
-- ✅ Eliminates unsafe parsing (no 0-255 range check), removes try/rescue blocks
-- ✅ Files: application.ex, pool.ex, lease.ex, pool_store.ex, address_pool.ex, pool_config.ex, pools_live.ex
-- ✅ **1 commit this iteration** — net -54 lines
+- ✅ 7× `Enum.sum(Enum.map(...))` → single-pass `Enum.reduce` (eliminates intermediate list)
+- ✅ 1× `Enum.count() > 0` → `!= []` (O(n) → O(1)) in nsec.ex
+- ✅ 1× `Enum.at(@errors, 0)` → `hd(@errors)` in core_components.ex
+- ✅ Files: record_builder.ex, responder.ex, process_inspector.ex, validator.ex, nsec.ex, core_components.ex
+- ✅ **1 commit this iteration** — net -2 lines
+
+Previous iteration 46: Replace manual IPv4 parsing with :inet.parse_address/1:
+- ✅ Replaced 7 duplicate manual IPv4 parse functions across 7 files — net -54 lines
 
 Previous iteration 45: Combine multi-pass Enum.sum(Enum.map) into single Enum.reduce:
 - ✅ pool_stats.ex + dns index.ex: multi-pass → single Enum.reduce — net -6 lines
