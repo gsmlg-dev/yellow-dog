@@ -11,6 +11,7 @@ defmodule DNS.Zone.Cache do
 
   @cache_table :dns_zone_cache
   @meta_table :dns_zone_cache_meta
+  @stats_table :dns_zone_cache_stats
   @ets_options [:named_table, :public, :set, read_concurrency: true]
 
   @doc """
@@ -24,6 +25,12 @@ defmodule DNS.Zone.Cache do
 
     if :ets.whereis(@meta_table) == :undefined do
       :ets.new(@meta_table, [:named_table, :public, :set])
+    end
+
+    if :ets.whereis(@stats_table) == :undefined do
+      :ets.new(@stats_table, [:named_table, :public, :set])
+      :ets.insert(@stats_table, {:hits, 0})
+      :ets.insert(@stats_table, {:misses, 0})
     end
 
     :ok
@@ -73,20 +80,24 @@ defmodule DNS.Zone.Cache do
             now = System.system_time(:second)
 
             if meta.expires_at > now do
+              record_hit()
               {:ok, zone}
             else
               # Expired, remove from cache
+              record_miss()
               delete_zone(name)
               {:error, :expired}
             end
 
           [] ->
             # No metadata, treat as expired
+            record_miss()
             delete_zone(name)
             {:error, :expired}
         end
 
       [] ->
+        record_miss()
         {:error, :not_found}
     end
   end
@@ -136,6 +147,8 @@ defmodule DNS.Zone.Cache do
     init()
     :ets.delete_all_objects(@cache_table)
     :ets.delete_all_objects(@meta_table)
+    :ets.insert(@stats_table, {:hits, 0})
+    :ets.insert(@stats_table, {:misses, 0})
     :ok
   end
 
@@ -241,7 +254,31 @@ defmodule DNS.Zone.Cache do
   end
 
   defp calculate_hit_ratio() do
-    # TODO: Implement hit ratio calculation based on lookup stats
-    0.0
+    hits = get_counter(:hits)
+    misses = get_counter(:misses)
+    total = hits + misses
+
+    if total > 0, do: hits / total, else: 0.0
+  end
+
+  defp record_hit do
+    :ets.update_counter(@stats_table, :hits, 1)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp record_miss do
+    :ets.update_counter(@stats_table, :misses, 1)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp get_counter(key) do
+    case :ets.lookup(@stats_table, key) do
+      [{^key, value}] -> value
+      _ -> 0
+    end
+  rescue
+    ArgumentError -> 0
   end
 end
