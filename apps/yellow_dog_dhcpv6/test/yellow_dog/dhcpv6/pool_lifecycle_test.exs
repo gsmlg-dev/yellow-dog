@@ -304,7 +304,7 @@ defmodule YellowDog.Dhcpv6.PoolLifecycleTest do
       active_leases =
         Enum.filter(loaded_leases, fn lease ->
           case lease.valid_until do
-            %DateTime{} = dt -> DateTime.compare(dt, DateTime.utc_now()) == :gt
+            %DateTime{} = dt -> DateTime.after?(dt, DateTime.utc_now())
             _ -> false
           end
         end)

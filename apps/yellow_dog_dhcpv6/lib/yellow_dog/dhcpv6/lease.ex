@@ -144,7 +144,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   """
   @spec expired?(t()) :: boolean()
   def expired?(%__MODULE__{valid_until: valid_until}) do
-    DateTime.compare(DateTime.utc_now(), valid_until) == :gt
+    DateTime.after?(DateTime.utc_now(), valid_until)
   end
 
   @doc """
@@ -153,7 +153,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   @spec deprecated?(t()) :: boolean()
   def deprecated?(%__MODULE__{preferred_until: pref, valid_until: valid}) do
     now = DateTime.utc_now()
-    DateTime.compare(now, pref) == :gt and DateTime.compare(now, valid) in [:lt, :eq]
+    DateTime.after?(now, pref) and not DateTime.after?(now, valid)
   end
 
   @doc """
@@ -323,7 +323,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   defp validate_iaid(_), do: {:error, "Invalid IAID"}
 
   defp validate_timestamps(%DateTime{} = start, %DateTime{} = valid) do
-    if DateTime.compare(start, valid) in [:lt, :eq] do
+    if not DateTime.after?(start, valid) do
       :ok
     else
       {:error, "Start time must be before or equal to valid_until time"}

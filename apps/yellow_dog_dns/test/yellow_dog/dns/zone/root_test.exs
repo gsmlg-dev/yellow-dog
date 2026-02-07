@@ -326,8 +326,8 @@ defmodule YellowDog.Dns.Zone.RootTest do
       stats = Root.stats(pid)
 
       # created_at should be between before and after_start
-      assert DateTime.compare(stats.created_at, before) in [:eq, :gt]
-      assert DateTime.compare(stats.created_at, after_start) in [:eq, :lt]
+      assert not DateTime.before?(stats.created_at, before)
+      assert not DateTime.after?(stats.created_at, after_start)
 
       GenServer.stop(pid)
     end

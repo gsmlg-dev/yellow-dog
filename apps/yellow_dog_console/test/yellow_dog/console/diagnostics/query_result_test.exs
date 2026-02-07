@@ -90,8 +90,8 @@ defmodule YellowDog.Console.Diagnostics.QueryResultTest do
       result = QueryResult.new()
       after_time = DateTime.utc_now()
 
-      assert DateTime.compare(result.timestamp, before) in [:gt, :eq]
-      assert DateTime.compare(result.timestamp, after_time) in [:lt, :eq]
+      assert not DateTime.before?(result.timestamp, before)
+      assert not DateTime.after?(result.timestamp, after_time)
     end
 
     test "accepts custom attributes" do

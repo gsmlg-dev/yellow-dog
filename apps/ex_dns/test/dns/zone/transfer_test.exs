@@ -831,8 +831,8 @@ defmodule DNS.Zone.TransferTest do
 
       after_time = DateTime.utc_now()
 
-      assert DateTime.compare(request.timestamp, before) in [:gt, :eq]
-      assert DateTime.compare(request.timestamp, after_time) in [:lt, :eq]
+      assert not DateTime.before?(request.timestamp, before)
+      assert not DateTime.after?(request.timestamp, after_time)
     end
 
     test "create_transfer_request with IPv6 client" do

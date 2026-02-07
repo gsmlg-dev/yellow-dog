@@ -298,7 +298,7 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
       active_leases =
         Enum.filter(loaded_leases, fn lease ->
           case lease.expires_at do
-            %DateTime{} = dt -> DateTime.compare(dt, DateTime.utc_now()) == :gt
+            %DateTime{} = dt -> DateTime.after?(dt, DateTime.utc_now())
             unix when is_integer(unix) -> unix > System.system_time(:second)
             _ -> false
           end

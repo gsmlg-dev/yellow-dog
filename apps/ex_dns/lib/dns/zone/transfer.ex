@@ -68,7 +68,7 @@ defmodule DNS.Zone.Transfer do
       {:ok, zone} ->
         last_modified = get_zone_last_modified(zone)
 
-        if DateTime.compare(since, last_modified) == :gt do
+        if DateTime.after?(since, last_modified) do
           # No changes since the requested time
           {:ok, []}
         else

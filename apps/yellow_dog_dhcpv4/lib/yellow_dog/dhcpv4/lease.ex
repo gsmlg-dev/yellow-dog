@@ -132,7 +132,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   """
   @spec expired?(t()) :: boolean()
   def expired?(%__MODULE__{expires_at: expires_at}) do
-    DateTime.compare(DateTime.utc_now(), expires_at) == :gt
+    DateTime.after?(DateTime.utc_now(), expires_at)
   end
 
   @doc """
@@ -309,7 +309,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   defp validate_mac(_), do: {:error, "Invalid MAC address"}
 
   defp validate_timestamps(%DateTime{} = start, %DateTime{} = expires) do
-    if DateTime.compare(start, expires) in [:lt, :eq] do
+    if not DateTime.after?(start, expires) do
       :ok
     else
       {:error, "Start time must be before or equal to expiration time"}
