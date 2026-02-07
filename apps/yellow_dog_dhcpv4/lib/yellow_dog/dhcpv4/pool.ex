@@ -270,7 +270,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp parse_ip_list(nil), do: []
 
   defp parse_ip_list(list) when is_list(list),
-    do: Enum.map(list, &parse_ip/1) |> Enum.reject(&is_nil/1)
+    do: for(item <- list, ip = parse_ip(item), ip != nil, do: ip)
 
   defp parse_ip_list(_), do: []
 
@@ -325,7 +325,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp parse_acl_rules(nil), do: []
 
   defp parse_acl_rules(rules) when is_list(rules) do
-    Enum.map(rules, &parse_acl_rule/1) |> Enum.reject(&is_nil/1)
+    for(rule <- rules, parsed = parse_acl_rule(rule), parsed != nil, do: parsed)
   end
 
   defp parse_acl_rules(_), do: []

@@ -282,24 +282,26 @@ defmodule YellowDog.Dhcpv4.AddressPool do
         []
 
       excluded when is_list(excluded) ->
-        Enum.map(excluded, fn
-          {start_ip, end_ip} when is_tuple(start_ip) and is_tuple(end_ip) ->
-            {start_ip, end_ip}
-
-          %{start: start, end: end_ip} ->
-            {:ok, start_ip} = normalize_ip(start)
-            {:ok, end_ip_tuple} = normalize_ip(end_ip)
-            {start_ip, end_ip_tuple}
-
-          _ ->
-            nil
-        end)
-        |> Enum.reject(&is_nil/1)
+        for item <- excluded,
+            range = parse_excluded_range(item),
+            range != nil,
+            do: range
 
       _ ->
         []
     end
   end
+
+  defp parse_excluded_range({start_ip, end_ip}) when is_tuple(start_ip) and is_tuple(end_ip),
+    do: {start_ip, end_ip}
+
+  defp parse_excluded_range(%{start: start, end: end_ip}) do
+    {:ok, start_ip} = normalize_ip(start)
+    {:ok, end_ip_tuple} = normalize_ip(end_ip)
+    {start_ip, end_ip_tuple}
+  end
+
+  defp parse_excluded_range(_), do: nil
 
   defp find_next_available_in_ranges(ranges, excluded_ranges, allocated_ips) do
     # Try each range until we find an available IP
