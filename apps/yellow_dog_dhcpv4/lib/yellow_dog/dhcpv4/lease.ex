@@ -269,14 +269,10 @@ defmodule YellowDog.Dhcpv4.Lease do
 
   defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
 
-  defp format_mac_string(mac) when is_binary(mac) and byte_size(mac) == 6 do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.downcase()
+  defp format_mac_string(mac) when is_binary(mac) do
+    YellowDog.Dhcpv4.MacFormat.format(mac, case: :lower) || mac
   end
 
-  defp format_mac_string(mac) when is_binary(mac), do: mac
   defp format_mac_string(_), do: "00:00:00:00:00:00"
 
   defp format_client_id(nil), do: nil

@@ -444,15 +444,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   end
 
   defp format_mac(nil), do: ""
-
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
-  end
-
-  defp format_mac(mac) when is_binary(mac), do: mac
+  defp format_mac(mac) when is_binary(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || mac
 
   defp format_ip(nil), do: ""
   defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()

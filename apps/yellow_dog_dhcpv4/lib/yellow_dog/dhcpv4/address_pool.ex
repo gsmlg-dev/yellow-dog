@@ -394,12 +394,5 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     end
   end
 
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
-  end
-
-  defp format_mac(_), do: "UNKNOWN"
+  defp format_mac(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || "UNKNOWN"
 end

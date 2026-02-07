@@ -1,0 +1,38 @@
+defmodule YellowDog.Dhcpv4.MacFormat do
+  @moduledoc """
+  Shared MAC address formatting for DHCPv4 modules.
+
+  Converts 6-byte (or longer) binary MAC addresses to colon-separated hex strings.
+  """
+
+  @doc """
+  Formats a binary MAC address as a colon-separated hex string.
+
+  For binaries >= 6 bytes, uses the first 6 bytes.
+  Returns `nil` for shorter or non-binary inputs.
+
+  ## Options
+
+    * `:case` - `:upper` (default) or `:lower`
+
+  ## Examples
+
+      iex> MacFormat.format(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>)
+      "AA:BB:CC:DD:EE:FF"
+
+      iex> MacFormat.format(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, case: :lower)
+      "aa:bb:cc:dd:ee:ff"
+  """
+  def format(mac, opts \\ [])
+
+  def format(<<mac::binary-size(6), _rest::binary>>, opts) do
+    hex =
+      mac
+      |> :binary.bin_to_list()
+      |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
+
+    if Keyword.get(opts, :case, :upper) == :lower, do: String.downcase(hex), else: String.upcase(hex)
+  end
+
+  def format(_, _opts), do: nil
+end

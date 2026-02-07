@@ -358,14 +358,10 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
     Process.send_after(self(), :check_quarantine, @quarantine_check_interval)
   end
 
-  defp format_mac(<<a, b, c, d, e, f, _rest::binary>>) do
-    # Handle 6+ byte MAC addresses (e.g., 16-byte chaddr field)
-    [a, b, c, d, e, f]
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
+  defp format_mac(mac) when is_binary(mac) do
+    YellowDog.Dhcpv4.MacFormat.format(mac) || inspect(mac)
   end
 
-  defp format_mac(mac) when is_binary(mac) and byte_size(mac) < 6, do: inspect(mac)
   defp format_mac(_), do: "UNKNOWN"
 
   defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()

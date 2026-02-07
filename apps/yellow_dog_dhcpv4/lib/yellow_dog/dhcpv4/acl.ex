@@ -337,14 +337,10 @@ defmodule YellowDog.Dhcpv4.ACL do
     end
   end
 
-  defp format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
+  defp format_mac(mac) when is_binary(mac) do
+    YellowDog.Dhcpv4.MacFormat.format(mac) || String.upcase(mac)
   end
 
-  defp format_mac(mac) when is_binary(mac), do: String.upcase(mac)
   defp format_mac(_), do: ""
 
   # Telemetry helpers
