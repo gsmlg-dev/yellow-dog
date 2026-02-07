@@ -6,14 +6,16 @@
 **Iteration**: 16 of 1000
 
 ## Session Summary
-Iteration 16: QueryLogger integration + atom safety hardening:
-- ✅ **1052 umbrella tests passing** (1050 prior + 2 QueryLogger integration), 0 failures
-- ✅ **689 Console tests passing** (684 prior + 5 atom safety guards), 0 failures
+Iteration 16 (continued): Comprehensive atom safety + test coverage:
+- ✅ **1052 umbrella tests passing**, 0 failures
+- ✅ **737 Console tests passing** (689 prior + 36 metrics/logs + 12 atom safety), 0 failures
 - ✅ Wired QueryLogger into ConnectionProcess (complete_query + complete_query_error)
 - ✅ Fixed `String.to_atom/1` in mDNS ServicesLive filter (atom leak vulnerability)
 - ✅ Added allowlist guards to `String.to_existing_atom/1` in DashboardLive, LogsLive
 - ✅ Added `phx-disable-with` to Dashboard start/stop service buttons
-- ✅ **2 commits this iteration**: QueryLogger wiring, atom safety hardening
+- ✅ 36 tests for DNS Metrics and Query Logs LiveViews (mounting, events, accessibility)
+- ✅ Hardened atom safety in DiagnosticsLive, SettingsLive, ZoneLive, RrLive (12 tests)
+- ✅ **4 commits this iteration**: QueryLogger, atom safety (round 1), metrics/logs tests, atom safety (round 2)
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -94,7 +96,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 689 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 5 atom safety)
+- [x] 737 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -110,6 +112,8 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 ## Commit History (This Iteration)
 1. `57344be` - feat(dns): wire QueryLogger into query resolution pipeline
 2. `045ad4d` - fix(console): harden atom safety in LiveView event handlers
+3. `edf0d8c` - test(console): add 36 tests for DNS Metrics and Query Logs LiveViews
+4. `0114874` - fix(console): harden atom safety in ZoneLive, RrLive, DiagnosticsLive, SettingsLive
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
@@ -213,7 +217,7 @@ Previous iteration 14 commits:
 15. ~~Performance testing / load testing~~ ⚠️ Partially done (DNS cache benchmarks exist, need ServiceHelper implementation)
 16. ~~Security audit framework~~ ✅ Done (19 security tests covering 9 attack categories)
 17. ~~QueryLogger integration into DNS pipeline~~ ✅ Done (2 tests)
-18. ~~Atom safety hardening in LiveViews~~ ✅ Done (5 tests)
+18. ~~Atom safety hardening in LiveViews~~ ✅ Done (17 tests across 8 LiveViews)
 19. Performance optimization based on benchmark results
 20. Prometheus/OpenTelemetry integration
 21. Add tests for Dashboard start/stop event handlers (with mocked services)
