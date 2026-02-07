@@ -1,19 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 10)
+**Phase**: IN_PROGRESS (Iteration 11)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 10 of 1000
+**Iteration**: 11 of 1000
 
 ## Session Summary
-Iteration 10: Service status alert banners:
-- ✅ **626 Console tests passing** (614 prior + 12 new)
+Iteration 11: UX polish (dark mode, modals, accessibility):
+- ✅ **628 Console tests passing** (626 prior + 2 new)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
-- ✅ Reusable `<.service_alert>` component in CoreComponents
-- ✅ Service status detection on 11 data pages (6 DNS, 3 mDNS, 2 DHCP)
-- ✅ Warning banner with dashboard navigation when service not running
-- ✅ 12 new tests (9 service_pages + 3 dns_live)
-- ✅ **17 commits this iteration**: 16 prior + 1 this session
+- ✅ Dark mode: converted monitor_live + discovery_live from Tailwind to DaisyUI semantic classes
+- ✅ Dark mode: fixed 4 hardcoded text-gray-* in settings_live
+- ✅ Escape key closes all 4 modal patterns (core_components, discovery, services, pool form)
+- ✅ Settings page_title assign added
+- ✅ phx-disable-with on 15 submit buttons to prevent double-submission
+- ✅ aria-label on 17 search/filter inputs across all data pages
+- ✅ **21 commits this iteration**: 17 prior + 4 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -56,7 +58,7 @@ Iteration 10: Service status alert banners:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 626 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 328 existing + 17 a11y)
+- [x] 628 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 328 existing + 17 a11y)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -87,6 +89,9 @@ Iteration 10: Service status alert banners:
 15. `04ce330` - fix(console): add ARIA labels for screen reader accessibility
 16. `f8807a5` - fix(console): wire dashboard refresh, configure buttons, real system health
 17. `bd8ebbc` - feat(console): add service status alert banners to all data pages
+18. `2ac9bcb` - feat(console): add phx-disable-with to 15 form submit buttons
+19. `f6b78b5` - fix(console): dark mode colors, Escape key modals, Settings page title
+20. `0d5fb5d` - fix(console): dark mode colors in settings, aria-labels on 17 search inputs
 
 ## Mistakes & Learnings
 
@@ -110,6 +115,10 @@ Iteration 10: Service status alert banners:
 
 10. **CsvDownload hook must be on an element**: `push_event("download_csv", ...)` requires a mounted CsvDownload JS hook. Without `id` + `phx-hook="CsvDownload"` on an element, the download silently fails. Always add the hook when adding CSV export.
 
+11. **Edit tool requires full read**: Reading with `offset`/`limit` does NOT register the file for the Edit tool. Must do at least one Read without those params, or use `sed` via Bash as a workaround for simple replacements.
+
+12. **DaisyUI dark mode pattern**: Never use hardcoded Tailwind colors (`text-gray-500`, `bg-white`, etc.) — use DaisyUI semantic classes: `text-base-content/60`, `bg-base-100`, `bg-base-200`. The `/60` syntax is opacity — works in both light and dark themes.
+
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
 2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
@@ -120,6 +129,8 @@ Iteration 10: Service status alert banners:
 7. ~~Fix CsvDownload hook on 8 broken export pages~~ ✅ Done (8 regression tests)
 8. ~~ARIA accessibility + dashboard fixes~~ ✅ Done (17 tests)
 9. ~~Service status alert banners on data pages~~ ✅ Done (12 tests)
-10. Performance testing / load testing
-9. Security audit (input validation integrated into forms, ACL bypass)
-10. Prometheus/OpenTelemetry integration
+10. ~~phx-disable-with on submit buttons~~ ✅ Done (15 buttons, 2 tests)
+11. ~~Dark mode + Escape key + page titles + aria-labels~~ ✅ Done (19 files)
+12. Performance testing / load testing
+13. Security audit (input validation integrated into forms, ACL bypass)
+14. Prometheus/OpenTelemetry integration
