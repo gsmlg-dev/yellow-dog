@@ -322,7 +322,7 @@ defmodule YellowDog.Dhcpv4.ACL do
 
     case Regex.compile("^#{regex_pattern}$", "i") do
       {:ok, regex} ->
-        Regex.match?(regex, value)
+        value =~ regex
 
       {:error, _} ->
         false

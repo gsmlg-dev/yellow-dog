@@ -262,7 +262,7 @@ defmodule YellowDog.Console.Validators do
       String.starts_with?(label, "-") or String.ends_with?(label, "-") ->
         {:error, "Label cannot start or end with a hyphen"}
 
-      not Regex.match?(~r/^[a-zA-Z0-9_-]+$/, label) ->
+      not (label =~ ~r/^[a-zA-Z0-9_-]+$/) ->
         {:error, "Label contains invalid characters (allowed: a-z, 0-9, hyphen, underscore)"}
 
       true ->

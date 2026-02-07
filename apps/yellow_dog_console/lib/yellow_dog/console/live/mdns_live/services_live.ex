@@ -191,7 +191,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
           Map.put(errors, :type, "Service type is required")
 
         type ->
-          if Regex.match?(~r/^_[a-zA-Z0-9\-]+\._(?:tcp|udp)$/, type) do
+          if type =~ ~r/^_[a-zA-Z0-9\-]+\._(?:tcp|udp)$/ do
             errors
           else
             Map.put(errors, :type, "Must be _service._tcp or _service._udp format")

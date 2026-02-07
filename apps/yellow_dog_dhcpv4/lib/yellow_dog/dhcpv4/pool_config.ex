@@ -351,7 +351,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
       |> String.replace(["-", "."], ":")
 
     # Validate format
-    if Regex.match?(~r/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/, normalized) do
+    if normalized =~ ~r/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/ do
       {:ok, normalized}
     else
       {:error, {:invalid_mac_format, mac_str}}

@@ -523,7 +523,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
     # Validate ACL name (alphanumeric, hyphens, underscores)
     errors =
-      if name != "" and not Regex.match?(~r/^[a-zA-Z0-9_-]+$/, name) do
+      if name != "" and not (name =~ ~r/^[a-zA-Z0-9_-]+$/) do
         Map.put(errors, :name, "Name must be alphanumeric with hyphens or underscores")
       else
         errors

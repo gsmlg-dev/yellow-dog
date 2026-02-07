@@ -545,7 +545,7 @@ defmodule DNS.Zone.Validator.Record do
 
         # Normal label: starts and ends with alphanumeric, may contain hyphens
         true ->
-          Regex.match?(~r/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/, label)
+          label =~ ~r/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/
       end
     end)
   end
