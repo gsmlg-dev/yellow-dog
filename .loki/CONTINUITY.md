@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 91)
+**Phase**: IN_PROGRESS (Iteration 92)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 91 of 1000
+**Iteration**: 92 of 1000
 
 ## Session Summary
-Iteration 91: DRY filtered_countries extraction:
+Iteration 92: Add `trim: true` to 11 `String.split` calls:
+- ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Added `trim: true` to `String.split("\n")` in acl_live (4), zone_live (4), view_live (2)
+- ✅ Added `trim: true` to `String.split(",")` in address_pool (1)
+- ✅ Consistent with mDNS services_live pattern (already had `trim: true`)
+- ✅ 4 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 91: DRY filtered_countries extraction:
 - ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Extracted duplicate `filtered_countries/2` from acl_live + view_live/index to FormatHelper
 - ✅ Both modules had identical 12-line country filter implementation
