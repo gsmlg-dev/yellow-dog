@@ -294,10 +294,9 @@ defmodule YellowDog.Console.ConfigManager do
   end
 
   defp apply_array_table_update(lines, key, items) do
-    # Parse key: "dhcpv4.pools" -> section="dhcpv4", array_name="pools"
+    # Parse key: "dhcpv4.pools" -> section header prefix
     parts = String.split(key, ".")
     section = parts |> Enum.drop(-1) |> Enum.join(".")
-    _array_name = List.last(parts)
     array_table_header = "[[#{key}]]"
 
     # Find section boundaries and remove existing array tables
