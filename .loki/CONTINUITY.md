@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 65)
+**Phase**: IN_PROGRESS (Iteration 66)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 65 of 1000
+**Iteration**: 66 of 1000
 
 ## Session Summary
-Iteration 65: Replace manual IP formatting with :inet.ntoa/1:
+Iteration 66: Replace `case server_running?() do true/false` with `if/else`:
+- ✅ **520 tests (319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings, 0 credo issues**
+- ✅ Replaced 8 instances of `case server_running?() do true -> ... false -> ... end` with idiomatic `if/else`
+- ✅ 4 instances in DHCPv4 (get_pools, add_pool, update_pool, remove_pool)
+- ✅ 4 instances in DHCPv6 (get_pools, add_pool, update_pool, remove_pool)
+- ✅ Boolean-returning functions should use if/else, not case true/false
+- ✅ 2 files — **1 commit** — net -16 lines
+
+Previous iteration 65: Replace manual IP formatting with :inet.ntoa/1:
 - ✅ **1367 tests (1058 dns + 309 mdns), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Replaced verbose multi-clause format_ip (manual IPv4 interpolation + IPv6 hex building) with `:inet.ntoa/1` one-liner
 - ✅ 4 DNS files had identical 3-clause implementations (IPv4 + IPv6 + catch-all): server.ex, handler/udp.ex, handler/tcp.ex, supervisor.ex
