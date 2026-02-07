@@ -166,7 +166,7 @@
                 </div>
               <% end %>
 
-              <%= if service.addresses && length(service.addresses) > 0 do %>
+              <%= if service.addresses && service.addresses != [] do %>
                 <div class="flex items-center text-sm">
                   <svg
                     class="w-4 h-4 mr-2 text-base-content/40"
@@ -279,7 +279,7 @@
               </dl>
             </div>
             <!-- IP Addresses -->
-            <%= if @selected_service.addresses && length(@selected_service.addresses) > 0 do %>
+            <%= if @selected_service.addresses && @selected_service.addresses != [] do %>
               <div>
                 <h4 class="text-sm font-medium mb-4">IP Addresses</h4>
                 <div class="flex flex-wrap gap-2">

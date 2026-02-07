@@ -145,7 +145,7 @@
             </tr>
           </thead>
           <tbody>
-            <%= if length(@filtered_leases) == 0 do %>
+            <%= if @filtered_leases == [] do %>
               <tr>
                 <td colspan="7" class="text-center text-base-content/50 py-8">
                   No leases found matching your criteria

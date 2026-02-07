@@ -109,7 +109,7 @@
         <!-- Records Data Table -->
         <div class="card bg-base-100 shadow">
           <div class="card-body p-0">
-            <%= if length(@rrs) > 0 do %>
+            <%= if @rrs != [] do %>
               <!-- Filter Bar -->
               <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
                 <input

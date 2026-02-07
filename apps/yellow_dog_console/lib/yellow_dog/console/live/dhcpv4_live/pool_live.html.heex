@@ -107,7 +107,7 @@
           <div>
             <div class="text-sm text-base-content/70">DNS Servers</div>
             <div class="font-mono font-semibold">
-              <%= if @pool_config.dns_servers && length(@pool_config.dns_servers) > 0 do %>
+              <%= if @pool_config.dns_servers && @pool_config.dns_servers != [] do %>
                 {Enum.map_join(@pool_config.dns_servers, ", ", &format_ip/1)}
               <% else %>
                 Not configured
@@ -129,7 +129,7 @@
             </div>
           </div>
 
-          <%= if @pool_config.excluded_ranges && length(@pool_config.excluded_ranges) > 0 do %>
+          <%= if @pool_config.excluded_ranges && @pool_config.excluded_ranges != [] do %>
             <div>
               <div class="text-sm text-base-content/70">Excluded Ranges</div>
               <div class="font-mono text-sm">
@@ -160,7 +160,7 @@
       </.card>
     <% end %>
     <!-- Static Reservations -->
-    <%= if @static_reservations && length(@static_reservations) > 0 do %>
+    <%= if @static_reservations && @static_reservations != [] do %>
       <.card title="Static Reservations">
         <div class="overflow-x-auto">
           <table class="table table-zebra">
@@ -254,7 +254,7 @@
             </tr>
           </thead>
           <tbody>
-            <%= if length(@filtered_leases) == 0 do %>
+            <%= if @filtered_leases == [] do %>
               <tr>
                 <td colspan="6" class="text-center text-base-content/50 py-8">
                   No leases found in this pool

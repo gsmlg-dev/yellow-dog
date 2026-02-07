@@ -133,7 +133,7 @@
         </button>
       </:actions>
       <% filtered_acls = filtered_named_acls(@named_acls, @filter, @type_filter) %>
-      <%= if length(filtered_acls) > 0 do %>
+      <%= if filtered_acls != [] do %>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
@@ -150,7 +150,7 @@
                   <td class="font-mono font-semibold">{acl.name}</td>
                   <td class="text-sm text-base-content/70">{acl.description || "—"}</td>
                   <td>
-                    <%= if length(acl.rules || []) > 0 do %>
+                    <%= if (acl.rules || []) != [] do %>
                       <% first_rule = hd(acl.rules) %>
                       <%= cond do %>
                         <% Map.has_key?(first_rule, :geo_countries) -> %>
@@ -267,7 +267,7 @@
     
 <!-- Views ACL Table -->
     <% filtered_view_acls = filtered_views_acl(@views, @filter, @type_filter) %>
-    <%= if length(filtered_view_acls) > 0 do %>
+    <%= if filtered_view_acls != [] do %>
       <.card title="View ACL Configuration" class="overflow-x-auto">
         <table class="table table-zebra">
           <thead>
@@ -293,7 +293,7 @@
                   <%= cond do %>
                     <% view.acl_type == "geo" -> %>
                       <% countries = extract_geo_countries(view.acl_rules) %>
-                      <%= if length(countries) > 0 do %>
+                      <%= if countries != [] do %>
                         <div class="flex flex-wrap gap-1">
                           <%= for code <- Enum.take(countries, 5) do %>
                             <span class="badge badge-secondary badge-xs">{code}</span>
@@ -307,7 +307,7 @@
                       <% else %>
                         <span class="text-base-content/50">No countries selected</span>
                       <% end %>
-                    <% view.acl_type == "custom" and length(view.acl_rules) > 0 -> %>
+                    <% view.acl_type == "custom" and view.acl_rules != [] -> %>
                       <div class="text-sm text-base-content/70">
                         {length(view.acl_rules)} rule(s)
                       </div>
@@ -471,7 +471,7 @@
             </label>
             
 <!-- Selected countries badges -->
-            <%= if length(@selected_countries) > 0 do %>
+            <%= if @selected_countries != [] do %>
               <div class="flex flex-wrap gap-1 mb-2">
                 <%= for code <- @selected_countries do %>
                   <% country = Enum.find(@countries, fn c -> c.code == code end) %>
@@ -668,7 +668,7 @@
             </label>
             
 <!-- Selected countries badges -->
-            <%= if length(@selected_countries) > 0 do %>
+            <%= if @selected_countries != [] do %>
               <div class="flex flex-wrap gap-1 mb-2">
                 <%= for code <- @selected_countries do %>
                   <% country = Enum.find(@countries, fn c -> c.code == code end) %>

@@ -97,7 +97,7 @@
       </div>
     </div>
     <!-- Most Queried Services -->
-    <%= if @stats.most_queried_services && length(@stats.most_queried_services) > 0 do %>
+    <%= if @stats.most_queried_services && @stats.most_queried_services != [] do %>
       <div class="card bg-base-100 shadow-sm">
         <div class="card-body">
           <h2 class="card-title">Most Queried Services</h2>

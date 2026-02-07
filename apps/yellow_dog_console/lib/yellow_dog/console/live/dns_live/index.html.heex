@@ -114,7 +114,7 @@
     </div>
     
 <!-- Views Summary Table -->
-    <%= if length(@stats.views) > 0 do %>
+    <%= if @stats.views != [] do %>
       <.card title="Views Summary">
         <div class="overflow-x-auto">
           <table class="table table-zebra">

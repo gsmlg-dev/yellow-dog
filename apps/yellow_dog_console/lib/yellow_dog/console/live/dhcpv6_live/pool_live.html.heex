@@ -80,7 +80,7 @@
               </div>
             <% end %>
 
-            <%= if @pool_config[:dns_servers] && length(@pool_config.dns_servers) > 0 do %>
+            <%= if @pool_config[:dns_servers] && @pool_config.dns_servers != [] do %>
               <div>
                 <div class="text-sm text-base-content/70 mb-1">DNS Servers</div>
                 <div class="font-mono text-sm">

@@ -72,7 +72,7 @@
         <!-- Views Data Table -->
         <div class="card bg-base-100 shadow">
           <div class="card-body p-0">
-            <%= if length(@views) > 0 do %>
+            <%= if @views != [] do %>
               <!-- Filter Bar -->
               <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
                 <input
@@ -416,7 +416,7 @@
                 </label>
                 
 <!-- Selected countries badges -->
-                <%= if length(@selected_countries) > 0 do %>
+                <%= if @selected_countries != [] do %>
                   <div class="flex flex-wrap gap-1 mb-2">
                     <%= for code <- @selected_countries do %>
                       <% country = Enum.find(@countries, fn c -> c.code == code end) %>
@@ -703,7 +703,7 @@
                   </label>
                   
 <!-- Selected countries badges -->
-                  <%= if length(@selected_countries) > 0 do %>
+                  <%= if @selected_countries != [] do %>
                     <div class="flex flex-wrap gap-1 mb-2">
                       <%= for code <- @selected_countries do %>
                         <% country = Enum.find(@countries, fn c -> c.code == code end) %>
