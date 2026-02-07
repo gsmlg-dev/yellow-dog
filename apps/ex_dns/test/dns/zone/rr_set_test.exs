@@ -383,7 +383,7 @@ defmodule DNS.Zone.RRSetTest do
       # Should not raise
       inspect_output = inspect(rrset)
       assert is_binary(inspect_output)
-      assert String.contains?(inspect_output, "RRSet")
+      assert inspect_output =~ "RRSet"
     end
   end
 end

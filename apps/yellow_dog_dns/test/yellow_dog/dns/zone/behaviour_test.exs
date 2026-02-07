@@ -268,7 +268,7 @@ defmodule YellowDog.Dns.Zone.BehaviourTest do
       {:docs_v1, _, _, _, module_doc, _, _} = Code.fetch_docs(Behaviour)
 
       assert %{"en" => doc_string} = module_doc
-      assert String.contains?(doc_string, "Behaviour")
+      assert doc_string =~ "Behaviour"
     end
 
     test "get_name callback has @doc" do

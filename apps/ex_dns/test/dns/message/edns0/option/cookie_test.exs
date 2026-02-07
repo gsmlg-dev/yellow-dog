@@ -278,7 +278,7 @@ defmodule DNS.Message.EDNS0.Option.CookieTest do
       cookie = Cookie.new({client_cookie, nil})
 
       string = to_string(cookie)
-      assert String.contains?(string, "COOKIE")
+      assert string =~ "COOKIE"
     end
 
     test "includes hex-encoded client cookie" do
@@ -286,7 +286,7 @@ defmodule DNS.Message.EDNS0.Option.CookieTest do
       cookie = Cookie.new({client_cookie, nil})
 
       string = to_string(cookie)
-      assert String.contains?(string, "DEADBEEFCAFEBABE")
+      assert string =~ "DEADBEEFCAFEBABE"
     end
   end
 
@@ -297,8 +297,8 @@ defmodule DNS.Message.EDNS0.Option.CookieTest do
       cookie = Cookie.new({client_cookie, server_cookie})
 
       string = to_string(cookie)
-      assert String.contains?(string, "DEADBEEFCAFEBABE")
-      assert String.contains?(string, "123456789ABCDEF0")
+      assert string =~ "DEADBEEFCAFEBABE"
+      assert string =~ "123456789ABCDEF0"
     end
   end
 

@@ -304,7 +304,7 @@ defmodule DNS.ErrorTest do
         assert {error_message, error_map} = error
         assert is_binary(error_message)
         assert is_map(error_map)
-        assert String.contains?(elem(error, 0), "DNS")
+        assert elem(error, 0) =~ "DNS"
       end)
     end
 

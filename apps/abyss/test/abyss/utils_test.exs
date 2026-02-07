@@ -291,7 +291,7 @@ defmodule Abyss.UtilsTest do
         Utils.format_address({0x2001, 0x0DB8, 0x85A3, 0x0000, 0x0000, 0x8A2E, 0x0370, 0x7334})
 
       # Erlang inet.ntoa uses zero compression
-      assert String.contains?(result, "2001") and String.contains?(result, "7334")
+      assert result =~ "2001" and result =~ "7334"
     end
   end
 end

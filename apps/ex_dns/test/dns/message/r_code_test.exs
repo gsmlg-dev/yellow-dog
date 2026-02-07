@@ -464,7 +464,7 @@ defmodule DNS.Message.RCodeTest do
       rcode = RCode.no_error()
       inspect_output = inspect(rcode)
       assert is_binary(inspect_output)
-      assert String.contains?(inspect_output, "RCode")
+      assert inspect_output =~ "RCode"
     end
 
     test "all base rcodes create valid structs" do

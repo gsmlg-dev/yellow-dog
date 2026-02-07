@@ -252,56 +252,56 @@ defmodule YellowDog.ServiceManagerTest do
       output = ServiceManager.format_status(:all)
 
       assert is_binary(output)
-      assert String.contains?(output, "YellowDog Services Status")
+      assert output =~ "YellowDog Services Status"
     end
 
     test "includes all service names in output" do
       output = ServiceManager.format_status(:all)
 
-      assert String.contains?(output, "DNS")
-      assert String.contains?(output, "MDNS")
-      assert String.contains?(output, "DHCPV4")
-      assert String.contains?(output, "DHCPV6")
+      assert output =~ "DNS"
+      assert output =~ "MDNS"
+      assert output =~ "DHCPV4"
+      assert output =~ "DHCPV6"
     end
 
     test "formats single dns service" do
       output = ServiceManager.format_status(:dns)
 
       assert is_binary(output)
-      assert String.contains?(output, "DNS")
+      assert output =~ "DNS"
     end
 
     test "formats single mdns service" do
       output = ServiceManager.format_status(:mdns)
 
       assert is_binary(output)
-      assert String.contains?(output, "MDNS")
+      assert output =~ "MDNS"
     end
 
     test "formats single dhcpv4 service" do
       output = ServiceManager.format_status(:dhcpv4)
 
       assert is_binary(output)
-      assert String.contains?(output, "DHCPV4")
+      assert output =~ "DHCPV4"
     end
 
     test "formats single dhcpv6 service" do
       output = ServiceManager.format_status(:dhcpv6)
 
       assert is_binary(output)
-      assert String.contains?(output, "DHCPV6")
+      assert output =~ "DHCPV6"
     end
 
     test "includes ENABLED or DISABLED" do
       output = ServiceManager.format_status(:dns)
 
-      assert String.contains?(output, "ENABLED") or String.contains?(output, "DISABLED")
+      assert output =~ "ENABLED" or output =~ "DISABLED"
     end
 
     test "includes RUNNING or STOPPED" do
       output = ServiceManager.format_status(:dns)
 
-      assert String.contains?(output, "RUNNING") or String.contains?(output, "STOPPED")
+      assert output =~ "RUNNING" or output =~ "STOPPED"
     end
 
     test "returns unknown message for unknown service" do
@@ -390,9 +390,9 @@ defmodule YellowDog.ServiceManagerTest do
       output = ServiceManager.format_status(:dns)
 
       # Config line should be present
-      if String.contains?(output, "Config:") do
+      if output =~ "Config:" do
         # port separator
-        assert String.contains?(output, ":")
+        assert output =~ ":"
       end
     end
 
@@ -400,8 +400,8 @@ defmodule YellowDog.ServiceManagerTest do
       output = ServiceManager.format_status(:dhcpv4)
 
       # May contain pools info if config is present
-      if String.contains?(output, "Config:") do
-        assert String.contains?(output, "pools") or String.contains?(output, ":")
+      if output =~ "Config:" do
+        assert output =~ "pools" or output =~ ":"
       end
     end
   end

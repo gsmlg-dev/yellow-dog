@@ -505,7 +505,7 @@ defmodule DHCPv6.Message.OptionTest do
       option = Option.new(@elapsed_time, <<0, 100>>)
 
       string = to_string(option)
-      assert String.contains?(string, "8") or String.contains?(string, "Elapsed")
+      assert string =~ "8" or string =~ "Elapsed"
     end
 
     test "formats Client Identifier option" do
@@ -513,7 +513,7 @@ defmodule DHCPv6.Message.OptionTest do
       option = Option.new(@client_id, duid)
 
       string = to_string(option)
-      assert String.contains?(string, "Client Identifier")
+      assert string =~ "Client Identifier"
     end
 
     test "formats Server Identifier option" do
@@ -521,7 +521,7 @@ defmodule DHCPv6.Message.OptionTest do
       option = Option.new(@server_id, duid)
 
       string = to_string(option)
-      assert String.contains?(string, "Server Identifier")
+      assert string =~ "Server Identifier"
     end
 
     test "formats Preference option" do
@@ -530,14 +530,14 @@ defmodule DHCPv6.Message.OptionTest do
       option = Option.new(@preference, <<0, 255>>)
 
       string = to_string(option)
-      assert String.contains?(string, "Preference")
+      assert string =~ "Preference"
     end
 
     test "formats Elapsed Time option" do
       option = Option.new(@elapsed_time, <<0, 100>>)
 
       string = to_string(option)
-      assert String.contains?(string, "Elapsed Time")
+      assert string =~ "Elapsed Time"
     end
 
     test "formats DNS servers option" do
@@ -548,14 +548,14 @@ defmodule DHCPv6.Message.OptionTest do
       option = Option.new(@dns_servers, dns_ip)
 
       string = to_string(option)
-      assert String.contains?(string, "DNS")
+      assert string =~ "DNS"
     end
 
     test "formats unknown option" do
       option = Option.new(65000, <<1, 2, 3>>)
 
       string = to_string(option)
-      assert String.contains?(string, "Unknown") or String.contains?(string, "65000")
+      assert string =~ "Unknown" or string =~ "65000"
     end
   end
 

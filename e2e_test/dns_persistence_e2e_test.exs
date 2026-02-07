@@ -64,7 +64,7 @@ defmodule E2ETest.DnsPersistenceE2ETest do
 
       if File.exists?(views_file) do
         content = File.read!(views_file)
-        assert String.contains?(content, "persist-test")
+        assert content =~ "persist-test"
       end
     end
   end

@@ -287,7 +287,7 @@ defmodule DNS.Message.Record.DataTest do
       result = to_string(data)
 
       # Should contain the inspect output of the raw binary
-      assert String.contains?(result, "192")
+      assert result =~ "192"
     end
 
     test "to_string for empty raw" do
@@ -302,7 +302,7 @@ defmodule DNS.Message.Record.DataTest do
       data = %Data{raw: "hello"}
       result = to_string(data)
 
-      assert String.contains?(result, "hello")
+      assert result =~ "hello"
     end
   end
 

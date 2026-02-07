@@ -36,8 +36,8 @@ defmodule DHCPv4.Message.Option.FormatterTest do
       result = Formatter.format(option)
 
       assert is_binary(result)
-      assert String.contains?(result, "Option")
-      assert String.contains?(result, "1")
+      assert result =~ "Option"
+      assert result =~ "1"
     end
 
     test "formats router option" do
@@ -65,7 +65,7 @@ defmodule DHCPv4.Message.Option.FormatterTest do
       option = Helpers.new(12, 4, "test")
       result = Formatter.format(option)
 
-      assert String.contains?(result, "12")
+      assert result =~ "12"
     end
   end
 
@@ -73,26 +73,26 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats IPv4 address" do
       result = Formatter.parse_decoded_value({"Router", :ip, {192, 168, 1, 1}})
 
-      assert String.contains?(result, "Router")
-      assert String.contains?(result, "192.168.1.1")
+      assert result =~ "Router"
+      assert result =~ "192.168.1.1"
     end
 
     test "formats loopback address" do
       result = Formatter.parse_decoded_value({"Test", :ip, {127, 0, 0, 1}})
 
-      assert String.contains?(result, "127.0.0.1")
+      assert result =~ "127.0.0.1"
     end
 
     test "formats broadcast address" do
       result = Formatter.parse_decoded_value({"Broadcast", :ip, {255, 255, 255, 255}})
 
-      assert String.contains?(result, "255.255.255.255")
+      assert result =~ "255.255.255.255"
     end
 
     test "formats zero address" do
       result = Formatter.parse_decoded_value({"Zero", :ip, {0, 0, 0, 0}})
 
-      assert String.contains?(result, "0.0.0.0")
+      assert result =~ "0.0.0.0"
     end
   end
 
@@ -100,23 +100,23 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats single IP in list" do
       result = Formatter.parse_decoded_value({"DNS", :ip_list, [{8, 8, 8, 8}]})
 
-      assert String.contains?(result, "DNS")
-      assert String.contains?(result, "8.8.8.8")
+      assert result =~ "DNS"
+      assert result =~ "8.8.8.8"
     end
 
     test "formats multiple IPs in list" do
       ips = [{8, 8, 8, 8}, {8, 8, 4, 4}]
       result = Formatter.parse_decoded_value({"DNS", :ip_list, ips})
 
-      assert String.contains?(result, "8.8.8.8")
-      assert String.contains?(result, "8.8.4.4")
-      assert String.contains?(result, ",")
+      assert result =~ "8.8.8.8"
+      assert result =~ "8.8.4.4"
+      assert result =~ ","
     end
 
     test "formats empty IP list" do
       result = Formatter.parse_decoded_value({"DNS", :ip_list, []})
 
-      assert String.contains?(result, "DNS")
+      assert result =~ "DNS"
     end
   end
 
@@ -125,9 +125,9 @@ defmodule DHCPv4.Message.Option.FormatterTest do
       pairs = [{{192, 168, 1, 0}, {255, 255, 255, 0}}]
       result = Formatter.parse_decoded_value({"Routes", :ip_mask_list, pairs})
 
-      assert String.contains?(result, "Routes")
-      assert String.contains?(result, "192.168.1.0")
-      assert String.contains?(result, "/")
+      assert result =~ "Routes"
+      assert result =~ "192.168.1.0"
+      assert result =~ "/"
     end
 
     test "formats multiple IP/mask pairs" do
@@ -138,8 +138,8 @@ defmodule DHCPv4.Message.Option.FormatterTest do
 
       result = Formatter.parse_decoded_value({"Routes", :ip_mask_list, pairs})
 
-      assert String.contains?(result, "10.0.0.0")
-      assert String.contains?(result, "172.16.0.0")
+      assert result =~ "10.0.0.0"
+      assert result =~ "172.16.0.0"
     end
   end
 
@@ -148,11 +148,11 @@ defmodule DHCPv4.Message.Option.FormatterTest do
       routes = [{{192, 168, 2, 0}, 24, {192, 168, 1, 1}}]
       result = Formatter.parse_decoded_value({"Static Routes", :network_mask_router_list, routes})
 
-      assert String.contains?(result, "Static Routes")
-      assert String.contains?(result, "192.168.2.0")
-      assert String.contains?(result, "/24")
-      assert String.contains?(result, "via")
-      assert String.contains?(result, "192.168.1.1")
+      assert result =~ "Static Routes"
+      assert result =~ "192.168.2.0"
+      assert result =~ "/24"
+      assert result =~ "via"
+      assert result =~ "192.168.1.1"
     end
   end
 
@@ -160,24 +160,24 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats single integer" do
       result = Formatter.parse_decoded_value({"Ports", :int_list, [80]})
 
-      assert String.contains?(result, "Ports")
-      assert String.contains?(result, "80")
+      assert result =~ "Ports"
+      assert result =~ "80"
     end
 
     test "formats multiple integers" do
       result = Formatter.parse_decoded_value({"Options", :int_list, [1, 3, 6, 15]})
 
-      assert String.contains?(result, "1")
-      assert String.contains?(result, "3")
-      assert String.contains?(result, "6")
-      assert String.contains?(result, "15")
-      assert String.contains?(result, ",")
+      assert result =~ "1"
+      assert result =~ "3"
+      assert result =~ "6"
+      assert result =~ "15"
+      assert result =~ ","
     end
 
     test "formats empty integer list" do
       result = Formatter.parse_decoded_value({"Empty", :int_list, []})
 
-      assert String.contains?(result, "Empty")
+      assert result =~ "Empty"
     end
   end
 
@@ -185,20 +185,20 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats positive integer" do
       result = Formatter.parse_decoded_value({"Lease Time", :int, 86400})
 
-      assert String.contains?(result, "Lease Time")
-      assert String.contains?(result, "86400")
+      assert result =~ "Lease Time"
+      assert result =~ "86400"
     end
 
     test "formats zero" do
       result = Formatter.parse_decoded_value({"Value", :int, 0})
 
-      assert String.contains?(result, "0")
+      assert result =~ "0"
     end
 
     test "formats large integer" do
       result = Formatter.parse_decoded_value({"Time", :int, 4_294_967_295})
 
-      assert String.contains?(result, "4294967295")
+      assert result =~ "4294967295"
     end
   end
 
@@ -206,15 +206,15 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats true value" do
       result = Formatter.parse_decoded_value({"Forward", :bool, true})
 
-      assert String.contains?(result, "Forward")
-      assert String.contains?(result, "true")
+      assert result =~ "Forward"
+      assert result =~ "true"
     end
 
     test "formats false value" do
       result = Formatter.parse_decoded_value({"Forward", :bool, false})
 
-      assert String.contains?(result, "Forward")
-      assert String.contains?(result, "false")
+      assert result =~ "Forward"
+      assert result =~ "false"
     end
   end
 
@@ -222,14 +222,14 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats binary data" do
       result = Formatter.parse_decoded_value({"Data", :binary, <<1, 2, 3, 4>>})
 
-      assert String.contains?(result, "Data")
+      assert result =~ "Data"
     end
 
     test "formats string as binary" do
       result = Formatter.parse_decoded_value({"Hostname", :binary, "testclient"})
 
-      assert String.contains?(result, "Hostname")
-      assert String.contains?(result, "testclient")
+      assert result =~ "Hostname"
+      assert result =~ "testclient"
     end
   end
 
@@ -240,7 +240,7 @@ defmodule DHCPv4.Message.Option.FormatterTest do
           {"Client ID", :type_identifier, {1, <<0x00, 0x11, 0x22, 0x33, 0x44, 0x55>>}}
         )
 
-      assert String.contains?(result, "Client ID")
+      assert result =~ "Client ID"
     end
   end
 
@@ -248,13 +248,13 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "formats raw data" do
       result = Formatter.parse_decoded_value({"Unknown", :raw, <<0xDE, 0xAD, 0xBE, 0xEF>>})
 
-      assert String.contains?(result, "Unknown")
+      assert result =~ "Unknown"
     end
 
     test "formats raw string" do
       result = Formatter.parse_decoded_value({"Raw", :raw, "raw data"})
 
-      assert String.contains?(result, "Raw")
+      assert result =~ "Raw"
     end
   end
 
@@ -290,13 +290,13 @@ defmodule DHCPv4.Message.Option.FormatterTest do
     test "handles empty name" do
       result = Formatter.parse_decoded_value({"", :int, 42})
 
-      assert String.contains?(result, "42")
+      assert result =~ "42"
     end
 
     test "handles special characters in name" do
       result = Formatter.parse_decoded_value({"Test-Option_1", :int, 100})
 
-      assert String.contains?(result, "Test-Option_1")
+      assert result =~ "Test-Option_1"
     end
   end
 end

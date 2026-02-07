@@ -680,32 +680,32 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
       option = LLQ.new({1, 1, <<0xDEADBEEFCAFEBABE::64>>, 3600})
       string = to_string(option)
 
-      assert String.contains?(string, "LLQ:")
-      assert String.contains?(string, "v1")
-      assert String.contains?(string, "op1")
-      assert String.contains?(string, "DEADBEEFCAFEBABE")
-      assert String.contains?(string, "3600s")
+      assert string =~ "LLQ:"
+      assert string =~ "v1"
+      assert string =~ "op1"
+      assert string =~ "DEADBEEFCAFEBABE"
+      assert string =~ "3600s"
     end
 
     test "formats LLQ-REFRESH operation" do
       option = LLQ.new({1, 2, <<0::64>>, 7200})
       string = to_string(option)
 
-      assert String.contains?(string, "op2")
+      assert string =~ "op2"
     end
 
     test "formats LLQ-EVENT operation" do
       option = LLQ.new({1, 3, <<0::64>>, 0})
       string = to_string(option)
 
-      assert String.contains?(string, "op3")
+      assert string =~ "op3"
     end
 
     test "formats zero lease time" do
       option = LLQ.new({1, 1, <<0::64>>, 0})
       string = to_string(option)
 
-      assert String.contains?(string, "lease:0s")
+      assert string =~ "lease:0s"
     end
 
     test "id is hex-encoded in uppercase" do
@@ -713,7 +713,7 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
       string = to_string(option)
 
       # Should be uppercase hex
-      assert String.contains?(string, "ABCDEF0123456789")
+      assert string =~ "ABCDEF0123456789"
     end
 
     test "string is usable in interpolation" do
@@ -997,7 +997,7 @@ defmodule DNS.Message.EDNS0.Option.LLQTest do
       inspect_str = inspect(option)
 
       assert is_binary(inspect_str)
-      assert String.contains?(inspect_str, "LLQ")
+      assert inspect_str =~ "LLQ"
     end
 
     test "handles cryptographically random id" do

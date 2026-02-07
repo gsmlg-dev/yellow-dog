@@ -432,8 +432,8 @@ defmodule YellowDog.Dns.SecurityE2ETest do
             [answer | _] = response.answers
             # Version string shouldn't be overly detailed
             version_text = to_string(answer.rdata)
-            refute String.contains?(version_text, "debug")
-            refute String.contains?(version_text, "devel")
+            refute version_text =~ "debug"
+            refute version_text =~ "devel"
           else
             # No version exposure is better
             assert response.rcode in [:nxdomain, :refused, :notimpl]

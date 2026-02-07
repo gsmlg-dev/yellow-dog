@@ -102,7 +102,7 @@ defmodule DNS.Zone.ParserErrorTest do
 
     test "Zone.parse_zone_file handles file errors" do
       assert {:error, reason} = Zone.parse_zone_file("/nonexistent/file.zone")
-      assert String.contains?(reason, "Failed to read file")
+      assert reason =~ "Failed to read file"
     end
 
     test "Zone.parse_zone_file handles parser errors in file" do

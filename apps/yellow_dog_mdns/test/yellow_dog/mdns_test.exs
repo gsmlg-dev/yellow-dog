@@ -150,7 +150,7 @@ defmodule YellowDog.MdnsTest do
       {:ok, service_id} = Mdns.register_service(service_def)
 
       assert is_binary(service_id)
-      assert String.contains?(service_id, "_http._tcp")
+      assert service_id =~ "_http._tcp"
     end
 
     test "register_service/2 with full service definition" do

@@ -579,10 +579,10 @@ defmodule DNS.Message.EDNS0.Option.DHUTest do
       option = DHU.new([1, 2, 3, 4])
       string = to_string(option)
 
-      assert String.contains?(string, "1")
-      assert String.contains?(string, "2")
-      assert String.contains?(string, "3")
-      assert String.contains?(string, "4")
+      assert string =~ "1"
+      assert string =~ "2"
+      assert string =~ "3"
+      assert string =~ "4"
     end
 
     test "algorithms are comma-separated" do

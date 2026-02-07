@@ -95,7 +95,7 @@ defmodule DNS.ResultTest do
       result = Result.error(:format_error, DNS.Message.Domain, "invalid", %{})
 
       assert {:error, {message, context}} = result
-      assert String.contains?(message, "Format Error")
+      assert message =~ "Format Error"
       assert context[:internal_reason] == "invalid"
     end
 
@@ -103,7 +103,7 @@ defmodule DNS.ResultTest do
       result = Result.error(:parse_error, DNS.Message.Record, "parse failed", %{})
 
       assert {:error, {message, context}} = result
-      assert String.contains?(message, "Parse Error")
+      assert message =~ "Parse Error"
       assert context[:internal_reason] == "parse failed"
     end
 
@@ -111,21 +111,21 @@ defmodule DNS.ResultTest do
       result = Result.error(:validation_error, DNS.Message.Record, "validation failed", %{})
 
       assert {:error, {message, _context}} = result
-      assert String.contains?(message, "Validation Error")
+      assert message =~ "Validation Error"
     end
 
     test "creates compression_error" do
       result = Result.error(:compression_error, DNS.Message.Domain, "compression loop", %{})
 
       assert {:error, {message, _context}} = result
-      assert String.contains?(message, "Compression Error")
+      assert message =~ "Compression Error"
     end
 
     test "creates security_error" do
       result = Result.error(:security_error, DNS.Message.Domain, "security issue", %{})
 
       assert {:error, {message, _context}} = result
-      assert String.contains?(message, "Security Error")
+      assert message =~ "Security Error"
     end
 
     test "includes additional context" do

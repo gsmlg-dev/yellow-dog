@@ -74,7 +74,7 @@ defmodule E2ETest.MdnsE2ETest do
         {:ok, service_id} ->
           # Verify service was registered
           assert is_binary(service_id)
-          assert String.contains?(service_id, "Test Web Server")
+          assert service_id =~ "Test Web Server"
 
         {:error, :registry_not_available} ->
           # Registry not available in this test environment

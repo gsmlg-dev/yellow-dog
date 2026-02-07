@@ -216,8 +216,8 @@ defmodule YellowDog.Console.ProcessInspectorTest do
 
       result = ProcessInspector.format_mfa(mfa)
 
-      assert String.contains?(result, "YellowDog.Console.ProcessInspector")
-      assert String.contains?(result, "get_tree/0")
+      assert result =~ "YellowDog.Console.ProcessInspector"
+      assert result =~ "get_tree/0"
     end
   end
 

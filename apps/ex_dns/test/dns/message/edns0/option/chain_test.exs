@@ -602,7 +602,7 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
     test "string contains trust point value" do
       option = Chain.new(12345)
       string = to_string(option)
-      assert String.contains?(string, "12345")
+      assert string =~ "12345"
     end
 
     test "string is usable in interpolation" do
@@ -828,7 +828,7 @@ defmodule DNS.Message.EDNS0.Option.ChainTest do
       inspect_str = inspect(option)
 
       assert is_binary(inspect_str)
-      assert String.contains?(inspect_str, "Chain")
+      assert inspect_str =~ "Chain"
     end
 
     test "all values in 16-bit range work" do

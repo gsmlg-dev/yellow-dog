@@ -139,7 +139,7 @@ defmodule DNSTest do
 
     test "encodes IPv6 reverse DNS domain" do
       result = DNS.to_iodata("8.b.d.0.1.0.0.2.ip6.arpa")
-      assert String.contains?(result, "ip6")
+      assert result =~ "ip6"
       assert String.ends_with?(result, <<4, "arpa", 0>>)
     end
   end

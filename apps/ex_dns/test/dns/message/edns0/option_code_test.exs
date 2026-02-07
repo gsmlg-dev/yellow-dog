@@ -340,7 +340,7 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
         oc = OptionCode.new(code)
         string = to_string(oc)
         assert String.starts_with?(string, "Reserved for Local/Experimental Use")
-        assert String.contains?(string, "(#{code})")
+        assert string =~ "(#{code})"
       end
     end
   end

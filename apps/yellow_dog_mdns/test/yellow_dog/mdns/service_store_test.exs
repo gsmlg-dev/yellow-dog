@@ -183,7 +183,7 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
 
       # Verify backup contains old data
       assert {:ok, backup_content} = File.read(backup_path)
-      assert String.contains?(backup_content, "Old")
+      assert backup_content =~ "Old"
     end
 
     test "performs atomic write", %{tmp_dir: tmp_dir} do
@@ -299,7 +299,7 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
       :ok = ServiceStore.save_services(toml_path, services)
       {:ok, content} = File.read(toml_path)
       # TOML should contain [[service]]
-      assert String.contains?(content, "[[service]]")
+      assert content =~ "[[service]]"
     end
 
     test "auto-detects JSON from extension", %{tmp_dir: tmp_dir} do
@@ -309,7 +309,7 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
       :ok = ServiceStore.save_services(json_path, services)
       {:ok, content} = File.read(json_path)
       # JSON should contain "services"
-      assert String.contains?(content, "\"services\"")
+      assert content =~ "\"services\""
     end
 
     test "uses explicit format option", %{tmp_dir: tmp_dir} do
@@ -319,7 +319,7 @@ defmodule YellowDog.Mdns.ServiceStoreTest do
 
       :ok = ServiceStore.save_services(txt_path, services, format: :json)
       {:ok, content} = File.read(txt_path)
-      assert String.contains?(content, "\"services\"")
+      assert content =~ "\"services\""
     end
   end
 end

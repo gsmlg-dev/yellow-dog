@@ -125,7 +125,7 @@ defmodule DNS.Zone.LoaderTest do
       result = Loader.load_zones_from_directory("/nonexistent/directory")
 
       assert {:error, message} = result
-      assert String.contains?(message, "Failed to read directory")
+      assert message =~ "Failed to read directory"
     end
 
     test "returns empty list for directory with no zone files", %{temp_dir: temp_dir} do
@@ -246,7 +246,7 @@ defmodule DNS.Zone.LoaderTest do
       result = Loader.save_zone_to_file(zone, "/nonexistent/deep/path/zone.db")
 
       assert {:error, message} = result
-      assert String.contains?(message, "Failed to write zone file")
+      assert message =~ "Failed to write zone file"
     end
 
     test "overwrites existing file", %{temp_dir: temp_dir} do

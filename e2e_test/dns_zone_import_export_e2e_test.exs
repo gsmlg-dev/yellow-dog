@@ -102,9 +102,9 @@ defmodule E2ETest.DnsZoneImportExportE2ETest do
       {:ok, content} = Zone.Auth.export_zone_file(zone_pid)
 
       assert is_binary(content)
-      assert String.contains?(content, "10.0.0.1")
-      assert String.contains?(content, "10.0.0.2")
-      assert String.contains?(content, "export.test")
+      assert content =~ "10.0.0.1"
+      assert content =~ "10.0.0.2"
+      assert content =~ "export.test"
     end
   end
 
@@ -125,8 +125,8 @@ defmodule E2ETest.DnsZoneImportExportE2ETest do
       {:ok, exported} = Zone.Auth.export_zone_file(zone_pid)
 
       # Key data should survive the round-trip
-      assert String.contains?(exported, "172.16.0.1")
-      assert String.contains?(exported, "172.16.0.2")
+      assert exported =~ "172.16.0.1"
+      assert exported =~ "172.16.0.2"
     end
 
     test "export then import into new zone preserves records", _ctx do

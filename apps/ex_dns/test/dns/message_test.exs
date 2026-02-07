@@ -565,14 +565,14 @@ defmodule DNS.MessageTest do
       msg = Message.new()
 
       string = to_string(msg)
-      assert String.contains?(string, "HEADER SECTION")
+      assert string =~ "HEADER SECTION"
     end
 
     test "includes QUESTION SECTION" do
       msg = Message.new()
 
       string = to_string(msg)
-      assert String.contains?(string, "QUESTION SECTION")
+      assert string =~ "QUESTION SECTION"
     end
 
     test "includes ANSWER SECTION when answers present" do
@@ -585,14 +585,14 @@ defmodule DNS.MessageTest do
       msg = Message.from_iodata(query)
 
       string = to_string(msg)
-      assert String.contains?(string, "ANSWER SECTION")
+      assert string =~ "ANSWER SECTION"
     end
 
     test "excludes ANSWER SECTION when no answers" do
       msg = Message.new()
 
       string = to_string(msg)
-      refute String.contains?(string, "ANSWER SECTION")
+      refute string =~ "ANSWER SECTION"
     end
 
     test "includes questions in output" do
@@ -601,7 +601,7 @@ defmodule DNS.MessageTest do
       msg = Message.add_question(msg, question)
 
       string = to_string(msg)
-      assert String.contains?(string, "example.org")
+      assert string =~ "example.org"
     end
   end
 

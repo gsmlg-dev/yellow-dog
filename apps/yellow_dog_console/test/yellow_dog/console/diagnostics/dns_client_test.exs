@@ -166,7 +166,7 @@ defmodule YellowDog.Console.Diagnostics.DnsClientTest do
       {:ok, result} = DnsClient.query(params)
       # Should handle gracefully with an error status
       assert result.status == :error
-      assert String.contains?(result.error, "Query name cannot be empty")
+      assert result.error =~ "Query name cannot be empty"
     end
   end
 end

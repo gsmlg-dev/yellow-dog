@@ -359,21 +359,21 @@ defmodule DNS.Message.EDNS0.Option.ECSTest do
       ecs = ECS.new({{192, 168, 1, 0}, 24, 0})
 
       string = to_string(ecs)
-      assert String.contains?(string, "edns-client-subnet")
+      assert string =~ "edns-client-subnet"
     end
 
     test "includes IP address in string" do
       ecs = ECS.new({{192, 168, 1, 0}, 24, 0})
 
       string = to_string(ecs)
-      assert String.contains?(string, "192.168.1.0")
+      assert string =~ "192.168.1.0"
     end
 
     test "includes prefix lengths in string" do
       ecs = ECS.new({{192, 168, 1, 0}, 24, 16})
 
       string = to_string(ecs)
-      assert String.contains?(string, "/24/16")
+      assert string =~ "/24/16"
     end
   end
 

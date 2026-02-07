@@ -597,7 +597,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
     test "formats UpdateLease with max value" do
       option = UpdateLease.new(@max_lease)
       string = to_string(option)
-      assert String.contains?(string, "4294967295")
+      assert string =~ "4294967295"
     end
 
     test "string contains seconds suffix" do
@@ -842,7 +842,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
       inspect_str = inspect(option)
 
       assert is_binary(inspect_str)
-      assert String.contains?(inspect_str, "UpdateLease")
+      assert inspect_str =~ "UpdateLease"
     end
 
     test "all values in 32-bit range work" do

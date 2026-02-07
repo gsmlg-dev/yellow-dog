@@ -354,24 +354,24 @@ defmodule DNS.Zone.EditorTest do
     # test "export_zone to BIND format", %{zone_name: zone_name} do
     #   assert {:ok, content} = Editor.export_zone(zone_name, format: :bind)
     #   assert is_binary(content)
-    #   assert String.contains?(content, "; Zone file for #{zone_name}")
-    #   assert String.contains?(content, "$TTL 3600")
-    #   assert String.contains?(content, "SOA")
-    #   assert String.contains?(content, "A")
+    #   assert content =~ "; Zone file for #{zone_name}"
+    #   assert content =~ "$TTL 3600"
+    #   assert content =~ "SOA"
+    #   assert content =~ "A"
     # end
 
     test "export_zone to JSON format", %{zone_name: zone_name} do
       assert {:ok, content} = Editor.export_zone(zone_name, format: :json)
       assert is_binary(content)
-      assert String.contains?(content, "\"zone\": \"#{zone_name}\"")
-      assert String.contains?(content, "\"type\": \"A\"")
+      assert content =~ "\"zone\": \"#{zone_name}\""
+      assert content =~ "\"type\": \"A\""
     end
 
     test "export_zone to YAML format", %{zone_name: zone_name} do
       assert {:ok, content} = Editor.export_zone(zone_name, format: :yaml)
       assert is_binary(content)
-      assert String.contains?(content, "zone: #{zone_name}")
-      assert String.contains?(content, "type: a")
+      assert content =~ "zone: #{zone_name}"
+      assert content =~ "type: a"
     end
 
     test "export_zone returns error for invalid format", %{zone_name: zone_name} do

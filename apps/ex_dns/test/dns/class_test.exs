@@ -312,7 +312,7 @@ defmodule DNS.ClassTest do
       class = Class.internet()
       inspect_output = inspect(class)
       assert is_binary(inspect_output)
-      assert String.contains?(inspect_output, "DNS.Class")
+      assert inspect_output =~ "DNS.Class"
     end
 
     test "all standard classes create valid structs" do

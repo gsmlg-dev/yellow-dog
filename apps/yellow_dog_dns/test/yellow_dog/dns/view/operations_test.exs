@@ -520,7 +520,7 @@ defmodule YellowDog.Dns.View.OperationsTest do
 
       # IPv6 loopback should be formatted
       assert is_binary(match.client_ip)
-      assert String.contains?(match.client_ip, ":") or match.client_ip == "::1"
+      assert match.client_ip =~ ":" or match.client_ip == "::1"
     end
   end
 end

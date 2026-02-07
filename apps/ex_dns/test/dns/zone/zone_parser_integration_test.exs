@@ -139,7 +139,7 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
     test "returns error for non-existent file" do
       assert {:error, reason} = Zone.parse_zone_file("/nonexistent/path/to/zone.file")
-      assert String.contains?(reason, "Failed to read file")
+      assert reason =~ "Failed to read file"
     end
   end
 
@@ -215,12 +215,12 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       bind_content = Zone.to_bind_format(zone)
       assert is_binary(bind_content)
-      assert String.contains?(bind_content, "; Zone file for example.com")
-      assert String.contains?(bind_content, "$ORIGIN example.com")
-      assert String.contains?(bind_content, "$TTL 3600")
-      assert String.contains?(bind_content, "IN SOA")
-      assert String.contains?(bind_content, "ns1.example.com")
-      assert String.contains?(bind_content, "www")
+      assert bind_content =~ "; Zone file for example.com"
+      assert bind_content =~ "$ORIGIN example.com"
+      assert bind_content =~ "$TTL 3600"
+      assert bind_content =~ "IN SOA"
+      assert bind_content =~ "ns1.example.com"
+      assert bind_content =~ "www"
     end
 
     test "round-trip parsing and export" do
@@ -281,7 +281,7 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       assert {:ok, content} = Zone.export_zone(zone, format: :bind)
       assert is_binary(content)
-      assert String.contains?(content, "IN SOA")
+      assert content =~ "IN SOA"
     end
 
     test "exports zone in JSON format" do
@@ -958,10 +958,10 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       bind_content = Zone.to_bind_format(zone)
 
-      assert String.contains?(bind_content, "$TTL 7200")
-      assert String.contains?(bind_content, "$ORIGIN export-test.com")
-      assert String.contains?(bind_content, "Test zone")
-      assert String.contains?(bind_content, "For export")
+      assert bind_content =~ "$TTL 7200"
+      assert bind_content =~ "$ORIGIN export-test.com"
+      assert bind_content =~ "Test zone"
+      assert bind_content =~ "For export"
     end
 
     test "BIND export formats SOA correctly" do
@@ -983,9 +983,9 @@ defmodule DNS.Zone.ParserIntegrationTest do
 
       bind_content = Zone.to_bind_format(zone)
 
-      assert String.contains?(bind_content, "ns1.soa-export.com")
-      assert String.contains?(bind_content, "admin.soa-export.com")
-      assert String.contains?(bind_content, "2024060100")
+      assert bind_content =~ "ns1.soa-export.com"
+      assert bind_content =~ "admin.soa-export.com"
+      assert bind_content =~ "2024060100"
     end
   end
 

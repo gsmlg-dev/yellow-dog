@@ -240,56 +240,56 @@ defmodule DHCPv4.Message.Option.TypesTest do
       result = Types.decode_dhcp_message_type(<<1>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPDISCOVER")
+      assert message =~ "DHCPDISCOVER"
     end
 
     test "decodes DHCPOFFER (2)" do
       result = Types.decode_dhcp_message_type(<<2>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPOFFER")
+      assert message =~ "DHCPOFFER"
     end
 
     test "decodes DHCPREQUEST (3)" do
       result = Types.decode_dhcp_message_type(<<3>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPREQUEST")
+      assert message =~ "DHCPREQUEST"
     end
 
     test "decodes DHCPDECLINE (4)" do
       result = Types.decode_dhcp_message_type(<<4>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPDECLINE")
+      assert message =~ "DHCPDECLINE"
     end
 
     test "decodes DHCPACK (5)" do
       result = Types.decode_dhcp_message_type(<<5>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPACK")
+      assert message =~ "DHCPACK"
     end
 
     test "decodes DHCPNAK (6)" do
       result = Types.decode_dhcp_message_type(<<6>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPNAK")
+      assert message =~ "DHCPNAK"
     end
 
     test "decodes DHCPRELEASE (7)" do
       result = Types.decode_dhcp_message_type(<<7>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPRELEASE")
+      assert message =~ "DHCPRELEASE"
     end
 
     test "decodes DHCPINFORM (8)" do
       result = Types.decode_dhcp_message_type(<<8>>)
 
       assert {"DHCP Message Type", :binary, message} = result
-      assert String.contains?(message, "DHCPINFORM")
+      assert message =~ "DHCPINFORM"
     end
 
     test "returns number for unknown type" do
@@ -355,7 +355,7 @@ defmodule DHCPv4.Message.Option.TypesTest do
       result = Types.decode_client_identifier(binary, 7)
 
       assert {"Client-identifier", :type_identifier, {"Ethernet", mac}} = result
-      assert String.contains?(mac, "00:11:22:33:44:55")
+      assert mac =~ "00:11:22:33:44:55"
     end
 
     test "decodes non-hardware client identifier" do

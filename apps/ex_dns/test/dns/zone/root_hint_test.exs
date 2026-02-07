@@ -52,8 +52,8 @@ defmodule DNS.Zone.RootHintTest do
       dir = RootHint.data_dir()
 
       assert is_binary(dir)
-      assert String.contains?(dir, "priv")
-      assert String.contains?(dir, "data")
+      assert dir =~ "priv"
+      assert dir =~ "data"
     end
 
     test "directory exists" do
@@ -116,25 +116,25 @@ defmodule DNS.Zone.RootHintTest do
       text = RootHint.root_hints_text()
 
       # Root hints file should contain root server names (case-insensitive)
-      assert String.contains?(String.upcase(text), "ROOT-SERVERS.NET")
+      assert String.upcase(text) =~ "ROOT-SERVERS.NET"
     end
 
     test "contains NS records" do
       text = RootHint.root_hints_text()
 
-      assert String.contains?(text, "NS")
+      assert text =~ "NS"
     end
 
     test "contains A records" do
       text = RootHint.root_hints_text()
 
-      assert String.contains?(text, " A ")
+      assert text =~ " A "
     end
 
     test "contains AAAA records" do
       text = RootHint.root_hints_text()
 
-      assert String.contains?(text, "AAAA")
+      assert text =~ "AAAA"
     end
   end
 

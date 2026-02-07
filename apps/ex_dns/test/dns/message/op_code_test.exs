@@ -294,7 +294,7 @@ defmodule DNS.Message.OpCodeTest do
       opcode = OpCode.query()
       inspect_output = inspect(opcode)
       assert is_binary(inspect_output)
-      assert String.contains?(inspect_output, "OpCode")
+      assert inspect_output =~ "OpCode"
     end
 
     test "all opcodes create valid structs" do

@@ -583,10 +583,10 @@ defmodule DNS.Message.EDNS0.Option.N3UTest do
       option = N3U.new([5, 10, 15, 20])
       string = to_string(option)
 
-      assert String.contains?(string, "5")
-      assert String.contains?(string, "10")
-      assert String.contains?(string, "15")
-      assert String.contains?(string, "20")
+      assert string =~ "5"
+      assert string =~ "10"
+      assert string =~ "15"
+      assert string =~ "20"
     end
 
     test "algorithms are comma-separated" do

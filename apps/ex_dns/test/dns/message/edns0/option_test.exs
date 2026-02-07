@@ -716,14 +716,14 @@ defmodule DNS.Message.EDNS0.OptionTest do
       opt = %Option{code: OptionCode.new(100), data: <<1, 2, 3>>}
 
       string = to_string(opt)
-      assert String.contains?(string, "Unassigned(100)")
+      assert string =~ "Unassigned(100)"
     end
 
     test "includes hex-encoded data" do
       opt = %Option{code: OptionCode.new(100), data: <<0xDE, 0xAD, 0xBE, 0xEF>>}
 
       string = to_string(opt)
-      assert String.contains?(string, "DEADBEEF")
+      assert string =~ "DEADBEEF"
     end
 
     test "handles empty data" do
@@ -731,15 +731,15 @@ defmodule DNS.Message.EDNS0.OptionTest do
 
       string = to_string(opt)
       assert is_binary(string)
-      assert String.contains?(string, "Unassigned(100)")
+      assert string =~ "Unassigned(100)"
     end
 
     test "string interpolation works" do
       opt = %Option{code: OptionCode.new(100), data: <<1, 2, 3>>}
 
       result = "Option: #{opt}"
-      assert String.contains?(result, "Option:")
-      assert String.contains?(result, "Unassigned(100)")
+      assert result =~ "Option:"
+      assert result =~ "Unassigned(100)"
     end
 
     test "different code numbers display correctly" do

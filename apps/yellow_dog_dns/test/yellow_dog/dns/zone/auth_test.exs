@@ -1109,8 +1109,8 @@ defmodule YellowDog.Dns.Zone.AuthTest do
 
       {:ok, content} = Auth.export_zone_file(pid)
       assert is_binary(content)
-      assert String.contains?(content, "10.0.0.1")
-      assert String.contains?(content, "10.0.0.2")
+      assert content =~ "10.0.0.1"
+      assert content =~ "10.0.0.2"
     end
 
     test "round-trip import then export preserves records", %{zone: pid} do
@@ -1124,8 +1124,8 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       {:ok, _} = Auth.import_zone_file(pid, bind_content)
       {:ok, exported} = Auth.export_zone_file(pid)
 
-      assert String.contains?(exported, "192.168.1.100")
-      assert String.contains?(exported, "192.168.1.200")
+      assert exported =~ "192.168.1.100"
+      assert exported =~ "192.168.1.200"
     end
   end
 end

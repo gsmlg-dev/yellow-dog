@@ -64,12 +64,12 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_dhcpv4_csv(leases)
 
-      assert String.contains?(csv, "MAC Address,IP Address,Hostname")
-      assert String.contains?(csv, "00:11:22:33:44:55")
-      assert String.contains?(csv, "192.168.1.100")
-      assert String.contains?(csv, "test-host")
-      assert String.contains?(csv, "active")
-      assert String.contains?(csv, "default")
+      assert csv =~ "MAC Address,IP Address,Hostname"
+      assert csv =~ "00:11:22:33:44:55"
+      assert csv =~ "192.168.1.100"
+      assert csv =~ "test-host"
+      assert csv =~ "active"
+      assert csv =~ "default"
     end
 
     test "handles special characters in hostname" do
@@ -88,7 +88,7 @@ defmodule YellowDog.Console.CsvExportTest do
       csv = build_dhcpv4_csv(leases)
 
       # Should be properly escaped
-      assert String.contains?(csv, "\"host,with\"\"special\nchars\"")
+      assert csv =~ "\"host,with\"\"special\nchars\""
     end
 
     test "handles missing optional fields" do
@@ -129,13 +129,12 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_dhcpv6_csv(leases)
 
-      assert String.contains?(csv, "DUID,IAID,IA Type")
-      assert String.contains?(csv, "00:01:02:03")
-      assert String.contains?(csv, "12345")
-      assert String.contains?(csv, "ia_na")
+      assert csv =~ "DUID,IAID,IA Type"
+      assert csv =~ "00:01:02:03"
+      assert csv =~ "12345"
+      assert csv =~ "ia_na"
       # IPv6 formatting doesn't compress zeros
-      assert String.contains?(csv, "2001:db8:0:0:0:0:0:1") or
-               String.contains?(csv, "2001:db8::1")
+      assert csv =~ "2001:db8:0:0:0:0:0:1" or csv =~ "2001:db8::1"
     end
 
     test "formats prefix delegation correctly" do
@@ -156,8 +155,7 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_dhcpv6_csv(leases)
 
-      assert String.contains?(csv, "2001:db8:1234::/56") or
-               String.contains?(csv, "2001:db8:1234:0:0:0:0:0/56")
+      assert csv =~ "2001:db8:1234::/56" or csv =~ "2001:db8:1234:0:0:0:0:0/56"
     end
   end
 
@@ -178,11 +176,11 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_mdns_services_csv(services)
 
-      assert String.contains?(csv, "Service Name,Type,Port,Domain")
-      assert String.contains?(csv, "Test Service")
-      assert String.contains?(csv, "_http._tcp")
-      assert String.contains?(csv, "8080")
-      assert String.contains?(csv, "true")
+      assert csv =~ "Service Name,Type,Port,Domain"
+      assert csv =~ "Test Service"
+      assert csv =~ "_http._tcp"
+      assert csv =~ "8080"
+      assert csv =~ "true"
     end
 
     test "formats multiple IP addresses with semicolons" do
@@ -201,7 +199,7 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_mdns_services_csv(services)
 
-      assert String.contains?(csv, "192.168.1.100; 192.168.1.101; 192.168.1.102")
+      assert csv =~ "192.168.1.100; 192.168.1.101; 192.168.1.102"
     end
 
     test "formats TXT records as key=value pairs" do
@@ -243,10 +241,10 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_mdns_discovery_csv(services)
 
-      assert String.contains?(csv, "Service Name,Type,Host,Port")
-      assert String.contains?(csv, "Discovered Service")
-      assert String.contains?(csv, "_http._tcp.local")
-      assert String.contains?(csv, "test-host.local")
+      assert csv =~ "Service Name,Type,Host,Port"
+      assert csv =~ "Discovered Service"
+      assert csv =~ "_http._tcp.local"
+      assert csv =~ "test-host.local"
     end
   end
 
@@ -265,9 +263,9 @@ defmodule YellowDog.Console.CsvExportTest do
 
       csv = build_dns_acl_csv(acls)
 
-      assert String.contains?(csv, "Name,Description,Rules")
-      assert String.contains?(csv, "internal-nets")
-      assert String.contains?(csv, "Internal network ranges")
+      assert csv =~ "Name,Description,Rules"
+      assert csv =~ "internal-nets"
+      assert csv =~ "Internal network ranges"
     end
 
     test "formats geo-based ACL rules" do

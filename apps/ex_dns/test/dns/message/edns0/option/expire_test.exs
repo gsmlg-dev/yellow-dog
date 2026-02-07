@@ -603,7 +603,7 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
     test "formats EXPIRE with max value" do
       option = Expire.new(@max_expire)
       string = to_string(option)
-      assert String.contains?(string, "4294967295")
+      assert string =~ "4294967295"
     end
 
     test "string contains seconds suffix" do
@@ -868,7 +868,7 @@ defmodule DNS.Message.EDNS0.Option.ExpireTest do
       inspect_str = inspect(option)
 
       assert is_binary(inspect_str)
-      assert String.contains?(inspect_str, "Expire")
+      assert inspect_str =~ "Expire"
     end
 
     test "all values in 32-bit range work" do
