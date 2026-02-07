@@ -6,13 +6,14 @@
 **Iteration**: 12 of 1000
 
 ## Session Summary
-Iteration 12: Event handler tests + resilience:
+Iteration 12: Event handler tests + resilience + debounce:
 - ✅ **664 Console tests passing** (628 prior + 36 event handler tests)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
 - ✅ 36 event handler tests for mDNS, DHCPv4/v6, ProcessMap, DNS, Diagnostics
-- ✅ Fixed monitor_live.ex: try/rescue → try/catch for GenServer exit + ETS ArgumentError
+- ✅ Fixed all mDNS LiveViews: try/rescue → try/catch for GenServer exit + ETS ArgumentError
 - ✅ aria-label on 14 select/dropdown filter elements
-- ✅ **22 commits this iteration**: 21 prior + 1 this session
+- ✅ phx-debounce="300" on 4 search inputs (DHCPv4/v6 leases, pool, mDNS discovery)
+- ✅ **25 commits this iteration**: 21 prior + 4 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -91,6 +92,9 @@ Iteration 12: Event handler tests + resilience:
 20. `0d5fb5d` - fix(console): dark mode colors in settings, aria-labels on 17 search inputs
 21. `500a8c9` - fix(console): add aria-labels to 14 filter/dropdown selects
 22. `9fdc066` - test(console): add 36 event handler tests, fix monitor_live resilience
+23. `e720080` - docs: update CONTINUITY with event handler tests iteration 12
+24. `1597e64` - fix(console): use try/catch in mDNS LiveViews for service-down resilience
+25. `967dc42` - fix(console): add phx-debounce to 4 search inputs
 
 ## Mistakes & Learnings
 
