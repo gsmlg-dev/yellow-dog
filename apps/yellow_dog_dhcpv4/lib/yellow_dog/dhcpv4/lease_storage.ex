@@ -513,10 +513,7 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
 
     expired_leases = Enum.filter(all_leases, fn lease -> lease.expires_at <= now end)
 
-    state_counts =
-      Enum.reduce(all_leases, %{}, fn lease, acc ->
-        Map.update(acc, lease.state, 1, &(&1 + 1))
-      end)
+    state_counts = Enum.frequencies_by(all_leases, & &1.state)
 
     %{
       total_leases: length(all_leases),

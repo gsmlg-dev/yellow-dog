@@ -292,10 +292,9 @@ defmodule YellowDog.Dhcpv6.Pool do
   defp parse_reservations(nil), do: %{}
 
   defp parse_reservations(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn {duid, ip}, acc ->
-      parsed_ip = parse_ipv6(ip)
-      if parsed_ip, do: Map.put(acc, normalize_duid(duid), parsed_ip), else: acc
-    end)
+    for {duid, ip} <- map, parsed_ip = parse_ipv6(ip), parsed_ip != nil, into: %{} do
+      {normalize_duid(duid), parsed_ip}
+    end
   end
 
   defp parse_reservations(_), do: %{}
@@ -327,9 +326,9 @@ defmodule YellowDog.Dhcpv6.Pool do
   defp parse_options(nil), do: %{}
 
   defp parse_options(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn {code, value}, acc ->
+    Map.new(map, fn {code, value} ->
       code_int = if is_integer(code), do: code, else: String.to_integer("#{code}")
-      Map.put(acc, code_int, value)
+      {code_int, value}
     end)
   end
 
@@ -401,9 +400,7 @@ defmodule YellowDog.Dhcpv6.Pool do
   defp format_reservations(map) when map == %{}, do: nil
 
   defp format_reservations(map) do
-    Enum.reduce(map, %{}, fn {duid, ip}, acc ->
-      Map.put(acc, duid, format_ipv6(ip))
-    end)
+    Map.new(map, fn {duid, ip} -> {duid, format_ipv6(ip)} end)
   end
 
   defp format_pd_pools([]), do: nil

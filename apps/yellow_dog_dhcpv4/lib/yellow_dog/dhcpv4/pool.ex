@@ -293,10 +293,9 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp parse_reservations(nil), do: %{}
 
   defp parse_reservations(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn {mac, ip}, acc ->
-      parsed_ip = parse_ip(ip)
-      if parsed_ip, do: Map.put(acc, normalize_mac(mac), parsed_ip), else: acc
-    end)
+    for {mac, ip} <- map, parsed_ip = parse_ip(ip), parsed_ip != nil, into: %{} do
+      {normalize_mac(mac), parsed_ip}
+    end
   end
 
   defp parse_reservations(_), do: %{}
@@ -304,9 +303,9 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp parse_options(nil), do: %{}
 
   defp parse_options(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn {code, value}, acc ->
+    Map.new(map, fn {code, value} ->
       code_int = if is_integer(code), do: code, else: String.to_integer("#{code}")
-      Map.put(acc, code_int, value)
+      {code_int, value}
     end)
   end
 
@@ -395,9 +394,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp format_reservations(map) when map == %{}, do: nil
 
   defp format_reservations(map) do
-    Enum.reduce(map, %{}, fn {mac, ip}, acc ->
-      Map.put(acc, mac, format_ip(ip))
-    end)
+    Map.new(map, fn {mac, ip} -> {mac, format_ip(ip)} end)
   end
 
   defp format_options(map) when map == %{}, do: nil
