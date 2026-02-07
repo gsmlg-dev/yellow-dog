@@ -8,7 +8,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   import YellowDog.Console.CsvHelper
 
-  alias YellowDog.Console.Validators
   alias YellowDog.Dns.ZoneController
 
   @valid_zone_types ~w(auth forward stub cache rpz unknown)
@@ -32,10 +31,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
      |> assign(:filter, "")
      |> assign(:type_filter, "all")
      |> assign(:delete_confirm, nil)
-     |> assign(:rr_form, nil)
      |> assign(:bulk_form, nil)
      |> assign(:editing_rr, nil)
-     |> assign(:form_errors, %{})
      |> assign(:bulk_preview, nil)}
   end
 
@@ -62,7 +59,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     |> assign(:zone_type, zone_type_atom)
     |> assign(:zone_name, zone_name)
     |> assign(:zone_pid, zone_pid)
-    |> assign(:rr_form, nil)
     |> assign(:bulk_form, nil)
     |> assign(:editing_rr, nil)
     |> load_records()
@@ -192,53 +188,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("validate_rr", %{"rr" => rr_params}, socket) do
-    errors = validate_rr_fields(rr_params)
-    {:noreply, assign(socket, :form_errors, errors)}
-  end
-
-  @impl true
-  def handle_event("save_rr", %{"rr" => rr_params}, socket) do
-    errors = validate_rr_fields(rr_params)
-
-    if map_size(errors) > 0 do
-      {:noreply, assign(socket, :form_errors, errors)}
-    else
-      editing = socket.assigns[:editing_rr]
-      zone_name = socket.assigns.zone_name
-      zone_type = socket.assigns.zone_type
-      view_name = socket.assigns.view_name
-
-      with {:ok, pid} <- find_auth_zone(view_name, zone_type, zone_name),
-           {:ok, record} <- build_record(pid, zone_name, rr_params) do
-        if editing do
-          remove_existing_record(pid, editing.original)
-        end
-
-        :ok = YellowDog.Dns.Zone.Auth.add_record(pid, record)
-
-        Phoenix.PubSub.broadcast(
-          YellowDog.Console.PubSub,
-          "dns:records",
-          {:record_updated, zone_name}
-        )
-
-        rr_name = rr_params["name"]
-        rr_type = rr_params["type"]
-        action = if editing, do: "updated", else: "created"
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Record '#{rr_name}' (#{String.upcase(rr_type)}) #{action}")
-         |> push_navigate(to: records_path(view_name, zone_type, zone_name))}
-      else
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, reason)}
-      end
     end
   end
 
@@ -437,91 +386,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   defp resolve_zone_type_atom(_view_name, _zone_type_str, _zone_name), do: :unknown
-
-  defp validate_rr_fields(params) do
-    errors = %{}
-    name = params["name"] || ""
-    type = String.downcase(params["type"] || "a")
-    ttl_str = params["ttl"] || ""
-    rdata = params["rdata"] || ""
-
-    # Validate record name (domain name)
-    errors =
-      if name != "" and name != "@" do
-        case Validators.validate_domain_name(name) do
-          :ok -> errors
-          {:error, msg} -> Map.put(errors, :name, msg)
-        end
-      else
-        errors
-      end
-
-    # Validate TTL
-    errors =
-      if ttl_str != "" do
-        case Integer.parse(ttl_str) do
-          {ttl_val, ""} ->
-            case Validators.validate_ttl(ttl_val) do
-              :ok -> errors
-              {:error, msg} -> Map.put(errors, :ttl, msg)
-            end
-
-          _ ->
-            Map.put(errors, :ttl, "TTL must be a non-negative integer")
-        end
-      else
-        errors
-      end
-
-    # Validate rdata based on type
-    errors =
-      if rdata != "" do
-        case type do
-          "a" ->
-            case Validators.validate_ip(rdata, :ipv4) do
-              :ok -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          "aaaa" ->
-            case Validators.validate_ip(rdata, :ipv6) do
-              :ok -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          "mx" ->
-            case parse_mx(rdata) do
-              {:ok, _} -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          "srv" ->
-            case parse_srv(rdata) do
-              {:ok, _} -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          "cname" ->
-            case Validators.validate_domain_name(rdata) do
-              :ok -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          "ns" ->
-            case Validators.validate_domain_name(rdata) do
-              :ok -> errors
-              {:error, msg} -> Map.put(errors, :rdata, msg)
-            end
-
-          _ ->
-            errors
-        end
-      else
-        errors
-      end
-
-    errors
-  end
 
   defp get_zone_pid(view_name, zone_type, zone_name) do
     try do
@@ -835,35 +699,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     {:error, "Zone '#{zone_name}' is not authoritative"}
   end
 
-  defp build_record(pid, zone_name, rr_params) do
-    format = detect_record_format(pid)
-
-    name =
-      rr_params
-      |> Map.get("name", "")
-      |> normalize_record_name(zone_name)
-
-    type_str =
-      rr_params
-      |> Map.get("type", "a")
-      |> String.downcase()
-
-    type =
-      if type_str in @valid_rr_types,
-        do: String.to_existing_atom(type_str),
-        else: :a
-
-    ttl = parse_ttl(Map.get(rr_params, "ttl", "3600"))
-    rdata_input = Map.get(rr_params, "rdata", "")
-
-    with {:ok, ttl_value} <- ttl,
-         {:ok, rdata} <- parse_rdata(type, rdata_input, format) do
-      {:ok, build_record_struct(format, name, type, ttl_value, rdata)}
-    else
-      {:error, _} = error -> error
-    end
-  end
-
   defp detect_record_format(pid) do
     case YellowDog.Dns.Zone.Auth.get_all_records(pid) do
       [%DNS.Message.Record{} | _] -> :dns_message_record
@@ -895,134 +730,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   defp build_record_struct(:map_record, name, type, ttl, rdata) do
     %{name: name, type: type, class: :in, ttl: ttl, rdata: rdata}
-  end
-
-  defp normalize_record_name(name, zone_name) do
-    trimmed = String.trim(to_string(name || ""))
-
-    cond do
-      trimmed in ["", "@"] -> zone_name
-      String.ends_with?(trimmed, ".") -> String.trim_trailing(trimmed, ".")
-      String.ends_with?(trimmed, zone_name) -> trimmed
-      String.contains?(trimmed, ".") -> trimmed
-      true -> "#{trimmed}.#{zone_name}"
-    end
-  end
-
-  defp parse_ttl(ttl) when is_integer(ttl) and ttl >= 0, do: {:ok, ttl}
-
-  defp parse_ttl(ttl) when is_binary(ttl) do
-    ttl
-    |> String.trim()
-    |> Integer.parse()
-    |> case do
-      {value, ""} when value >= 0 -> {:ok, value}
-      _ -> {:error, "TTL must be a non-negative integer"}
-    end
-  end
-
-  defp parse_ttl(_ttl), do: {:error, "TTL must be a non-negative integer"}
-
-  defp parse_rdata(type, value, format) do
-    value = String.trim(to_string(value || ""))
-
-    cond do
-      value == "" ->
-        {:error, "Record data cannot be empty"}
-
-      true ->
-        do_parse_rdata(type, value, format)
-    end
-  end
-
-  defp do_parse_rdata(:a, value, :parser_record), do: {:ok, value}
-
-  defp do_parse_rdata(:a, value, _format) do
-    parse_ip(value, 4, "IPv4")
-  end
-
-  defp do_parse_rdata(:aaaa, value, :parser_record), do: {:ok, value}
-
-  defp do_parse_rdata(:aaaa, value, _format) do
-    parse_ip(value, 8, "IPv6")
-  end
-
-  defp do_parse_rdata(:cname, value, _format), do: {:ok, value}
-  defp do_parse_rdata(:ns, value, _format), do: {:ok, value}
-  defp do_parse_rdata(:ptr, value, _format), do: {:ok, value}
-
-  defp do_parse_rdata(:txt, value, _format) do
-    {:ok, [strip_quotes(value)]}
-  end
-
-  defp do_parse_rdata(:mx, value, :parser_record) do
-    with {:ok, {pref, exchange}} <- parse_mx(value) do
-      {:ok, %DNS.Zone.Parser.MXRecord{priority: pref, exchange: exchange}}
-    end
-  end
-
-  defp do_parse_rdata(:mx, value, _format), do: parse_mx(value)
-
-  defp do_parse_rdata(:srv, value, :parser_record) do
-    with {:ok, {priority, weight, port, target}} <- parse_srv(value) do
-      {:ok,
-       %DNS.Zone.Parser.SRVRecord{priority: priority, weight: weight, port: port, target: target}}
-    end
-  end
-
-  defp do_parse_rdata(:srv, value, _format), do: parse_srv(value)
-
-  defp do_parse_rdata(_type, value, _format), do: {:ok, value}
-
-  defp parse_ip(value, size, label) do
-    case :inet.parse_address(String.to_charlist(value)) do
-      {:ok, addr} when tuple_size(addr) == size ->
-        {:ok, addr}
-
-      _ ->
-        {:error, "#{label} address is invalid"}
-    end
-  end
-
-  defp parse_mx(value) do
-    case String.split(value, ~r/\\s+/, parts: 2) do
-      [pref_str, exchange] ->
-        case Integer.parse(pref_str) do
-          {pref, ""} -> {:ok, {pref, String.trim(exchange)}}
-          _ -> {:error, "MX preference must be an integer"}
-        end
-
-      _ ->
-        {:error, "MX data must be: <preference> <exchange>"}
-    end
-  end
-
-  defp parse_srv(value) do
-    case String.split(value, ~r/\\s+/, parts: 4) do
-      [priority_str, weight_str, port_str, target] ->
-        with {priority, ""} <- Integer.parse(priority_str),
-             {weight, ""} <- Integer.parse(weight_str),
-             {port, ""} <- Integer.parse(port_str) do
-          {:ok, {priority, weight, port, String.trim(target)}}
-        else
-          _ -> {:error, "SRV fields must be integers (priority weight port)"}
-        end
-
-      _ ->
-        {:error, "SRV data must be: <priority> <weight> <port> <target>"}
-    end
-  end
-
-  defp strip_quotes(value) do
-    trimmed = String.trim(value)
-
-    if String.starts_with?(trimmed, "\"") and String.ends_with?(trimmed, "\"") do
-      trimmed
-      |> String.trim_leading("\"")
-      |> String.trim_trailing("\"")
-    else
-      trimmed
-    end
   end
 
   defp remove_existing_record(_pid, %{name: nil}), do: :ok

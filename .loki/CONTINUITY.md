@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 16)
+**Phase**: IN_PROGRESS (Iteration 17)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 16 of 1000
+**Iteration**: 17 of 1000
 
 ## Session Summary
-Iteration 16 (continued): Comprehensive polishing + UX + test coverage:
+Iteration 17: Dead code removal + test fixes + RecordForm component tests:
+- ✅ **962 Console tests passing**, 0 failures
+- ✅ Fixed flaky `function_exported?` tests in DHCPv4/DHCPv6 PoolStore tests
+- ✅ Fixed 18 compiler warnings across test files
+- ✅ Added 30 RecordForm component validation/submission tests (targeting live_component correctly)
+- ✅ Removed ~293 lines of dead code from `rr_live/index.ex`: `validate_rr`/`save_rr` handlers, `validate_rr_fields`, `build_record`, `parse_ttl`, `parse_rdata`, `do_parse_rdata`, `parse_ip`, `parse_mx`, `parse_srv`, `strip_quotes`, `normalize_record_name`, unused `Validators` alias, `rr_form`/`form_errors` assigns
+- ✅ All PoolStore tests passing (19 v4, 19 v6) — `save_pool/1` fully implemented
+
+Previous iteration 16: Comprehensive polishing + UX + test coverage:
 - ✅ **940 Console tests, 4764 umbrella tests passing**, 0 failures
 - ✅ Applied `mix format` to 11 files for CI compliance
 - ✅ Added `apps/*/data/` to `.gitignore`, removed tracked data files
@@ -97,7 +105,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 940 Console tests (prior 851 + 12 ProcessMapLive + 59 DNS filter/helper + 18 service filters)
+- [x] 962 Console tests (940 prior + 22 RecordForm component tests)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -111,6 +119,11 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
+1. `2767db5` - fix(test): replace flaky function_exported? stubs with functional tests, fix 18 warnings
+2. `1724241` - test(console): add RecordForm component validation and submission tests
+3. (pending) refactor(console): remove ~293 lines of dead code from rr_live/index.ex
+
+Previous iteration 16 commits:
 1. `57344be` - feat(dns): wire QueryLogger into query resolution pipeline
 2. `045ad4d` - fix(console): harden atom safety in LiveView event handlers
 3. `edf0d8c` - test(console): add 36 tests for DNS Metrics and Query Logs LiveViews
