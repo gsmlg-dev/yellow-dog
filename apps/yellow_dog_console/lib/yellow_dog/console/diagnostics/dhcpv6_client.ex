@@ -11,6 +11,8 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
 
   alias YellowDog.Console.Diagnostics.QueryResult
 
+  import YellowDog.Console.Diagnostics.ParamHelper
+
   @dhcpv6_server_port 547
   @dhcpv6_client_port 546
   # ff02::1:2 - All DHCP Relay Agents and Servers
@@ -98,28 +100,6 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
        }}
     rescue
       e -> {:error, {:parse_error, Exception.message(e)}}
-    end
-  end
-
-  defp get_string(params, key) do
-    Map.get(params, key) || Map.get(params, to_string(key)) || ""
-  end
-
-  defp get_integer(params, key, default) do
-    value = Map.get(params, key) || Map.get(params, to_string(key)) || default
-
-    case value do
-      v when is_integer(v) ->
-        v
-
-      v when is_binary(v) ->
-        case Integer.parse(v) do
-          {int, ""} -> int
-          _ -> default
-        end
-
-      _ ->
-        default
     end
   end
 

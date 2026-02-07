@@ -11,6 +11,8 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
 
   alias YellowDog.Console.Diagnostics.QueryResult
 
+  import YellowDog.Console.Diagnostics.ParamHelper
+
   @dhcp_server_port 67
   @dhcp_client_port 68
   @broadcast_addr {255, 255, 255, 255}
@@ -95,28 +97,6 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
        }}
     rescue
       e -> {:error, {:parse_error, Exception.message(e)}}
-    end
-  end
-
-  defp get_string(params, key) do
-    Map.get(params, key) || Map.get(params, to_string(key)) || ""
-  end
-
-  defp get_integer(params, key, default) do
-    value = Map.get(params, key) || Map.get(params, to_string(key)) || default
-
-    case value do
-      v when is_integer(v) ->
-        v
-
-      v when is_binary(v) ->
-        case Integer.parse(v) do
-          {int, ""} -> int
-          _ -> default
-        end
-
-      _ ->
-        default
     end
   end
 

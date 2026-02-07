@@ -8,6 +8,8 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
 
   alias YellowDog.Console.Diagnostics.QueryResult
 
+  import YellowDog.Console.Diagnostics.ParamHelper
+
   @mdns_multicast_addr {224, 0, 0, 251}
   @mdns_port 5353
 
@@ -68,28 +70,6 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
        }}
     rescue
       e -> {:error, {:parse_error, Exception.message(e)}}
-    end
-  end
-
-  defp get_string(params, key) do
-    Map.get(params, key) || Map.get(params, to_string(key)) || ""
-  end
-
-  defp get_integer(params, key, default) do
-    value = Map.get(params, key) || Map.get(params, to_string(key)) || default
-
-    case value do
-      v when is_integer(v) ->
-        v
-
-      v when is_binary(v) ->
-        case Integer.parse(v) do
-          {int, ""} -> int
-          _ -> default
-        end
-
-      _ ->
-        default
     end
   end
 
