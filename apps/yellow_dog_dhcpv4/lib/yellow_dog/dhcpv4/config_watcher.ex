@@ -263,6 +263,11 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
     end
   end
 
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   ## Private Functions
 
   defp should_reload?(events) do

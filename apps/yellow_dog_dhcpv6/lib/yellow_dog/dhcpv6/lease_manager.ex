@@ -668,6 +668,11 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(reason, state) do
     # Flush leases to TOML on graceful shutdown
     if reason in [:normal, :shutdown] or match?({:shutdown, _}, reason) do

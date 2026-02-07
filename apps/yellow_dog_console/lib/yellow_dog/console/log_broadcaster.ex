@@ -67,6 +67,11 @@ defmodule YellowDog.Console.LogBroadcaster do
   end
 
   @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(_reason, _state) do
     :telemetry.detach("yellow-dog-log-broadcaster")
     :ok

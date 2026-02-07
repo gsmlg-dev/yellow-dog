@@ -372,6 +372,11 @@ defmodule YellowDog.Dns.Zone.Stub do
   end
 
   @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(_reason, state) do
     if state.socket do
       :gen_udp.close(state.socket)

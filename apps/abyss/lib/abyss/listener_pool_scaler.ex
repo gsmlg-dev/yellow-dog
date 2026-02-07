@@ -90,6 +90,11 @@ defmodule Abyss.ListenerPoolScaler do
     {:noreply, new_state}
   end
 
+  @impl GenServer
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private functions
 
   defp perform_scale_check(state) do

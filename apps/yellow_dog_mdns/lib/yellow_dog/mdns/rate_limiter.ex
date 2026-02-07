@@ -268,6 +268,11 @@ defmodule YellowDog.Mdns.RateLimiter do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private functions
 
   defp load_config(opts) do

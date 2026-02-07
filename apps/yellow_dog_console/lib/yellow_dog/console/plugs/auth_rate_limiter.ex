@@ -183,6 +183,11 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
     {:noreply, state}
   end
 
+  @impl GenServer
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private helpers
 
   defp schedule_cleanup do

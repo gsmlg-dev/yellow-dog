@@ -323,6 +323,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private functions
 
   defp init_tables do

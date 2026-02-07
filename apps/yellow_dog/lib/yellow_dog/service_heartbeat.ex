@@ -101,6 +101,11 @@ defmodule YellowDog.ServiceHeartbeat do
     {:noreply, %{state | timer_ref: timer_ref}}
   end
 
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private Functions
 
   defp get_configured_interval do

@@ -309,6 +309,11 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(_reason, state) do
     :gen_udp.close(state.socket)
     :ok

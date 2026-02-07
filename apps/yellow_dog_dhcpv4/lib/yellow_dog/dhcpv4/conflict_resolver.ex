@@ -290,6 +290,11 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
     {:noreply, %{state | quarantined: Map.new(active)}}
   end
 
+  @impl true
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # Private functions
 
   defp attempt_reassignment(mac, pool_name, quarantined) do
