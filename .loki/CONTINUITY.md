@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 83)
+**Phase**: IN_PROGRESS (Iteration 84)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 83 of 1000
+**Iteration**: 84 of 1000
 
 ## Session Summary
-Iteration 83: Extract shared param helpers from diagnostics clients:
+Iteration 84: Extract shared format_error to ParamHelper:
+- ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Added `format_error/1` to `ParamHelper` with 5 common clauses (timeout, socket_error, parse_error, build_error, catch-all)
+- ✅ mDNS client: removed all 4 local `format_error` clauses (all were common)
+- ✅ DNS/DHCPv4/DHCPv6 clients: kept only protocol-specific overrides (eacces, econnrefused), delegate rest to ParamHelper
+- ✅ 5 files — **1 commit** — net -6 lines
+
+Previous iteration 83: Extract shared param helpers from diagnostics clients:
 - ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Created `ParamHelper` module with `get_string/2`, `get_integer/3`, `get_boolean/3`
 - ✅ Removed identical copies from 4 diagnostics clients (dns, dhcpv4, dhcpv6, mdns)
