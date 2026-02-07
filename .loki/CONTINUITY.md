@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 87)
+**Phase**: IN_PROGRESS (Iteration 88)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 87 of 1000
+**Iteration**: 88 of 1000
 
 ## Session Summary
-Iteration 87: Extract shared DUID formatting to DuidFormat module:
+Iteration 88: Replace duplicate format_ipv6 with FormatHelper.format_ip in DHCPv6 pools:
+- ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ DHCPv6 pools_live.ex had 3-clause `defp format_ipv6` (nil/tuple/binary) duplicating `FormatHelper.format_ip/1`
+- ✅ Expanded import from `only: [format_duration: 1]` to `only: [format_ip: 1, format_duration: 1]`
+- ✅ Replaced 9 `format_ipv6` call sites with `format_ip` (range display, CSV, filter, dns_servers)
+- ✅ Removed `defp format_ipv6` (3 clauses) and simplified `format_dns_servers` to one-liner
+- ✅ 1 file — **1 commit** — net -15 lines
+
+Previous iteration 87: Extract shared DUID formatting to DuidFormat module:
 - ✅ **All 201 DHCPv6 tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Created `YellowDog.Dhcpv6.DuidFormat.format/2` with `:separator` and `:case` options
 - ✅ Replaced 3 identical `format_duid` in: address_pool, lease_manager, prefix_pool (colon-separated uppercase)
