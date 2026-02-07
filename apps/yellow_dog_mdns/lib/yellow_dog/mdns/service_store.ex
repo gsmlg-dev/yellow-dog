@@ -219,7 +219,6 @@ defmodule YellowDog.Mdns.ServiceStore do
     }
   end
 
-
   defp get_addresses(service) do
     # Try different key formats
     case Map.get(service, :addresses) || Map.get(service, "addresses") do
