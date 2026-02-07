@@ -1,16 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 43)
+**Phase**: IN_PROGRESS (Iteration 44)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 43 of 1000
+**Iteration**: 44 of 1000
 
 ## Session Summary
-Iteration 43: Replace Enum.map |> Map.new() with single-pass Map.new/2:
-- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ Converted **11 `Enum.map(...) |> Map.new()`** chains to `Map.new/2` across **7 files** in 5 apps
-- ✅ Affected: pool_stats.ex (×2), custom_options.ex, view_manager.ex, lease_manager.ex (×4), pool_config.ex, record_form.ex, dhcpv6/server.ex
-- ✅ **1 commit this iteration** — net -18 lines
+Iteration 44: Replace Enum.reduce map-building with idiomatic alternatives:
+- ✅ **6,415 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Replaced **4 `Enum.reduce + Map.put`** with `Map.new/2` (format_reservations, parse_options in DHCPv4/v6 pool.ex)
+- ✅ Replaced **2 conditional `Enum.reduce`** with `for...into: %{}` (parse_reservations in DHCPv4/v6 pool.ex)
+- ✅ Replaced **3 `Enum.reduce` counting** with `Enum.frequencies_by/2` (lease_storage.ex state_counts, ia_type_counts)
+- ✅ **1 commit this iteration** — net -16 lines
+
+Previous iteration 43: Replace Enum.map |> Map.new() with Map.new/2:
+- ✅ 11 conversions across 7 files — net -18 lines
 
 Previous iteration 42: Enum.count/2 + DRY format_address:
 - ✅ Replaced 7 `length(Enum.filter)` with `Enum.count/2`, DRY format_address in result_display.ex
