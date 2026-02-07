@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 27)
+**Phase**: IN_PROGRESS (Iteration 28)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 27 of 1000
+**Iteration**: 28 of 1000
 
 ## Session Summary
-Iteration 27: filter|>map → for comprehensions + String.split trim: true:
+Iteration 28: O(n²) list building + Logger structured metadata + @spec:
+- ✅ **1,052 umbrella + 962 console tests, 0 failures**
+- ✅ Replaced **O(n²) `++ [item]` list appends** with `List.flatten` and prepend+reverse in **4 files**: DHCPv4/v6 pool_store.ex, config_manager.ex, process_inspector.ex
+- ✅ Converted **10 Logger string interpolation** calls to structured metadata across **7 files** (acl_store, acl_registry, zone_service, auth_rate_limiter, conflict_resolver, view/zone LiveViews)
+- ✅ Added **5 missing `@spec`** annotations to public functions (DHCPv4/v6 server start_link/stop, ACL registry start_link)
+- ✅ Committed leftover iteration 27 for-comprehension conversions (7 files, -27 lines)
+- ✅ **4 commits this iteration** — net -85 lines
+
+Previous iteration 27: filter|>map → for comprehensions + String.split trim: true:
 - ✅ **4,764 ex_dns + 1,052 DNS + 309 mDNS + 155 core + 201 DHCPv6 + 962 console tests, 0 failures**
 - ✅ Converted **15 `Enum.filter |> Enum.map` chains** to single-pass `for` comprehensions across **12 files** in 6 apps
 - ✅ Replaced 4 `String.split |> Enum.filter(&(&1 != ""))` with `String.split(trim: true)` in domain.ex, name.ex
