@@ -527,11 +527,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     }
   end
 
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))
-  end
+  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
 
   defp get_hostname do
     case :inet.gethostname() do

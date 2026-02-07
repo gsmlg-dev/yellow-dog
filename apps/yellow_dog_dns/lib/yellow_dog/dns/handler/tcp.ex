@@ -196,13 +196,6 @@ defmodule YellowDog.Dns.Handler.TCP do
     end
   end
 
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-
-  defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
-  end
-
+  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
   defp format_ip(other), do: inspect(other)
 end
