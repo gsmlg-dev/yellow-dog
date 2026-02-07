@@ -83,7 +83,6 @@ defmodule DNS.Zone.Recursive do
              {:ok, socket} = :gen_udp.open(0, active: false, mode: :binary)
 
              :ok = :gen_udp.send(socket, ip, port, message)
-             # IO.inspect({:query_ns, ip, port, DNS.Message.from_iodata(message)})
 
              case :gen_udp.recv(socket, 0, to_timeout(second: 3)) do
                {:ok, recv_data} ->

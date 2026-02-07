@@ -36,7 +36,6 @@ defmodule DNS.Message do
 
   """
 
-  # alias DNS.Message
   alias DNS.Message.Header
   alias DNS.Message.Question
   alias DNS.Message.Record
