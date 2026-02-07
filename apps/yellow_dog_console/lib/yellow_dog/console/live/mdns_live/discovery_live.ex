@@ -122,9 +122,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   end
 
   defp get_most_recent_update(services) do
-    services
-    |> Enum.map(& &1.last_seen)
-    |> Enum.max(fn -> 0 end)
+    Enum.reduce(services, 0, fn s, acc -> max(s.last_seen, acc) end)
   end
 
   defp format_time(timestamp) when is_integer(timestamp) do

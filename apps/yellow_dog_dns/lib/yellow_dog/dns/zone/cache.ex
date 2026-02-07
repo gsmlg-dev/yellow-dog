@@ -327,9 +327,7 @@ defmodule YellowDog.Dns.Zone.Cache do
     all_records = response.anlist ++ response.nslist ++ response.arlist
 
     record_ttl =
-      all_records
-      |> Enum.map(& &1.ttl)
-      |> Enum.min(fn -> min_ttl end)
+      Enum.reduce(all_records, min_ttl, fn r, acc -> min(r.ttl, acc) end)
 
     # Clamp to configured bounds
     record_ttl

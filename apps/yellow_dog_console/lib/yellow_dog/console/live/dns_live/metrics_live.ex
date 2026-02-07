@@ -281,7 +281,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                 <p class="text-base-content/50 text-sm">No responses recorded yet</p>
               <% else %>
                 <% max_rcode =
-                  @metrics.responses_by_code |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+                  Enum.reduce(@metrics.responses_by_code, 1, fn {_, c}, acc -> max(c, acc) end) %>
                 <div class="space-y-2">
                   <%= for {code, count} <- Enum.sort_by(@metrics.responses_by_code, fn {_, c} -> -c end) do %>
                     <div class="flex items-center gap-2">
@@ -311,7 +311,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                 <p class="text-base-content/50 text-sm">No queries recorded yet</p>
               <% else %>
                 <% max_type =
-                  @metrics.queries_by_type |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+                  Enum.reduce(@metrics.queries_by_type, 1, fn {_, c}, acc -> max(c, acc) end) %>
                 <div class="space-y-2">
                   <%= for {type, count} <- Enum.sort_by(@metrics.queries_by_type, fn {_, c} -> -c end) do %>
                     <div class="flex items-center gap-2">
@@ -356,7 +356,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                 </div>
               </div>
               <% max_bucket =
-                @response_times.buckets |> Enum.map(fn {_, c} -> c end) |> Enum.max(fn -> 1 end) %>
+                Enum.reduce(@response_times.buckets, 1, fn {_, c}, acc -> max(c, acc) end) %>
               <div class="flex items-end gap-1 h-32">
                 <%= for {label, count} <- @response_times.buckets do %>
                   <div class="flex-1 flex flex-col items-center">

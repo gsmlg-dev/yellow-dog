@@ -667,7 +667,7 @@ defmodule YellowDog.Dns.View do
 
     case all_records do
       [] -> 300
-      records -> Enum.map(records, & &1.ttl) |> Enum.min() |> max(60)
+      records -> Enum.reduce(records, 300, fn r, acc -> min(r.ttl, acc) end) |> max(60)
     end
   end
 

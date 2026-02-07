@@ -184,7 +184,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   end
 
   defp calculate_percentage(count, services) do
-    max_count = services |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 1 end)
+    max_count = Enum.reduce(services, 1, fn s, acc -> max(elem(s, 1), acc) end)
     if max_count > 0, do: count / max_count * 100, else: 0
   end
 
