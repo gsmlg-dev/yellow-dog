@@ -216,7 +216,12 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   defp parse_duid_string(duid_str) do
     duid_str
     |> String.split(":")
-    |> Enum.map(&String.to_integer(&1, 16))
+    |> Enum.map(fn hex ->
+      case Integer.parse(hex, 16) do
+        {n, ""} -> n
+        _ -> 0
+      end
+    end)
     |> :binary.list_to_bin()
   end
 

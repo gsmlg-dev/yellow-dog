@@ -94,7 +94,12 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
        }) do
     zone_type_atom = resolve_zone_type_atom(view_name, zone_type, zone_name)
     zone_pid = get_zone_pid(view_name, zone_type_atom, zone_name)
-    rr_index = String.to_integer(rr_index_str)
+
+    rr_index =
+      case Integer.parse(rr_index_str) do
+        {idx, ""} -> idx
+        _ -> -1
+      end
 
     socket =
       socket
@@ -281,7 +286,12 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("confirm_delete", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
+    index =
+      case Integer.parse(index_str) do
+        {idx, ""} -> idx
+        _ -> -1
+      end
+
     rr = Enum.at(socket.assigns.rrs, index)
 
     if rr do
@@ -760,7 +770,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     try do
       String.to_existing_atom(type_str)
     rescue
-      ArgumentError -> String.to_atom(type_str)
+      ArgumentError -> String.to_atom("unknown_#{type_str}")
     end
   end
 

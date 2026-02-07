@@ -27,12 +27,16 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
 
   @impl true
   def handle_event("set_limit", %{"limit" => limit}, socket) do
-    limit_int = String.to_integer(limit)
+    case Integer.parse(limit) do
+      {limit_int, ""} when limit_int > 0 ->
+        {:noreply,
+         socket
+         |> assign(:limit, limit_int)
+         |> assign(:queries, get_recent_queries(limit_int))}
 
-    {:noreply,
-     socket
-     |> assign(:limit, limit_int)
-     |> assign(:queries, get_recent_queries(limit_int))}
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   @impl true

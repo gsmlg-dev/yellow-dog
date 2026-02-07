@@ -157,16 +157,20 @@ defmodule YellowDog.Console.LogsLive do
 
   @impl true
   def handle_event("toggle_expand", %{"id" => id_string}, socket) do
-    id = String.to_integer(id_string)
+    case Integer.parse(id_string) do
+      {id, ""} ->
+        new_expanded =
+          if socket.assigns.expanded_log_id == id do
+            nil
+          else
+            id
+          end
 
-    new_expanded =
-      if socket.assigns.expanded_log_id == id do
-        nil
-      else
-        id
-      end
+        {:noreply, assign(socket, expanded_log_id: new_expanded)}
 
-    {:noreply, assign(socket, expanded_log_id: new_expanded)}
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   # Private functions

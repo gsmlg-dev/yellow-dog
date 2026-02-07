@@ -331,7 +331,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       if is_default do
         :infinity
       else
-        String.to_integer(view_params["priority"])
+        case Integer.parse(view_params["priority"] || "100") do
+          {n, ""} -> n
+          _ -> 100
+        end
       end
 
     acl_config =
