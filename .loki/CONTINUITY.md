@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 76)
+**Phase**: IN_PROGRESS (Iteration 77)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 76 of 1000
+**Iteration**: 77 of 1000
 
 ## Session Summary
-Iteration 76: Replace `case boolean do true/false` with `if/else`:
+Iteration 77: Replace `Regex.match?` with `=~` operator:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `string =~ ~r/pattern/` is more idiomatic than `Regex.match?(~r/pattern/, string)`
+- ✅ 7 instances across 6 files: pool_config, acl, validators, services_live, view_live, acl_live, record validator
+- ✅ 7 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 76: Replace `case boolean do true/false` with `if/else`:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `case bool do true -> ... false -> ...` is verbose — `if/else` is the idiomatic Elixir form
 - ✅ 6 instances across 3 files: listener_pool.ex (3), server.ex (2), config_manager.ex (1)
