@@ -306,6 +306,7 @@
                 type="text"
                 name="view[name]"
                 value={@view_form[:name].value}
+                maxlength="63"
                 class={"input input-bordered w-full #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., internal, external, guest"
                 required

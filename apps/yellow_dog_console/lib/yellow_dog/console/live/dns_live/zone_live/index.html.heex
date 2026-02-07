@@ -297,6 +297,7 @@
                 type="text"
                 name="zone[name]"
                 value={@zone_form[:name].value}
+                maxlength="253"
                 class={"input input-bordered w-full font-mono #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., example.com"
                 required

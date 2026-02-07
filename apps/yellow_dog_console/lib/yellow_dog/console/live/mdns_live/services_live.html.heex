@@ -245,6 +245,7 @@
               name="name"
               value={@editing_service && @editing_service.name}
               placeholder="My Service"
+              maxlength="255"
               required
               class={["input input-bordered w-full", @form_errors[:name] && "input-error"]}
             />
@@ -262,6 +263,7 @@
               name="type"
               value={@editing_service && @editing_service.type}
               placeholder="_http._tcp"
+              maxlength="63"
               required
               class={["input input-bordered w-full", @form_errors[:type] && "input-error"]}
             />

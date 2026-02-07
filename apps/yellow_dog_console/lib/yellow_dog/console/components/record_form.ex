@@ -192,6 +192,7 @@ defmodule YellowDog.Console.Components.RecordForm do
               name="record[name]"
               value={@form_data["name"]}
               placeholder={"@ or subdomain.#{@zone_name}"}
+              maxlength="253"
               class={["input input-bordered w-full", @errors[:name] && "input-error"]}
             />
             <.field_error errors={@errors} field={:name} />

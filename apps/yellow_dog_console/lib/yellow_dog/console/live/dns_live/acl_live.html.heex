@@ -612,6 +612,7 @@
             type="text"
             name="acl[name]"
             value={@create_form[:name].value}
+            maxlength="63"
             class={"input input-bordered w-full #{if @editing_acl, do: "bg-base-200"} #{if @form_errors[:name], do: "input-error"}"}
             placeholder="e.g., internal, external, partners"
             disabled={@editing_acl != nil}
@@ -634,6 +635,7 @@
             type="text"
             name="acl[description]"
             value={@create_form[:description].value}
+            maxlength="255"
             class="input input-bordered w-full"
             placeholder="Optional description"
           />
