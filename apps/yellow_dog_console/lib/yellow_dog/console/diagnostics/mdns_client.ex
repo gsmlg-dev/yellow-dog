@@ -80,8 +80,15 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
 
     case value do
       v when is_integer(v) -> v
-      v when is_binary(v) -> String.to_integer(v)
-      _ -> default
+
+      v when is_binary(v) ->
+        case Integer.parse(v) do
+          {int, ""} -> int
+          _ -> default
+        end
+
+      _ ->
+        default
     end
   end
 
