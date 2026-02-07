@@ -39,6 +39,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   use GenServer
 
+  alias YellowDog.Dns.QueryLogger
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.Message.RCode
@@ -434,6 +435,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
         # End telemetry span
         end_span_success(qs, response)
 
+        # Log to QueryLogger
+        log_query_entry(state, qs, response)
+
         # Send response to handler (raw binary or parsed message)
         if qs.raw do
           response_data = DNS.to_iodata(response)
@@ -460,6 +464,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         # Create error response
         error_response = create_error_response(qs.query, reason)
+
+        # Log error to QueryLogger
+        log_query_error(state, qs, error_response, reason)
 
         # Send error response to handler (raw binary or parsed message)
         if qs.raw do
@@ -595,4 +602,38 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   defp get_query_type(%Message{qdlist: [question | _]}), do: question.type
   defp get_query_type(_), do: nil
+
+  # QueryLogger integration
+
+  defp log_query_entry(state, qs, response) do
+    QueryLogger.log_query(%{
+      client_ip: format_ip(state.client_ip),
+      client_port: state.client_port,
+      view: qs.view,
+      qname: get_query_name(qs.query),
+      qtype: get_query_type(qs.query),
+      response_code: response.header.rcode,
+      response_time_us: elapsed_ms(qs.started_at) * 1000,
+      answer_count: length(response.anlist),
+      authority_count: length(response.nslist),
+      additional_count: length(response.arlist),
+      cache_hit: Map.get(qs.metadata, :cache_result) == :hit,
+      zone_used: qs.zone,
+      fallback_used: Map.get(qs.metadata, :fallback_used, false)
+    })
+  end
+
+  defp log_query_error(state, qs, error_response, reason) do
+    QueryLogger.log_query(%{
+      client_ip: format_ip(state.client_ip),
+      client_port: state.client_port,
+      view: qs.view,
+      qname: get_query_name(qs.query),
+      qtype: get_query_type(qs.query),
+      response_code: error_response.header.rcode,
+      response_time_us: elapsed_ms(qs.started_at) * 1000,
+      answer_count: 0,
+      error: reason
+    })
+  end
 end

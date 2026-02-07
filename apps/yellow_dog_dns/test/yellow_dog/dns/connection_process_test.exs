@@ -734,6 +734,82 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
     end
   end
 
+  describe "QueryLogger integration" do
+    setup do
+      # Start a local QueryLogger instance for this test
+      {:ok, logger_pid} =
+        YellowDog.Dns.QueryLogger.start_link(name: YellowDog.Dns.QueryLogger, buffer_size: 100)
+
+      {:ok, pid} =
+        ConnectionProcess.start_link(
+          handler_pid: self(),
+          client_ip: {10, 0, 0, 1},
+          client_port: 40000,
+          query_timeout: 5000
+        )
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
+
+        try do
+          if Process.alive?(logger_pid), do: GenServer.stop(logger_pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      {:ok, pid: pid, logger_pid: logger_pid}
+    end
+
+    test "logs successful query to QueryLogger", %{pid: pid, logger_pid: logger_pid} do
+      query = build_test_query(900, "logged.example.com", :a)
+      :ok = ConnectionProcess.submit_query(pid, query)
+
+      response = build_test_response(query)
+      send(pid, {:resolution_complete, 900, response})
+
+      assert_receive {:dns_response, 900, _response}, 100
+
+      # Allow cast to be processed
+      Process.sleep(50)
+
+      logs = YellowDog.Dns.QueryLogger.get_recent_logs(logger_pid, limit: 10)
+      assert length(logs) >= 1
+
+      [entry | _] = logs
+      assert entry.client_ip == "10.0.0.1"
+      assert to_string(entry.qname) =~ "logged.example.com"
+      assert to_string(entry.qtype) =~ "A"
+      assert entry.response_code == RCode.no_error()
+      assert entry.answer_count == 0
+      assert is_integer(entry.response_time_us)
+    end
+
+    test "logs error query to QueryLogger", %{pid: pid, logger_pid: logger_pid} do
+      query = build_test_query(901, "error.example.com", :aaaa)
+      :ok = ConnectionProcess.submit_query(pid, query)
+
+      send(pid, {:resolution_error, 901, :refused})
+
+      assert_receive {:dns_response, 901, _response}, 100
+
+      # Allow cast to be processed
+      Process.sleep(50)
+
+      logs = YellowDog.Dns.QueryLogger.get_recent_logs(logger_pid, limit: 10)
+      assert length(logs) >= 1
+
+      [entry | _] = logs
+      assert entry.client_ip == "10.0.0.1"
+      assert to_string(entry.qname) =~ "error.example.com"
+      assert entry.error == :refused
+    end
+  end
+
   describe "concurrent query handling" do
     test "handles multiple queries with different IDs" do
       {:ok, pid} =
