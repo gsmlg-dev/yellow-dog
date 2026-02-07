@@ -7,8 +7,8 @@
 
 ## Session Summary
 Iteration 16 (continued): Comprehensive atom safety + test coverage:
-- ✅ **1064+ umbrella tests passing**, 0 failures
-- ✅ **820 Console tests passing** (757 prior + 19 dashboard + 25 logs + 19 diagnostics extended), 0 failures
+- ✅ **1095+ umbrella tests passing**, 0 failures
+- ✅ **851 Console tests passing**, 0 failures
 - ✅ Wired QueryLogger into ConnectionProcess (complete_query + complete_query_error)
 - ✅ Fixed `String.to_atom/1` in mDNS ServicesLive filter (atom leak vulnerability)
 - ✅ Added allowlist guards to `String.to_existing_atom/1` in DashboardLive, LogsLive
@@ -21,7 +21,10 @@ Iteration 16 (continued): Comprehensive atom safety + test coverage:
 - ✅ 63 Dashboard/Logs/Diagnostics LiveView tests (mounting, events, filters, CSV, accessibility)
 - ✅ Fixed flaky async test assertions for service_running state (conditional assertions)
 - ✅ Added aria-labels to 9 remaining select elements (record_form, zone_live, settings, diagnostics tabs)
-- ✅ **11 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests, flaky fix, aria-labels
+- ✅ Added real-time form validation to mDNS service registration (port, type format, IP addresses)
+- ✅ Fixed String.to_integer crash on invalid port input in save_service handler
+- ✅ 31 tests for mDNS services page (mounting, form validation, filter events, CSV export)
+- ✅ **12 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests, flaky fix, aria-labels, mDNS form validation
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -102,7 +105,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 820 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 44 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs + 12 pool detail + 63 dashboard/logs/diagnostics)
+- [x] 851 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 44 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs + 12 pool detail + 63 dashboard/logs/diagnostics + 31 mDNS services)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -126,6 +129,8 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 8. `6a476d6` - docs: update CONTINUITY with dashboard/logs/diagnostics test coverage
 9. `e0ec730` - fix(test): resolve flaky service_running assertions in async test suite
 10. `03eeea0` - fix(console): add aria-labels to 9 select elements for WCAG accessibility
+11. `3468983` - docs: update CONTINUITY with aria-labels and flaky test fix
+12. `1823ee9` - feat(console): add real-time form validation to mDNS service registration
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
