@@ -427,15 +427,15 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
               <table class="table table-zebra table-sm">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Client</th>
-                    <th>Query Name</th>
-                    <th>Type</th>
-                    <th>Proto</th>
-                    <th>RCode</th>
-                    <th>Latency</th>
-                    <th>Cache</th>
-                    <th>View</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Client</th>
+                    <th scope="col">Query Name</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Proto</th>
+                    <th scope="col">RCode</th>
+                    <th scope="col">Latency</th>
+                    <th scope="col">Cache</th>
+                    <th scope="col">View</th>
                   </tr>
                 </thead>
                 <tbody>

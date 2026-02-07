@@ -388,8 +388,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                   <table class="table table-sm">
                     <thead>
                       <tr>
-                        <th>#</th>
-                        <th>Domain</th>
+                        <th scope="col">#</th>
+                        <th scope="col">Domain</th>
                         <th class="text-right">Queries</th>
                       </tr>
                     </thead>
@@ -419,8 +419,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                   <table class="table table-sm">
                     <thead>
                       <tr>
-                        <th>#</th>
-                        <th>Client IP</th>
+                        <th scope="col">#</th>
+                        <th scope="col">Client IP</th>
                         <th class="text-right">Queries</th>
                       </tr>
                     </thead>

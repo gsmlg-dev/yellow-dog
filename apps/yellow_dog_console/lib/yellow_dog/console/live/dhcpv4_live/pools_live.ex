@@ -297,14 +297,14 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             <table class="table table-zebra">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Network</th>
-                  <th>IP Range</th>
-                  <th>Lease Time</th>
-                  <th>Gateway</th>
-                  <th>Utilization</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Network</th>
+                  <th scope="col">IP Range</th>
+                  <th scope="col">Lease Time</th>
+                  <th scope="col">Gateway</th>
+                  <th scope="col">Utilization</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>

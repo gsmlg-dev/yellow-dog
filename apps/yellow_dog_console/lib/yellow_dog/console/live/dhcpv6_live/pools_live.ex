@@ -291,13 +291,13 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
             <table class="table table-zebra">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Network</th>
-                  <th>IPv6 Range</th>
-                  <th>Preferred / Valid Lifetime</th>
-                  <th>Utilization</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Network</th>
+                  <th scope="col">IPv6 Range</th>
+                  <th scope="col">Preferred / Valid Lifetime</th>
+                  <th scope="col">Utilization</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>

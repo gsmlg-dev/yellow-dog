@@ -464,7 +464,11 @@ defmodule YellowDog.Console.ProcessMapLive do
       <div class="p-4">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-bold">Process Status</h3>
-          <button class="btn btn-ghost btn-sm btn-circle" phx-click="close_panel">
+          <button
+            class="btn btn-ghost btn-sm btn-circle"
+            phx-click="close_panel"
+            aria-label="Close panel"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-5 w-5"
