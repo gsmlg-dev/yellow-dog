@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 51)
+**Phase**: IN_PROGRESS (Iteration 52)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 51 of 1000
+**Iteration**: 52 of 1000
 
 ## Session Summary
-Iteration 50: Replace verbose ETS value extraction with `&elem(&1, 1)` capture:
+Iteration 51: Replace Enum.map|>Enum.max/min with single-pass Enum.reduce:
+- ✅ **6415 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ 7 instances across 5 files: view.ex, cache.ex, metrics_live.ex (3), monitor_live.ex, discovery_live.ex
+- ✅ Two-pass `Enum.map(accessor) |> Enum.max/min()` → single-pass `Enum.reduce(list, default, fn x, acc -> max/min(...) end)`
+- ✅ 5 files — **1 commit** — net -4 lines
+
+Previous iteration 50: Replace verbose ETS value extraction with `&elem(&1, 1)` capture:
 - ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
 - ✅ 14 instances of `Enum.map(fn {_key, val} -> val end)` → `Enum.map(&elem(&1, 1))`
 - ✅ Files: message_cache.ex (2), service_registry.ex (1), network_monitor.ex (4), lease_manager.ex (2), store.ex (2), auth.ex (3+helper)
