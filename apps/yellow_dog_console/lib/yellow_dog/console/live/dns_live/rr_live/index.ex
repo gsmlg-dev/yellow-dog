@@ -21,20 +21,21 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "Resource Records")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:view_name, nil)
-     |> assign(:zone_type, nil)
-     |> assign(:zone_name, nil)
-     |> assign(:zone_pid, nil)
-     |> assign(:rrs, [])
-     |> assign(:filter, "")
-     |> assign(:type_filter, "all")
-     |> assign(:delete_confirm, nil)
-     |> assign(:bulk_form, nil)
-     |> assign(:editing_rr, nil)
-     |> assign(:bulk_preview, nil)}
+     assign(socket,
+       page_title: "Resource Records",
+       service_running: service_running?(YellowDog.Dns),
+       view_name: nil,
+       zone_type: nil,
+       zone_name: nil,
+       zone_pid: nil,
+       rrs: [],
+       filter: "",
+       type_filter: "all",
+       delete_confirm: nil,
+       bulk_form: nil,
+       editing_rr: nil,
+       bulk_preview: nil
+     )}
   end
 
   @impl true

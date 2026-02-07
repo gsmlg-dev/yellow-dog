@@ -27,12 +27,14 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "DHCPv6 Leases")
-     |> assign(:service_running, service_running?(YellowDog.Dhcpv6.LeaseManager))
-     |> assign(:search_query, "")
-     |> assign(:filter_state, "all")
-     |> assign(:filter_ia_type, "all")
-     |> assign(:filter_pool, "all")
+     |> assign(
+       page_title: "DHCPv6 Leases",
+       service_running: service_running?(YellowDog.Dhcpv6.LeaseManager),
+       search_query: "",
+       filter_state: "all",
+       filter_ia_type: "all",
+       filter_pool: "all"
+     )
      |> load_leases()}
   end
 

@@ -21,20 +21,21 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "DNS Views")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:views, list_views())
-     |> assign(:filter, "")
-     |> assign(:status_filter, "all")
-     |> assign(:delete_confirm, nil)
-     |> assign(:view_form, nil)
-     |> assign(:editing_view, nil)
-     |> assign(:is_default_view, false)
-     |> assign(:countries, GeoIpDb.list_countries())
-     |> assign(:selected_countries, [])
-     |> assign(:country_search, "")
-     |> assign(:form_errors, %{})}
+     assign(socket,
+       page_title: "DNS Views",
+       service_running: service_running?(YellowDog.Dns),
+       views: list_views(),
+       filter: "",
+       status_filter: "all",
+       delete_confirm: nil,
+       view_form: nil,
+       editing_view: nil,
+       is_default_view: false,
+       countries: GeoIpDb.list_countries(),
+       selected_countries: [],
+       country_search: "",
+       form_errors: %{}
+     )}
   end
 
   @impl true

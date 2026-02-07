@@ -16,13 +16,14 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "Network Discovery")
-     |> assign(:service_running, service_running?(YellowDog.Mdns))
-     |> assign(:services, list_discovered_services())
-     |> assign(:search, "")
-     |> assign(:type_filter, "all")
-     |> assign(:selected_service, nil)}
+     assign(socket,
+       page_title: "Network Discovery",
+       service_running: service_running?(YellowDog.Mdns),
+       services: list_discovered_services(),
+       search: "",
+       type_filter: "all",
+       selected_service: nil
+     )}
   end
 
   @impl true

@@ -22,12 +22,14 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Address Pools")
-     |> assign(:show_form, false)
-     |> assign(:form_mode, :create)
-     |> assign(:editing_pool, nil)
-     |> assign(:filter, "")
-     |> assign(:service_running, service_running?(YellowDog.Dhcpv4.LeaseManager))
+     |> assign(
+       page_title: "Address Pools",
+       show_form: false,
+       form_mode: :create,
+       editing_pool: nil,
+       filter: "",
+       service_running: service_running?(YellowDog.Dhcpv4.LeaseManager)
+     )
      |> load_pools()}
   end
 

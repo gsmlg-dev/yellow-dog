@@ -23,14 +23,15 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "DNS Metrics")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:metrics, fetch_metrics())
-     |> assign(:summary, fetch_summary())
-     |> assign(:top_domains, fetch_top_domains())
-     |> assign(:top_clients, fetch_top_clients())
-     |> assign(:response_times, fetch_response_times())}
+     assign(socket,
+       page_title: "DNS Metrics",
+       service_running: service_running?(YellowDog.Dns),
+       metrics: fetch_metrics(),
+       summary: fetch_summary(),
+       top_domains: fetch_top_domains(),
+       top_clients: fetch_top_clients(),
+       response_times: fetch_response_times()
+     )}
   end
 
   @impl true

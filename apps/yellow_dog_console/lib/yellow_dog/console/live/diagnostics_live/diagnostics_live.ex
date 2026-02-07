@@ -19,12 +19,13 @@ defmodule YellowDog.Console.DiagnosticsLive do
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
-     socket
-     |> assign(:page_title, "Service Diagnostics")
-     |> assign(:active_tab, :dns)
-     |> assign(:display_mode, :struct)
-     |> assign(:history_visible, false)
-     |> assign(:tabs, init_tabs())}
+     assign(socket,
+       page_title: "Service Diagnostics",
+       active_tab: :dns,
+       display_mode: :struct,
+       history_visible: false,
+       tabs: init_tabs()
+     )}
   end
 
   @impl true

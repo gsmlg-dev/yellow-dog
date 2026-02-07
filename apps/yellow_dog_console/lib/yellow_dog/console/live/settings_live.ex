@@ -28,18 +28,20 @@ defmodule YellowDog.Console.SettingsLive do
          version_info <- ConfigurationVersion.get_version(config_path) do
       socket =
         socket
-        |> assign(:page_title, "Settings")
-        |> assign(:config_path, config_path)
-        |> assign(:config, config)
-        |> assign(:version_info, version_info)
-        |> assign(:show_conflict_modal, false)
-        |> assign(:show_recovery_modal, false)
-        |> assign(:changeset, nil)
-        |> assign(:pending_changes, %{})
-        |> assign(:show_pool_form, false)
-        |> assign(:pool_form_mode, nil)
-        |> assign(:pool_form_service, nil)
-        |> assign(:editing_pool, nil)
+        |> assign(
+          page_title: "Settings",
+          config_path: config_path,
+          config: config,
+          version_info: version_info,
+          show_conflict_modal: false,
+          show_recovery_modal: false,
+          changeset: nil,
+          pending_changes: %{},
+          show_pool_form: false,
+          pool_form_mode: nil,
+          pool_form_service: nil,
+          editing_pool: nil
+        )
         |> load_service_forms()
 
       {:ok, socket}
@@ -53,19 +55,21 @@ defmodule YellowDog.Console.SettingsLive do
 
         socket =
           socket
-          |> assign(:page_title, "Settings")
+          |> assign(
+            page_title: "Settings",
+            config_path: config_path,
+            config: %{},
+            version_info: %{version: 0, timestamp: 0, file_path: config_path},
+            show_conflict_modal: false,
+            show_recovery_modal: false,
+            changeset: nil,
+            pending_changes: %{},
+            show_pool_form: false,
+            pool_form_mode: nil,
+            pool_form_service: nil,
+            editing_pool: nil
+          )
           |> put_flash(:error, "Failed to load configuration: #{inspect(reason)}")
-          |> assign(:config_path, config_path)
-          |> assign(:config, %{})
-          |> assign(:version_info, %{version: 0, timestamp: 0, file_path: config_path})
-          |> assign(:show_conflict_modal, false)
-          |> assign(:show_recovery_modal, false)
-          |> assign(:changeset, nil)
-          |> assign(:pending_changes, %{})
-          |> assign(:show_pool_form, false)
-          |> assign(:pool_form_mode, nil)
-          |> assign(:pool_form_service, nil)
-          |> assign(:editing_pool, nil)
           |> load_service_forms()
 
         {:ok, socket}

@@ -14,15 +14,16 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "Registered Services")
-     |> assign(:service_running, service_running?(YellowDog.Mdns))
-     |> assign(:services, list_services())
-     |> assign(:filter, :all)
-     |> assign(:show_form, false)
-     |> assign(:form_mode, :new)
-     |> assign(:editing_service, nil)
-     |> assign(:form_errors, %{})}
+     assign(socket,
+       page_title: "Registered Services",
+       service_running: service_running?(YellowDog.Mdns),
+       services: list_services(),
+       filter: :all,
+       show_form: false,
+       form_mode: :new,
+       editing_service: nil,
+       form_errors: %{}
+     )}
   end
 
   @impl true

@@ -26,15 +26,17 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "DNS Query Logs")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:search_query, "")
-     |> assign(:filter_view, "all")
-     |> assign(:filter_rcode, "all")
-     |> assign(:filter_protocol, "all")
-     |> assign(:paused, false)
-     |> assign(:entries, [])
-     |> assign(:stats, default_stats())
+     |> assign(
+       page_title: "DNS Query Logs",
+       service_running: service_running?(YellowDog.Dns),
+       search_query: "",
+       filter_view: "all",
+       filter_rcode: "all",
+       filter_protocol: "all",
+       paused: false,
+       entries: [],
+       stats: default_stats()
+     )
      |> load_entries()}
   end
 

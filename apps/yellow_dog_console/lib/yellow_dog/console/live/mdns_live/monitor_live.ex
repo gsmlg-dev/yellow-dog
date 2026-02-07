@@ -17,14 +17,15 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "Network Monitor")
-     |> assign(:service_running, service_running?(YellowDog.Mdns))
-     |> assign(:queries, get_recent_queries(50))
-     |> assign(:stats, get_network_stats())
-     |> assign(:limit, 50)
-     |> assign(:search, "")
-     |> assign(:auto_refresh, true)}
+     assign(socket,
+       page_title: "Network Monitor",
+       service_running: service_running?(YellowDog.Mdns),
+       queries: get_recent_queries(50),
+       stats: get_network_stats(),
+       limit: 50,
+       search: "",
+       auto_refresh: true
+     )}
   end
 
   @impl true

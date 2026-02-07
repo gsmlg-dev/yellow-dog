@@ -13,11 +13,12 @@ defmodule YellowDog.Console.MdnsLive.Index do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "mDNS Service")
-     |> assign(:status, get_mdns_status())
-     |> assign(:stats, get_mdns_stats())
-     |> assign(:network_stats, get_network_stats())}
+     assign(socket,
+       page_title: "mDNS Service",
+       status: get_mdns_status(),
+       stats: get_mdns_stats(),
+       network_stats: get_network_stats()
+     )}
   end
 
   @impl true

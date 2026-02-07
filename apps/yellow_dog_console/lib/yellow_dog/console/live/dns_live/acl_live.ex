@@ -23,27 +23,26 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "DNS ACL")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:views, list_views_with_acl())
-     |> assign(:named_acls, list_named_acls())
-     |> assign(:builtin_acls, ACL.list_builtins())
-     |> assign(:countries, GeoIpDb.list_countries())
-     |> assign(:selected_countries, [])
-     |> assign(:country_search, "")
-     |> assign(:editing_view, nil)
-     |> assign(:show_create_form, false)
-     |> assign(:editing_acl, nil)
-     |> assign(:delete_confirm, nil)
-     |> assign(:acl_form, to_form(%{"acl_type" => "any", "rules" => ""}))
-     |> assign(
-       :create_form,
-       to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""})
-     )
-     |> assign(:filter, "")
-     |> assign(:type_filter, "all")
-     |> assign(:form_errors, %{})}
+     assign(socket,
+       page_title: "DNS ACL",
+       service_running: service_running?(YellowDog.Dns),
+       views: list_views_with_acl(),
+       named_acls: list_named_acls(),
+       builtin_acls: ACL.list_builtins(),
+       countries: GeoIpDb.list_countries(),
+       selected_countries: [],
+       country_search: "",
+       editing_view: nil,
+       show_create_form: false,
+       editing_acl: nil,
+       delete_confirm: nil,
+       acl_form: to_form(%{"acl_type" => "any", "rules" => ""}),
+       create_form:
+         to_form(%{"name" => "", "description" => "", "acl_type" => "custom", "rules" => ""}),
+       filter: "",
+       type_filter: "all",
+       form_errors: %{}
+     )}
   end
 
   @impl true

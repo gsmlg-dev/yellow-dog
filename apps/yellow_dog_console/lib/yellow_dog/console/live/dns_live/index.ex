@@ -17,11 +17,12 @@ defmodule YellowDog.Console.DnsLive.Index do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "DNS Overview")
-     |> assign(:status, get_dns_status())
-     |> assign(:stats, get_dns_stats())
-     |> assign(:cache_stats, get_cache_stats())}
+     assign(socket,
+       page_title: "DNS Overview",
+       status: get_dns_status(),
+       stats: get_dns_stats(),
+       cache_stats: get_cache_stats()
+     )}
   end
 
   @impl true

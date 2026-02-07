@@ -24,18 +24,19 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     end
 
     {:ok,
-     socket
-     |> assign(:page_title, "DNS Zones")
-     |> assign(:service_running, service_running?(YellowDog.Dns))
-     |> assign(:view_name, nil)
-     |> assign(:zones, [])
-     |> assign(:filter, "")
-     |> assign(:type_filter, "all")
-     |> assign(:delete_confirm, nil)
-     |> assign(:zone_form, nil)
-     |> assign(:import_form, nil)
-     |> assign(:editing_zone, nil)
-     |> assign(:form_errors, %{})}
+     assign(socket,
+       page_title: "DNS Zones",
+       service_running: service_running?(YellowDog.Dns),
+       view_name: nil,
+       zones: [],
+       filter: "",
+       type_filter: "all",
+       delete_confirm: nil,
+       zone_form: nil,
+       import_form: nil,
+       editing_zone: nil,
+       form_errors: %{}
+     )}
   end
 
   @impl true
