@@ -15,6 +15,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     {:ok,
      socket
      |> assign(:page_title, "Registered Services")
+     |> assign(:service_running, mdns_service_running?())
      |> assign(:services, list_services())
      |> assign(:filter, :all)
      |> assign(:show_form, false)
@@ -240,4 +241,6 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   defp format_txt_for_csv(_), do: ""
+
+  defp mdns_service_running?, do: Process.whereis(YellowDog.Mdns) != nil
 end

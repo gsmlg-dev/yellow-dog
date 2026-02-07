@@ -1390,4 +1390,28 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert html =~ "aria-label=\"Refresh\""
     end
   end
+
+  # ============================================================================
+  # Service Status Alert on DNS Sub-Pages
+  # ============================================================================
+
+  describe "service status alert on DNS sub-pages" do
+    @dns_sub_pages [
+      {"/dns/views", "Views"},
+      {"/dns/acl", "ACL"}
+    ]
+
+    for {path, name} <- @dns_sub_pages do
+      test "#{name} page shows DNS service alert", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "DNS service is not running"
+      end
+    end
+
+    test "service alert has link to dashboard", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dns/views")
+      assert html =~ "/dashboard"
+      assert html =~ "Go to Dashboard"
+    end
+  end
 end

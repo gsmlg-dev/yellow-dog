@@ -17,6 +17,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     {:ok,
      socket
      |> assign(:page_title, "Network Discovery")
+     |> assign(:service_running, mdns_service_running?())
      |> assign(:services, list_discovered_services())
      |> assign(:search, "")
      |> assign(:type_filter, "all")
@@ -180,4 +181,6 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   end
 
   defp format_txt_for_csv(_), do: ""
+
+  defp mdns_service_running?, do: Process.whereis(YellowDog.Mdns) != nil
 end

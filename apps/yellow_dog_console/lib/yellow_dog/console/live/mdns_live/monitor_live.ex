@@ -17,6 +17,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     {:ok,
      socket
      |> assign(:page_title, "Network Monitor")
+     |> assign(:service_running, mdns_service_running?())
      |> assign(:queries, get_recent_queries(50))
      |> assign(:stats, get_network_stats())
      |> assign(:limit, 50)
@@ -189,4 +190,6 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     max_count = services |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> 1 end)
     if max_count > 0, do: count / max_count * 100, else: 0
   end
+
+  defp mdns_service_running?, do: Process.whereis(YellowDog.Mdns) != nil
 end

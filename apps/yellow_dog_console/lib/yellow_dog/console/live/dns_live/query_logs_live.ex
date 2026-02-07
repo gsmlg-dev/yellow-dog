@@ -26,6 +26,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     {:ok,
      socket
      |> assign(:page_title, "DNS Query Logs")
+     |> assign(:service_running, dns_service_running?())
      |> assign(:search_query, "")
      |> assign(:filter_view, "all")
      |> assign(:filter_rcode, "all")
@@ -245,6 +246,8 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="space-y-4">
+        <.service_alert :if={not @service_running} service="DNS" />
+
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
           <h1 class="text-2xl font-bold">DNS Query Logs</h1>
@@ -501,4 +504,6 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     </Layouts.app>
     """
   end
+
+  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
 end

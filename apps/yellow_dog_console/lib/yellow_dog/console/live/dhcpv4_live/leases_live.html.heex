@@ -1,5 +1,7 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
+    <.service_alert :if={not @service_running} service="DHCPv4" />
+
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>

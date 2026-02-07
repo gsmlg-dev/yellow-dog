@@ -24,6 +24,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     {:ok,
      socket
      |> assign(:page_title, "DNS Metrics")
+     |> assign(:service_running, dns_service_running?())
      |> assign(:metrics, fetch_metrics())
      |> assign(:summary, fetch_summary())
      |> assign(:top_domains, fetch_top_domains())
@@ -204,6 +205,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="DNS" />
+
         <%!-- Header --%>
         <div class="flex flex-wrap justify-between items-center gap-4">
           <h1 class="text-2xl font-bold">DNS Metrics</h1>
@@ -568,4 +571,6 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp format_bucket_label(us) when is_integer(us) and us >= 1_000, do: "#{div(us, 1_000)}ms"
   defp format_bucket_label(us) when is_integer(us), do: "#{us}us"
   defp format_bucket_label(other), do: to_string(other)
+
+  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
 end

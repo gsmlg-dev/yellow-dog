@@ -463,6 +463,45 @@ defmodule YellowDog.Console.CoreComponents do
     """
   end
 
+  @doc """
+  Renders a service status alert banner.
+
+  Shows a warning when the backing service is not running, helping users
+  understand why data may be missing.
+
+  ## Examples
+
+      <.service_alert :if={not @service_running} service="DNS" />
+      <.service_alert :if={not @service_running} service="mDNS" navigate="/dashboard" />
+  """
+  attr :service, :string, required: true
+  attr :navigate, :string, default: "/dashboard"
+
+  def service_alert(assigns) do
+    ~H"""
+    <div class="alert alert-warning" role="alert">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-6 w-6 shrink-0 stroke-current"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+        />
+      </svg>
+      <div>
+        <h3 class="font-bold">{@service} service is not running</h3>
+        <div class="text-sm">Data shown may be unavailable. Start the service from the dashboard.</div>
+      </div>
+      <.link navigate={@navigate} class="btn btn-sm btn-ghost">Go to Dashboard</.link>
+    </div>
+    """
+  end
+
   ## Modal helpers
 
   def show_modal(js \\ %JS{}, id) when is_binary(id) do

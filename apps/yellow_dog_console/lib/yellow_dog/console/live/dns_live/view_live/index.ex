@@ -21,6 +21,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "DNS Views")
+     |> assign(:service_running, dns_service_running?())
      |> assign(:views, list_views())
      |> assign(:filter, "")
      |> assign(:status_filter, "all")
@@ -650,4 +651,6 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       end
     end)
   end
+
+  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
 end

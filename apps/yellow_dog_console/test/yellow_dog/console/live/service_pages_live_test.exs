@@ -413,4 +413,55 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       end
     end
   end
+
+  # ============================================================================
+  # Service Status Alerts (shows warning when service is not running)
+  # ============================================================================
+
+  describe "service status alert on DNS pages" do
+    @dns_alert_pages [
+      {"/dns/views", "DNS Views"},
+      {"/dns/acl", "DNS ACL"}
+    ]
+
+    for {path, name} <- @dns_alert_pages do
+      test "#{name} shows service alert when DNS not running", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "service is not running"
+        assert html =~ "Go to Dashboard"
+      end
+    end
+  end
+
+  describe "service status alert on mDNS pages" do
+    @mdns_alert_pages [
+      {"/mdns/services", "mDNS Services"},
+      {"/mdns/discovery", "mDNS Discovery"},
+      {"/mdns/monitor", "mDNS Monitor"}
+    ]
+
+    for {path, name} <- @mdns_alert_pages do
+      test "#{name} shows service alert when mDNS not running", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "service is not running"
+        assert html =~ "Go to Dashboard"
+      end
+    end
+  end
+
+  describe "service status alert on DHCP pages" do
+    @dhcp_alert_pages [
+      {"/dhcpv4/leases", "DHCPv4 Leases"},
+      {"/dhcpv6/leases", "DHCPv6 Leases"},
+      {"/dhcpv4/pools", "DHCPv4 Pools"},
+      {"/dhcpv6/pools", "DHCPv6 Pools"}
+    ]
+
+    for {path, name} <- @dhcp_alert_pages do
+      test "#{name} shows service alert when DHCP not running", %{conn: conn} do
+        {:ok, _view, html} = live(conn, unquote(path))
+        assert html =~ "not running" or html =~ "Not Running"
+      end
+    end
+  end
 end
