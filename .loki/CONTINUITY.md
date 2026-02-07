@@ -1,17 +1,25 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 61)
+**Phase**: IN_PROGRESS (Iteration 62)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 61 of 1000
+**Iteration**: 62 of 1000
 
 ## Session Summary
-Iteration 60: Style + performance sweep:
+Iteration 61: for comprehension conversions in mDNS:
+- ✅ **309 mDNS tests, 0 failures, 0 warnings, 0 credo issues**
+- ✅ Replaced `Enum.map(&elem(&1, 1)) |> Enum.filter(...)` with `for {_key, entry} <- ...` in message_cache.ex (2), network_monitor.ex (5)
+- ✅ Replaced triple `map|>reject|>map` with `for` + pattern-match filter in service_store.ex
+- ✅ Replaced `Enum.map |> Enum.uniq |> length` with `Enum.uniq_by |> length` in network_monitor.ex
+- ✅ 3 files — **1 commit** — net -11 lines
+- ✅ Full credo --strict passes with 0 issues
+
+Previous iteration 60: Style + performance sweep:
 - ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
 - ✅ Fixed 9 consecutive blank line violations across 9 console LiveView files per credo --strict
 - ✅ Replaced 7× `Enum.count(services, &predicate)` with single-pass `Enum.reduce` in mDNS service_registry.ex
-- ✅ Replaced 4× `Enum.map |> Enum.join` with `Enum.map_join` across 3 files (pools_live, lease.ex, logger_handlers)
-- ✅ 12 files — **3 commits** — net -17 lines
+- ✅ Replaced 15× `Enum.map |> Enum.join` with `Enum.map_join` across 14 files in 6 apps
+- ✅ 23 files — **4 commits** — net -29 lines
 - ✅ Full credo --strict passes with 0 issues
 
 Previous iteration 59: Credo fixes in DNS app:
