@@ -1,16 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 23)
+**Phase**: IN_PROGRESS (Iteration 24)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 23 of 1000
+**Iteration**: 24 of 1000
 
 ## Session Summary
-Iteration 23: DRY refactoring + bare rescue hardening:
-- ✅ **4,768 ex_dns + 1,052 DNS + 962 console + 309 mDNS + 319 DHCPv4 + 201 DHCPv6 tests, 0 failures**
+Iteration 24: Enum pattern optimization + @spec annotations:
+- ✅ **All tests passing, 0 failures**
+- ✅ Replaced 6 `Enum.map |> Enum.reject(&is_nil/1)` patterns with single-pass `for` comprehensions across DHCPv4/v6 pool.ex and address_pool.ex
+- ✅ Added `@spec` to 17 public DNS message helpers (RCode constructors, Header helpers)
+- ✅ **2 commits this iteration**
+
+Previous iteration 23: DRY refactoring + bare rescue hardening:
 - ✅ Extracted `YellowDog.Config.TomlHelpers` — 7 shared functions from identical DHCPv4/v6 PoolStore private helpers (~90 lines deduplication)
 - ✅ Tightened **19 bare rescue clauses** across 8 files in protocol handlers, telemetry, and config watcher
-- ✅ **2 commits this iteration**
 
 Previous iteration 22: Major DRY refactoring — shared rate limiter macro:
 - ✅ Extracted shared `YellowDog.RateLimiter` `__using__` macro (~1,300 lines deduplication)
@@ -161,6 +165,10 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
+1. `0ac2898` - perf(dhcp): replace Enum.map |> Enum.reject with for comprehensions
+2. `2bc1968` - refactor(ex_dns): add @spec to 17 public DNS message helpers
+
+Previous iteration 23 commits:
 1. `48042f0` - refactor(dhcp): extract shared TomlHelpers from duplicate PoolStore code
 2. `818a8ab` - refactor: replace bare rescue with explicit exception types
 
