@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 30)
+**Phase**: IN_PROGRESS (Iteration 31)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 30 of 1000
+**Iteration**: 31 of 1000
 
 ## Session Summary
-Iteration 30: Telemetry DRY refactoring + structured Logger metadata:
+Iteration 31: Enum.map_join + structured Logger metadata across 11 files:
+- ✅ **1,052 umbrella + 962 console tests, 0 failures**
+- ✅ Replaced **11 `Enum.map |> Enum.join` chains** with single-pass `Enum.map_join` across **6 files** in ex_dhcp (5), ex_dns (3), dhcpv4 message (1)
+- ✅ Converted **11 Logger string interpolation** calls to structured metadata across **4 files** (conflict_resolver, basic_auth, abyss/logger, geo_ip_db)
+- ✅ **1 commit this iteration** — net +13 lines (expanded metadata args)
+
+Previous iteration 30: Telemetry DRY refactoring + structured Logger metadata:
 - ✅ **1,052 umbrella + 962 console tests, 0 failures**
 - ✅ Extracted `safe_handle/1` wrapper in logger_handlers.ex — **eliminated 11 identical try/rescue/catch blocks** (~69 lines removed)
 - ✅ Converted **24 Logger string interpolation** calls to structured metadata (22 handler errors + 2 span logs)
