@@ -394,7 +394,7 @@ defmodule YellowDog.Dns.ConfigWatcher do
     try do
       YellowDog.Dns.ViewManager.load_config(data_path)
     rescue
-      e ->
+      e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->
         Telemetry.error("Failed to reload views", %{error: Exception.message(e)})
         {:error, {:reload_failed, Exception.message(e)}}
     catch
@@ -408,7 +408,7 @@ defmodule YellowDog.Dns.ConfigWatcher do
     try do
       YellowDog.Dns.AclRegistry.reload()
     rescue
-      e ->
+      e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->
         Telemetry.error("Failed to reload ACLs", %{error: Exception.message(e)})
         {:error, {:reload_failed, Exception.message(e)}}
     catch
@@ -439,7 +439,8 @@ defmodule YellowDog.Dns.ConfigWatcher do
               :ok
           end
         rescue
-          e -> {:error, {file, Exception.message(e)}}
+          e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->
+            {:error, {file, Exception.message(e)}}
         catch
           :exit, reason -> {:error, {file, reason}}
         end

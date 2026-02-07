@@ -67,7 +67,7 @@ defmodule YellowDog.Dhcpv4.Handler do
       # Process the DHCP message
       handle_dhcp_message(message, ip, port, state, start_time)
     rescue
-      e ->
+      e in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
         # Emit telemetry event for error
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :message, :error],

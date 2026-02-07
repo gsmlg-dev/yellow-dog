@@ -249,7 +249,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_dns_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -326,7 +326,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_dhcpv4_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -391,7 +391,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_dhcpv6_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -460,7 +460,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_mdns_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -525,7 +525,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_service_event(event, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -558,7 +558,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_dns_query_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -653,7 +653,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_root_zone_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -699,7 +699,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_application_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -740,7 +740,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_config_event(event, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -780,7 +780,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_console_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->
@@ -847,7 +847,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
     try do
       do_handle_infrastructure_event(event, measurements, metadata, config)
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, KeyError] ->
         Logger.error(fn -> "Telemetry handler error: #{inspect(error)}" end)
     catch
       kind, value ->

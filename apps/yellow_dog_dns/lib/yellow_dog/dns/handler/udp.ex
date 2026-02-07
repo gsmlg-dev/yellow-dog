@@ -59,7 +59,7 @@ defmodule YellowDog.Dns.Handler.UDP do
     try do
       handle_raw_data(data, client_ip, client_port, state)
     rescue
-      error ->
+      error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
         Telemetry.error("DNS handler exception", %{
           client_ip: format_ip(client_ip),
           client_port: client_port,

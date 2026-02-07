@@ -87,7 +87,7 @@ defmodule YellowDog.Dhcpv6.Handler do
           {:continue, state}
       end
     rescue
-      error ->
+      error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :message, :error],
           %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},

@@ -695,7 +695,7 @@ defmodule YellowDog.Telemetry do
       end_span(span_id, %{status: :success})
       result
     rescue
-      error ->
+      error in [ArgumentError, RuntimeError, FunctionClauseError, MatchError, KeyError] ->
         end_span(span_id, %{status: :failed, error: inspect(error)})
         reraise error, __STACKTRACE__
     catch

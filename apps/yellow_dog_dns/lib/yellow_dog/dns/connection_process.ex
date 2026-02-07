@@ -190,7 +190,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
           {:reply, error, state}
       end
     rescue
-      error ->
+      error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
         Telemetry.warning("Failed to parse DNS query", %{
           error: inspect(error),
           data_size: byte_size(data)

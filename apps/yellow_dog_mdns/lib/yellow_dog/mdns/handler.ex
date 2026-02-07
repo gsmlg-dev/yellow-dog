@@ -52,7 +52,7 @@ defmodule YellowDog.Mdns.Handler do
       mode = Map.get(state, :mode, :hybrid)
       handle_dns_message(message, ip, port, state, start_time, mode)
     rescue
-      e ->
+      e in [ArgumentError, MatchError, FunctionClauseError] ->
         :telemetry.execute(
           [:yellow_dog, :mdns, :message, :parse_error],
           %{count: 1, bytes: byte_size(data)},
@@ -62,7 +62,7 @@ defmodule YellowDog.Mdns.Handler do
         {:continue, state}
     end
   rescue
-    e ->
+    e in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
       :telemetry.execute(
         [:yellow_dog, :mdns, :handler, :error],
         %{count: 1, bytes: byte_size(data)},
@@ -222,7 +222,7 @@ defmodule YellowDog.Mdns.Handler do
     # Send via Server module
     YellowDog.Mdns.Server.send_multicast(response_data)
   rescue
-    e ->
+    e in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
       :telemetry.execute(
         [:yellow_dog, :mdns, :response, :send_failed],
         %{count: 1},
