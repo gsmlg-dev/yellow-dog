@@ -104,9 +104,7 @@ defmodule YellowDog.Console.ConfigManager do
   """
   @spec create_backup(String.t()) :: {:ok, String.t()} | {:error, term()}
   def create_backup(file_path) do
-    unless File.exists?(file_path) do
-      {:error, :file_not_found}
-    else
+    if File.exists?(file_path) do
       # Use microseconds to ensure unique filenames
       timestamp =
         DateTime.utc_now()
@@ -119,6 +117,8 @@ defmodule YellowDog.Console.ConfigManager do
            {:ok, _} <- File.copy(file_path, backup_path) do
         {:ok, backup_path}
       end
+    else
+      {:error, :file_not_found}
     end
   end
 

@@ -457,10 +457,10 @@ defmodule DNS.Zone.Validator do
 
     # Check DNSSEC status
     recommendations =
-      unless has_dnssec?(zone) do
-        ["Consider enabling DNSSEC for security" | recommendations]
-      else
+      if has_dnssec?(zone) do
         recommendations
+      else
+        ["Consider enabling DNSSEC for security" | recommendations]
       end
 
     Enum.reverse(recommendations)

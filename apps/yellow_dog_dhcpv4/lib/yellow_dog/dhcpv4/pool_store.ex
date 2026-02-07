@@ -394,9 +394,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     # Network CIDR is mandatory
     network = Map.get(pool, :network) || Map.get(pool, "network")
 
-    unless network do
-      {:error, "Network CIDR is required (e.g., '192.168.1.0/24')"}
-    else
+    if network do
       with :ok <- validate_network_cidr(network) do
         # Need either ranges or range_start/range_end
         has_ranges = Map.get(pool, :ranges) || Map.get(pool, "ranges")
@@ -411,6 +409,8 @@ defmodule YellowDog.Dhcpv4.PoolStore do
           {:error, "Pool must have either ranges or range_start/range_end"}
         end
       end
+    else
+      {:error, "Network CIDR is required (e.g., '192.168.1.0/24')"}
     end
   end
 
