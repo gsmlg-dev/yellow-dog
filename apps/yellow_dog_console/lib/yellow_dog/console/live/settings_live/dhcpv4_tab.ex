@@ -159,7 +159,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
           <p class="text-base-content/70">
             Manage DHCPv4 address pools including IP ranges, lease times, and DNS settings.
           </p>
-          <a href="/dhcpv4/pools" class="btn btn-primary gap-2">
+          <.link navigate="/dhcpv4/pools" class="btn btn-primary gap-2">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-5 w-5"
@@ -175,7 +175,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
               />
             </svg>
             Manage Pools
-          </a>
+          </.link>
         </div>
       </.card>
     </div>
