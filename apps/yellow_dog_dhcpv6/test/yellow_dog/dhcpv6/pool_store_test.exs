@@ -1,5 +1,5 @@
 defmodule YellowDog.Dhcpv6.PoolStoreTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDog.Dhcpv6.PoolStore
 
@@ -127,17 +127,69 @@ defmodule YellowDog.Dhcpv6.PoolStoreTest do
   end
 
   describe "save_pool/1" do
-    test "saves a pool and updates index" do
-      # This test would require mocking the data directory
-      # The save_pool function writes to the configured data directory
-      # For now, we just verify the function exists
-      assert function_exported?(PoolStore, :save_pool, 1)
+    test "saves a pool file and updates index", %{tmp_dir: tmp_dir} do
+      prev = Application.get_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:yellow_dog, :data_dir, prev),
+          else: Application.delete_env(:yellow_dog, :data_dir)
+      end)
+
+      pool = %{
+        name: "test_v6_pool",
+        enabled: true,
+        network: "2001:db8::/64",
+        range_start: "2001:db8::100",
+        range_end: "2001:db8::200",
+        dns_servers: ["2001:4860:4860::8888"],
+        domain_name: "test.local",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      assert :ok = PoolStore.save_pool(pool)
+
+      # Verify index was updated
+      index_path = Path.join([tmp_dir, "dhcpv6", "pools.toml"])
+      assert File.exists?(index_path)
+      {:ok, names} = PoolStore.load_index(index_path)
+      assert "test_v6_pool" in names
+
+      # Verify pool file was created
+      pool_path = Path.join([tmp_dir, "dhcpv6", "pools", "test_v6_pool.toml"])
+      assert File.exists?(pool_path)
     end
   end
 
   describe "remove_pool/1" do
-    test "function exists" do
-      assert function_exported?(PoolStore, :remove_pool, 1)
+    test "removes a pool file and updates index", %{tmp_dir: tmp_dir} do
+      prev = Application.get_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:yellow_dog, :data_dir, prev),
+          else: Application.delete_env(:yellow_dog, :data_dir)
+      end)
+
+      pool = %{
+        name: "removable_v6",
+        enabled: true,
+        network: "2001:db8:1::/64",
+        range_start: "2001:db8:1::100",
+        range_end: "2001:db8:1::200"
+      }
+
+      # First save, then remove
+      assert :ok = PoolStore.save_pool(pool)
+      assert :ok = PoolStore.remove_pool("removable_v6")
+
+      # Verify pool was removed from index
+      index_path = Path.join([tmp_dir, "dhcpv6", "pools.toml"])
+      {:ok, names} = PoolStore.load_index(index_path)
+      refute "removable_v6" in names
     end
   end
 

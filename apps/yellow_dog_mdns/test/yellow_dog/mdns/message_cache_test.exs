@@ -5,7 +5,7 @@ defmodule YellowDog.Mdns.MessageCacheTest do
   alias DNS.Message.{Record, Question}
 
   # Helper to create a mock DNS message with records
-  defp create_dns_message(opts \\ []) do
+  defp create_dns_message(opts) do
     answers = Keyword.get(opts, :answers, [])
     questions = Keyword.get(opts, :questions, [])
     authority = Keyword.get(opts, :authority, [])
@@ -84,7 +84,7 @@ defmodule YellowDog.Mdns.MessageCacheTest do
     }
   end
 
-  defp create_question(name, type \\ :A) do
+  defp create_question(name, type) do
     %Question{
       name: name,
       type: type,

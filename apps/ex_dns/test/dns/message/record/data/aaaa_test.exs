@@ -513,9 +513,9 @@ defmodule DNS.Message.Record.Data.AAAATest do
     test "AAAA record can be used in resource record" do
       aaaa_record = AAAA.new({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
       # Verify it has the fields needed for a resource record
-      assert aaaa_record.type != nil
-      assert aaaa_record.rdlength != nil
-      assert aaaa_record.data != nil
+      assert to_string(aaaa_record.type) != ""
+      assert aaaa_record.rdlength > 0
+      assert is_tuple(aaaa_record.data)
     end
 
     test "multiple AAAA records for same domain" do

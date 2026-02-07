@@ -596,7 +596,7 @@ defmodule DNS.Message.Record.Data.NSTest do
     test "NS record can be used in resource record" do
       ns = NS.new("ns1.example.com")
       # Verify it has the fields needed for a resource record
-      assert ns.type != nil
+      assert to_string(ns.type) != ""
       assert ns.rdlength != nil
       assert ns.data != nil
     end

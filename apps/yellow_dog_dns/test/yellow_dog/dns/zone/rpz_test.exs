@@ -86,7 +86,7 @@ defmodule YellowDog.Dns.Zone.RPZTest do
   end
 
   # Helper to build a test DNS response with A records
-  defp build_response(query, ips \\ []) do
+  defp build_response(query, ips) do
     anlist =
       Enum.map(ips, fn ip ->
         %{

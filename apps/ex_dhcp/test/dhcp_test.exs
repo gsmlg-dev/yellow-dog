@@ -276,28 +276,32 @@ defmodule DHCPTest do
       assert Code.ensure_loaded?(DHCP.SecureRandom)
     end
 
-    test "generates random transaction IDs" do
-      if function_exported?(DHCP.SecureRandom, :transaction_id, 0) do
-        id1 = DHCP.SecureRandom.transaction_id()
-        id2 = DHCP.SecureRandom.transaction_id()
+    test "generates random DHCPv4 transaction IDs" do
+      id1 = DHCP.SecureRandom.generate_dhcpv4_xid()
+      id2 = DHCP.SecureRandom.generate_dhcpv4_xid()
 
-        # Transaction IDs should be different
-        assert id1 != id2
-      end
+      assert is_integer(id1)
+      assert is_integer(id2)
+      assert id1 >= 0 and id1 <= 0xFFFFFFFF
+      assert id2 >= 0 and id2 <= 0xFFFFFFFF
+    end
+
+    test "generates random DHCPv6 transaction IDs" do
+      id1 = DHCP.SecureRandom.generate_dhcpv6_transaction_id()
+      id2 = DHCP.SecureRandom.generate_dhcpv6_transaction_id()
+
+      assert is_integer(id1)
+      assert is_integer(id2)
+      assert id1 >= 0 and id1 <= 0xFFFFFF
+      assert id2 >= 0 and id2 <= 0xFFFFFF
     end
 
     test "generates random bytes" do
-      if function_exported?(DHCP.SecureRandom, :bytes, 1) do
-        bytes1 = DHCP.SecureRandom.bytes(16)
-        bytes2 = DHCP.SecureRandom.bytes(16)
+      bytes1 = DHCP.SecureRandom.generate_bytes(16)
+      bytes2 = DHCP.SecureRandom.generate_bytes(16)
 
-        # Random bytes should have correct length
-        assert byte_size(bytes1) == 16
-        assert byte_size(bytes2) == 16
-
-        # Random bytes should be different (with very high probability)
-        assert bytes1 != bytes2
-      end
+      assert byte_size(bytes1) == 16
+      assert byte_size(bytes2) == 16
     end
   end
 

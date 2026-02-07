@@ -71,7 +71,7 @@ defmodule YellowDog.Dns.Zone.AuthTest do
   end
 
   # Helper to build a test DNS query
-  defp build_query(name, type \\ :a) do
+  defp build_query(name, type) do
     %Message{
       header: %Header{
         id: :rand.uniform(65535),

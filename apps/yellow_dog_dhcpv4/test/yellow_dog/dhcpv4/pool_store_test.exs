@@ -1,5 +1,5 @@
 defmodule YellowDog.Dhcpv4.PoolStoreTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDog.Dhcpv4.PoolStore
 
@@ -22,22 +22,6 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
       index_path = Path.join(tmp_dir, "pools.toml")
       pools_dir = Path.join(tmp_dir, "pools")
       File.mkdir_p!(pools_dir)
-
-      pools = [
-        %{
-          name: "default",
-          network: "192.168.1.0/24",
-          range_start: "192.168.1.100",
-          range_end: "192.168.1.200",
-          subnet_mask: "255.255.255.0",
-          gateway: "192.168.1.1",
-          dns_servers: ["8.8.8.8", "8.8.4.4"],
-          domain_name: "example.local",
-          lease_time: 86400,
-          max_leases: 100,
-          enabled: true
-        }
-      ]
 
       # Mock the data dir by writing directly
       index_content = """
@@ -144,17 +128,70 @@ defmodule YellowDog.Dhcpv4.PoolStoreTest do
   end
 
   describe "save_pool/1" do
-    test "saves a pool and updates index" do
-      # This test would require mocking the data directory
-      # The save_pool function writes to the configured data directory
-      # For now, we just verify the function exists
-      assert function_exported?(PoolStore, :save_pool, 1)
+    test "saves a pool file and updates index", %{tmp_dir: tmp_dir} do
+      prev = Application.get_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:yellow_dog, :data_dir, prev),
+          else: Application.delete_env(:yellow_dog, :data_dir)
+      end)
+
+      pool = %{
+        name: "test_v4_pool",
+        enabled: true,
+        network: "192.168.50.0/24",
+        range_start: "192.168.50.100",
+        range_end: "192.168.50.200",
+        subnet_mask: "255.255.255.0",
+        gateway: "192.168.50.1",
+        dns_servers: ["8.8.8.8"],
+        domain_name: "test.local",
+        lease_time: 3600
+      }
+
+      assert :ok = PoolStore.save_pool(pool)
+
+      # Verify index was updated
+      index_path = Path.join([tmp_dir, "dhcpv4", "pools.toml"])
+      assert File.exists?(index_path)
+      {:ok, names} = PoolStore.load_index(index_path)
+      assert "test_v4_pool" in names
+
+      # Verify pool file was created
+      pool_path = Path.join([tmp_dir, "dhcpv4", "pools", "test_v4_pool.toml"])
+      assert File.exists?(pool_path)
     end
   end
 
   describe "remove_pool/1" do
-    test "function exists" do
-      assert function_exported?(PoolStore, :remove_pool, 1)
+    test "removes a pool file and updates index", %{tmp_dir: tmp_dir} do
+      prev = Application.get_env(:yellow_dog, :data_dir)
+      Application.put_env(:yellow_dog, :data_dir, tmp_dir)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:yellow_dog, :data_dir, prev),
+          else: Application.delete_env(:yellow_dog, :data_dir)
+      end)
+
+      pool = %{
+        name: "removable_v4",
+        enabled: true,
+        network: "192.168.60.0/24",
+        range_start: "192.168.60.100",
+        range_end: "192.168.60.200"
+      }
+
+      # First save, then remove
+      assert :ok = PoolStore.save_pool(pool)
+      assert :ok = PoolStore.remove_pool("removable_v4")
+
+      # Verify pool was removed from index
+      index_path = Path.join([tmp_dir, "dhcpv4", "pools.toml"])
+      {:ok, names} = PoolStore.load_index(index_path)
+      refute "removable_v4" in names
     end
   end
 

@@ -20,7 +20,7 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
   alias DNS.Message.RCode
 
   # Test query builder helpers
-  defp build_test_query(id \\ 12345, name \\ "example.com", type \\ :a) do
+  defp build_test_query(id, name \\ "example.com", type \\ :a) do
     query = Message.new()
     question = Question.new(name, type, :in)
     # Set ID and question

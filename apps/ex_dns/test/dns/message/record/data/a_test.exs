@@ -492,9 +492,9 @@ defmodule DNS.Message.Record.Data.ATest do
     test "A record can be used in resource record" do
       a_record = A.new({192, 168, 1, 1})
       # Verify it has the fields needed for a resource record
-      assert a_record.type != nil
-      assert a_record.rdlength != nil
-      assert a_record.data != nil
+      assert to_string(a_record.type) != ""
+      assert a_record.rdlength > 0
+      assert is_tuple(a_record.data)
     end
 
     test "multiple A records for same domain" do

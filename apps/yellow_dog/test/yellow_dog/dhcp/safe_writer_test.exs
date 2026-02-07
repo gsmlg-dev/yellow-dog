@@ -211,7 +211,7 @@ defmodule YellowDog.DHCP.SafeWriterTest do
       File.write!(old_file, "stale = true\n")
 
       # Set modification time to 2 hours ago
-      two_hours_ago = System.system_time(:second) - 7200
+      _two_hours_ago = System.system_time(:second) - 7200
 
       # Note: We can't easily set mtime, so we'll test with max_age of 0
       assert {:ok, count} = SafeWriter.cleanup_stale_transactions(cache_dir, 0)

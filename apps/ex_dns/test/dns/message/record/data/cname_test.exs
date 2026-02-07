@@ -598,7 +598,7 @@ defmodule DNS.Message.Record.Data.CNAMETest do
     test "CNAME record can be used in resource record" do
       cname = CNAME.new("www.example.com")
       # Verify it has the fields needed for a resource record
-      assert cname.type != nil
+      assert to_string(cname.type) != ""
       assert cname.rdlength != nil
       assert cname.data != nil
     end

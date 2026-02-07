@@ -110,7 +110,7 @@ defmodule DNS.ResultTest do
     test "creates validation_error" do
       result = Result.error(:validation_error, DNS.Message.Record, "validation failed", %{})
 
-      assert {:error, {message, context}} = result
+      assert {:error, {message, _context}} = result
       assert String.contains?(message, "Validation Error")
     end
 

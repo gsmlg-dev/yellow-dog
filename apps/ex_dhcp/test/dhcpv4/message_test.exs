@@ -649,7 +649,7 @@ defmodule DHCPv4.MessageTest do
     build_message([])
   end
 
-  defp build_message(opts \\ []) do
+  defp build_message(opts) do
     op = Keyword.get(opts, :op, 1)
     htype = Keyword.get(opts, :htype, 1)
     hlen = Keyword.get(opts, :hlen, 6)

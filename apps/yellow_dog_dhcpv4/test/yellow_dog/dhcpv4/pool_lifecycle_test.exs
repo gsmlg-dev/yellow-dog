@@ -10,7 +10,7 @@ defmodule YellowDog.Dhcpv4.PoolLifecycleTest do
 
   use ExUnit.Case, async: false
 
-  alias YellowDog.Dhcpv4.{LeaseManager, PoolStore, LeaseStorage}
+  alias YellowDog.Dhcpv4.PoolStore
 
   @moduletag :integration
 

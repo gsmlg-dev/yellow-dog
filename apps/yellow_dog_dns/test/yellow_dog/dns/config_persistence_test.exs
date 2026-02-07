@@ -488,7 +488,7 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
           {:error, {:already_started, pid}} -> pid
         end
 
-      zc_pid =
+      _zc_pid =
         case DynamicSupervisor.start_link(
                strategy: :one_for_one,
                name: YellowDog.Dns.ZoneController
