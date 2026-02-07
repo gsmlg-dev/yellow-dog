@@ -215,6 +215,7 @@
               aria-label="Search DHCPv4 pool leases"
               value={@search_query}
               phx-change="search"
+              phx-debounce="300"
               name="search"
             />
           </label>

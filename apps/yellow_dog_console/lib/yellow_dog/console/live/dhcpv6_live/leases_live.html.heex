@@ -84,6 +84,7 @@
               aria-label="Search DHCPv6 leases"
               value={@search_query}
               phx-change="search"
+              phx-debounce="300"
               name="search"
             />
           </label>

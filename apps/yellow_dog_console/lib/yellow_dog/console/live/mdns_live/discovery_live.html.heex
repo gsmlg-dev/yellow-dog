@@ -39,6 +39,7 @@
         <input
           type="text"
           phx-change="search"
+          phx-debounce="300"
           name="search"
           value={@search}
           placeholder="Search services by name or type..."
