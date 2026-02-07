@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 28)
+**Phase**: IN_PROGRESS (Iteration 29)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 28 of 1000
+**Iteration**: 29 of 1000
 
 ## Session Summary
-Iteration 28: O(n²) list building + Logger structured metadata + @spec:
+Iteration 29: Single-pass Enum.map + Map.new:
+- ✅ **1,052 umbrella + 962 console tests, 0 failures**
+- ✅ Combined **22 double `Enum.map` chains** into single-pass across **19 files** in 8 apps (hex/MAC/IPv6 formatting)
+- ✅ Replaced `Enum.map |> Enum.into(%{})` with `Map.new` in service_manager.ex
+- ✅ **2 commits this iteration** — net -8 lines
+
+Previous iteration 28: O(n²) list building + Logger structured metadata + @spec:
 - ✅ **1,052 umbrella + 962 console tests, 0 failures**
 - ✅ Replaced **O(n²) `++ [item]` list appends** with `List.flatten` and prepend+reverse in **4 files**: DHCPv4/v6 pool_store.ex, config_manager.ex, process_inspector.ex
 - ✅ Converted **10 Logger string interpolation** calls to structured metadata across **7 files** (acl_store, acl_registry, zone_service, auth_rate_limiter, conflict_resolver, view/zone LiveViews)
