@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 55)
+**Phase**: IN_PROGRESS (Iteration 56)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 55 of 1000
+**Iteration**: 56 of 1000
 
 ## Session Summary
-Iteration 54: Simplify verbose catch guards + consolidate identical handle_info:
+Iteration 55: Use `assign/2` keyword lists in mount functions:
+- ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ 18 mount/init chains across 17 LiveView files converted from chained `|> assign(:key, val)` to `assign(socket, key: val, ...)`
+- ✅ Single map update per mount instead of N sequential updates
+- ✅ 17 files — **1 commit** — net +23 lines (more vertical but cleaner semantics)
+
+Previous iteration 54: Simplify verbose catch guards + consolidate identical handle_info:
 - ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
 - ✅ 6× `kind, _ when kind in [:exit, :error]` → `_, _` across 4 mDNS LiveView files
 - ✅ 4 identical `handle_info` handlers → 1 with `@service_refresh_events` guard (services_live.ex)
