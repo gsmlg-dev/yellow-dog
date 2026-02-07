@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 52)
+**Phase**: IN_PROGRESS (Iteration 53)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 52 of 1000
+**Iteration**: 53 of 1000
 
 ## Session Summary
-Iteration 51: Replace Enum.map|>Enum.max/min with single-pass Enum.reduce:
+Iteration 52: DRY store modules via TomlHelpers import:
+- ✅ **6415 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Added `parse_toml/1`, `ensure_directory/1`, `maybe_create_backup/2` to `TomlHelpers`
+- ✅ Replaced 30+ duplicated private functions across 4 store modules with imports
+- ✅ Renamed local helpers: `get_string_value`→`get_value`, `get_integer_value`→`get_integer`, `get_boolean_value`→`get_boolean`, `get_list_value`→`get_list`
+- ✅ 5 files — **1 commit** — net **-169 lines**
+
+Previous iteration 51: Replace Enum.map|>Enum.max/min with single-pass Enum.reduce:
 - ✅ **6415 umbrella + 962 console tests, 0 failures, 0 warnings**
 - ✅ 7 instances across 5 files: view.ex, cache.ex, metrics_live.ex (3), monitor_live.ex, discovery_live.ex
 - ✅ Two-pass `Enum.map(accessor) |> Enum.max/min()` → single-pass `Enum.reduce(list, default, fn x, acc -> max/min(...) end)`
