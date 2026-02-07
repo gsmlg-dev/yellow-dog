@@ -1,17 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 41)
+**Phase**: IN_PROGRESS (Iteration 42)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 41 of 1000
+**Iteration**: 42 of 1000
 
 ## Session Summary
-Iteration 41: Replace Enum.map|>Enum.join with single-pass Enum.map_join:
-- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ Converted **27 `Enum.map |> Enum.join` chains** to single-pass `Enum.map_join` across **15 files** in 7 apps
-- ✅ Covers TOML serializers (5 store modules), binary encoding (DHCPv4/v6), hex formatter, CSV/ACL/view formatters, EDNS0 key_tag
-- ✅ Composed two chained `Enum.map` calls into single `Enum.map_join` function arguments (pool_store DNS servers, zone validator types)
-- ✅ **1 commit this iteration** — net -56 lines
+Iteration 42: Enum.count/2 + DRY format_address:
+- ✅ **6,418 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Replaced **7 `length(Enum.filter(...))`** with `Enum.count/2` in service_registry.ex stats/0 — avoids building intermediate filtered lists
+- ✅ Replaced duplicate `format_address` (4 clauses) with `FormatHelper.format_ip` in result_display.ex (-8 lines)
+- ✅ Converted remaining `Enum.map |> Enum.join(":")` in service_registry.ex format_ip/1
+- ✅ **1 commit this iteration** — net -11 lines
+
+Previous iteration 41: Replace Enum.map|>Enum.join with single-pass Enum.map_join:
+- ✅ Converted **27 chains** across **15 files** in 7 apps — net -56 lines
 
 Previous iteration 40: DRY format_ip and CSV helpers:
 - ✅ Extended `FormatHelper.format_ip/1` to handle IPv4/IPv6 tuples, binary passthrough, nil
