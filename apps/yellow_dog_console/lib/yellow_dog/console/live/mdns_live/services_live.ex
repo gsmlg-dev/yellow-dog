@@ -167,8 +167,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   defp list_services(opts \\ []) do
     try do
       YellowDog.Mdns.list_registered_services(opts)
-    rescue
-      _ -> []
+    catch
+      kind, _ when kind in [:exit, :error] -> []
     end
   end
 

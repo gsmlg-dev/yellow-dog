@@ -49,8 +49,9 @@ defmodule YellowDog.Console.MdnsLive.Index do
   defp get_mdns_status do
     try do
       YellowDog.Mdns.status()
-    rescue
-      _ -> %{running: false, mode: :unknown, registered_services: 0, discovered_services: 0}
+    catch
+      kind, _ when kind in [:exit, :error] ->
+        %{running: false, mode: :unknown, registered_services: 0, discovered_services: 0}
     end
   end
 
@@ -58,8 +59,8 @@ defmodule YellowDog.Console.MdnsLive.Index do
     try do
       registry_stats = YellowDog.Mdns.ServiceRegistry.stats()
       %{registry_stats: registry_stats}
-    rescue
-      _ ->
+    catch
+      kind, _ when kind in [:exit, :error] ->
         %{
           registry_stats: %{
             total: 0,
@@ -75,8 +76,8 @@ defmodule YellowDog.Console.MdnsLive.Index do
   defp get_network_stats do
     try do
       YellowDog.Mdns.network_stats()
-    rescue
-      _ ->
+    catch
+      kind, _ when kind in [:exit, :error] ->
         %{
           total_responses: 0,
           total_queries: 0,

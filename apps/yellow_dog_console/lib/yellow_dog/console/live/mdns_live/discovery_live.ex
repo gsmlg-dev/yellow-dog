@@ -75,8 +75,8 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   defp list_discovered_services do
     try do
       YellowDog.Mdns.list_discovered_services()
-    rescue
-      _ -> []
+    catch
+      kind, _ when kind in [:exit, :error] -> []
     end
   end
 
