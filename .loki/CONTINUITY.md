@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 84)
+**Phase**: IN_PROGRESS (Iteration 85)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 84 of 1000
+**Iteration**: 85 of 1000
 
 ## Session Summary
-Iteration 84: Extract shared format_error to ParamHelper:
+Iteration 85: Extract zone_via_tuple to shared Behaviour module:
+- ✅ **All 1058 DNS tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Added `zone_via_tuple/3` to `YellowDog.Dns.Zone.Behaviour` (shared across all zone types)
+- ✅ Removed identical `defp via_tuple/2` from 6 zone modules (auth, forward, stub, root, cache, rpz)
+- ✅ Each module now calls `Behaviour.zone_via_tuple(view_name, :type, zone_name)`
+- ✅ 7 files — **1 commit** — net -1 line
+
+Previous iteration 84: Extract shared format_error to ParamHelper:
 - ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Added `format_error/1` to `ParamHelper` with 5 common clauses (timeout, socket_error, parse_error, build_error, catch-all)
 - ✅ mDNS client: removed all 4 local `format_error` clauses (all were common)
