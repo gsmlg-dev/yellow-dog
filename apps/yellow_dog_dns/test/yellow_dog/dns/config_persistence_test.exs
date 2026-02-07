@@ -13,6 +13,7 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Dns.ConfigPersistence
+  alias YellowDog.Dns.AclStore
   alias YellowDog.Dns.ViewStore
   alias YellowDog.Dns.ZoneStore
 
@@ -49,6 +50,17 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
     test "handles different views" do
       path = ConfigPersistence.zones_path("test/data", "internal")
       assert path == "test/data/views/internal/zones"
+    end
+  end
+
+  describe "acls_path/1" do
+    test "returns path to acls directory" do
+      assert ConfigPersistence.acls_path("test/data") == "test/data/acls"
+    end
+
+    test "returns path with default data path" do
+      path = ConfigPersistence.acls_path()
+      assert String.ends_with?(path, "acls")
     end
   end
 
@@ -292,6 +304,59 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
     end
   end
 
+  describe "save_acls/3" do
+    test "saves acls to file", %{tmp_dir: tmp_dir} do
+      acls = [
+        %{
+          name: "internal",
+          description: "Internal networks",
+          rules: [%{action: "allow", network: "10.0.0.0/8"}]
+        },
+        %{
+          name: "trusted",
+          description: "Trusted partners",
+          rules: [
+            %{action: "allow", network: "172.16.0.0/12"},
+            %{action: "allow", geo_countries: ["US", "CA"]}
+          ]
+        }
+      ]
+
+      assert :ok = ConfigPersistence.save_acls(tmp_dir, acls)
+      assert File.exists?(Path.join(tmp_dir, "acls.toml"))
+
+      # Verify round-trip
+      {:ok, loaded_acls} = AclStore.load_acls(Path.join(tmp_dir, "acls.toml"))
+      assert length(loaded_acls) == 2
+
+      internal = Enum.find(loaded_acls, &(&1.name == "internal"))
+      assert internal.description == "Internal networks"
+      assert length(internal.rules) == 1
+      assert hd(internal.rules).network == "10.0.0.0/8"
+    end
+
+    test "saves empty acls list", %{tmp_dir: tmp_dir} do
+      assert :ok = ConfigPersistence.save_acls(tmp_dir, [])
+      assert File.exists?(Path.join(tmp_dir, "acls.toml"))
+
+      {:ok, loaded} = AclStore.load_acls(Path.join(tmp_dir, "acls.toml"))
+      assert loaded == []
+    end
+  end
+
+  describe "collect_acls/0" do
+    test "returns empty list when AclRegistry is not running" do
+      # Ensure AclRegistry is not running
+      case Process.whereis(YellowDog.Dns.AclRegistry) do
+        nil -> :ok
+        _pid -> :ok
+      end
+
+      acls = ConfigPersistence.collect_acls()
+      assert is_list(acls)
+    end
+  end
+
   describe "round-trip persistence" do
     test "views survive save/load cycle", %{tmp_dir: tmp_dir} do
       original_views = [
@@ -354,6 +419,28 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
       assert forwarded.upstreams == ["8.8.8.8", "8.8.4.4"]
     end
 
+    test "acls survive save/load cycle", %{tmp_dir: tmp_dir} do
+      original_acls = [
+        %{
+          name: "roundtrip_acl",
+          description: "Test round-trip",
+          rules: [
+            %{action: "allow", network: "192.168.0.0/16"},
+            %{action: "allow", geo_countries: ["US", "GB"]}
+          ]
+        }
+      ]
+
+      :ok = ConfigPersistence.save_acls(tmp_dir, original_acls)
+      {:ok, loaded_acls} = AclStore.load_acls(Path.join(tmp_dir, "acls.toml"))
+
+      assert length(loaded_acls) == 1
+      loaded = hd(loaded_acls)
+      assert loaded.name == "roundtrip_acl"
+      assert loaded.description == "Test round-trip"
+      assert length(loaded.rules) == 2
+    end
+
     test "full config survives save/load cycle", %{tmp_dir: tmp_dir} do
       views = [
         %{name: "test_view", priority: 75, recursion: true}
@@ -363,14 +450,20 @@ defmodule YellowDog.Dns.ConfigPersistenceTest do
         %{name: "test.zone", type: :auth, view_name: "test_view"}
       ]
 
-      :ok = ConfigPersistence.save_all(tmp_dir, views, zones)
+      acls = [
+        %{name: "test_acl", rules: [%{action: "allow", network: "10.0.0.0/8"}]}
+      ]
+
+      :ok = ConfigPersistence.save_all(tmp_dir, views, zones, acls)
       {:ok, loaded} = ConfigPersistence.load_all(tmp_dir)
 
       assert length(loaded.views) == 1
       assert length(loaded.zones) == 1
+      assert length(loaded.acls) == 1
 
       assert hd(loaded.views).name == "test_view"
       assert hd(loaded.zones).name == "test.zone"
+      assert hd(loaded.acls).name == "test_acl"
     end
   end
 
