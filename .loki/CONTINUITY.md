@@ -1,17 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 36)
+**Phase**: IN_PROGRESS (Iteration 37)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 36 of 1000
+**Iteration**: 37 of 1000
 
 ## Session Summary
-Iteration 36: Extend FormatHelper + IA type color helpers:
+Iteration 37: Extract service call boilerplate to ServiceHelper.safe_call:
 - ✅ **962 console tests, 0 failures**
-- ✅ Added **5 functions** to FormatHelper: `format_prefix`, `format_duration`, `format_expires`, `format_ia_type`, `parse_duid_string`
-- ✅ Added **2 color helpers** to CoreComponents: `ia_type_color`, `ia_type_text_color`
-- ✅ Removed duplicates from **5 LiveView modules** — **net -54 lines**
-- ✅ Renamed `format_lifetime`/`format_lease_time` → `format_duration`, `get_ia_type_color` → `ia_type_color`/`ia_type_text_color`
+- ✅ Created `YellowDog.Console.ServiceHelper` with `safe_call/3` wrapper
+- ✅ Replaced **18 `Code.ensure_loaded?/try/rescue/catch` blocks** across **6 DHCP LiveViews** — **net -171 lines**
+- ✅ **1 commit this iteration**
+
+Previous iteration 36: Extend FormatHelper + IA type color helpers:
+- ✅ Added **5 functions** to FormatHelper + **2 color helpers** to CoreComponents — **net -54 lines**
 - ✅ **1 commit this iteration**
 
 Previous iteration 35: Extract shared FormatHelper module:
