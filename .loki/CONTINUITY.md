@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 100)
+**Phase**: IN_PROGRESS (Iteration 101)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 100 of 1000
+**Iteration**: 101 of 1000
 
 ## Session Summary
-Iteration 100: Simplify filter_by_state in DHCPv4 pool_live to to_string pattern:
+Iteration 101: Extract duplicate filtered_pools/2 to FormatHelper:
+- ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ DHCPv4 and DHCPv6 pools_live had identical `filtered_pools/2` (12 lines each)
+- ✅ Extracted to FormatHelper, same pattern as `filtered_countries/2` from iteration 91
+- ✅ Updated imports in both pools_live modules, updated test aliases
+- ✅ 5 files — **1 commit** — net -20 lines
+
+Previous iteration 100: Simplify filter_by_state in DHCPv4 pool_live to to_string pattern:
 - ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Removed @valid_lease_states allowlist + String.to_existing_atom + fallback clause
 - ✅ Replaced with `to_string(l.state) == state` — consistent with all other filter_by_state implementations
