@@ -128,6 +128,20 @@ defmodule YellowDog.Console.CoreComponents do
   def utilization_text_color(percent) when percent >= 50, do: "text-info"
   def utilization_text_color(_), do: "text-success"
 
+  @doc "Returns a DaisyUI badge color for a DHCPv6 IA type."
+  @spec ia_type_color(atom()) :: String.t()
+  def ia_type_color(:ia_na), do: "primary"
+  def ia_type_color(:ia_ta), do: "secondary"
+  def ia_type_color(:ia_pd), do: "accent"
+  def ia_type_color(_), do: "ghost"
+
+  @doc "Returns a DaisyUI text color class for a DHCPv6 IA type."
+  @spec ia_type_text_color(atom()) :: String.t()
+  def ia_type_text_color(:ia_na), do: "text-primary"
+  def ia_type_text_color(:ia_ta), do: "text-secondary"
+  def ia_type_text_color(:ia_pd), do: "text-accent"
+  def ia_type_text_color(_), do: "text-base-content"
+
   ## DaisyUI Components
 
   @doc """

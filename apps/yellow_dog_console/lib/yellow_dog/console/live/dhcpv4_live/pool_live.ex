@@ -242,16 +242,4 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
       send(pid, {:telemetry_event, event, measurements, metadata})
     end
   end
-
-  defp format_lease_time(seconds) when is_integer(seconds) do
-    cond do
-      seconds < 60 -> "#{seconds}s"
-      seconds < 3600 -> "#{div(seconds, 60)}m"
-      seconds < 86400 -> "#{div(seconds, 3600)}h"
-      true -> "#{div(seconds, 86400)}d"
-    end
-  end
-
-  defp format_lease_time(_), do: "Unknown"
-
 end

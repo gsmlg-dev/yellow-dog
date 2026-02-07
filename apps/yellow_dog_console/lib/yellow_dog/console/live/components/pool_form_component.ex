@@ -308,5 +308,4 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   defp format_dns_servers([]), do: ""
   defp format_dns_servers(nil), do: ""
   defp format_dns_servers(servers) when is_list(servers), do: Enum.join(servers, ", ")
-
 end

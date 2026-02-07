@@ -121,15 +121,10 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
     send(pid, {:telemetry_event, event, measurements, metadata})
   end
 
-  defp format_ia_type(:ia_na), do: "IA_NA (Non-temporary)"
-  defp format_ia_type(:ia_ta), do: "IA_TA (Temporary)"
-  defp format_ia_type(:ia_pd), do: "IA_PD (Prefix Delegation)"
-  defp format_ia_type(type), do: to_string(type)
-
-  defp get_ia_type_color(:ia_na), do: "text-primary"
-  defp get_ia_type_color(:ia_ta), do: "text-secondary"
-  defp get_ia_type_color(:ia_pd), do: "text-accent"
-  defp get_ia_type_color(_), do: "text-base-content"
+  defp format_ia_type_verbose(:ia_na), do: "IA_NA (Non-temporary)"
+  defp format_ia_type_verbose(:ia_ta), do: "IA_TA (Temporary)"
+  defp format_ia_type_verbose(:ia_pd), do: "IA_PD (Prefix Delegation)"
+  defp format_ia_type_verbose(type), do: to_string(type)
 
   defp get_status do
     case Code.ensure_loaded?(YellowDog.Dhcpv6) do

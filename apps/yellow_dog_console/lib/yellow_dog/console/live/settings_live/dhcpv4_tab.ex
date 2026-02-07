@@ -182,5 +182,4 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
     </div>
     """
   end
-
 end

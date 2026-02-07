@@ -203,49 +203,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     send(pid, {:telemetry_event, event, measurements, metadata})
   end
 
-  defp parse_duid_string(duid_str) do
-    duid_str
-    |> String.split(":")
-    |> Enum.map(fn hex ->
-      case Integer.parse(hex, 16) do
-        {n, ""} -> n
-        _ -> 0
-      end
-    end)
-    |> :binary.list_to_bin()
-  end
-
-  defp format_prefix({{a, b, c, d, e, f, g, h}, len}) do
-    "#{format_ipv6({a, b, c, d, e, f, g, h})}/#{len}"
-  end
-
-  defp format_prefix(_), do: "Unknown"
-
-  defp format_ia_type(:ia_na), do: "IA_NA"
-  defp format_ia_type(:ia_ta), do: "IA_TA"
-  defp format_ia_type(:ia_pd), do: "IA_PD"
-  defp format_ia_type(type), do: to_string(type)
-
-  defp format_expires(expires_at) when is_integer(expires_at) do
-    now = System.system_time(:second)
-    remaining = expires_at - now
-
-    cond do
-      remaining < 0 -> "Expired"
-      remaining < 60 -> "#{remaining}s"
-      remaining < 3600 -> "#{div(remaining, 60)}m"
-      remaining < 86400 -> "#{div(remaining, 3600)}h"
-      true -> "#{div(remaining, 86400)}d"
-    end
-  end
-
-  defp format_expires(_), do: "N/A"
-
-  defp get_ia_type_color(:ia_na), do: "primary"
-  defp get_ia_type_color(:ia_ta), do: "secondary"
-  defp get_ia_type_color(:ia_pd), do: "accent"
-  defp get_ia_type_color(_), do: "ghost"
-
   defp build_csv(leases) do
     header =
       "DUID,IAID,IA Type,IPv6 Address/Prefix,State,Pool,Preferred Lifetime,Valid Lifetime,Allocated At\r\n"
@@ -259,9 +216,9 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
           csv_escape(format_ipv6_or_prefix(lease)),
           csv_escape(to_string(lease.state)),
           csv_escape(lease.pool_name || ""),
-          csv_escape(format_lifetime(lease.preferred_lifetime)),
-          csv_escape(format_lifetime(lease.valid_lifetime)),
-          csv_escape(format_timestamp(lease.allocated_at))
+          csv_escape(format_duration(lease.preferred_lifetime)),
+          csv_escape(format_duration(lease.valid_lifetime)),
+          csv_escape(format_expiration(lease.allocated_at))
         ]
         |> Enum.join(",")
       end)
@@ -279,24 +236,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   end
 
   defp format_ipv6_or_prefix(_), do: "N/A"
-
-  defp format_lifetime(lifetime) when is_integer(lifetime) do
-    cond do
-      lifetime < 60 -> "#{lifetime}s"
-      lifetime < 3600 -> "#{div(lifetime, 60)}m"
-      lifetime < 86400 -> "#{div(lifetime, 3600)}h"
-      true -> "#{div(lifetime, 86400)}d"
-    end
-  end
-
-  defp format_lifetime(_), do: "N/A"
-
-  defp format_timestamp(timestamp) when is_integer(timestamp) do
-    DateTime.from_unix!(timestamp)
-    |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
-  end
-
-  defp format_timestamp(_), do: "N/A"
 
   defp dhcpv6_service_running?, do: Process.whereis(YellowDog.Dhcpv6.LeaseManager) != nil
 end

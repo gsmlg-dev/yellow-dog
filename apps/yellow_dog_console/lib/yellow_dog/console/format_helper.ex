@@ -75,6 +75,46 @@ defmodule YellowDog.Console.FormatHelper do
 
   def expiration_color(_), do: "text-base-content/50"
 
+  @doc "Formats an IPv6 prefix tuple as address/length."
+  def format_prefix({{a, b, c, d, e, f, g, h}, len}) do
+    "#{format_ipv6({a, b, c, d, e, f, g, h})}/#{len}"
+  end
+
+  def format_prefix(_), do: "Unknown"
+
+  @doc "Formats a duration in seconds as a compact human-readable string."
+  def format_duration(seconds) when is_integer(seconds) do
+    cond do
+      seconds < 60 -> "#{seconds}s"
+      seconds < 3600 -> "#{div(seconds, 60)}m"
+      seconds < 86400 -> "#{div(seconds, 3600)}h"
+      true -> "#{div(seconds, 86400)}d"
+    end
+  end
+
+  def format_duration(_), do: "N/A"
+
+  @doc "Formats remaining time until a unix timestamp as a compact string."
+  def format_expires(expires_at) when is_integer(expires_at) do
+    remaining = expires_at - System.system_time(:second)
+
+    cond do
+      remaining < 0 -> "Expired"
+      remaining < 60 -> "#{remaining}s"
+      remaining < 3600 -> "#{div(remaining, 60)}m"
+      remaining < 86400 -> "#{div(remaining, 3600)}h"
+      true -> "#{div(remaining, 86400)}d"
+    end
+  end
+
+  def format_expires(_), do: "N/A"
+
+  @doc "Formats a DHCPv6 IA type atom as a short label."
+  def format_ia_type(:ia_na), do: "IA_NA"
+  def format_ia_type(:ia_ta), do: "IA_TA"
+  def format_ia_type(:ia_pd), do: "IA_PD"
+  def format_ia_type(type), do: to_string(type)
+
   @doc "Parses a colon-separated hex MAC string into a 6-byte binary."
   def parse_mac_string(mac_string) do
     mac_string
@@ -83,5 +123,18 @@ defmodule YellowDog.Console.FormatHelper do
     |> Base.decode16!()
   rescue
     _ -> <<0, 0, 0, 0, 0, 0>>
+  end
+
+  @doc "Parses a colon-separated hex DUID string into a binary."
+  def parse_duid_string(duid_str) do
+    duid_str
+    |> String.split(":")
+    |> Enum.map(fn hex ->
+      case Integer.parse(hex, 16) do
+        {n, ""} -> n
+        _ -> 0
+      end
+    end)
+    |> :binary.list_to_bin()
   end
 end

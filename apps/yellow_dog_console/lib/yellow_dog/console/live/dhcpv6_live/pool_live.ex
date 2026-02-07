@@ -95,46 +95,4 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
       formatted
     end
   end
-
-  defp format_prefix({{a, b, c, d, e, f, g, h}, len}) do
-    "#{format_ipv6({a, b, c, d, e, f, g, h})}/#{len}"
-  end
-
-  defp format_prefix(_), do: "Unknown"
-
-  defp format_lifetime(seconds) when is_integer(seconds) do
-    cond do
-      seconds < 60 -> "#{seconds}s"
-      seconds < 3600 -> "#{div(seconds, 60)}m"
-      seconds < 86400 -> "#{div(seconds, 3600)}h"
-      true -> "#{div(seconds, 86400)}d"
-    end
-  end
-
-  defp format_lifetime(_), do: "N/A"
-
-  defp format_expires(expires_at) when is_integer(expires_at) do
-    now = System.system_time(:second)
-    remaining = expires_at - now
-
-    cond do
-      remaining < 0 -> "Expired"
-      remaining < 60 -> "#{remaining}s"
-      remaining < 3600 -> "#{div(remaining, 60)}m"
-      remaining < 86400 -> "#{div(remaining, 3600)}h"
-      true -> "#{div(remaining, 86400)}d"
-    end
-  end
-
-  defp format_expires(_), do: "N/A"
-
-  defp format_ia_type(:ia_na), do: "IA_NA"
-  defp format_ia_type(:ia_ta), do: "IA_TA"
-  defp format_ia_type(:ia_pd), do: "IA_PD"
-  defp format_ia_type(type), do: to_string(type)
-
-  defp get_ia_type_color(:ia_na), do: "primary"
-  defp get_ia_type_color(:ia_ta), do: "secondary"
-  defp get_ia_type_color(:ia_pd), do: "accent"
-  defp get_ia_type_color(_), do: "ghost"
 end

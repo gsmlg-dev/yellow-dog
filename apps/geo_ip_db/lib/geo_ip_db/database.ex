@@ -146,7 +146,10 @@ defmodule GeoIpDb.Database do
           Logger.warning("[GeoIpDb] Database file not found", path: path)
 
         {:error, reason} ->
-          Logger.error("[GeoIpDb] Failed to load database", database: name, error: inspect(reason))
+          Logger.error("[GeoIpDb] Failed to load database",
+            database: name,
+            error: inspect(reason)
+          )
       end
     end)
   end

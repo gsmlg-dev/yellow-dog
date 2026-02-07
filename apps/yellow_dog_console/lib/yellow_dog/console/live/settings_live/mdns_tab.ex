@@ -189,5 +189,4 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
     </div>
     """
   end
-
 end

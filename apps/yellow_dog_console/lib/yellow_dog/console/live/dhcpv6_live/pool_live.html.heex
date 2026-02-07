@@ -100,12 +100,12 @@
 
             <div>
               <div class="text-sm text-base-content/70 mb-1">Preferred Lifetime</div>
-              <div class="font-mono">{format_lifetime(@pool_config[:preferred_lifetime])}</div>
+              <div class="font-mono">{format_duration(@pool_config[:preferred_lifetime])}</div>
             </div>
 
             <div>
               <div class="text-sm text-base-content/70 mb-1">Valid Lifetime</div>
-              <div class="font-mono">{format_lifetime(@pool_config[:valid_lifetime])}</div>
+              <div class="font-mono">{format_duration(@pool_config[:valid_lifetime])}</div>
             </div>
           <% end %>
 
@@ -172,7 +172,7 @@
                       </code>
                     </td>
                     <td>
-                      <.badge color={get_ia_type_color(lease.ia_type)} size="sm">
+                      <.badge color={ia_type_color(lease.ia_type)} size="sm">
                         {format_ia_type(lease.ia_type)}
                       </.badge>
                     </td>
