@@ -218,14 +218,5 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
     inspect(struct, pretty: true, limit: :infinity, width: 80)
   end
 
-  defp format_address({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
-
-  defp format_address({a, b, c, d, e, f, g, h}) do
-    [a, b, c, d, e, f, g, h]
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.join(":")
-  end
-
-  defp format_address(addr) when is_binary(addr), do: addr
-  defp format_address(addr), do: inspect(addr)
+  defp format_address(addr), do: YellowDog.Console.FormatHelper.format_ip(addr) || inspect(addr)
 end

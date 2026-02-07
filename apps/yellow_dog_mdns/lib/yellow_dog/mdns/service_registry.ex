@@ -200,13 +200,13 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
     %{
       total: length(services),
-      enabled: length(Enum.filter(services, & &1.enabled)),
-      disabled: length(Enum.filter(services, &(not &1.enabled))),
-      registered: length(Enum.filter(services, &(&1.state == :registered))),
-      probing: length(Enum.filter(services, &(&1.state == :probing))),
-      announcing: length(Enum.filter(services, &(&1.state == :announcing))),
-      from_file: length(Enum.filter(services, &(&1.source == :file))),
-      from_api: length(Enum.filter(services, &(&1.source == :api)))
+      enabled: Enum.count(services, & &1.enabled),
+      disabled: Enum.count(services, &(not &1.enabled)),
+      registered: Enum.count(services, &(&1.state == :registered)),
+      probing: Enum.count(services, &(&1.state == :probing)),
+      announcing: Enum.count(services, &(&1.state == :announcing)),
+      from_file: Enum.count(services, &(&1.source == :file)),
+      from_api: Enum.count(services, &(&1.source == :api))
     }
   end
 
@@ -527,9 +527,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
 
   defp format_ip({a, b, c, d, e, f, g, h}) do
-    parts = [a, b, c, d, e, f, g, h]
-    hex_parts = Enum.map(parts, &Integer.to_string(&1, 16))
-    Enum.join(hex_parts, ":")
+    Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))
   end
 
   defp get_hostname do
