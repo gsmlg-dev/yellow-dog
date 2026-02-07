@@ -152,13 +152,6 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
   defp get_utilization_color(percent) when percent >= 50, do: "info"
   defp get_utilization_color(_), do: "success"
 
-  defp get_state_color(:active), do: "success"
-  defp get_state_color(:offered), do: "info"
-  defp get_state_color(:released), do: "warning"
-  defp get_state_color(:expired), do: "error"
-  defp get_state_color(:declined), do: "error"
-  defp get_state_color(_), do: "ghost"
-
   defp get_state_text_color(:active), do: "text-success"
   defp get_state_text_color(:offered), do: "text-info"
   defp get_state_text_color(:released), do: "text-warning"

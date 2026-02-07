@@ -209,7 +209,7 @@
               <div class="divider my-2"></div>
               <div class="flex flex-wrap gap-2">
                 <%= for {state, count} <- pool_stats.leases_by_state do %>
-                  <.badge color={get_state_color(state)} size="sm">
+                  <.badge color={lease_state_color(state)} size="sm">
                     {state}: {count}
                   </.badge>
                 <% end %>

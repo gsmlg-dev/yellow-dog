@@ -85,6 +85,19 @@ defmodule YellowDog.Console.CoreComponents do
     """
   end
 
+  @doc """
+  Returns a DaisyUI badge color for a DHCP lease state.
+
+  Used by DHCPv4 and DHCPv6 lease/pool views.
+  """
+  @spec lease_state_color(atom()) :: String.t()
+  def lease_state_color(:active), do: "success"
+  def lease_state_color(:offered), do: "info"
+  def lease_state_color(:released), do: "warning"
+  def lease_state_color(:expired), do: "error"
+  def lease_state_color(:declined), do: "error"
+  def lease_state_color(_), do: "ghost"
+
   ## DaisyUI Components
 
   @doc """

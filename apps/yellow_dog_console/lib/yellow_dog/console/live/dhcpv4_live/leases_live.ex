@@ -221,13 +221,6 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     end
   end
 
-  defp get_state_color(:active), do: "success"
-  defp get_state_color(:offered), do: "info"
-  defp get_state_color(:released), do: "warning"
-  defp get_state_color(:expired), do: "error"
-  defp get_state_color(:declined), do: "error"
-  defp get_state_color(_), do: "ghost"
-
   defp parse_mac_string(mac_string) do
     mac_string
     |> String.replace(":", "")

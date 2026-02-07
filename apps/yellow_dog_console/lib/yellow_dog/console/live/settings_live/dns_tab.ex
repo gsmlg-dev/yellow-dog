@@ -261,8 +261,4 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
   defp has_error?(changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end
-
-  attr :changeset, Ecto.Changeset, required: true
-  attr :field, :atom, required: true
-
 end

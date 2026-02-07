@@ -263,13 +263,6 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   defp get_ia_type_color(:ia_pd), do: "accent"
   defp get_ia_type_color(_), do: "ghost"
 
-  defp get_state_color(:active), do: "success"
-  defp get_state_color(:offered), do: "info"
-  defp get_state_color(:released), do: "warning"
-  defp get_state_color(:expired), do: "error"
-  defp get_state_color(:declined), do: "error"
-  defp get_state_color(_), do: "ghost"
-
   defp build_csv(leases) do
     header =
       "DUID,IAID,IA Type,IPv6 Address/Prefix,State,Pool,Preferred Lifetime,Valid Lifetime,Allocated At\r\n"
