@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 93)
+**Phase**: IN_PROGRESS (Iteration 94)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 93 of 1000
+**Iteration**: 94 of 1000
 
 ## Session Summary
-Iteration 93: Add 42 unit tests for FormatHelper covering all 15 public functions:
+Iteration 94: Add 38 unit tests for ParamHelper (28) and ServiceHelper (10):
+- ✅ **All 1042 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ ParamHelper: get_string (5), get_integer (10), get_boolean (7), format_error (6) — covers type coercion, atom/string key fallback, edge cases
+- ✅ ServiceHelper: safe_call (7) — covers raise/exit/throw + module not loaded; service_running? (3) — covers registered/unregistered/stopped
+- ✅ Console test count: 1004 → 1042
+- ✅ 2 new files — **1 commit** — net +192 lines
+
+Previous iteration 93: Add 42 unit tests for FormatHelper covering all 15 public functions:
 - ✅ **All 1004 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Tests: format_mac (4), format_ip (5), format_duid (2), format_ipv6 (2), format_expiration (2), format_time_remaining (3), expiration_color (4), format_prefix (2), format_duration (5), format_expires (3), format_ia_type (2), parse_mac_string (2), parse_duid_string (2), filtered_countries (4)
 - ✅ Console test count: 962 → 1004
