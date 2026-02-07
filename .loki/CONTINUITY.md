@@ -1,17 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 44)
+**Phase**: IN_PROGRESS (Iteration 45)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 44 of 1000
+**Iteration**: 45 of 1000
 
 ## Session Summary
-Iteration 44: Replace Enum.reduce map-building with idiomatic alternatives:
+Iteration 45: Combine multi-pass Enum.sum(Enum.map) into single Enum.reduce:
 - ✅ **6,415 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ Replaced **4 `Enum.reduce + Map.put`** with `Map.new/2` (format_reservations, parse_options in DHCPv4/v6 pool.ex)
-- ✅ Replaced **2 conditional `Enum.reduce`** with `for...into: %{}` (parse_reservations in DHCPv4/v6 pool.ex)
-- ✅ Replaced **3 `Enum.reduce` counting** with `Enum.frequencies_by/2` (lease_storage.ex state_counts, ia_type_counts)
-- ✅ **1 commit this iteration** — net -16 lines
+- ✅ pool_stats.ex: 3 separate `Enum.sum(Enum.map)` passes → 1 pass with `{total, allocated, available}` tuple accumulator
+- ✅ dns index.ex: 5 separate `Enum.sum(Enum.map)` passes → 1 pass with `{zones, queries, hits, misses, cache}` tuple accumulator
+- ✅ **1 commit this iteration** — net -6 lines
+
+Previous iteration 44: Replace Enum.reduce map-building:
+- ✅ 9 conversions (Map.new/2, for...into, frequencies_by) across 4 files — net -16 lines
 
 Previous iteration 43: Replace Enum.map |> Map.new() with Map.new/2:
 - ✅ 11 conversions across 7 files — net -18 lines
