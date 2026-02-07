@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 85)
+**Phase**: IN_PROGRESS (Iteration 86)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 85 of 1000
+**Iteration**: 86 of 1000
 
 ## Session Summary
-Iteration 85: Extract zone_via_tuple to shared Behaviour module:
+Iteration 86: Extract shared MAC formatting to MacFormat module:
+- ✅ **All 319 DHCPv4 tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Created `YellowDog.Dhcpv4.MacFormat.format/2` with `:upper`/`:lower` case option
+- ✅ Handles both exact 6-byte and 6+ byte (chaddr field) MAC binaries
+- ✅ Replaced 6 duplicate `format_mac` in: address_pool, acl, custom_options, conflict_resolver, lease, pool_store
+- ✅ 7 files (1 new + 6 modified) — **1 commit** — net +7 lines (new module) but -31 lines from clients
+
+Previous iteration 85: Extract zone_via_tuple to shared Behaviour module:
 - ✅ **All 1058 DNS tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Added `zone_via_tuple/3` to `YellowDog.Dns.Zone.Behaviour` (shared across all zone types)
 - ✅ Removed identical `defp via_tuple/2` from 6 zone modules (auth, forward, stub, root, cache, rpz)
