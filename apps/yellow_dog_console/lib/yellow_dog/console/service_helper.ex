@@ -19,6 +19,7 @@ defmodule YellowDog.Console.ServiceHelper do
       safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.list_leases() end, [])
       safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.stats() end, default_stats())
   """
+  @spec safe_call(module(), (-> term()), term()) :: term()
   def safe_call(module, fun, default \\ nil) do
     if Code.ensure_loaded?(module) do
       try do
@@ -39,6 +40,7 @@ defmodule YellowDog.Console.ServiceHelper do
       service_running?(YellowDog.Dns)
       service_running?(YellowDog.Dhcpv4.LeaseManager)
   """
+  @spec service_running?(atom()) :: boolean()
   def service_running?(process_name) do
     Process.whereis(process_name) != nil
   end
