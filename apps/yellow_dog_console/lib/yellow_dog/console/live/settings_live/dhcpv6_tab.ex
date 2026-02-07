@@ -126,6 +126,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv6Tab do
 
             <button
               type="submit"
+              phx-disable-with="Saving..."
               class={[
                 "btn btn-primary gap-2",
                 !@changeset.valid? && "btn-disabled"

@@ -415,6 +415,23 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
   end
 
   # ============================================================================
+  # Submit Button Loading States (phx-disable-with prevents double submission)
+  # ============================================================================
+
+  describe "phx-disable-with on form submit buttons" do
+    test "Settings page has phx-disable-with on save button", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/settings")
+      assert html =~ "phx-disable-with"
+    end
+
+    test "mDNS Services shows phx-disable-with after opening register form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "show_new_form")
+      assert html =~ "phx-disable-with"
+    end
+  end
+
+  # ============================================================================
   # Service Status Alerts (shows warning when service is not running)
   # ============================================================================
 

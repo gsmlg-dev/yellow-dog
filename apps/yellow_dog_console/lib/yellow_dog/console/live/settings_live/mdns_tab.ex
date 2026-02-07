@@ -158,6 +158,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
 
             <button
               type="submit"
+              phx-disable-with="Saving..."
               class={[
                 "btn btn-primary gap-2",
                 !@changeset.valid? && "btn-disabled"

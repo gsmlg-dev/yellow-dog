@@ -126,6 +126,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
           <div class="flex gap-3 pt-4">
             <button
               type="submit"
+              phx-disable-with="Saving..."
               class={[
                 "btn btn-primary",
                 !@changeset.valid? && "btn-disabled"

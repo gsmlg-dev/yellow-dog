@@ -277,6 +277,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
             </button>
             <button
               type="submit"
+              phx-disable-with="Saving..."
               class={["btn btn-primary", !@changeset.valid? && "btn-disabled"]}
               disabled={!@changeset.valid?}
             >

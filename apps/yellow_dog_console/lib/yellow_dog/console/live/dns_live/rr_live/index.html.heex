@@ -384,6 +384,7 @@
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
               <button
                 type="submit"
+                phx-disable-with="Importing..."
                 class="btn btn-primary"
                 disabled={
                   @bulk_preview == nil || @bulk_preview.status != :ok || @bulk_preview.count == 0

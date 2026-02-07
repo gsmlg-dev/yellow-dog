@@ -398,7 +398,7 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary">Create Zone</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">Create Zone</button>
             </div>
           </.form>
         </.card>
@@ -500,7 +500,7 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary">Save Changes</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save Changes</button>
             </div>
           </.form>
         </.card>
@@ -560,7 +560,7 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary">Import Zone</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Importing...">Import Zone</button>
             </div>
           </.form>
         </.card>

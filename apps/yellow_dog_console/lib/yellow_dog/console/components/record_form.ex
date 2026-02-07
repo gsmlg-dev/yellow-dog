@@ -249,6 +249,7 @@ defmodule YellowDog.Console.Components.RecordForm do
             </button>
             <button
               type="submit"
+              phx-disable-with="Saving..."
               class="btn btn-primary"
               disabled={@validated and map_size(@errors) > 0}
             >
