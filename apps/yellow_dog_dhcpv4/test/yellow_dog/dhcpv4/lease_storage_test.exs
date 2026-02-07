@@ -268,10 +268,6 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
   end
 
   describe "cleanup_expired/0" do
-    # Note: cleanup_expired/0 has a bug in the implementation - it pipes
-    # Enum.each (which returns :ok) to length(). This causes a badarg error.
-    # Skipping these tests until the bug is fixed.
-    @tag :skip
     test "marks expired active leases as expired" do
       now = System.system_time(:second)
 
@@ -296,7 +292,6 @@ defmodule YellowDog.Dhcpv4.LeaseStorageTest do
       assert active.state == :active
     end
 
-    @tag :skip
     test "returns 0 when no expired leases" do
       {:ok, _} = LeaseStorage.put(create_lease(@mac1, @ip1, state: :active))
 
