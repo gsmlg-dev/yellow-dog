@@ -34,12 +34,7 @@ defmodule YellowDog.Console.DnsLive.Index do
   end
 
   @impl true
-  def handle_info({:view_updated, _view_name}, socket) do
-    {:noreply, assign(socket, :stats, get_dns_stats())}
-  end
-
-  @impl true
-  def handle_info({:zone_updated, _zone_name}, socket) do
+  def handle_info({event, _name}, socket) when event in [:view_updated, :zone_updated] do
     {:noreply, assign(socket, :stats, get_dns_stats())}
   end
 

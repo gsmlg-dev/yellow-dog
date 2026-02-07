@@ -65,7 +65,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
       YellowDog.Mdns.clear_cache()
       {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
     catch
-      kind, _ when kind in [:exit, :error] ->
+      _, _ ->
         {:noreply, put_flash(socket, :error, "mDNS service is not running")}
     end
   end

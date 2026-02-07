@@ -167,23 +167,10 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
-  @impl true
-  def handle_info({:service_registered, _service_id}, socket) do
-    {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
-  end
+  @service_refresh_events ~w(service_registered service_unregistered service_updated service_toggled)a
 
   @impl true
-  def handle_info({:service_unregistered, _service_id}, socket) do
-    {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
-  end
-
-  @impl true
-  def handle_info({:service_updated, _service_id}, socket) do
-    {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
-  end
-
-  @impl true
-  def handle_info({:service_toggled, _service_id}, socket) do
+  def handle_info({event, _service_id}, socket) when event in @service_refresh_events do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
   end
 
@@ -255,7 +242,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     try do
       YellowDog.Mdns.list_registered_services(opts)
     catch
-      kind, _ when kind in [:exit, :error] -> []
+      _, _ -> []
     end
   end
 
