@@ -1,21 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 11)
+**Phase**: IN_PROGRESS (Iteration 12)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 11 of 1000
+**Iteration**: 12 of 1000
 
 ## Session Summary
-Iteration 11: UX polish (dark mode, modals, accessibility):
-- ✅ **628 Console tests passing** (626 prior + 2 new)
+Iteration 12: Event handler tests + resilience:
+- ✅ **664 Console tests passing** (628 prior + 36 event handler tests)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
-- ✅ Dark mode: converted monitor_live + discovery_live from Tailwind to DaisyUI semantic classes
-- ✅ Dark mode: fixed 4 hardcoded text-gray-* in settings_live
-- ✅ Escape key closes all 4 modal patterns (core_components, discovery, services, pool form)
-- ✅ Settings page_title assign added
-- ✅ phx-disable-with on 15 submit buttons to prevent double-submission
-- ✅ aria-label on 17 search/filter inputs across all data pages
-- ✅ **21 commits this iteration**: 17 prior + 4 this session
+- ✅ 36 event handler tests for mDNS, DHCPv4/v6, ProcessMap, DNS, Diagnostics
+- ✅ Fixed monitor_live.ex: try/rescue → try/catch for GenServer exit + ETS ArgumentError
+- ✅ aria-label on 14 select/dropdown filter elements
+- ✅ **22 commits this iteration**: 21 prior + 1 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -58,7 +55,7 @@ Iteration 11: UX polish (dark mode, modals, accessibility):
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 628 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 328 existing + 17 a11y)
+- [x] 664 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -92,6 +89,8 @@ Iteration 11: UX polish (dark mode, modals, accessibility):
 18. `2ac9bcb` - feat(console): add phx-disable-with to 15 form submit buttons
 19. `f6b78b5` - fix(console): dark mode colors, Escape key modals, Settings page title
 20. `0d5fb5d` - fix(console): dark mode colors in settings, aria-labels on 17 search inputs
+21. `500a8c9` - fix(console): add aria-labels to 14 filter/dropdown selects
+22. `9fdc066` - test(console): add 36 event handler tests, fix monitor_live resilience
 
 ## Mistakes & Learnings
 
@@ -119,6 +118,8 @@ Iteration 11: UX polish (dark mode, modals, accessibility):
 
 12. **DaisyUI dark mode pattern**: Never use hardcoded Tailwind colors (`text-gray-500`, `bg-white`, etc.) — use DaisyUI semantic classes: `text-base-content/60`, `bg-base-100`, `bg-base-200`. The `/60` syntax is opacity — works in both light and dark themes.
 
+13. **catch vs rescue for service calls**: `rescue` catches exceptions (RuntimeError, ArgumentError). `catch :exit, _` catches exit signals (from GenServer.call to dead process). ETS operations on missing tables raise ArgumentError (`:error` kind). Use `catch kind, _ when kind in [:exit, :error]` to handle both failure modes.
+
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
 2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
@@ -131,6 +132,7 @@ Iteration 11: UX polish (dark mode, modals, accessibility):
 9. ~~Service status alert banners on data pages~~ ✅ Done (12 tests)
 10. ~~phx-disable-with on submit buttons~~ ✅ Done (15 buttons, 2 tests)
 11. ~~Dark mode + Escape key + page titles + aria-labels~~ ✅ Done (19 files)
-12. Performance testing / load testing
+12. ~~Event handler tests for untested LiveView pages~~ ✅ Done (36 tests)
+13. Performance testing / load testing
 13. Security audit (input validation integrated into forms, ACL bypass)
 14. Prometheus/OpenTelemetry integration
