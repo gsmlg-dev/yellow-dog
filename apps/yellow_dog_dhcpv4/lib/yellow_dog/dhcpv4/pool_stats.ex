@@ -262,5 +262,5 @@ defmodule YellowDog.Dhcpv4.PoolStats do
     end)
   end
 
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
 end

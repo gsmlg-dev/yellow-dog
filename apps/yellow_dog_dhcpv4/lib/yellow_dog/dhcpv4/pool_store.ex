@@ -516,7 +516,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     Enum.join(lines, "\n") <> "\n"
   end
 
-  defp format_ip_for_toml({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip_for_toml(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
   defp format_ip_for_toml(ip) when is_binary(ip), do: ip
   defp format_ip_for_toml(nil), do: nil
 

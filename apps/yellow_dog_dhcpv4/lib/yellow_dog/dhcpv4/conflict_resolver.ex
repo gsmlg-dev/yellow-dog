@@ -368,6 +368,6 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
   defp format_mac(mac) when is_binary(mac) and byte_size(mac) < 6, do: inspect(mac)
   defp format_mac(_), do: "UNKNOWN"
 
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
   defp format_ip(_), do: "UNKNOWN"
 end

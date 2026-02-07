@@ -1107,8 +1107,8 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   defp format_ip(nil), do: nil
 
-  defp format_ip({a, b, c, d}) do
-    "#{a}.#{b}.#{c}.#{d}"
+  defp format_ip(ip) when tuple_size(ip) == 4 do
+    ip |> :inet.ntoa() |> to_string()
   end
 
   defp format_ip(ip) when is_binary(ip), do: ip

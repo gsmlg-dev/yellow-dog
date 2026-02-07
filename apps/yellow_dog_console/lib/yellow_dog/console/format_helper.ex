@@ -18,7 +18,7 @@ defmodule YellowDog.Console.FormatHelper do
   def format_mac(_), do: "Unknown"
 
   @doc "Formats an IP address (IPv4 or IPv6 tuple, binary, or nil) as a string."
-  def format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  def format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
 
   def format_ip({a, b, c, d, e, f, g, h}),
     do: Enum.map_join([a, b, c, d, e, f, g, h], ":", &Integer.to_string(&1, 16))

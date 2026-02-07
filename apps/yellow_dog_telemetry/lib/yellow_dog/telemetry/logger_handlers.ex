@@ -809,7 +809,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   """
   @spec format_ip(tuple() | nil) :: String.t()
   def format_ip(nil), do: "unknown"
-  def format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+  def format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
   def format_ip(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: format_ipv6(ip)
   def format_ip(ip) when is_binary(ip), do: ip
   def format_ip(_), do: "unknown"
