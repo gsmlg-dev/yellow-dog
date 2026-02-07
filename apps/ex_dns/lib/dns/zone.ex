@@ -481,7 +481,7 @@ defmodule DNS.Zone do
     type =
       if downcased in @known_rr_types_str,
         do: String.to_existing_atom(downcased),
-        else: String.to_atom(downcased)
+        else: downcased
 
     data =
       case type do

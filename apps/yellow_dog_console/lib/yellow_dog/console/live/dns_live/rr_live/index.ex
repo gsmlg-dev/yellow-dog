@@ -634,7 +634,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     try do
       String.to_existing_atom(type_str)
     rescue
-      ArgumentError -> String.to_atom("unknown_#{type_str}")
+      ArgumentError -> :unknown
     end
   end
 
