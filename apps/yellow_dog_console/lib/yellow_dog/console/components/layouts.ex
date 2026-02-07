@@ -85,17 +85,7 @@ defmodule YellowDog.Console.Layouts do
       </div>
 
       <div class="flex items-center flex-none gap-2">
-        <!-- Search -->
-        <div class="form-control hidden md:block">
-          <input
-            type="text"
-            placeholder="Search..."
-            aria-label="Search"
-            class="input input-bordered input-sm w-full max-w-xs"
-          />
-        </div>
-        
-    <!-- Theme Toggle -->
+        <!-- Theme Toggle -->
         <label class="swap swap-rotate btn btn-ghost btn-circle" aria-label="Toggle theme">
           <input
             type="checkbox"

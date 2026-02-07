@@ -358,9 +358,9 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       assert html =~ "aria-label=\"Notifications\""
     end
 
-    test "navbar has aria-label on search input", %{conn: conn} do
+    test "navbar has aria-label on mobile menu", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dashboard")
-      assert html =~ "aria-label=\"Search\""
+      assert html =~ "aria-label=\"Open menu\""
     end
   end
 

@@ -86,6 +86,15 @@ Hooks.LogAutoScroll = {
   }
 }
 
+// Intercept data-confirm clicks before LiveView processes them
+document.body.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-confirm]")
+  if (el && !confirm(el.dataset.confirm)) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+}, true)
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
