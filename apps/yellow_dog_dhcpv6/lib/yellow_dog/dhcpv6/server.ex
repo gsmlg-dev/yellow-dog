@@ -22,6 +22,7 @@ defmodule YellowDog.Dhcpv6.Server do
   - `{:ok, pid}` - Server started successfully
   - `{:error, reason}` - Failed to start server
   """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -29,6 +30,7 @@ defmodule YellowDog.Dhcpv6.Server do
   @doc """
   Stops the DHCPv6 server.
   """
+  @spec stop(GenServer.server()) :: :ok
   def stop(pid \\ __MODULE__) do
     GenServer.stop(pid)
   end
