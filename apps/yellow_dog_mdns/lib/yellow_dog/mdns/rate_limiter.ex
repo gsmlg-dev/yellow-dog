@@ -347,7 +347,7 @@ defmodule YellowDog.Mdns.RateLimiter do
 
     Enum.each(expired, &:ets.delete(:mdns_rate_buckets, &1))
 
-    if length(expired) > 0 do
+    if expired != [] do
       :telemetry.execute(
         [:yellow_dog, :mdns, :rate_limiter, :cleanup],
         %{count: length(expired)},

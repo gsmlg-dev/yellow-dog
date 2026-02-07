@@ -342,7 +342,7 @@ defmodule YellowDog.Dhcpv4.RateLimiter do
 
     Enum.each(expired, &:ets.delete(:dhcpv4_rate_buckets, &1))
 
-    if length(expired) > 0 do
+    if expired != [] do
       :telemetry.execute(
         [:yellow_dog, :dhcpv4, :rate_limiter, :cleanup],
         %{count: length(expired)},

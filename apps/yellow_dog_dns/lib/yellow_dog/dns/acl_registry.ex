@@ -222,7 +222,7 @@ defmodule YellowDog.Dns.AclRegistry do
     network = rule[:network] || rule["network"]
 
     cond do
-      is_list(geo_countries) and length(geo_countries) > 0 ->
+      is_list(geo_countries) and geo_countries != [] ->
         Map.put(base, :geo_countries, geo_countries)
 
       is_binary(network) and network != "" ->

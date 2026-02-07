@@ -317,7 +317,7 @@ defmodule YellowDog.Console.ProcessMapLive do
     pid_string = if is_pid(assigns.node.pid), do: inspect(assigns.node.pid), else: ""
     is_selected = assigns.selected_pid == assigns.node.pid
     is_supervisor = assigns.node.type == :supervisor
-    has_children = length(assigns.node.children) > 0
+    has_children = assigns.node.children != []
     is_expanded = assigns.node[:expanded] == true
     visible_children = if is_expanded, do: assigns.node.children, else: []
 

@@ -154,7 +154,7 @@ defmodule YellowDog.Dhcpv6.RelayAgent do
 
     # Check if this is part of a relay chain (multi-hop)
     relay_reply =
-      if relay_info[:relay_chain] && length(relay_info.relay_chain) > 0 do
+      if relay_info[:relay_chain] && relay_info.relay_chain != [] do
         # Build nested relay reply for multi-hop
         build_relay_chain_reply(server_response, relay_info.relay_chain)
       else
@@ -226,7 +226,7 @@ defmodule YellowDog.Dhcpv6.RelayAgent do
   end
 
   defp build_relay_chain_reply(server_response, [relay_info | rest]) do
-    if length(rest) > 0 do
+    if rest != [] do
       # Build inner relay reply first
       inner_reply = build_relay_chain_reply(server_response, rest)
 

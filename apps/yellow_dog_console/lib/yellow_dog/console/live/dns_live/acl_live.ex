@@ -587,7 +587,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
         _ -> []
       end)
 
-    if length(geo_countries) > 0 do
+    if geo_countries != [] do
       {"geo", Enum.sort(Enum.uniq(geo_countries))}
     else
       {"custom", []}

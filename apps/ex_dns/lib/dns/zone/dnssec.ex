@@ -60,7 +60,7 @@ defmodule DNS.Zone.DNSSEC do
   def generate_rrsig(zone_name, records, options \\ []) do
     # Get type covered from records
     type_covered =
-      if length(records) > 0 do
+      if records != [] do
         record = hd(records)
         record.type
       else

@@ -508,7 +508,7 @@ defmodule DHCPv6.Server do
     %{message | options: [option | message.options]}
   end
 
-  defp add_dns_servers(message, servers) when length(servers) > 0 do
+  defp add_dns_servers(message, servers) when servers != [] do
     server_data = Enum.map(servers, &ip6_to_binary/1) |> Enum.join()
     # DNS_SERVERS
     option = Option.new(23, server_data)

@@ -418,7 +418,7 @@ defmodule YellowDog.Application do
         service_name |> to_string() |> String.upcase()
       end)
 
-    if length(service_names) > 0 do
+    if service_names != [] do
       :telemetry.execute(
         [:yellow_dog, :application, :start],
         %{count: length(service_names)},
@@ -436,7 +436,7 @@ defmodule YellowDog.Application do
         service_name |> to_string() |> String.upcase()
       end)
 
-    if length(disabled_services) > 0 do
+    if disabled_services != [] do
       :telemetry.execute(
         [:yellow_dog, :application, :start],
         %{count: 0, skipped: length(disabled_services)},

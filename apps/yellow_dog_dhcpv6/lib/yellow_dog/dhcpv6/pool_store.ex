@@ -581,7 +581,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     # Add dns_servers
     lines =
-      if pool[:dns_servers] && length(pool[:dns_servers]) > 0 do
+      if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
           pool[:dns_servers]
           |> Enum.map(&format_ipv6_for_toml/1)

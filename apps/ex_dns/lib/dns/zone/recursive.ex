@@ -50,7 +50,7 @@ defmodule DNS.Zone.Recursive do
       {:nslist, name_servers, _resp_message} ->
         nslist = name_servers |> Enum.map(&{&1, 53})
 
-        if length(nslist) > 0 do
+        if nslist != [] do
           recursive_query(nslist, data)
         else
           {:ok, []}
@@ -100,7 +100,7 @@ defmodule DNS.Zone.Recursive do
                      nslist = resp_message.nslist
                      arlist = resp_message.arlist
 
-                     if length(nslist) > 0 do
+                     if nslist != [] do
                        name_servers =
                          nslist
                          |> Enum.flat_map(fn rr ->

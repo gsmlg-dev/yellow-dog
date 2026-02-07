@@ -835,7 +835,7 @@ defmodule DNS.Zone.Parser do
     zone_file.records
     |> Enum.each(&print_record/1)
 
-    if length(zone_file.comments) > 0 do
+    if zone_file.comments != [] do
       IO.puts("\nComments:")
       # Comments are now stored in order, no need to reverse
       zone_file.comments

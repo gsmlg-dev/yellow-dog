@@ -322,7 +322,7 @@ defmodule YellowDog.Dns.ZoneStore do
       end
 
     lines =
-      if zone[:upstreams] && length(zone.upstreams) > 0 do
+      if zone[:upstreams] && zone.upstreams != [] do
         upstreams_str = Enum.map_join(zone.upstreams, ", ", &encode_toml_string/1)
         lines ++ ["upstreams = [#{upstreams_str}]"]
       else
@@ -330,7 +330,7 @@ defmodule YellowDog.Dns.ZoneStore do
       end
 
     lines =
-      if zone[:ns_records] && length(zone.ns_records) > 0 do
+      if zone[:ns_records] && zone.ns_records != [] do
         ns_str = Enum.map_join(zone.ns_records, ", ", &encode_toml_string/1)
         lines ++ ["ns_records = [#{ns_str}]"]
       else

@@ -258,7 +258,7 @@ defmodule YellowDog.Dhcpv6.Handler do
             leases
           end
 
-        if length(leases) > 0 do
+        if leases != [] do
           advertise = create_advertise_multi(message, leases, parsed_opts)
           send_dhcpv6_response(advertise, client_ip, client_port, state)
 

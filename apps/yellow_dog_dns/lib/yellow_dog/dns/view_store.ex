@@ -217,7 +217,7 @@ defmodule YellowDog.Dns.ViewStore do
     network = get_string_value(entry, [:network, "network"])
 
     cond do
-      length(geo_countries) > 0 ->
+      geo_countries != [] ->
         Map.put(base, :geo_countries, geo_countries)
 
       network != nil ->
@@ -335,7 +335,7 @@ defmodule YellowDog.Dns.ViewStore do
     lines = lines ++ ["ecs_enabled = #{view[:ecs_enabled] || false}"]
 
     lines =
-      if view[:zones] && length(view.zones) > 0 do
+      if view[:zones] && view.zones != [] do
         # Zones may be stored as {type, name} tuples or just names
         # Convert to just names for TOML storage (type is in zones.toml)
         zone_names =
@@ -352,7 +352,7 @@ defmodule YellowDog.Dns.ViewStore do
       end
 
     lines =
-      if view[:acl] && length(view.acl) > 0 do
+      if view[:acl] && view.acl != [] do
         acl_lines =
           Enum.flat_map(view.acl, fn acl_entry ->
             base_lines = [

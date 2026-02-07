@@ -143,7 +143,7 @@ defmodule YellowDog.Dns.AclStore do
     network = get_string_value(rule, [:network, "network"])
 
     cond do
-      length(geo_countries) > 0 ->
+      geo_countries != [] ->
         Map.put(base, :geo_countries, geo_countries)
 
       network != nil ->

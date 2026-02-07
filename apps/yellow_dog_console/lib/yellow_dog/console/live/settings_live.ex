@@ -587,14 +587,14 @@ defmodule YellowDog.Console.SettingsLive do
         else: updates
 
     updates =
-      if changes.dns_servers && length(changes.dns_servers) > 0,
+      if changes.dns_servers && changes.dns_servers != [],
         do: Map.put(updates, "#{service_key}.dns_servers", changes.dns_servers),
         else: updates
 
     # Handle pools for DHCP services
     pools = changes.pools || []
 
-    if length(pools) > 0 do
+    if pools != [] do
       formatted_pools =
         Enum.map(pools, fn pool ->
           # Start with base pool fields (exclude :id which is client-side only)
@@ -636,7 +636,7 @@ defmodule YellowDog.Console.SettingsLive do
 
           # Add DNS servers if present
           pool_map =
-            if pool.dns_servers && length(pool.dns_servers) > 0 do
+            if pool.dns_servers && pool.dns_servers != [] do
               Map.put(pool_map, "dns_servers", pool.dns_servers)
             else
               pool_map

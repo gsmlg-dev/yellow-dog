@@ -223,7 +223,7 @@ defmodule DNS.Message.EDNS0 do
       opt_str = options |> Enum.join("\n")
 
       """
-      ; EDNS: version: #{version}, flags: #{if(do_bit == 1, do: "DO")} udp: #{udp_payload}#{if(length(options) > 0, do: "\n#{opt_str}")}
+      ; EDNS: version: #{version}, flags: #{if(do_bit == 1, do: "DO")} udp: #{udp_payload}#{if(options != [], do: "\n#{opt_str}")}
       """
     end
   end

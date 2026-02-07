@@ -214,7 +214,7 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
 
     Enum.each(expired, &:ets.delete(@table_name, &1))
 
-    if length(expired) > 0 do
+    if expired != [] do
       Logger.debug("[AuthRateLimiter] Cleaned up #{length(expired)} expired entries")
     end
   end

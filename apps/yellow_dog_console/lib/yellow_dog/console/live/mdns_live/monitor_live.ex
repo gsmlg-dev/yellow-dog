@@ -162,7 +162,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
 
     # Section 2: Most Queried Services
     services_section =
-      if stats.most_queried_services && length(stats.most_queried_services) > 0 do
+      if stats.most_queried_services && stats.most_queried_services != [] do
         "\nMost Queried Services\n" <>
           "Service,Query Count\n" <>
           Enum.map_join(stats.most_queried_services, "\n", fn {name, count} ->

@@ -152,7 +152,7 @@ defmodule YellowDog.Dns.RecursionWorker do
 
     cond do
       # Got an answer
-      rcode == :noerror and length(response.anlist) > 0 ->
+      rcode == :noerror and response.anlist != [] ->
         {:ok, response}
 
       # NXDOMAIN - authoritative negative answer
@@ -160,7 +160,7 @@ defmodule YellowDog.Dns.RecursionWorker do
         {:ok, response}
 
       # Got referral (no answers but has authority section with NS records)
-      length(response.anlist) == 0 and has_ns_records?(response.nslist) ->
+      response.anlist == [] and has_ns_records?(response.nslist) ->
         follow_referral(socket, query, question, response, timeout, depth)
 
       # Server error

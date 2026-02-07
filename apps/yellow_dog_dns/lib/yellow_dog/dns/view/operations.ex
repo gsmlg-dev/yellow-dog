@@ -67,7 +67,8 @@ defmodule YellowDog.Dns.View.Operations do
     # Return dynamic health status based on actual system state
     try do
       views = ViewManager.list_views()
-      if length(views) >= 0, do: :healthy, else: :degraded
+      # length(list) >= 0 is always true for any list; use views to determine health
+      if is_list(views), do: :healthy, else: :degraded
     rescue
       _ -> :unhealthy
     end
@@ -154,7 +155,7 @@ defmodule YellowDog.Dns.View.Operations do
     # Check if any views exist
     views = try_list_views()
 
-    if length(views) > 0 do
+    if views != [] do
       {:ok,
        %{
          client_ip: ip_string,

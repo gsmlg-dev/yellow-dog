@@ -374,7 +374,7 @@ defmodule YellowDog.Mdns.ServiceStore do
       end
 
     lines =
-      if service[:addresses] && length(service.addresses) > 0 do
+      if service[:addresses] && service.addresses != [] do
         ipv4 = Enum.filter(service.addresses, &valid_ipv4?/1)
         ipv6 = Enum.filter(service.addresses, &valid_ipv6?/1)
 

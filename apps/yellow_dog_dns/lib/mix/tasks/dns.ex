@@ -393,7 +393,7 @@ defmodule Mix.Tasks.Dns.Test do
 
             Mix.shell().info("Accessible Zones: #{length(result.accessible_zones)}")
 
-            if length(result.accessible_zones) > 0 do
+            if result.accessible_zones != [] do
               Mix.shell().info("  - #{Enum.join(result.accessible_zones, "\n  - ")}")
             end
 
