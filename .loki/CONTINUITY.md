@@ -1,12 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 68)
+**Phase**: IN_PROGRESS (Iteration 69)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 68 of 1000
+**Iteration**: 69 of 1000
 
 ## Session Summary
-Iteration 68: Replace manual IPv4 formatting with `:inet.ntoa/1` (DHCPv4, telemetry, console):
+Iteration 69: Remove redundant `else: nil` from `if` expressions:
+- ✅ **959 tests (650 ex_dhcp + 309 mdns), 0 failures, 0 warnings, 0 credo issues**
+- ✅ Elixir's `if/2` implicitly returns `nil` when no `else` branch — explicit `else: nil` is redundant
+- ✅ 5 instances in ex_dhcp/dhcpv4/server.ex (inside `Enum.find_value` callbacks)
+- ✅ 2 instances in ex_dhcp/dhcpv6/server.ex (inside `Enum.find_value` and `choose_ip`)
+- ✅ 1 instance in yellow_dog_mdns/network_monitor.ex (variable assignment)
+- ✅ 1 instance in yellow_dog_mdns/service_registry.ex (map value in `service_to_def`)
+- ✅ 4 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 68: Replace manual IPv4 formatting with `:inet.ntoa/1` (DHCPv4, telemetry, console):
 - ✅ **1315 tests (319 dhcpv4 + 962 console + 34 telemetry), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Replaced `"#{a}.#{b}.#{c}.#{d}"` interpolation with `ip |> :inet.ntoa() |> to_string()` across 9 files
 - ✅ DHCPv4: pool_stats.ex, conflict_resolver.ex, lease.ex, lease_manager.ex, custom_options.ex, pool_store.ex, pool.ex
