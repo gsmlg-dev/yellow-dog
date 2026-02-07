@@ -24,7 +24,10 @@ Iteration 16 (continued): Comprehensive atom safety + test coverage:
 - ✅ Added real-time form validation to mDNS service registration (port, type format, IP addresses)
 - ✅ Fixed String.to_integer crash on invalid port input in save_service handler
 - ✅ 31 tests for mDNS services page (mounting, form validation, filter events, CSV export)
-- ✅ **12 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests, flaky fix, aria-labels, mDNS form validation
+- ✅ Fixed 7 String.to_integer crash vulnerabilities in event handlers (Integer.parse pattern)
+- ✅ Fixed String.to_atom fallback in rr_live safe_type_atom (atom exhaustion prevention)
+- ✅ Fixed hex parse crash in DHCPv6 parse_duid_string
+- ✅ **14 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests, flaky fix, aria-labels, mDNS form validation, input safety
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -131,6 +134,8 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 10. `03eeea0` - fix(console): add aria-labels to 9 select elements for WCAG accessibility
 11. `3468983` - docs: update CONTINUITY with aria-labels and flaky test fix
 12. `1823ee9` - feat(console): add real-time form validation to mDNS service registration
+13. `c27f2e2` - docs: update CONTINUITY with mDNS form validation (851 tests)
+14. `d90b030` - fix(console): replace String.to_integer with Integer.parse in 7 event handlers
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
