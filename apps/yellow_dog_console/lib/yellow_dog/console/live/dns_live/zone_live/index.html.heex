@@ -406,7 +406,12 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">
+              <button
+                type="submit"
+                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                disabled={map_size(@form_errors) > 0}
+                phx-disable-with="Creating..."
+              >
                 Create Zone
               </button>
             </div>
@@ -516,7 +521,12 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+              <button
+                type="submit"
+                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                disabled={map_size(@form_errors) > 0}
+                phx-disable-with="Saving..."
+              >
                 Save Changes
               </button>
             </div>

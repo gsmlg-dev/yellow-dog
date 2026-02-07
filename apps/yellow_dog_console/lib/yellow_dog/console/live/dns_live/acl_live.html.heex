@@ -780,7 +780,12 @@
           <button type="button" class="btn btn-ghost" phx-click="close_create_form">
             Cancel
           </button>
-          <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+          <button
+            type="submit"
+            class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+            disabled={map_size(@form_errors) > 0}
+            phx-disable-with="Saving..."
+          >
             {if @editing_acl, do: "Save Changes", else: "Create ACL"}
           </button>
         </div>

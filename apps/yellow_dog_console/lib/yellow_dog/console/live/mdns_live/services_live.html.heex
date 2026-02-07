@@ -347,7 +347,12 @@
             <button type="button" phx-click="hide_form" class="btn btn-ghost">
               Cancel
             </button>
-            <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+            <button
+              type="submit"
+              class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+              disabled={map_size(@form_errors) > 0}
+              phx-disable-with="Saving..."
+            >
               {if @form_mode == :new, do: "Register", else: "Save Changes"}
             </button>
           </div>
