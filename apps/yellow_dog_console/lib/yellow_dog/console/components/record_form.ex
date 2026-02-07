@@ -75,7 +75,7 @@ defmodule YellowDog.Console.Components.RecordForm do
   def handle_event("validate", %{"record" => params}, socket) do
     # Merge new params with existing form data
     form_data = Map.merge(socket.assigns.form_data, params)
-    type = String.to_atom(form_data["type"] || "a")
+    type = safe_record_type(form_data["type"])
 
     # Build validation params
     validation_params = build_validation_params(type, form_data, socket.assigns.zone_name)
@@ -95,7 +95,7 @@ defmodule YellowDog.Console.Components.RecordForm do
   @impl true
   def handle_event("save", %{"record" => params}, socket) do
     form_data = Map.merge(socket.assigns.form_data, params)
-    type = String.to_atom(form_data["type"] || "a")
+    type = safe_record_type(form_data["type"])
 
     validation_params = build_validation_params(type, form_data, socket.assigns.zone_name)
 
@@ -762,6 +762,11 @@ defmodule YellowDog.Console.Components.RecordForm do
       []
     end
   end
+
+  defp safe_record_type(type_str) when is_binary(type_str) and type_str in @supported_types,
+    do: String.to_existing_atom(type_str)
+
+  defp safe_record_type(_type_str), do: :a
 
   # Expose supported types for external use
   def supported_types, do: @supported_types
