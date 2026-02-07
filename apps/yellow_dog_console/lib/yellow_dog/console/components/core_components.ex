@@ -60,6 +60,31 @@ defmodule YellowDog.Console.CoreComponents do
     msg
   end
 
+  @doc """
+  Renders validation errors for a form field from a changeset.
+
+  ## Attributes
+  - `changeset` - The changeset containing errors
+  - `field` - The field atom to display errors for
+  """
+  attr :changeset, :map, required: true
+  attr :field, :atom, required: true
+
+  def input_error(assigns) do
+    assigns =
+      assign(assigns, :errors, Keyword.get_values(assigns.changeset.errors, assigns.field))
+
+    ~H"""
+    <%= if @errors != [] do %>
+      <div class="label">
+        <span class="label-text-alt text-error">
+          {translate_error(Enum.at(@errors, 0))}
+        </span>
+      </div>
+    <% end %>
+    """
+  end
+
   ## DaisyUI Components
 
   @doc """

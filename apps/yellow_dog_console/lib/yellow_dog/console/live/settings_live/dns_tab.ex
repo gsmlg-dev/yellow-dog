@@ -265,18 +265,4 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
   attr :changeset, Ecto.Changeset, required: true
   attr :field, :atom, required: true
 
-  defp input_error(assigns) do
-    assigns =
-      assign(assigns, :errors, Keyword.get_values(assigns.changeset.errors, assigns.field))
-
-    ~H"""
-    <%= if @errors != [] do %>
-      <div class="label">
-        <span class="label-text-alt text-error">
-          {translate_error(Enum.at(@errors, 0))}
-        </span>
-      </div>
-    <% end %>
-    """
-  end
 end

@@ -309,18 +309,4 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
   defp format_dns_servers(nil), do: ""
   defp format_dns_servers(servers) when is_list(servers), do: Enum.join(servers, ", ")
 
-  defp input_error(assigns) do
-    assigns =
-      assign(assigns, :errors, Keyword.get_values(assigns.changeset.errors, assigns.field))
-
-    ~H"""
-    <%= if @errors != [] do %>
-      <div class="label">
-        <span class="label-text-alt text-error">
-          {translate_error(Enum.at(@errors, 0))}
-        </span>
-      </div>
-    <% end %>
-    """
-  end
 end
