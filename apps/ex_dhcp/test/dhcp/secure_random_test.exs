@@ -172,50 +172,33 @@ defmodule DHCP.SecureRandomTest do
   end
 
   describe "uniform/2" do
-    # NOTE: The uniform/2 implementation has a bug where it passes float
-    # (from math_ceil) to :crypto.strong_rand_bytes which requires integer.
-    # ALL uniform/2 tests are skipped until this bug is fixed.
-
-    @tag :skip
-    @tag :known_bug
     test "returns value within range for large ranges requiring full bytes" do
-      # Bug: bytes_needed is always a float from math_ceil
       result = SecureRandom.uniform(0, 65535)
 
       assert result >= 0
       assert result <= 65535
     end
 
-    @tag :skip
-    @tag :known_bug
-    test "handles single value range (BUG: math_ceil returns float)" do
-      # Bug: range=1, bits_needed=0, max(0,1)=1, bytes_needed=ceil(1/8)=1.0 (float!)
+    test "handles single value range" do
       result = SecureRandom.uniform(5, 5)
 
       assert result == 5
     end
 
-    @tag :skip
-    @tag :known_bug
-    test "handles zero minimum (BUG: math_ceil returns float)" do
-      # Bug: range=101, bits_needed=7, bytes_needed=ceil(7/8)=1.0 (float!)
+    test "handles zero minimum" do
       result = SecureRandom.uniform(0, 100)
 
       assert result >= 0
       assert result <= 100
     end
 
-    @tag :skip
-    @tag :known_bug
-    test "handles large range (BUG: math_ceil returns float)" do
+    test "handles large range" do
       result = SecureRandom.uniform(0, 1_000_000)
 
       assert result >= 0
       assert result <= 1_000_000
     end
 
-    @tag :skip
-    @tag :known_bug
     test "generates values across the entire range" do
       results = for _ <- 1..1000, do: SecureRandom.uniform(1, 10)
 
@@ -225,24 +208,18 @@ defmodule DHCP.SecureRandomTest do
       assert unique_values == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     end
 
-    @tag :skip
-    @tag :known_bug
     test "respects minimum bound" do
       results = for _ <- 1..100, do: SecureRandom.uniform(50, 100)
 
       assert Enum.all?(results, &(&1 >= 50))
     end
 
-    @tag :skip
-    @tag :known_bug
     test "respects maximum bound" do
       results = for _ <- 1..100, do: SecureRandom.uniform(1, 50)
 
       assert Enum.all?(results, &(&1 <= 50))
     end
 
-    @tag :skip
-    @tag :known_bug
     test "handles range of 2" do
       results = for _ <- 1..100, do: SecureRandom.uniform(0, 1)
 
@@ -251,8 +228,6 @@ defmodule DHCP.SecureRandomTest do
       assert 1 in results
     end
 
-    @tag :skip
-    @tag :known_bug
     test "handles power of 2 ranges" do
       # Range of 256 (2^8)
       results = for _ <- 1..500, do: SecureRandom.uniform(0, 255)
@@ -262,8 +237,6 @@ defmodule DHCP.SecureRandomTest do
       assert length(Enum.uniq(results)) > 100
     end
 
-    @tag :skip
-    @tag :known_bug
     test "handles non-power of 2 ranges" do
       # Range of 7
       results = for _ <- 1..700, do: SecureRandom.uniform(1, 7)
@@ -327,9 +300,7 @@ defmodule DHCP.SecureRandomTest do
       assert length(Enum.uniq(results)) == 50
     end
 
-    @tag :skip
-    @tag :known_bug
-    test "handles concurrent uniform generation (BUG: uniform/2 broken)" do
+    test "handles concurrent uniform generation" do
       tasks =
         for _ <- 1..100 do
           Task.async(fn -> SecureRandom.uniform(1, 1_000_000) end)

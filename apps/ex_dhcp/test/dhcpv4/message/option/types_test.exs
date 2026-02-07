@@ -308,18 +308,12 @@ defmodule DHCPv4.Message.Option.TypesTest do
   end
 
   describe "decode_parameter_request_list/2 (type 55)" do
-    # BUG: to_int_list uses float division (b / 8) instead of integer division (div(b, 8))
-    # This causes MatchError when len - b/8 doesn't equal 0 exactly
-    @tag :skip
-    @tag :known_bug
     test "decodes single requested option" do
       result = Types.decode_parameter_request_list(<<1>>, 1)
 
       assert {"Parameter Request List", :int_list, [1]} = result
     end
 
-    @tag :skip
-    @tag :known_bug
     test "decodes common option request" do
       result = Types.decode_parameter_request_list(<<1, 3, 6, 15, 51>>, 5)
 

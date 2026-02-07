@@ -513,13 +513,14 @@ defmodule DHCPv4.Message.Option.Types do
 
   defp to_ip_mask_list(_, _), do: []
 
-  defp to_int_list(int, b, len) do
-    <<a::size(b), rest::binary>> = int
+  defp to_int_list(bit_size, data, len) do
+    <<a::size(bit_size), rest::binary>> = data
+    remaining = len - div(bit_size, 8)
 
-    if len - b / 8 == 0 do
+    if remaining == 0 do
       [a]
     else
-      [a | to_int_list(rest, b, len - b / 8)]
+      [a | to_int_list(bit_size, rest, remaining)]
     end
   end
 

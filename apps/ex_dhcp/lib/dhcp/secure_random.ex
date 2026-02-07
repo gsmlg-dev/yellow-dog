@@ -77,12 +77,9 @@ defmodule DHCP.SecureRandom do
   @spec uniform(non_neg_integer(), non_neg_integer()) :: non_neg_integer()
   def uniform(min, max) when min <= max and min >= 0 and max >= 0 do
     range = max - min + 1
-    bits_needed = range |> :math.log2() |> math_ceil() |> max(1)
-
-    bytes_needed = math_ceil(bits_needed / 8)
-    <<random::size(bits_needed)>> = :crypto.strong_rand_bytes(bytes_needed)
+    bits_needed = range |> :math.log2() |> ceil() |> max(1)
+    bytes_needed = ceil(bits_needed / 8)
+    random = :crypto.strong_rand_bytes(bytes_needed) |> :binary.decode_unsigned()
     min + rem(random, range)
   end
-
-  defp math_ceil(float), do: :math.ceil(float)
 end

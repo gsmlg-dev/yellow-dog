@@ -348,11 +348,6 @@ defmodule DHCPv4.Message.Option.DecoderTest do
       assert server_id == {192, 168, 1, 1}
     end
 
-    # NOTE: The to_int_list function has a bug where it uses float division (b / 8)
-    # instead of integer division (div(b, 8)), causing infinite recursion or errors.
-    # This test is skipped until the bug is fixed.
-    @tag :skip
-    @tag :known_bug
     test "decodes parameter request list (option 55)" do
       value = <<1, 3, 6, 15, 51>>
       {"Parameter Request List", :int_list, params} = Decoder.decode_option_value(55, 5, value)
@@ -393,11 +388,6 @@ defmodule DHCPv4.Message.Option.DecoderTest do
       assert t2 == 3150
     end
 
-    # NOTE: The to_int_list function has a bug where it uses float division (b / 8)
-    # instead of integer division (div(b, 8)), causing infinite recursion or errors.
-    # This test is skipped until the bug is fixed.
-    @tag :skip
-    @tag :known_bug
     test "decodes vendor class identifier (option 60)" do
       value = "MSFT 5.0"
 
