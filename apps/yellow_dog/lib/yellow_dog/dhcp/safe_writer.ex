@@ -296,11 +296,8 @@ defmodule YellowDog.DHCP.SafeWriter do
   def list_pending_transactions(cache_dir) do
     case File.ls(cache_dir) do
       {:ok, files} ->
-        files
-        |> Enum.filter(&String.ends_with?(&1, ".toml"))
-        |> Enum.map(fn file ->
+        for file <- files, String.ends_with?(file, ".toml") do
           tx_id = Path.rootname(file)
-
           has_backup = File.exists?(Path.join(cache_dir, "#{tx_id}.backup"))
 
           %{
@@ -308,7 +305,7 @@ defmodule YellowDog.DHCP.SafeWriter do
             has_backup: has_backup,
             files: [file | if(has_backup, do: ["#{tx_id}.backup"], else: [])]
           }
-        end)
+        end
 
       {:error, _} ->
         []
@@ -332,22 +329,14 @@ defmodule YellowDog.DHCP.SafeWriter do
     case File.ls(cache_dir) do
       {:ok, files} ->
         cleaned =
-          files
-          |> Enum.filter(fn file ->
-            path = Path.join(cache_dir, file)
-
-            case File.stat(path, time: :posix) do
-              {:ok, %{mtime: mtime}} ->
-                now - mtime > max_age_seconds
-
-              _ ->
-                false
-            end
-          end)
-          |> Enum.map(fn file ->
-            File.rm(Path.join(cache_dir, file))
-          end)
-          |> Enum.count(&(&1 == :ok))
+          for file <- files,
+              path = Path.join(cache_dir, file),
+              {:ok, %{mtime: mtime}} <- [File.stat(path, time: :posix)],
+              now - mtime > max_age_seconds,
+              :ok <- [File.rm(path)],
+              reduce: 0 do
+            acc -> acc + 1
+          end
 
         {:ok, cleaned}
 

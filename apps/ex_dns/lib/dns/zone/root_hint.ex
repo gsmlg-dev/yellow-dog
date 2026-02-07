@@ -45,12 +45,12 @@ defmodule DNS.Zone.RootHint do
   def data_dir, do: Path.join([:code.priv_dir(:ex_dns), "data"])
 
   def root_hints() do
-    root_hints_text()
-    |> String.split("\n")
-    |> Enum.filter(&(&1 != "" and not String.starts_with?(&1, ";")))
-    |> Enum.map(fn line ->
-      type_map = %{"A" => :a, "AAAA" => :aaaa, "NS" => :ns}
-      [name, ttl, type, data] = line |> String.split(~r[\s+])
+    type_map = %{"A" => :a, "AAAA" => :aaaa, "NS" => :ns}
+
+    for line <- String.split(root_hints_text(), "\n"),
+        line != "",
+        not String.starts_with?(line, ";") do
+      [name, ttl, type, data] = String.split(line, ~r[\s+])
       rtype = Map.get(type_map, type)
 
       rdata =
@@ -68,7 +68,7 @@ defmodule DNS.Zone.RootHint do
         end
 
       [name: name, ttl: String.to_integer(ttl), type: RRType.new(rtype), rdata: rdata]
-    end)
+    end
   end
 
   def root_hints_text, do: File.read!(Path.join(data_dir(), "named.root"))

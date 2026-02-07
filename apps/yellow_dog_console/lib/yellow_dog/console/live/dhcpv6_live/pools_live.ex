@@ -322,7 +322,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
                       <% stats = get_pool_stats(pool.name) %>
                       <div class="flex items-center gap-2">
                         <progress
-                          class={"progress w-20 " <> get_utilization_class(stats.utilization_percent)}
+                          class={"progress w-20 progress-#{utilization_color(stats.utilization_percent)}"}
                           value={stats.utilization_percent}
                           max="100"
                         />
@@ -550,11 +550,6 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
   end
 
   defp format_lifetime(_), do: "-"
-
-  defp get_utilization_class(percent) when percent >= 90, do: "progress-error"
-  defp get_utilization_class(percent) when percent >= 75, do: "progress-warning"
-  defp get_utilization_class(percent) when percent >= 50, do: "progress-info"
-  defp get_utilization_class(_), do: "progress-success"
 
   defp service_running? do
     Process.whereis(YellowDog.Dhcpv6.LeaseManager) != nil

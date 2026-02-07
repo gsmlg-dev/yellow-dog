@@ -224,11 +224,9 @@ defmodule YellowDog.ConfigHelper do
       YellowDog.Dhcpv6
     ]
 
-    Enum.filter(services, fn module ->
-      Process.whereis(module) != nil
-    end)
-    |> Enum.map(fn module ->
-      {module, Process.whereis(module)}
-    end)
+    for module <- services,
+        pid = Process.whereis(module),
+        pid != nil,
+        do: {module, pid}
   end
 end

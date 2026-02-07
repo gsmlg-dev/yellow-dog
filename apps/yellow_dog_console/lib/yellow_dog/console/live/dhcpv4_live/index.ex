@@ -77,7 +77,11 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   end
 
   defp get_pools do
-    safe_call(YellowDog.Dhcpv4.LeaseManager, fn -> YellowDog.Dhcpv4.LeaseManager.get_pools() end, [])
+    safe_call(
+      YellowDog.Dhcpv4.LeaseManager,
+      fn -> YellowDog.Dhcpv4.LeaseManager.get_pools() end,
+      []
+    )
   end
 
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do

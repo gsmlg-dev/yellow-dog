@@ -16,19 +16,13 @@ defmodule DNS.Zone.Loader do
     case File.ls(directory) do
       {:ok, files} ->
         zones =
-          files
-          |> Enum.filter(&String.ends_with?(&1, ".zone"))
-          |> Enum.map(fn filename ->
-            path = Path.join(directory, filename)
-            name = String.replace_suffix(filename, ".zone", "")
-            {name, path}
-          end)
-          |> Enum.map(fn {name, path} -> load_zone_from_file(name, path) end)
-          |> Enum.filter(fn
-            {:ok, _} -> true
-            {:error, _} -> false
-          end)
-          |> Enum.map(fn {:ok, zone} -> zone end)
+          for filename <- files,
+              String.ends_with?(filename, ".zone"),
+              path = Path.join(directory, filename),
+              name = String.replace_suffix(filename, ".zone", ""),
+              {:ok, zone} <- [load_zone_from_file(name, path)] do
+            zone
+          end
 
         {:ok, zones}
 

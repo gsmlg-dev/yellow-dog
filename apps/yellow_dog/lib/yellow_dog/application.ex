@@ -393,24 +393,17 @@ defmodule YellowDog.Application do
 
     # Filter services based on configuration and pass server options
     enabled_services =
-      services
-      |> Enum.filter(fn {_module, service_name} ->
-        service_enabled?(config, service_name)
-      end)
-      |> Enum.map(fn {module, service_name} ->
+      for {module, service_name} <- services,
+          service_enabled?(config, service_name) do
         server_options = build_server_options(config, service_name)
         {module, server_options: server_options}
-      end)
+      end
 
     # Log which services are being started
     service_names =
-      services
-      |> Enum.filter(fn {_module, service_name} ->
-        service_enabled?(config, service_name)
-      end)
-      |> Enum.map(fn {_module, service_name} ->
-        service_name |> to_string() |> String.upcase()
-      end)
+      for {_module, service_name} <- services,
+          service_enabled?(config, service_name),
+          do: service_name |> to_string() |> String.upcase()
 
     if service_names != [] do
       :telemetry.execute(
@@ -422,13 +415,9 @@ defmodule YellowDog.Application do
 
     # Log disabled services
     disabled_services =
-      services
-      |> Enum.filter(fn {_module, service_name} ->
-        not service_enabled?(config, service_name)
-      end)
-      |> Enum.map(fn {_module, service_name} ->
-        service_name |> to_string() |> String.upcase()
-      end)
+      for {_module, service_name} <- services,
+          not service_enabled?(config, service_name),
+          do: service_name |> to_string() |> String.upcase()
 
     if disabled_services != [] do
       :telemetry.execute(

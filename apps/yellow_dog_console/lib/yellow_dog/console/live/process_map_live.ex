@@ -32,10 +32,9 @@ defmodule YellowDog.Console.ProcessMapLive do
 
         # Add all immediate children pids (the app supervisors)
         child_pids =
-          tree
-          |> Map.get(:children, [])
-          |> Enum.filter(&is_pid(&1.pid))
-          |> Enum.map(& &1.pid)
+          for child <- Map.get(tree, :children, []),
+              is_pid(child.pid),
+              do: child.pid
 
         MapSet.new(pids ++ child_pids)
       else

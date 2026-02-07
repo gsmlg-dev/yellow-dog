@@ -134,9 +134,11 @@ defmodule YellowDog.Console.ConfigManager do
 
     case File.ls(dir) do
       {:ok, files} ->
-        files
-        |> Enum.filter(&String.match?(&1, ~r/^#{Regex.escape(base)}\.backup\.\d{8}T\d{6,}Z$/))
-        |> Enum.map(&Path.join(dir, &1))
+        for(
+          f <- files,
+          String.match?(f, ~r/^#{Regex.escape(base)}\.backup\.\d{8}T\d{6,}Z$/),
+          do: Path.join(dir, f)
+        )
         |> Enum.sort()
 
       {:error, _} ->
