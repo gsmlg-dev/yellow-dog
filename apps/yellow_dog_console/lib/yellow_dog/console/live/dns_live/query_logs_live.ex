@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
   alias YellowDog.Dns.QueryLogger
@@ -26,7 +27,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     {:ok,
      socket
      |> assign(:page_title, "DNS Query Logs")
-     |> assign(:service_running, dns_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dns))
      |> assign(:search_query, "")
      |> assign(:filter_view, "all")
      |> assign(:filter_rcode, "all")
@@ -508,5 +509,5 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     """
   end
 
-  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
+
 end

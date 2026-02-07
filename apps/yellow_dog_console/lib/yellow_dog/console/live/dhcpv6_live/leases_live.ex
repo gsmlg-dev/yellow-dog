@@ -28,7 +28,7 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     {:ok,
      socket
      |> assign(:page_title, "DHCPv6 Leases")
-     |> assign(:service_running, dhcpv6_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dhcpv6.LeaseManager))
      |> assign(:search_query, "")
      |> assign(:filter_state, "all")
      |> assign(:filter_ia_type, "all")
@@ -220,5 +220,5 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
   defp format_ipv6_or_prefix(_), do: "N/A"
 
-  defp dhcpv6_service_running?, do: Process.whereis(YellowDog.Dhcpv6.LeaseManager) != nil
+
 end

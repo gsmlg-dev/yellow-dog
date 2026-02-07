@@ -32,4 +32,16 @@ defmodule YellowDog.Console.ServiceHelper do
       default
     end
   end
+
+  @doc """
+  Checks whether a service process is registered and running.
+
+  ## Examples
+
+      service_running?(YellowDog.Dns)
+      service_running?(YellowDog.Dhcpv4.LeaseManager)
+  """
+  def service_running?(process_name) do
+    Process.whereis(process_name) != nil
+  end
 end

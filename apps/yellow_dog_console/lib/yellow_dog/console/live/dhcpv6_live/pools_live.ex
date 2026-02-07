@@ -11,6 +11,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   use YellowDog.Console, :live_view
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
   alias YellowDog.Console.Settings.AddressPool
@@ -24,7 +25,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
      |> assign(:form_mode, :create)
      |> assign(:editing_pool, nil)
      |> assign(:filter, "")
-     |> assign(:service_running, service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dhcpv6.LeaseManager))
      |> load_pools()}
   end
 
@@ -551,7 +552,4 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   defp format_lifetime(_), do: "-"
 
-  defp service_running? do
-    Process.whereis(YellowDog.Dhcpv6.LeaseManager) != nil
-  end
 end

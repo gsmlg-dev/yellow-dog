@@ -28,7 +28,7 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     {:ok,
      socket
      |> assign(:page_title, "DHCP Leases")
-     |> assign(:service_running, dhcpv4_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dhcpv4.LeaseManager))
      |> assign(:search_query, "")
      |> assign(:filter_state, "all")
      |> assign(:filter_pool, "all")
@@ -191,5 +191,5 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     header <> rows
   end
 
-  defp dhcpv4_service_running?, do: Process.whereis(YellowDog.Dhcpv4.LeaseManager) != nil
+
 end

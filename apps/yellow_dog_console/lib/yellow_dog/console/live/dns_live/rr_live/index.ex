@@ -7,6 +7,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Dns.ZoneController
 
@@ -22,7 +23,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Resource Records")
-     |> assign(:service_running, dns_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dns))
      |> assign(:view_name, nil)
      |> assign(:zone_type, nil)
      |> assign(:zone_name, nil)
@@ -738,5 +739,5 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
     YellowDog.Dns.Zone.Auth.remove_record(pid, name, normalize_record_type(type))
   end
 
-  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
+
 end

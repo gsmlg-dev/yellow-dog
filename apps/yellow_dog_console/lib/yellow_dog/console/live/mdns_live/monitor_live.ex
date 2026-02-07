@@ -5,6 +5,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,7 +18,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     {:ok,
      socket
      |> assign(:page_title, "Network Monitor")
-     |> assign(:service_running, mdns_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Mdns))
      |> assign(:queries, get_recent_queries(50))
      |> assign(:stats, get_network_stats())
      |> assign(:limit, 50)
@@ -199,5 +200,5 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     if max_count > 0, do: count / max_count * 100, else: 0
   end
 
-  defp mdns_service_running?, do: Process.whereis(YellowDog.Mdns) != nil
+
 end

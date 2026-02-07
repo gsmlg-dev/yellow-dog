@@ -5,6 +5,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,7 +18,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     {:ok,
      socket
      |> assign(:page_title, "Network Discovery")
-     |> assign(:service_running, mdns_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Mdns))
      |> assign(:services, list_discovered_services())
      |> assign(:search, "")
      |> assign(:type_filter, "all")
@@ -182,5 +183,5 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
 
   defp format_txt_for_csv(_), do: ""
 
-  defp mdns_service_running?, do: Process.whereis(YellowDog.Mdns) != nil
+
 end

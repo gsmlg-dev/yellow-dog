@@ -12,6 +12,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
   alias YellowDog.Console.Settings.AddressPool
@@ -25,7 +26,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
      |> assign(:form_mode, :create)
      |> assign(:editing_pool, nil)
      |> assign(:filter, "")
-     |> assign(:service_running, service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dhcpv4.LeaseManager))
      |> load_pools()}
   end
 
@@ -573,7 +574,4 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
 
   defp format_lease_time(_), do: "-"
 
-  defp service_running? do
-    Process.whereis(YellowDog.Dhcpv4.LeaseManager) != nil
-  end
 end

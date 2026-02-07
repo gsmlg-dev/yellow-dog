@@ -7,6 +7,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
@@ -25,7 +26,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "DNS Zones")
-     |> assign(:service_running, dns_service_running?())
+     |> assign(:service_running, service_running?(YellowDog.Dns))
      |> assign(:view_name, nil)
      |> assign(:zones, [])
      |> assign(:filter, "")
@@ -864,5 +865,5 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     end)
   end
 
-  defp dns_service_running?, do: Process.whereis(YellowDog.Dns) != nil
+
 end
