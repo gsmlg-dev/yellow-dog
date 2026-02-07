@@ -11,6 +11,7 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -130,37 +131,19 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   end
 
   defp get_leases do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.list_leases()
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.list_leases() end, [])
   end
 
   defp get_pools do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6.LeaseManager) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.LeaseManager.get_pools()
-          |> Enum.map(& &1.name)
-          |> Enum.sort()
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(
+      YellowDog.Dhcpv6.LeaseManager,
+      fn ->
+        YellowDog.Dhcpv6.LeaseManager.get_pools()
+        |> Enum.map(& &1.name)
+        |> Enum.sort()
+      end,
+      []
+    )
   end
 
   defp filter_by_search(leases, ""), do: leases

@@ -10,6 +10,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
@@ -111,22 +112,16 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
   end
 
   defp get_pool_config(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4.LeaseManager) do
-      true ->
-        try do
-          case YellowDog.Dhcpv4.LeaseManager.get_pool_config(pool_name) do
-            {:ok, config} -> config
-            _ -> default_pool_config(pool_name)
-          end
-        rescue
+    safe_call(
+      YellowDog.Dhcpv4.LeaseManager,
+      fn ->
+        case YellowDog.Dhcpv4.LeaseManager.get_pool_config(pool_name) do
+          {:ok, config} -> config
           _ -> default_pool_config(pool_name)
-        catch
-          :exit, _ -> default_pool_config(pool_name)
         end
-
-      false ->
-        default_pool_config(pool_name)
-    end
+      end,
+      default_pool_config(pool_name)
+    )
   end
 
   defp default_pool_config(pool_name) do
@@ -144,22 +139,16 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
   end
 
   defp get_pool_stats(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
-            {:ok, stats} -> stats
-            _ -> default_pool_stats()
-          end
-        rescue
+    safe_call(
+      YellowDog.Dhcpv4,
+      fn ->
+        case YellowDog.Dhcpv4.get_pool_stats(pool_name) do
+          {:ok, stats} -> stats
           _ -> default_pool_stats()
-        catch
-          :exit, _ -> default_pool_stats()
         end
-
-      false ->
-        default_pool_stats()
-    end
+      end,
+      default_pool_stats()
+    )
   end
 
   defp default_pool_stats do
@@ -174,36 +163,19 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
   end
 
   defp get_static_reservations(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4.LeaseManager) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.LeaseManager.get_static_reservations(pool_name)
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(
+      YellowDog.Dhcpv4.LeaseManager,
+      fn -> YellowDog.Dhcpv4.LeaseManager.get_static_reservations(pool_name) end,
+      []
+    )
   end
 
   defp get_pool_leases(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.list_leases()
-          |> Enum.filter(&(&1.pool_name == pool_name))
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(
+      YellowDog.Dhcpv4,
+      fn -> YellowDog.Dhcpv4.list_leases() |> Enum.filter(&(&1.pool_name == pool_name)) end,
+      []
+    )
   end
 
   defp filter_by_search(leases, ""), do: leases

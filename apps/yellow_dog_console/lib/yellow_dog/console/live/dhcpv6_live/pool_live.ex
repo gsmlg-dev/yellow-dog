@@ -10,6 +10,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(%{"pool_name" => pool_name}, _session, socket) do
@@ -35,55 +36,35 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolLive do
   end
 
   defp get_pool_stats(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          stats = YellowDog.Dhcpv6.get_all_pool_stats()
-          Map.get(stats, pool_name)
-        rescue
-          _ -> nil
-        catch
-          :exit, _ -> nil
-        end
-
-      false ->
-        nil
-    end
+    safe_call(
+      YellowDog.Dhcpv6,
+      fn ->
+        stats = YellowDog.Dhcpv6.get_all_pool_stats()
+        Map.get(stats, pool_name)
+      end
+    )
   end
 
   defp get_pool_config(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6.LeaseManager) do
-      true ->
-        try do
-          pools = YellowDog.Dhcpv6.LeaseManager.get_pools()
-          Enum.find(pools, fn p -> p.name == pool_name end)
-        rescue
-          _ -> nil
-        catch
-          :exit, _ -> nil
-        end
-
-      false ->
-        nil
-    end
+    safe_call(
+      YellowDog.Dhcpv6.LeaseManager,
+      fn ->
+        pools = YellowDog.Dhcpv6.LeaseManager.get_pools()
+        Enum.find(pools, fn p -> p.name == pool_name end)
+      end
+    )
   end
 
   defp get_pool_leases(pool_name) do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.list_leases()
-          |> Enum.filter(fn l -> l.pool_name == pool_name end)
-          |> Enum.sort_by(& &1.expires_at, :desc)
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(
+      YellowDog.Dhcpv6,
+      fn ->
+        YellowDog.Dhcpv6.list_leases()
+        |> Enum.filter(fn l -> l.pool_name == pool_name end)
+        |> Enum.sort_by(& &1.expires_at, :desc)
+      end,
+      []
+    )
   end
 
   defp format_duid_short(duid) when is_binary(duid) do

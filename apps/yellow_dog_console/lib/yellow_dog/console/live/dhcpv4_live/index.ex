@@ -10,6 +10,7 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -59,20 +60,7 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   end
 
   defp get_dhcp_stats do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.stats()
-        rescue
-          _ ->
-            default_stats()
-        catch
-          :exit, _ -> default_stats()
-        end
-
-      false ->
-        default_stats()
-    end
+    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.stats() end, default_stats())
   end
 
   defp default_stats do
@@ -85,35 +73,11 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   end
 
   defp get_pool_stats do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.get_all_pool_stats()
-        rescue
-          _ -> %{}
-        catch
-          :exit, _ -> %{}
-        end
-
-      false ->
-        %{}
-    end
+    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.get_all_pool_stats() end, %{})
   end
 
   defp get_pools do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4.LeaseManager) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.LeaseManager.get_pools()
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(YellowDog.Dhcpv4.LeaseManager, fn -> YellowDog.Dhcpv4.LeaseManager.get_pools() end, [])
   end
 
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
@@ -121,18 +85,6 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   end
 
   defp get_status do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.status()
-        rescue
-          _ -> %{running: false}
-        catch
-          :exit, _ -> %{running: false}
-        end
-
-      false ->
-        %{running: false}
-    end
+    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.status() end, %{running: false})
   end
 end

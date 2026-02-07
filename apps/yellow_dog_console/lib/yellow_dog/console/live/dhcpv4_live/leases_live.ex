@@ -11,6 +11,7 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
 
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -110,19 +111,7 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
   end
 
   defp get_all_leases do
-    case Code.ensure_loaded?(YellowDog.Dhcpv4) do
-      true ->
-        try do
-          YellowDog.Dhcpv4.list_leases()
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(YellowDog.Dhcpv4, fn -> YellowDog.Dhcpv4.list_leases() end, [])
   end
 
   defp get_unique_pools(leases) do

@@ -10,6 +10,7 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.FormatHelper
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -59,20 +60,7 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
   end
 
   defp get_dhcp_stats do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.stats()
-        rescue
-          _ ->
-            default_stats()
-        catch
-          :exit, _ -> default_stats()
-        end
-
-      false ->
-        default_stats()
-    end
+    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.stats() end, default_stats())
   end
 
   defp default_stats do
@@ -86,35 +74,11 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
   end
 
   defp get_pool_stats do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.get_all_pool_stats()
-        rescue
-          _ -> %{}
-        catch
-          :exit, _ -> %{}
-        end
-
-      false ->
-        %{}
-    end
+    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.get_all_pool_stats() end, %{})
   end
 
   defp get_pools do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6.LeaseManager) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.LeaseManager.get_pools()
-        rescue
-          _ -> []
-        catch
-          :exit, _ -> []
-        end
-
-      false ->
-        []
-    end
+    safe_call(YellowDog.Dhcpv6.LeaseManager, fn -> YellowDog.Dhcpv6.LeaseManager.get_pools() end, [])
   end
 
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
@@ -127,18 +91,6 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
   defp format_ia_type_verbose(type), do: to_string(type)
 
   defp get_status do
-    case Code.ensure_loaded?(YellowDog.Dhcpv6) do
-      true ->
-        try do
-          YellowDog.Dhcpv6.status()
-        rescue
-          _ -> %{running: false}
-        catch
-          :exit, _ -> %{running: false}
-        end
-
-      false ->
-        %{running: false}
-    end
+    safe_call(YellowDog.Dhcpv6, fn -> YellowDog.Dhcpv6.status() end, %{running: false})
   end
 end
