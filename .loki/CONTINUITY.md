@@ -14,7 +14,8 @@ Iteration 12: Event handler tests + resilience + debounce:
 - ✅ aria-label on 14 select/dropdown filter elements
 - ✅ phx-debounce="300" on 4 search inputs (DHCPv4/v6 leases, pool, mDNS discovery)
 - ✅ Fixed dead navbar search input (no event handlers) and non-functional data-confirm dialogs
-- ✅ **26 commits this iteration**: 21 prior + 5 this session
+- ✅ Settings page: return default config when TOML file missing (eliminates error logs)
+- ✅ **28 commits this iteration**: 21 prior + 7 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -97,6 +98,8 @@ Iteration 12: Event handler tests + resilience + debounce:
 24. `1597e64` - fix(console): use try/catch in mDNS LiveViews for service-down resilience
 25. `967dc42` - fix(console): add phx-debounce to 4 search inputs
 26. `09d5b6b` - fix(console): remove dead navbar search, add data-confirm handler
+27. `d01c177` - docs: update CONTINUITY with navbar cleanup and data-confirm fix
+28. `ba876a3` - fix(console): return default config when TOML file missing
 
 ## Mistakes & Learnings
 
