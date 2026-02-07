@@ -228,7 +228,7 @@
           {if @form_mode == :new, do: "Register New Service", else: "Edit Service"}
         </h3>
 
-        <form phx-submit="save_service" class="space-y-4">
+        <form phx-submit="save_service" phx-change="validate_service" class="space-y-4">
           <div class="form-control">
             <label class="label">
               <span class="label-text font-semibold">Service Name</span>
@@ -239,8 +239,11 @@
               value={@editing_service && @editing_service.name}
               placeholder="My Service"
               required
-              class="input input-bordered w-full"
+              class={["input input-bordered w-full", @form_errors[:name] && "input-error"]}
             />
+            <label :if={@form_errors[:name]} class="label">
+              <span class="label-text-alt text-error">{@form_errors[:name]}</span>
+            </label>
           </div>
 
           <div class="form-control">
@@ -253,9 +256,12 @@
               value={@editing_service && @editing_service.type}
               placeholder="_http._tcp"
               required
-              class="input input-bordered w-full"
+              class={["input input-bordered w-full", @form_errors[:type] && "input-error"]}
             />
-            <label class="label">
+            <label :if={@form_errors[:type]} class="label">
+              <span class="label-text-alt text-error">{@form_errors[:type]}</span>
+            </label>
+            <label :if={!@form_errors[:type]} class="label">
               <span class="label-text-alt">Example: _http._tcp, _ssh._tcp, _printer._tcp</span>
             </label>
           </div>
@@ -270,8 +276,13 @@
               value={@editing_service && @editing_service.port}
               placeholder="8080"
               required
-              class="input input-bordered w-full"
+              min="1"
+              max="65535"
+              class={["input input-bordered w-full", @form_errors[:port] && "input-error"]}
             />
+            <label :if={@form_errors[:port]} class="label">
+              <span class="label-text-alt text-error">{@form_errors[:port]}</span>
+            </label>
           </div>
 
           <div class="form-control">
@@ -297,9 +308,12 @@
               name="addresses"
               rows="2"
               placeholder="192.168.1.100&#10;192.168.1.101"
-              class="textarea textarea-bordered w-full"
+              class={["textarea textarea-bordered w-full", @form_errors[:addresses] && "textarea-error"]}
             ><%= if @editing_service && @editing_service.addresses, do: Enum.join(@editing_service.addresses, "\n") %></textarea>
-            <label class="label">
+            <label :if={@form_errors[:addresses]} class="label">
+              <span class="label-text-alt text-error">{@form_errors[:addresses]}</span>
+            </label>
+            <label :if={!@form_errors[:addresses]} class="label">
               <span class="label-text-alt">Enter IP addresses, one per line</span>
             </label>
           </div>

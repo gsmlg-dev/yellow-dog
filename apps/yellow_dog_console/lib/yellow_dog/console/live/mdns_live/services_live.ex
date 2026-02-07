@@ -20,7 +20,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
      |> assign(:filter, :all)
      |> assign(:show_form, false)
      |> assign(:form_mode, :new)
-     |> assign(:editing_service, nil)}
+     |> assign(:editing_service, nil)
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -68,12 +69,18 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   @impl true
+  def handle_event("validate_service", params, socket) do
+    {:noreply, assign(socket, :form_errors, validate_service_params(params))}
+  end
+
+  @impl true
   def handle_event("show_new_form", _params, socket) do
     {:noreply,
      socket
      |> assign(:show_form, true)
      |> assign(:form_mode, :new)
-     |> assign(:editing_service, nil)}
+     |> assign(:editing_service, nil)
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -84,7 +91,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
      socket
      |> assign(:show_form, true)
      |> assign(:form_mode, :edit)
-     |> assign(:editing_service, service)}
+     |> assign(:editing_service, service)
+     |> assign(:form_errors, %{})}
   end
 
   @impl true
@@ -97,47 +105,55 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   @impl true
   def handle_event("save_service", params, socket) do
-    service_def = %{
-      name: params["name"],
-      type: params["type"],
-      port: String.to_integer(params["port"]),
-      txt: parse_txt_records(params["txt"]),
-      addresses: parse_addresses(params["addresses"]),
-      enabled: params["enabled"] == "true"
-    }
+    errors = validate_service_params(params)
 
-    result =
-      case socket.assigns.form_mode do
-        :new ->
-          YellowDog.Mdns.register_service(service_def, persist: true)
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :form_errors, errors)}
+    else
+      port = parse_port(params["port"])
 
-        :edit ->
-          YellowDog.Mdns.update_service(
-            socket.assigns.editing_service.id,
-            service_def,
-            persist: true
-          )
+      service_def = %{
+        name: params["name"],
+        type: params["type"],
+        port: port,
+        txt: parse_txt_records(params["txt"]),
+        addresses: parse_addresses(params["addresses"]),
+        enabled: params["enabled"] == "true"
+      }
+
+      result =
+        case socket.assigns.form_mode do
+          :new ->
+            YellowDog.Mdns.register_service(service_def, persist: true)
+
+          :edit ->
+            YellowDog.Mdns.update_service(
+              socket.assigns.editing_service.id,
+              service_def,
+              persist: true
+            )
+        end
+
+      case result do
+        {:ok, _} ->
+          {:noreply,
+           socket
+           |> assign(:show_form, false)
+           |> assign(:editing_service, nil)
+           |> assign(:services, list_services(filter: socket.assigns.filter))
+           |> put_flash(:info, "Service saved successfully")}
+
+        :ok ->
+          {:noreply,
+           socket
+           |> assign(:show_form, false)
+           |> assign(:editing_service, nil)
+           |> assign(:services, list_services(filter: socket.assigns.filter))
+           |> put_flash(:info, "Service updated successfully")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to save service: #{inspect(reason)}")}
       end
-
-    case result do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> assign(:show_form, false)
-         |> assign(:editing_service, nil)
-         |> assign(:services, list_services(filter: socket.assigns.filter))
-         |> put_flash(:info, "Service saved successfully")}
-
-      :ok ->
-        {:noreply,
-         socket
-         |> assign(:show_form, false)
-         |> assign(:editing_service, nil)
-         |> assign(:services, list_services(filter: socket.assigns.filter))
-         |> put_flash(:info, "Service updated successfully")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save service: #{inspect(reason)}")}
     end
   end
 
@@ -168,6 +184,68 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   @impl true
   def handle_info({:service_toggled, _service_id}, socket) do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
+  end
+
+  @doc false
+  def validate_service_params(params) do
+    errors = %{}
+
+    errors =
+      case String.trim(params["name"] || "") do
+        "" -> Map.put(errors, :name, "Service name is required")
+        _ -> errors
+      end
+
+    errors =
+      case String.trim(params["type"] || "") do
+        "" ->
+          Map.put(errors, :type, "Service type is required")
+
+        type ->
+          if Regex.match?(~r/^_[a-zA-Z0-9\-]+\._(?:tcp|udp)$/, type) do
+            errors
+          else
+            Map.put(errors, :type, "Must be _service._tcp or _service._udp format")
+          end
+      end
+
+    errors =
+      case parse_port(params["port"]) do
+        nil -> Map.put(errors, :port, "Port must be a number between 1 and 65535")
+        _ -> errors
+      end
+
+    errors =
+      case String.trim(params["addresses"] || "") do
+        "" ->
+          errors
+
+        addresses_str ->
+          invalid =
+            addresses_str
+            |> String.split("\n", trim: true)
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            |> Enum.reject(fn addr -> match?({:ok, _}, :inet.parse_address(String.to_charlist(addr))) end)
+
+          if invalid == [] do
+            errors
+          else
+            Map.put(errors, :addresses, "Invalid IP address: #{hd(invalid)}")
+          end
+      end
+
+    errors
+  end
+
+  defp parse_port(nil), do: nil
+  defp parse_port(""), do: nil
+
+  defp parse_port(port_str) when is_binary(port_str) do
+    case Integer.parse(String.trim(port_str)) do
+      {port, ""} when port >= 1 and port <= 65535 -> port
+      _ -> nil
+    end
   end
 
   defp list_services(opts \\ []) do
