@@ -9,6 +9,10 @@ defmodule DNS.Zone.DNSSEC do
   alias DNS.Zone
   alias DNS.Message.Record
 
+  # Default TTL for DNSSEC records
+  @default_dnssec_ttl 3600
+  @seconds_per_day 86_400
+
   @doc """
   Generate DNSKEY record for a DNSSEC zone.
   """
@@ -26,7 +30,7 @@ defmodule DNS.Zone.DNSSEC do
       name: DNS.Message.Domain.new(zone_name),
       type: DNS.ResourceRecordType.new(:dnskey),
       class: :in,
-      ttl: 3600,
+      ttl: @default_dnssec_ttl,
       data: {flags, protocol, algorithm, public_key}
     }
   end
@@ -48,7 +52,7 @@ defmodule DNS.Zone.DNSSEC do
       name: DNS.Message.Domain.new(zone_name),
       type: DNS.ResourceRecordType.new(:ds),
       class: :in,
-      ttl: 3600,
+      ttl: @default_dnssec_ttl,
       data: {key_tag, algorithm, digest_type, digest}
     }
   end
@@ -90,7 +94,7 @@ defmodule DNS.Zone.DNSSEC do
       name: DNS.Message.Domain.new(zone_name),
       type: DNS.ResourceRecordType.new(:rrsig),
       class: :in,
-      ttl: 3600,
+      ttl: @default_dnssec_ttl,
       data:
         {type_value, algorithm, labels, original_ttl, expiration, inception, key_tag, signer_name,
          signature}
@@ -111,7 +115,7 @@ defmodule DNS.Zone.DNSSEC do
       name: DNS.Message.Domain.new(owner_name),
       type: DNS.ResourceRecordType.new(:nsec),
       class: :in,
-      ttl: 3600,
+      ttl: @default_dnssec_ttl,
       data: {next_name, type_bitmap}
     }
   end
@@ -135,7 +139,7 @@ defmodule DNS.Zone.DNSSEC do
       name: DNS.Message.Domain.new(owner_name),
       type: DNS.ResourceRecordType.new(:nsec3),
       class: :in,
-      ttl: 3600,
+      ttl: @default_dnssec_ttl,
       data: {algorithm, flags, iterations, salt, next_hashed, type_bitmap}
     }
   end
@@ -254,7 +258,7 @@ defmodule DNS.Zone.DNSSEC do
 
   defp future_timestamp(days) do
     DateTime.utc_now()
-    |> DateTime.add(days * 24 * 3600)
+    |> DateTime.add(days * @seconds_per_day)
     |> DateTime.to_unix()
   end
 

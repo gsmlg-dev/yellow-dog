@@ -18,6 +18,10 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   @cleanup_interval 300_000
   # Default TTL for cached records
   @default_ttl 120
+  # Time thresholds for queries and cleanup
+  @query_lookback_seconds 3600
+  @stale_service_seconds 300
+  @stale_cleanup_seconds 600
 
   @type message_entry :: %{
           domain: String.t(),
@@ -112,7 +116,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   @spec get_queries(keyword()) :: [query_entry()]
   def get_queries(opts \\ []) do
     limit = Keyword.get(opts, :limit, 100)
-    since = Keyword.get(opts, :since, System.system_time(:second) - 3600)
+    since = Keyword.get(opts, :since, System.system_time(:second) - @query_lookback_seconds)
 
     @query_table
     |> :ets.tab2list()
@@ -140,8 +144,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   @spec list_discovered_services() :: [discovered_service()]
   def list_discovered_services do
     now = System.system_time(:second)
-    # 5 minutes
-    stale_threshold = now - 300
+    stale_threshold = now - @stale_service_seconds
 
     @services_table
     |> :ets.tab2list()
@@ -200,7 +203,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     # Calculate queries per minute (last hour)
     now = System.system_time(:second)
-    one_hour_ago = now - 3600
+    one_hour_ago = now - @query_lookback_seconds
 
     recent_queries =
       get_queries(since: one_hour_ago)
@@ -583,7 +586,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     end)
 
     # Clean up old queries (older than 1 hour)
-    one_hour_ago = now - 3600
+    one_hour_ago = now - @query_lookback_seconds
     query_entries = :ets.tab2list(@query_table)
 
     old_queries =
@@ -596,7 +599,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     end)
 
     # Clean up stale services (not seen in 10 minutes)
-    ten_minutes_ago = now - 600
+    ten_minutes_ago = now - @stale_cleanup_seconds
 
     stale_services =
       @services_table

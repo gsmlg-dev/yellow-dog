@@ -8,6 +8,12 @@ defmodule YellowDog.Console.Validators do
 
   alias YellowDog.Console.Settings.AddressPool
 
+  # RFC 1035 §2.3.4: Domain name length limits
+  @max_domain_name_length 253
+  @max_label_length 63
+  # RFC 793: Maximum 16-bit unsigned integer (port, priority, weight)
+  @max_uint16 65_535
+
   @doc """
   Validates an IP address for a specific protocol.
 
@@ -72,10 +78,10 @@ defmodule YellowDog.Console.Validators do
   """
   @spec validate_port(integer()) :: :ok | {:error, String.t()}
   def validate_port(port) when is_integer(port) do
-    if port >= 1 and port <= 65_535 do
+    if port >= 1 and port <= @max_uint16 do
       :ok
     else
-      {:error, "Port must be between 1 and 65535"}
+      {:error, "Port must be between 1 and #{@max_uint16}"}
     end
   end
 
@@ -225,8 +231,8 @@ defmodule YellowDog.Console.Validators do
       name == "" ->
         {:error, "Domain name cannot be empty"}
 
-      byte_size(name) > 253 ->
-        {:error, "Domain name exceeds 253 characters"}
+      byte_size(name) > @max_domain_name_length ->
+        {:error, "Domain name exceeds #{@max_domain_name_length} characters"}
 
       true ->
         labels = String.split(name, ".")
@@ -250,8 +256,8 @@ defmodule YellowDog.Console.Validators do
       label == "" ->
         {:error, "Empty label in domain name"}
 
-      byte_size(label) > 63 ->
-        {:error, "Label exceeds 63 characters"}
+      byte_size(label) > @max_label_length ->
+        {:error, "Label exceeds #{@max_label_length} characters"}
 
       String.starts_with?(label, "-") or String.ends_with?(label, "-") ->
         {:error, "Label cannot start or end with a hyphen"}
@@ -298,10 +304,10 @@ defmodule YellowDog.Console.Validators do
   """
   @spec validate_mx_priority(integer()) :: :ok | {:error, String.t()}
   def validate_mx_priority(priority)
-      when is_integer(priority) and priority >= 0 and priority <= 65_535,
+      when is_integer(priority) and priority >= 0 and priority <= @max_uint16,
       do: :ok
 
-  def validate_mx_priority(_), do: {:error, "MX priority must be between 0 and 65535"}
+  def validate_mx_priority(_), do: {:error, "MX priority must be between 0 and #{@max_uint16}"}
 
   @doc """
   Validates an SRV record.
@@ -327,8 +333,10 @@ defmodule YellowDog.Console.Validators do
     end
   end
 
-  defp validate_uint16(val, _label) when is_integer(val) and val >= 0 and val <= 65_535, do: :ok
-  defp validate_uint16(_, label), do: {:error, "#{label} must be between 0 and 65535"}
+  defp validate_uint16(val, _label) when is_integer(val) and val >= 0 and val <= @max_uint16,
+    do: :ok
+
+  defp validate_uint16(_, label), do: {:error, "#{label} must be between 0 and #{@max_uint16}"}
 
   # Private Functions
 

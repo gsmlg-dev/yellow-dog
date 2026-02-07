@@ -42,6 +42,15 @@ defmodule YellowDog.Dhcpv6.Handler do
   @option_ia_pd 25
   @option_ia_prefix 26
 
+  # RFC 1035 §2.3.4: Maximum DNS label length
+  @max_dns_label_length 63
+  # DHCPv6 temporary address lifetimes (seconds)
+  @ta_preferred_lifetime 600
+  @ta_valid_lifetime 1200
+  # Default pool lifetimes (seconds)
+  @default_preferred_lifetime 3600
+  @default_valid_lifetime 7200
+
   @doc """
   Handles incoming DHCPv6 data from clients.
   """
@@ -632,14 +641,14 @@ defmodule YellowDog.Dhcpv6.Handler do
     |> Enum.map_join(fn label ->
       # Enforce max label length per DNS specification
       truncated_label =
-        if byte_size(label) > 63 do
+        if byte_size(label) > @max_dns_label_length do
           :telemetry.execute(
             [:yellow_dog, :dhcpv6, :config, :warning],
             %{count: 1},
             %{issue: "DNS label truncated", original_length: byte_size(label)}
           )
 
-          binary_part(label, 0, 63)
+          binary_part(label, 0, @max_dns_label_length)
         else
           label
         end
@@ -665,10 +674,8 @@ defmodule YellowDog.Dhcpv6.Handler do
         ta_lease = %{
           lease
           | ia_type: :ia_ta,
-            preferred_lifetime: 600,
-            # 10 minutes
-            valid_lifetime: 1200
-            # 20 minutes
+            preferred_lifetime: @ta_preferred_lifetime,
+            valid_lifetime: @ta_valid_lifetime
         }
 
         {:ok, ta_lease}
@@ -695,8 +702,8 @@ defmodule YellowDog.Dhcpv6.Handler do
        iaid: iaid,
        ia_type: :ia_pd,
        delegated_prefix: {{0x2001, 0x0DB8, 0x1000, 0, 0, 0, 0, 0}, 56},
-       preferred_lifetime: 3600,
-       valid_lifetime: 7200,
+       preferred_lifetime: @default_preferred_lifetime,
+       valid_lifetime: @default_valid_lifetime,
        pool_name: "default-pd"
      }}
   end
@@ -812,8 +819,8 @@ defmodule YellowDog.Dhcpv6.Handler do
       prefix_length: 64,
       dns_servers: [{0xFD00, 0, 0, 0, 0, 0, 0, 1}],
       domain_name: "local",
-      preferred_lifetime: 3600,
-      valid_lifetime: 7200
+      preferred_lifetime: @default_preferred_lifetime,
+      valid_lifetime: @default_valid_lifetime
     }
   end
 
