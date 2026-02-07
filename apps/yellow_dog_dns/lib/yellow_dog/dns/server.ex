@@ -353,17 +353,9 @@ defmodule YellowDog.Dns.Server do
   defp normalize_ip(ip) when is_tuple(ip), do: ip
 
   defp normalize_ip(ip_str) when is_binary(ip_str) do
-    charlist = String.to_charlist(ip_str)
-
-    case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} ->
-        ip
-
-      {:error, _} ->
-        case :inet.parse_ipv6_address(charlist) do
-          {:ok, ip} -> ip
-          {:error, _} -> {0, 0, 0, 0}
-        end
+    case :inet.parse_address(String.to_charlist(ip_str)) do
+      {:ok, ip} -> ip
+      {:error, _} -> {0, 0, 0, 0}
     end
   end
 

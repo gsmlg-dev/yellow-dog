@@ -313,17 +313,9 @@ defmodule YellowDog.Dns.View.ACL do
   end
 
   defp parse_ip(ip_string) do
-    charlist = String.to_charlist(ip_string)
-
-    case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} ->
-        {:ok, ip}
-
-      {:error, _} ->
-        case :inet.parse_ipv6_address(charlist) do
-          {:ok, ip} -> {:ok, ip}
-          {:error, _} -> {:error, :invalid_ip}
-        end
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, _ip} = ok -> ok
+      {:error, _} -> {:error, :invalid_ip}
     end
   end
 

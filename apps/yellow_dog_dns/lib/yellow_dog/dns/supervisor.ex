@@ -469,17 +469,9 @@ defmodule YellowDog.Dns.Supervisor do
   end
 
   defp parse_ip(ip_str) when is_binary(ip_str) do
-    charlist = String.to_charlist(ip_str)
-
-    case :inet.parse_ipv4_address(charlist) do
-      {:ok, ip} ->
-        {:ok, ip}
-
-      {:error, _} ->
-        case :inet.parse_ipv6_address(charlist) do
-          {:ok, ip} -> {:ok, ip}
-          {:error, _} -> {:error, :invalid_ip}
-        end
+    case :inet.parse_address(String.to_charlist(ip_str)) do
+      {:ok, _ip} = ok -> ok
+      {:error, _} -> {:error, :invalid_ip}
     end
   end
 
