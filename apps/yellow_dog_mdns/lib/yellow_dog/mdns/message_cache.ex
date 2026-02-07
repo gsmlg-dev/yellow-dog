@@ -68,7 +68,7 @@ defmodule YellowDog.Mdns.MessageCache do
     entries =
       case :ets.lookup(@table_name, domain_key) do
         [] -> []
-        results -> Enum.map(results, fn {_key, entry} -> entry end)
+        results -> Enum.map(results, &elem(&1, 1))
       end
 
     # Filter by record type if specified
@@ -99,7 +99,7 @@ defmodule YellowDog.Mdns.MessageCache do
 
     @table_name
     |> :ets.tab2list()
-    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.map(&elem(&1, 1))
     |> Enum.filter(fn entry ->
       entry.received_at + entry.ttl > now
     end)

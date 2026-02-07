@@ -137,7 +137,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
     @table_name
     |> :ets.tab2list()
-    |> Enum.map(fn {_id, service} -> service end)
+    |> Enum.map(&elem(&1, 1))
     |> apply_filters(filter, source_filter)
     |> Enum.sort_by(& &1.name)
   end

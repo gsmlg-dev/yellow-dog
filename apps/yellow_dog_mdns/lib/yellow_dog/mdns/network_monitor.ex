@@ -120,7 +120,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     @query_table
     |> :ets.tab2list()
-    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.map(&elem(&1, 1))
     |> Enum.filter(fn entry -> entry.timestamp >= since end)
     |> Enum.sort_by(& &1.timestamp, :desc)
     |> Enum.take(limit)
@@ -133,7 +133,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   def get_unanswered_queries do
     @query_table
     |> :ets.tab2list()
-    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.map(&elem(&1, 1))
     |> Enum.filter(fn entry -> not entry.answered end)
     |> Enum.sort_by(& &1.timestamp, :desc)
   end
@@ -148,7 +148,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     @services_table
     |> :ets.tab2list()
-    |> Enum.map(fn {_key, service} -> service end)
+    |> Enum.map(&elem(&1, 1))
     |> Enum.filter(fn service -> service.last_seen > stale_threshold end)
     |> Enum.sort_by(& &1.name)
   end
@@ -239,7 +239,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     @response_table
     |> :ets.tab2list()
-    |> Enum.map(fn {_key, entry} -> entry end)
+    |> Enum.map(&elem(&1, 1))
     |> Enum.filter(fn entry ->
       entry.received_at + entry.ttl > now
     end)
