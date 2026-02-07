@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 80)
+**Phase**: IN_PROGRESS (Iteration 81)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 80 of 1000
+**Iteration**: 81 of 1000
 
 ## Session Summary
-Iteration 80: Use `sort_by :desc` instead of negation for descending sort:
+Iteration 81: Use `Enum.sum_by` instead of `Enum.reduce` for summation:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `Enum.sum_by(list, &f/1)` (Elixir 1.18) replaces `Enum.reduce(list, 0, fn x, acc -> acc + f(x) end)`
+- ✅ 6 instances across 4 files: record_builder.ex (3), responder.ex (1), client.ex (1), validator.ex (1)
+- ✅ 4 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 80: Use `sort_by :desc` instead of negation for descending sort:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `Enum.sort_by(list, fn x -> x end, :desc)` is more idiomatic than `fn x -> -x end`
 - ✅ 5 instances across 2 files: metrics_live.ex (4), rpz.ex (1)
