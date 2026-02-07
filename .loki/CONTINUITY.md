@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 105)
+**Phase**: IN_PROGRESS (Iteration 106)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 105 of 1000
+**Iteration**: 106 of 1000
 
 ## Session Summary
-Iteration 105: Add unit tests for MacFormat and DuidFormat modules:
+Iteration 106: Add unit tests for Config.TomlHelpers (33 tests):
+- ✅ **All 33 tests pass: 0 failures**
+- ✅ Covers all 10 public functions: get_value, get_integer, get_boolean, get_list, get_map, parse_toml, encode_toml_string, atomic_write, ensure_directory, maybe_create_backup
+- ✅ Found @spec bug: maybe_create_backup says `{:ok, String.t()}` but File.cp returns `:ok`
+- ✅ 1 new file — **1 commit** — net +179 lines
+
+Previous iteration 105: Add unit tests for MacFormat and DuidFormat modules:
 - ✅ **All umbrella tests pass: 0 failures, 0 warnings**
 - ✅ MacFormat tests (8): uppercase, zero MAC, lowercase, longer binary, short/empty/non-binary nil, default
 - ✅ DuidFormat tests (9): uppercase, single byte, lowercase, custom separator, combined opts, padding, empty/nil
