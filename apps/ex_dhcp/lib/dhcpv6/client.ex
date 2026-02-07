@@ -256,7 +256,8 @@ defmodule DHCPv6.Client do
   end
 
   defp extract_addresses(message) do
-    for %{option_code: 3, option_data: <<_iaid::32, _t1::32, _t2::32, rest::binary>>} <- message.options,
+    for %{option_code: 3, option_data: <<_iaid::32, _t1::32, _t2::32, rest::binary>>} <-
+          message.options,
         addr <- parse_ia_addresses(rest),
         do: addr
   end

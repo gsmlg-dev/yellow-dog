@@ -514,9 +514,18 @@ defmodule YellowDog.Dhcpv4.PoolStore do
         range_lines,
         if(pool[:lease_time], do: "lease_time = #{pool[:lease_time]}", else: []),
         if(pool[:max_leases], do: "max_leases = #{pool[:max_leases]}", else: []),
-        if(pool[:subnet_mask], do: "subnet_mask = #{encode_toml_string(pool[:subnet_mask])}", else: []),
-        if(pool[:gateway], do: "gateway = #{encode_toml_string(format_ip_for_toml(pool[:gateway]))}", else: []),
-        if(pool[:domain_name], do: "domain_name = #{encode_toml_string(pool[:domain_name])}", else: []),
+        if(pool[:subnet_mask],
+          do: "subnet_mask = #{encode_toml_string(pool[:subnet_mask])}",
+          else: []
+        ),
+        if(pool[:gateway],
+          do: "gateway = #{encode_toml_string(format_ip_for_toml(pool[:gateway]))}",
+          else: []
+        ),
+        if(pool[:domain_name],
+          do: "domain_name = #{encode_toml_string(pool[:domain_name])}",
+          else: []
+        ),
         dns_line
       ])
 
@@ -742,8 +751,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   defp format_mac_for_toml(mac) when is_binary(mac) and byte_size(mac) == 6 do
     mac
     |> :binary.bin_to_list()
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.map(&String.pad_leading(&1, 2, "0"))
+    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> Enum.join(":")
     |> String.downcase()
   end

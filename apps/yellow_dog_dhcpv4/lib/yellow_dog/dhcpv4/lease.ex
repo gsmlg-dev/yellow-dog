@@ -281,8 +281,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   defp format_mac_string(mac) when is_binary(mac) and byte_size(mac) == 6 do
     mac
     |> :binary.bin_to_list()
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.map(&String.pad_leading(&1, 2, "0"))
+    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> Enum.join(":")
     |> String.downcase()
   end

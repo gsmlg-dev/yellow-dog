@@ -501,10 +501,16 @@ defmodule YellowDog.Dhcpv6.PoolStore do
         "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}",
         if(pool[:network], do: "network = #{encode_toml_string(pool[:network])}", else: []),
         range_lines,
-        if(pool[:preferred_lifetime], do: "preferred_lifetime = #{pool[:preferred_lifetime]}", else: []),
+        if(pool[:preferred_lifetime],
+          do: "preferred_lifetime = #{pool[:preferred_lifetime]}",
+          else: []
+        ),
         if(pool[:valid_lifetime], do: "valid_lifetime = #{pool[:valid_lifetime]}", else: []),
         if(pool[:max_leases], do: "max_leases = #{pool[:max_leases]}", else: []),
-        if(pool[:domain_name], do: "domain_name = #{encode_toml_string(pool[:domain_name])}", else: []),
+        if(pool[:domain_name],
+          do: "domain_name = #{encode_toml_string(pool[:domain_name])}",
+          else: []
+        ),
         dns_line
       ])
 
@@ -747,8 +753,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     else
       duid
       |> :binary.bin_to_list()
-      |> Enum.map(&Integer.to_string(&1, 16))
-      |> Enum.map(&String.pad_leading(&1, 2, "0"))
+      |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
       |> Enum.join("")
       |> String.upcase()
     end

@@ -550,7 +550,8 @@ defmodule DHCPv6.Server do
   end
 
   defp find_ia_na_options(message) do
-    for %{option_code: 3, option_data: <<iaid::32, t1::32, t2::32, rest::binary>>} <- message.options do
+    for %{option_code: 3, option_data: <<iaid::32, t1::32, t2::32, rest::binary>>} <-
+          message.options do
       {iaid, t1, t2, parse_ia_addresses(rest)}
     end
   end

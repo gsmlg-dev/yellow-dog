@@ -392,7 +392,8 @@ defmodule YellowDog.Dhcpv6.Client do
 
   defp extract_addresses(message) do
     # Extract addresses from IA_NA options (option code 3)
-    for %{option_code: 3, option_data: <<_iaid::32, _t1::32, _t2::32, rest::binary>>} <- message.options,
+    for %{option_code: 3, option_data: <<_iaid::32, _t1::32, _t2::32, rest::binary>>} <-
+          message.options,
         addr <- parse_ia_addresses(rest),
         do: addr
   end
