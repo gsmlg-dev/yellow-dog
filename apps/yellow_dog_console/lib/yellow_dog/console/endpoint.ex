@@ -20,7 +20,8 @@ defmodule YellowDog.Console.Endpoint do
     store: :cookie,
     key: "_yellow_dog_console_key",
     signing_salt: "KP2GKi8w",
-    same_site: "Lax"
+    same_site: "Lax",
+    http_only: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
