@@ -55,8 +55,12 @@ defmodule YellowDog.Console.Diagnostics.ParamHelperTest do
       assert ParamHelper.get_integer(%{port: nil}, :port, 80) == 80
     end
 
-    test "handles zero correctly" do
+    test "handles zero by atom key (falsy value regression)" do
       assert ParamHelper.get_integer(%{timeout: 0}, :timeout, 5000) == 0
+    end
+
+    test "handles zero by string key (falsy value regression)" do
+      assert ParamHelper.get_integer(%{"timeout" => 0}, :timeout, 5000) == 0
     end
 
     test "handles negative integers" do
@@ -95,6 +99,14 @@ defmodule YellowDog.Console.Diagnostics.ParamHelperTest do
 
     test "returns default for nil value" do
       assert ParamHelper.get_boolean(%{recurse: nil}, :recurse, true) == true
+    end
+
+    test "handles false by atom key (falsy value regression)" do
+      assert ParamHelper.get_boolean(%{recurse: false}, :recurse, true) == false
+    end
+
+    test "handles false by string key (falsy value regression)" do
+      assert ParamHelper.get_boolean(%{"recurse" => false}, :recurse, true) == false
     end
   end
 

@@ -15,7 +15,7 @@ defmodule YellowDog.Console.Diagnostics.ParamHelper do
   @doc "Gets an integer value from params with type coercion and default."
   @spec get_integer(map(), atom(), integer()) :: integer()
   def get_integer(params, key, default) do
-    value = Map.get(params, key) || Map.get(params, to_string(key)) || default
+    value = fetch_param(params, key, default)
 
     case value do
       v when is_integer(v) ->
@@ -35,13 +35,23 @@ defmodule YellowDog.Console.Diagnostics.ParamHelper do
   @doc "Gets a boolean value from params with type coercion and default."
   @spec get_boolean(map(), atom(), boolean()) :: boolean()
   def get_boolean(params, key, default) do
-    value = Map.get(params, key) || Map.get(params, to_string(key))
+    value = fetch_param(params, key, nil)
 
     case value do
       v when is_boolean(v) -> v
       "true" -> true
       "false" -> false
       _ -> default
+    end
+  end
+
+  # Fetches a value from params, checking atom key first then string key.
+  # Uses Map.has_key?/2 to avoid treating falsy values (false, 0) as missing.
+  defp fetch_param(params, key, default) do
+    cond do
+      Map.has_key?(params, key) -> Map.get(params, key)
+      Map.has_key?(params, to_string(key)) -> Map.get(params, to_string(key))
+      true -> default
     end
   end
 
