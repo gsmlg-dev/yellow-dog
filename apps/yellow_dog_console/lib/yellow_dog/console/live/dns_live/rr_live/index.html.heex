@@ -125,6 +125,7 @@
                 <select
                   class="select select-bordered select-sm"
                   phx-change="filter_type"
+                  aria-label="Filter by record type"
                   name="type"
                 >
                   <option value="all" selected={@type_filter == "all"}>All Types</option>

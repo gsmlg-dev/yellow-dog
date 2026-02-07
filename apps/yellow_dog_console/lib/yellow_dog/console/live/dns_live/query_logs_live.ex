@@ -387,6 +387,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 <select
                   class="select select-sm select-bordered"
                   phx-change="filter_rcode"
+                  aria-label="Filter by response code"
                   name="rcode"
                 >
                   <option value="all" selected={@filter_rcode == "all"}>All Codes</option>
@@ -402,6 +403,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 <select
                   class="select select-sm select-bordered"
                   phx-change="filter_protocol"
+                  aria-label="Filter by protocol"
                   name="protocol"
                 >
                   <option value="all" selected={@filter_protocol == "all"}>All Protocols</option>

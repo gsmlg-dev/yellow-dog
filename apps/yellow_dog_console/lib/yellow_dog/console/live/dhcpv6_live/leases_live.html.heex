@@ -93,6 +93,7 @@
           <select
             class="select select-bordered"
             phx-change="filter_state"
+            aria-label="Filter by lease state"
             name="state"
             value={@filter_state}
           >
@@ -109,6 +110,7 @@
           <select
             class="select select-bordered"
             phx-change="filter_ia_type"
+            aria-label="Filter by IA type"
             name="ia_type"
             value={@filter_ia_type}
           >
@@ -123,6 +125,7 @@
           <select
             class="select select-bordered"
             phx-change="filter_pool"
+            aria-label="Filter by pool"
             name="pool"
             value={@filter_pool}
           >

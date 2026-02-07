@@ -106,6 +106,7 @@
         name="type"
         class="select select-bordered select-sm"
         phx-change="filter_type"
+        aria-label="Filter by ACL type"
       >
         <option value="all" selected={@type_filter == "all"}>All Types</option>
         <%= for type <- unique_acl_types(@views) do %>

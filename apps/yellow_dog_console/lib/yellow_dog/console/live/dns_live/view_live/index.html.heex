@@ -88,6 +88,7 @@
                 <select
                   class="select select-bordered select-sm"
                   phx-change="filter_status"
+                  aria-label="Filter by status"
                   name="status"
                 >
                   <option value="all" selected={@status_filter == "all"}>All Status</option>
