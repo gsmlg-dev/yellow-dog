@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 29)
+**Phase**: IN_PROGRESS (Iteration 30)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 29 of 1000
+**Iteration**: 30 of 1000
 
 ## Session Summary
-Iteration 29: Single-pass Enum.map + Map.new:
+Iteration 30: Telemetry DRY refactoring + structured Logger metadata:
+- ✅ **1,052 umbrella + 962 console tests, 0 failures**
+- ✅ Extracted `safe_handle/1` wrapper in logger_handlers.ex — **eliminated 11 identical try/rescue/catch blocks** (~69 lines removed)
+- ✅ Converted **24 Logger string interpolation** calls to structured metadata (22 handler errors + 2 span logs)
+- ✅ **1 commit this iteration** — net -69 lines
+
+Previous iteration 29: Single-pass Enum.map + Map.new:
 - ✅ **1,052 umbrella + 962 console tests, 0 failures**
 - ✅ Combined **22 double `Enum.map` chains** into single-pass across **19 files** in 8 apps (hex/MAC/IPv6 formatting)
 - ✅ Replaced `Enum.map |> Enum.into(%{})` with `Map.new` in service_manager.ex
