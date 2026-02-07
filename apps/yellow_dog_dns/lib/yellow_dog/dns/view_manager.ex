@@ -264,14 +264,11 @@ defmodule YellowDog.Dns.ViewManager do
 
   @spec list_views(Supervisor.supervisor()) :: [{String.t(), pid(), integer()}]
   def list_views(supervisor) do
-    DynamicSupervisor.which_children(supervisor)
-    |> Enum.filter(fn {_id, pid, _type, _modules} -> is_pid(pid) end)
-    |> Enum.map(fn {_id, pid, _type, _modules} ->
+    for {_id, pid, _type, _modules} <- DynamicSupervisor.which_children(supervisor),
+        is_pid(pid) do
       # DynamicSupervisor always returns :undefined as id, so we get the name from the View process
-      name = View.get_name(pid)
-      priority = get_view_priority(pid)
-      {name, pid, priority}
-    end)
+      {View.get_name(pid), pid, get_view_priority(pid)}
+    end
     |> Enum.sort_by(fn {_name, _pid, priority} -> priority end)
   end
 

@@ -550,14 +550,9 @@ defmodule DHCPv6.Server do
   end
 
   defp find_ia_na_options(message) do
-    message.options
-    # IA_NA
-    |> Enum.filter(&(&1.option_code == 3))
-    |> Enum.map(fn option ->
-      <<iaid::32, t1::32, t2::32, rest::binary>> = option.option_data
-      addresses = parse_ia_addresses(rest)
-      {iaid, t1, t2, addresses}
-    end)
+    for %{option_code: 3, option_data: <<iaid::32, t1::32, t2::32, rest::binary>>} <- message.options do
+      {iaid, t1, t2, parse_ia_addresses(rest)}
+    end
   end
 
   defp parse_ia_addresses(data) do

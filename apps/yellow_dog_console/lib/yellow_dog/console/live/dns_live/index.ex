@@ -122,11 +122,7 @@ defmodule YellowDog.Console.DnsLive.Index do
       zones = YellowDog.Dns.ZoneController.list_zones()
 
       cache_stats =
-        zones
-        |> Enum.filter(fn {type, _name, _pid} -> type == :cache end)
-        |> Enum.map(fn {:cache, _name, pid} ->
-          YellowDog.Dns.Zone.Cache.stats(pid)
-        end)
+        for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
         |> Enum.reduce(
           %{current_size: 0, hit_count: 0, miss_count: 0, insert_count: 0, eviction_count: 0},
           fn stat, acc ->

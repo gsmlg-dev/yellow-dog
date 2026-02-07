@@ -530,20 +530,15 @@ defmodule YellowDog.Mdns.Client do
   end
 
   defp extract_srv_record(responses) do
-    responses
-    |> Enum.flat_map(fn msg -> msg.anlist ++ msg.arlist end)
-    |> Enum.filter(fn record -> record.type == :SRV end)
-    |> Enum.map(fn record ->
-      %{data: %{target: target, port: port, priority: priority, weight: weight}} = record
+    Enum.find_value(responses, fn msg ->
+      Enum.find_value(msg.anlist ++ msg.arlist, fn
+        %{type: :SRV, data: %{target: target, port: port, priority: priority, weight: weight}} ->
+          %{host: to_string(target), port: port, priority: priority, weight: weight}
 
-      %{
-        host: to_string(target),
-        port: port,
-        priority: priority,
-        weight: weight
-      }
+        _ ->
+          nil
+      end)
     end)
-    |> List.first()
   end
 
   defp extract_txt_record(responses) do

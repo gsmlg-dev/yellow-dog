@@ -183,26 +183,12 @@ defmodule YellowDog.Dns.ZoneController do
 
   @spec list_zones(Supervisor.supervisor()) :: [{String.t(), atom(), String.t(), pid()}]
   def list_zones(supervisor) do
-    DynamicSupervisor.which_children(supervisor)
-    |> Enum.filter(fn {_id, pid, _type, _modules} -> is_pid(pid) end)
-    |> Enum.map(fn {id, pid, _type, modules} ->
-      case id do
-        {view_name, zone_type, zone_name} ->
-          {view_name, zone_type, zone_name, pid}
-
-        # Legacy format without view_name
-        {zone_type, zone_name} ->
-          {@default_view, zone_type, zone_name, pid}
-
-        _ ->
-          # ID is :undefined, extract info from module and process
-          zone_type = module_to_zone_type(List.first(modules))
-          zone_name = get_zone_name_from_pid(modules, pid)
-          view_name = get_zone_view_from_pid(modules, pid)
-          {view_name, zone_type, zone_name, pid}
-      end
-    end)
-    |> Enum.filter(fn {_view, _type, name, _pid} -> name != nil end)
+    for {id, pid, _type, modules} <- DynamicSupervisor.which_children(supervisor),
+        is_pid(pid),
+        {view_name, zone_type, zone_name} = extract_zone_info(id, pid, modules),
+        zone_name != nil do
+      {view_name, zone_type, zone_name, pid}
+    end
   end
 
   @doc """
@@ -216,6 +202,17 @@ defmodule YellowDog.Dns.ZoneController do
   @spec list_zones_for_view(Supervisor.supervisor(), String.t()) :: [{atom(), String.t(), pid()}]
   def list_zones_for_view(supervisor, view_name) do
     for {^view_name, type, name, pid} <- list_zones(supervisor), do: {type, name, pid}
+  end
+
+  defp extract_zone_info({view_name, zone_type, zone_name}, _pid, _modules),
+    do: {view_name, zone_type, zone_name}
+
+  defp extract_zone_info({zone_type, zone_name}, _pid, _modules),
+    do: {@default_view, zone_type, zone_name}
+
+  defp extract_zone_info(_id, pid, modules) do
+    zone_type = module_to_zone_type(List.first(modules))
+    {get_zone_view_from_pid(modules, pid), zone_type, get_zone_name_from_pid(modules, pid)}
   end
 
   # Map module back to zone type
