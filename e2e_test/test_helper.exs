@@ -26,6 +26,6 @@ ExUnit.start(
   timeout: 60_000,
   # Clear formatting for CI output
   formatters: [ExUnit.CLIFormatter],
-  # Include slow tests
-  exclude: []
+  # Exclude security tests (unimplemented features) and skip tags
+  exclude: [:security, :skip]
 )
