@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 69)
+**Phase**: IN_PROGRESS (Iteration 70)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 69 of 1000
+**Iteration**: 70 of 1000
 
 ## Session Summary
-Iteration 69: Remove redundant `else: nil` from `if` expressions:
+Iteration 70: Replace `Map.merge` with map update syntax / `Map.put`:
+- ✅ **2020 tests (962 console + 1058 dns), 0 failures, 0 warnings, 0 credo issues**
+- ✅ 4 instances in diagnostics_live.ex: `&Map.merge(&1, %{loading: true, form: params})` → `fn tab -> %{tab | loading: true, form: params} end`
+- ✅ 1 instance in zone_service.ex: `Map.merge(new_params, %{name: name})` → `Map.put(new_params, :name, name)`
+- ✅ Map update syntax signals "updating existing keys" vs "adding new ones"
+- ✅ 2 files — **1 commit** — net 0 lines
+
+Previous iteration 69: Remove redundant `else: nil` from `if` expressions:
 - ✅ **959 tests (650 ex_dhcp + 309 mdns), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Elixir's `if/2` implicitly returns `nil` when no `else` branch — explicit `else: nil` is redundant
 - ✅ 5 instances in ex_dhcp/dhcpv4/server.ex (inside `Enum.find_value` callbacks)
