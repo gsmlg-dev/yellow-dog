@@ -200,12 +200,12 @@ defmodule YellowDog.Console.Layouts do
               <span>Services</span>
             </.link>
           </li>
-
+          
     <!-- Services Section -->
           <li class="menu-title mt-4">
             <span>Services</span>
           </li>
-
+          
     <!-- DNS -->
           <li>
             <details open>
@@ -253,7 +253,7 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
+          
     <!-- DHCPv4 -->
           <li>
             <details open>
@@ -293,7 +293,7 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
+          
     <!-- DHCPv6 -->
           <li>
             <details open>
@@ -333,7 +333,7 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
+          
     <!-- mDNS -->
           <li>
             <details open>
@@ -381,7 +381,7 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
+          
     <!-- Settings -->
           <li class="menu-title mt-4">
             <span>System</span>

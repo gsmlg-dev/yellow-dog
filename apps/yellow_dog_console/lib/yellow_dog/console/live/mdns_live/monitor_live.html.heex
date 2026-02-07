@@ -138,7 +138,12 @@
             name="search"
             class="input input-bordered input-sm flex-1 max-w-xs"
           />
-          <select phx-change="set_limit" name="limit" class="select select-bordered select-sm" aria-label="Results per page">
+          <select
+            phx-change="set_limit"
+            name="limit"
+            class="select select-bordered select-sm"
+            aria-label="Results per page"
+          >
             <option value="50" selected={@limit == 50}>50 queries</option>
             <option value="100" selected={@limit == 100}>100 queries</option>
             <option value="200" selected={@limit == 200}>200 queries</option>
