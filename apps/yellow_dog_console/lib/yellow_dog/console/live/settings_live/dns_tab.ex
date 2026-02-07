@@ -154,6 +154,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               <button
                 type="button"
                 phx-click="apply_changes_dns"
+                phx-disable-with="Applying..."
                 class="btn btn-success"
               >
                 <svg
@@ -193,6 +194,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
             <button
               type="button"
               phx-click="dns_reload_all"
+              phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,6 +211,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
             <button
               type="button"
               phx-click="dns_reload_views"
+              phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -231,6 +234,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
             <button
               type="button"
               phx-click="dns_reload_acls"
+              phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

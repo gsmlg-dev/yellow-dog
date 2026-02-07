@@ -104,6 +104,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv4Tab do
               <button
                 type="button"
                 phx-click="apply_changes_dhcpv4"
+                phx-disable-with="Applying..."
                 class="btn btn-success gap-2"
               >
                 <svg

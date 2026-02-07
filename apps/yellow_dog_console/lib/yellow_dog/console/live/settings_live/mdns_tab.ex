@@ -137,6 +137,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
               <button
                 type="button"
                 phx-click="apply_changes_mdns"
+                phx-disable-with="Applying..."
                 class="btn btn-success gap-2"
               >
                 <svg
