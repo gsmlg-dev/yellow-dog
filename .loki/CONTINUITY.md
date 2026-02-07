@@ -1,18 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 72)
+**Phase**: IN_PROGRESS (Iteration 73)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 72 of 1000
+**Iteration**: 73 of 1000
 
 ## Session Summary
-Iteration 72: Replace verbose boolean assertions with idiomatic `assert`/`refute`:
+Iteration 73: Replace `String.contains?` with `=~` operator in test assertions:
 - ✅ **Full umbrella passes: 0 failures, 0 warnings, 0 credo issues**
-- ✅ 147 instances replaced across 25 test files (all apps + e2e)
-- ✅ `assert func?() == true` → `assert func?()` (84 instances)
-- ✅ `assert func?() == false` → `refute func?()` (63 instances)
-- ✅ Only targeted `?`-suffix functions (boolean by Elixir convention)
-- ✅ Key files: acl_test (64 changes), view_test (11), config_test (6), integration_test (11), dns_acl_e2e_test (8)
+- ✅ 214 instances replaced across 41 test files (all apps + e2e)
+- ✅ `assert String.contains?(str, substr)` → `assert str =~ substr`
+- ✅ `refute String.contains?(str, substr)` → `refute str =~ substr`
+- ✅ Also converted `if String.contains?` guards and `or`-chained patterns
+- ✅ 24 instances kept as-is (callback captures: `Enum.any?(&String.contains?(...))`)
+- ✅ 41 files — **1 commit** — net -2 lines
+
+Previous iteration 72: Replace verbose boolean assertions with idiomatic `assert`/`refute`:
+- ✅ 147 instances replaced across 25 test files
 - ✅ 25 files — **1 commit** — net 0 lines (in-place replacement)
 
 Previous iteration 71: Replace `length()` emptiness checks with O(1) list equality in HEEx templates:
