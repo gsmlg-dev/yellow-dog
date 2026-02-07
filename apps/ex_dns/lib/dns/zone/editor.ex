@@ -505,7 +505,7 @@ defmodule DNS.Zone.Editor do
         record.data |> Tuple.to_list() |> Enum.join(".")
 
       :aaaa ->
-        record.data |> Tuple.to_list() |> Enum.map(&Integer.to_string(&1, 16)) |> Enum.join(":")
+        record.data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
 
       :cname ->
         record.data

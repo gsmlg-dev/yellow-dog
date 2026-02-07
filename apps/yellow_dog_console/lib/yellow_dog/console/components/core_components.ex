@@ -98,6 +98,36 @@ defmodule YellowDog.Console.CoreComponents do
   def lease_state_color(:declined), do: "error"
   def lease_state_color(_), do: "ghost"
 
+  @doc """
+  Returns a DaisyUI text color class for a DHCP lease state.
+  Used in overview/pool pages for state breakdowns.
+  """
+  @spec lease_state_text_color(atom()) :: String.t()
+  def lease_state_text_color(:active), do: "text-success"
+  def lease_state_text_color(:offered), do: "text-info"
+  def lease_state_text_color(:released), do: "text-warning"
+  def lease_state_text_color(:expired), do: "text-error"
+  def lease_state_text_color(:declined), do: "text-error"
+  def lease_state_text_color(_), do: "text-base-content"
+
+  @doc """
+  Returns a DaisyUI color name for pool utilization percentage.
+  """
+  @spec utilization_color(number()) :: String.t()
+  def utilization_color(percent) when percent >= 90, do: "error"
+  def utilization_color(percent) when percent >= 75, do: "warning"
+  def utilization_color(percent) when percent >= 50, do: "info"
+  def utilization_color(_), do: "success"
+
+  @doc """
+  Returns a DaisyUI text color class for pool utilization percentage.
+  """
+  @spec utilization_text_color(number()) :: String.t()
+  def utilization_text_color(percent) when percent >= 90, do: "text-error"
+  def utilization_text_color(percent) when percent >= 75, do: "text-warning"
+  def utilization_text_color(percent) when percent >= 50, do: "text-info"
+  def utilization_text_color(_), do: "text-success"
+
   ## DaisyUI Components
 
   @doc """

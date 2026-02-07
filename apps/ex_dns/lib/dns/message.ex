@@ -124,14 +124,14 @@ defmodule DNS.Message do
     def to_string(message) do
       anlist_str =
         if message.anlist != [] do
-          "\n\n;; ANSWER SECTION\n#{message.anlist |> Enum.map(&Kernel.to_string/1) |> Enum.join("\n")}"
+          "\n\n;; ANSWER SECTION\n#{Enum.map_join(message.anlist, "\n", &Kernel.to_string/1)}"
         else
           ""
         end
 
       nslist_str =
         if message.nslist != [] do
-          "\n\n;; AUTHORITY SECTION\n#{message.nslist |> Enum.map(&Kernel.to_string/1) |> Enum.join("\n")}"
+          "\n\n;; AUTHORITY SECTION\n#{Enum.map_join(message.nslist, "\n", &Kernel.to_string/1)}"
         else
           ""
         end
@@ -148,7 +148,7 @@ defmodule DNS.Message do
 
       arlist_str =
         if arlist != [] do
-          "\n\n;; ADDITIONAL SECTION\n#{arlist |> Enum.map(&Kernel.to_string/1) |> Enum.join("\n")}"
+          "\n\n;; ADDITIONAL SECTION\n#{Enum.map_join(arlist, "\n", &Kernel.to_string/1)}"
         else
           ""
         end

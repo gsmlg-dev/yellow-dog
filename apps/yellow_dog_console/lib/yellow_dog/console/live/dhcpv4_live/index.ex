@@ -131,18 +131,6 @@ defmodule YellowDog.Console.Dhcpv4Live.Index do
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
   defp format_ip(_), do: "Unknown"
 
-  defp get_utilization_color(percent) when percent >= 90, do: "error"
-  defp get_utilization_color(percent) when percent >= 75, do: "warning"
-  defp get_utilization_color(percent) when percent >= 50, do: "info"
-  defp get_utilization_color(_), do: "success"
-
-  defp get_state_text_color(:active), do: "text-success"
-  defp get_state_text_color(:offered), do: "text-info"
-  defp get_state_text_color(:released), do: "text-warning"
-  defp get_state_text_color(:expired), do: "text-error"
-  defp get_state_text_color(:declined), do: "text-error"
-  defp get_state_text_color(_), do: "text-base-content"
-
   defp get_status do
     case Code.ensure_loaded?(YellowDog.Dhcpv4) do
       true ->

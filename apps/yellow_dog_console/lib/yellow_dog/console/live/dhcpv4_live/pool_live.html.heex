@@ -5,7 +5,7 @@
       <div>
         <div class="flex items-center gap-3">
           <h1 class="text-4xl font-bold">{@pool_name}</h1>
-          <.badge color={get_utilization_color(@pool_stats.utilization_percent)} size="lg">
+          <.badge color={utilization_color(@pool_stats.utilization_percent)} size="lg">
             {Float.round(@pool_stats.utilization_percent, 1)}% utilized
           </.badge>
         </div>
@@ -50,7 +50,7 @@
       <div class="space-y-4">
         <.progress
           value={@pool_stats.utilization_percent}
-          color={get_utilization_color(@pool_stats.utilization_percent)}
+          color={utilization_color(@pool_stats.utilization_percent)}
         />
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>
@@ -148,7 +148,7 @@
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
           <%= for {state, count} <- @pool_stats.leases_by_state do %>
             <div class="text-center p-4 bg-base-200 rounded-lg">
-              <div class={get_state_text_color(state) <> " text-3xl font-bold"}>
+              <div class={lease_state_text_color(state) <> " text-3xl font-bold"}>
                 {count}
               </div>
               <div class="text-sm text-base-content/70 mt-1 capitalize">
