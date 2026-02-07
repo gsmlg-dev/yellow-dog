@@ -63,9 +63,7 @@ defmodule DNS.Zone.Store do
   def list_zones() do
     ensure_initialized()
 
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
+    (for {_key, zone} <- :ets.tab2list(@table_name), do: zone)
     |> Enum.sort_by(& &1.name.value)
   end
 
@@ -101,10 +99,9 @@ defmodule DNS.Zone.Store do
   def get_zones_by_type(type) do
     ensure_initialized()
 
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(&(&1.type == type))
+    for {_key, zone} <- :ets.tab2list(@table_name),
+        zone.type == type,
+        do: zone
   end
 
   @doc """

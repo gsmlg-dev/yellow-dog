@@ -146,10 +146,9 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   def list_leases do
     now = System.system_time(:second)
 
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(fn lease -> lease.expires_at > now end)
+    for {_key, lease} <- :ets.tab2list(@table_name),
+        lease.expires_at > now,
+        do: lease
   end
 
   @doc """
@@ -174,7 +173,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   @spec stats() :: map()
   def stats do
     now = System.system_time(:second)
-    all_entries = :ets.tab2list(@table_name) |> Enum.map(&elem(&1, 1))
+    all_entries = for {_key, lease} <- :ets.tab2list(@table_name), do: lease
     active_leases = Enum.filter(all_entries, fn lease -> lease.expires_at > now end)
     expired_leases = Enum.filter(all_entries, fn lease -> lease.expires_at <= now end)
 

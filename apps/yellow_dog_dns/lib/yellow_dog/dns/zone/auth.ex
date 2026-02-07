@@ -382,9 +382,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call(:get_all_records, _from, state) do
-    records =
-      :ets.tab2list(state.table)
-      |> Enum.map(&elem(&1, 1))
+    records = for {_key, record} <- :ets.tab2list(state.table), do: record
 
     {:reply, records, state}
   end
@@ -585,8 +583,7 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp get_all_records_from_table(table) do
-    :ets.tab2list(table)
-    |> Enum.map(&elem(&1, 1))
+    for {_key, record} <- :ets.tab2list(table), do: record
   end
 
   defp build_zone_struct(state, records) do
@@ -912,12 +909,10 @@ defmodule YellowDog.Dns.Zone.Auth do
     case type do
       :any ->
         # Match any type for this name
-        :ets.match_object(table, {{normalized, :_}, :_})
-        |> Enum.map(&elem(&1, 1))
+        for {_key, record} <- :ets.match_object(table, {{normalized, :_}, :_}), do: record
 
       specific_type ->
-        :ets.lookup(table, {normalized, specific_type})
-        |> Enum.map(&elem(&1, 1))
+        for {_key, record} <- :ets.lookup(table, {normalized, specific_type}), do: record
     end
   end
 
