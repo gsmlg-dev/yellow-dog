@@ -601,6 +601,7 @@
         for={@create_form}
         phx-submit="save_named_acl"
         phx-change="validate_named_acl"
+        phx-debounce="blur"
         class="space-y-4"
       >
         <div class="form-control">

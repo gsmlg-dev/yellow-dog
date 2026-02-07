@@ -295,6 +295,7 @@
             for={@view_form}
             phx-submit="save_view"
             phx-change="validate_view"
+            phx-debounce="blur"
             class="space-y-4"
           >
             <div class="form-control">
@@ -568,6 +569,7 @@
             for={@view_form}
             phx-submit="save_view"
             phx-change="validate_view"
+            phx-debounce="blur"
             class="space-y-4"
           >
             <div class="form-control">

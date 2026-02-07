@@ -74,6 +74,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
           for={@changeset}
           phx-target={@myself}
           phx-change="validate"
+          phx-debounce="blur"
           phx-submit="save"
           class="space-y-4"
         >

@@ -154,6 +154,7 @@ defmodule YellowDog.Console.Components.RecordForm do
           for={@form}
           phx-target={@myself}
           phx-change="validate"
+          phx-debounce="blur"
           phx-submit="save"
           class="space-y-4"
         >
