@@ -52,7 +52,7 @@ defmodule BenchHelper do
     Enum.each(1..count, fn i ->
       name = "cached-#{i}.com"
       type = :A
-      records = [generate_record(name, :A, {10, 0, i div 256, rem(i, 256)})]
+      records = [generate_record(name, :A, {10, 0, div(i, 256), rem(i, 256)})]
       YellowDog.Dns.Query.Cache.Manager.put(name, type, records, [], 300)
     end)
   end
