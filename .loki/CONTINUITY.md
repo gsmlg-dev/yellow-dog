@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 64)
+**Phase**: IN_PROGRESS (Iteration 65)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 64 of 1000
+**Iteration**: 65 of 1000
 
 ## Session Summary
-Iteration 64: Move inline `require Logger` to module level:
+Iteration 65: Replace manual IP formatting with :inet.ntoa/1:
+- ✅ **1367 tests (1058 dns + 309 mdns), 0 failures, 0 warnings, 0 credo issues**
+- ✅ Replaced verbose multi-clause format_ip (manual IPv4 interpolation + IPv6 hex building) with `:inet.ntoa/1` one-liner
+- ✅ 4 DNS files had identical 3-clause implementations (IPv4 + IPv6 + catch-all): server.ex, handler/udp.ex, handler/tcp.ex, supervisor.ex
+- ✅ 1 mDNS file had 2-clause implementation (IPv4 + IPv6): service_registry.ex
+- ✅ Matches pattern already used by 5 other DNS files (metrics_collector, view_manager, connection_manager, connection_process, zone/stub)
+- ✅ 5 files — **1 commit** — net -32 lines
+
+Previous iteration 64: Move inline `require Logger` to module level:
 - ✅ **2020 tests (1058 dns + 962 console), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Moved 5 inline `require Logger` statements from function bodies to module-level declarations
 - ✅ Files: acl_registry.ex, zone_service.ex, acl_store.ex, view_live/index.ex, zone_live/index.ex
