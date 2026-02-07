@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 75)
+**Phase**: IN_PROGRESS (Iteration 76)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 75 of 1000
+**Iteration**: 76 of 1000
 
 ## Session Summary
-Iteration 75: Replace `unless ... else` with `if` (Credo anti-pattern):
+Iteration 76: Replace `case boolean do true/false` with `if/else`:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `case bool do true -> ... false -> ...` is verbose — `if/else` is the idiomatic Elixir form
+- ✅ 6 instances across 3 files: listener_pool.ex (3), server.ex (2), config_manager.ex (1)
+- ✅ 3 files — **1 commit** — net -12 lines
+
+Previous iteration 75: Replace `unless ... else` with `if` (Credo anti-pattern):
 - ✅ **All 4 affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `unless` with `else` branch is harder to read — Credo recommends `if` with swapped branches
 - ✅ 4 instances across 4 files: config_manager.ex, pool_store.ex (dhcpv4/dhcpv6), validator.ex
