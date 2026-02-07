@@ -74,6 +74,7 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
               </label>
               <select
                 name="mdns_query[query_type]"
+                aria-label="mDNS query type"
                 class="select select-bordered w-full"
               >
                 <%= for {label, value} <- @query_types do %>

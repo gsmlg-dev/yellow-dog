@@ -164,6 +164,7 @@ defmodule YellowDog.Console.Components.RecordForm do
             </label>
             <select
               name="record[type]"
+              aria-label="Record type"
               class={["select select-bordered w-full", @errors[:type] && "select-error"]}
               phx-change="change_type"
               phx-target={@myself}
@@ -500,6 +501,7 @@ defmodule YellowDog.Console.Components.RecordForm do
         </label>
         <select
           name="record[tag]"
+          aria-label="CAA tag"
           class={["select select-bordered w-full", @errors[:tag] && "select-error"]}
         >
           <option value="issue" selected={@form_data["tag"] == "issue"}>issue</option>

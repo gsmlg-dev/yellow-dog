@@ -63,6 +63,7 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
               </label>
               <select
                 name="dns_query[record_type]"
+                aria-label="DNS record type"
                 class="select select-bordered w-full"
               >
                 <%= for {label, value} <- @record_types do %>
@@ -83,6 +84,7 @@ defmodule YellowDog.Console.DiagnosticsLive.DnsTab do
               </label>
               <select
                 name="dns_query[protocol]"
+                aria-label="DNS protocol"
                 class="select select-bordered w-full"
               >
                 <%= for {label, value} <- @protocols do %>

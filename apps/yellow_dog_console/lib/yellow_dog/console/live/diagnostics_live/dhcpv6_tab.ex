@@ -57,6 +57,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
               </label>
               <select
                 name="dhcpv6_query[message_type]"
+                aria-label="DHCPv6 message type"
                 class="select select-bordered w-full"
               >
                 <%= for {label, value} <- @message_types do %>

@@ -102,6 +102,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
             </label>
             <select
               name="service_configuration[mode]"
+              aria-label="mDNS mode"
               class={[
                 "select select-bordered w-full",
                 !Enum.empty?(Keyword.get_values(@changeset.errors, :mode)) && "select-error"

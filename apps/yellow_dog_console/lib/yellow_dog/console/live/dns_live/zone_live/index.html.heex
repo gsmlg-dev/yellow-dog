@@ -313,7 +313,7 @@
               <label class="label">
                 <span class="label-text font-semibold">Zone Type</span>
               </label>
-              <select name="zone[type]" class="select select-bordered w-full">
+              <select name="zone[type]" aria-label="Zone type" class="select select-bordered w-full">
                 <option value="auth" selected={@zone_form[:type].value == "auth"}>
                   Authoritative - Serve records from local data
                 </option>
@@ -518,7 +518,7 @@
               <label class="label">
                 <span class="label-text font-semibold">Import Format</span>
               </label>
-              <select name="import[format]" class="select select-bordered w-full">
+              <select name="import[format]" aria-label="Import format" class="select select-bordered w-full">
                 <option value="zone" selected={@import_form[:format].value == "zone"}>
                   BIND Zone File Format
                 </option>
