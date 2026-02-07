@@ -141,6 +141,7 @@ defmodule YellowDog.Mdns.Server do
   @impl true
   def init(opts) do
     mode = Keyword.get(opts, :mode, :hybrid)
+    Application.put_env(:yellow_dog_mdns, :mode, mode)
 
     try do
       server_config = build_server_config(opts)

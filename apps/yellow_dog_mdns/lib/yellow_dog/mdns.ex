@@ -238,16 +238,20 @@ defmodule YellowDog.Mdns do
       _pid ->
         registry_stats = ServiceRegistry.stats()
         net_stats = NetworkMonitor.network_stats()
+        mode = get_mode_from_config()
 
         %{
           running: true,
-          mode: :hybrid,
-          # TODO: Get actual mode from config
+          mode: mode,
           registered_services: registry_stats.total,
           discovered_services: net_stats.active_services,
           network_stats: net_stats,
           registry_stats: registry_stats
         }
     end
+  end
+
+  defp get_mode_from_config do
+    Application.get_env(:yellow_dog_mdns, :mode, :hybrid)
   end
 end
