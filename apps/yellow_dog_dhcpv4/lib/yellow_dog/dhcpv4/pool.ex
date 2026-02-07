@@ -257,7 +257,7 @@ defmodule YellowDog.Dhcpv4.Pool do
         try do
           {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
         rescue
-          _ -> nil
+          _e in [ArgumentError] -> nil
         end
 
       _ ->

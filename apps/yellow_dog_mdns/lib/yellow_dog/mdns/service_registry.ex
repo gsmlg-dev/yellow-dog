@@ -563,7 +563,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
             {pubsub_event, service_id}
           ])
         rescue
-          _ -> :ok
+          _e in [ArgumentError, UndefinedFunctionError] -> :ok
         end
     end
   end

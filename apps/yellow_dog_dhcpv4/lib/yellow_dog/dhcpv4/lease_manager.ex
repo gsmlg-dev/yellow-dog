@@ -1014,7 +1014,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     |> String.downcase()
     |> Base.decode16!(case: :lower)
   rescue
-    _ -> mac_string
+    _e in [ArgumentError, MatchError] -> mac_string
   end
 
   # Flush all leases to TOML files

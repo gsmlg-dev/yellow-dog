@@ -350,7 +350,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       require Logger
       Logger.warning("Failed to save zone #{zone_name}: #{reason}")
     rescue
-      _ -> :ok
+      _e in [ArgumentError, RuntimeError, FunctionClauseError] -> :ok
     catch
       :exit, _ -> :ok
     end
@@ -365,7 +365,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       try do
         apply(Phoenix.PubSub, :broadcast, [@pubsub, topic, message])
       rescue
-        _ -> :ok
+        _e in [ArgumentError, UndefinedFunctionError] -> :ok
       end
     end
 

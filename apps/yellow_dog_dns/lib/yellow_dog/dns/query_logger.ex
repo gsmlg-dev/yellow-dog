@@ -376,7 +376,7 @@ defmodule YellowDog.Dns.QueryLogger do
         ])
       end
     rescue
-      _ -> :ok
+      _e in [ArgumentError, UndefinedFunctionError] -> :ok
     catch
       :exit, _ -> :ok
     end

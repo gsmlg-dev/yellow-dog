@@ -228,7 +228,7 @@ defmodule YellowDog.Dns.ViewManager do
             YellowDog.Dns.ZoneController.stop_zone(view_name, zone_type, zone_name)
           end)
         rescue
-          _ -> :ok
+          _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError] -> :ok
         catch
           :exit, _ -> :ok
         end

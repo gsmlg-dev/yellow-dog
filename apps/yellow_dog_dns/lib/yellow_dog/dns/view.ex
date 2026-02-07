@@ -539,7 +539,7 @@ defmodule YellowDog.Dns.View do
                 response = DNS.Message.from_iodata(response_data)
                 {:ok, response}
               rescue
-                _ -> nil
+                _e in [ArgumentError, MatchError, FunctionClauseError] -> nil
               end
 
             _ ->

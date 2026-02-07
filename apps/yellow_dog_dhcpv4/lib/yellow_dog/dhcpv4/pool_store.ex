@@ -470,7 +470,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
            {String.to_integer(a), String.to_integer(b), String.to_integer(c),
             String.to_integer(d)}}
         rescue
-          _ -> {:error, "Invalid IPv4 address: #{ip}"}
+          _e in [ArgumentError] -> {:error, "Invalid IPv4 address: #{ip}"}
         end
 
       _ ->

@@ -198,7 +198,7 @@ defmodule YellowDog.Dhcpv4.Lease do
            {String.to_integer(a), String.to_integer(b), String.to_integer(c),
             String.to_integer(d)}}
         rescue
-          _ -> {:error, "Invalid IP address format"}
+          _e in [ArgumentError] -> {:error, "Invalid IP address format"}
         end
 
       _ ->
@@ -236,7 +236,7 @@ defmodule YellowDog.Dhcpv4.Lease do
 
         {:ok, bytes}
       rescue
-        _ -> {:error, "Invalid MAC address format"}
+        _e in [ArgumentError] -> {:error, "Invalid MAC address format"}
       end
     else
       {:error, "Invalid MAC address format"}

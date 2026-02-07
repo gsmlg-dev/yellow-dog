@@ -29,7 +29,7 @@ defmodule YellowDog.Dns.View.Operations do
          health: check_health_status()
        }}
     rescue
-      _ -> {:error, :system_unavailable}
+      _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError] -> {:error, :system_unavailable}
     end
   end
 
@@ -70,7 +70,7 @@ defmodule YellowDog.Dns.View.Operations do
       # length(list) >= 0 is always true for any list; use views to determine health
       if is_list(views), do: :healthy, else: :degraded
     rescue
-      _ -> :unhealthy
+      _e in [ArgumentError, UndefinedFunctionError] -> :unhealthy
     end
   end
 
@@ -190,7 +190,7 @@ defmodule YellowDog.Dns.View.Operations do
     try do
       ViewManager.list_views()
     rescue
-      _ -> []
+      _e in [ArgumentError, UndefinedFunctionError] -> []
     end
   end
 end

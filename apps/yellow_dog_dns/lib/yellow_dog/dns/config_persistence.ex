@@ -59,7 +59,7 @@ defmodule YellowDog.Dns.ConfigPersistence do
       path = apply(YellowDog.Config, :get, [:dns, :data_path])
       path || "data/dns"
     rescue
-      _ -> "data/dns"
+      _e in [ArgumentError, UndefinedFunctionError] -> "data/dns"
     end
   end
 
@@ -235,7 +235,7 @@ defmodule YellowDog.Dns.ConfigPersistence do
           acl: stats[:acl]
         }
       rescue
-        _ ->
+        _e in [ArgumentError, RuntimeError, MatchError, FunctionClauseError, KeyError] ->
           %{
             name: name,
             priority: priority,
@@ -317,7 +317,7 @@ defmodule YellowDog.Dns.ConfigPersistence do
     try do
       AclRegistry.list_acls()
     rescue
-      _ -> []
+      _e in [ArgumentError, UndefinedFunctionError] -> []
     catch
       :exit, _ -> []
     end

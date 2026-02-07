@@ -31,6 +31,10 @@ defmodule YellowDog.Dns.Supervisor do
   alias YellowDog.Dns.ConfigPersistence
   alias YellowDog.Dns.View
 
+  @default_port 53
+  @default_listen {0, 0, 0, 0}
+  @default_data_path "data/dns"
+
   @doc """
   Starts the DNS supervisor.
 
@@ -355,13 +359,13 @@ defmodule YellowDog.Dns.Supervisor do
   defp get_data_path do
     ConfigPersistence.default_data_path()
   rescue
-    _ -> "data/dns"
+    _e in [ArgumentError, UndefinedFunctionError] -> @default_data_path
   end
 
   defp get_zone_data_path do
     apply(YellowDog.Config, :get, [:dns, :zone_data_path])
   rescue
-    _ -> nil
+    _e in [ArgumentError, UndefinedFunctionError] -> nil
   end
 
   defp get_acl_file do
@@ -377,15 +381,15 @@ defmodule YellowDog.Dns.Supervisor do
         file
     end
   rescue
-    _ -> nil
+    _e in [ArgumentError, UndefinedFunctionError] -> nil
   end
 
   defp get_port(opts) do
     Keyword.get(opts, :port) ||
       apply(YellowDog.Config, :get, [:dns, :port]) ||
-      53
+      @default_port
   rescue
-    _ -> 53
+    _e in [ArgumentError, UndefinedFunctionError] -> @default_port
   end
 
   defp get_listen(opts) do
@@ -396,10 +400,10 @@ defmodule YellowDog.Dns.Supervisor do
 
     case parse_ip(listen) do
       {:ok, ip} -> ip
-      {:error, _} -> {0, 0, 0, 0}
+      {:error, _} -> @default_listen
     end
   rescue
-    _ -> {0, 0, 0, 0}
+    _e in [ArgumentError, UndefinedFunctionError] -> @default_listen
   end
 
   defp get_debug(opts) do
@@ -418,28 +422,30 @@ defmodule YellowDog.Dns.Supervisor do
         false
     end
   rescue
-    _ -> false
+    _e in [ArgumentError, UndefinedFunctionError] -> false
   end
 
   defp get_upstreams do
     case apply(YellowDog.Config, :get, [:dns, :upstream_servers]) do
-      nil -> [{{8, 8, 8, 8}, 53}, {{1, 1, 1, 1}, 53}]
+      nil -> [{{8, 8, 8, 8}, @default_port}, {{1, 1, 1, 1}, @default_port}]
       servers when is_list(servers) -> parse_upstreams(servers)
       _ -> []
     end
   rescue
-    _ -> []
+    _e in [ArgumentError, UndefinedFunctionError] -> []
   end
 
   defp parse_upstreams(servers) do
-    Enum.map(servers, fn
-      {ip, port} when is_tuple(ip) -> {ip, port}
-      ip when is_tuple(ip) -> {ip, 53}
-      ip_str when is_binary(ip_str) -> parse_upstream_string(ip_str)
-      _ -> nil
-    end)
-    |> Enum.reject(&is_nil/1)
+    for server <- servers,
+        parsed = parse_upstream_entry(server),
+        parsed != nil,
+        do: parsed
   end
+
+  defp parse_upstream_entry({ip, port}) when is_tuple(ip), do: {ip, port}
+  defp parse_upstream_entry(ip) when is_tuple(ip), do: {ip, @default_port}
+  defp parse_upstream_entry(ip_str) when is_binary(ip_str), do: parse_upstream_string(ip_str)
+  defp parse_upstream_entry(_), do: nil
 
   defp parse_upstream_string(str) do
     case String.split(str, ":") do
@@ -453,7 +459,7 @@ defmodule YellowDog.Dns.Supervisor do
 
       [ip_str] ->
         case parse_ip(ip_str) do
-          {:ok, ip} -> {ip, 53}
+          {:ok, ip} -> {ip, @default_port}
           _ -> nil
         end
 
@@ -493,7 +499,7 @@ defmodule YellowDog.Dns.Supervisor do
   defp safe_call(fun, default) do
     fun.()
   rescue
-    _ -> default
+    _e in [ArgumentError, UndefinedFunctionError, RuntimeError] -> default
   catch
     :exit, _ -> default
   end

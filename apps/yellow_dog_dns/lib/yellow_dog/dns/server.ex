@@ -254,7 +254,7 @@ defmodule YellowDog.Dns.Server do
       _ -> true
     end
   rescue
-    _ -> true
+    _e in [ArgumentError, UndefinedFunctionError] -> true
   end
 
   defp find_abyss_pid(supervisor) do
@@ -273,7 +273,7 @@ defmodule YellowDog.Dns.Server do
         end)
     end
   rescue
-    _ -> nil
+    _e in [ArgumentError, RuntimeError] -> nil
   end
 
   defp find_thousand_island_pid(supervisor) do
@@ -292,7 +292,7 @@ defmodule YellowDog.Dns.Server do
         end)
     end
   rescue
-    _ -> nil
+    _e in [ArgumentError, RuntimeError] -> nil
   end
 
   defp resolve_pid(supervisor) do

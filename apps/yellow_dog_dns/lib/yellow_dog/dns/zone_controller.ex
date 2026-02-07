@@ -320,7 +320,7 @@ defmodule YellowDog.Dns.ZoneController do
       apply(YellowDog.Config, :get, [:dns, :zone_data_path]) ||
         default_zone_data_path()
     rescue
-      _ -> default_zone_data_path()
+      _e in [ArgumentError, UndefinedFunctionError] -> default_zone_data_path()
     end
   end
 
