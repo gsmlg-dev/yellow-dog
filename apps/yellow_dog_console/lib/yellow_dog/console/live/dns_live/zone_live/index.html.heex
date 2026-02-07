@@ -409,7 +409,7 @@
       <% :edit -> %>
         <!-- Edit Zone Form -->
         <.card title={"Edit Zone: #{@editing_zone.name}"}>
-          <.form for={@zone_form} phx-submit="save_zone" class="space-y-4">
+          <.form for={@zone_form} phx-submit="save_zone" phx-change="validate_zone" class="space-y-4">
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-semibold">Zone Name</span>
