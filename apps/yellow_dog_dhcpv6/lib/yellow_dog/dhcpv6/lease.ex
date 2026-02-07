@@ -296,8 +296,7 @@ defmodule YellowDog.Dhcpv6.Lease do
       # Binary DUID - encode as hex
       duid
       |> :binary.bin_to_list()
-      |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-      |> Enum.join("")
+      |> Enum.map_join("", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
       |> String.downcase()
     end
   end

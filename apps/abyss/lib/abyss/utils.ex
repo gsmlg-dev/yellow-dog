@@ -380,8 +380,7 @@ defmodule Abyss.Utils do
   @spec format_hwaddr([byte()]) :: String.t()
   def format_hwaddr(hwaddr) when is_list(hwaddr) do
     hwaddr
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
+    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> String.downcase()
   end
 

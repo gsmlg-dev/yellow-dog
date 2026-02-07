@@ -1029,8 +1029,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   defp format_duid(duid) when is_binary(duid) do
     duid
     |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
+    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> String.upcase()
   end
 
@@ -1163,8 +1162,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   defp format_ipv6({a, b, c, d, e, f, g, h}) do
     [a, b, c, d, e, f, g, h]
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.join(":")
+    |> Enum.map_join(":", &Integer.to_string(&1, 16))
     |> String.downcase()
   end
 

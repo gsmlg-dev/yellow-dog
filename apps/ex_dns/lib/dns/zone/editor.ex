@@ -627,8 +627,7 @@ defmodule DNS.Zone.Editor do
       type_str == "AAAA" ->
         record.data.data
         |> Tuple.to_list()
-        |> Enum.map(&Integer.to_string(&1, 16))
-        |> Enum.join(":")
+        |> Enum.map_join(":", &Integer.to_string(&1, 16))
 
       type_str == "CNAME" ->
         to_string(record.data.data)

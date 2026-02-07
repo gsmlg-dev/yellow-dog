@@ -361,8 +361,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
   defp format_mac(<<a, b, c, d, e, f, _rest::binary>>) do
     # Handle 6+ byte MAC addresses (e.g., 16-byte chaddr field)
     [a, b, c, d, e, f]
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
+    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> String.upcase()
   end
 
