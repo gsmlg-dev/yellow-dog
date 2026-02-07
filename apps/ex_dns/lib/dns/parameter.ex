@@ -48,7 +48,7 @@ defimpl DNS.Parameter, for: List do
   """
   @spec to_iodata(list(term())) :: iodata()
   def to_iodata(list) do
-    list |> Enum.map(&DNS.to_iodata/1) |> Enum.join(<<>>)
+    Enum.map_join(list, <<>>, &DNS.to_iodata/1)
   end
 end
 

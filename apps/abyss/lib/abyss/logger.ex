@@ -107,8 +107,10 @@ defmodule Abyss.Logger do
           :telemetry.handler_config()
         ) :: :ok
   def log_error(event, measurements, metadata, _config) do
-    Logger.error(
-      "#{inspect(event)} metadata: #{inspect(metadata)}, measurements: #{inspect(measurements)}"
+    Logger.error("Telemetry event",
+      event: inspect(event),
+      metadata: inspect(metadata),
+      measurements: inspect(measurements)
     )
   end
 
@@ -120,8 +122,10 @@ defmodule Abyss.Logger do
           :telemetry.handler_config()
         ) :: :ok
   def log_info(event, measurements, metadata, _config) do
-    Logger.info(
-      "#{inspect(event)} metadata: #{inspect(metadata)}, measurements: #{inspect(measurements)}"
+    Logger.info("Telemetry event",
+      event: inspect(event),
+      metadata: inspect(metadata),
+      measurements: inspect(measurements)
     )
   end
 
@@ -133,8 +137,10 @@ defmodule Abyss.Logger do
           :telemetry.handler_config()
         ) :: :ok
   def log_debug(event, measurements, metadata, _config) do
-    Logger.debug(
-      "#{inspect(event)} metadata: #{inspect(metadata)}, measurements: #{inspect(measurements)}"
+    Logger.debug("Telemetry event",
+      event: inspect(event),
+      metadata: inspect(metadata),
+      measurements: inspect(measurements)
     )
   end
 
@@ -146,8 +152,10 @@ defmodule Abyss.Logger do
           :telemetry.handler_config()
         ) :: :ok
   def log_trace(event, measurements, metadata, _config) do
-    Logger.debug(
-      "#{inspect(event)} metadata: #{inspect(metadata)}, measurements: #{inspect(measurements)}"
+    Logger.debug("Telemetry event",
+      event: inspect(event),
+      metadata: inspect(metadata),
+      measurements: inspect(measurements)
     )
   end
 end

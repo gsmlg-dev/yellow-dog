@@ -274,7 +274,7 @@ defmodule DHCPv6.Message.Option do
   """
   @spec dns_servers([:inet.ip6_address()]) :: t()
   def dns_servers(servers) do
-    server_data = Enum.map(servers, &ip6_to_binary/1) |> Enum.join()
+    server_data = Enum.map_join(servers, "", &ip6_to_binary/1)
     new(23, server_data)
   end
 
@@ -331,7 +331,7 @@ defmodule DHCPv6.Message.Option do
       case type do
         :ip6_list ->
           servers = parse_ipv6_list(value)
-          "#{name}: #{Enum.map(servers, &ip6_to_string/1) |> Enum.join(", ")}"
+          "#{name}: #{Enum.map_join(servers, ", ", &ip6_to_string/1)}"
 
         :int ->
           <<int_value::16>> = value

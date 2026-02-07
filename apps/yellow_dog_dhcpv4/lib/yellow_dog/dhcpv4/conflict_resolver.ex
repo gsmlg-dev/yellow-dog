@@ -182,9 +182,11 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
     )
 
     # Log warning for conflicts
-    Logger.warning(
-      "[DHCPv4] IP conflict detected: #{format_ip(ip)} reported by #{format_mac(mac)} " <>
-        "(pool: #{pool_name}, conflict ##{conflict_count})"
+    Logger.warning("[DHCPv4] IP conflict detected",
+      ip_address: format_ip(ip),
+      client_mac: format_mac(mac),
+      pool: pool_name,
+      conflict_count: conflict_count
     )
 
     # Mark the lease as declined
@@ -328,8 +330,9 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
                   }
                 )
 
-                Logger.info(
-                  "[DHCPv4] Conflict resolved: #{format_mac(mac)} reassigned to #{format_ip(lease.ip_address)}"
+                Logger.info("[DHCPv4] Conflict resolved",
+                  client_mac: format_mac(mac),
+                  new_ip: format_ip(lease.ip_address)
                 )
 
                 {:ok, new_ip}

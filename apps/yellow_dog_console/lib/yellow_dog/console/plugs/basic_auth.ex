@@ -95,8 +95,9 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
         # Check rate limiting before processing credentials
         case AuthRateLimiter.check_rate_limit(client_ip) do
           {:error, :locked_out, seconds_remaining} ->
-            Logger.warning(
-              "[BasicAuth] IP #{client_ip} is locked out for #{seconds_remaining}s due to failed attempts"
+            Logger.warning("[BasicAuth] IP locked out due to failed attempts",
+              ip: client_ip,
+              lockout_seconds: seconds_remaining
             )
 
             too_many_requests(conn, seconds_remaining)
@@ -139,8 +140,9 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
           # Failed authentication - record for rate limiting
           AuthRateLimiter.record_failure(client_ip)
 
-          Logger.debug(
-            "Failed authentication attempt for user: #{provided_user} from IP: #{client_ip}"
+          Logger.debug("Failed authentication attempt",
+            user: provided_user,
+            ip: client_ip
           )
 
           unauthorized(conn, realm)

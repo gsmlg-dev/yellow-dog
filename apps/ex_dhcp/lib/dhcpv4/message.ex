@@ -292,7 +292,7 @@ defmodule DHCPv4.Message do
       File: #{message.file |> String.trim(<<0>>)}
 
       === DHCP Options ===
-      #{Enum.map(message.options, &Kernel.to_string/1) |> Enum.join("")}
+      #{Enum.map_join(message.options, "", &Kernel.to_string/1)}
       """
     end
 

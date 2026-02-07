@@ -204,7 +204,7 @@ defmodule DNS.Message.EDNS0 do
           flags: flags,
           options: options
         }) do
-      options_binary = options |> Enum.map(&DNS.to_iodata/1) |> Enum.join(<<>>)
+      options_binary = Enum.map_join(options, <<>>, &DNS.to_iodata/1)
 
       <<0::8, 41::16, udp_payload::16, extended_rcode::8, version::8, do_bit::1, flags::15,
         byte_size(options_binary)::16, options_binary::binary>>

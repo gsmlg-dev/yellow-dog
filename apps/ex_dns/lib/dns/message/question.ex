@@ -45,7 +45,7 @@ defmodule DNS.Message.Question do
 
   @spec list_to_iodata([Question.t()]) :: binary()
   def list_to_iodata(list) when is_list(list) do
-    list |> Enum.map(&DNS.to_iodata/1) |> Enum.join(<<>>)
+    Enum.map_join(list, <<>>, &DNS.to_iodata/1)
   end
 
   @spec list_from_message(<<_::64, _::_*8>>) :: {[t()], non_neg_integer()}

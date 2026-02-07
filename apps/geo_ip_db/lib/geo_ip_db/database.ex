@@ -140,13 +140,13 @@ defmodule GeoIpDb.Database do
 
       case do_load(name, path) do
         :ok ->
-          Logger.info("[GeoIpDb] Loaded database #{name} from #{path}")
+          Logger.info("[GeoIpDb] Loaded database", database: name, path: path)
 
         {:error, :enoent} ->
-          Logger.warning("[GeoIpDb] Database file not found: #{path}")
+          Logger.warning("[GeoIpDb] Database file not found", path: path)
 
         {:error, reason} ->
-          Logger.error("[GeoIpDb] Failed to load database #{name}: #{inspect(reason)}")
+          Logger.error("[GeoIpDb] Failed to load database", database: name, error: inspect(reason))
       end
     end)
   end

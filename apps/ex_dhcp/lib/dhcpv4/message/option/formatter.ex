@@ -42,16 +42,16 @@ defmodule DHCPv4.Message.Option.Formatter do
         "#{name}: #{value |> :inet.ntoa()}"
 
       :ip_list ->
-        "#{name}: #{value |> Enum.map(fn ip -> ip |> :inet.ntoa() end) |> Enum.join(", ")}"
+        "#{name}: #{Enum.map_join(value, ", ", fn ip -> :inet.ntoa(ip) end)}"
 
       :ip_mask_list ->
-        "#{name}: #{value |> Enum.map(fn {ip, mask} -> "#{ip |> :inet.ntoa()}/#{mask |> :inet.ntoa()}" end) |> Enum.join(", ")}"
+        "#{name}: #{Enum.map_join(value, ", ", fn {ip, mask} -> "#{:inet.ntoa(ip)}/#{:inet.ntoa(mask)}" end)}"
 
       :network_mask_router_list ->
-        "#{name}: #{value |> Enum.map(fn {network, mask, router} -> "#{network |> :inet.ntoa()}/#{mask} via #{router |> :inet.ntoa()}" end) |> Enum.join(", ")}"
+        "#{name}: #{Enum.map_join(value, ", ", fn {network, mask, router} -> "#{:inet.ntoa(network)}/#{mask} via #{:inet.ntoa(router)}" end)}"
 
       :int_list ->
-        "#{name}: #{value |> Enum.map(fn int -> "#{int}" end) |> Enum.join(", ")}"
+        "#{name}: #{Enum.map_join(value, ", ", &to_string/1)}"
 
       :int ->
         "#{name}: #{value}"
