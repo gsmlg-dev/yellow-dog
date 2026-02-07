@@ -566,7 +566,7 @@ defmodule YellowDog.Application do
   # Converts IP address string to tuple format for mDNS
   defp convert_ip(ip_string) when is_binary(ip_string) do
     case String.split(ip_string, ".") do
-      [a, b, c, d] when length([a, b, c, d]) == 4 ->
+      [a, b, c, d] ->
         {String.to_integer(a), String.to_integer(b), String.to_integer(c), String.to_integer(d)}
 
       _ ->

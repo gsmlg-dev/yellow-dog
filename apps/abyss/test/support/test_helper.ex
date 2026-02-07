@@ -16,12 +16,13 @@ defmodule Abyss.TestHelper do
         listener_pool_pid = Abyss.Server.listener_pool_pid(server_pid)
         listener_pids = Abyss.ListenerPool.listener_pids(listener_pool_pid)
 
-        if length(listener_pids) > 0 do
-          listener_pid = hd(listener_pids)
-          {:ok, {_ip, port}} = Abyss.Listener.listener_info(listener_pid)
-          {:ok, {server_pid, port}}
-        else
-          {:error, :no_listeners}
+        case listener_pids do
+          [listener_pid | _] ->
+            {:ok, {_ip, port}} = Abyss.Listener.listener_info(listener_pid)
+            {:ok, {server_pid, port}}
+
+          [] ->
+            {:error, :no_listeners}
         end
 
       error ->

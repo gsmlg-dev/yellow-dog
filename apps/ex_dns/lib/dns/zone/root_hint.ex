@@ -48,7 +48,7 @@ defmodule DNS.Zone.RootHint do
     root_hints_text()
     |> String.split("\n")
     |> Enum.filter(&(!String.starts_with?(&1, ";")))
-    |> Enum.filter(&(String.length(&1) > 0))
+    |> Enum.filter(&(&1 != ""))
     |> Enum.map(fn line ->
       type_map = %{"A" => :a, "AAAA" => :aaaa, "NS" => :ns}
       [name, ttl, type, data] = line |> String.split(~r[\s+])

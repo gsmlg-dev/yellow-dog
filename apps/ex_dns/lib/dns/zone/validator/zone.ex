@@ -203,7 +203,7 @@ defmodule DNS.Zone.Validator.Zone do
     Enum.reduce(by_name, result, fn {name, recs}, acc ->
       types = recs |> Enum.map(&get_type(&1)) |> Enum.uniq()
 
-      if :cname in types and length(types) > 1 do
+      if :cname in types and match?([_, _ | _], types) do
         other_types = Enum.reject(types, &(&1 == :cname))
 
         Result.add_error(
@@ -265,7 +265,7 @@ defmodule DNS.Zone.Validator.Zone do
     Enum.reduce(rrsets, result, fn {{name, type}, recs}, acc ->
       ttls = recs |> Enum.map(&get_ttl(&1)) |> Enum.uniq()
 
-      if length(ttls) > 1 do
+      if match?([_, _ | _], ttls) do
         Result.add_warning(
           acc,
           :ttl_mismatch,

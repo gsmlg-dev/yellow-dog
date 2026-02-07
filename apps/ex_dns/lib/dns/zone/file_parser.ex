@@ -439,21 +439,21 @@ defmodule DNS.Zone.FileParser do
   end
 
   defp parse_soa_data(data_str) do
-    parts = String.split(data_str, ~r/\s+/, trim: true)
+    case String.split(data_str, ~r/\s+/, trim: true) do
+      [mname, rname, serial, refresh, retry, expire, minimum | _] ->
+        %{
+          type: :soa,
+          mname: mname,
+          rname: rname,
+          serial: parse_integer_param(serial),
+          refresh: parse_integer_param(refresh),
+          retry: parse_integer_param(retry),
+          expire: parse_integer_param(expire),
+          minimum: parse_integer_param(minimum)
+        }
 
-    if length(parts) >= 7 do
-      %{
-        type: :soa,
-        mname: Enum.at(parts, 0),
-        rname: Enum.at(parts, 1),
-        serial: parse_integer_param(Enum.at(parts, 2)),
-        refresh: parse_integer_param(Enum.at(parts, 3)),
-        retry: parse_integer_param(Enum.at(parts, 4)),
-        expire: parse_integer_param(Enum.at(parts, 5)),
-        minimum: parse_integer_param(Enum.at(parts, 6))
-      }
-    else
-      %{type: :soa, data: data_str}
+      _ ->
+        %{type: :soa, data: data_str}
     end
   end
 
@@ -749,7 +749,7 @@ defmodule DNS.Zone.FileParser do
     duplicates =
       records
       |> Enum.group_by(fn rr -> {rr.name, rr.type, rr.data} end)
-      |> Enum.filter(fn {_, records} -> length(records) > 1 end)
+      |> Enum.filter(fn {_, records} -> match?([_, _ | _], records) end)
       |> Enum.map(fn {{name, type, data}, _records} ->
         %{
           line: 0,

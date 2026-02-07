@@ -97,7 +97,7 @@ defmodule DNS.Zone.Validator do
     soa_records = Keyword.get(zone.options, :soa_records, [])
 
     warnings =
-      if length(soa_records) > 1 do
+      if match?([_, _ | _], soa_records) do
         ["Multiple SOA records found" | warnings]
       else
         warnings
@@ -530,7 +530,7 @@ defmodule DNS.Zone.Validator do
     |> Enum.group_by(fn record ->
       {record.type, record.data}
     end)
-    |> Enum.filter(fn {_key, records} -> length(records) > 1 end)
+    |> Enum.filter(fn {_key, records} -> match?([_, _ | _], records) end)
     |> Enum.map(fn {key, _records} -> key end)
   end
 

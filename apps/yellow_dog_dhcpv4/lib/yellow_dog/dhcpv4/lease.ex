@@ -222,24 +222,21 @@ defmodule YellowDog.Dhcpv4.Lease do
   defp parse_mac(_), do: {:error, "Invalid MAC address"}
 
   defp parse_mac_string(mac_str) when is_binary(mac_str) do
-    parts =
-      mac_str
-      |> String.replace(["-", "."], ":")
-      |> String.split(":")
+    case mac_str |> String.replace(["-", "."], ":") |> String.split(":") do
+      [_, _, _, _, _, _] = parts ->
+        try do
+          bytes =
+            parts
+            |> Enum.map(&String.to_integer(&1, 16))
+            |> :erlang.list_to_binary()
 
-    if length(parts) == 6 do
-      try do
-        bytes =
-          parts
-          |> Enum.map(&String.to_integer(&1, 16))
-          |> :erlang.list_to_binary()
+          {:ok, bytes}
+        rescue
+          _e in [ArgumentError] -> {:error, "Invalid MAC address format"}
+        end
 
-        {:ok, bytes}
-      rescue
-        _e in [ArgumentError] -> {:error, "Invalid MAC address format"}
-      end
-    else
-      {:error, "Invalid MAC address format"}
+      _ ->
+        {:error, "Invalid MAC address format"}
     end
   end
 
