@@ -177,7 +177,6 @@ defmodule YellowDog.Dns.ViewStore do
 
   # Private functions
 
-
   defp extract_views(data) do
     case Map.get(data, "view") do
       nil -> {:ok, []}
@@ -235,7 +234,6 @@ defmodule YellowDog.Dns.ViewStore do
         base
     end
   end
-
 
   defp validate_required_fields(view) do
     if is_nil(Map.get(view, :name)) do

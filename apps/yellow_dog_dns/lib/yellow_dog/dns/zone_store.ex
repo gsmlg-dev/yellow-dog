@@ -160,7 +160,6 @@ defmodule YellowDog.Dns.ZoneStore do
 
   # Private functions
 
-
   defp extract_zones(data) do
     case Map.get(data, "zones") do
       nil ->
@@ -233,7 +232,6 @@ defmodule YellowDog.Dns.ZoneStore do
   defp normalize_type("root"), do: :root
   defp normalize_type("rpz"), do: :rpz
   defp normalize_type(_), do: :auth
-
 
   defp validate_required_fields(zone) do
     cond do

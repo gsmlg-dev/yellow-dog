@@ -96,7 +96,6 @@ defmodule YellowDog.Dns.AclStore do
 
   # Private functions
 
-
   defp extract_acls(data) do
     case Map.get(data, "acl") do
       nil -> {:ok, []}
@@ -150,7 +149,6 @@ defmodule YellowDog.Dns.AclStore do
         base
     end
   end
-
 
   defp format_acls(acls) do
     header = """
