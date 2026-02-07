@@ -11,6 +11,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   use YellowDog.Console, :live_view
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_duration: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
@@ -317,7 +318,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
                       <div class="text-base-content/50">to {format_ipv6(pool.range_end)}</div>
                     </td>
                     <td>
-                      {format_lifetime(pool[:preferred_lifetime])} / {format_lifetime(
+                      {format_duration(pool[:preferred_lifetime])} / {format_duration(
                         pool[:valid_lifetime]
                       )}
                     </td>
@@ -444,8 +445,8 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
           csv_escape(pool[:network] || ""),
           csv_escape(format_ipv6(pool.range_start) || ""),
           csv_escape(format_ipv6(pool.range_end) || ""),
-          csv_escape(format_lifetime(pool[:preferred_lifetime])),
-          csv_escape(format_lifetime(pool[:valid_lifetime] || pool[:lease_time])),
+          csv_escape(format_duration(pool[:preferred_lifetime])),
+          csv_escape(format_duration(pool[:valid_lifetime] || pool[:lease_time])),
           csv_escape(if pool[:enabled] != false, do: "Active", else: "Disabled")
         ]
         |> Enum.join(",")
@@ -536,18 +537,5 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
   defp format_dns_servers(servers) when is_list(servers) do
     Enum.map(servers, &format_ipv6/1)
   end
-
-  defp format_lifetime(nil), do: "-"
-
-  defp format_lifetime(seconds) when is_integer(seconds) do
-    cond do
-      seconds < 60 -> "#{seconds}s"
-      seconds < 3600 -> "#{div(seconds, 60)}m"
-      seconds < 86400 -> "#{div(seconds, 3600)}h"
-      true -> "#{div(seconds, 86400)}d"
-    end
-  end
-
-  defp format_lifetime(_), do: "-"
 
 end
