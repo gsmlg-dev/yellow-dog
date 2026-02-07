@@ -91,7 +91,12 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
     case :ets.lookup(@table_name, ip) do
       [] ->
         :ets.insert(@table_name, {ip, 1, nil})
-        Logger.debug("[AuthRateLimiter] Failed attempt 1/#{max_attempts()} for IP: #{ip}")
+
+        Logger.debug("[AuthRateLimiter] Failed attempt",
+          attempt: 1,
+          max_attempts: max_attempts(),
+          ip: ip
+        )
 
       [{^ip, _attempts, lockout_until}] when lockout_until != nil and now < lockout_until ->
         # Already locked out, ignore
@@ -104,14 +109,18 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
           lockout_until = now + lockout_seconds()
           :ets.insert(@table_name, {ip, new_attempts, lockout_until})
 
-          Logger.warning(
-            "[AuthRateLimiter] IP #{ip} locked out for #{lockout_seconds()}s after #{new_attempts} failed attempts"
+          Logger.warning("[AuthRateLimiter] IP locked out",
+            ip: ip,
+            lockout_seconds: lockout_seconds(),
+            failed_attempts: new_attempts
           )
         else
           :ets.insert(@table_name, {ip, new_attempts, nil})
 
-          Logger.debug(
-            "[AuthRateLimiter] Failed attempt #{new_attempts}/#{max_attempts()} for IP: #{ip}"
+          Logger.debug("[AuthRateLimiter] Failed attempt",
+            attempt: new_attempts,
+            max_attempts: max_attempts(),
+            ip: ip
           )
         end
     end
@@ -215,7 +224,7 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
     Enum.each(expired, &:ets.delete(@table_name, &1))
 
     if expired != [] do
-      Logger.debug("[AuthRateLimiter] Cleaned up #{length(expired)} expired entries")
+      Logger.debug("[AuthRateLimiter] Cleaned up expired entries", count: length(expired))
     end
   end
 

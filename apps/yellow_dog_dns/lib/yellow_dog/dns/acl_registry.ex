@@ -36,6 +36,7 @@ defmodule YellowDog.Dns.AclRegistry do
   @doc """
   Starts the ACL registry.
   """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -194,7 +195,7 @@ defmodule YellowDog.Dns.AclRegistry do
 
         {:error, reason} ->
           require Logger
-          Logger.warning("Failed to save ACLs: #{inspect(reason)}")
+          Logger.warning("Failed to save ACLs", error: inspect(reason))
       end
     end)
   end

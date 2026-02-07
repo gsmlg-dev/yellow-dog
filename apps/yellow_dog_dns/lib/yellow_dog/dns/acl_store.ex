@@ -70,7 +70,7 @@ defmodule YellowDog.Dns.AclStore do
 
       {:error, reason} = error ->
         require Logger
-        Logger.warning("Failed to load ACLs from #{file_path}: #{inspect(reason)}")
+        Logger.warning("Failed to load ACLs", file_path: file_path, error: inspect(reason))
         error
     end
   end

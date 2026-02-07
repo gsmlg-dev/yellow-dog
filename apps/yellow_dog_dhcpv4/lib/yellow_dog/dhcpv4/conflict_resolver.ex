@@ -339,7 +339,9 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
             end
 
           {:error, :pool_exhausted} ->
-            Logger.error("[DHCPv4] Cannot reassign after conflict: pool #{pool_name} exhausted")
+            Logger.error("[DHCPv4] Cannot reassign after conflict: pool exhausted",
+              pool: pool_name
+            )
 
             {:error, :pool_exhausted}
         end

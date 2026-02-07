@@ -859,7 +859,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
         {:error, reason} ->
           require Logger
-          Logger.warning("Failed to save DNS config: #{inspect(reason)}")
+          Logger.warning("Failed to save DNS config", error: inspect(reason))
       end
     end)
   end

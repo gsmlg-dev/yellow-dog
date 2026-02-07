@@ -348,7 +348,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
     try do
       zone_name = Auth.get_name(zone_pid)
       require Logger
-      Logger.warning("Failed to save zone #{zone_name}: #{reason}")
+      Logger.warning("Failed to save zone", zone: zone_name, error: reason)
     rescue
       _e in [ArgumentError, RuntimeError, FunctionClauseError] -> :ok
     catch
