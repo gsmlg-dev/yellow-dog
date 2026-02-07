@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 89)
+**Phase**: IN_PROGRESS (Iteration 90)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 89 of 1000
+**Iteration**: 90 of 1000
 
 ## Session Summary
-Iteration 89: Add @spec annotations to FormatHelper, MacFormat, and DuidFormat:
+Iteration 90: Add @spec to remaining console utility modules + fix flaky test + credo:
+- ✅ **All 962 console + 319 DHCPv4 + 201 DHCPv6 + 4764 ex_dns tests pass: 0 failures, 0 credo issues**
+- ✅ Added `@spec` to CsvHelper (3 functions), ServiceHelper (2 functions), ParamHelper (4 functions)
+- ✅ Fixed flaky `function_exported?` in recursive_test.exs with `Code.ensure_loaded!`
+- ✅ Fixed credo consecutive blank line issue in forward.ex:393
+- ✅ 5 files — **2 commits** — net +9 lines
+
+Previous iteration 89: Add @spec annotations to FormatHelper, MacFormat, and DuidFormat:
 - ✅ **All 962 console + 319 DHCPv4 + 201 DHCPv6 tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Added `@spec` to all 15 public functions in `FormatHelper` (format_mac, format_ip, format_duid, format_ipv6, format_expiration, format_time_remaining, expiration_color, format_prefix, format_duration, format_expires, format_ia_type, parse_mac_string, parse_duid_string)
 - ✅ Added `@spec` to `MacFormat.format/2` and `DuidFormat.format/2`
