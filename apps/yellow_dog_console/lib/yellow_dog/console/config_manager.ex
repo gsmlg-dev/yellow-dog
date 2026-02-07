@@ -30,15 +30,13 @@ defmodule YellowDog.Console.ConfigManager do
   """
   @spec load_config(String.t()) :: {:ok, map()} | {:error, :file_not_found | :invalid_toml}
   def load_config(file_path) do
-    case File.exists?(file_path) do
-      false ->
-        {:ok, default_config_map()}
-
-      true ->
-        case Toml.decode_file(file_path) do
-          {:ok, config} -> {:ok, config}
-          {:error, _} -> {:error, :invalid_toml}
-        end
+    if File.exists?(file_path) do
+      case Toml.decode_file(file_path) do
+        {:ok, config} -> {:ok, config}
+        {:error, _} -> {:error, :invalid_toml}
+      end
+    else
+      {:ok, default_config_map()}
     end
   end
 

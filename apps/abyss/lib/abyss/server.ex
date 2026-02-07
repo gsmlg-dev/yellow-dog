@@ -94,20 +94,18 @@ defmodule Abyss.Server do
   @spec listener_pool_pid(Supervisor.supervisor()) :: pid() | nil
   def listener_pool_pid(supervisor) do
     try do
-      case Process.alive?(supervisor) do
-        false ->
-          nil
+      if Process.alive?(supervisor) do
+        supervisor
+        |> Supervisor.which_children()
+        |> Enum.find_value(fn
+          {:listener_pool, listener_pool_pid, _, _} when is_pid(listener_pool_pid) ->
+            listener_pool_pid
 
-        true ->
-          supervisor
-          |> Supervisor.which_children()
-          |> Enum.find_value(fn
-            {:listener_pool, listener_pool_pid, _, _} when is_pid(listener_pool_pid) ->
-              listener_pool_pid
-
-            _ ->
-              nil
-          end)
+          _ ->
+            nil
+        end)
+      else
+        nil
       end
     rescue
       _e in [ArgumentError, UndefinedFunctionError] -> nil
@@ -128,20 +126,18 @@ defmodule Abyss.Server do
   @spec connection_sup_pid(Supervisor.supervisor()) :: pid() | nil
   def connection_sup_pid(supervisor) do
     try do
-      case Process.alive?(supervisor) do
-        false ->
-          nil
+      if Process.alive?(supervisor) do
+        supervisor
+        |> Supervisor.which_children()
+        |> Enum.find_value(fn
+          {:connection_sup, connection_sup_pid, _, _} when is_pid(connection_sup_pid) ->
+            connection_sup_pid
 
-        true ->
-          supervisor
-          |> Supervisor.which_children()
-          |> Enum.find_value(fn
-            {:connection_sup, connection_sup_pid, _, _} when is_pid(connection_sup_pid) ->
-              connection_sup_pid
-
-            _ ->
-              nil
-          end)
+          _ ->
+            nil
+        end)
+      else
+        nil
       end
     rescue
       _e in [ArgumentError, UndefinedFunctionError] -> nil
