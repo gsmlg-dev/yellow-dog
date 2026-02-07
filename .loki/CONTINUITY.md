@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 88)
+**Phase**: IN_PROGRESS (Iteration 89)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 88 of 1000
+**Iteration**: 89 of 1000
 
 ## Session Summary
-Iteration 88: Replace duplicate format_ipv6 with FormatHelper.format_ip in DHCPv6 pools:
+Iteration 89: Add @spec annotations to FormatHelper, MacFormat, and DuidFormat:
+- ✅ **All 962 console + 319 DHCPv4 + 201 DHCPv6 tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Added `@spec` to all 15 public functions in `FormatHelper` (format_mac, format_ip, format_duid, format_ipv6, format_expiration, format_time_remaining, expiration_color, format_prefix, format_duration, format_expires, format_ia_type, parse_mac_string, parse_duid_string)
+- ✅ Added `@spec` to `MacFormat.format/2` and `DuidFormat.format/2`
+- ✅ 3 files — **1 commit** — net +15 lines
+
+Previous iteration 88: Replace duplicate format_ipv6 with FormatHelper.format_ip in DHCPv6 pools:
 - ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ DHCPv6 pools_live.ex had 3-clause `defp format_ipv6` (nil/tuple/binary) duplicating `FormatHelper.format_ip/1`
 - ✅ Expanded import from `only: [format_duration: 1]` to `only: [format_ip: 1, format_duration: 1]`
