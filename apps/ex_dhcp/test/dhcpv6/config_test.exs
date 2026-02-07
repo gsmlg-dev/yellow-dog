@@ -1,5 +1,5 @@
 defmodule DHCPv6.ConfigTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias DHCPv6.Config
 
   describe "new/1" do

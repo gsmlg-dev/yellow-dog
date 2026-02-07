@@ -1,5 +1,5 @@
 defmodule YellowDog.DnsTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   describe "DNS application modules" do
     test "DNS server modules exist" do

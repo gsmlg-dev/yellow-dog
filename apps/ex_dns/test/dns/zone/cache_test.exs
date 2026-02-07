@@ -12,7 +12,7 @@ defmodule DNS.Zone.CacheTest do
   - Concurrent access patterns
   - Memory management
   """
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias DNS.Zone
   alias DNS.Zone.Cache

@@ -12,7 +12,7 @@ defmodule DNS.Zone.ManagerTest do
   - Error handling
   - Concurrent operations
   """
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias DNS.Zone
   alias DNS.Zone.Manager

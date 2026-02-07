@@ -1,5 +1,5 @@
 defmodule DNS.Zone.ParserErrorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias DNS.Zone.Parser
   alias DNS.Zone
 

@@ -1,5 +1,5 @@
 defmodule YellowDog.Dhcpv6Test do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   test "DHCPv6 modules are available" do
     # Test that DHCPv6 modules can be loaded and used

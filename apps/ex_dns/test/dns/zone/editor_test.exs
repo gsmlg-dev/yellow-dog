@@ -1,5 +1,5 @@
 defmodule DNS.Zone.EditorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias DNS.Zone
   alias DNS.Zone.Editor

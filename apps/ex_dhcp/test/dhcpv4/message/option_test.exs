@@ -1,5 +1,5 @@
 defmodule DHCPv4.Message.OptionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias DHCPv4.Message.Option
 
   describe "new/3" do
