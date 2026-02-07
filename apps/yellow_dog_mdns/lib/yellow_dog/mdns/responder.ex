@@ -221,7 +221,7 @@ defmodule YellowDog.Mdns.Responder do
         {:A, {_, _, _, _}} -> 4
         {:AAAA, {_, _, _, _, _, _, _, _}} -> 16
         {:PTR, target} -> byte_size(to_string(target))
-        {:TXT, list} when is_list(list) -> Enum.reduce(list, 0, fn item, acc -> acc + byte_size(item) end)
+        {:TXT, list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
         {:SRV, %{target: target}} -> byte_size(to_string(target)) + 6
         _ -> 20
       end

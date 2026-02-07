@@ -587,7 +587,7 @@ defmodule Abyss.Client do
   # Emit telemetry for subscribe operations (multiple packets)
   defp emit_subscribe_telemetry({:ok, packets}, start_time, metadata) when is_list(packets) do
     duration = System.monotonic_time() - start_time
-    total_size = Enum.reduce(packets, 0, fn p, acc -> acc + byte_size(p) end)
+    total_size = Enum.sum_by(packets, &byte_size/1)
 
     :telemetry.execute(
       [:abyss, :client, :subscribe, :stop],
