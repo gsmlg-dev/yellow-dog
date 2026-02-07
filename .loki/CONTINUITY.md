@@ -1,12 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 15)
+**Phase**: IN_PROGRESS (Iteration 16)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 15 of 1000
+**Iteration**: 16 of 1000
 
 ## Session Summary
-Iteration 15: Security audit framework + test verification:
+Iteration 16: QueryLogger integration + atom safety hardening:
+- ✅ **1052 umbrella tests passing** (1050 prior + 2 QueryLogger integration), 0 failures
+- ✅ **689 Console tests passing** (684 prior + 5 atom safety guards), 0 failures
+- ✅ Wired QueryLogger into ConnectionProcess (complete_query + complete_query_error)
+- ✅ Fixed `String.to_atom/1` in mDNS ServicesLive filter (atom leak vulnerability)
+- ✅ Added allowlist guards to `String.to_existing_atom/1` in DashboardLive, LogsLive
+- ✅ Added `phx-disable-with` to Dashboard start/stop service buttons
+- ✅ **2 commits this iteration**: QueryLogger wiring, atom safety hardening
+
+Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
 - ✅ Fixed DNS cache benchmark syntax error (div operator precedence)
 - ✅ Created comprehensive security audit test framework (19 tests in 9 categories)
@@ -85,7 +94,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 684 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y + 20 sidebar highlighting)
+- [x] 689 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 5 atom safety)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -99,6 +108,10 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
+1. `57344be` - feat(dns): wire QueryLogger into query resolution pipeline
+2. `045ad4d` - fix(console): harden atom safety in LiveView event handlers
+
+Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
 2. `4d6bd2b` - chore: remove incorrect performance test file, verify 1050 tests pass
 3. `5cc2923` - test(security): add comprehensive DNS security audit test framework
@@ -178,6 +191,10 @@ Previous iteration 14 commits:
 
 17. **Security test framework as documentation**: When implementing security tests, even if the underlying APIs don't exist yet, creating comprehensive test files serves as valuable documentation of security requirements and attack vectors to defend against. The test descriptions themselves become a security checklist.
 
+18. **DNS.Domain and DNS.ResourceRecordType are structs**: When comparing values from ex_dns library, `question.name` is `#DNS.Domain<example.com.>` (not a plain string) and `question.type` is `#DNS.ResourceRecordType<A>` (not `:a`). Use `to_string/1` or `=~` for assertions.
+
+19. **Atom safety pattern**: For LiveView events receiving user-controlled strings, use compile-time allowlist guards (`when param in @valid_list`) instead of `String.to_existing_atom/1`. This avoids ArgumentError crashes AND makes invalid input handling explicit. Pattern: `@valid_services ~w(dns mdns dhcpv4 dhcpv6)` + guard clause + catch-all clause returning error flash.
+
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
 2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
@@ -195,6 +212,10 @@ Previous iteration 14 commits:
 14. ~~Table header accessibility (scope=col)~~ ✅ Done (96 th elements, 14 files)
 15. ~~Performance testing / load testing~~ ⚠️ Partially done (DNS cache benchmarks exist, need ServiceHelper implementation)
 16. ~~Security audit framework~~ ✅ Done (19 security tests covering 9 attack categories)
-17. Implement ServiceHelper.start_dns_server/1 API for E2E security tests
-18. Performance optimization based on benchmark results
-19. Prometheus/OpenTelemetry integration
+17. ~~QueryLogger integration into DNS pipeline~~ ✅ Done (2 tests)
+18. ~~Atom safety hardening in LiveViews~~ ✅ Done (5 tests)
+19. Performance optimization based on benchmark results
+20. Prometheus/OpenTelemetry integration
+21. Add tests for Dashboard start/stop event handlers (with mocked services)
+22. Add tests for Logs LiveView real-time event handling
+23. Add tests for Process Map LiveView interactions
