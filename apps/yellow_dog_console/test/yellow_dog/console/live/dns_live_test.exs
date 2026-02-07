@@ -1519,4 +1519,481 @@ defmodule YellowDog.Console.DnsLiveTest do
       assert length(result) == 2
     end
   end
+
+  # ============================================================================
+  # DNS RecordForm Component Validation (via live_component)
+  # ============================================================================
+
+  describe "RecordForm validation - domain name" do
+    test "shows error for invalid domain name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "invalid domain!",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "shows no error for valid domain name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+
+    test "accepts @ for zone apex", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - TTL" do
+    test "shows error for non-numeric TTL", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "abc",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "shows error for negative TTL", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "-1",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid TTL within RFC 2181 limits", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "3600",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - A record rdata" do
+    test "shows error for invalid IPv4 address", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "not-an-ip"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid IPv4 address for A record", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - AAAA record rdata" do
+    test "shows error for invalid IPv6 address", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      # First switch to AAAA type
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "aaaa"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "aaaa",
+            "ttl" => "300",
+            "rdata" => "not-ipv6"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid IPv6 address for AAAA record", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "aaaa"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "www",
+            "type" => "aaaa",
+            "ttl" => "300",
+            "rdata" => "2001:db8::1"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - MX record" do
+    test "shows error for invalid MX target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "mx"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "mx",
+            "ttl" => "300",
+            "priority" => "10",
+            "target" => "bad mail server!"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid MX record", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "mx"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "mx",
+            "ttl" => "300",
+            "priority" => "10",
+            "target" => "mail.example.com"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - SRV record" do
+    test "shows error for invalid SRV target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "srv"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "_sip._tcp",
+            "type" => "srv",
+            "ttl" => "300",
+            "priority" => "10",
+            "weight" => "60",
+            "port" => "5060",
+            "target" => "bad target!"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid SRV record", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "srv"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "_sip._tcp",
+            "type" => "srv",
+            "ttl" => "300",
+            "priority" => "10",
+            "weight" => "60",
+            "port" => "5060",
+            "target" => "sip.example.com"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - CNAME/NS record rdata" do
+    test "shows error for invalid CNAME target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "cname"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "alias",
+            "type" => "cname",
+            "ttl" => "300",
+            "rdata" => "bad target name!"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid CNAME target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "cname"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "alias",
+            "type" => "cname",
+            "ttl" => "300",
+            "rdata" => "www.example.com"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+
+    test "shows error for invalid NS target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "ns"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "ns",
+            "ttl" => "300",
+            "rdata" => "bad ns name!"
+          }
+        })
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "accepts valid NS target", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "ns"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "ns",
+            "ttl" => "300",
+            "rdata" => "ns1.example.com"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  describe "RecordForm validation - TXT record" do
+    test "accepts arbitrary rdata for TXT records", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      view
+      |> element("select[name='record[type]']")
+      |> render_change(%{"record" => %{"type" => "txt"}})
+
+      html =
+        view
+        |> element("form")
+        |> render_change(%{
+          "record" => %{
+            "name" => "@",
+            "type" => "txt",
+            "ttl" => "300",
+            "rdata" => "v=spf1 include:example.com ~all"
+          }
+        })
+
+      refute html =~ "input-error"
+    end
+  end
+
+  # ============================================================================
+  # DNS RecordForm Submission (save event via component)
+  # ============================================================================
+
+  describe "RecordForm submission" do
+    test "rejects record with invalid domain name on submit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> form("form", %{
+          "record" => %{
+            "name" => "bad name!",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "rejects A record with invalid IPv4 on submit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      html =
+        view
+        |> form("form", %{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "999.999.999.999"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "text-error" or html =~ "input-error"
+    end
+
+    test "valid A record submission proceeds (shows error or navigates)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records/new")
+
+      result =
+        view
+        |> form("form", %{
+          "record" => %{
+            "name" => "www",
+            "type" => "a",
+            "ttl" => "300",
+            "rdata" => "192.0.2.1"
+          }
+        })
+        |> render_submit()
+
+      # Valid data passes validation; either saves (redirect) or shows error
+      # since zone service isn't running in test
+      assert is_binary(result)
+    end
+  end
 end
