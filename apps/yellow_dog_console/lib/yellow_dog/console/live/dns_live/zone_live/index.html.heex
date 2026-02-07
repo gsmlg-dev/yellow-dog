@@ -10,7 +10,7 @@
     </div>
 
     <.service_alert :if={not @service_running} service="DNS" />
-
+    
 <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
@@ -94,6 +94,7 @@
                 <input
                   type="text"
                   placeholder="Filter by zone name..."
+                  aria-label="Filter DNS zones"
                   class="input input-bordered input-sm flex-1 min-w-48"
                   phx-change="filter"
                   phx-debounce="300"
@@ -398,7 +399,9 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">Create Zone</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">
+                Create Zone
+              </button>
             </div>
           </.form>
         </.card>
@@ -500,7 +503,9 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save Changes</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+                Save Changes
+              </button>
             </div>
           </.form>
         </.card>
@@ -560,7 +565,9 @@
 
             <div class="flex justify-end gap-2">
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Importing...">Import Zone</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Importing...">
+                Import Zone
+              </button>
             </div>
           </.form>
         </.card>

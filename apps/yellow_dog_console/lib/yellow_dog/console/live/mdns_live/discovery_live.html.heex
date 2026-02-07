@@ -1,12 +1,14 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="mDNS" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Network Discovery</h1>
-        <p class="mt-2 text-base-content/60">Browse mDNS services discovered on your local network</p>
+        <p class="mt-2 text-base-content/60">
+          Browse mDNS services discovered on your local network
+        </p>
       </div>
       <button
         phx-click="export_csv"
@@ -40,6 +42,7 @@
           name="search"
           value={@search}
           placeholder="Search services by name or type..."
+          aria-label="Search discovered services"
           class="input input-bordered w-full"
         />
       </div>

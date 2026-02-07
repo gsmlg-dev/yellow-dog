@@ -208,6 +208,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             <input
               type="text"
               placeholder="Search pools..."
+              aria-label="Search DHCPv4 pools"
               value={@filter}
               phx-change="filter"
               phx-debounce="300"

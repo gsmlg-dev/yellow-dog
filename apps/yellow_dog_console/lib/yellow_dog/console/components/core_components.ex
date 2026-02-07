@@ -497,7 +497,9 @@ defmodule YellowDog.Console.CoreComponents do
       </svg>
       <div>
         <h3 class="font-bold">{@service} service is not running</h3>
-        <div class="text-sm">Data shown may be unavailable. Start the service from the dashboard.</div>
+        <div class="text-sm">
+          Data shown may be unavailable. Start the service from the dashboard.
+        </div>
       </div>
       <.link navigate={@navigate} class="btn btn-sm btn-ghost">Go to Dashboard</.link>
     </div>

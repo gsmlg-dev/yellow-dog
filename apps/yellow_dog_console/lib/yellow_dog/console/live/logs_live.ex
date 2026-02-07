@@ -353,6 +353,7 @@ defmodule YellowDog.Console.LogsLive do
           <input
             type="text"
             placeholder="Search log messages..."
+            aria-label="Search log messages"
             value={@search}
             phx-change="search"
             phx-debounce="300"

@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="mDNS" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-3xl font-bold">Network Monitor</h1>
@@ -131,6 +131,7 @@
           <input
             type="text"
             placeholder="Search queries..."
+            aria-label="Search mDNS queries"
             value={@search}
             phx-change="search"
             phx-debounce="300"

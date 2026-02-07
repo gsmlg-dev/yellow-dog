@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="DHCPv4" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-4xl font-bold">DHCP Leases</h1>
@@ -62,6 +62,7 @@
               type="text"
               class="grow"
               placeholder="Search by MAC, IP, or hostname"
+              aria-label="Search DHCPv4 leases"
               value={@search_query}
               phx-change="search"
               name="search"

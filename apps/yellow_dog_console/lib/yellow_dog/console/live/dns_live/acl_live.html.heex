@@ -1,8 +1,8 @@
 <Layouts.app flash={@flash}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="DNS" />
-
-    <!-- Header -->
+    
+<!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DNS ACL</h1>
@@ -93,6 +93,7 @@
         <input
           type="text"
           placeholder="Search ACLs and views..."
+          aria-label="Search DNS ACLs"
           value={@filter}
           phx-keyup="filter"
           phx-value-filter={@filter}
@@ -502,6 +503,7 @@
                 type="text"
                 class="input input-bordered input-sm w-full pr-8"
                 placeholder="Search countries..."
+                aria-label="Search countries"
                 value={@country_search}
                 phx-keyup="search_country"
                 phx-value-search={@country_search}
@@ -577,7 +579,9 @@
 
         <div class="flex justify-end gap-2">
           <button type="button" class="btn btn-ghost" phx-click="close_modal">Cancel</button>
-          <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save ACL</button>
+          <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+            Save ACL
+          </button>
         </div>
       </.form>
     </.modal>
@@ -692,6 +696,7 @@
                 type="text"
                 class="input input-bordered input-sm w-full pr-8"
                 placeholder="Search countries..."
+                aria-label="Search countries"
                 value={@country_search}
                 phx-keyup="search_country"
                 phx-value-search={@country_search}

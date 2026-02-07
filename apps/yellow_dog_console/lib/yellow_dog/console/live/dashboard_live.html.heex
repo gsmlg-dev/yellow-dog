@@ -333,7 +333,11 @@
               </div>
               <.progress
                 value={@system_health.memory_pct}
-                color={if @system_health.memory_pct > 80, do: "error", else: if(@system_health.memory_pct > 60, do: "warning", else: "info")}
+                color={
+                  if @system_health.memory_pct > 80,
+                    do: "error",
+                    else: if(@system_health.memory_pct > 60, do: "warning", else: "info")
+                }
               />
               <div class="text-xs text-base-content/50 mt-1">
                 {@system_health.memory_processes} of {@system_health.memory_total}

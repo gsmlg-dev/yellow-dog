@@ -219,7 +219,9 @@ defmodule YellowDog.Console.DashboardLive do
   end
 
   defp format_uptime(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
-  defp format_uptime(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)}m #{div(rem(ms, 60_000), 1_000)}s"
+
+  defp format_uptime(ms) when ms < 3_600_000,
+    do: "#{div(ms, 60_000)}m #{div(rem(ms, 60_000), 1_000)}s"
 
   defp format_uptime(ms) do
     hours = div(ms, 3_600_000)

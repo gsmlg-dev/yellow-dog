@@ -373,6 +373,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                 <input
                   type="text"
                   placeholder="Search domain or IP..."
+                  aria-label="Search DNS query logs"
                   class="input input-sm input-bordered w-48"
                   phx-change="search"
                   phx-debounce="300"

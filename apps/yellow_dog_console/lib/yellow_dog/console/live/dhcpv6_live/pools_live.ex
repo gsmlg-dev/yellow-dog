@@ -202,6 +202,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
             <input
               type="text"
               placeholder="Search pools..."
+              aria-label="Search DHCPv6 pools"
               value={@filter}
               phx-change="filter"
               phx-debounce="300"
