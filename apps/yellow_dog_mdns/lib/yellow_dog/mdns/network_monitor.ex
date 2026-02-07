@@ -455,7 +455,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
         end)
 
       # Find A/AAAA records
-      host = if srv_record, do: to_string(srv_record.data.target), else: nil
+      host = if srv_record, do: to_string(srv_record.data.target)
 
       addresses =
         if host do

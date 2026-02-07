@@ -521,7 +521,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
       type: service.type,
       port: service.port,
       host: String.replace_suffix(service.host, ".#{service.domain}", ""),
-      txt: if(map_size(service.txt_records) > 0, do: service.txt_records, else: nil),
+      txt: if(map_size(service.txt_records) > 0, do: service.txt_records),
       addresses: Enum.map(service.addresses, &format_ip/1),
       enabled: service.enabled
     }

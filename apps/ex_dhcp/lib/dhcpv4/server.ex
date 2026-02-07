@@ -351,7 +351,7 @@ defmodule DHCPv4.Server do
 
   defp get_message_type(message) do
     Enum.find_value(message.options, 0, fn option ->
-      if option.type == 53, do: :binary.decode_unsigned(option.value), else: nil
+      if option.type == 53, do: :binary.decode_unsigned(option.value)
     end)
   end
 
@@ -361,25 +361,25 @@ defmodule DHCPv4.Server do
 
   defp find_requested_ip(message) do
     Enum.find_value(message.options, fn option ->
-      if option.type == 50, do: binary_to_ip(option.value), else: nil
+      if option.type == 50, do: binary_to_ip(option.value)
     end)
   end
 
   defp find_server_id(message) do
     Enum.find_value(message.options, fn option ->
-      if option.type == 54, do: binary_to_ip(option.value), else: nil
+      if option.type == 54, do: binary_to_ip(option.value)
     end)
   end
 
   defp find_client_id(message) do
     Enum.find_value(message.options, fn option ->
-      if option.type == 61, do: option.value, else: nil
+      if option.type == 61, do: option.value
     end)
   end
 
   defp find_hostname(message) do
     Enum.find_value(message.options, fn option ->
-      if option.type == 12, do: option.value |> String.trim(<<0>>), else: nil
+      if option.type == 12, do: option.value |> String.trim(<<0>>)
     end)
   end
 

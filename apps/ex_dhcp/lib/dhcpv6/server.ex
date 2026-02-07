@@ -407,7 +407,7 @@ defmodule DHCPv6.Server do
     requested_list = MapSet.to_list(requested_addrs)
 
     Enum.find_value(requested_list, fn requested_ip ->
-      if MapSet.member?(available_ips, requested_ip), do: requested_ip, else: nil
+      if MapSet.member?(available_ips, requested_ip), do: requested_ip
     end) || MapSet.to_list(available_ips) |> List.first()
   end
 
@@ -544,7 +544,7 @@ defmodule DHCPv6.Server do
 
   defp extract_duid(message) do
     Enum.find_value(message.options, fn option ->
-      if option.option_code == 1, do: option.option_data, else: nil
+      if option.option_code == 1, do: option.option_data
     end) || <<>>
   end
 
