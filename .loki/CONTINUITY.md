@@ -1,20 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 8)
+**Phase**: IN_PROGRESS (Iteration 10)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 8 of 1000
+**Iteration**: 10 of 1000
 
 ## Session Summary
-Iteration 8: Bulk preview, BIND export, CsvDownload hook fix:
-- ✅ **597 Console tests passing** (578 prior + 19 new)
+Iteration 10: Service status alert banners:
+- ✅ **626 Console tests passing** (614 prior + 12 new)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
-- ✅ Bulk import preview: parses zone text on change, shows record count + types
-- ✅ Submit button disabled until valid preview, shows "Import N Record(s)"
-- ✅ BIND zone file export: "Export BIND" button on auth zone Records page
-- ✅ Fixed CsvDownload hook missing on 8 pages (CSV export was silently broken)
-- ✅ 6 bulk preview unit tests, 2 LiveView tests, 3 BIND export tests, 8 hook regression tests
-- ✅ **14 commits this iteration**: 11 prior + 3 this session
+- ✅ Reusable `<.service_alert>` component in CoreComponents
+- ✅ Service status detection on 11 data pages (6 DNS, 3 mDNS, 2 DHCP)
+- ✅ Warning banner with dashboard navigation when service not running
+- ✅ 12 new tests (9 service_pages + 3 dns_live)
+- ✅ **17 commits this iteration**: 16 prior + 1 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -57,7 +56,7 @@ Iteration 8: Bulk preview, BIND export, CsvDownload hook fix:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 597 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 328 existing)
+- [x] 626 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 328 existing + 17 a11y)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -85,6 +84,9 @@ Iteration 8: Bulk preview, BIND export, CsvDownload hook fix:
 12. `99bfd66` - feat(console): add bulk import preview with live validation
 13. `9b40e3f` - feat(console): add BIND zone file export to Records page
 14. `e39f8bd` - fix(console): add missing CsvDownload hook to 8 export buttons
+15. `04ce330` - fix(console): add ARIA labels for screen reader accessibility
+16. `f8807a5` - fix(console): wire dashboard refresh, configure buttons, real system health
+17. `bd8ebbc` - feat(console): add service status alert banners to all data pages
 
 ## Mistakes & Learnings
 
@@ -116,6 +118,8 @@ Iteration 8: Bulk preview, BIND export, CsvDownload hook fix:
 5. ~~Bulk import preview/validation UI for zone file imports~~ ✅ Done (8 tests)
 6. ~~BIND zone file export~~ ✅ Done (3 tests)
 7. ~~Fix CsvDownload hook on 8 broken export pages~~ ✅ Done (8 regression tests)
-8. Performance testing / load testing
+8. ~~ARIA accessibility + dashboard fixes~~ ✅ Done (17 tests)
+9. ~~Service status alert banners on data pages~~ ✅ Done (12 tests)
+10. Performance testing / load testing
 9. Security audit (input validation integrated into forms, ACL bypass)
 10. Prometheus/OpenTelemetry integration
