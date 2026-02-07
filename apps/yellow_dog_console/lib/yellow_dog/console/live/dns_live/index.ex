@@ -83,13 +83,19 @@ defmodule YellowDog.Console.DnsLive.Index do
           }
         end)
 
+      {zones, queries, hits, misses, cache} =
+        Enum.reduce(view_stats, {0, 0, 0, 0, 0}, fn s, {z, q, h, m, c} ->
+          {z + s.zone_count, q + s.query_count, h + s.hit_count, m + s.miss_count,
+           c + s.cache_size}
+        end)
+
       %{
         view_count: length(views),
-        total_zones: Enum.sum(Enum.map(view_stats, & &1.zone_count)),
-        total_queries: Enum.sum(Enum.map(view_stats, & &1.query_count)),
-        total_hits: Enum.sum(Enum.map(view_stats, & &1.hit_count)),
-        total_misses: Enum.sum(Enum.map(view_stats, & &1.miss_count)),
-        total_cache: Enum.sum(Enum.map(view_stats, & &1.cache_size)),
+        total_zones: zones,
+        total_queries: queries,
+        total_hits: hits,
+        total_misses: misses,
+        total_cache: cache,
         views: view_stats
       }
     rescue

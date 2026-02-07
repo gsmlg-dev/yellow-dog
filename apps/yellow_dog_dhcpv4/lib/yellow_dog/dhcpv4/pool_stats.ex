@@ -115,23 +115,11 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   def get_global_utilization(pools) do
     pool_stats = get_all_pool_stats(pools)
 
-    total_addresses =
-      pool_stats
-      |> Map.values()
-      |> Enum.map(& &1.total_addresses)
-      |> Enum.sum()
-
-    total_allocated =
-      pool_stats
-      |> Map.values()
-      |> Enum.map(& &1.allocated_addresses)
-      |> Enum.sum()
-
-    total_available =
-      pool_stats
-      |> Map.values()
-      |> Enum.map(& &1.available_addresses)
-      |> Enum.sum()
+    {total_addresses, total_allocated, total_available} =
+      Enum.reduce(Map.values(pool_stats), {0, 0, 0}, fn stats, {tot, alloc, avail} ->
+        {tot + stats.total_addresses, alloc + stats.allocated_addresses,
+         avail + stats.available_addresses}
+      end)
 
     global_utilization =
       if total_addresses > 0 do
