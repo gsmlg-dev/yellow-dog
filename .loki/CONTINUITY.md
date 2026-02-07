@@ -1,12 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 13)
+**Phase**: IN_PROGRESS (Iteration 14)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 13 of 1000
+**Iteration**: 14 of 1000
 
 ## Session Summary
-Iteration 13: Live navigation + sidebar highlighting + security:
+Iteration 14: Sidebar highlighting tests + table accessibility:
+- ✅ **684 Console tests passing** (664 prior + 20 sidebar highlighting tests), 0 failures
+- ✅ Wired `@current_path` through all 24 `<Layouts.app>` calls so sidebar active class works
+- ✅ 20 active sidebar highlighting tests verifying all pages highlight correctly
+- ✅ Added `scope="col"` to 96 `<th>` elements across 14 data table files
+- ✅ Added sr-only "Actions" labels for 2 empty action column headers (ACL page)
+- ✅ Added `aria-label="Close panel"` to process map close button
+- ✅ **37 commits this iteration**: 35 prior + 2 this session
+
+Previous iteration 13: Live navigation + sidebar highlighting + security:
 - ✅ **1714 tests passing** (1050 umbrella + 664 console), 0 failures
 - ✅ Converted all `<a href>` tags to `<.link navigate>` for live navigation (sidebar, navbar, home page, settings tabs)
 - ✅ Added `CurrentPath` on_mount hook for tracking current page path
@@ -67,7 +76,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 664 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y)
+- [x] 684 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 36 event handler + 328 existing + 17 a11y + 20 sidebar highlighting)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -109,6 +118,15 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 26. `09d5b6b` - fix(console): remove dead navbar search, add data-confirm handler
 27. `d01c177` - docs: update CONTINUITY with navbar cleanup and data-confirm fix
 28. `ba876a3` - fix(console): return default config when TOML file missing
+29. `5d1d353` - docs: update CONTINUITY with config defaults and data-confirm fixes
+30. `50a1f57` - feat(console): convert sidebar/navbar to live navigation
+31. `0746a08` - feat(console): convert remaining links to live navigation
+32. `a09afcc` - feat(console): add active sidebar highlighting with CurrentPath hook
+33. `3e66058` - style(console): fix code formatting in layouts and mDNS templates
+34. `38eeedb` - fix(console): add http_only flag to session cookie
+35. `e1cb8d1` - fix(console): add Content-Security-Policy header
+36. `9da8cb8` - test(console): add 20 active sidebar highlighting tests, wire current_path
+37. `817020e` - fix(console): add scope=col to 96 table headers, aria-label on close button
 
 ## Mistakes & Learnings
 
@@ -140,6 +158,10 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 14. **data-confirm in LiveView 1.0**: Phoenix LiveView 1.0 does NOT include a built-in `data-confirm` handler. Need to add a capture-phase click listener in app.js: `document.body.addEventListener("click", handler, true)` that calls `confirm()` and blocks the event if cancelled. Use `e.target.closest("[data-confirm]")` for delegation.
 
+15. **on_mount assigns don't auto-flow to layout components**: When using `on_mount` hooks to set socket assigns (like `@current_path`), those assigns live on the socket but don't automatically pass through to layout components used as `<Layouts.app>`. Must explicitly pass them: `<Layouts.app current_path={@current_path}>`. This is different from the older layout system.
+
+16. **LiveView test `html` vs `render(view)`**: `{:ok, view, html} = live(conn, path)` — the `html` is the static render before WebSocket connection. To get HTML after `handle_params` hooks fire, use `render(view)` which returns the connected render.
+
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
 2. ~~Integrate DNS validators into LiveView forms~~ ✅ Done (all 4 forms, 15 tests)
@@ -153,6 +175,8 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 10. ~~phx-disable-with on submit buttons~~ ✅ Done (15 buttons, 2 tests)
 11. ~~Dark mode + Escape key + page titles + aria-labels~~ ✅ Done (19 files)
 12. ~~Event handler tests for untested LiveView pages~~ ✅ Done (36 tests)
-13. Performance testing / load testing
-13. Security audit (input validation integrated into forms, ACL bypass)
-14. Prometheus/OpenTelemetry integration
+13. ~~Active sidebar highlighting tests + current_path wiring~~ ✅ Done (20 tests, 24 templates)
+14. ~~Table header accessibility (scope=col)~~ ✅ Done (96 th elements, 14 files)
+15. Performance testing / load testing
+16. Security audit (input validation integrated into forms, ACL bypass)
+17. Prometheus/OpenTelemetry integration
