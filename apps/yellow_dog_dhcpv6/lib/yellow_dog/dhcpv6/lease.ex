@@ -213,15 +213,10 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   # Parsing helpers
 
-  defp get_value(config, key, default \\ nil) do
-    atom_key = if is_atom(key), do: key, else: String.to_existing_atom("#{key}")
-    string_key = if is_binary(key), do: key, else: Atom.to_string(key)
-
-    Map.get(config, atom_key) ||
-      Map.get(config, string_key) ||
+  defp get_value(config, key, default \\ nil) when is_atom(key) do
+    Map.get(config, key) ||
+      Map.get(config, Atom.to_string(key)) ||
       default
-  rescue
-    ArgumentError -> Map.get(config, key, default)
   end
 
   defp parse_ipv6(nil), do: {:error, "IPv6 address is required"}
