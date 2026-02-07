@@ -397,7 +397,7 @@ defmodule YellowDog.Dhcpv6.Pool do
     Map.new(map, fn {duid, ip} -> {duid, format_ipv6(ip)} end)
   end
 
-  defp format_pd_pools([]), do: nil
+  defp format_pd_pools([]), do: []
 
   defp format_pd_pools(pools) do
     Enum.map(pools, fn %{prefix: prefix, length: len, delegated_len: del_len} ->
