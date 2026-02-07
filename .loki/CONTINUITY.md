@@ -1,17 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 35)
+**Phase**: IN_PROGRESS (Iteration 36)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 35 of 1000
+**Iteration**: 36 of 1000
 
 ## Session Summary
-Iteration 35: Extract shared FormatHelper module:
+Iteration 36: Extend FormatHelper + IA type color helpers:
 - ✅ **962 console tests, 0 failures**
-- ✅ Created `YellowDog.Console.FormatHelper` with 8 shared functions (format_mac, format_ip, format_duid, format_ipv6, format_expiration, format_time_remaining, expiration_color, parse_mac_string)
-- ✅ Removed duplicate definitions from **6 DHCPv4/v6 LiveView modules** — **net -71 lines**
-- ✅ Renamed `get_expiration_color` → `expiration_color` in 2 .heex templates for consistency
-- ✅ Used `Enum.map_join` in extracted helpers (single-pass improvement over originals)
+- ✅ Added **5 functions** to FormatHelper: `format_prefix`, `format_duration`, `format_expires`, `format_ia_type`, `parse_duid_string`
+- ✅ Added **2 color helpers** to CoreComponents: `ia_type_color`, `ia_type_text_color`
+- ✅ Removed duplicates from **5 LiveView modules** — **net -54 lines**
+- ✅ Renamed `format_lifetime`/`format_lease_time` → `format_duration`, `get_ia_type_color` → `ia_type_color`/`ia_type_text_color`
+- ✅ **1 commit this iteration**
+
+Previous iteration 35: Extract shared FormatHelper module:
+- ✅ Created `YellowDog.Console.FormatHelper` with 8 shared functions — **net -71 lines**
 - ✅ **1 commit this iteration**
 
 Previous iteration 34: DRY color helpers + Enum.map_join:
