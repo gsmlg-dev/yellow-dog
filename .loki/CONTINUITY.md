@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 95)
+**Phase**: IN_PROGRESS (Iteration 96)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 95 of 1000
+**Iteration**: 96 of 1000
 
 ## Session Summary
-Iteration 95: Fix falsy value bug in ParamHelper get_boolean/3 and get_integer/3:
+Iteration 96: Replace String.to_existing_atom with to_string comparison in DHCPv4 leases filter:
+- ✅ **All 1045 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ DHCPv4 leases_live `filter_by_state` used `String.to_existing_atom` + `rescue` block (anti-pattern)
+- ✅ Replaced with `to_string(l.state) == state` — matches DHCPv6 leases_live pattern
+- ✅ Removed 6 lines of rescue/fallback code, replaced with 2-line idiomatic clause
+- ✅ 1 file — **1 commit** — net -4 lines
+
+Previous iteration 95: Fix falsy value bug in ParamHelper get_boolean/3 and get_integer/3:
 - ✅ **All 1045 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Bug: `||` chaining treated `false` and `0` as missing (falsy), returning default instead
 - ✅ Fix: extracted `fetch_param/3` using `Map.has_key?/2` to correctly distinguish present-but-falsy from missing
