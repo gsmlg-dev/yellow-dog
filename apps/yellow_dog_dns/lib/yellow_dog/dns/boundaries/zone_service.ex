@@ -29,6 +29,8 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       {:ok, result} = ZoneService.validate_zone(zone_pid)
   """
 
+  require Logger
+
   alias DNS.Zone.Validator.Record, as: RecordValidator
   alias DNS.Zone.Validator.Zone, as: ZoneValidator
   alias DNS.Zone.Validator.Result
@@ -347,7 +349,6 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
   defp log_save_error(zone_pid, reason) do
     try do
       zone_name = Auth.get_name(zone_pid)
-      require Logger
       Logger.warning("Failed to save zone", zone: zone_name, error: reason)
     rescue
       _e in [ArgumentError, RuntimeError, FunctionClauseError] -> :ok

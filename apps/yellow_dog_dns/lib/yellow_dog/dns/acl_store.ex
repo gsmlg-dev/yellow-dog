@@ -30,6 +30,8 @@ defmodule YellowDog.Dns.AclStore do
       geo_countries = ["US", "CA", "MX"]
   """
 
+  require Logger
+
   @type acl_rule :: %{
           action: String.t(),
           network: String.t() | nil,
@@ -71,7 +73,6 @@ defmodule YellowDog.Dns.AclStore do
         {:ok, []}
 
       {:error, reason} = error ->
-        require Logger
         Logger.warning("Failed to load ACLs", file_path: file_path, error: inspect(reason))
         error
     end

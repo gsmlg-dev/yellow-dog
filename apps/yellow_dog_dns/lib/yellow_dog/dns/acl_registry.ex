@@ -29,6 +29,8 @@ defmodule YellowDog.Dns.AclRegistry do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Dns.AclStore
 
   # Client API
@@ -194,7 +196,6 @@ defmodule YellowDog.Dns.AclRegistry do
           :ok
 
         {:error, reason} ->
-          require Logger
           Logger.warning("Failed to save ACLs", error: inspect(reason))
       end
     end)

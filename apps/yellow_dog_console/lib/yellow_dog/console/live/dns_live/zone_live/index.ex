@@ -6,6 +6,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  require Logger
+
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
@@ -846,7 +848,6 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
           :ok
 
         {:error, reason} ->
-          require Logger
           Logger.warning("Failed to save DNS config", error: inspect(reason))
       end
     end)
