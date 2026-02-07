@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 12)
+**Phase**: IN_PROGRESS (Iteration 13)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 12 of 1000
+**Iteration**: 13 of 1000
 
 ## Session Summary
-Iteration 12: Event handler tests + resilience + debounce:
+Iteration 13: Live navigation + active sidebar highlighting:
+- ✅ **664 Console tests passing** (no regressions)
+- ✅ Converted all `<a href>` tags to `<.link navigate>` for live navigation (sidebar, navbar, home page, settings tabs)
+- ✅ Added `CurrentPath` on_mount hook for tracking current page path
+- ✅ Active sidebar highlighting using DaisyUI `active` class with exact/prefix matching
+- ✅ **31 commits this iteration**: 28 prior + 3 this session
+
+Previous iteration 12: Event handler tests + resilience + debounce:
 - ✅ **664 Console tests passing** (628 prior + 36 event handler tests)
 - ✅ **83 DNS E2E tests passing** (all 12 test files)
 - ✅ 36 event handler tests for mDNS, DHCPv4/v6, ProcessMap, DNS, Diagnostics
