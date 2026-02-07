@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 104)
+**Phase**: IN_PROGRESS (Iteration 105)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 104 of 1000
+**Iteration**: 105 of 1000
 
 ## Session Summary
-Iteration 104: Extract duplicate filter_by_state and filter_by_pool to FormatHelper:
+Iteration 105: Add unit tests for MacFormat and DuidFormat modules:
+- ✅ **All umbrella tests pass: 0 failures, 0 warnings**
+- ✅ MacFormat tests (8): uppercase, zero MAC, lowercase, longer binary, short/empty/non-binary nil, default
+- ✅ DuidFormat tests (9): uppercase, single byte, lowercase, custom separator, combined opts, padding, empty/nil
+- ✅ 2 new files — **1 commit** — net +90 lines
+
+Previous iteration 104: Extract duplicate filter_by_state and filter_by_pool to FormatHelper:
 - ✅ **All 1084 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ filter_by_state/2 was duplicated in 3 files (DHCPv4 leases, DHCPv4 pool, DHCPv6 leases)
 - ✅ filter_by_pool/2 was duplicated in 2 files (DHCPv4 leases, DHCPv6 leases)
