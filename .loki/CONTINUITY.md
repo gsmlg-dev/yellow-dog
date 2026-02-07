@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 70)
+**Phase**: IN_PROGRESS (Iteration 71)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 70 of 1000
+**Iteration**: 71 of 1000
 
 ## Session Summary
-Iteration 70: Replace `Map.merge` with map update syntax / `Map.put`:
+Iteration 71: Replace `length()` emptiness checks with O(1) list equality in HEEx templates:
+- ✅ **962 console tests, 0 failures, 0 warnings, 0 credo issues**
+- ✅ 22 instances of `length(list) == 0` / `> 0` replaced with `== []` / `!= []` across 10 HEEx files
+- ✅ `length/1` is O(n) — traverses the entire list; `== []` / `!= []` is O(1) pattern match
+- ✅ Nil-safe patterns preserved: `x && length(x) > 0` → `x && x != []`
+- ✅ Files: leases_live, pool_live (dhcpv4), pool_live (dhcpv6), acl_live, dns/index, rr_live/index, zone_live/index, view_live/index, discovery_live, monitor_live
+- ✅ 10 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 70: Replace `Map.merge` with map update syntax / `Map.put`:
 - ✅ **2020 tests (962 console + 1058 dns), 0 failures, 0 warnings, 0 credo issues**
 - ✅ 4 instances in diagnostics_live.ex: `&Map.merge(&1, %{loading: true, form: params})` → `fn tab -> %{tab | loading: true, form: params} end`
 - ✅ 1 instance in zone_service.ex: `Map.merge(new_params, %{name: name})` → `Map.put(new_params, :name, name)`
