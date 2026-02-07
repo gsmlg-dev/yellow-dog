@@ -263,9 +263,9 @@ defmodule YellowDog.Dns.Zone.RPZ do
     |> Enum.with_index()
     |> Enum.sort_by(fn {policy, _idx} ->
       pattern = Map.get(policy, :pattern, "")
-      # More labels = more specific = earlier in order (negative for descending)
-      -(pattern |> String.split(".") |> length())
-    end)
+      # More labels = more specific = earlier in order
+      pattern |> String.split(".") |> length()
+    end, :desc)
     |> Enum.map(fn {policy, _idx} -> policy end)
   end
 

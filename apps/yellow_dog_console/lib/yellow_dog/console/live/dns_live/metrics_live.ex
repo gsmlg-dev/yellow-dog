@@ -284,7 +284,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                 <% max_rcode =
                   Enum.reduce(@metrics.responses_by_code, 1, fn {_, c}, acc -> max(c, acc) end) %>
                 <div class="space-y-2">
-                  <%= for {code, count} <- Enum.sort_by(@metrics.responses_by_code, fn {_, c} -> -c end) do %>
+                  <%= for {code, count} <- Enum.sort_by(@metrics.responses_by_code, fn {_, c} -> c end, :desc) do %>
                     <div class="flex items-center gap-2">
                       <span class="w-24 text-sm font-mono">
                         {code |> to_string() |> String.upcase()}
@@ -314,7 +314,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                 <% max_type =
                   Enum.reduce(@metrics.queries_by_type, 1, fn {_, c}, acc -> max(c, acc) end) %>
                 <div class="space-y-2">
-                  <%= for {type, count} <- Enum.sort_by(@metrics.queries_by_type, fn {_, c} -> -c end) do %>
+                  <%= for {type, count} <- Enum.sort_by(@metrics.queries_by_type, fn {_, c} -> c end, :desc) do %>
                     <div class="flex items-center gap-2">
                       <span class="w-16 text-sm font-mono">
                         {type |> to_string() |> String.upcase()}
@@ -511,7 +511,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp build_response_codes_csv(codes) do
     "Response Codes\r\n" <>
       "Code,Count\r\n" <>
-      Enum.map_join(Enum.sort_by(codes, fn {_, c} -> -c end), "\r\n", fn {code, count} ->
+      Enum.map_join(Enum.sort_by(codes, fn {_, c} -> c end, :desc), "\r\n", fn {code, count} ->
         "#{code |> to_string() |> String.upcase()},#{count}"
       end)
   end
@@ -519,7 +519,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp build_query_types_csv(types) do
     "Query Types\r\n" <>
       "Type,Count\r\n" <>
-      Enum.map_join(Enum.sort_by(types, fn {_, c} -> -c end), "\r\n", fn {type, count} ->
+      Enum.map_join(Enum.sort_by(types, fn {_, c} -> c end, :desc), "\r\n", fn {type, count} ->
         "#{type |> to_string() |> String.upcase()},#{count}"
       end)
   end
