@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 82)
+**Phase**: IN_PROGRESS (Iteration 83)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 82 of 1000
+**Iteration**: 83 of 1000
 
 ## Session Summary
-Iteration 82: DRY zone transfer record type handling with `@record_type_keys`:
+Iteration 83: Extract shared param helpers from diagnostics clients:
+- ✅ **All 962 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Created `ParamHelper` module with `get_string/2`, `get_integer/3`, `get_boolean/3`
+- ✅ Removed identical copies from 4 diagnostics clients (dns, dhcpv4, dhcpv6, mdns)
+- ✅ 5 files (1 new + 4 modified) — **1 commit** — net -47 lines
+
+Previous iteration 82: DRY zone transfer record type handling with `@record_type_keys`:
 - ✅ **All ex_dns tests pass: 4764 tests, 0 failures, 0 warnings, 0 credo issues**
 - ✅ Extracted `@record_type_keys` mapping (18 record types) as module attribute
 - ✅ `get_zone_records/1`: 38 lines → 4 lines using `Enum.flat_map`
