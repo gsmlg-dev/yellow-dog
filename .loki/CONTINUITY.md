@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 98)
+**Phase**: IN_PROGRESS (Iteration 99)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 98 of 1000
+**Iteration**: 99 of 1000
 
 ## Session Summary
-Iteration 98: Add 24 unit tests for CsvHelper:
+Iteration 99: Fix DHCPv6 leases CSV export KeyError bug:
+- ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Bug: `export_csv` handler read `socket.assigns.filtered_leases` but `load_leases` assigned to `:leases`
+- ✅ Would crash with `KeyError: key :filtered_leases not found` when clicking Export CSV
+- ✅ Root cause: copy-paste from DHCPv4 which uses `:filtered_leases` assign name
+- ✅ Fix: changed to `socket.assigns.leases` which contains the filtered data
+- ✅ 1 file — **1 commit** — net 0 lines (1 word change)
+
+Previous iteration 98: Add 24 unit tests for CsvHelper:
 - ✅ **All 1069 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ csv_escape (12): plain, comma, newline, CR, quotes, double quotes, mixed, nil, integer, atom, float, empty
 - ✅ format_addresses_for_csv (6): join, single, empty list, nil, string, integer
