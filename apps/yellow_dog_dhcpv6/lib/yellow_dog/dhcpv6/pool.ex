@@ -322,12 +322,23 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_options(map) when is_map(map) do
     Map.new(map, fn {code, value} ->
-      code_int = if is_integer(code), do: code, else: String.to_integer("#{code}")
+      code_int = parse_option_code(code)
       {code_int, value}
     end)
   end
 
   defp parse_options(_), do: %{}
+
+  defp parse_option_code(code) when is_integer(code), do: code
+
+  defp parse_option_code(code) when is_binary(code) do
+    case Integer.parse(code) do
+      {int, ""} -> int
+      _ -> 0
+    end
+  end
+
+  defp parse_option_code(code), do: parse_option_code(to_string(code))
 
   defp parse_acl(nil), do: %{allow: [], deny: []}
 
