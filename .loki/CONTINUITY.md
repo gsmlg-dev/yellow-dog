@@ -1,19 +1,31 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 110)
+**Phase**: IN_PROGRESS (Iteration 113)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 110 of 1000
+**Iteration**: 113 of 1000
 
 ## Session Summary
-Iteration 110: Replace rescue with guard in get_value across 4 modules:
-- ✅ **All DHCPv4 (351) and DHCPv6 (210) tests pass: 0 failures, 0 warnings**
-- ✅ 4 modules had identical `get_value/3` with `String.to_existing_atom` + `rescue ArgumentError`
-- ✅ All call sites pass atom keys — simplified to `when is_atom(key)` guard + `Atom.to_string` fallback
-- ✅ 4 files — **1 commit** — net -20 lines
+Iteration 113: Add unit tests for DHCPv4 Pool (20) and DHCPv6 Pool (23) structs:
+- ✅ **All 43 tests pass: 0 failures**
+- ✅ DHCPv4 Pool: new/1, validate/1, to_toml_map/1 (CIDR, structured, string-keyed, parsing, validation)
+- ✅ DHCPv6 Pool: new/1, validate/1, to_toml_map/1 (CIDR, prefix, PD pools, SLAAC mode, ACL)
+- ✅ Found & fixed bug: `format_pd_pools([])` returned `nil` instead of `[]`, causing `maybe_put_list` to insert `"pd_pools" => nil`
+- ✅ 2 new test files + 1 fix — **1 commit** — net +344 lines
+
+Previous iteration 112: Add unit tests for DHCPv6 Lease struct (30 tests):
+- ✅ Tests: create/6, new/1, expired?/1, deprecated?/1, active?/1, release/1, decline/1, renew/2, validate/1, lease_key/1, TOML round-trip
+- ✅ 1 new file — **1 commit** — net +387 lines
+
+Previous iteration 111: Replace try/rescue with Base.decode16 in MAC parsing:
+- ✅ DHCPv4 lease.ex `parse_mac_string` — replaced `String.to_integer/2` + rescue with `Base.decode16`
+- ✅ Console dhcpv4_client.ex `parse_mac` — same pattern fix
+- ✅ 2 files — **1 commit** — net +4 lines
+
+Previous iteration 110: Replace rescue with guard in get_value across 4 modules:
+- ✅ 4 modules simplified — net -20 lines
 
 Previous iteration 109: Add unit tests for DHCPv4 Lease struct (24 tests):
-- ✅ Tests: create/5, new/1, expired?/1, active?/1, release/1, decline/1, renew/2, validate/1, TOML round-trip
 - ✅ 1 new file — **1 commit** — net +229 lines
 
 Previous iteration 108: Add unit tests for RateLimiter shared functions (15 tests):
