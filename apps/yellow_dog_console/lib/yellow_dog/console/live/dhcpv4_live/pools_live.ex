@@ -12,7 +12,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_duration: 1]
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_duration: 1, filtered_pools: 2]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
@@ -419,24 +419,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
       </div>
     </Layouts.app>
     """
-  end
-
-  @doc """
-  Filters pools by name, network, or range start IP address.
-  Public for testability.
-  """
-  def filtered_pools(pools, filter) do
-    if filter == "" do
-      pools
-    else
-      term = String.downcase(filter)
-
-      Enum.filter(pools, fn pool ->
-        String.contains?(String.downcase(pool.name), term) or
-          String.contains?(String.downcase(pool[:network] || ""), term) or
-          String.contains?(String.downcase(format_ip(pool.range_start) || ""), term)
-      end)
-    end
   end
 
   # Private Functions

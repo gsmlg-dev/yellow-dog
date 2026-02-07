@@ -5,8 +5,7 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
   use ExUnit.Case, async: true
 
   alias YellowDog.Console.MdnsLive.MonitorLive
-  alias YellowDog.Console.Dhcpv4Live.PoolsLive, as: Dhcpv4PoolsLive
-  alias YellowDog.Console.Dhcpv6Live.PoolsLive, as: Dhcpv6PoolsLive
+  alias YellowDog.Console.FormatHelper
 
   # ============================================================================
   # MonitorLive.filtered_queries/2
@@ -55,50 +54,50 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
   end
 
   # ============================================================================
-  # Dhcpv4Live.PoolsLive.filtered_pools/2
+  # FormatHelper.filtered_pools/2 (DHCPv4 pools)
   # ============================================================================
 
-  describe "Dhcpv4PoolsLive.filtered_pools/2" do
+  describe "FormatHelper.filtered_pools/2 (IPv4)" do
     @v4pools [
       %{name: "office-pool", network: "192.168.1.0/24", range_start: {192, 168, 1, 100}},
       %{name: "guest-pool", network: "10.0.0.0/24", range_start: {10, 0, 0, 50}}
     ]
 
     test "returns all pools with empty filter" do
-      assert length(Dhcpv4PoolsLive.filtered_pools(@v4pools, "")) == 2
+      assert length(FormatHelper.filtered_pools(@v4pools, "")) == 2
     end
 
     test "filters by name" do
-      result = Dhcpv4PoolsLive.filtered_pools(@v4pools, "office")
+      result = FormatHelper.filtered_pools(@v4pools, "office")
       assert length(result) == 1
       assert hd(result).name == "office-pool"
     end
 
     test "filters by network" do
-      result = Dhcpv4PoolsLive.filtered_pools(@v4pools, "10.0.0")
+      result = FormatHelper.filtered_pools(@v4pools, "10.0.0")
       assert length(result) == 1
       assert hd(result).name == "guest-pool"
     end
 
     test "case-insensitive filtering" do
-      result = Dhcpv4PoolsLive.filtered_pools(@v4pools, "OFFICE")
+      result = FormatHelper.filtered_pools(@v4pools, "OFFICE")
       assert length(result) == 1
     end
 
     test "returns empty for non-matching filter" do
-      assert Dhcpv4PoolsLive.filtered_pools(@v4pools, "nope") == []
+      assert FormatHelper.filtered_pools(@v4pools, "nope") == []
     end
 
     test "handles empty pools list" do
-      assert Dhcpv4PoolsLive.filtered_pools([], "test") == []
+      assert FormatHelper.filtered_pools([], "test") == []
     end
   end
 
   # ============================================================================
-  # Dhcpv6Live.PoolsLive.filtered_pools/2
+  # FormatHelper.filtered_pools/2 (DHCPv6 pools)
   # ============================================================================
 
-  describe "Dhcpv6PoolsLive.filtered_pools/2" do
+  describe "FormatHelper.filtered_pools/2 (IPv6)" do
     @v6pools [
       %{
         name: "v6-office",
@@ -113,27 +112,27 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
     ]
 
     test "returns all pools with empty filter" do
-      assert length(Dhcpv6PoolsLive.filtered_pools(@v6pools, "")) == 2
+      assert length(FormatHelper.filtered_pools(@v6pools, "")) == 2
     end
 
     test "filters by name" do
-      result = Dhcpv6PoolsLive.filtered_pools(@v6pools, "office")
+      result = FormatHelper.filtered_pools(@v6pools, "office")
       assert length(result) == 1
       assert hd(result).name == "v6-office"
     end
 
     test "filters by network" do
-      result = Dhcpv6PoolsLive.filtered_pools(@v6pools, "2001")
+      result = FormatHelper.filtered_pools(@v6pools, "2001")
       assert length(result) == 1
       assert hd(result).name == "v6-office"
     end
 
     test "returns empty for non-matching filter" do
-      assert Dhcpv6PoolsLive.filtered_pools(@v6pools, "nope") == []
+      assert FormatHelper.filtered_pools(@v6pools, "nope") == []
     end
 
     test "handles empty pools list" do
-      assert Dhcpv6PoolsLive.filtered_pools([], "test") == []
+      assert FormatHelper.filtered_pools([], "test") == []
     end
   end
 end

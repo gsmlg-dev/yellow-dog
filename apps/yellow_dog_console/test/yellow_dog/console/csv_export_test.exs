@@ -287,7 +287,7 @@ defmodule YellowDog.Console.CsvExportTest do
   end
 
   describe "DHCPv4 pools filtered_pools/2" do
-    alias YellowDog.Console.Dhcpv4Live.PoolsLive
+    alias YellowDog.Console.FormatHelper
 
     @pools [
       %{
@@ -314,34 +314,34 @@ defmodule YellowDog.Console.CsvExportTest do
     ]
 
     test "returns all pools with empty filter" do
-      assert PoolsLive.filtered_pools(@pools, "") == @pools
+      assert FormatHelper.filtered_pools(@pools, "") == @pools
     end
 
     test "filters by pool name" do
-      result = PoolsLive.filtered_pools(@pools, "office")
+      result = FormatHelper.filtered_pools(@pools, "office")
       assert length(result) == 1
       assert hd(result).name == "office-pool"
     end
 
     test "filters by network" do
-      result = PoolsLive.filtered_pools(@pools, "172.16")
+      result = FormatHelper.filtered_pools(@pools, "172.16")
       assert length(result) == 1
       assert hd(result).name == "server-vlan"
     end
 
     test "filter is case-insensitive" do
-      result = PoolsLive.filtered_pools(@pools, "GUEST")
+      result = FormatHelper.filtered_pools(@pools, "GUEST")
       assert length(result) == 1
       assert hd(result).name == "guest-wifi"
     end
 
     test "returns empty list when no match" do
-      assert PoolsLive.filtered_pools(@pools, "nonexistent") == []
+      assert FormatHelper.filtered_pools(@pools, "nonexistent") == []
     end
   end
 
   describe "DHCPv6 pools filtered_pools/2" do
-    alias YellowDog.Console.Dhcpv6Live.PoolsLive
+    alias YellowDog.Console.FormatHelper
 
     @v6_pools [
       %{
@@ -359,23 +359,23 @@ defmodule YellowDog.Console.CsvExportTest do
     ]
 
     test "returns all pools with empty filter" do
-      assert PoolsLive.filtered_pools(@v6_pools, "") == @v6_pools
+      assert FormatHelper.filtered_pools(@v6_pools, "") == @v6_pools
     end
 
     test "filters by pool name" do
-      result = PoolsLive.filtered_pools(@v6_pools, "guest")
+      result = FormatHelper.filtered_pools(@v6_pools, "guest")
       assert length(result) == 1
       assert hd(result).name == "ipv6-guest"
     end
 
     test "filters by network prefix" do
-      result = PoolsLive.filtered_pools(@v6_pools, "2001")
+      result = FormatHelper.filtered_pools(@v6_pools, "2001")
       assert length(result) == 1
       assert hd(result).name == "ipv6-main"
     end
 
     test "returns empty list when no match" do
-      assert PoolsLive.filtered_pools(@v6_pools, "nonexistent") == []
+      assert FormatHelper.filtered_pools(@v6_pools, "nonexistent") == []
     end
   end
 

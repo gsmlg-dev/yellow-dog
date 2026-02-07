@@ -156,6 +156,20 @@ defmodule YellowDog.Console.FormatHelper do
     end)
   end
 
+  @doc "Filters pools by name, network, or range start IP address."
+  @spec filtered_pools(list(), String.t()) :: list()
+  def filtered_pools(pools, ""), do: pools
+
+  def filtered_pools(pools, filter) do
+    term = String.downcase(filter)
+
+    Enum.filter(pools, fn pool ->
+      String.contains?(String.downcase(pool.name), term) or
+        String.contains?(String.downcase(pool[:network] || ""), term) or
+        String.contains?(String.downcase(format_ip(pool.range_start) || ""), term)
+    end)
+  end
+
   @doc "Parses a colon-separated hex DUID string into a binary."
   @spec parse_duid_string(String.t()) :: binary()
   def parse_duid_string(duid_str) do
