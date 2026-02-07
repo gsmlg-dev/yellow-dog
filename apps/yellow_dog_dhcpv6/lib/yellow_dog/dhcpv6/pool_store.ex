@@ -13,6 +13,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   """
 
   alias YellowDog.Dhcpv6.AddressPool
+  import YellowDog.Config.TomlHelpers
 
   @type pool_config :: %{
           name: String.t(),
@@ -377,68 +378,22 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
   defp normalize_pool_keys(pool) when is_map(pool) do
     %{
-      name: get_string_value(pool, [:name, "name"], "default"),
-      network: get_string_value(pool, [:network, "network"]),
-      range_start: get_string_value(pool, [:range_start, "range_start"]),
-      range_end: get_string_value(pool, [:range_end, "range_end"]),
-      ranges: get_list_value(pool, [:ranges, "ranges"]),
-      excluded_ranges: get_list_value(pool, [:excluded_ranges, "excluded_ranges"]),
-      dns_servers: get_list_value(pool, [:dns_servers, "dns_servers"], []),
-      domain_name: get_string_value(pool, [:domain_name, "domain_name", :domain, "domain"]),
+      name: get_value(pool, [:name, "name"], "default"),
+      network: get_value(pool, [:network, "network"]),
+      range_start: get_value(pool, [:range_start, "range_start"]),
+      range_end: get_value(pool, [:range_end, "range_end"]),
+      ranges: get_list(pool, [:ranges, "ranges"]),
+      excluded_ranges: get_list(pool, [:excluded_ranges, "excluded_ranges"]),
+      dns_servers: get_list(pool, [:dns_servers, "dns_servers"], []),
+      domain_name: get_value(pool, [:domain_name, "domain_name", :domain, "domain"]),
       preferred_lifetime:
-        get_integer_value(pool, [:preferred_lifetime, "preferred_lifetime"], 3600),
-      valid_lifetime: get_integer_value(pool, [:valid_lifetime, "valid_lifetime"], 7200),
-      max_leases: get_integer_value(pool, [:max_leases, "max_leases"], 1000),
+        get_integer(pool, [:preferred_lifetime, "preferred_lifetime"], 3600),
+      valid_lifetime: get_integer(pool, [:valid_lifetime, "valid_lifetime"], 7200),
+      max_leases: get_integer(pool, [:max_leases, "max_leases"], 1000),
       static_reservations:
-        get_map_value(pool, [:static_reservations, "static_reservations"], %{}),
-      enabled: get_boolean_value(pool, [:enabled, "enabled"], true)
+        get_map(pool, [:static_reservations, "static_reservations"], %{}),
+      enabled: get_boolean(pool, [:enabled, "enabled"], true)
     }
-  end
-
-  defp get_string_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
-  end
-
-  defp get_integer_value(map, keys, default) do
-    case Enum.find_value(keys, default, fn key -> Map.get(map, key) end) do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
-      _ -> default
-    end
-  end
-
-  defp get_boolean_value(map, keys, default) do
-    # Enum.find_value treats `false` as "not found", so we need explicit key checking
-    found_key = Enum.find(keys, fn key -> Map.has_key?(map, key) end)
-
-    case found_key do
-      nil ->
-        default
-
-      key ->
-        case Map.get(map, key) do
-          value when is_boolean(value) -> value
-          "true" -> true
-          "false" -> false
-          _ -> default
-        end
-    end
-  end
-
-  defp get_list_value(map, keys, default \\ []) do
-    case Enum.find_value(keys, fn key -> Map.get(map, key) end) do
-      nil -> default
-      value when is_list(value) -> value
-      _ -> default
-    end
-  end
-
-  defp get_map_value(map, keys, default) do
-    case Enum.find_value(keys, fn key -> Map.get(map, key) end) do
-      nil -> default
-      value when is_map(value) -> value
-      _ -> default
-    end
   end
 
   defp validate_required_fields(pool) do
@@ -521,7 +476,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
       "# DHCPv6 Pool Configuration",
       "# Pool: #{pool[:name] || pool.name}",
       "",
-      "enabled = #{get_boolean_value(pool, [:enabled, "enabled"], true)}"
+      "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}"
     ]
 
     # Add network (CIDR)
@@ -606,30 +561,6 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
   defp format_ipv6_for_toml(ip) when is_binary(ip), do: ip
   defp format_ipv6_for_toml(nil), do: nil
-
-  defp encode_toml_string(value) when is_binary(value) do
-    "\"#{String.replace(value, "\"", "\\\"")}\""
-  end
-
-  defp encode_toml_string(value), do: inspect(value)
-
-  defp atomic_write(file_path, content) do
-    # Ensure directory exists
-    dir = Path.dirname(file_path)
-    File.mkdir_p!(dir)
-
-    tmp_path = file_path <> ".tmp"
-
-    with :ok <- File.write(tmp_path, content),
-         :ok <- File.rename(tmp_path, file_path) do
-      :ok
-    else
-      error ->
-        # Clean up temp file on error
-        File.rm(tmp_path)
-        error
-    end
-  end
 
   # ============================================================================
   # Lease Persistence Functions
