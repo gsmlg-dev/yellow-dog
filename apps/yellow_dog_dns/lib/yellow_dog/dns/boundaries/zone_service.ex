@@ -125,7 +125,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       {:error, :not_found}
     else
       # Keep name and type from original, update other fields
-      params = Map.merge(new_params, %{name: name})
+      params = Map.put(new_params, :name, name)
 
       # For updates, we need to check conflicts excluding the current record
       existing_records =

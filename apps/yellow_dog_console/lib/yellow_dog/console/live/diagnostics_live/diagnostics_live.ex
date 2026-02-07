@@ -203,7 +203,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
     socket =
       socket
-      |> update_tab(:dns, &Map.merge(&1, %{loading: true, form: params}))
+      |> update_tab(:dns, fn tab -> %{tab | loading: true, form: params} end)
       |> start_async(:dns_query, fn -> DnsClient.query(params) end)
 
     {:noreply, socket}
@@ -221,7 +221,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
     socket =
       socket
-      |> update_tab(:mdns, &Map.merge(&1, %{loading: true, form: params}))
+      |> update_tab(:mdns, fn tab -> %{tab | loading: true, form: params} end)
       |> start_async(:mdns_query, fn -> MdnsClient.query(params) end)
 
     {:noreply, socket}
@@ -239,7 +239,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
     socket =
       socket
-      |> update_tab(:dhcpv4, &Map.merge(&1, %{loading: true, form: params}))
+      |> update_tab(:dhcpv4, fn tab -> %{tab | loading: true, form: params} end)
       |> start_async(:dhcpv4_query, fn -> Dhcpv4Client.query(params) end)
 
     {:noreply, socket}
@@ -257,7 +257,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
     socket =
       socket
-      |> update_tab(:dhcpv6, &Map.merge(&1, %{loading: true, form: params}))
+      |> update_tab(:dhcpv6, fn tab -> %{tab | loading: true, form: params} end)
       |> start_async(:dhcpv6_query, fn -> Dhcpv6Client.query(params) end)
 
     {:noreply, socket}
