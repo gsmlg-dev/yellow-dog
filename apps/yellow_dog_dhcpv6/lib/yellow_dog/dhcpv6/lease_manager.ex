@@ -997,7 +997,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
           %{reason: inspect(reason)}
         )
 
-        :error
+        {:error, reason}
     end
   end
 
