@@ -175,8 +175,15 @@ defmodule DNS.Zone.DNSSEC do
 
       {:ok, updated_zone}
     rescue
-      error ->
-        {:error, "DNSSEC signing failed: #{inspect(error)}"}
+      e in [
+        RuntimeError,
+        MatchError,
+        FunctionClauseError,
+        ArgumentError,
+        KeyError,
+        ArithmeticError
+      ] ->
+        {:error, "DNSSEC signing failed: #{Exception.message(e)}"}
     end
   end
 

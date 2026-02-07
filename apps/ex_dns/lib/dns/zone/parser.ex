@@ -378,7 +378,15 @@ defmodule DNS.Zone.Parser do
       {zone_file, final_parser} = do_parse_zone_file(parser)
       {:ok, zone_file, final_parser}
     rescue
-      e -> {:error, "Parse error: #{inspect(e)}"}
+      e in [
+        RuntimeError,
+        MatchError,
+        FunctionClauseError,
+        ArgumentError,
+        KeyError,
+        ArithmeticError
+      ] ->
+        {:error, "Parse error: #{inspect(e)}"}
     end
   end
 

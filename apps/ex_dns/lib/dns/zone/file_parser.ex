@@ -84,8 +84,8 @@ defmodule DNS.Zone.FileParser do
       zone = parse_zone(content, context)
       validate_zone(zone)
     rescue
-      e in RuntimeError -> {:error, e.message}
-      e -> {:error, "Parse error: #{inspect(e)}"}
+      e in [RuntimeError, MatchError, FunctionClauseError, ArgumentError, KeyError] ->
+        {:error, "Parse error: #{Exception.message(e)}"}
     end
   end
 
@@ -261,8 +261,15 @@ defmodule DNS.Zone.FileParser do
           parse_record_line_with_context(line, zone, prev_name, line_num, context)
       end
     rescue
-      e ->
-        error = %{line: line_num, message: "Parse error: #{inspect(e)}", context: line}
+      e in [
+        RuntimeError,
+        MatchError,
+        FunctionClauseError,
+        ArgumentError,
+        KeyError,
+        ArithmeticError
+      ] ->
+        error = %{line: line_num, message: "Parse error: #{Exception.message(e)}", context: line}
         {%{zone | errors: [error | zone.errors]}, prev_name}
     end
   end

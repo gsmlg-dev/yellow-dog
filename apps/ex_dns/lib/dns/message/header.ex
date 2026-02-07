@@ -252,7 +252,7 @@ defmodule DNS.Message.Header do
       QUERY: #{header.qdcount}, ANSWER: #{header.ancount}, AUTHORITY: #{header.nscount}, ADDITIONAL: #{header.arcount}
       """
     rescue
-      e ->
+      e in [Protocol.UndefinedError, ArgumentError, FunctionClauseError, KeyError] ->
         """
         HEADER Error:
         #{inspect(e)}
