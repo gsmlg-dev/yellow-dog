@@ -11,6 +11,29 @@ defmodule DNS.Zone.Transfer do
   alias DNS.Message.Record
   alias DNS.Zone.Manager
 
+  # Mapping from record type atom to zone options keyword key.
+  # Used by get_zone_records/1 and update_zone_with_records/2.
+  @record_type_keys [
+    soa: :soa_records,
+    ns: :ns_records,
+    a: :a_records,
+    aaaa: :aaaa_records,
+    cname: :cname_records,
+    mx: :mx_records,
+    txt: :txt_records,
+    srv: :srv_records,
+    ptr: :ptr_records,
+    caa: :caa_records,
+    tlsa: :tlsa_records,
+    https: :https_records,
+    svcb: :svcb_records,
+    dnskey: :dnskey_records,
+    ds: :ds_records,
+    rrsig: :rrsig_records,
+    nsec: :nsec_records,
+    nsec3: :nsec3_records
+  ]
+
   @doc """
   Perform full zone transfer (AXFR) for a zone.
   """
@@ -188,42 +211,9 @@ defmodule DNS.Zone.Transfer do
   defp normalize_zone_name(%Name{value: value}), do: String.downcase(value)
 
   defp get_zone_records(zone) do
-    # Extract all records from the zone
-    soa_records = Keyword.get(zone.options, :soa_records, [])
-    ns_records = Keyword.get(zone.options, :ns_records, [])
-    a_records = Keyword.get(zone.options, :a_records, [])
-    aaaa_records = Keyword.get(zone.options, :aaaa_records, [])
-    cname_records = Keyword.get(zone.options, :cname_records, [])
-    mx_records = Keyword.get(zone.options, :mx_records, [])
-    txt_records = Keyword.get(zone.options, :txt_records, [])
-    srv_records = Keyword.get(zone.options, :srv_records, [])
-    ptr_records = Keyword.get(zone.options, :ptr_records, [])
-    caa_records = Keyword.get(zone.options, :caa_records, [])
-    tlsa_records = Keyword.get(zone.options, :tlsa_records, [])
-    https_records = Keyword.get(zone.options, :https_records, [])
-    svcb_records = Keyword.get(zone.options, :svcb_records, [])
-    dnskey_records = Keyword.get(zone.options, :dnskey_records, [])
-    ds_records = Keyword.get(zone.options, :ds_records, [])
-    rrsig_records = Keyword.get(zone.options, :rrsig_records, [])
-    nsec_records = Keyword.get(zone.options, :nsec_records, [])
-    nsec3_records = Keyword.get(zone.options, :nsec3_records, [])
-
-    soa_records ++
-      ns_records ++
-      a_records ++
-      aaaa_records ++
-      cname_records ++
-      mx_records ++
-      txt_records ++
-      srv_records ++
-      ptr_records ++
-      caa_records ++
-      tlsa_records ++
-      https_records ++
-      svcb_records ++
-      dnskey_records ++
-      ds_records ++
-      rrsig_records ++ nsec_records ++ nsec3_records
+    Enum.flat_map(@record_type_keys, fn {_type, key} ->
+      Keyword.get(zone.options, key, [])
+    end)
   end
 
   defp get_zone_serial(zone) do
@@ -292,31 +282,13 @@ defmodule DNS.Zone.Transfer do
   end
 
   defp update_zone_with_records(zone, records) do
-    # Categorize records by type
     categorized = Enum.group_by(records, & &1.type)
 
-    # Update zone options with categorized records
-    options = zone.options
+    record_options =
+      Enum.map(@record_type_keys, fn {type, key} ->
+        {key, Map.get(categorized, type, [])}
+      end)
 
-    options = Keyword.put(options, :soa_records, Map.get(categorized, :soa, []))
-    options = Keyword.put(options, :ns_records, Map.get(categorized, :ns, []))
-    options = Keyword.put(options, :a_records, Map.get(categorized, :a, []))
-    options = Keyword.put(options, :aaaa_records, Map.get(categorized, :aaaa, []))
-    options = Keyword.put(options, :cname_records, Map.get(categorized, :cname, []))
-    options = Keyword.put(options, :mx_records, Map.get(categorized, :mx, []))
-    options = Keyword.put(options, :txt_records, Map.get(categorized, :txt, []))
-    options = Keyword.put(options, :srv_records, Map.get(categorized, :srv, []))
-    options = Keyword.put(options, :ptr_records, Map.get(categorized, :ptr, []))
-    options = Keyword.put(options, :caa_records, Map.get(categorized, :caa, []))
-    options = Keyword.put(options, :tlsa_records, Map.get(categorized, :tlsa, []))
-    options = Keyword.put(options, :https_records, Map.get(categorized, :https, []))
-    options = Keyword.put(options, :svcb_records, Map.get(categorized, :svcb, []))
-    options = Keyword.put(options, :dnskey_records, Map.get(categorized, :dnskey, []))
-    options = Keyword.put(options, :ds_records, Map.get(categorized, :ds, []))
-    options = Keyword.put(options, :rrsig_records, Map.get(categorized, :rrsig, []))
-    options = Keyword.put(options, :nsec_records, Map.get(categorized, :nsec, []))
-    options = Keyword.put(options, :nsec3_records, Map.get(categorized, :nsec3, []))
-
-    %{zone | options: options}
+    %{zone | options: Keyword.merge(zone.options, record_options)}
   end
 end
