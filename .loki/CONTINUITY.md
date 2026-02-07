@@ -1,17 +1,23 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 21)
+**Phase**: IN_PROGRESS (Iteration 22)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 21 of 1000
+**Iteration**: 22 of 1000
 
 ## Session Summary
-Iteration 21: Performance + correctness sweep across entire codebase:
-- ✅ **4,764 ex_dns + 962 console tests, 0 failures**
+Iteration 22: Major DRY refactoring — shared rate limiter macro:
+- ✅ **4,764 ex_dns + 1,052 DNS + 962 console + 309 mDNS + 319 DHCPv4 + 201 DHCPv6 tests, 0 failures**
+- ✅ Extracted shared `YellowDog.RateLimiter` `__using__` macro with parameterized ETS table, telemetry prefix, OTP app, and config
+- ✅ Refactored 4 rate limiter modules (DNS, DHCPv4, DHCPv6, mDNS) from ~360 lines each to ~15 lines each
+- ✅ **Net reduction: ~1,300 lines** of duplicated GenServer+ETS token bucket code
+- ✅ Added missing `{:yellow_dog, in_umbrella: true}` dependency to yellow_dog_dns and yellow_dog_mdns
+- ✅ **1 commit this iteration**
+
+Previous iteration 21: Performance + correctness sweep across entire codebase:
 - ✅ Replaced **37 instances** of O(n) `length(list) > 0` with O(1) `list != []` across **29 files** in all 10 apps
 - ✅ Fixed latent bug: `length(views) >= 0` (always true) → `is_list(views)` in view/operations.ex
-- ✅ Added 2 missing `@spec` annotations to core `YellowDog` module (`get_config/1`, `get_all_config/0`)
-- ✅ **2 commits this iteration**
+- ✅ Added 2 missing `@spec` annotations to core `YellowDog` module
 
 Previous iteration 20: Code quality hardening + atom safety + version alignment:
 - ✅ **4,764 ex_dns + 962 console tests, 0 failures**
@@ -153,9 +159,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
-1. `2767db5` - fix(test): replace flaky function_exported? stubs with functional tests, fix 18 warnings
-2. `1724241` - test(console): add RecordForm component validation and submission tests
-3. (pending) refactor(console): remove ~293 lines of dead code from rr_live/index.ex
+1. `21f405d` - refactor: extract shared YellowDog.RateLimiter __using__ macro
 
 Previous iteration 16 commits:
 1. `57344be` - feat(dns): wire QueryLogger into query resolution pipeline
@@ -270,7 +274,9 @@ Previous iteration 14 commits:
 
 18. **DNS.Domain and DNS.ResourceRecordType are structs**: When comparing values from ex_dns library, `question.name` is `#DNS.Domain<example.com.>` (not a plain string) and `question.type` is `#DNS.ResourceRecordType<A>` (not `:a`). Use `to_string/1` or `=~` for assertions.
 
-19. **Atom safety pattern**: For LiveView events receiving user-controlled strings, use compile-time allowlist guards (`when param in @valid_list`) instead of `String.to_existing_atom/1`. This avoids ArgumentError crashes AND makes invalid input handling explicit. Pattern: `@valid_services ~w(dns mdns dhcpv4 dhcpv6)` + guard clause + catch-all clause returning error flash.
+19. **Macro.escape is for runtime data, not compile-time literals**: In `__using__` macros, `Macro.escape(map)` wraps a literal map in an extra AST layer `{:%{}, meta, pairs}` that never evaluates back. For maps of literals (integers, booleans, atoms), just `unquote(map)` directly — Elixir's quote/unquote handles literal maps natively.
+
+20. **Atom safety pattern**: For LiveView events receiving user-controlled strings, use compile-time allowlist guards (`when param in @valid_list`) instead of `String.to_existing_atom/1`. This avoids ArgumentError crashes AND makes invalid input handling explicit. Pattern: `@valid_services ~w(dns mdns dhcpv4 dhcpv6)` + guard clause + catch-all clause returning error flash.
 
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
