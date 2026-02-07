@@ -1,16 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 39)
+**Phase**: IN_PROGRESS (Iteration 40)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 39 of 1000
+**Iteration**: 40 of 1000
 
 ## Session Summary
-Iteration 39: Extract service_running? to ServiceHelper:
+Iteration 40: DRY format_ip and CSV helpers:
 - ✅ **962 console tests, 0 failures, 0 warnings**
-- ✅ Added `service_running?/1` to ServiceHelper — single function replaces **13 duplicate** `*_service_running?` private functions
-- ✅ Replaced calls in **13 LiveView files** across DNS (6), mDNS (3), DHCPv4 (2), DHCPv6 (2)
-- ✅ **1 commit this iteration** — net -17 lines
+- ✅ Extended `FormatHelper.format_ip/1` to handle IPv4/IPv6 tuples, binary passthrough, nil
+- ✅ Moved `format_addresses_for_csv/1` and `format_txt_for_csv/1` to CsvHelper
+- ✅ Removed **5 duplicate private functions** across mDNS discovery/services/monitor and DNS view/dhcpv4 pools
+- ✅ **1 commit this iteration** — net -29 lines
+
+Previous iteration 39: Extract service_running? to ServiceHelper:
+- ✅ Added `service_running?/1` to ServiceHelper — replaces **13 duplicate** `*_service_running?` functions
+- ✅ **1 commit** — net -17 lines
 
 Previous iteration 38: for comprehensions + DRY utilization_class:
 - ✅ Converted **9 `Enum.filter|>Enum.map` chains** to `for` comprehensions across **8 files** — **net -31 lines**
