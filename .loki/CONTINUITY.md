@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 66)
+**Phase**: IN_PROGRESS (Iteration 67)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 66 of 1000
+**Iteration**: 67 of 1000
 
 ## Session Summary
-Iteration 66: Replace `case server_running?() do true/false` with `if/else`:
+Iteration 67: Replace nested parse_ipv4/ipv6 with `:inet.parse_address/1`:
+- ✅ **1058 tests (dns), 0 failures, 0 warnings, 0 credo issues**
+- ✅ `:inet.parse_address/1` handles both IPv4 and IPv6 in a single call (returns `{:ok, tuple}` or `{:error, :einval}`)
+- ✅ 3 files returned `{:ok, ip}`/`{:error, :invalid_ip}`: supervisor.ex, view/acl.ex, mix/tasks/dns.ex
+- ✅ 1 file returned raw ip/`{0,0,0,0}` default: server.ex
+- ✅ 4 files — **1 commit** — net -32 lines
+
+Previous iteration 66: Replace `case server_running?() do true/false` with `if/else`:
 - ✅ **520 tests (319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings, 0 credo issues**
 - ✅ Replaced 8 instances of `case server_running?() do true -> ... false -> ... end` with idiomatic `if/else`
 - ✅ 4 instances in DHCPv4 (get_pools, add_pool, update_pool, remove_pool)
