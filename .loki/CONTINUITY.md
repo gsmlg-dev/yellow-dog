@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 78)
+**Phase**: IN_PROGRESS (Iteration 79)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 78 of 1000
+**Iteration**: 79 of 1000
 
 ## Session Summary
-Iteration 78: Replace `String.match?` with `=~` operator:
+Iteration 79: Use `DateTime.after?/before?` instead of `DateTime.compare`:
+- ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ `DateTime.after?/2` and `DateTime.before?/2` (Elixir 1.15+) are more readable than `DateTime.compare(a, b) == :gt`
+- ✅ 14 instances across 8 files: lease.ex (dhcpv4/dhcpv6), transfer.ex, plus 5 test files
+- ✅ 8 files — **1 commit** — net 0 lines (in-place replacement)
+
+Previous iteration 78: Replace `String.match?` with `=~` operator:
 - ✅ **All affected app suites pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ `string =~ ~r/pattern/` is more idiomatic than `String.match?(string, ~r/pattern/)`
 - ✅ 13 instances across 7 files: config_manager (5), pool_store, lease, editor, plus 3 test files
