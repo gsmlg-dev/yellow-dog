@@ -198,16 +198,19 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   def stats do
     services = list_services()
 
-    %{
-      total: length(services),
-      enabled: Enum.count(services, & &1.enabled),
-      disabled: Enum.count(services, &(not &1.enabled)),
-      registered: Enum.count(services, &(&1.state == :registered)),
-      probing: Enum.count(services, &(&1.state == :probing)),
-      announcing: Enum.count(services, &(&1.state == :announcing)),
-      from_file: Enum.count(services, &(&1.source == :file)),
-      from_api: Enum.count(services, &(&1.source == :api))
-    }
+    counts =
+      Enum.reduce(services, %{enabled: 0, disabled: 0, registered: 0, probing: 0, announcing: 0, from_file: 0, from_api: 0}, fn svc, acc ->
+        acc
+        |> Map.update!(:enabled, &(&1 + if(svc.enabled, do: 1, else: 0)))
+        |> Map.update!(:disabled, &(&1 + if(svc.enabled, do: 0, else: 1)))
+        |> Map.update!(:registered, &(&1 + if(svc.state == :registered, do: 1, else: 0)))
+        |> Map.update!(:probing, &(&1 + if(svc.state == :probing, do: 1, else: 0)))
+        |> Map.update!(:announcing, &(&1 + if(svc.state == :announcing, do: 1, else: 0)))
+        |> Map.update!(:from_file, &(&1 + if(svc.source == :file, do: 1, else: 0)))
+        |> Map.update!(:from_api, &(&1 + if(svc.source == :api, do: 1, else: 0)))
+      end)
+
+    Map.put(counts, :total, length(services))
   end
 
   # Server Callbacks
