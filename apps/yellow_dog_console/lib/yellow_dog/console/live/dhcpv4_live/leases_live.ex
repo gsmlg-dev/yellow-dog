@@ -192,6 +192,4 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
 
     header <> rows
   end
-
-
 end

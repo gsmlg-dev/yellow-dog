@@ -646,6 +646,4 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       end
     end)
   end
-
-
 end

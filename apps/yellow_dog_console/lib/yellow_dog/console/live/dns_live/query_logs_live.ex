@@ -510,6 +510,4 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     </Layouts.app>
     """
   end
-
-
 end

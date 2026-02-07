@@ -851,6 +851,4 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     end)
   end
-
-
 end

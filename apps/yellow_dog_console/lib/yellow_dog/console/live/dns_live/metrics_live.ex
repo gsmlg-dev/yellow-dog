@@ -573,6 +573,4 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp format_bucket_label(us) when is_integer(us) and us >= 1_000, do: "#{div(us, 1_000)}ms"
   defp format_bucket_label(us) when is_integer(us), do: "#{us}us"
   defp format_bucket_label(other), do: to_string(other)
-
-
 end

@@ -731,6 +731,4 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp remove_existing_record(pid, %{name: name, type: type}) do
     YellowDog.Dns.Zone.Auth.remove_record(pid, name, normalize_record_type(type))
   end
-
-
 end

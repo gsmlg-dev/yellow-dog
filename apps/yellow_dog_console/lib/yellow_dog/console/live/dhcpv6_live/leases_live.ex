@@ -221,6 +221,4 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   end
 
   defp format_ipv6_or_prefix(_), do: "N/A"
-
-
 end

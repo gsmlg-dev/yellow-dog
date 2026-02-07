@@ -713,6 +713,4 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp format_acl_rules_for_csv(_), do: ""
-
-
 end

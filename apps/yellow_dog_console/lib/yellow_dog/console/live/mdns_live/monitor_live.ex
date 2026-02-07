@@ -188,6 +188,4 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     max_count = Enum.reduce(services, 1, fn s, acc -> max(elem(s, 1), acc) end)
     if max_count > 0, do: count / max_count * 100, else: 0
   end
-
-
 end
