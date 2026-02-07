@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 53)
+**Phase**: IN_PROGRESS (Iteration 54)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 53 of 1000
+**Iteration**: 54 of 1000
 
 ## Session Summary
-Iteration 52: DRY store modules via TomlHelpers import:
+Iteration 53: Merge duplicate rescue/catch blocks into single `catch _, _`:
+- ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ 26 instances of `rescue _ -> X / catch :exit, _ -> X` → `catch _, _ -> X` across 9 console files
+- ✅ Files: dns index, acl_live, zone_live, view_live, rr_live, pools_live (×2), service_helper, process_inspector
+- ✅ 9 files — **1 commit** — net **-69 lines**
+
+Previous iteration 52: DRY store modules via TomlHelpers import:
 - ✅ **6415 umbrella + 962 console tests, 0 failures, 0 warnings**
 - ✅ Added `parse_toml/1`, `ensure_directory/1`, `maybe_create_backup/2` to `TomlHelpers`
 - ✅ Replaced 30+ duplicated private functions across 4 store modules with imports
