@@ -1,12 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 94)
+**Phase**: IN_PROGRESS (Iteration 95)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 94 of 1000
+**Iteration**: 95 of 1000
 
 ## Session Summary
-Iteration 94: Add 38 unit tests for ParamHelper (28) and ServiceHelper (10):
+Iteration 95: Fix falsy value bug in ParamHelper get_boolean/3 and get_integer/3:
+- ✅ **All 1045 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ Bug: `||` chaining treated `false` and `0` as missing (falsy), returning default instead
+- ✅ Fix: extracted `fetch_param/3` using `Map.has_key?/2` to correctly distinguish present-but-falsy from missing
+- ✅ Added 3 regression tests: zero by string key, false by atom key, false by string key
+- ✅ 2 files — **1 commit** — net +22 lines
+
+Previous iteration 94: Add 38 unit tests for ParamHelper (28) and ServiceHelper (10):
 - ✅ **All 1042 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ ParamHelper: get_string (5), get_integer (10), get_boolean (7), format_error (6) — covers type coercion, atom/string key fallback, edge cases
 - ✅ ServiceHelper: safe_call (7) — covers raise/exit/throw + module not loaded; service_running? (3) — covers registered/unregistered/stopped
