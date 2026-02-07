@@ -1,12 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 56)
+**Phase**: IN_PROGRESS (Iteration 57)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 56 of 1000
+**Iteration**: 57 of 1000
 
 ## Session Summary
-Iteration 55: Use `assign/2` keyword lists in mount functions:
+Iteration 56: Replace `catch :exit, _` with `catch _, _` in DNS LiveViews:
+- ✅ **2540 umbrella tests (1058 dns + 962 console + 319 dhcpv4 + 201 dhcpv6), 0 failures, 0 warnings**
+- ✅ 15 instances across 3 DNS console LiveView files: acl_live.ex (5), metrics_live.ex (8), query_logs_live.ex (3)
+- ✅ Uniform `_, _` pattern now used across all GenServer.call resilience handlers (following iterations 53-54)
+- ✅ 3 files — **1 commit** — net 0 lines (same count, more idiomatic)
+
+Previous iteration 55: Use `assign/2` keyword lists in mount functions:
 - ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
 - ✅ 18 mount/init chains across 17 LiveView files converted from chained `|> assign(:key, val)` to `assign(socket, key: val, ...)`
 - ✅ Single map update per mount instead of N sequential updates
@@ -368,6 +374,9 @@ Previous iteration 16 commits:
 27. `007cb06` - docs: update CONTINUITY with UX polishing
 28. `c4b63fc` - fix(console): add maxlength to 7 form inputs per RFC limits
 29. `8a16003` - fix(console): disable submit buttons when form has validation errors
+
+Previous iteration 16 commits (iterations 52-56):
+1. `40d5706` - refactor(console): replace catch :exit, _ with catch _, _ in DNS LiveViews
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
