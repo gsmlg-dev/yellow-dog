@@ -143,6 +143,19 @@ defmodule YellowDog.Console.FormatHelper do
     _ -> <<0, 0, 0, 0, 0, 0>>
   end
 
+  @doc "Filters a list of country maps by search query (case-insensitive code/name match)."
+  @spec filtered_countries([map()], String.t()) :: [map()]
+  def filtered_countries(countries, ""), do: countries
+
+  def filtered_countries(countries, search) do
+    search_lower = String.downcase(search)
+
+    Enum.filter(countries, fn %{code: code, name: name} ->
+      String.contains?(String.downcase(name), search_lower) or
+        String.contains?(String.downcase(code), search_lower)
+    end)
+  end
+
   @doc "Parses a colon-separated hex DUID string into a binary."
   @spec parse_duid_string(String.t()) :: binary()
   def parse_duid_string(duid_str) do

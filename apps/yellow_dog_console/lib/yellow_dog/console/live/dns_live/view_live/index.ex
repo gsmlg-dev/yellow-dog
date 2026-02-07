@@ -8,7 +8,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   require Logger
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_ip: 1]
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1, filtered_countries: 2]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Validators
@@ -595,19 +595,6 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       "geo" -> :any
       _ -> :any
     end
-  end
-
-  defp filtered_countries(countries, "") do
-    countries
-  end
-
-  defp filtered_countries(countries, search) do
-    search_lower = String.downcase(search)
-
-    Enum.filter(countries, fn %{code: code, name: name} ->
-      String.contains?(String.downcase(name), search_lower) or
-        String.contains?(String.downcase(code), search_lower)
-    end)
   end
 
   defp parse_forwarders(text) do

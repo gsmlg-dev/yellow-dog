@@ -7,6 +7,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [filtered_countries: 2]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Validators
@@ -499,19 +500,6 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   defp acl_type_badge("geo"), do: "secondary"
   defp acl_type_badge("custom"), do: "primary"
   defp acl_type_badge(_), do: "ghost"
-
-  defp filtered_countries(countries, "") do
-    countries
-  end
-
-  defp filtered_countries(countries, search) do
-    search_lower = String.downcase(search)
-
-    Enum.filter(countries, fn %{code: code, name: name} ->
-      String.contains?(String.downcase(name), search_lower) or
-        String.contains?(String.downcase(code), search_lower)
-    end)
-  end
 
   # Named ACL functions
 
