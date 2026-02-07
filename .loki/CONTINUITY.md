@@ -1,12 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 103)
+**Phase**: IN_PROGRESS (Iteration 104)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 103 of 1000
+**Iteration**: 104 of 1000
 
 ## Session Summary
-Iteration 103: Replace rescue with pattern match in parse_mac_string:
+Iteration 104: Extract duplicate filter_by_state and filter_by_pool to FormatHelper:
+- ✅ **All 1084 console tests pass: 0 failures, 0 warnings, 0 credo issues**
+- ✅ filter_by_state/2 was duplicated in 3 files (DHCPv4 leases, DHCPv4 pool, DHCPv6 leases)
+- ✅ filter_by_pool/2 was duplicated in 2 files (DHCPv4 leases, DHCPv6 leases)
+- ✅ Both extracted to FormatHelper as public functions with @spec
+- ✅ Added 8 unit tests (4 for filter_by_state, 4 for filter_by_pool)
+- ✅ Console test count: 1076 → 1084
+- ✅ 5 files — **1 commit** — net +44 lines
+
+Previous iteration 103: Replace rescue with pattern match in parse_mac_string:
 - ✅ **All 1076 console tests pass: 0 failures, 0 warnings, 0 credo issues**
 - ✅ Used `Base.decode16` (non-bang) with `{:ok, binary}/:error` pattern matching
 - ✅ Replaced `Base.decode16!` + `rescue _ -> zero_mac` anti-pattern
