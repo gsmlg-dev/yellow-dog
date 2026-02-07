@@ -1,15 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 49)
+**Phase**: IN_PROGRESS (Iteration 50)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 49 of 1000
+**Iteration**: 50 of 1000
 
 ## Session Summary
-Iteration 48: Extract RFC 6762 magic numbers into named module attributes:
-- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
+Iteration 49: Extract protocol magic numbers into named constants across 4 files:
+- ✅ **4768 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ validators.ex: 253/63/65535 → `@max_domain_name_length`/`@max_label_length`/`@max_uint16` (RFC 1035)
+- ✅ network_monitor.ex: 3600/300/600 → `@query_lookback_seconds`/`@stale_service_seconds`/`@stale_cleanup_seconds`
+- ✅ dhcpv6/handler.ex: 600/1200/3600/7200/63 → `@ta_preferred_lifetime`/`@ta_valid_lifetime`/`@default_*_lifetime`/`@max_dns_label_length`
+- ✅ dnssec.ex: 3600/24*3600 → `@default_dnssec_ttl`/`@seconds_per_day`
+- ✅ Files: 4 files — **1 commit** — net +22 lines
+
+Previous iteration 48: Extract RFC 6762 magic numbers into named module attributes:
 - ✅ Added `@mdns_multicast_ttl` (255), `@mdns_max_packet_size` (1232), `@response_delay_min_ms`/`@response_delay_range_ms`
-- ✅ Normalized hardcoded 5353 → `@mdns_port` in server init; simplified boolean expression in responder
 - ✅ Files: server.ex, client.ex, responder.ex — **1 commit** — net +3 lines
 
 Previous iteration 47: Enum micro-optimizations:
