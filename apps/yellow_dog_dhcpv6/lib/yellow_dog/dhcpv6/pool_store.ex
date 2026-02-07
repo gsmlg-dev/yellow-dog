@@ -473,10 +473,9 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     dns_line =
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
-          pool[:dns_servers]
-          |> Enum.map(&format_ipv6_for_toml/1)
-          |> Enum.map(&encode_toml_string/1)
-          |> Enum.join(", ")
+          Enum.map_join(pool[:dns_servers], ", ", fn ip ->
+            ip |> format_ipv6_for_toml() |> encode_toml_string()
+          end)
 
         ["dns_servers = [#{dns_list}]"]
       else
@@ -520,8 +519,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   defp format_ipv6_for_toml(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
     addr
     |> Tuple.to_list()
-    |> Enum.map(&Integer.to_string(&1, 16))
-    |> Enum.join(":")
+    |> Enum.map_join(":", &Integer.to_string(&1, 16))
     |> String.downcase()
   end
 
@@ -698,10 +696,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     """
 
-    lease_entries =
-      leases
-      |> Enum.map(&lease_to_toml_entry/1)
-      |> Enum.join("\n")
+    lease_entries = Enum.map_join(leases, "\n", &lease_to_toml_entry/1)
 
     header <> lease_entries
   end
@@ -753,8 +748,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     else
       duid
       |> :binary.bin_to_list()
-      |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-      |> Enum.join("")
+      |> Enum.map_join(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
       |> String.upcase()
     end
   end

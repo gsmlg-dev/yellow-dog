@@ -264,21 +264,17 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   end
 
   defp format_leases_by_state(leases_by_state) do
-    leases_by_state
-    |> Enum.map(fn {state, count} ->
+    Enum.map_join(leases_by_state, "\n", fn {state, count} ->
       "        #{state}: #{count}"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_ranges([]), do: "none"
 
   defp format_ranges(ranges) do
-    ranges
-    |> Enum.map(fn {start_ip, end_ip} ->
+    Enum.map_join(ranges, ", ", fn {start_ip, end_ip} ->
       "#{format_ip(start_ip)} - #{format_ip(end_ip)}"
     end)
-    |> Enum.join(", ")
   end
 
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"

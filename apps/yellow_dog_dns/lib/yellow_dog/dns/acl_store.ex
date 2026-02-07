@@ -174,10 +174,7 @@ defmodule YellowDog.Dns.AclStore do
     # Each ACL has a name, optional description, and a list of rules.
     """
 
-    acls_content =
-      acls
-      |> Enum.map(&acl_to_toml/1)
-      |> Enum.join("\n")
+    acls_content = Enum.map_join(acls, "\n", &acl_to_toml/1)
 
     {:ok, header <> "\n" <> acls_content}
   end

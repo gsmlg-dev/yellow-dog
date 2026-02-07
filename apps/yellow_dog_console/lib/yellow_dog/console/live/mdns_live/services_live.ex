@@ -286,9 +286,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   defp parse_addresses(_), do: []
 
   defp format_txt_for_form(txt_map) when is_map(txt_map) do
-    txt_map
-    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
-    |> Enum.join("\n")
+    Enum.map_join(txt_map, "\n", fn {k, v} -> "#{k}=#{v}" end)
   end
 
   defp format_txt_for_form(_), do: ""

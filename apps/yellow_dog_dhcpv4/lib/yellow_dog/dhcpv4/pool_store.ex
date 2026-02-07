@@ -484,10 +484,9 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     dns_line =
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
-          pool[:dns_servers]
-          |> Enum.map(&format_ip_for_toml/1)
-          |> Enum.map(&encode_toml_string/1)
-          |> Enum.join(", ")
+          Enum.map_join(pool[:dns_servers], ", ", fn ip ->
+            ip |> format_ip_for_toml() |> encode_toml_string()
+          end)
 
         ["dns_servers = [#{dns_list}]"]
       else
@@ -706,10 +705,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
     """
 
-    lease_entries =
-      leases
-      |> Enum.map(&lease_to_toml_entry/1)
-      |> Enum.join("\n")
+    lease_entries = Enum.map_join(leases, "\n", &lease_to_toml_entry/1)
 
     header <> lease_entries
   end
@@ -751,8 +747,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   defp format_mac_for_toml(mac) when is_binary(mac) and byte_size(mac) == 6 do
     mac
     |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
+    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> String.downcase()
   end
 

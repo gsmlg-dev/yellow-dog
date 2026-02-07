@@ -28,8 +28,7 @@ defmodule YellowDog.Console.Diagnostics.HexFormatter do
     |> :binary.bin_to_list()
     |> Enum.chunk_every(@bytes_per_line)
     |> Enum.with_index()
-    |> Enum.map(&format_line/1)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &format_line/1)
   end
 
   @doc """
@@ -49,8 +48,7 @@ defmodule YellowDog.Console.Diagnostics.HexFormatter do
   def format_inline(binary) when is_binary(binary) do
     binary
     |> :binary.bin_to_list()
-    |> Enum.map(&format_byte/1)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", &format_byte/1)
   end
 
   @doc """
@@ -90,19 +88,14 @@ defmodule YellowDog.Console.Diagnostics.HexFormatter do
   end
 
   defp format_hex_part(bytes) do
-    hex =
-      bytes
-      |> Enum.map(&format_byte/1)
-      |> Enum.join(" ")
+    hex = Enum.map_join(bytes, " ", &format_byte/1)
 
     # Pad to full line width (16 bytes * 3 chars - 1 space = 47 chars)
     String.pad_trailing(hex, 47)
   end
 
   defp format_ascii_part(bytes) do
-    bytes
-    |> Enum.map(&byte_to_ascii_char/1)
-    |> Enum.join()
+    Enum.map_join(bytes, &byte_to_ascii_char/1)
   end
 
   defp byte_to_ascii_char(byte) when byte >= 32 and byte <= 126 do

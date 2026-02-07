@@ -442,9 +442,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   # ACL formatting functions
 
   defp format_acl_rules(rules) when is_list(rules) do
-    rules
-    |> Enum.map(&format_acl_rule/1)
-    |> Enum.join("\n")
+    Enum.map_join(rules, "\n", &format_acl_rule/1)
   end
 
   defp format_acl_rules(_), do: ""
@@ -596,9 +594,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp format_named_acl_rules(rules) when is_list(rules) do
-    rules
-    |> Enum.map(&format_named_acl_rule/1)
-    |> Enum.join("\n")
+    Enum.map_join(rules, "\n", &format_named_acl_rule/1)
   end
 
   defp format_named_acl_rules(_), do: ""
@@ -718,9 +714,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp format_acl_rules_for_csv(rules) when is_list(rules) do
-    rules
-    |> Enum.map(&format_named_acl_rule/1)
-    |> Enum.join("; ")
+    Enum.map_join(rules, "; ", &format_named_acl_rule/1)
   end
 
   defp format_acl_rules_for_csv(_), do: ""

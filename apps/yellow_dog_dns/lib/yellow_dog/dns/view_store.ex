@@ -299,10 +299,7 @@ defmodule YellowDog.Dns.ViewStore do
     # based on their IP addresses. Views are evaluated in order by priority.
     """
 
-    views_content =
-      views
-      |> Enum.map(&view_to_toml/1)
-      |> Enum.join("\n")
+    views_content = Enum.map_join(views, "\n", &view_to_toml/1)
 
     {:ok, header <> "\n" <> views_content}
   end

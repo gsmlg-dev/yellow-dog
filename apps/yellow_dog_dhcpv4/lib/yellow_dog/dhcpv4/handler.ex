@@ -720,9 +720,7 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp encode_dns_servers(dns_servers) do
-    dns_servers
-    |> Enum.map(&ip_to_binary/1)
-    |> Enum.join()
+    Enum.map_join(dns_servers, &ip_to_binary/1)
   end
 
   # Note: Option extraction functions moved to OptionParser for single-pass efficiency

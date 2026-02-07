@@ -421,10 +421,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   end
 
   defp encode_value(:ip_list, ips) when is_list(ips) do
-    binary =
-      ips
-      |> Enum.map(fn {a, b, c, d} -> <<a, b, c, d>> end)
-      |> Enum.join()
+    binary = Enum.map_join(ips, fn {a, b, c, d} -> <<a, b, c, d>> end)
 
     {:ok, binary}
   end
@@ -454,8 +451,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   defp format_mac(<<mac::binary-size(6)>>) do
     mac
     |> :binary.bin_to_list()
-    |> Enum.map(fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> Enum.join(":")
+    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
     |> String.upcase()
   end
 

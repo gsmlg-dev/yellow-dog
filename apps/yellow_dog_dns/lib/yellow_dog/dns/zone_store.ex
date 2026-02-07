@@ -286,10 +286,7 @@ defmodule YellowDog.Dns.ZoneStore do
     # in standard BIND zone files referenced by the 'file' field.
     """
 
-    zones_content =
-      zones
-      |> Enum.map(&zone_to_toml/1)
-      |> Enum.join("\n")
+    zones_content = Enum.map_join(zones, "\n", &zone_to_toml/1)
 
     {:ok, header <> "\n" <> zones_content}
   end

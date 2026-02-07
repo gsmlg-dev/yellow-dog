@@ -47,10 +47,7 @@ defmodule DNS.Message.EDNS0.Option.KeyTag do
   defimpl DNS.Parameter, for: DNS.Message.EDNS0.Option.KeyTag do
     @impl true
     def to_iodata(%DNS.Message.EDNS0.Option.KeyTag{data: key_tag_list}) do
-      key_tag_binary =
-        key_tag_list
-        |> Enum.map(fn tag -> <<tag::16>> end)
-        |> Enum.join()
+      key_tag_binary = Enum.map_join(key_tag_list, fn tag -> <<tag::16>> end)
 
       <<14::16, byte_size(key_tag_binary)::16, key_tag_binary::binary>>
     end

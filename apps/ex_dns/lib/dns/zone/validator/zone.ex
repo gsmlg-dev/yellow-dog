@@ -397,10 +397,7 @@ defmodule DNS.Zone.Validator.Zone do
   end
 
   defp format_types(types) do
-    types
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.upcase/1)
-    |> Enum.join(", ")
+    Enum.map_join(types, ", ", fn t -> t |> to_string() |> String.upcase() end)
   end
 
   defp display_name(""), do: "@"

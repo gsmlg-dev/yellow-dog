@@ -327,10 +327,7 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp format_services(services, :toml) do
     # The toml library (v0.7) is decode-only, so we implement basic TOML encoding
     # for the limited structure we need (array of tables)
-    toml_content =
-      services
-      |> Enum.map(&service_to_toml/1)
-      |> Enum.join("\n")
+    toml_content = Enum.map_join(services, "\n", &service_to_toml/1)
 
     {:ok, toml_content}
   end

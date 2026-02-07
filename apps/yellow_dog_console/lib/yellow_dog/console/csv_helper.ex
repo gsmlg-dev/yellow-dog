@@ -27,9 +27,7 @@ defmodule YellowDog.Console.CsvHelper do
 
   @doc "Formats a TXT record map as semicolon-separated key=value pairs for CSV."
   def format_txt_for_csv(txt_map) when is_map(txt_map) do
-    txt_map
-    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
-    |> Enum.join("; ")
+    Enum.map_join(txt_map, "; ", fn {k, v} -> "#{k}=#{v}" end)
   end
 
   def format_txt_for_csv(_), do: ""
