@@ -1,18 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 22)
+**Phase**: IN_PROGRESS (Iteration 23)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 22 of 1000
+**Iteration**: 23 of 1000
 
 ## Session Summary
-Iteration 22: Major DRY refactoring — shared rate limiter macro:
-- ✅ **4,764 ex_dns + 1,052 DNS + 962 console + 309 mDNS + 319 DHCPv4 + 201 DHCPv6 tests, 0 failures**
-- ✅ Extracted shared `YellowDog.RateLimiter` `__using__` macro with parameterized ETS table, telemetry prefix, OTP app, and config
-- ✅ Refactored 4 rate limiter modules (DNS, DHCPv4, DHCPv6, mDNS) from ~360 lines each to ~15 lines each
-- ✅ **Net reduction: ~1,300 lines** of duplicated GenServer+ETS token bucket code
+Iteration 23: DRY refactoring + bare rescue hardening:
+- ✅ **4,768 ex_dns + 1,052 DNS + 962 console + 309 mDNS + 319 DHCPv4 + 201 DHCPv6 tests, 0 failures**
+- ✅ Extracted `YellowDog.Config.TomlHelpers` — 7 shared functions from identical DHCPv4/v6 PoolStore private helpers (~90 lines deduplication)
+- ✅ Tightened **19 bare rescue clauses** across 8 files in protocol handlers, telemetry, and config watcher
+- ✅ **2 commits this iteration**
+
+Previous iteration 22: Major DRY refactoring — shared rate limiter macro:
+- ✅ Extracted shared `YellowDog.RateLimiter` `__using__` macro (~1,300 lines deduplication)
 - ✅ Added missing `{:yellow_dog, in_umbrella: true}` dependency to yellow_dog_dns and yellow_dog_mdns
-- ✅ **1 commit this iteration**
 
 Previous iteration 21: Performance + correctness sweep across entire codebase:
 - ✅ Replaced **37 instances** of O(n) `length(list) > 0` with O(1) `list != []` across **29 files** in all 10 apps
@@ -159,7 +161,8 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
-1. `21f405d` - refactor: extract shared YellowDog.RateLimiter __using__ macro
+1. `48042f0` - refactor(dhcp): extract shared TomlHelpers from duplicate PoolStore code
+2. `818a8ab` - refactor: replace bare rescue with explicit exception types
 
 Previous iteration 16 commits:
 1. `57344be` - feat(dns): wire QueryLogger into query resolution pipeline
