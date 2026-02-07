@@ -308,6 +308,7 @@
                       <button
                         phx-click="release_lease"
                         phx-value-mac={format_mac(lease.mac_address)}
+                        phx-disable-with="Releasing..."
                         class="btn btn-xs btn-error btn-outline"
                         data-confirm="Are you sure you want to release this lease?"
                       >

@@ -144,6 +144,7 @@
                 type="button"
                 phx-click="toggle_service"
                 phx-value-id={service.id}
+                phx-disable-with="..."
                 class="btn btn-ghost btn-xs"
                 title={if service.enabled, do: "Disable", else: "Enable"}
                 aria-label={if service.enabled, do: "Disable", else: "Enable"}
@@ -195,6 +196,7 @@
                 type="button"
                 phx-click="delete_service"
                 phx-value-id={service.id}
+                phx-disable-with="..."
                 data-confirm="Are you sure you want to delete this service?"
                 class="btn btn-ghost btn-xs text-error"
                 title="Delete"
