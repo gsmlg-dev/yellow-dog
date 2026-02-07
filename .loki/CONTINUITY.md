@@ -7,8 +7,8 @@
 
 ## Session Summary
 Iteration 16 (continued): Comprehensive atom safety + test coverage:
-- ✅ **1064 umbrella tests passing**, 0 failures
-- ✅ **757 Console tests passing** (689 prior + 36 metrics/logs + 12 atom safety + 8 process map + 12 pool detail), 0 failures
+- ✅ **1064+ umbrella tests passing**, 0 failures
+- ✅ **820 Console tests passing** (757 prior + 19 dashboard + 25 logs + 19 diagnostics extended), 0 failures
 - ✅ Wired QueryLogger into ConnectionProcess (complete_query + complete_query_error)
 - ✅ Fixed `String.to_atom/1` in mDNS ServicesLive filter (atom leak vulnerability)
 - ✅ Added allowlist guards to `String.to_existing_atom/1` in DashboardLive, LogsLive
@@ -18,7 +18,8 @@ Iteration 16 (continued): Comprehensive atom safety + test coverage:
 - ✅ 8 process map interaction tests (select_node, close_panel, toggle_expand)
 - ✅ 12 DHCPv4/v6 PoolLive detail page tests (mounting, search, filter_state, invalid state fallback)
 - ✅ Fixed DHCPv4 pool_live filter_by_state with allowlist guard
-- ✅ **7 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests
+- ✅ 63 Dashboard/Logs/Diagnostics LiveView tests (mounting, events, filters, CSV, accessibility)
+- ✅ **8 commits this iteration**: QueryLogger, atom safety (×3), metrics/logs tests, process map tests, pool detail tests, dashboard/logs/diagnostics tests
 
 Previous iteration 15: Security audit framework + test verification:
 - ✅ **1050 tests passing** (umbrella-wide verification), 0 failures
@@ -99,7 +100,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 #### Test Coverage
 - [x] 83 E2E tests (12 files)
-- [x] 757 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 44 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs + 12 pool detail)
+- [x] 820 Console tests (203 LiveView + 46 CSV/filter/preview + 20 validator + 12 service alert + 2 phx-disable-with + 44 event handler + 328 existing + 17 a11y + 20 sidebar highlighting + 17 atom safety + 36 metrics/logs + 12 pool detail + 63 dashboard/logs/diagnostics)
 - [x] All pages mountable without DNS service running (graceful exit handling)
 - [x] 65 CRUD tests for DNS views, zones, ACLs, records
 - [x] 15 inline validation tests (zone, view, ACL form validation)
@@ -119,6 +120,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 4. `0114874` - fix(console): harden atom safety in ZoneLive, RrLive, DiagnosticsLive, SettingsLive
 5. `1343da5` - fix(console): harden atom safety in RecordForm, add process map tests
 6. `b99763c` - test(console): add pool detail page tests, fix DHCPv4 pool filter_by_state
+7. `afdfb1d` - test(console): add 63 tests for Dashboard, Logs, and Diagnostics LiveViews
 
 Previous iteration 15 commits:
 1. `e7c95b1` - fix(dns): correct div syntax in cache benchmark
@@ -225,6 +227,6 @@ Previous iteration 14 commits:
 18. ~~Atom safety hardening in LiveViews~~ ✅ Done (17 tests across 8 LiveViews)
 19. Performance optimization based on benchmark results
 20. Prometheus/OpenTelemetry integration
-21. Add tests for Dashboard start/stop event handlers (with mocked services)
-22. Add tests for Logs LiveView real-time event handling
+21. ~~Add tests for Dashboard start/stop event handlers~~ ✅ Done (19 tests)
+22. ~~Add tests for Logs LiveView real-time event handling~~ ✅ Done (25 tests)
 23. ~~Add tests for Process Map LiveView interactions~~ ✅ Done (8 tests)
