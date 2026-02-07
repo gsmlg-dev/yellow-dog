@@ -1,15 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 37)
+**Phase**: IN_PROGRESS (Iteration 38)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 37 of 1000
+**Iteration**: 38 of 1000
 
 ## Session Summary
-Iteration 37: Extract service call boilerplate to ServiceHelper.safe_call:
-- ✅ **962 console tests, 0 failures**
-- ✅ Created `YellowDog.Console.ServiceHelper` with `safe_call/3` wrapper
-- ✅ Replaced **18 `Code.ensure_loaded?/try/rescue/catch` blocks** across **6 DHCP LiveViews** — **net -171 lines**
+Iteration 38: for comprehensions + DRY utilization_class:
+- ✅ **962 console + 4,764 ex_dns + 155 yellow_dog tests, 0 failures**
+- ✅ Converted **9 `Enum.filter|>Enum.map` chains** to `for` comprehensions across **8 files** — **net -31 lines**
+- ✅ Removed duplicate `get_utilization_class` from both pools_live (using existing `utilization_color` inline)
+- ✅ **1 commit this iteration**
+
+Previous iteration 37: Extract service call boilerplate to ServiceHelper.safe_call:
+- ✅ Replaced **18 `Code.ensure_loaded?` blocks** across 6 DHCP LiveViews — **net -171 lines**
 - ✅ **1 commit this iteration**
 
 Previous iteration 36: Extend FormatHelper + IA type color helpers:
