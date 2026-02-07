@@ -57,10 +57,9 @@ defmodule YellowDog.Mdns.ServiceStore do
          {:ok, raw_data} <- parse_content(content, format),
          {:ok, services} <- extract_services(raw_data, format) do
       validated_services =
-        services
-        |> Enum.map(&validate_and_normalize_service/1)
-        |> Enum.reject(&match?({:error, _}, &1))
-        |> Enum.map(fn {:ok, service} -> service end)
+        for service <- services,
+            {:ok, validated} <- [validate_and_normalize_service(service)],
+            do: validated
 
       :telemetry.execute(
         [:yellow_dog, :mdns, :service_store, :loaded],

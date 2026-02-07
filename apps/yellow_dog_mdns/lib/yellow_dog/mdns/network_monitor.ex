@@ -93,7 +93,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     entries =
       case :ets.lookup(@response_table, domain_key) do
         [] -> []
-        results -> Enum.map(results, fn {_key, entry} -> entry end)
+        results -> for {_key, entry} <- results, do: entry
       end
 
     entries =
@@ -118,10 +118,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     limit = Keyword.get(opts, :limit, 100)
     since = Keyword.get(opts, :since, System.system_time(:second) - @query_lookback_seconds)
 
-    @query_table
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(fn entry -> entry.timestamp >= since end)
+    (for {_key, entry} <- :ets.tab2list(@query_table),
+         entry.timestamp >= since,
+         do: entry)
     |> Enum.sort_by(& &1.timestamp, :desc)
     |> Enum.take(limit)
   end
@@ -131,10 +130,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   """
   @spec get_unanswered_queries() :: [query_entry()]
   def get_unanswered_queries do
-    @query_table
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(fn entry -> not entry.answered end)
+    (for {_key, entry} <- :ets.tab2list(@query_table),
+         not entry.answered,
+         do: entry)
     |> Enum.sort_by(& &1.timestamp, :desc)
   end
 
@@ -146,10 +144,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     now = System.system_time(:second)
     stale_threshold = now - @stale_service_seconds
 
-    @services_table
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(fn service -> service.last_seen > stale_threshold end)
+    (for {_key, service} <- :ets.tab2list(@services_table),
+         service.last_seen > stale_threshold,
+         do: service)
     |> Enum.sort_by(& &1.name)
   end
 
@@ -197,8 +194,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     unique_hosts =
       @response_table
       |> :ets.tab2list()
-      |> Enum.map(fn {_key, entry} -> entry.source_ip end)
-      |> Enum.uniq()
+      |> Enum.uniq_by(fn {_key, entry} -> entry.source_ip end)
       |> length()
 
     # Calculate queries per minute (last hour)
@@ -237,12 +233,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   def list_all do
     now = System.system_time(:second)
 
-    @response_table
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.filter(fn entry ->
-      entry.received_at + entry.ttl > now
-    end)
+    for {_key, entry} <- :ets.tab2list(@response_table),
+        entry.received_at + entry.ttl > now,
+        do: entry
   end
 
   @doc """
