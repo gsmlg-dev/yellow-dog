@@ -198,11 +198,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
     end)
   end
 
-  defp filter_by_state(leases, "all"), do: leases
-
-  defp filter_by_state(leases, state),
-    do: Enum.filter(leases, fn l -> to_string(l.state) == state end)
-
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid, pool_name: pool_name}) do
     if metadata[:pool_name] == pool_name do
       send(pid, {:telemetry_event, event, measurements, metadata})

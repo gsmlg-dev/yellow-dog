@@ -168,6 +168,18 @@ defmodule YellowDog.Console.FormatHelper do
     end)
   end
 
+  @doc "Filters a list by state field (atom) against a string value."
+  @spec filter_by_state(list(), String.t()) :: list()
+  def filter_by_state(items, "all"), do: items
+
+  def filter_by_state(items, state),
+    do: Enum.filter(items, fn item -> to_string(item.state) == state end)
+
+  @doc "Filters a list by pool_name field against a string value."
+  @spec filter_by_pool(list(), String.t()) :: list()
+  def filter_by_pool(items, "all"), do: items
+  def filter_by_pool(items, pool), do: Enum.filter(items, fn item -> item.pool_name == pool end)
+
   @doc "Parses a colon-separated hex DUID string into a binary."
   @spec parse_duid_string(String.t()) :: binary()
   def parse_duid_string(duid_str) do

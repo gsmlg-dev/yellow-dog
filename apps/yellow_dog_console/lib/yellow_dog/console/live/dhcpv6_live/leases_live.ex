@@ -171,18 +171,10 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     end)
   end
 
-  defp filter_by_state(leases, "all"), do: leases
-
-  defp filter_by_state(leases, state),
-    do: Enum.filter(leases, fn l -> to_string(l.state) == state end)
-
   defp filter_by_ia_type(leases, "all"), do: leases
 
   defp filter_by_ia_type(leases, ia_type),
     do: Enum.filter(leases, fn l -> to_string(l.ia_type) == ia_type end)
-
-  defp filter_by_pool(leases, "all"), do: leases
-  defp filter_by_pool(leases, pool), do: Enum.filter(leases, fn l -> l.pool_name == pool end)
 
   defp handle_telemetry_event(event, measurements, metadata, %{pid: pid}) do
     send(pid, {:telemetry_event, event, measurements, metadata})

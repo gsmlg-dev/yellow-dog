@@ -231,6 +231,59 @@ defmodule YellowDog.Console.FormatHelperTest do
     end
   end
 
+  describe "filter_by_state/2" do
+    @leases [
+      %{state: :bound, ip: "10.0.0.1"},
+      %{state: :offered, ip: "10.0.0.2"},
+      %{state: :expired, ip: "10.0.0.3"},
+      %{state: :bound, ip: "10.0.0.4"}
+    ]
+
+    test "returns all items for 'all' filter" do
+      assert FormatHelper.filter_by_state(@leases, "all") == @leases
+    end
+
+    test "filters by state using to_string comparison" do
+      result = FormatHelper.filter_by_state(@leases, "bound")
+      assert length(result) == 2
+      assert Enum.all?(result, fn l -> l.state == :bound end)
+    end
+
+    test "returns empty list when no items match" do
+      assert FormatHelper.filter_by_state(@leases, "released") == []
+    end
+
+    test "handles empty list" do
+      assert FormatHelper.filter_by_state([], "bound") == []
+    end
+  end
+
+  describe "filter_by_pool/2" do
+    @pool_leases [
+      %{pool_name: "office", ip: "10.0.0.1"},
+      %{pool_name: "guest", ip: "10.0.0.2"},
+      %{pool_name: "office", ip: "10.0.0.3"}
+    ]
+
+    test "returns all items for 'all' filter" do
+      assert FormatHelper.filter_by_pool(@pool_leases, "all") == @pool_leases
+    end
+
+    test "filters by pool_name" do
+      result = FormatHelper.filter_by_pool(@pool_leases, "office")
+      assert length(result) == 2
+      assert Enum.all?(result, fn l -> l.pool_name == "office" end)
+    end
+
+    test "returns empty list when no items match" do
+      assert FormatHelper.filter_by_pool(@pool_leases, "server") == []
+    end
+
+    test "handles empty list" do
+      assert FormatHelper.filter_by_pool([], "office") == []
+    end
+  end
+
   describe "filtered_pools/2" do
     @pools [
       %{name: "office", network: "192.168.1.0/24", range_start: {192, 168, 1, 100}},

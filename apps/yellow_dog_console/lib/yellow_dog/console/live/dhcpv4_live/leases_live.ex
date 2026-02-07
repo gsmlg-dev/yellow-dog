@@ -151,14 +151,6 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     end)
   end
 
-  defp filter_by_state(leases, "all"), do: leases
-
-  defp filter_by_state(leases, state),
-    do: Enum.filter(leases, fn l -> to_string(l.state) == state end)
-
-  defp filter_by_pool(leases, "all"), do: leases
-  defp filter_by_pool(leases, pool), do: Enum.filter(leases, &(&1.pool_name == pool))
-
   defp count_by_state(leases, state) do
     Enum.count(leases, &(&1.state == state))
   end
