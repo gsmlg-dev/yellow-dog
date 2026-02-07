@@ -1,13 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 50)
+**Phase**: IN_PROGRESS (Iteration 51)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 50 of 1000
+**Iteration**: 51 of 1000
 
 ## Session Summary
-Iteration 49: Extract protocol magic numbers into named constants across 4 files:
-- ✅ **4768 umbrella + 962 console tests, 0 failures, 0 warnings**
+Iteration 50: Replace verbose ETS value extraction with `&elem(&1, 1)` capture:
+- ✅ **1058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ 14 instances of `Enum.map(fn {_key, val} -> val end)` → `Enum.map(&elem(&1, 1))`
+- ✅ Files: message_cache.ex (2), service_registry.ex (1), network_monitor.ex (4), lease_manager.ex (2), store.ex (2), auth.ex (3+helper)
+- ✅ 6 files — **1 commit** — net 0 lines (same count, more concise)
+
+Previous iteration 49: Extract protocol magic numbers into named constants across 4 files:
 - ✅ validators.ex: 253/63/65535 → `@max_domain_name_length`/`@max_label_length`/`@max_uint16` (RFC 1035)
 - ✅ network_monitor.ex: 3600/300/600 → `@query_lookback_seconds`/`@stale_service_seconds`/`@stale_cleanup_seconds`
 - ✅ dhcpv6/handler.ex: 600/1200/3600/7200/63 → `@ta_preferred_lifetime`/`@ta_valid_lifetime`/`@default_*_lifetime`/`@max_dns_label_length`
