@@ -96,7 +96,7 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
 
   @impl true
   def handle_event("export_csv", _params, socket) do
-    leases = socket.assigns.filtered_leases
+    leases = socket.assigns.leases
     csv = build_csv(leases)
     filename = "dhcpv6_leases_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
 
