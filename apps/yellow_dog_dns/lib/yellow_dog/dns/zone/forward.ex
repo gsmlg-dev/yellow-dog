@@ -20,7 +20,9 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   use GenServer
 
-  @behaviour YellowDog.Dns.Zone.Behaviour
+  alias YellowDog.Dns.Zone.Behaviour
+
+  @behaviour Behaviour
 
   alias YellowDog.Telemetry
 
@@ -80,7 +82,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
+    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :forward, zone_name))
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -388,9 +390,6 @@ defmodule YellowDog.Dns.Zone.Forward do
     "#{:inet.ntoa(ip)}:#{port}"
   end
 
-  defp via_tuple(view_name, zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :forward, zone_name}}}
-  end
 
   # ===========================================================================
   # Legacy Struct-Based API

@@ -84,7 +84,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(view_name, zone_name))
+    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :rpz, zone_name))
   end
 
   @doc """
@@ -453,7 +453,4 @@ defmodule YellowDog.Dns.Zone.RPZ do
     Enum.join(parts, ".")
   end
 
-  defp via_tuple(view_name, zone_name) do
-    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, :rpz, zone_name}}}
-  end
 end

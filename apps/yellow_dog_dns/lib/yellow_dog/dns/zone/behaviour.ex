@@ -41,4 +41,11 @@ defmodule YellowDog.Dns.Zone.Behaviour do
   Returns zone statistics.
   """
   @callback stats(pid :: pid()) :: map()
+
+  @doc """
+  Returns a via tuple for registering a zone process in the ZoneRegistry.
+  """
+  def zone_via_tuple(view_name, zone_type, zone_name) do
+    {:via, Registry, {YellowDog.Dns.ZoneRegistry, {view_name, zone_type, zone_name}}}
+  end
 end
