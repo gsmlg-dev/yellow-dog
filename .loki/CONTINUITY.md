@@ -1,16 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 45)
+**Phase**: IN_PROGRESS (Iteration 46)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 45 of 1000
+**Iteration**: 46 of 1000
 
 ## Session Summary
-Iteration 45: Combine multi-pass Enum.sum(Enum.map) into single Enum.reduce:
-- ✅ **6,415 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ pool_stats.ex: 3 separate `Enum.sum(Enum.map)` passes → 1 pass with `{total, allocated, available}` tuple accumulator
-- ✅ dns index.ex: 5 separate `Enum.sum(Enum.map)` passes → 1 pass with `{zones, queries, hits, misses, cache}` tuple accumulator
-- ✅ **1 commit this iteration** — net -6 lines
+Iteration 46: Replace manual IPv4 parsing with :inet.parse_address/1:
+- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Replaced 7 duplicate manual IPv4 parse functions across 7 files with `:inet.parse_address/1`
+- ✅ Eliminates unsafe parsing (no 0-255 range check), removes try/rescue blocks
+- ✅ Files: application.ex, pool.ex, lease.ex, pool_store.ex, address_pool.ex, pool_config.ex, pools_live.ex
+- ✅ **1 commit this iteration** — net -54 lines
+
+Previous iteration 45: Combine multi-pass Enum.sum(Enum.map) into single Enum.reduce:
+- ✅ pool_stats.ex + dns index.ex: multi-pass → single Enum.reduce — net -6 lines
 
 Previous iteration 44: Replace Enum.reduce map-building:
 - ✅ 9 conversions (Map.new/2, for...into, frequencies_by) across 4 files — net -16 lines
