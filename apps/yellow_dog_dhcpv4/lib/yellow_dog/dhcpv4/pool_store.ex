@@ -481,79 +481,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   defp parse_ipv4(_), do: {:error, "Invalid IPv4 format"}
 
   defp pool_to_toml(pool) do
-    lines = [
-      "# DHCPv4 Pool Configuration",
-      "# Pool: #{pool[:name] || pool.name}",
-      "",
-      "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}"
-    ]
-
-    # Add network (CIDR)
-    lines =
-      if pool[:network] do
-        lines ++ ["network = #{encode_toml_string(pool[:network])}"]
-      else
-        lines
-      end
-
-    # Add range_start/range_end
-    lines =
-      if pool[:range_start] do
-        range_start = format_ip_for_toml(pool[:range_start])
-        range_end = format_ip_for_toml(pool[:range_end])
-
-        lines ++
-          [
-            "range_start = #{encode_toml_string(range_start)}",
-            "range_end = #{encode_toml_string(range_end)}"
-          ]
-      else
-        lines
-      end
-
-    # Add lease_time
-    lines =
-      if pool[:lease_time] do
-        lines ++ ["lease_time = #{pool[:lease_time]}"]
-      else
-        lines
-      end
-
-    # Add max_leases
-    lines =
-      if pool[:max_leases] do
-        lines ++ ["max_leases = #{pool[:max_leases]}"]
-      else
-        lines
-      end
-
-    # Add subnet_mask
-    lines =
-      if pool[:subnet_mask] do
-        lines ++ ["subnet_mask = #{encode_toml_string(pool[:subnet_mask])}"]
-      else
-        lines
-      end
-
-    # Add gateway
-    lines =
-      if pool[:gateway] do
-        gateway = format_ip_for_toml(pool[:gateway])
-        lines ++ ["gateway = #{encode_toml_string(gateway)}"]
-      else
-        lines
-      end
-
-    # Add domain_name
-    lines =
-      if pool[:domain_name] do
-        lines ++ ["domain_name = #{encode_toml_string(pool[:domain_name])}"]
-      else
-        lines
-      end
-
-    # Add dns_servers
-    lines =
+    dns_line =
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
           pool[:dns_servers]
@@ -561,10 +489,36 @@ defmodule YellowDog.Dhcpv4.PoolStore do
           |> Enum.map(&encode_toml_string/1)
           |> Enum.join(", ")
 
-        lines ++ ["dns_servers = [#{dns_list}]"]
+        ["dns_servers = [#{dns_list}]"]
       else
-        lines
+        []
       end
+
+    range_lines =
+      if pool[:range_start] do
+        [
+          "range_start = #{encode_toml_string(format_ip_for_toml(pool[:range_start]))}",
+          "range_end = #{encode_toml_string(format_ip_for_toml(pool[:range_end]))}"
+        ]
+      else
+        []
+      end
+
+    lines =
+      List.flatten([
+        "# DHCPv4 Pool Configuration",
+        "# Pool: #{pool[:name] || pool.name}",
+        "",
+        "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}",
+        if(pool[:network], do: "network = #{encode_toml_string(pool[:network])}", else: []),
+        range_lines,
+        if(pool[:lease_time], do: "lease_time = #{pool[:lease_time]}", else: []),
+        if(pool[:max_leases], do: "max_leases = #{pool[:max_leases]}", else: []),
+        if(pool[:subnet_mask], do: "subnet_mask = #{encode_toml_string(pool[:subnet_mask])}", else: []),
+        if(pool[:gateway], do: "gateway = #{encode_toml_string(format_ip_for_toml(pool[:gateway]))}", else: []),
+        if(pool[:domain_name], do: "domain_name = #{encode_toml_string(pool[:domain_name])}", else: []),
+        dns_line
+      ])
 
     Enum.join(lines, "\n") <> "\n"
   end

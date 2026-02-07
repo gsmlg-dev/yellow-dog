@@ -188,7 +188,7 @@ defmodule YellowDog.Console.ProcessInspector do
       children_x = x + node_width + h_spacing
 
       # Layout all children vertically stacked
-      {laid_out_children, next_y} =
+      {reversed_children, next_y} =
         Enum.reduce(children, {[], y}, fn child, {acc, current_y} ->
           {laid_out_child, new_y} =
             layout_node_horizontal(
@@ -202,8 +202,10 @@ defmodule YellowDog.Console.ProcessInspector do
               expanded_pids
             )
 
-          {acc ++ [laid_out_child], new_y}
+          {[laid_out_child | acc], new_y}
         end)
+
+      laid_out_children = :lists.reverse(reversed_children)
 
       # Center parent vertically relative to children
       children_start = y

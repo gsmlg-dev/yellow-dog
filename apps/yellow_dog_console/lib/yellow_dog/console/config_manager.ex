@@ -314,25 +314,22 @@ defmodule YellowDog.Console.ConfigManager do
 
   defp remove_array_tables(lines, section, array_table_header) do
     section_header = "[#{section}]"
-    in_section? = false
-    in_array_table? = false
-    section_end_idx = nil
 
-    {result, _, _, last_section_idx} =
+    {reversed_result, _, _, last_section_idx} =
       lines
       |> Enum.with_index()
-      |> Enum.reduce({[], in_section?, in_array_table?, section_end_idx}, fn
+      |> Enum.reduce({[], false, false, nil}, fn
         {line, idx}, {acc, in_sect, in_arr, sect_end} ->
           trimmed = String.trim(line)
 
           cond do
             # Entering target section
             trimmed == section_header ->
-              {acc ++ [line], true, false, idx}
+              {[line | acc], true, false, idx}
 
             # Leaving section (entering another section)
             in_sect && String.match?(trimmed, ~r/^\[/) && trimmed != array_table_header ->
-              {acc ++ [line], false, false, sect_end}
+              {[line | acc], false, false, sect_end}
 
             # Entering array table in our section
             in_sect && trimmed == array_table_header ->
@@ -345,7 +342,7 @@ defmodule YellowDog.Console.ConfigManager do
 
             in_arr && String.match?(trimmed, ~r/^\[/) ->
               # Next section/array table starts
-              {acc ++ [line], String.match?(trimmed, ~r/^\[#{section}\]/),
+              {[line | acc], String.match?(trimmed, ~r/^\[#{section}\]/),
                trimmed == array_table_header, idx}
 
             in_arr ->
@@ -354,15 +351,15 @@ defmodule YellowDog.Console.ConfigManager do
 
             # Regular line in our section
             in_sect ->
-              {acc ++ [line], in_sect, in_arr, idx}
+              {[line | acc], in_sect, in_arr, idx}
 
             # Regular line outside our section
             true ->
-              {acc ++ [line], in_sect, in_arr, sect_end}
+              {[line | acc], in_sect, in_arr, sect_end}
           end
       end)
 
-    {result, last_section_idx}
+    {:lists.reverse(reversed_result), last_section_idx}
   end
 
   defp generate_array_table_entries(header, items) when is_list(items) do

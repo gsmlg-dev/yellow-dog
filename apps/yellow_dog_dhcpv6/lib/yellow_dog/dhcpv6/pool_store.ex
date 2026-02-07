@@ -470,70 +470,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   defp parse_ipv6(_), do: {:error, "Invalid IPv6 format"}
 
   defp pool_to_toml(pool) do
-    lines = [
-      "# DHCPv6 Pool Configuration",
-      "# Pool: #{pool[:name] || pool.name}",
-      "",
-      "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}"
-    ]
-
-    # Add network (CIDR)
-    lines =
-      if pool[:network] do
-        lines ++ ["network = #{encode_toml_string(pool[:network])}"]
-      else
-        lines
-      end
-
-    # Add range_start/range_end
-    lines =
-      if pool[:range_start] do
-        range_start = format_ipv6_for_toml(pool[:range_start])
-        range_end = format_ipv6_for_toml(pool[:range_end])
-
-        lines ++
-          [
-            "range_start = #{encode_toml_string(range_start)}",
-            "range_end = #{encode_toml_string(range_end)}"
-          ]
-      else
-        lines
-      end
-
-    # Add preferred_lifetime
-    lines =
-      if pool[:preferred_lifetime] do
-        lines ++ ["preferred_lifetime = #{pool[:preferred_lifetime]}"]
-      else
-        lines
-      end
-
-    # Add valid_lifetime
-    lines =
-      if pool[:valid_lifetime] do
-        lines ++ ["valid_lifetime = #{pool[:valid_lifetime]}"]
-      else
-        lines
-      end
-
-    # Add max_leases
-    lines =
-      if pool[:max_leases] do
-        lines ++ ["max_leases = #{pool[:max_leases]}"]
-      else
-        lines
-      end
-
-    # Add domain_name
-    lines =
-      if pool[:domain_name] do
-        lines ++ ["domain_name = #{encode_toml_string(pool[:domain_name])}"]
-      else
-        lines
-      end
-
-    # Add dns_servers
-    lines =
+    dns_line =
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
           pool[:dns_servers]
@@ -541,10 +478,35 @@ defmodule YellowDog.Dhcpv6.PoolStore do
           |> Enum.map(&encode_toml_string/1)
           |> Enum.join(", ")
 
-        lines ++ ["dns_servers = [#{dns_list}]"]
+        ["dns_servers = [#{dns_list}]"]
       else
-        lines
+        []
       end
+
+    range_lines =
+      if pool[:range_start] do
+        [
+          "range_start = #{encode_toml_string(format_ipv6_for_toml(pool[:range_start]))}",
+          "range_end = #{encode_toml_string(format_ipv6_for_toml(pool[:range_end]))}"
+        ]
+      else
+        []
+      end
+
+    lines =
+      List.flatten([
+        "# DHCPv6 Pool Configuration",
+        "# Pool: #{pool[:name] || pool.name}",
+        "",
+        "enabled = #{get_boolean(pool, [:enabled, "enabled"], true)}",
+        if(pool[:network], do: "network = #{encode_toml_string(pool[:network])}", else: []),
+        range_lines,
+        if(pool[:preferred_lifetime], do: "preferred_lifetime = #{pool[:preferred_lifetime]}", else: []),
+        if(pool[:valid_lifetime], do: "valid_lifetime = #{pool[:valid_lifetime]}", else: []),
+        if(pool[:max_leases], do: "max_leases = #{pool[:max_leases]}", else: []),
+        if(pool[:domain_name], do: "domain_name = #{encode_toml_string(pool[:domain_name])}", else: []),
+        dns_line
+      ])
 
     Enum.join(lines, "\n") <> "\n"
   end
