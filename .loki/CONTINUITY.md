@@ -1,17 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 40)
+**Phase**: IN_PROGRESS (Iteration 41)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 40 of 1000
+**Iteration**: 41 of 1000
 
 ## Session Summary
-Iteration 40: DRY format_ip and CSV helpers:
-- ✅ **962 console tests, 0 failures, 0 warnings**
+Iteration 41: Replace Enum.map|>Enum.join with single-pass Enum.map_join:
+- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Converted **27 `Enum.map |> Enum.join` chains** to single-pass `Enum.map_join` across **15 files** in 7 apps
+- ✅ Covers TOML serializers (5 store modules), binary encoding (DHCPv4/v6), hex formatter, CSV/ACL/view formatters, EDNS0 key_tag
+- ✅ Composed two chained `Enum.map` calls into single `Enum.map_join` function arguments (pool_store DNS servers, zone validator types)
+- ✅ **1 commit this iteration** — net -56 lines
+
+Previous iteration 40: DRY format_ip and CSV helpers:
 - ✅ Extended `FormatHelper.format_ip/1` to handle IPv4/IPv6 tuples, binary passthrough, nil
 - ✅ Moved `format_addresses_for_csv/1` and `format_txt_for_csv/1` to CsvHelper
-- ✅ Removed **5 duplicate private functions** across mDNS discovery/services/monitor and DNS view/dhcpv4 pools
-- ✅ **1 commit this iteration** — net -29 lines
+- ✅ Removed **5 duplicate private functions** — net -29 lines
 
 Previous iteration 39: Extract service_running? to ServiceHelper:
 - ✅ Added `service_running?/1` to ServiceHelper — replaces **13 duplicate** `*_service_running?` functions
