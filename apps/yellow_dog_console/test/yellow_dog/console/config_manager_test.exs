@@ -43,9 +43,11 @@ defmodule YellowDog.Console.ConfigManagerTest do
       assert %{"dns" => %{"port" => 53}} = config
     end
 
-    @tag :capture_log
-    test "returns error for missing file" do
-      assert {:error, :file_not_found} = ConfigManager.load_config("/nonexistent/path.toml")
+    test "returns default config for missing file" do
+      assert {:ok, config} = ConfigManager.load_config("/nonexistent/path.toml")
+      assert config["core"]["dns"] == true
+      assert config["dns"]["port"] == 53
+      assert config["dhcpv4"]["port"] == 67
     end
 
     @tag :capture_log

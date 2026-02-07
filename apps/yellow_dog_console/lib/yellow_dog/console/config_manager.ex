@@ -32,7 +32,7 @@ defmodule YellowDog.Console.ConfigManager do
   def load_config(file_path) do
     case File.exists?(file_path) do
       false ->
-        {:error, :file_not_found}
+        {:ok, default_config_map()}
 
       true ->
         case Toml.decode_file(file_path) do
@@ -454,6 +454,42 @@ defmodule YellowDog.Console.ConfigManager do
     else
       :ok
     end
+  end
+
+  defp default_config_map do
+    %{
+      "core" => %{"dns" => true, "mdns" => true, "dhcpv4" => true, "dhcpv6" => true},
+      "dns" => %{"listen" => "0.0.0.0", "port" => 53},
+      "mdns" => %{"listen" => "0.0.0.0", "port" => 5353, "mode" => "responder"},
+      "dhcpv4" => %{
+        "listen" => "0.0.0.0",
+        "port" => 67,
+        "pools" => [
+          %{
+            "name" => "default",
+            "range_start" => "192.168.1.100",
+            "range_end" => "192.168.1.200",
+            "lease_time" => 3600,
+            "gateway" => "192.168.1.1",
+            "dns_servers" => ["8.8.8.8", "8.8.4.4"]
+          }
+        ]
+      },
+      "dhcpv6" => %{
+        "listen" => "::",
+        "port" => 547,
+        "pools" => [
+          %{
+            "name" => "default",
+            "range_start" => "2001:db8::100",
+            "range_end" => "2001:db8::200",
+            "preferred_lifetime" => 3600,
+            "valid_lifetime" => 7200,
+            "dns_servers" => ["2001:4860:4860::8888"]
+          }
+        ]
+      }
+    }
   end
 
   defp rotate_backups(file_path, opts) do

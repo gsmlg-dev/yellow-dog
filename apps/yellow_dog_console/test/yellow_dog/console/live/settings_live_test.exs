@@ -87,18 +87,16 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert has_element?(view, "input[name='service_configuration[enabled]'][checked]")
     end
 
-    @tag :capture_log
-    test "handles missing configuration file gracefully", %{conn: conn} do
+    test "loads default config when file does not exist", %{conn: conn} do
       # Set non-existent config path
       Application.put_env(:yellow_dog_console, :config_path, "/nonexistent/config.toml")
 
       {:ok, view, _html} = live(conn, ~p"/settings")
 
-      # Page should load without crashing, showing empty state
+      # Page should load with default configuration values
       rendered = render(view)
       assert rendered =~ "Service Settings"
-      assert rendered =~ "Config Version: 0"
-      # Should show form with default/empty values
+      # Should show form with default values pre-populated
       assert has_element?(view, "form")
     end
   end
