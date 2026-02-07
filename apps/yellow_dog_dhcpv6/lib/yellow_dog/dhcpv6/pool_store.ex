@@ -52,16 +52,10 @@ defmodule YellowDog.Dhcpv6.PoolStore do
       pools_dir = Path.join(Path.dirname(index_path), "pools")
 
       pools =
-        pool_names
-        |> Enum.map(fn name ->
-          pool_path = Path.join(pools_dir, "#{name}.toml")
-          load_pool_file(pool_path, name)
-        end)
-        |> Enum.filter(fn
-          {:ok, _} -> true
-          {:error, _} -> false
-        end)
-        |> Enum.map(fn {:ok, pool} -> pool end)
+        for name <- pool_names,
+            pool_path = Path.join(pools_dir, "#{name}.toml"),
+            {:ok, pool} <- [load_pool_file(pool_path, name)],
+            do: pool
 
       :telemetry.execute(
         [:yellow_dog, :dhcpv6, :pool_store, :loaded],
@@ -560,10 +554,10 @@ defmodule YellowDog.Dhcpv6.PoolStore do
         case Toml.decode(content) do
           {:ok, data} ->
             leases =
-              data
-              |> Map.get("leases", [])
-              |> Enum.map(&parse_lease_entry/1)
-              |> Enum.reject(&is_nil/1)
+              for entry <- Map.get(data, "leases", []),
+                  lease = parse_lease_entry(entry),
+                  not is_nil(lease),
+                  do: lease
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :pool_store, :leases_loaded],

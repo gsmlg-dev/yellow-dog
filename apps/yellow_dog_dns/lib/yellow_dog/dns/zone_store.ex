@@ -62,10 +62,9 @@ defmodule YellowDog.Dns.ZoneStore do
          {:ok, raw_data} <- parse_toml(content),
          {:ok, zones} <- extract_zones(raw_data) do
       validated_zones =
-        zones
-        |> Enum.map(&validate_and_normalize_zone/1)
-        |> Enum.reject(&match?({:error, _}, &1))
-        |> Enum.map(fn {:ok, zone} -> zone end)
+        for zone <- zones,
+            {:ok, validated} <- [validate_and_normalize_zone(zone)],
+            do: validated
 
       :telemetry.execute(
         [:yellow_dog, :dns, :zone_store, :loaded],

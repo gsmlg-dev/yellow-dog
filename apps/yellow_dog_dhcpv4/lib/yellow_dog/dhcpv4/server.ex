@@ -114,9 +114,7 @@ defmodule YellowDog.Dhcpv4.Server do
     config = get_config()
 
     # Convert defaults to keyword list
-    config_keywords =
-      config
-      |> Enum.map(fn {key, value} -> {key, value} end)
+    config_keywords = Map.to_list(config)
 
     # Handle special case for listen option - move it to transport_options
     {config_keywords, opts_with_transport} =

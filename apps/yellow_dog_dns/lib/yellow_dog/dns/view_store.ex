@@ -79,10 +79,9 @@ defmodule YellowDog.Dns.ViewStore do
          {:ok, raw_data} <- parse_toml(content),
          {:ok, views} <- extract_views(raw_data) do
       validated_views =
-        views
-        |> Enum.map(&validate_and_normalize_view/1)
-        |> Enum.reject(&match?({:error, _}, &1))
-        |> Enum.map(fn {:ok, view} -> view end)
+        for view <- views,
+            {:ok, validated} <- [validate_and_normalize_view(view)],
+            do: validated
 
       :telemetry.execute(
         [:yellow_dog, :dns, :view_store, :loaded],

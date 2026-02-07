@@ -115,9 +115,7 @@ defmodule YellowDog.Dhcpv6.Server do
     config = get_config()
 
     # Convert config map to keyword list for Keyword.merge
-    config_keywords =
-      config
-      |> Enum.map(fn {key, value} -> {key, value} end)
+    config_keywords = Map.to_list(config)
 
     # Handle special case for listen option - move it to transport_options
     {config_keywords, opts_with_transport} =

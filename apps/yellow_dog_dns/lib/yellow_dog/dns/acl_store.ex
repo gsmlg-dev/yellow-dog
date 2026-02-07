@@ -61,10 +61,9 @@ defmodule YellowDog.Dns.AclStore do
          {:ok, raw_data} <- parse_toml(content),
          {:ok, acls} <- extract_acls(raw_data) do
       validated_acls =
-        acls
-        |> Enum.map(&validate_and_normalize_acl/1)
-        |> Enum.reject(&match?({:error, _}, &1))
-        |> Enum.map(fn {:ok, acl} -> acl end)
+        for acl <- acls,
+            {:ok, validated} <- [validate_and_normalize_acl(acl)],
+            do: validated
 
       {:ok, validated_acls}
     else
