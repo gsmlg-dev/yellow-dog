@@ -1,17 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 42)
+**Phase**: IN_PROGRESS (Iteration 43)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 42 of 1000
+**Iteration**: 43 of 1000
 
 ## Session Summary
-Iteration 42: Enum.count/2 + DRY format_address:
-- ✅ **6,418 umbrella + 962 console tests, 0 failures, 0 warnings**
-- ✅ Replaced **7 `length(Enum.filter(...))`** with `Enum.count/2` in service_registry.ex stats/0 — avoids building intermediate filtered lists
-- ✅ Replaced duplicate `format_address` (4 clauses) with `FormatHelper.format_ip` in result_display.ex (-8 lines)
-- ✅ Converted remaining `Enum.map |> Enum.join(":")` in service_registry.ex format_ip/1
-- ✅ **1 commit this iteration** — net -11 lines
+Iteration 43: Replace Enum.map |> Map.new() with single-pass Map.new/2:
+- ✅ **1,058 umbrella + 962 console tests, 0 failures, 0 warnings**
+- ✅ Converted **11 `Enum.map(...) |> Map.new()`** chains to `Map.new/2` across **7 files** in 5 apps
+- ✅ Affected: pool_stats.ex (×2), custom_options.ex, view_manager.ex, lease_manager.ex (×4), pool_config.ex, record_form.ex, dhcpv6/server.ex
+- ✅ **1 commit this iteration** — net -18 lines
+
+Previous iteration 42: Enum.count/2 + DRY format_address:
+- ✅ Replaced 7 `length(Enum.filter)` with `Enum.count/2`, DRY format_address in result_display.ex
 
 Previous iteration 41: Replace Enum.map|>Enum.join with single-pass Enum.map_join:
 - ✅ Converted **27 chains** across **15 files** in 7 apps — net -56 lines
