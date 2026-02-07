@@ -13,7 +13,8 @@ Iteration 12: Event handler tests + resilience + debounce:
 - ✅ Fixed all mDNS LiveViews: try/rescue → try/catch for GenServer exit + ETS ArgumentError
 - ✅ aria-label on 14 select/dropdown filter elements
 - ✅ phx-debounce="300" on 4 search inputs (DHCPv4/v6 leases, pool, mDNS discovery)
-- ✅ **25 commits this iteration**: 21 prior + 4 this session
+- ✅ Fixed dead navbar search input (no event handlers) and non-functional data-confirm dialogs
+- ✅ **26 commits this iteration**: 21 prior + 5 this session
 
 ## DNS Implementation Status (Per PRD.md)
 
@@ -95,6 +96,7 @@ Iteration 12: Event handler tests + resilience + debounce:
 23. `e720080` - docs: update CONTINUITY with event handler tests iteration 12
 24. `1597e64` - fix(console): use try/catch in mDNS LiveViews for service-down resilience
 25. `967dc42` - fix(console): add phx-debounce to 4 search inputs
+26. `09d5b6b` - fix(console): remove dead navbar search, add data-confirm handler
 
 ## Mistakes & Learnings
 
@@ -123,6 +125,8 @@ Iteration 12: Event handler tests + resilience + debounce:
 12. **DaisyUI dark mode pattern**: Never use hardcoded Tailwind colors (`text-gray-500`, `bg-white`, etc.) — use DaisyUI semantic classes: `text-base-content/60`, `bg-base-100`, `bg-base-200`. The `/60` syntax is opacity — works in both light and dark themes.
 
 13. **catch vs rescue for service calls**: `rescue` catches exceptions (RuntimeError, ArgumentError). `catch :exit, _` catches exit signals (from GenServer.call to dead process). ETS operations on missing tables raise ArgumentError (`:error` kind). Use `catch kind, _ when kind in [:exit, :error]` to handle both failure modes.
+
+14. **data-confirm in LiveView 1.0**: Phoenix LiveView 1.0 does NOT include a built-in `data-confirm` handler. Need to add a capture-phase click listener in app.js: `document.body.addEventListener("click", handler, true)` that calls `confirm()` and blocks the event if cancelled. Use `e.target.closest("[data-confirm]")` for delegation.
 
 ## Next Steps
 1. ~~Add LiveView tests for CRUD operations~~ ✅ Done (65 CRUD tests added)
