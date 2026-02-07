@@ -216,21 +216,19 @@ defmodule YellowDog.Dhcpv4 do
   def add_pool(pool_config, opts \\ []) do
     persist = Keyword.get(opts, :persist, true)
 
-    case server_running?() do
-      true ->
-        # Server is running, use LeaseManager
-        case LeaseManager.add_pool(pool_config) do
-          {:ok, _pool} = success ->
-            if persist, do: LeaseManager.persist_pools()
-            success
+    if server_running?() do
+      # Server is running, use LeaseManager
+      case LeaseManager.add_pool(pool_config) do
+        {:ok, _pool} = success ->
+          if persist, do: LeaseManager.persist_pools()
+          success
 
-          error ->
-            error
-        end
-
-      false ->
-        # Server not running, use direct file operations
-        add_pool_direct(pool_config, persist)
+        error ->
+          error
+      end
+    else
+      # Server not running, use direct file operations
+      add_pool_direct(pool_config, persist)
     end
   end
 
@@ -264,21 +262,19 @@ defmodule YellowDog.Dhcpv4 do
   def update_pool(pool_name, pool_config, opts \\ []) do
     persist = Keyword.get(opts, :persist, true)
 
-    case server_running?() do
-      true ->
-        # Server is running, use LeaseManager
-        case LeaseManager.update_pool(pool_name, pool_config) do
-          {:ok, _pool} = success ->
-            if persist, do: LeaseManager.persist_pools()
-            success
+    if server_running?() do
+      # Server is running, use LeaseManager
+      case LeaseManager.update_pool(pool_name, pool_config) do
+        {:ok, _pool} = success ->
+          if persist, do: LeaseManager.persist_pools()
+          success
 
-          error ->
-            error
-        end
-
-      false ->
-        # Server not running, use direct file operations
-        update_pool_direct(pool_name, pool_config, persist)
+        error ->
+          error
+      end
+    else
+      # Server not running, use direct file operations
+      update_pool_direct(pool_name, pool_config, persist)
     end
   end
 
@@ -315,21 +311,19 @@ defmodule YellowDog.Dhcpv4 do
     persist = Keyword.get(opts, :persist, true)
     force = Keyword.get(opts, :force, false)
 
-    case server_running?() do
-      true ->
-        # Server is running, use LeaseManager
-        case LeaseManager.remove_pool(pool_name, force: force) do
-          :ok ->
-            if persist, do: LeaseManager.persist_pools()
-            :ok
+    if server_running?() do
+      # Server is running, use LeaseManager
+      case LeaseManager.remove_pool(pool_name, force: force) do
+        :ok ->
+          if persist, do: LeaseManager.persist_pools()
+          :ok
 
-          error ->
-            error
-        end
-
-      false ->
-        # Server not running, use direct file operations
-        remove_pool_direct(pool_name)
+        error ->
+          error
+      end
+    else
+      # Server not running, use direct file operations
+      remove_pool_direct(pool_name)
     end
   end
 
@@ -348,16 +342,14 @@ defmodule YellowDog.Dhcpv4 do
   """
   @spec get_pools() :: [map()]
   def get_pools do
-    case server_running?() do
-      true ->
-        LeaseManager.get_pools()
-
-      false ->
-        # Server not running, load from file
-        case PoolStore.load_pools() do
-          {:ok, pools} -> pools
-          {:error, _} -> []
-        end
+    if server_running?() do
+      LeaseManager.get_pools()
+    else
+      # Server not running, load from file
+      case PoolStore.load_pools() do
+        {:ok, pools} -> pools
+        {:error, _} -> []
+      end
     end
   end
 
