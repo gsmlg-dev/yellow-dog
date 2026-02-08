@@ -378,41 +378,30 @@ defmodule YellowDog.Dns.Zone.RPZ do
     {:passthru, response}
   end
 
-  defp create_nxdomain_response(query) do
-    %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: RCode.nx_domain()},
-      qdlist: query.qdlist,
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
-  end
+  defp create_nxdomain_response(query),
+    do: build_rpz_response(query, rcode: RCode.nx_domain())
 
-  defp create_nodata_response(query) do
-    %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 0, ra: 1, rcode: RCode.no_error()},
-      qdlist: query.qdlist,
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
-  end
+  defp create_nodata_response(query),
+    do: build_rpz_response(query, rcode: RCode.no_error())
 
-  defp create_tc_response(query) do
-    %Message{
-      header: %{query.header | qr: 1, aa: 0, tc: 1, ra: 1, rcode: RCode.no_error()},
-      qdlist: query.qdlist,
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
-  end
+  defp create_tc_response(query),
+    do: build_rpz_response(query, tc: 1, rcode: RCode.no_error())
 
-  defp create_local_data_response(query, local_data) do
+  defp create_local_data_response(query, local_data),
+    do: build_rpz_response(query, aa: 1, rcode: RCode.no_error(), anlist: local_data)
+
+  defp build_rpz_response(query, opts) do
     %Message{
-      header: %{query.header | qr: 1, aa: 1, tc: 0, ra: 1, rcode: RCode.no_error()},
+      header: %{
+        query.header
+        | qr: 1,
+          aa: Keyword.get(opts, :aa, 0),
+          tc: Keyword.get(opts, :tc, 0),
+          ra: 1,
+          rcode: Keyword.fetch!(opts, :rcode)
+      },
       qdlist: query.qdlist,
-      anlist: local_data,
+      anlist: Keyword.get(opts, :anlist, []),
       nslist: [],
       arlist: []
     }
