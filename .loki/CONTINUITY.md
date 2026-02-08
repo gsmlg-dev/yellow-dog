@@ -1,12 +1,27 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 122)
+**Phase**: IN_PROGRESS (Iteration 125)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 122 of 1000
+**Iteration**: 125 of 1000
 
 ## Session Summary
-Iteration 122: Pipeline simplification, DRY name normalization:
+Iteration 125: CSV bug fix, DRY magic cookie constants:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Fixed DHCPv6 pools CSV filename — was missing date timestamp (copy-paste bug from DHCPv4)
+- ✅ DRY: Decoder/Serializer now reference Helpers.magic_cookie/end_option instead of duplicating constants
+- ✅ 1 commit
+
+Iteration 124: Bug fix, shared utilities, DRY extraction:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Fixed `"<<>>"` string literal bug in DHCPv6 server.ex parse_ia_addresses (should be `<<>>` empty binary)
+- ✅ Extracted DHCPv4.IpUtil (4 functions) from server.ex, config.ex, client.ex
+- ✅ Extracted DHCPv6.IpUtil (3 functions) from server.ex, config.ex, client.ex, option.ex
+- ✅ Extracted parameterized update_rate_window/2 and get_rate/2 in Abyss.Telemetry (-70 lines)
+- ✅ Removed redundant alias + refactored rrset_data_to_record into multi-head build_record (iteration 123)
+- ✅ 2 commits — net -70 lines
+
+Previous iteration 122: Pipeline simplification, DRY name normalization:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ 3× `Enum.map |> MapSet.new` → `MapSet.new/2` (logs_live, view_manager)
 - ✅ `Enum.into(%{})` → `Map.new/1` in rate_limiter.ex
