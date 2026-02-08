@@ -35,6 +35,40 @@ defmodule YellowDog.Console.LogsLive do
 
   @available_levels [:debug, :info, :warning, :error]
 
+  @level_colors %{
+    debug: "text-base-content/60",
+    info: "text-info",
+    warning: "text-warning",
+    error: "text-error"
+  }
+
+  @level_badges %{
+    debug: "badge-ghost",
+    info: "badge-info",
+    warning: "badge-warning",
+    error: "badge-error"
+  }
+
+  @app_names %{
+    yellow_dog_dns: "DNS",
+    yellow_dog_dhcpv4: "DHCPv4",
+    yellow_dog_dhcpv6: "DHCPv6",
+    yellow_dog_mdns: "mDNS",
+    yellow_dog_console: "Console",
+    yellow_dog: "Core",
+    yellow_dog_telemetry: "Telemetry"
+  }
+
+  @app_badge_colors %{
+    yellow_dog_dns: "badge-primary",
+    yellow_dog_dhcpv4: "badge-secondary",
+    yellow_dog_dhcpv6: "badge-accent",
+    yellow_dog_mdns: "badge-success",
+    yellow_dog_console: "badge-warning",
+    yellow_dog: "badge-info",
+    yellow_dog_telemetry: "badge-neutral"
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -203,35 +237,13 @@ defmodule YellowDog.Console.LogsLive do
     Enum.take(merged, @max_logs)
   end
 
-  defp level_color(:debug), do: "text-base-content/60"
-  defp level_color(:info), do: "text-info"
-  defp level_color(:warning), do: "text-warning"
-  defp level_color(:error), do: "text-error"
-  defp level_color(_), do: "text-base-content"
+  defp level_color(level), do: Map.get(@level_colors, level, "text-base-content")
 
-  defp level_badge(:debug), do: "badge-ghost"
-  defp level_badge(:info), do: "badge-info"
-  defp level_badge(:warning), do: "badge-warning"
-  defp level_badge(:error), do: "badge-error"
-  defp level_badge(_), do: "badge-ghost"
+  defp level_badge(level), do: Map.get(@level_badges, level, "badge-ghost")
 
-  defp app_name(:yellow_dog_dns), do: "DNS"
-  defp app_name(:yellow_dog_dhcpv4), do: "DHCPv4"
-  defp app_name(:yellow_dog_dhcpv6), do: "DHCPv6"
-  defp app_name(:yellow_dog_mdns), do: "mDNS"
-  defp app_name(:yellow_dog_console), do: "Console"
-  defp app_name(:yellow_dog), do: "Core"
-  defp app_name(:yellow_dog_telemetry), do: "Telemetry"
-  defp app_name(other), do: to_string(other)
+  defp app_name(app), do: Map.get(@app_names, app) || to_string(app)
 
-  defp app_badge_color(:yellow_dog_dns), do: "badge-primary"
-  defp app_badge_color(:yellow_dog_dhcpv4), do: "badge-secondary"
-  defp app_badge_color(:yellow_dog_dhcpv6), do: "badge-accent"
-  defp app_badge_color(:yellow_dog_mdns), do: "badge-success"
-  defp app_badge_color(:yellow_dog_console), do: "badge-warning"
-  defp app_badge_color(:yellow_dog), do: "badge-info"
-  defp app_badge_color(:yellow_dog_telemetry), do: "badge-neutral"
-  defp app_badge_color(_), do: "badge-ghost"
+  defp app_badge_color(app), do: Map.get(@app_badge_colors, app, "badge-ghost")
 
   defp is_app_selected?(selected_apps, app) do
     MapSet.size(selected_apps) == 0 or MapSet.member?(selected_apps, app)

@@ -17,6 +17,22 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   @refresh_interval 5_000
 
+  @rcode_colors %{
+    "noerror" => "bg-success",
+    "nxdomain" => "bg-warning",
+    "servfail" => "bg-error",
+    "refused" => "bg-error"
+  }
+
+  @type_colors %{
+    "a" => "bg-primary",
+    "aaaa" => "bg-secondary",
+    "mx" => "bg-accent",
+    "cname" => "bg-info",
+    "txt" => "bg-warning",
+    "ns" => "bg-success"
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -156,19 +172,9 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp bar_width(count, max) when max > 0, do: Float.round(count / max * 100, 0)
   defp bar_width(_, _), do: 0
 
-  defp rcode_color("noerror"), do: "bg-success"
-  defp rcode_color("nxdomain"), do: "bg-warning"
-  defp rcode_color("servfail"), do: "bg-error"
-  defp rcode_color("refused"), do: "bg-error"
-  defp rcode_color(_), do: "bg-base-300"
+  defp rcode_color(code), do: Map.get(@rcode_colors, code, "bg-base-300")
 
-  defp type_color("a"), do: "bg-primary"
-  defp type_color("aaaa"), do: "bg-secondary"
-  defp type_color("mx"), do: "bg-accent"
-  defp type_color("cname"), do: "bg-info"
-  defp type_color("txt"), do: "bg-warning"
-  defp type_color("ns"), do: "bg-success"
-  defp type_color(_), do: "bg-base-300"
+  defp type_color(type), do: Map.get(@type_colors, type, "bg-base-300")
 
   @impl true
   def render(assigns) do

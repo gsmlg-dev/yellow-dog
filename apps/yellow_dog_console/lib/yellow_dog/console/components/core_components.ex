@@ -134,10 +134,12 @@ defmodule YellowDog.Console.CoreComponents do
 
   @doc "Returns a DaisyUI text color class for a DHCPv6 IA type."
   @spec ia_type_text_color(atom()) :: String.t()
-  def ia_type_text_color(:ia_na), do: "text-primary"
-  def ia_type_text_color(:ia_ta), do: "text-secondary"
-  def ia_type_text_color(:ia_pd), do: "text-accent"
-  def ia_type_text_color(_), do: "text-base-content"
+  def ia_type_text_color(type) do
+    case ia_type_color(type) do
+      "ghost" -> "text-base-content"
+      color -> "text-#{color}"
+    end
+  end
 
   ## DaisyUI Components
 

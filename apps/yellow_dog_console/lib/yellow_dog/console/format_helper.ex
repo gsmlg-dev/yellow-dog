@@ -70,7 +70,6 @@ defmodule YellowDog.Console.FormatHelper do
     remaining = expires_at - System.system_time(:second)
 
     cond do
-      remaining <= 0 -> "text-error"
       remaining < @seconds_per_hour -> "text-error"
       remaining < @seconds_per_two_hours -> "text-warning"
       true -> "text-base-content/50"

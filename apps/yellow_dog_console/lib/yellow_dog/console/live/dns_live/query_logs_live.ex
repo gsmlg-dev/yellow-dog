@@ -19,6 +19,15 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   @max_display 200
   @refresh_interval 2_000
 
+  @rcode_badges %{
+    "noerror" => "badge-success",
+    "nxdomain" => "badge-warning",
+    "servfail" => "badge-error",
+    "refused" => "badge-error"
+  }
+
+  @protocol_badges %{"udp" => "badge-info", "tcp" => "badge-primary"}
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -198,15 +207,9 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   defp format_response_time(us) when us < 1_000_000, do: "#{Float.round(us / 1_000, 1)}ms"
   defp format_response_time(us), do: "#{Float.round(us / 1_000_000, 2)}s"
 
-  defp rcode_badge("noerror"), do: "badge-success"
-  defp rcode_badge("nxdomain"), do: "badge-warning"
-  defp rcode_badge("servfail"), do: "badge-error"
-  defp rcode_badge("refused"), do: "badge-error"
-  defp rcode_badge(_), do: "badge-ghost"
+  defp rcode_badge(code), do: Map.get(@rcode_badges, code, "badge-ghost")
 
-  defp protocol_badge("udp"), do: "badge-info"
-  defp protocol_badge("tcp"), do: "badge-primary"
-  defp protocol_badge(_), do: "badge-ghost"
+  defp protocol_badge(proto), do: Map.get(@protocol_badges, proto, "badge-ghost")
 
   defp build_csv(entries) do
     header =
