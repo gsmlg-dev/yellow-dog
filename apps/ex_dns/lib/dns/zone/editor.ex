@@ -554,14 +554,14 @@ defmodule DNS.Zone.Editor do
     by_type = Enum.group_by(sorted_records, & &1.type)
 
     content =
-      Enum.reduce(by_type, content, fn {type, records}, acc ->
-        acc ++
+      content ++
+        Enum.flat_map(by_type, fn {type, records} ->
           [
             "; #{String.upcase(to_string(type))} records",
             Enum.map(records, &record_to_bind_line/1),
             ""
           ]
-      end)
+        end)
 
     {:ok, Enum.join(content, "\n")}
   end
@@ -597,8 +597,8 @@ defmodule DNS.Zone.Editor do
     ]
 
     yaml =
-      Enum.reduce(records, yaml, fn record, acc ->
-        acc ++
+      yaml ++
+        Enum.flat_map(records, fn record ->
           [
             "  - name: #{record.name.value}",
             "    type: #{record.type}",
@@ -606,7 +606,7 @@ defmodule DNS.Zone.Editor do
             "    ttl: #{record.ttl}",
             "    data: #{inspect(record.data)}"
           ]
-      end)
+        end)
 
     {:ok, Enum.join(yaml, "\n")}
   end

@@ -8,6 +8,8 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   import YellowDog.ConfigHelpers
 
+  alias YellowDog.Dhcpv6.Ipv6Util
+
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
   @type duid :: binary()
@@ -108,7 +110,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   @spec to_toml_map(t()) :: map()
   def to_toml_map(%__MODULE__{} = lease) do
     base = %{
-      "ip" => format_ipv6(lease.ip),
+      "ip" => Ipv6Util.format(lease.ip),
       "duid" => format_duid_string(lease.duid),
       "iaid" => lease.iaid,
       "pool_name" => lease.pool_name,
@@ -247,8 +249,6 @@ defmodule YellowDog.Dhcpv6.Lease do
   defp parse_iaid(_), do: {:error, "Invalid IAID"}
 
   # Formatting helpers
-
-  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   defp format_duid_string(duid) when is_binary(duid) do
     # If it's already hex-encoded (contains colons or all hex chars), return as-is

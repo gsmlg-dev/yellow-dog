@@ -8,6 +8,8 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   import YellowDog.ConfigHelpers
 
+  alias YellowDog.Dhcpv6.Ipv6Util
+
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
   @type duid :: binary()
@@ -110,7 +112,7 @@ defmodule YellowDog.Dhcpv6.Pool do
       "enabled" => pool.enabled,
       "mode" => Atom.to_string(pool.mode),
       "prefix" => %{
-        "address" => format_ipv6(prefix_ip),
+        "address" => Ipv6Util.format(prefix_ip),
         "prefix_len" => prefix_len
       },
       "lifetimes" => %{
@@ -123,7 +125,7 @@ defmodule YellowDog.Dhcpv6.Pool do
     base
     |> maybe_put_range("range", pool.range)
     |> maybe_put("domain_name", pool.domain_name)
-    |> maybe_put_list("dns_servers", Enum.map(pool.dns_servers, &format_ipv6/1))
+    |> maybe_put_list("dns_servers", Enum.map(pool.dns_servers, &Ipv6Util.format/1))
     |> maybe_put_map("reservations", format_reservations(pool.reservations))
     |> maybe_put_list("pd_pools", format_pd_pools(pool.pd_pools))
     |> maybe_put_map("options", format_options(pool.options))
@@ -377,19 +379,17 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   # Formatting helpers
 
-  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
-
   defp format_reservations(map) when map == %{}, do: nil
 
   defp format_reservations(map) do
-    Map.new(map, fn {duid, ip} -> {duid, format_ipv6(ip)} end)
+    Map.new(map, fn {duid, ip} -> {duid, Ipv6Util.format(ip)} end)
   end
 
   defp format_pd_pools([]), do: []
 
   defp format_pd_pools(pools) do
     Enum.map(pools, fn %{prefix: prefix, length: len, delegated_len: del_len} ->
-      %{"prefix" => format_ipv6(prefix), "length" => len, "delegated_len" => del_len}
+      %{"prefix" => Ipv6Util.format(prefix), "length" => len, "delegated_len" => del_len}
     end)
   end
 
@@ -399,7 +399,7 @@ defmodule YellowDog.Dhcpv6.Pool do
   defp maybe_put_range(map, _key, nil), do: map
 
   defp maybe_put_range(map, key, {start_ip, end_ip}) do
-    Map.put(map, key, %{"start" => format_ipv6(start_ip), "end" => format_ipv6(end_ip)})
+    Map.put(map, key, %{"start" => Ipv6Util.format(start_ip), "end" => Ipv6Util.format(end_ip)})
   end
 
   defp maybe_put_acl(map, _key, %{allow: [], deny: []}), do: map

@@ -1144,16 +1144,14 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     start1_int <= end2_int and start2_int <= end1_int
   end
 
-  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
-
   # Convert a pool struct to a config map suitable for PoolStore
   defp pool_struct_to_config(pool) do
     %{
       name: pool.name,
       network: Map.get(pool, :network),
-      range_start: format_ipv6(pool.range_start),
-      range_end: format_ipv6(pool.range_end),
-      dns_servers: Enum.map(pool.dns_servers || [], &format_ipv6/1),
+      range_start: Ipv6Util.format(pool.range_start),
+      range_end: Ipv6Util.format(pool.range_end),
+      dns_servers: Enum.map(pool.dns_servers || [], &Ipv6Util.format/1),
       domain_name: pool.domain_name,
       preferred_lifetime: pool.preferred_lifetime,
       valid_lifetime: pool.valid_lifetime,

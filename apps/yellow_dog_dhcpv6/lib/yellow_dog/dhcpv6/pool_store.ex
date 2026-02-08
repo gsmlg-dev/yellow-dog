@@ -12,7 +12,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   - Atomic updates to individual pools without affecting others
   """
 
-  alias YellowDog.Dhcpv6.AddressPool
+  alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util}
   import YellowDog.Config.TomlHelpers
 
   @type pool_config :: %{
@@ -468,7 +468,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
           Enum.map_join(pool[:dns_servers], ", ", fn ip ->
-            ip |> format_ipv6_for_toml() |> encode_toml_string()
+            ip |> Ipv6Util.format() |> encode_toml_string()
           end)
 
         ["dns_servers = [#{dns_list}]"]
@@ -479,8 +479,8 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     range_lines =
       if pool[:range_start] do
         [
-          "range_start = #{encode_toml_string(format_ipv6_for_toml(pool[:range_start]))}",
-          "range_end = #{encode_toml_string(format_ipv6_for_toml(pool[:range_end]))}"
+          "range_start = #{encode_toml_string(Ipv6Util.format(pool[:range_start]))}",
+          "range_end = #{encode_toml_string(Ipv6Util.format(pool[:range_end]))}"
         ]
       else
         []
@@ -509,8 +509,6 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     Enum.join(lines, "\n") <> "\n"
   end
-
-  defp format_ipv6_for_toml(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   # ============================================================================
   # Lease Persistence Functions
@@ -712,7 +710,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     """
     [[leases]]
-    ip = "#{format_ipv6_for_toml(ip)}"
+    ip = "#{Ipv6Util.format(ip)}"
     duid = "#{format_duid(duid)}"
     iaid = #{iaid}
     pool_name = "#{lease[:pool_name] || "default"}"
