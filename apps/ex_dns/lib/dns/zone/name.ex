@@ -25,10 +25,8 @@ defmodule DNS.Zone.Name do
 
         list ->
           list
-          |> Enum.reduce(<<>>, fn part, acc ->
-            part_length = byte_size(part)
-            <<part_length::8, part::binary-size(part_length), acc::binary>>
-          end)
+          |> Enum.reverse()
+          |> Enum.map_join(fn part -> <<byte_size(part)::8, part::binary>> end)
       end
 
     %Name{
