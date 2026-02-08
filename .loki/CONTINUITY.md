@@ -1,11 +1,16 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 151)
+**Phase**: IN_PROGRESS (Iteration 152)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 151 of 1000
+**Iteration**: 152 of 1000
 
 ## Session Summary
+Iteration 152: Replace last reduce binary building in Name.new:
+- ✅ **All tests pass: 51 name, 59 domain, 4764 ex_dns total, 0 credo issues, 0 warnings**
+- ✅ Name.new/1: implicit reverse via prepend-reduce → explicit Enum.reverse |> Enum.map_join
+- ✅ 1 commit — 1 file — net -2 lines
+
 Iteration 151: Replace reverse+reduce binary building with map_join + DRY message cache:
 - ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
 - ✅ ex_dns Name.to_iodata + Domain.to_iodata + domain_byte_size: Enum.reverse|>Enum.reduce(<<0>>) → Enum.map_join <> <<0>>
