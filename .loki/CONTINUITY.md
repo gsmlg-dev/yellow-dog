@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 154)
+**Phase**: IN_PROGRESS (Iteration 155)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 154 of 1000
+**Iteration**: 155 of 1000
 
 ## Session Summary
+Iteration 155: DRY metrics_collector min/max tracking:
+- ✅ **All tests pass: 1083 DNS, 16 metrics, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Extracted update_bound/4 with comparator fn (replaces 2 identical case blocks)
+- ✅ Extracted read_bound/2 (replaces 2 identical ETS lookups)
+- ✅ 1 commit — 1 file — net -11 lines
+
 Iteration 154: Extract clear_file_services helper in service registry:
 - ✅ **All tests pass: 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Extracted duplicated clear-and-reload pattern into clear_file_services/0
