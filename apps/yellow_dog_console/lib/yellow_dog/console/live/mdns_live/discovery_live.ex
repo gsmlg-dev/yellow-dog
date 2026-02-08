@@ -7,6 +7,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [format_expiration: 1, format_time_ago: 1]
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -93,8 +94,8 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     search_lower = String.downcase(search)
 
     Enum.filter(services, fn service ->
-      String.contains?(String.downcase(service.name), search_lower) ||
-        String.contains?(String.downcase(service.type), search_lower)
+      downcase_contains?(service.name, search_lower) ||
+        downcase_contains?(service.type, search_lower)
     end)
   end
 

@@ -7,6 +7,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_time: 1]
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -99,9 +100,9 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     term = String.downcase(search)
 
     Enum.filter(queries, fn query ->
-      String.contains?(String.downcase(query.name || ""), term) or
-        String.contains?(String.downcase(to_string(query.type)), term) or
-        String.contains?(String.downcase(format_ip(query.source_ip)), term)
+      downcase_contains?(query.name || "", term) or
+        downcase_contains?(to_string(query.type), term) or
+        downcase_contains?(format_ip(query.source_ip), term)
     end)
   end
 

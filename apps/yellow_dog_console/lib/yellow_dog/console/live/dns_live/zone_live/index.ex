@@ -10,6 +10,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
@@ -785,7 +786,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
     filter_lower = String.downcase(filter)
 
     Enum.filter(zones, fn zone ->
-      String.contains?(String.downcase(zone.name), filter_lower)
+      downcase_contains?(zone.name, filter_lower)
     end)
   end
 

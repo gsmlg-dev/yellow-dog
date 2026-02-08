@@ -9,6 +9,7 @@ defmodule YellowDog.Console.LogsLive do
 
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.LogBroadcaster
 
@@ -243,7 +244,7 @@ defmodule YellowDog.Console.LogsLive do
     term = String.downcase(search)
 
     Enum.filter(logs, fn log ->
-      String.contains?(String.downcase(log.message || ""), term)
+      downcase_contains?(log.message || "", term)
     end)
   end
 

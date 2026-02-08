@@ -10,6 +10,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [format_ip: 1, filtered_countries: 2]
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
@@ -473,7 +474,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
     filter_lower = String.downcase(filter)
 
     Enum.filter(views, fn view ->
-      String.contains?(String.downcase(view.name), filter_lower)
+      downcase_contains?(view.name, filter_lower)
     end)
   end
 

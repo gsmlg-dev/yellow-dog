@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [filtered_countries: 2]
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
@@ -638,8 +639,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     filter_lower = String.downcase(filter)
 
     Enum.filter(acls, fn acl ->
-      String.contains?(String.downcase(acl.name), filter_lower) or
-        String.contains?(String.downcase(acl.description || ""), filter_lower)
+      downcase_contains?(acl.name, filter_lower) or
+        downcase_contains?(acl.description || "", filter_lower)
     end)
   end
 
@@ -655,7 +656,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     filter_lower = String.downcase(filter)
 
     Enum.filter(views, fn view ->
-      String.contains?(String.downcase(view.name), filter_lower)
+      downcase_contains?(view.name, filter_lower)
     end)
   end
 

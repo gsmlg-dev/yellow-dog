@@ -39,4 +39,30 @@ defmodule YellowDog.Console.StringHelper do
   end
 
   def split_and_trim(_, _), do: []
+
+  @doc """
+  Case-insensitive substring check.
+
+  Returns `true` if `haystack` contains `needle` (both downcased).
+  The `needle` should already be downcased by the caller for efficiency
+  when checking multiple fields against the same search term.
+
+  ## Examples
+
+      iex> StringHelper.downcase_contains?("Hello World", "hello")
+      true
+
+      iex> StringHelper.downcase_contains?("DNS Server", "ftp")
+      false
+
+      iex> StringHelper.downcase_contains?("", "test")
+      false
+
+  """
+  @spec downcase_contains?(String.t(), String.t()) :: boolean()
+  def downcase_contains?(haystack, needle) when is_binary(haystack) and is_binary(needle) do
+    String.contains?(String.downcase(haystack), needle)
+  end
+
+  def downcase_contains?(_, _), do: false
 end

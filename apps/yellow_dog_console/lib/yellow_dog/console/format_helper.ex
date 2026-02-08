@@ -7,6 +7,8 @@ defmodule YellowDog.Console.FormatHelper do
   IPv4/IPv6 addresses, or lease timestamps.
   """
 
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
+
   @seconds_per_minute 60
   @seconds_per_hour 3_600
   @seconds_per_day 86_400
@@ -205,8 +207,7 @@ defmodule YellowDog.Console.FormatHelper do
     search_lower = String.downcase(search)
 
     Enum.filter(countries, fn %{code: code, name: name} ->
-      String.contains?(String.downcase(name), search_lower) or
-        String.contains?(String.downcase(code), search_lower)
+      downcase_contains?(name, search_lower) or downcase_contains?(code, search_lower)
     end)
   end
 
@@ -218,9 +219,9 @@ defmodule YellowDog.Console.FormatHelper do
     term = String.downcase(filter)
 
     Enum.filter(pools, fn pool ->
-      String.contains?(String.downcase(pool.name), term) or
-        String.contains?(String.downcase(pool[:network] || ""), term) or
-        String.contains?(String.downcase(format_ip(pool.range_start) || ""), term)
+      downcase_contains?(pool.name, term) or
+        downcase_contains?(pool[:network] || "", term) or
+        downcase_contains?(format_ip(pool.range_start) || "", term)
     end)
   end
 

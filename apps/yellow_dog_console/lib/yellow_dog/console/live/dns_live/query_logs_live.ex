@@ -11,6 +11,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
   import YellowDog.Console.ServiceHelper
+  import YellowDog.Console.StringHelper, only: [downcase_contains?: 2]
 
   alias YellowDog.Console.Layouts
   alias YellowDog.Dns.QueryLogger
@@ -154,7 +155,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     q = String.downcase(query)
 
     Enum.filter(entries, fn e ->
-      (e.qname && String.contains?(String.downcase(to_string(e.qname)), q)) ||
+      (e.qname && downcase_contains?(to_string(e.qname), q)) ||
         (e.client_ip && String.contains?(format_ip(e.client_ip), q))
     end)
   end
