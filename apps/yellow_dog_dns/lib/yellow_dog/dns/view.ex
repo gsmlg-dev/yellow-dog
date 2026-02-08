@@ -42,7 +42,6 @@ defmodule YellowDog.Dns.View do
   alias YellowDog.Dns.ZoneController
   alias DNS.Message
 
-
   @default_priority 100
 
   defstruct [
