@@ -8,8 +8,8 @@ defmodule DHCPv4.Message.Option.Decoder do
 
   alias DHCPv4.Message.Option.{Types, Helpers}
 
-  @magic_cookie <<99, 130, 83, 99>>
-  @end_option 0xFF
+  @magic_cookie Helpers.magic_cookie()
+  @end_option Helpers.end_option()
 
   @doc """
   Parse DHCP options from binary data.

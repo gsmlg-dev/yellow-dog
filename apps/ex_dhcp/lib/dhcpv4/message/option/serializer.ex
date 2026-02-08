@@ -7,9 +7,10 @@ defmodule DHCPv4.Message.Option.Serializer do
   """
 
   alias DHCP.Parameter
+  alias DHCPv4.Message.Option.Helpers
 
-  @magic_cookie <<99, 130, 83, 99>>
-  @end_option 0xFF
+  @magic_cookie Helpers.magic_cookie()
+  @end_option Helpers.end_option()
 
   @doc """
   Convert a list of DHCP options to binary format.

@@ -117,7 +117,11 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
   def handle_event("export_csv", _params, socket) do
     pools = filtered_pools(socket.assigns.pools, socket.assigns.filter)
     csv = build_pools_csv(pools)
-    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: "dhcpv6_pools.csv"})}
+    {:noreply,
+     push_event(socket, "download_csv", %{
+       content: csv,
+       filename: "dhcpv6_pools_#{Date.to_iso8601(Date.utc_today())}.csv"
+     })}
   end
 
   @impl true
