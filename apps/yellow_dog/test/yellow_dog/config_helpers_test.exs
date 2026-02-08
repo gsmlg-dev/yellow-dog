@@ -128,6 +128,31 @@ defmodule YellowDog.ConfigHelpersTest do
     end
   end
 
+  describe "collect_ok/1" do
+    test "returns ok with values when all results succeed" do
+      assert ConfigHelpers.collect_ok([{:ok, 1}, {:ok, 2}, {:ok, 3}]) == {:ok, [1, 2, 3]}
+    end
+
+    test "returns ok with empty list for empty input" do
+      assert ConfigHelpers.collect_ok([]) == {:ok, []}
+    end
+
+    test "returns error with error tuples when any result fails" do
+      results = [{:ok, 1}, {:error, :bad}, {:ok, 3}]
+      assert {:error, [{:error, :bad}]} = ConfigHelpers.collect_ok(results)
+    end
+
+    test "collects all errors when multiple fail" do
+      results = [{:error, :a}, {:error, :b}]
+      assert {:error, [{:error, :a}, {:error, :b}]} = ConfigHelpers.collect_ok(results)
+    end
+
+    test "preserves complex ok values" do
+      results = [{:ok, {1, 2}}, {:ok, %{x: 3}}]
+      assert {:ok, [{1, 2}, %{x: 3}]} = ConfigHelpers.collect_ok(results)
+    end
+  end
+
   describe "maybe_put_map/3" do
     test "skips nil" do
       assert ConfigHelpers.maybe_put_map(%{}, "key", nil) == %{}
