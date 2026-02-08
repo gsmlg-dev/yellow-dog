@@ -12,6 +12,31 @@ defmodule YellowDog.Dns.Zone.BehaviourTest do
 
   alias YellowDog.Dns.Zone.Behaviour
 
+  describe "zone_via_tuple/3" do
+    test "returns a :via registry tuple" do
+      result = Behaviour.zone_via_tuple("default", :auth, "example.com")
+
+      assert {:via, Registry, {YellowDog.Dns.ZoneRegistry, {"default", :auth, "example.com"}}} =
+               result
+    end
+
+    test "encodes view_name, zone_type, and zone_name in the key" do
+      {:via, Registry, {YellowDog.Dns.ZoneRegistry, key}} =
+        Behaviour.zone_via_tuple("internal", :forward, "corp.local")
+
+      assert key == {"internal", :forward, "corp.local"}
+    end
+
+    test "different arguments produce different tuples" do
+      via1 = Behaviour.zone_via_tuple("default", :auth, "a.com")
+      via2 = Behaviour.zone_via_tuple("default", :auth, "b.com")
+      via3 = Behaviour.zone_via_tuple("other", :auth, "a.com")
+
+      assert via1 != via2
+      assert via1 != via3
+    end
+  end
+
   describe "module structure" do
     test "module is defined and loadable" do
       {:module, _} = Code.ensure_loaded(Behaviour)
