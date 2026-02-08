@@ -115,10 +115,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   end
 
   defp count_unique_hosts(services) do
-    services
-    |> Enum.map(& &1.host)
-    |> Enum.reject(&is_nil/1)
-    |> MapSet.new()
+    for(s <- services, s.host != nil, into: MapSet.new(), do: s.host)
     |> MapSet.size()
   end
 

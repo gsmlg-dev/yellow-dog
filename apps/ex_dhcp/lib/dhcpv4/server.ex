@@ -96,14 +96,14 @@ defmodule DHCPv4.Server do
       state.leases
       |> Enum.split_with(fn {_key, lease} -> lease.expires_at <= now end)
 
-    expired_ips =
-      expired_leases
-      |> Enum.map(fn {_key, lease} -> lease.ip end)
-
     %{
       state
       | leases: Map.new(active_leases),
-        used_ips: MapSet.difference(state.used_ips, MapSet.new(expired_ips))
+        used_ips:
+          MapSet.difference(
+            state.used_ips,
+            MapSet.new(expired_leases, fn {_key, lease} -> lease.ip end)
+          )
     }
   end
 
@@ -328,9 +328,7 @@ defmodule DHCPv4.Server do
     start_int = ip_to_int(start_ip)
     end_int = ip_to_int(end_ip)
 
-    Enum.reduce(start_int..end_int, MapSet.new(), fn ip_int, acc ->
-      MapSet.put(acc, int_to_ip(ip_int))
-    end)
+    MapSet.new(start_int..end_int, &int_to_ip/1)
   end
 
   defp choose_ip(available_ips, message) do

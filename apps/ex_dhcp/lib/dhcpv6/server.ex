@@ -95,10 +95,6 @@ defmodule DHCPv6.Server do
       end)
       |> Enum.split_with(fn {_key, lease} -> lease.expires_at <= now end)
 
-    expired_ips =
-      expired_leases
-      |> Enum.map(fn {_key, lease} -> lease.ip end)
-
     new_leases =
       active_leases
       |> Enum.group_by(fn {{duid, _iaid}, _lease} -> duid end, fn {{_duid, iaid}, lease} ->
@@ -109,7 +105,11 @@ defmodule DHCPv6.Server do
     %{
       state
       | leases: new_leases,
-        used_ips: MapSet.difference(state.used_ips, MapSet.new(expired_ips))
+        used_ips:
+          MapSet.difference(
+            state.used_ips,
+            MapSet.new(expired_leases, fn {_key, lease} -> lease.ip end)
+          )
     }
   end
 
@@ -415,9 +415,7 @@ defmodule DHCPv6.Server do
     start_int = ip6_to_int(start_ip)
     end_int = ip6_to_int(end_ip)
 
-    Enum.reduce(start_int..end_int, MapSet.new(), fn ip_int, acc ->
-      MapSet.put(acc, int_to_ip6(ip_int))
-    end)
+    MapSet.new(start_int..end_int, &int_to_ip6/1)
   end
 
   ## Message Building

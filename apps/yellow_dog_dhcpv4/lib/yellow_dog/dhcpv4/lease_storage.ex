@@ -379,9 +379,7 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
   """
   @spec get_allocated_ips() :: MapSet.t(ip_address())
   def get_allocated_ips do
-    list_active()
-    |> Enum.map(& &1.ip_address)
-    |> MapSet.new()
+    MapSet.new(list_active(), & &1.ip_address)
   end
 
   @doc """

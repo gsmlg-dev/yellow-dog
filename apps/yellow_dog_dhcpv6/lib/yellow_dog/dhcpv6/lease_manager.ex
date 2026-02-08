@@ -161,9 +161,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   """
   @spec get_allocated_ips() :: MapSet.t(ipv6_address())
   def get_allocated_ips do
-    list_leases()
-    |> Enum.map(& &1.ip)
-    |> MapSet.new()
+    MapSet.new(list_leases(), & &1.ip)
   end
 
   @doc """

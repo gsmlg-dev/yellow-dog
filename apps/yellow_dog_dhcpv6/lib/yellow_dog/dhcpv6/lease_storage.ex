@@ -471,8 +471,9 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   """
   @spec get_allocated_ips() :: MapSet.t(ipv6_address())
   def get_allocated_ips do
-    for(lease <- list_active(), lease.ip_address != nil, do: lease.ip_address)
-    |> MapSet.new()
+    for lease <- list_active(), lease.ip_address != nil, into: MapSet.new() do
+      lease.ip_address
+    end
   end
 
   @doc """
@@ -486,8 +487,9 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   def get_allocated_prefixes do
     leases = list(ia_type: :ia_pd, active_only: true)
 
-    for(lease <- leases, lease.delegated_prefix != nil, do: lease.delegated_prefix)
-    |> MapSet.new()
+    for lease <- leases, lease.delegated_prefix != nil, into: MapSet.new() do
+      lease.delegated_prefix
+    end
   end
 
   @doc """
