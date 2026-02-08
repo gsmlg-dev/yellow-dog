@@ -21,6 +21,8 @@ defmodule DNS.Zone.FileParser do
 
   alias DNS.Zone.RRSet
 
+  @valid_classes ~w(IN CH HS NONE ANY)
+
   @type zone_data :: %{
           origin: String.t() | nil,
           ttl: integer(),
@@ -308,7 +310,7 @@ defmodule DNS.Zone.FileParser do
                 )
             end
 
-          [class, type | data] when class in ["IN", "CH", "HS", "NONE", "ANY"] ->
+          [class, type | data] when class in @valid_classes ->
             parse_record(zone, name, zone.ttl, class, type, Enum.join(data, " "), name)
 
           [type | data] ->

@@ -54,6 +54,8 @@ defmodule YellowDog.Dns.View.ACL do
 
   defstruct [:name, :rules]
 
+  @valid_actions [:allow, :deny]
+
   @type ip_address :: :inet.ip_address()
   @type cidr :: {ip_address(), non_neg_integer()}
   @type geo_rule :: {:geo, [String.t()]}
@@ -222,11 +224,11 @@ defmodule YellowDog.Dns.View.ACL do
     end
   end
 
-  defp match_rule?({action, :any}, _ip) when action in [:allow, :deny] do
+  defp match_rule?({action, :any}, _ip) when action in @valid_actions do
     {:match, action}
   end
 
-  defp match_rule?({action, ip, prefix}, client_ip) when action in [:allow, :deny] do
+  defp match_rule?({action, ip, prefix}, client_ip) when action in @valid_actions do
     if ip_in_subnet?(client_ip, ip, prefix) do
       {:match, action}
     else
@@ -234,7 +236,7 @@ defmodule YellowDog.Dns.View.ACL do
     end
   end
 
-  defp match_rule?({action, ip}, client_ip) when action in [:allow, :deny] and is_tuple(ip) do
+  defp match_rule?({action, ip}, client_ip) when action in @valid_actions and is_tuple(ip) do
     # Exact IP match
     if client_ip == ip do
       {:match, action}
@@ -244,7 +246,7 @@ defmodule YellowDog.Dns.View.ACL do
   end
 
   defp match_rule?({action, cidr_string}, client_ip)
-       when action in [:allow, :deny] and is_binary(cidr_string) do
+       when action in @valid_actions and is_binary(cidr_string) do
     case parse_cidr(cidr_string) do
       {:ok, {ip, prefix}} ->
         if ip_in_subnet?(client_ip, ip, prefix) do
@@ -261,7 +263,7 @@ defmodule YellowDog.Dns.View.ACL do
   # Geo-based rule matching
   # Matches clients based on their geographic location (country)
   defp match_rule?({action, {:geo, country_codes}}, client_ip)
-       when action in [:allow, :deny] and is_list(country_codes) do
+       when action in @valid_actions and is_list(country_codes) do
     case GeoIpDb.country_code(client_ip) do
       {:ok, code} when is_binary(code) ->
         if code in country_codes do

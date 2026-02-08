@@ -71,6 +71,12 @@ defmodule DNS.Zone.Parser do
           }
   end
 
+  @digits ~w(0 1 2 3 4 5 6 7 8 9)
+  @whitespace [" ", "\t", "\r"]
+  @time_units ~w(s m h d w)
+  @dns_classes ~w(IN CH HS)
+  @record_types ~w(A AAAA CNAME MX NS TXT SOA PTR SRV NAPTR)
+
   # Parser state
   defstruct [:tokens, :position, :current_token, :zone_file]
 
@@ -147,7 +153,7 @@ defmodule DNS.Zone.Parser do
       %{current_char: "\""} = l ->
         read_quoted_string(l)
 
-      %{current_char: c} = l when c in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] ->
+      %{current_char: c} = l when c in @digits ->
         read_number_or_time(l)
 
       l ->
@@ -156,7 +162,7 @@ defmodule DNS.Zone.Parser do
   end
 
   # Skip whitespace (except newlines)
-  defp skip_whitespace(%{current_char: char} = lexer) when char in [" ", "\t", "\r"] do
+  defp skip_whitespace(%{current_char: char} = lexer) when char in @whitespace do
     lexer
     |> advance_lexer()
     |> skip_whitespace()
@@ -245,7 +251,7 @@ defmodule DNS.Zone.Parser do
         token = {:ipv6, ipv6_str, {start_line, start_column}}
         {token, final_lexer}
 
-      unit when unit in ["s", "m", "h", "d", "w"] ->
+      unit when unit in @time_units ->
         # It's a time value
         time_str = initial_segment <> unit
         token = {:time_value, time_str, {start_line, start_column}}
@@ -261,8 +267,7 @@ defmodule DNS.Zone.Parser do
 
   # Read IPv4 address characters (digits and dots)
   defp read_while_ipv4_char(%{current_char: char} = lexer, acc)
-       when char != nil and
-              (char in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] or char == ".") do
+       when char != nil and (char in @digits or char == ".") do
     read_while_ipv4_char(advance_lexer(lexer), acc <> char)
   end
 
@@ -281,7 +286,7 @@ defmodule DNS.Zone.Parser do
   defp read_while_ipv6_char(lexer, acc), do: {acc, lexer}
 
   defp read_while_numeric(%{current_char: char} = lexer, acc)
-       when char in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] do
+       when char in @digits do
     read_while_numeric(advance_lexer(lexer), acc <> char)
   end
 
@@ -298,7 +303,7 @@ defmodule DNS.Zone.Parser do
   end
 
   defp read_while_identifier_char(%{current_char: char} = lexer, acc)
-       when char != nil and char not in [" ", "\t", "\n", "\r", "(", ")", ";", "\""] do
+       when char != nil and char not in @whitespace and char not in ["\n", "(", ")", ";", "\""] do
     read_while_identifier_char(advance_lexer(lexer), acc <> char)
   end
 
@@ -321,10 +326,10 @@ defmodule DNS.Zone.Parser do
       identifier == "@" ->
         :name
 
-      identifier in ["IN", "CH", "HS"] ->
+      identifier in @dns_classes ->
         :class
 
-      identifier in ["A", "AAAA", "CNAME", "MX", "NS", "TXT", "SOA", "PTR", "SRV", "NAPTR"] ->
+      identifier in @record_types ->
         :type
 
       # Fully qualified domain name
