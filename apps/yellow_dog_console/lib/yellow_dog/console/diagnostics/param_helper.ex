@@ -8,9 +8,7 @@ defmodule YellowDog.Console.Diagnostics.ParamHelper do
 
   @doc "Gets a string value from params, checking both atom and string keys."
   @spec get_string(map(), atom()) :: String.t()
-  def get_string(params, key) do
-    Map.get(params, key) || Map.get(params, to_string(key)) || ""
-  end
+  def get_string(params, key), do: fetch_param(params, key, "") || ""
 
   @doc "Gets an integer value from params with type coercion and default."
   @spec get_integer(map(), atom(), integer()) :: integer()

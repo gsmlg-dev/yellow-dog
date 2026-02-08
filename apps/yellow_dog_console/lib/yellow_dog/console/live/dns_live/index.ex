@@ -10,6 +10,15 @@ defmodule YellowDog.Console.DnsLive.Index do
 
   @max_cache_entries 10_000
 
+  @view_stat_defaults %{
+    recursion_enabled: false,
+    zones: [],
+    query_count: 0,
+    hit_count: 0,
+    miss_count: 0,
+    cache_size: 0
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -64,17 +73,17 @@ defmodule YellowDog.Console.DnsLive.Index do
 
       view_stats =
         Enum.map(views, fn {view_name, pid, priority} ->
-          stats = View.stats(pid)
+          stats = Map.merge(@view_stat_defaults, View.stats(pid))
 
           %{
             name: view_name,
             priority: priority,
-            recursion_enabled: Map.get(stats, :recursion_enabled, false),
-            zone_count: length(Map.get(stats, :zones, [])),
-            query_count: Map.get(stats, :query_count, 0),
-            hit_count: Map.get(stats, :hit_count, 0),
-            miss_count: Map.get(stats, :miss_count, 0),
-            cache_size: Map.get(stats, :cache_size, 0)
+            recursion_enabled: stats.recursion_enabled,
+            zone_count: length(stats.zones),
+            query_count: stats.query_count,
+            hit_count: stats.hit_count,
+            miss_count: stats.miss_count,
+            cache_size: stats.cache_size
           }
         end)
 
