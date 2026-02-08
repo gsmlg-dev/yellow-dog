@@ -264,12 +264,11 @@ defmodule YellowDog.Dhcpv4.PoolStore do
         # Format 2: [[pool]] array
         case Map.get(data, "pool") do
           pools when is_list(pools) ->
-            Enum.map(pools, fn p -> p["name"] || p[:name] end)
-            |> Enum.filter(&is_binary/1)
+            for p <- pools, name = p["name"] || p[:name], is_binary(name), do: name
 
           pool when is_map(pool) ->
-            [pool["name"] || pool[:name]]
-            |> Enum.filter(&is_binary/1)
+            name = pool["name"] || pool[:name]
+            if is_binary(name), do: [name], else: []
 
           _ ->
             []
