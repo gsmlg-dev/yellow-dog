@@ -165,21 +165,19 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("export_csv", _params, socket) do
-    records =
-      filtered_records(socket.assigns.rrs, socket.assigns.filter, socket.assigns.type_filter)
+    %{rrs: rrs, filter: filter, type_filter: type_filter, zone_name: zone_name} = socket.assigns
+    records = filtered_records(rrs, filter, type_filter)
 
     csv = build_records_csv(records)
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")
-    zone = socket.assigns.zone_name |> String.replace(".", "_")
+    zone = zone_name |> String.replace(".", "_")
     filename = "dns_records_#{zone}_#{timestamp}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
   @impl true
   def handle_event("export_bind", _params, socket) do
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
 
     case export_zone_bind(view_name, zone_type, zone_name) do
       {:ok, content} ->
@@ -201,9 +199,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("bulk_add_rrs", %{"bulk" => bulk_params}, socket) do
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
     records_text = bulk_params["records"]
 
     case find_auth_zone(view_name, zone_type, zone_name) do
@@ -254,10 +250,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("delete_rr", _params, socket) do
-    %{rr: rr} = socket.assigns.delete_confirm
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{delete_confirm: %{rr: rr}, view_name: view_name, zone_type: zone_type, zone_name: zone_name} =
+      socket.assigns
 
     case find_auth_zone(view_name, zone_type, zone_name) do
       {:ok, pid} ->
@@ -290,9 +284,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_event("cancel", _params, socket) do
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
     {:noreply, push_navigate(socket, to: records_path(view_name, zone_type, zone_name))}
   end
 
@@ -308,10 +300,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   @impl true
   def handle_info({:record_saved, validated_record}, socket) do
     # Handle save from RecordForm component
-    zone_pid = socket.assigns.zone_pid
-    zone_name = socket.assigns.zone_name
-    zone_type = socket.assigns.zone_type
-    view_name = socket.assigns.view_name
+    %{zone_pid: zone_pid, zone_name: zone_name, zone_type: zone_type, view_name: view_name} =
+      socket.assigns
+
     editing = socket.assigns[:editing_rr]
 
     if zone_pid && Process.alive?(zone_pid) do
@@ -347,10 +338,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   @impl true
   def handle_info(:record_cancelled, socket) do
-    # Handle cancel from RecordForm component
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
     {:noreply, push_navigate(socket, to: records_path(view_name, zone_type, zone_name))}
   end
 
@@ -403,9 +391,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   defp load_records(socket) do
-    view_name = socket.assigns.view_name
-    zone_type = socket.assigns.zone_type
-    zone_name = socket.assigns.zone_name
+    %{view_name: view_name, zone_type: zone_type, zone_name: zone_name} = socket.assigns
 
     records =
       if zone_type == :auth do

@@ -238,8 +238,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
   @impl true
   def handle_event("delete_zone", _params, socket) do
-    %{zone_type: zone_type, name: zone_name} = socket.assigns.delete_confirm
-    view_name = socket.assigns.view_name
+    %{delete_confirm: %{zone_type: zone_type, name: zone_name}, view_name: view_name} =
+      socket.assigns
 
     # Pass view_name for view-scoped zone deletion
     result =
