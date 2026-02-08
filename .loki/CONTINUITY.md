@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 180)
+**Phase**: IN_PROGRESS (Iteration 181)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 180 of 1000
+**Iteration**: 181 of 1000
 
 ## Session Summary
+Iteration 181: capture syntax + find_index cleanup:
+- ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 309 mDNS, abyss — 0 failures, 0 warnings**
+- ✅ Replaced 4× `fn {x, _} -> x end` with `&elem(&1, 0)` in config_watcher, rpz, utils
+- ✅ Replaced 1× `fn {_, x} -> x end` with `&elem(&1, 1)` in network_monitor sort_by
+- ✅ Cached `RRType.new(41)` to avoid duplicate struct creation in DNS message.ex
+- ✅ Simplified runtime.exs get_cli_arg: Enum.with_index + Enum.find → Enum.find_index (net -9 lines)
+- ✅ 2 commits — 6 files — net -10 lines
+
 Iteration 180: format_number regex + safe_call adoption:
 - ✅ **All tests pass: 1122 console, 0 failures, 0 warnings**
 - ✅ Simplified format_number from 8-line reverse/chunk/map pipeline to single regex replacement
