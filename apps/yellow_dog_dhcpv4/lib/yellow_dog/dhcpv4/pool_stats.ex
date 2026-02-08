@@ -243,9 +243,7 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   # Private helper functions
 
   defp count_leases_by_state(leases) do
-    leases
-    |> Enum.group_by(& &1.state)
-    |> Map.new(fn {state, state_leases} -> {state, length(state_leases)} end)
+    Enum.frequencies_by(leases, & &1.state)
   end
 
   defp format_leases_by_state(leases_by_state) do

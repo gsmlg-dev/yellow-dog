@@ -168,21 +168,11 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   """
   @spec merge_option_sets([option_set()], template_context()) :: [option_definition()]
   def merge_option_sets(option_sets, context) do
-    # Apply templates to each option set
-    processed_sets =
-      Enum.map(option_sets, fn set ->
-        apply_templates(set, context)
-      end)
-
-    # Merge options, later sets override earlier ones
-    merged =
-      Enum.reduce(processed_sets, %{}, fn set, acc ->
-        options_map = Map.new(set.options, fn opt -> {opt.code, opt} end)
-
-        Map.merge(acc, options_map)
-      end)
-
-    Map.values(merged)
+    # Apply templates and flatten all options; later sets override earlier (Map.new keeps last)
+    option_sets
+    |> Enum.flat_map(fn set -> apply_templates(set, context).options end)
+    |> Map.new(fn opt -> {opt.code, opt} end)
+    |> Map.values()
   end
 
   @doc """

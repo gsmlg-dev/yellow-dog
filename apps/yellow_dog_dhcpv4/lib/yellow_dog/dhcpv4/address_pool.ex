@@ -243,21 +243,13 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   """
   @spec pool_size(pool_config()) :: non_neg_integer()
   def pool_size(pool) do
-    # Count total addresses in all ranges
-    total_in_ranges =
-      Enum.reduce(pool.ranges, 0, fn {start_ip, end_ip}, acc ->
-        size = Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
-        acc + size
-      end)
+    max(sum_range_sizes(pool.ranges) - sum_range_sizes(pool.excluded_ranges), 0)
+  end
 
-    # Count addresses in excluded ranges
-    total_excluded =
-      Enum.reduce(pool.excluded_ranges, 0, fn {start_ip, end_ip}, acc ->
-        size = Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
-        acc + size
-      end)
-
-    max(total_in_ranges - total_excluded, 0)
+  defp sum_range_sizes(ranges) do
+    Enum.reduce(ranges, 0, fn {start_ip, end_ip}, acc ->
+      acc + Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
+    end)
   end
 
   # Private helper functions
