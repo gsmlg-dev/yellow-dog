@@ -213,7 +213,7 @@ defmodule YellowDog.Console.LogsLive do
 
   defp should_display?(%{min_level: min_level, selected_apps: selected_apps}, level, app) do
     level_ok = @level_priority[level] >= @level_priority[min_level]
-    app_ok = MapSet.size(selected_apps) == 0 or MapSet.member?(selected_apps, app)
+    app_ok = Enum.empty?(selected_apps) or MapSet.member?(selected_apps, app)
     level_ok and app_ok
   end
 
@@ -246,7 +246,7 @@ defmodule YellowDog.Console.LogsLive do
   defp app_badge_color(app), do: Map.get(@app_badge_colors, app, "badge-ghost")
 
   defp is_app_selected?(selected_apps, app) do
-    MapSet.size(selected_apps) == 0 or MapSet.member?(selected_apps, app)
+    Enum.empty?(selected_apps) or MapSet.member?(selected_apps, app)
   end
 
   @doc "Filters logs by search term against message text. Public for testability."
@@ -462,7 +462,7 @@ defmodule YellowDog.Console.LogsLive do
         </div>
 
         <%!-- Filter Status --%>
-        <%= if MapSet.size(@selected_apps) > 0 do %>
+        <%= unless Enum.empty?(@selected_apps) do %>
           <div class="text-sm text-base-content/60">
             Showing: {MapSet.size(@selected_apps)} of {length(@available_apps)} modules
             | Min level: {@min_level}

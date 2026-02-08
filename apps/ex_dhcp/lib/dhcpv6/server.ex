@@ -209,7 +209,7 @@ defmodule DHCPv6.Server do
     |> Enum.map(fn {iaid, t1, t2, requested_addrs} ->
       available_ips = MapSet.difference(state.ip_pool, state.used_ips)
 
-      if MapSet.size(available_ips) > 0 do
+      unless Enum.empty?(available_ips) do
         ip = choose_ip(available_ips, requested_addrs)
         lease = create_lease(state.config, duid, iaid, ip, t1, t2)
 
@@ -242,7 +242,7 @@ defmodule DHCPv6.Server do
     |> Enum.map(fn {iaid, _t1, _t2, requested_addrs} ->
       available_ips = MapSet.difference(state.ip_pool, state.used_ips)
 
-      if MapSet.size(available_ips) > 0 do
+      unless Enum.empty?(available_ips) do
         ip = choose_ip(available_ips, requested_addrs)
         {iaid, ip}
       else
@@ -293,7 +293,7 @@ defmodule DHCPv6.Server do
   defp assign_new_address(state, duid, iaid, t1, t2, requested_addrs) do
     available_ips = MapSet.difference(state.ip_pool, state.used_ips)
 
-    if MapSet.size(available_ips) > 0 do
+    unless Enum.empty?(available_ips) do
       ip = choose_ip(available_ips, requested_addrs)
       lease = create_lease(state.config, duid, iaid, ip, t1, t2)
       {iaid, ip, lease}
@@ -361,7 +361,7 @@ defmodule DHCPv6.Server do
           {:error, :no_binding}
 
         lease ->
-          if MapSet.size(requested_addrs) == 0 || MapSet.member?(requested_addrs, lease.ip) do
+          if Enum.empty?(requested_addrs) || MapSet.member?(requested_addrs, lease.ip) do
             {:ok, [{iaid, lease.ip, lease}]}
           else
             {:error, :not_on_link}

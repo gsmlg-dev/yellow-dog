@@ -183,7 +183,7 @@ defmodule DHCPv4.Server do
   defp allocate_new_lease(state, chaddr, message) do
     available_ips = MapSet.difference(state.ip_pool, state.used_ips)
 
-    if MapSet.size(available_ips) > 0 do
+    unless Enum.empty?(available_ips) do
       ip = choose_ip(available_ips, message)
       lease_time = state.config.lease_time
 
