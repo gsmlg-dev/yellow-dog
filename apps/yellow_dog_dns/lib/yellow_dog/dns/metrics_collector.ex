@@ -35,6 +35,7 @@ defmodule YellowDog.Dns.MetricsCollector do
 
   use GenServer
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Telemetry
 
   @table_name :dns_metrics
@@ -289,7 +290,7 @@ defmodule YellowDog.Dns.MetricsCollector do
     end
 
     if client_ip = metadata[:client_ip] do
-      ip_str = format_ip(client_ip)
+      ip_str = IpFormat.format(client_ip)
       increment(table, {:counter, :client, ip_str})
     end
 
@@ -335,7 +336,7 @@ defmodule YellowDog.Dns.MetricsCollector do
     end
 
     if client_ip = metadata[:client_ip] do
-      ip_str = format_ip(client_ip)
+      ip_str = IpFormat.format(client_ip)
       increment(table, {:counter, :client, ip_str})
     end
 
@@ -539,7 +540,4 @@ defmodule YellowDog.Dns.MetricsCollector do
     }
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp format_ip(ip) when is_binary(ip), do: ip
-  defp format_ip(ip), do: inspect(ip)
 end

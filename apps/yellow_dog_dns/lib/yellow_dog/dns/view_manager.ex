@@ -22,8 +22,9 @@ defmodule YellowDog.Dns.ViewManager do
 
   use DynamicSupervisor
 
-  alias YellowDog.Telemetry
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.View
+  alias YellowDog.Telemetry
   alias YellowDog.Dns.ConfigPersistence
 
   @doc """
@@ -91,7 +92,7 @@ defmodule YellowDog.Dns.ViewManager do
 
           :error ->
             Telemetry.warning("No matching view for client", %{
-              client_ip: format_ip(client_ip)
+              client_ip: IpFormat.format(client_ip)
             })
 
             {:error, :refused}
@@ -479,6 +480,4 @@ defmodule YellowDog.Dns.ViewManager do
   defp get_view_name(config) when is_map(config), do: Map.get(config, :name)
   defp get_view_name(config) when is_list(config), do: Keyword.get(config, :name)
 
-  defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp format_ip(ip), do: inspect(ip)
 end

@@ -23,6 +23,7 @@ defmodule YellowDog.Dns.Server do
 
   use Supervisor
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Telemetry
 
   @doc """
@@ -193,7 +194,7 @@ defmodule YellowDog.Dns.Server do
 
     Telemetry.info("DNS server listening", %{
       port: port,
-      listen: format_ip(listen_ip),
+      listen: IpFormat.format(listen_ip),
       udp: true,
       tcp: tcp_enabled
     })
@@ -349,6 +350,4 @@ defmodule YellowDog.Dns.Server do
 
   defp normalize_ip(_), do: {0, 0, 0, 0}
 
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(other), do: inspect(other)
 end

@@ -39,7 +39,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   use GenServer
 
-  alias YellowDog.Dns.QueryLogger
+  alias YellowDog.Dns.{IpFormat, QueryLogger}
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.Message.RCode
@@ -211,7 +211,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
   @impl true
   def handle_call(:stats, _from, state) do
     stats = %{
-      client_ip: format_ip(state.client_ip),
+      client_ip: IpFormat.format(state.client_ip),
       client_port: state.client_port,
       active_queries: map_size(state.queries),
       queries:
@@ -525,7 +525,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   defp start_span(state, query) do
     metadata = %{
-      client_ip: format_ip(state.client_ip),
+      client_ip: IpFormat.format(state.client_ip),
       client_port: state.client_port,
       query_id: query.header.id,
       query_name: get_query_name(query),
@@ -594,9 +594,6 @@ defmodule YellowDog.Dns.ConnectionProcess do
     System.monotonic_time(:millisecond) - started_at
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp format_ip(ip), do: inspect(ip)
-
   defp get_query_name(%Message{qdlist: [question | _]}), do: question.name
   defp get_query_name(_), do: nil
 
@@ -607,7 +604,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   defp log_query_entry(state, qs, response) do
     QueryLogger.log_query(%{
-      client_ip: format_ip(state.client_ip),
+      client_ip: IpFormat.format(state.client_ip),
       client_port: state.client_port,
       view: qs.view,
       qname: get_query_name(qs.query),
@@ -625,7 +622,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   defp log_query_error(state, qs, error_response, reason) do
     QueryLogger.log_query(%{
-      client_ip: format_ip(state.client_ip),
+      client_ip: IpFormat.format(state.client_ip),
       client_port: state.client_port,
       view: qs.view,
       qname: get_query_name(qs.query),

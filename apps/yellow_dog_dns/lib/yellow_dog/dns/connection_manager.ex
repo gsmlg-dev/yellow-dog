@@ -18,6 +18,7 @@ defmodule YellowDog.Dns.ConnectionManager do
 
   use DynamicSupervisor
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Telemetry
 
   @doc """
@@ -82,7 +83,7 @@ defmodule YellowDog.Dns.ConnectionManager do
       case DynamicSupervisor.start_child(supervisor, child_spec) do
         {:ok, pid} = result ->
           Telemetry.debug("Connection process started", %{
-            client_ip: format_ip(client_ip),
+            client_ip: IpFormat.format(client_ip),
             client_port: client_port,
             pid: inspect(pid)
           })
@@ -91,7 +92,7 @@ defmodule YellowDog.Dns.ConnectionManager do
 
         {:error, reason} = error ->
           Telemetry.warning("Failed to start connection process", %{
-            client_ip: format_ip(client_ip),
+            client_ip: IpFormat.format(client_ip),
             client_port: client_port,
             reason: inspect(reason)
           })
@@ -145,6 +146,4 @@ defmodule YellowDog.Dns.ConnectionManager do
 
   # Private helpers
 
-  defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp format_ip(ip), do: inspect(ip)
 end

@@ -20,8 +20,8 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   use Abyss.Handler
 
+  alias YellowDog.Dns.{ConnectionManager, IpFormat, RateLimiter}
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.{ConnectionManager, RateLimiter}
 
   ## Abyss.Handler Callbacks
 
@@ -34,7 +34,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
       {:error, :rate_limited} ->
         Telemetry.warning("DNS request rate limited", %{
-          client_ip: format_ip(client_ip),
+          client_ip: IpFormat.format(client_ip),
           client_port: client_port
         })
 
@@ -51,7 +51,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   defp process_data(client_ip, client_port, data, state) do
     Telemetry.debug("DNS UDP received data", %{
-      client_ip: format_ip(client_ip),
+      client_ip: IpFormat.format(client_ip),
       client_port: client_port,
       size: byte_size(data)
     })
@@ -61,7 +61,7 @@ defmodule YellowDog.Dns.Handler.UDP do
     rescue
       error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
         Telemetry.error("DNS handler exception", %{
-          client_ip: format_ip(client_ip),
+          client_ip: IpFormat.format(client_ip),
           client_port: client_port,
           error: Exception.message(error)
         })
@@ -92,7 +92,7 @@ defmodule YellowDog.Dns.Handler.UDP do
 
   defp handle_raw_data(data, client_ip, client_port, state) do
     Telemetry.debug("Received DNS data", %{
-      client_ip: format_ip(client_ip),
+      client_ip: IpFormat.format(client_ip),
       client_port: client_port,
       size: byte_size(data)
     })
@@ -112,7 +112,7 @@ defmodule YellowDog.Dns.Handler.UDP do
               10_000 ->
                 # Timeout waiting for response
                 Telemetry.warning("Timeout waiting for DNS response", %{
-                  client_ip: format_ip(client_ip),
+                  client_ip: IpFormat.format(client_ip),
                   data_size: byte_size(data)
                 })
 
@@ -169,7 +169,7 @@ defmodule YellowDog.Dns.Handler.UDP do
     case Abyss.Transport.UDP.send(socket, client_ip, client_port, response_data) do
       :ok ->
         Telemetry.debug("Sent DNS response", %{
-          client_ip: format_ip(client_ip),
+          client_ip: IpFormat.format(client_ip),
           client_port: client_port,
           size: IO.iodata_length(response_data)
         })
@@ -181,6 +181,4 @@ defmodule YellowDog.Dns.Handler.UDP do
     end
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(other), do: inspect(other)
 end

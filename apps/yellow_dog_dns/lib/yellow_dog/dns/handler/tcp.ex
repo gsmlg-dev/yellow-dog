@@ -26,8 +26,8 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   use ThousandIsland.Handler
 
+  alias YellowDog.Dns.{ConnectionManager, IpFormat}
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.ConnectionManager
 
   ## ThousandIsland.Handler Callbacks
 
@@ -36,7 +36,7 @@ defmodule YellowDog.Dns.Handler.TCP do
     case ThousandIsland.Socket.peername(socket) do
       {:ok, {client_ip, client_port}} ->
         Telemetry.debug("DNS TCP connection established", %{
-          client_ip: format_ip(client_ip),
+          client_ip: IpFormat.format(client_ip),
           client_port: client_port
         })
 
@@ -54,7 +54,7 @@ defmodule YellowDog.Dns.Handler.TCP do
 
           {:error, reason} ->
             Telemetry.error("Failed to start connection process", %{
-              client_ip: format_ip(client_ip),
+              client_ip: IpFormat.format(client_ip),
               reason: inspect(reason)
             })
 
@@ -79,7 +79,7 @@ defmodule YellowDog.Dns.Handler.TCP do
   @impl ThousandIsland.Handler
   def handle_timeout(_socket, state) do
     Telemetry.debug("DNS TCP connection timeout", %{
-      client_ip: format_ip(state.client_ip)
+      client_ip: IpFormat.format(state.client_ip)
     })
 
     # Notify connection process
@@ -93,7 +93,7 @@ defmodule YellowDog.Dns.Handler.TCP do
   @impl ThousandIsland.Handler
   def handle_close(_socket, state) do
     Telemetry.debug("DNS TCP connection closed", %{
-      client_ip: format_ip(Map.get(state, :client_ip, :unknown))
+      client_ip: IpFormat.format(Map.get(state, :client_ip, :unknown))
     })
 
     # Notify connection process
@@ -109,7 +109,7 @@ defmodule YellowDog.Dns.Handler.TCP do
   def handle_info({:dns_raw_response, query_id, response_data}, {socket, state}) do
     Telemetry.debug("Sending DNS TCP response", %{
       query_id: query_id,
-      client_ip: format_ip(state.client_ip)
+      client_ip: IpFormat.format(state.client_ip)
     })
 
     send_raw_response(response_data, socket)
@@ -161,7 +161,7 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   defp handle_raw_message(message_data, state) do
     Telemetry.debug("Received DNS TCP message", %{
-      client_ip: format_ip(state.client_ip),
+      client_ip: IpFormat.format(state.client_ip),
       size: byte_size(message_data)
     })
 
@@ -196,6 +196,4 @@ defmodule YellowDog.Dns.Handler.TCP do
     end
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(other), do: inspect(other)
 end

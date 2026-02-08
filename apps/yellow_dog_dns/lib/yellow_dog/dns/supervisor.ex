@@ -27,9 +27,8 @@ defmodule YellowDog.Dns.Supervisor do
 
   use Supervisor
 
+  alias YellowDog.Dns.{ConfigPersistence, IpFormat, View}
   alias YellowDog.Telemetry
-  alias YellowDog.Dns.ConfigPersistence
-  alias YellowDog.Dns.View
 
   @default_port 53
   @default_listen {0, 0, 0, 0}
@@ -94,7 +93,7 @@ defmodule YellowDog.Dns.Supervisor do
 
     Telemetry.info("DNS supervisor configuration", %{
       port: port,
-      listen: format_ip(listen)
+      listen: IpFormat.format(listen)
     })
 
     children = [
@@ -477,9 +476,6 @@ defmodule YellowDog.Dns.Supervisor do
 
   defp parse_ip(ip) when is_tuple(ip), do: {:ok, ip}
   defp parse_ip(_), do: {:error, :invalid_ip}
-
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(other), do: inspect(other)
 
   defp safe_call(fun, default) do
     fun.()

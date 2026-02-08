@@ -31,11 +31,11 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   use GenServer
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.Zone.Behaviour
+  alias YellowDog.Telemetry
 
   @behaviour Behaviour
-
-  alias YellowDog.Telemetry
 
   @default_timeout 5000
   @default_retries 2
@@ -298,7 +298,7 @@ defmodule YellowDog.Dns.Zone.Stub do
 
           Telemetry.debug("Stub zone query completed", %{
             zone: state.name,
-            ns_ip: format_ip(ip),
+            ns_ip: IpFormat.format(ip),
             port: port,
             elapsed_us: elapsed
           })
@@ -427,11 +427,5 @@ defmodule YellowDog.Dns.Zone.Stub do
     data = DNS.to_iodata(query)
     :gen_udp.send(state.socket, ns_ip, @default_port, data)
   end
-
-  defp format_ip(ip) when is_tuple(ip) do
-    :inet.ntoa(ip) |> to_string()
-  end
-
-  defp format_ip(ip), do: inspect(ip)
 
 end
