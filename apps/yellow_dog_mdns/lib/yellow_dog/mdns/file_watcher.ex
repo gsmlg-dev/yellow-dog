@@ -120,6 +120,7 @@ defmodule YellowDog.Mdns.FileWatcher do
     end
   end
 
+  @impl true
   def handle_info({:file_event, _watcher_pid, :stop}, state) do
     :telemetry.execute(
       [:yellow_dog, :mdns, :file_watcher, :stopped],

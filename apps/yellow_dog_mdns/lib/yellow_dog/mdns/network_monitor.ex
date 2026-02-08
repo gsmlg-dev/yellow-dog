@@ -290,6 +290,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     {:noreply, state}
   end
 
+  @impl true
   def handle_cast({:cache_response, message, source_ip, source_port}, state) do
     store_response(message, source_ip, source_port)
     mark_queries_as_answered(message)
