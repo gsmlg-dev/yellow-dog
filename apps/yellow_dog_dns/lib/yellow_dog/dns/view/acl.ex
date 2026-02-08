@@ -52,6 +52,8 @@ defmodule YellowDog.Dns.View.ACL do
       ...> ])
   """
 
+  alias YellowDog.Dns.IpFormat
+
   defstruct [:name, :rules]
 
   @valid_actions [:allow, :deny]
@@ -199,7 +201,7 @@ defmodule YellowDog.Dns.View.ACL do
   def parse_cidr(cidr_string) when is_binary(cidr_string) do
     case String.split(cidr_string, "/") do
       [ip_str, prefix_str] ->
-        with {:ok, ip} <- parse_ip(ip_str),
+        with {:ok, ip} <- IpFormat.parse(ip_str),
              {prefix, ""} <- Integer.parse(prefix_str),
              true <- valid_prefix_length?(ip, prefix) do
           {:ok, {ip, prefix}}
@@ -312,13 +314,6 @@ defmodule YellowDog.Dns.View.ACL do
 
   defp ipv6_to_binary({a, b, c, d, e, f, g, h}) do
     <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
-  end
-
-  defp parse_ip(ip_string) do
-    case :inet.parse_address(String.to_charlist(ip_string)) do
-      {:ok, _ip} = ok -> ok
-      {:error, _} -> {:error, :invalid_ip}
-    end
   end
 
   defp valid_prefix_length?(ip, prefix) when tuple_size(ip) == 4 do

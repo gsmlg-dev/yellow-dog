@@ -391,22 +391,15 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   defp parse_glue_records(glue_records) when is_map(glue_records) do
     Map.new(glue_records, fn {hostname, ip} ->
-      {String.downcase(to_string(hostname)), parse_ip(ip)}
+      parsed = case IpFormat.parse(ip) do
+        {:ok, addr} -> addr
+        {:error, _} -> nil
+      end
+      {String.downcase(to_string(hostname)), parsed}
     end)
   end
 
   defp parse_glue_records(_), do: %{}
-
-  defp parse_ip(ip) when is_tuple(ip), do: ip
-
-  defp parse_ip(ip) when is_binary(ip) do
-    case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, parsed} -> parsed
-      _ -> nil
-    end
-  end
-
-  defp parse_ip(_), do: nil
 
   defp get_available_ns_servers(state) do
     state.ns_records

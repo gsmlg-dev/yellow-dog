@@ -15,6 +15,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   use GenServer
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.Zone.Behaviour
 
   @behaviour Behaviour
@@ -618,12 +619,12 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp build_record(:a, name, ttl, data) do
-    ip = parse_ip4(data[:address] || data.address)
+    ip = IpFormat.parse_v4(data[:address] || data.address)
     if ip, do: Message.Record.new(name, :a, :in, ttl, ip)
   end
 
   defp build_record(:aaaa, name, ttl, data) do
-    ip = parse_ip6(data[:address] || data.address)
+    ip = IpFormat.parse_v6(data[:address] || data.address)
     if ip, do: Message.Record.new(name, :aaaa, :in, ttl, ip)
   end
 
@@ -695,28 +696,6 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp normalize_origin(nil), do: "."
   defp normalize_origin(origin), do: String.trim_trailing(to_string(origin), ".")
-
-  defp parse_ip4(addr) when is_tuple(addr) and tuple_size(addr) == 4, do: addr
-
-  defp parse_ip4(addr) when is_binary(addr) do
-    case :inet.parse_address(String.to_charlist(addr)) do
-      {:ok, ip} when tuple_size(ip) == 4 -> ip
-      _ -> nil
-    end
-  end
-
-  defp parse_ip4(_), do: nil
-
-  defp parse_ip6(addr) when is_tuple(addr) and tuple_size(addr) == 8, do: addr
-
-  defp parse_ip6(addr) when is_binary(addr) do
-    case :inet.parse_address(String.to_charlist(addr)) do
-      {:ok, ip} when tuple_size(ip) == 8 -> ip
-      _ -> nil
-    end
-  end
-
-  defp parse_ip6(_), do: nil
 
   defp extract_soa_map(nil), do: nil
 

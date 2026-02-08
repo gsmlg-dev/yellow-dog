@@ -20,6 +20,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   use GenServer
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.Zone.Behaviour
 
   @behaviour Behaviour
@@ -332,7 +333,7 @@ defmodule YellowDog.Dns.Zone.Forward do
         parse_upstream_string(ip_str)
 
       {ip_str, port} when is_binary(ip_str) and is_integer(port) ->
-        case parse_ip(ip_str) do
+        case IpFormat.parse(ip_str) do
           {:ok, ip} -> {ip, port}
           _ -> nil
         end
@@ -348,7 +349,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   defp parse_upstream_string(str) do
     case String.split(str, ":") do
       [ip_str, port_str] ->
-        with {:ok, ip} <- parse_ip(ip_str),
+        with {:ok, ip} <- IpFormat.parse(ip_str),
              {port, ""} <- Integer.parse(port_str) do
           {ip, port}
         else
@@ -356,7 +357,7 @@ defmodule YellowDog.Dns.Zone.Forward do
         end
 
       [ip_str] ->
-        case parse_ip(ip_str) do
+        case IpFormat.parse(ip_str) do
           {:ok, ip} -> {ip, 53}
           _ -> nil
         end
@@ -364,10 +365,6 @@ defmodule YellowDog.Dns.Zone.Forward do
       _ ->
         nil
     end
-  end
-
-  defp parse_ip(ip_str) do
-    :inet.parse_address(String.to_charlist(ip_str))
   end
 
   defp select_upstream(state) do
