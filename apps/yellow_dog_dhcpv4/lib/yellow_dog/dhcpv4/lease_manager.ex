@@ -25,6 +25,8 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   # Capture Mix.env() at compile time (Mix is not available in releases)
   @compile_env Mix.env()
 
+  import YellowDog.ConfigHelpers, only: [get_value: 3]
+
   alias YellowDog.Dhcpv4.AddressPool
   alias YellowDog.Dhcpv4.LeaseStorage
   alias YellowDog.Dhcpv4.PoolStore
@@ -569,7 +571,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   @impl true
   def handle_call({:add_pool, pool_config}, _from, state) do
     # Check if pool with same name already exists
-    pool_name = Map.get(pool_config, :name) || Map.get(pool_config, "name") || "default"
+    pool_name = get_value(pool_config, :name, "default")
 
     if Enum.any?(state.pools, fn p -> p.name == pool_name end) do
       {:reply, {:error, :pool_already_exists}, state}

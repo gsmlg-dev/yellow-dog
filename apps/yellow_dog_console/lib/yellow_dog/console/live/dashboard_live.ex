@@ -9,6 +9,8 @@ defmodule YellowDog.Console.DashboardLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.ConfigHelpers, only: [get_value: 2]
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -176,7 +178,7 @@ defmodule YellowDog.Console.DashboardLive do
     case service_status[:config] do
       config when is_map(config) ->
         # Config keys are atoms from YellowDog.Config.get_service/1
-        case Map.get(config, :port) || Map.get(config, "port") do
+        case get_value(config, :port) do
           port when is_integer(port) -> Integer.to_string(port)
           port when is_binary(port) -> port
           _ -> service_config.default_port

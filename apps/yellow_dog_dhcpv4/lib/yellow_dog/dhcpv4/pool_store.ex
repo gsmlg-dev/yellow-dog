@@ -392,16 +392,16 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
   defp validate_required_fields(pool) do
     # Network CIDR is mandatory
-    network = Map.get(pool, :network) || Map.get(pool, "network")
+    network = get_value(pool, [:network, "network"])
 
     if network do
       with :ok <- validate_network_cidr(network) do
         # Need either ranges or range_start/range_end
-        has_ranges = Map.get(pool, :ranges) || Map.get(pool, "ranges")
+        has_ranges = get_value(pool, [:ranges, "ranges"])
 
         has_legacy =
-          (Map.get(pool, :range_start) || Map.get(pool, "range_start")) &&
-            (Map.get(pool, :range_end) || Map.get(pool, "range_end"))
+          get_value(pool, [:range_start, "range_start"]) &&
+            get_value(pool, [:range_end, "range_end"])
 
         if has_ranges || has_legacy do
           :ok

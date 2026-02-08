@@ -6,6 +6,8 @@ defmodule YellowDog.ServiceManager do
   and control services across the entire YellowDog system.
   """
 
+  import YellowDog.ConfigHelpers, only: [get_value: 3]
+
   @services [:dns, :mdns, :dhcpv4, :dhcpv6]
 
   # Supervisor modules (used for start/stop)
@@ -406,25 +408,25 @@ defmodule YellowDog.ServiceManager do
     # Config keys are atoms from YellowDog.Config.get_service/1
     case service do
       :dns ->
-        port = Map.get(config, :port) || Map.get(config, "port", 53)
-        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
+        port = get_value(config, :port, 53)
+        listen = get_value(config, :listen, "0.0.0.0")
         "#{listen}:#{port}"
 
       :mdns ->
-        port = Map.get(config, :port) || Map.get(config, "port", 5353)
-        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
+        port = get_value(config, :port, 5353)
+        listen = get_value(config, :listen, "0.0.0.0")
         "#{listen}:#{port}"
 
       :dhcpv4 ->
-        port = Map.get(config, :port) || Map.get(config, "port", 67)
-        listen = Map.get(config, :listen) || Map.get(config, "listen", "0.0.0.0")
-        pools = Map.get(config, :pools) || Map.get(config, "pools", [])
+        port = get_value(config, :port, 67)
+        listen = get_value(config, :listen, "0.0.0.0")
+        pools = get_value(config, :pools, [])
         "#{listen}:#{port} (#{length(pools)} pools)"
 
       :dhcpv6 ->
-        port = Map.get(config, :port) || Map.get(config, "port", 547)
-        listen = Map.get(config, :listen) || Map.get(config, "listen", "::")
-        pools = Map.get(config, :pools) || Map.get(config, "pools", [])
+        port = get_value(config, :port, 547)
+        listen = get_value(config, :listen, "::")
+        pools = get_value(config, :pools, [])
         "#{listen}:#{port} (#{length(pools)} pools)"
     end
   end

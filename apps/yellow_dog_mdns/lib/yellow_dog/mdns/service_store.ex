@@ -10,6 +10,7 @@ defmodule YellowDog.Mdns.ServiceStore do
     only: [
       parse_toml: 1,
       get_value: 2,
+      get_value: 3,
       get_integer: 3,
       get_boolean: 3,
       get_map: 3,
@@ -220,7 +221,7 @@ defmodule YellowDog.Mdns.ServiceStore do
 
   defp get_addresses(service) do
     # Try different key formats
-    case Map.get(service, :addresses) || Map.get(service, "addresses") do
+    case get_value(service, [:addresses, "addresses"]) do
       nil -> []
       addresses when is_list(addresses) -> addresses
       addresses when is_map(addresses) -> flatten_addresses(addresses)
@@ -230,8 +231,8 @@ defmodule YellowDog.Mdns.ServiceStore do
 
   defp flatten_addresses(addresses_map) when is_map(addresses_map) do
     # Handle nested structure like %{ipv4: [...], ipv6: [...]}
-    ipv4 = Map.get(addresses_map, :ipv4) || Map.get(addresses_map, "ipv4") || []
-    ipv6 = Map.get(addresses_map, :ipv6) || Map.get(addresses_map, "ipv6") || []
+    ipv4 = get_value(addresses_map, [:ipv4, "ipv4"], [])
+    ipv6 = get_value(addresses_map, [:ipv6, "ipv6"], [])
 
     ipv4 ++ ipv6
   end

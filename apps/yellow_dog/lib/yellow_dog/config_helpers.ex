@@ -1,9 +1,10 @@
-defmodule YellowDog.DHCP.ConfigHelpers do
+defmodule YellowDog.ConfigHelpers do
   @moduledoc """
-  Shared configuration parsing helpers for DHCPv4 and DHCPv6 modules.
+  Shared configuration parsing helpers for maps with mixed atom/string keys.
 
-  Consolidates identical utility functions that were duplicated across
-  the Lease and Pool structs in both DHCP protocol implementations.
+  Provides `get_value/3` for dual-key lookups (atom then string fallback),
+  conditional map insertion helpers (`maybe_put`), and parsing utilities
+  for datetimes, lease states, and option codes.
   """
 
   @doc """

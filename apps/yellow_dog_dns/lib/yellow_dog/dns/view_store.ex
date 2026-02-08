@@ -206,7 +206,7 @@ defmodule YellowDog.Dns.ViewStore do
   end
 
   defp normalize_acl(view) do
-    case Map.get(view, "acl") || Map.get(view, :acl) do
+    case get_value(view, [:acl, "acl"]) do
       nil -> nil
       acl when is_list(acl) -> Enum.map(acl, &normalize_acl_entry/1)
       acl when is_map(acl) -> [normalize_acl_entry(acl)]

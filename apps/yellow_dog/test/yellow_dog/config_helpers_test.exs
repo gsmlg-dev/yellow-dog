@@ -1,7 +1,7 @@
-defmodule YellowDog.DHCP.ConfigHelpersTest do
+defmodule YellowDog.ConfigHelpersTest do
   use ExUnit.Case, async: true
 
-  alias YellowDog.DHCP.ConfigHelpers
+  alias YellowDog.ConfigHelpers
 
   describe "get_value/3" do
     test "gets value by atom key" do

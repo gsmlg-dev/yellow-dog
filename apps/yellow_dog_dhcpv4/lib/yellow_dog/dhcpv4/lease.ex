@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   a MAC address to an IP address with timestamps.
   """
 
-  import YellowDog.DHCP.ConfigHelpers
+  import YellowDog.ConfigHelpers
 
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()

@@ -123,7 +123,7 @@ defmodule YellowDog.Dns.AclStore do
   end
 
   defp normalize_rules(acl) do
-    case Map.get(acl, "rules") || Map.get(acl, :rules) do
+    case get_value(acl, [:rules, "rules"]) do
       nil -> []
       rules when is_list(rules) -> Enum.map(rules, &normalize_rule/1)
       rule when is_map(rule) -> [normalize_rule(rule)]

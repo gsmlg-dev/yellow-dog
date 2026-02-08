@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv6.Pool do
   static reservations, lifetimes, prefix delegation pools, and ACL rules.
   """
 
-  import YellowDog.DHCP.ConfigHelpers
+  import YellowDog.ConfigHelpers
 
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}

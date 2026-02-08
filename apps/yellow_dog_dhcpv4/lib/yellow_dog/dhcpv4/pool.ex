@@ -7,7 +7,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   """
 
   import Bitwise
-  import YellowDog.DHCP.ConfigHelpers
+  import YellowDog.ConfigHelpers
 
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: <<_::48>> | String.t()

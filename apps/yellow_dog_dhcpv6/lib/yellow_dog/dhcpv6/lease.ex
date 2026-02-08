@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   a DUID+IAID to an IPv6 address with timestamps.
   """
 
-  import YellowDog.DHCP.ConfigHelpers
+  import YellowDog.ConfigHelpers
 
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
