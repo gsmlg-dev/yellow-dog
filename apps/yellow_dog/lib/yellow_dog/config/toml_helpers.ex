@@ -39,23 +39,14 @@ defmodule YellowDog.Config.TomlHelpers do
   Like `get_value/3` but coerces the result to a boolean.
 
   Handles `true`/`false` atoms and `"true"`/`"false"` strings.
-  Uses explicit key lookup because `Enum.find_value` treats `false` as "not found".
   """
   @spec get_boolean(map(), [atom() | String.t()], boolean()) :: boolean()
   def get_boolean(map, keys, default) do
-    found_key = Enum.find(keys, fn key -> Map.has_key?(map, key) end)
-
-    case found_key do
-      nil ->
-        default
-
-      key ->
-        case Map.get(map, key) do
-          value when is_boolean(value) -> value
-          "true" -> true
-          "false" -> false
-          _ -> default
-        end
+    case get_value(map, keys) do
+      value when is_boolean(value) -> value
+      "true" -> true
+      "false" -> false
+      _ -> default
     end
   end
 
