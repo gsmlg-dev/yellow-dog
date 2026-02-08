@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 153)
+**Phase**: IN_PROGRESS (Iteration 154)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 153 of 1000
+**Iteration**: 154 of 1000
 
 ## Session Summary
+Iteration 154: Extract clear_file_services helper in service registry:
+- ✅ **All tests pass: 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Extracted duplicated clear-and-reload pattern into clear_file_services/0
+- ✅ Used for comprehension for ETS deletion instead of Enum.each
+- ✅ 1 commit — 1 file — net 0 lines (cleaner structure)
+
 Iteration 153: DRY network_monitor store_response + capture shorthand:
 - ✅ **All tests pass: 309 mDNS, 1106 console, 0 failures, 0 credo issues, 0 warnings**
 - ✅ mdns network_monitor: 3 Enum.each(cache_record) → single for comprehension
