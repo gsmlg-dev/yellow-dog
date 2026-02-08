@@ -218,7 +218,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
       get_queries(since: one_hour_ago)
       |> Enum.group_by(& &1.domain)
       |> Enum.map(fn {domain, queries} -> {domain, length(queries)} end)
-      |> Enum.sort_by(fn {_domain, count} -> count end, :desc)
+      |> Enum.sort_by(&elem(&1, 1), :desc)
       |> Enum.take(10)
       |> Enum.map(fn {domain, count} -> %{domain: domain, count: count} end)
 

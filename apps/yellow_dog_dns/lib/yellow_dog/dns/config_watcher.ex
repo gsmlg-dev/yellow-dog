@@ -317,14 +317,14 @@ defmodule YellowDog.Dns.ConfigWatcher do
           _ -> true
         end
       end)
-      |> Enum.map(fn {file, _mtime} -> file end)
+      |> Enum.map(&elem(&1, 0))
 
     # Find deleted files
     deleted =
       Enum.filter(old_mtimes, fn {file, _mtime} ->
         not Map.has_key?(new_mtimes, file)
       end)
-      |> Enum.map(fn {file, _mtime} -> file end)
+      |> Enum.map(&elem(&1, 0))
 
     new_or_changed ++ deleted
   end

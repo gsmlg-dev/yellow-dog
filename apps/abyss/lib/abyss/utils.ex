@@ -134,7 +134,7 @@ defmodule Abyss.Utils do
         addrs
         |> Enum.map(fn {name, props} -> {to_string(name), props} end)
         |> filter_interfaces_by_opts(opts)
-        |> Enum.map(fn {name, _props} -> name end)
+        |> Enum.map(&elem(&1, 0))
         |> Enum.uniq()
 
       {:error, _reason} ->

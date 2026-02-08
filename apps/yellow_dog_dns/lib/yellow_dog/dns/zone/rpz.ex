@@ -272,7 +272,7 @@ defmodule YellowDog.Dns.Zone.RPZ do
       end,
       :desc
     )
-    |> Enum.map(fn {policy, _idx} -> policy end)
+    |> Enum.map(&elem(&1, 0))
   end
 
   defp evaluate_policies(state, query, response) do

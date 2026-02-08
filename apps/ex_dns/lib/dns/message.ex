@@ -136,8 +136,9 @@ defmodule DNS.Message do
           ""
         end
 
-      otp = message.arlist |> Enum.find(fn record -> record.type == RRType.new(41) end)
-      arlist = message.arlist |> Enum.filter(fn record -> record.type != RRType.new(41) end)
+      opt_type = RRType.new(41)
+      otp = Enum.find(message.arlist, &(&1.type == opt_type))
+      arlist = Enum.filter(message.arlist, &(&1.type != opt_type))
 
       edns0 =
         if !is_nil(otp) do
