@@ -41,4 +41,28 @@ defmodule YellowDog.Dhcpv4.MacFormatTest do
       assert result == String.upcase(result)
     end
   end
+
+  describe "format!/2" do
+    test "returns formatted MAC for valid binary" do
+      assert MacFormat.format!(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>) == "AA:BB:CC:DD:EE:FF"
+    end
+
+    test "returns UNKNOWN for invalid input" do
+      assert MacFormat.format!(nil) == "UNKNOWN"
+      assert MacFormat.format!(<<1, 2>>) == "UNKNOWN"
+    end
+
+    test "returns custom default for invalid input" do
+      assert MacFormat.format!(nil, default: "N/A") == "N/A"
+    end
+
+    test "passes format options through" do
+      assert MacFormat.format!(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, case: :lower) ==
+               "aa:bb:cc:dd:ee:ff"
+    end
+
+    test "passes both default and format options" do
+      assert MacFormat.format!(<<1, 2>>, default: "none", case: :lower) == "none"
+    end
+  end
 end

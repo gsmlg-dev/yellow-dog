@@ -18,7 +18,9 @@ defmodule YellowDog.Dhcpv6.Ipv6UtilTest do
     end
 
     test "converts all-ones address" do
-      result = Ipv6Util.to_integer({0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF})
+      result =
+        Ipv6Util.to_integer({0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF})
+
       expected = Bitwise.bsl(1, 128) - 1
       assert result == expected
     end
@@ -81,6 +83,37 @@ defmodule YellowDog.Dhcpv6.Ipv6UtilTest do
 
     test "returns nil for nil" do
       assert Ipv6Util.format(nil) == nil
+    end
+  end
+
+  describe "parse/1" do
+    test "parses valid IPv6 string" do
+      assert {:ok, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1}} = Ipv6Util.parse("2001:db8::1")
+    end
+
+    test "parses loopback string" do
+      assert {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} = Ipv6Util.parse("::1")
+    end
+
+    test "passes through valid 8-tuple" do
+      tuple = {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+      assert {:ok, ^tuple} = Ipv6Util.parse(tuple)
+    end
+
+    test "returns error for invalid string" do
+      assert {:error, _} = Ipv6Util.parse("not-ipv6")
+    end
+
+    test "returns error for IPv4 string" do
+      assert {:error, _} = Ipv6Util.parse("192.168.1.1")
+    end
+
+    test "returns error for nil" do
+      assert {:error, _} = Ipv6Util.parse(nil)
+    end
+
+    test "returns error for integer" do
+      assert {:error, _} = Ipv6Util.parse(42)
     end
   end
 end

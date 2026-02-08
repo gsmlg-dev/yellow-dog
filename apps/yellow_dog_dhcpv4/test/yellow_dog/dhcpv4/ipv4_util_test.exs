@@ -48,4 +48,26 @@ defmodule YellowDog.Dhcpv4.Ipv4UtilTest do
       assert addr |> Ipv4Util.to_integer() |> Ipv4Util.from_integer() == addr
     end
   end
+
+  describe "format/1" do
+    test "formats tuple as dotted-decimal string" do
+      assert Ipv4Util.format({192, 168, 1, 1}) == "192.168.1.1"
+    end
+
+    test "formats all-zeros tuple" do
+      assert Ipv4Util.format({0, 0, 0, 0}) == "0.0.0.0"
+    end
+
+    test "formats broadcast address" do
+      assert Ipv4Util.format({255, 255, 255, 255}) == "255.255.255.255"
+    end
+
+    test "passes through binary strings unchanged" do
+      assert Ipv4Util.format("10.0.0.1") == "10.0.0.1"
+    end
+
+    test "returns nil for nil" do
+      assert Ipv4Util.format(nil) == nil
+    end
+  end
 end

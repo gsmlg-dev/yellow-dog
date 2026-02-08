@@ -192,4 +192,52 @@ defmodule YellowDog.Config.TomlHelpersTest do
       assert File.read!(path <> ".backup") == "original"
     end
   end
+
+  describe "format_datetime/1" do
+    test "formats DateTime to ISO 8601" do
+      dt = ~U[2025-06-15 12:30:00Z]
+      assert TomlHelpers.format_datetime(dt) == "2025-06-15T12:30:00Z"
+    end
+
+    test "formats unix timestamp to ISO 8601" do
+      unix = 1_718_451_000
+      result = TomlHelpers.format_datetime(unix)
+      assert String.ends_with?(result, "Z") or String.contains?(result, "+")
+      assert {:ok, _, _} = DateTime.from_iso8601(result)
+    end
+
+    test "returns current time ISO 8601 for other values" do
+      result = TomlHelpers.format_datetime(:unknown)
+      assert {:ok, _, _} = DateTime.from_iso8601(result)
+    end
+
+    test "returns current time ISO 8601 for nil" do
+      result = TomlHelpers.format_datetime(nil)
+      assert {:ok, _, _} = DateTime.from_iso8601(result)
+    end
+  end
+
+  describe "read_toml_file/1" do
+    @tag :tmp_dir
+    test "reads and parses valid TOML file", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "test.toml")
+      File.write!(path, ~s(name = "yellow-dog"\nport = 53))
+
+      assert {:ok, %{"name" => "yellow-dog", "port" => 53}} = TomlHelpers.read_toml_file(path)
+    end
+
+    @tag :tmp_dir
+    test "returns error for missing file", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "missing.toml")
+      assert {:error, :enoent} = TomlHelpers.read_toml_file(path)
+    end
+
+    @tag :tmp_dir
+    test "returns error for invalid TOML content", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "bad.toml")
+      File.write!(path, "invalid = = =")
+
+      assert {:error, _} = TomlHelpers.read_toml_file(path)
+    end
+  end
 end
