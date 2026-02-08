@@ -239,8 +239,7 @@ defmodule DNS.Zone.Validator do
           end
         end
 
-        cname_records = Enum.filter(records, is_cname)
-        other_records = Enum.reject(records, is_cname)
+        {cname_records, other_records} = Enum.split_with(records, is_cname)
 
         err_acc =
           if cname_records != [] and other_records != [] do

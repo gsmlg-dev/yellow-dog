@@ -11,7 +11,6 @@ defmodule DNS.Zone.Transfer do
   alias DNS.Message.Record
   alias DNS.Zone.Manager
 
-
   @doc """
   Perform full zone transfer (AXFR) for a zone.
   """
