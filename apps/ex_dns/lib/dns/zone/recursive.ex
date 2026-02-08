@@ -5,18 +5,12 @@ defmodule DNS.Zone.Recursive do
   """
 
   def root_ns_addrs(type \\ :a) when type in [:a, :aaaa] do
-    DNS.Zone.RootHint.root_hints()
-    |> Enum.filter(fn rr ->
-      rr[:type] == type
-    end)
-    |> Enum.map(fn rr ->
-      data = rr[:data]
-
-      case :inet.parse_ipv4_address(~c"#{data}") do
+    for rr <- DNS.Zone.RootHint.root_hints(), rr[:type] == type do
+      case :inet.parse_ipv4_address(~c"#{rr[:data]}") do
         {:ok, addr} -> addr
-        {:error, _} -> data
+        {:error, _} -> rr[:data]
       end
-    end)
+    end
   end
 
   def resolve(name, type) do
@@ -107,12 +101,9 @@ defmodule DNS.Zone.Recursive do
                            ns_server = rr.data.data
                            type = DNS.ResourceRecordType.new(:a)
 
-                           arlist
-                           |> Enum.filter(fn d ->
-                             d.name.value == ns_server.value and
-                               d.type == type
-                           end)
-                           |> Enum.map(& &1.data.data)
+                           for d <- arlist,
+                               d.name.value == ns_server.value and d.type == type,
+                               do: d.data.data
                          end)
 
                        {:ok, {:nslist, name_servers, resp_message}}

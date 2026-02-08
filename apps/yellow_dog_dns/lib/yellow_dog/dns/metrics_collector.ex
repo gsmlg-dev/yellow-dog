@@ -498,12 +498,7 @@ defmodule YellowDog.Dns.MetricsCollector do
 
   defp read_top_keyed(table, prefix, limit) do
     # Scan ETS for all entries with the given prefix
-    :ets.tab2list(table)
-    |> Enum.filter(fn
-      {{:counter, ^prefix, _key}, _count} -> true
-      _ -> false
-    end)
-    |> Enum.map(fn {{:counter, ^prefix, key}, count} -> {key, count} end)
+    (for {{:counter, ^prefix, key}, count} <- :ets.tab2list(table), do: {key, count})
     |> Enum.sort_by(fn {_key, count} -> count end, :desc)
     |> Enum.take(limit)
   end
