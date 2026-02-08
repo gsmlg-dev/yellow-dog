@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 171)
+**Phase**: IN_PROGRESS (Iteration 172)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 171 of 1000
+**Iteration**: 172 of 1000
 
 ## Session Summary
+Iteration 172: Reuse get_service/1 in service_registry handle_call clauses:
+- ✅ **All tests pass: 309 mDNS, 0 failures, 0 warnings**
+- ✅ 3 handle_call clauses now use public get_service/1 instead of raw ETS lookup
+- ✅ Consistent nil-first pattern matching (nil case first, service case second)
+- ✅ 1 commit — 1 file — net 0 lines (cleaner structure)
+
 Iteration 171: Replace Enum.empty? with == [] across 11 modules:
 - ✅ **All tests pass: 309 mDNS, 1083 DNS, 1106 console, 4764 ex_dns, 0 failures**
 - ✅ 15 instances across mDNS (5), DNS (6), console (2), ex_dns (2)
