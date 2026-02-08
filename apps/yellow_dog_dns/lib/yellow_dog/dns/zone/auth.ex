@@ -589,13 +589,11 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   # Convert parsed DNS.Zone RRSets back to DNS.Message.Record structs for ETS storage
   defp rrsets_to_records(%DNS.Zone{} = zone) do
-    zone.records
-    |> Enum.flat_map(fn rrset ->
-      Enum.map(rrset.data, fn data ->
-        rrset_data_to_record(rrset.name, rrset.type, rrset.ttl, data, zone.origin)
-      end)
-    end)
-    |> Enum.reject(&is_nil/1)
+    for rrset <- zone.records,
+        data <- rrset.data,
+        record = rrset_data_to_record(rrset.name, rrset.type, rrset.ttl, data, zone.origin),
+        record != nil,
+        do: record
   end
 
   defp rrset_data_to_record(name, type, ttl, data, origin) do

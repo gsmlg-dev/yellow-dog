@@ -328,26 +328,25 @@ defmodule YellowDog.Dns.Zone.Forward do
   # Private Functions
 
   defp parse_upstreams(upstreams) when is_list(upstreams) do
-    Enum.map(upstreams, fn
-      {ip, port} when is_tuple(ip) and is_integer(port) ->
-        {ip, port}
-
-      ip_str when is_binary(ip_str) ->
-        parse_upstream_string(ip_str)
-
-      {ip_str, port} when is_binary(ip_str) and is_integer(port) ->
-        case IpFormat.parse(ip_str) do
-          {:ok, ip} -> {ip, port}
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end)
-    |> Enum.reject(&is_nil/1)
+    for upstream <- upstreams,
+        parsed = parse_single_upstream(upstream),
+        parsed != nil,
+        do: parsed
   end
 
   defp parse_upstreams(_), do: []
+
+  defp parse_single_upstream({ip, port}) when is_tuple(ip) and is_integer(port), do: {ip, port}
+  defp parse_single_upstream(ip_str) when is_binary(ip_str), do: parse_upstream_string(ip_str)
+
+  defp parse_single_upstream({ip_str, port}) when is_binary(ip_str) and is_integer(port) do
+    case IpFormat.parse(ip_str) do
+      {:ok, ip} -> {ip, port}
+      _ -> nil
+    end
+  end
+
+  defp parse_single_upstream(_), do: nil
 
   defp parse_upstream_string(str) do
     case String.split(str, ":") do
