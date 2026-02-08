@@ -235,21 +235,6 @@ defmodule YellowDog.Config.Transform do
     end
   end
 
-  # For testing: expose transform function that matches old test interface
-  @doc false
-  def transform(key, value, path) when is_list(path) do
-    # This is for backward compatibility with tests
-    # The real transformation happens in apply/1
-    case path do
-      ["core"] -> {safe_to_atom(key), value}
-      ["dns"] -> {safe_to_atom(key), value}
-      ["mdns"] -> {safe_to_atom(key), value}
-      ["dhcpv4"] -> {safe_to_atom(key), value}
-      ["dhcpv6"] -> {safe_to_atom(key), value}
-      _ -> {key, value}
-    end
-  end
-
   # Safe atom conversion — uses existing atoms to prevent atom table exhaustion
   defp safe_to_atom(key) when is_binary(key) do
     String.to_existing_atom(key)
