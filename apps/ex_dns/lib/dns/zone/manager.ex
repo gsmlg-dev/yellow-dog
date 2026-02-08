@@ -138,7 +138,7 @@ defmodule DNS.Zone.Manager do
     # Validate zone options
     errors = validate_zone_options(zone.options, errors)
 
-    if Enum.empty?(errors) do
+    if errors == [] do
       {:ok, zone}
     else
       {:error, errors}

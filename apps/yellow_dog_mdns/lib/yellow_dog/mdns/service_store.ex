@@ -242,7 +242,7 @@ defmodule YellowDog.Mdns.ServiceStore do
         is_nil(Map.get(service, field))
       end)
 
-    if Enum.empty?(missing) do
+    if missing == [] do
       :ok
     else
       {:error, "Missing required fields: #{Enum.join(missing, ", ")}"}
@@ -274,7 +274,7 @@ defmodule YellowDog.Mdns.ServiceStore do
         is_binary(addr) and (valid_ipv4?(addr) or valid_ipv6?(addr))
       end)
 
-    if Enum.empty?(invalid) do
+    if invalid == [] do
       :ok
     else
       {:error, "Invalid IP addresses: #{inspect(invalid)}"}

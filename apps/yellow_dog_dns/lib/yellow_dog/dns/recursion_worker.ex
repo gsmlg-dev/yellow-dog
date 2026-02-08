@@ -183,7 +183,7 @@ defmodule YellowDog.Dns.RecursionWorker do
     # Build server list from NS + glue
     servers = build_server_list(ns_records, glue_records)
 
-    if Enum.empty?(servers) do
+    if servers == [] do
       # No glue, need to resolve NS hostnames first
       case resolve_ns_addresses(socket, ns_records, timeout, depth + 1) do
         {:ok, resolved_servers} ->
@@ -240,7 +240,7 @@ defmodule YellowDog.Dns.RecursionWorker do
         {:ok, response} ->
           addresses = for(r <- response.anlist, r.type == :a, do: {r.rdata, 53})
 
-          if Enum.empty?(addresses) do
+          if addresses == [] do
             resolve_ns_addresses(socket, rest, timeout, depth)
           else
             {:ok, addresses}

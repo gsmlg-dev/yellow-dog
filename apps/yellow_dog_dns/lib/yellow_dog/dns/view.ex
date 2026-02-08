@@ -573,7 +573,7 @@ defmodule YellowDog.Dns.View do
   defp apply_rpz_and_respond(state, connection_pid, query_id, query, response) do
     # Apply RPZ policies if configured
     final_response =
-      if Enum.empty?(state.rpz_zones) do
+      if state.rpz_zones == [] do
         response
       else
         apply_rpz_policies(state, query, response)

@@ -176,7 +176,7 @@ defmodule YellowDog.Console.Settings.AddressPool do
         end
       end)
 
-    if Enum.empty?(invalid_servers) do
+    if invalid_servers == [] do
       changeset
     else
       add_error(

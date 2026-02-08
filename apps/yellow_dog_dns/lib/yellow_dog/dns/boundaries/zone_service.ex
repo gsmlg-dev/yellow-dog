@@ -121,7 +121,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
     # Get current records at this name/type
     current_records = Auth.get_records(zone_pid, name, type)
 
-    if Enum.empty?(current_records) do
+    if current_records == [] do
       {:error, :not_found}
     else
       # Keep name and type from original, update other fields
@@ -186,7 +186,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
     # Find the record to delete
     records_to_delete = Auth.get_records(zone_pid, name, type)
 
-    if Enum.empty?(records_to_delete) do
+    if records_to_delete == [] do
       {:error, :not_found}
     else
       record = %{name: name, type: type}

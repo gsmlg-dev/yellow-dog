@@ -231,7 +231,7 @@ defmodule YellowDog.Mdns.Responder do
       matching_services = find_matching_services(question, all_services)
       {question, matching_services}
     end)
-    |> Enum.reject(fn {_question, services} -> Enum.empty?(services) end)
+    |> Enum.reject(fn {_question, services} -> services == [] end)
   end
 
   defp find_matching_services(question, services) do
@@ -284,7 +284,7 @@ defmodule YellowDog.Mdns.Responder do
         end
       end)
 
-    if Enum.empty?(matching_services) do
+    if matching_services == [] do
       nil
     else
       # Build a simple response

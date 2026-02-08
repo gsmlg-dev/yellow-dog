@@ -170,7 +170,7 @@ defmodule YellowDog.Mdns.Handler do
     # Get matching services from registry
     services = ServiceRegistry.get_records_for_query(query.qdlist)
 
-    if Enum.empty?(services) do
+    if services == [] do
       :telemetry.execute(
         [:yellow_dog, :mdns, :query, :no_match],
         %{count: 1},

@@ -256,7 +256,7 @@ defmodule YellowDog.Dns.ViewStore do
           (Map.has_key?(entry, :network) or Map.has_key?(entry, :geo_countries))
       end)
 
-    if Enum.empty?(invalid) do
+    if invalid == [] do
       :ok
     else
       {:error, "Invalid ACL entries: #{inspect(invalid)}"}

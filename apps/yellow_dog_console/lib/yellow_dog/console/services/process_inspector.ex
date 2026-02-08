@@ -173,7 +173,7 @@ defmodule YellowDog.Console.ProcessInspector do
     is_expanded = is_pid(pid) and MapSet.member?(expanded_pids, pid)
 
     # If no children or collapsed, just position this node
-    if Enum.empty?(children) or not is_expanded do
+    if children == [] or not is_expanded do
       node_with_pos =
         node
         |> Map.put(:x, x)

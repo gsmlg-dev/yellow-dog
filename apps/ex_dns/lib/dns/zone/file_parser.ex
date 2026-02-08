@@ -151,7 +151,7 @@ defmodule DNS.Zone.FileParser do
 
     zone = %{zone | errors: Enum.reverse(errors), warnings: []}
 
-    if Enum.empty?(errors) do
+    if errors == [] do
       {:ok, zone}
     else
       {:error, format_errors(errors)}
