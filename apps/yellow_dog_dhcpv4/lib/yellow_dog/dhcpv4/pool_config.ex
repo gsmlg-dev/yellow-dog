@@ -181,14 +181,13 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
         end
       end)
 
-    errors = Enum.filter(results, &match?({:error, _}, &1))
+    case collect_ok(results) do
+      {:ok, pools} ->
+        emit_loaded_telemetry(length(pools))
+        {:ok, pools}
 
-    if Enum.empty?(errors) do
-      pools = Enum.map(results, fn {:ok, pool} -> pool end)
-      emit_loaded_telemetry(length(pools))
-      {:ok, pools}
-    else
-      {:error, {:validation_errors, errors}}
+      {:error, errors} ->
+        {:error, {:validation_errors, errors}}
     end
   end
 
@@ -213,12 +212,9 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
         parsed_ranges =
           Enum.map(ranges, &parse_range_string/1)
 
-        errors = Enum.filter(parsed_ranges, &match?({:error, _}, &1))
-
-        if Enum.empty?(errors) do
-          {:ok, Enum.map(parsed_ranges, fn {:ok, range} -> range end)}
-        else
-          {:error, {:invalid_ranges, errors}}
+        case collect_ok(parsed_ranges) do
+          {:ok, _} = ok -> ok
+          {:error, errors} -> {:error, {:invalid_ranges, errors}}
         end
 
       _ ->
@@ -293,16 +289,11 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
 
       servers when is_list(servers) ->
         parsed =
-          Enum.map(servers, fn server_str ->
-            Ipv4Util.parse(server_str)
-          end)
+          Enum.map(servers, &Ipv4Util.parse/1)
 
-        errors = Enum.filter(parsed, &match?({:error, _}, &1))
-
-        if Enum.empty?(errors) do
-          {:ok, Enum.map(parsed, fn {:ok, ip} -> ip end)}
-        else
-          {:error, {:invalid_dns_servers, errors}}
+        case collect_ok(parsed) do
+          {:ok, _} = ok -> ok
+          {:error, errors} -> {:error, {:invalid_dns_servers, errors}}
         end
 
       _ ->
@@ -324,14 +315,9 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
             end
           end)
 
-        errors = Enum.filter(parsed, &match?({:error, _}, &1))
-
-        if Enum.empty?(errors) do
-          map = Map.new(parsed, fn {:ok, {mac, ip}} -> {mac, ip} end)
-
-          {:ok, map}
-        else
-          {:error, {:invalid_reservations, errors}}
+        case collect_ok(parsed) do
+          {:ok, pairs} -> {:ok, Map.new(pairs)}
+          {:error, errors} -> {:error, {:invalid_reservations, errors}}
         end
 
       _ ->
@@ -357,6 +343,18 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   end
 
   defp validate_mac(_), do: {:error, :invalid_mac_type}
+
+  # Partitions a list of {:ok, val} | {:error, reason} results.
+  # Returns {:ok, values} if all succeeded, {:error, errors} otherwise.
+  defp collect_ok(results) do
+    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if errors == [] do
+      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
+    else
+      {:error, errors}
+    end
+  end
 
   # Telemetry helpers
 
