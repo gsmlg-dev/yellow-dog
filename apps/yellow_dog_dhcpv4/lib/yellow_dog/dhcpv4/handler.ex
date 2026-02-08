@@ -15,6 +15,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     ACL,
     ConflictResolver,
     CustomOptions,
+    Ipv4Util,
     LeaseManager,
     OptionParser,
     RateLimiter
@@ -435,11 +436,11 @@ defmodule YellowDog.Dhcpv4.Handler do
       case request_state do
         :renewing ->
           # For RENEWING, use ciaddr (client's current IP)
-          integer_to_ip_tuple(request.ciaddr)
+          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
 
         :rebinding ->
           # For REBINDING, use ciaddr (client's current IP)
-          integer_to_ip_tuple(request.ciaddr)
+          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
 
         _ ->
           # For SELECTING and INIT-REBOOT, use pre-parsed Requested IP Address
@@ -770,13 +771,6 @@ defmodule YellowDog.Dhcpv4.Handler do
       true ->
         :selecting
     end
-  end
-
-  defp integer_to_ip_tuple(0), do: nil
-
-  defp integer_to_ip_tuple(ip_int) when is_integer(ip_int) do
-    import Bitwise
-    {ip_int >>> 24 &&& 0xFF, ip_int >>> 16 &&& 0xFF, ip_int >>> 8 &&& 0xFF, ip_int &&& 0xFF}
   end
 
   defp get_server_identifier do

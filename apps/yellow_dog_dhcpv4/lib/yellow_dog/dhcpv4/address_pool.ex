@@ -6,6 +6,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   Supports multiple pools, static reservations, and address conflict detection.
   """
 
+  alias YellowDog.Dhcpv4.Ipv4Util
+
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()
   @type ip_range :: {ip_address(), ip_address()}
@@ -192,13 +194,13 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   """
   @spec in_range?(pool_config(), ip_address()) :: boolean()
   def in_range?(pool, ip) do
-    ip_int = ip_to_integer(ip)
+    ip_int = Ipv4Util.to_integer(ip)
 
     # Check if IP is in any of the allowed ranges
     in_allowed_range =
       Enum.any?(pool.ranges, fn {start_ip, end_ip} ->
-        start_int = ip_to_integer(start_ip)
-        end_int = ip_to_integer(end_ip)
+        start_int = Ipv4Util.to_integer(start_ip)
+        end_int = Ipv4Util.to_integer(end_ip)
         start_int <= ip_int and ip_int <= end_int
       end)
 
@@ -244,14 +246,14 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     # Count total addresses in all ranges
     total_in_ranges =
       Enum.reduce(pool.ranges, 0, fn {start_ip, end_ip}, acc ->
-        size = ip_to_integer(end_ip) - ip_to_integer(start_ip) + 1
+        size = Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
         acc + size
       end)
 
     # Count addresses in excluded ranges
     total_excluded =
       Enum.reduce(pool.excluded_ranges, 0, fn {start_ip, end_ip}, acc ->
-        size = ip_to_integer(end_ip) - ip_to_integer(start_ip) + 1
+        size = Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
         acc + size
       end)
 
@@ -320,8 +322,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
 
   defp in_excluded_range?(excluded_ranges, ip_int) do
     Enum.any?(excluded_ranges, fn {start_ip, end_ip} ->
-      start_int = ip_to_integer(start_ip)
-      end_int = ip_to_integer(end_ip)
+      start_int = Ipv4Util.to_integer(start_ip)
+      end_int = Ipv4Util.to_integer(end_ip)
       start_int <= ip_int and ip_int <= end_int
     end)
   end
@@ -347,7 +349,7 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   end
 
   defp validate_range_order(start_ip, end_ip) do
-    if ip_to_integer(start_ip) <= ip_to_integer(end_ip) do
+    if Ipv4Util.to_integer(start_ip) <= Ipv4Util.to_integer(end_ip) do
       :ok
     else
       {:error, "range_start must be less than or equal to range_end"}
@@ -355,12 +357,12 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   end
 
   defp find_next_available(start_ip, end_ip, allocated_ips, excluded_ranges) do
-    start_int = ip_to_integer(start_ip)
-    end_int = ip_to_integer(end_ip)
+    start_int = Ipv4Util.to_integer(start_ip)
+    end_int = Ipv4Util.to_integer(end_ip)
 
     result =
       Enum.find(start_int..end_int, fn ip_int ->
-        ip = integer_to_ip(ip_int)
+        ip = Ipv4Util.from_integer(ip_int)
 
         not MapSet.member?(allocated_ips, ip) and
           not in_excluded_range?(excluded_ranges, ip_int)
@@ -371,20 +373,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
         {:error, :pool_exhausted}
 
       ip_int ->
-        {:ok, integer_to_ip(ip_int)}
+        {:ok, Ipv4Util.from_integer(ip_int)}
     end
-  end
-
-  defp ip_to_integer({a, b, c, d}) do
-    a * 256 * 256 * 256 + b * 256 * 256 + c * 256 + d
-  end
-
-  defp integer_to_ip(int) do
-    a = div(int, 256 * 256 * 256)
-    b = div(rem(int, 256 * 256 * 256), 256 * 256)
-    c = div(rem(int, 256 * 256), 256)
-    d = rem(int, 256)
-    {a, b, c, d}
   end
 
   defp parse_ip_string(ip_string) do

@@ -6,6 +6,8 @@ defmodule YellowDog.Dhcpv4.Pool do
   static reservations, lease times, and ACL rules.
   """
 
+  alias YellowDog.Dhcpv4.Ipv4Util
+
   import Bitwise
   import YellowDog.ConfigHelpers
 
@@ -233,7 +235,7 @@ defmodule YellowDog.Dhcpv4.Pool do
     cond do
       is_nil(start_ip) -> {:error, "Invalid range start IP"}
       is_nil(end_ip) -> {:error, "Invalid range end IP"}
-      ip_to_int(start_ip) > ip_to_int(end_ip) -> {:error, "Range start must be <= range end"}
+      Ipv4Util.to_integer(start_ip) > Ipv4Util.to_integer(end_ip) -> {:error, "Range start must be <= range end"}
       true -> {:ok, {start_ip, end_ip}}
     end
   end
@@ -334,16 +336,16 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp validate_subnet(_), do: {:error, "Invalid subnet"}
 
   defp validate_range({start_ip, end_ip}) when is_tuple(start_ip) and is_tuple(end_ip) do
-    if ip_to_int(start_ip) <= ip_to_int(end_ip), do: :ok, else: {:error, "Invalid range"}
+    if Ipv4Util.to_integer(start_ip) <= Ipv4Util.to_integer(end_ip), do: :ok, else: {:error, "Invalid range"}
   end
 
   defp validate_range(_), do: {:error, "Invalid range"}
 
   defp validate_range_in_subnet({start_ip, end_ip}, {subnet_ip, prefix}) do
     mask = (1 <<< (32 - prefix)) - 1
-    subnet_int = ip_to_int(subnet_ip) &&& ~~~mask
-    start_int = ip_to_int(start_ip)
-    end_int = ip_to_int(end_ip)
+    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& ~~~mask
+    start_int = Ipv4Util.to_integer(start_ip)
+    end_int = Ipv4Util.to_integer(end_ip)
 
     network_end = subnet_int ||| mask
 
@@ -356,12 +358,12 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp validate_reservations(reservations, {subnet_ip, prefix}) do
     mask = (1 <<< (32 - prefix)) - 1
-    subnet_int = ip_to_int(subnet_ip) &&& ~~~mask
+    subnet_int = Ipv4Util.to_integer(subnet_ip) &&& ~~~mask
     network_end = subnet_int ||| mask
 
     invalid =
       Enum.find(reservations, fn {_mac, ip} ->
-        ip_int = ip_to_int(ip)
+        ip_int = Ipv4Util.to_integer(ip)
         ip_int < subnet_int or ip_int > network_end
       end)
 
@@ -400,8 +402,6 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp format_acl_rule({:vendor_class, value}), do: %{"type" => "vendor_class", "value" => value}
   defp format_acl_rule({:user_class, value}), do: %{"type" => "user_class", "value" => value}
-
-  defp ip_to_int({a, b, c, d}), do: a * 16_777_216 + b * 65_536 + c * 256 + d
 
   defp normalize_mac(mac) when is_binary(mac), do: String.upcase(mac)
   defp normalize_mac(mac), do: "#{mac}"

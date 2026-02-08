@@ -27,9 +27,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
-  alias YellowDog.Dhcpv4.AddressPool
-  alias YellowDog.Dhcpv4.LeaseStorage
-  alias YellowDog.Dhcpv4.PoolStore
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util, LeaseStorage, PoolStore}
 
   # Run cleanup every minute
   @cleanup_interval 60_000
@@ -1094,17 +1092,13 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   defp range_intersects?(start1, end1, start2, end2) do
-    start1_int = ip_to_integer(start1)
-    end1_int = ip_to_integer(end1)
-    start2_int = ip_to_integer(start2)
-    end2_int = ip_to_integer(end2)
+    start1_int = Ipv4Util.to_integer(start1)
+    end1_int = Ipv4Util.to_integer(end1)
+    start2_int = Ipv4Util.to_integer(start2)
+    end2_int = Ipv4Util.to_integer(end2)
 
     # Ranges overlap if one starts before the other ends and vice versa
     start1_int <= end2_int and start2_int <= end1_int
-  end
-
-  defp ip_to_integer({a, b, c, d}) do
-    a * 256 * 256 * 256 + b * 256 * 256 + c * 256 + d
   end
 
   defp format_ip(nil), do: nil
