@@ -1067,9 +1067,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   # Count active leases for a pool
   defp count_pool_leases(pool_name) do
-    list_leases()
-    |> Enum.filter(fn l -> l.pool_name == pool_name end)
-    |> length()
+    list_leases() |> Enum.count(fn l -> l.pool_name == pool_name end)
   end
 
   # Check if a new pool's range overlaps with any existing pools

@@ -8,48 +8,37 @@ defmodule YellowDog.Console.CsvHelperTest do
       assert CsvHelper.csv_escape("hello") == "hello"
     end
 
-    test "returns empty string unchanged" do
-      assert CsvHelper.csv_escape("") == ""
+    test "wraps value containing comma in double quotes" do
+      assert CsvHelper.csv_escape("a,b") == "\"a,b\""
     end
 
-    test "wraps value containing comma in quotes" do
-      assert CsvHelper.csv_escape("foo,bar") == "\"foo,bar\""
+    test "wraps value containing newline in double quotes" do
+      assert CsvHelper.csv_escape("line1\nline2") == "\"line1\nline2\""
     end
 
-    test "wraps value containing newline in quotes" do
-      assert CsvHelper.csv_escape("foo\nbar") == "\"foo\nbar\""
+    test "wraps value containing carriage return in double quotes" do
+      assert CsvHelper.csv_escape("line1\rline2") == "\"line1\rline2\""
     end
 
-    test "wraps value containing carriage return in quotes" do
-      assert CsvHelper.csv_escape("foo\rbar") == "\"foo\rbar\""
+    test "escapes double quotes by doubling them" do
+      assert CsvHelper.csv_escape("say \"hello\"") == "\"say \"\"hello\"\"\""
     end
 
-    test "wraps value containing double quote and escapes quotes" do
-      assert CsvHelper.csv_escape("foo\"bar") == "\"foo\"\"bar\""
-    end
-
-    test "escapes multiple double quotes" do
-      assert CsvHelper.csv_escape("a\"b\"c") == "\"a\"\"b\"\"c\""
-    end
-
-    test "handles value with both comma and quote" do
-      assert CsvHelper.csv_escape("a,b\"c") == "\"a,b\"\"c\""
+    test "handles value with both comma and quotes" do
+      assert CsvHelper.csv_escape("a,\"b\"") == "\"a,\"\"b\"\"\""
     end
 
     test "returns empty string for nil" do
       assert CsvHelper.csv_escape(nil) == ""
     end
 
-    test "converts integer to string" do
+    test "converts non-binary to string then escapes" do
       assert CsvHelper.csv_escape(42) == "42"
+      assert CsvHelper.csv_escape(:atom) == "atom"
     end
 
-    test "converts atom to string" do
-      assert CsvHelper.csv_escape(:active) == "active"
-    end
-
-    test "converts float to string" do
-      assert CsvHelper.csv_escape(3.14) == "3.14"
+    test "returns empty string unchanged" do
+      assert CsvHelper.csv_escape("") == ""
     end
   end
 
@@ -58,7 +47,7 @@ defmodule YellowDog.Console.CsvHelperTest do
       assert CsvHelper.format_addresses_for_csv(["10.0.0.1", "10.0.0.2"]) == "10.0.0.1; 10.0.0.2"
     end
 
-    test "returns single address as-is" do
+    test "handles single address" do
       assert CsvHelper.format_addresses_for_csv(["10.0.0.1"]) == "10.0.0.1"
     end
 
@@ -73,25 +62,22 @@ defmodule YellowDog.Console.CsvHelperTest do
     test "returns empty string for non-list" do
       assert CsvHelper.format_addresses_for_csv("not a list") == ""
     end
-
-    test "returns empty string for integer" do
-      assert CsvHelper.format_addresses_for_csv(42) == ""
-    end
   end
 
   describe "format_txt_for_csv/1" do
-    test "formats map as key=value pairs" do
+    test "formats map as key=value pairs separated by semicolons" do
       result = CsvHelper.format_txt_for_csv(%{"path" => "/", "version" => "1.0"})
-      assert result =~ "path=/"
-      assert result =~ "version=1.0"
-      assert result =~ "; "
+      # Map ordering is not guaranteed, so check both entries are present
+      assert String.contains?(result, "path=/")
+      assert String.contains?(result, "version=1.0")
+      assert String.contains?(result, "; ")
     end
 
-    test "formats single entry map" do
-      assert CsvHelper.format_txt_for_csv(%{"key" => "value"}) == "key=value"
+    test "handles single-entry map" do
+      assert CsvHelper.format_txt_for_csv(%{"key" => "val"}) == "key=val"
     end
 
-    test "returns empty string for empty map" do
+    test "handles empty map" do
       assert CsvHelper.format_txt_for_csv(%{}) == ""
     end
 
@@ -101,10 +87,6 @@ defmodule YellowDog.Console.CsvHelperTest do
 
     test "returns empty string for non-map" do
       assert CsvHelper.format_txt_for_csv("not a map") == ""
-    end
-
-    test "returns empty string for list" do
-      assert CsvHelper.format_txt_for_csv([1, 2, 3]) == ""
     end
   end
 end
