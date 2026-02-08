@@ -162,22 +162,11 @@ defmodule YellowDog.Dns.Zone.Cache do
       [question | _] ->
         key = cache_key(question.name, question.type)
 
-        case :ets.lookup(state.table, key) do
-          [{^key, entry}] ->
-            if entry.expires_at > System.system_time(:second) do
-              # Cache hit
-              state = %{state | hit_count: state.hit_count + 1}
-              response = build_cached_response(query, entry)
-              {:reply, {:ok, response}, state}
-            else
-              # Expired
-              :ets.delete(state.table, key)
-              state = %{state | miss_count: state.miss_count + 1}
-              {:reply, :miss, state}
-            end
+        case check_cache(state, key) do
+          {:hit, entry, state} ->
+            {:reply, {:ok, build_cached_response(query, entry)}, state}
 
-          [] ->
-            state = %{state | miss_count: state.miss_count + 1}
+          {:miss, state} ->
             {:reply, :miss, state}
         end
 
@@ -190,19 +179,11 @@ defmodule YellowDog.Dns.Zone.Cache do
   def handle_call({:lookup, name, type}, _from, state) do
     key = cache_key(name, type)
 
-    case :ets.lookup(state.table, key) do
-      [{^key, entry}] ->
-        if entry.expires_at > System.system_time(:second) do
-          state = %{state | hit_count: state.hit_count + 1}
-          {:reply, {:ok, entry.response}, state}
-        else
-          :ets.delete(state.table, key)
-          state = %{state | miss_count: state.miss_count + 1}
-          {:reply, :miss, state}
-        end
+    case check_cache(state, key) do
+      {:hit, entry, state} ->
+        {:reply, {:ok, entry.response}, state}
 
-      [] ->
-        state = %{state | miss_count: state.miss_count + 1}
+      {:miss, state} ->
         {:reply, :miss, state}
     end
   end
@@ -312,6 +293,21 @@ defmodule YellowDog.Dns.Zone.Cache do
   end
 
   # Private Functions
+
+  defp check_cache(state, key) do
+    case :ets.lookup(state.table, key) do
+      [{^key, entry}] ->
+        if entry.expires_at > System.system_time(:second) do
+          {:hit, entry, %{state | hit_count: state.hit_count + 1}}
+        else
+          :ets.delete(state.table, key)
+          {:miss, %{state | miss_count: state.miss_count + 1}}
+        end
+
+      [] ->
+        {:miss, %{state | miss_count: state.miss_count + 1}}
+    end
+  end
 
   defp cache_key(name, type) do
     normalized = normalize_name(name)
