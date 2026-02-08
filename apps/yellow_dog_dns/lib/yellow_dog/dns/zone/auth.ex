@@ -770,12 +770,10 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}), do: IpFormat.format(ip)
   defp extract_address({_, _, _, _} = ip), do: IpFormat.format(ip)
   defp extract_address({_, _, _, _, _, _, _, _} = ip), do: IpFormat.format(ip)
-  defp extract_address(rdata) when is_struct(rdata), do: to_string(rdata)
   defp extract_address(rdata), do: to_string(rdata)
 
   # Extract target domain from CNAME/NS/PTR records
   defp extract_target(%{data: target}), do: to_string(target)
-  defp extract_target(target) when is_struct(target), do: to_string(target)
   defp extract_target(target), do: to_string(target)
 
   # Extract MX data
