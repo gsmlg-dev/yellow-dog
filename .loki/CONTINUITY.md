@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 138)
+**Phase**: IN_PROGRESS (Iteration 139)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 138 of 1000
+**Iteration**: 139 of 1000
 
 ## Session Summary
+Iteration 139: DRY format_bytes/format_memory into FormatHelper:
+- ✅ **All tests pass: 1084 tests, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Added format_bytes/1 to FormatHelper with named constants (@kb, @mb, @gb)
+- ✅ Replaced 7-clause format_memory in dashboard_live.ex with imported format_bytes
+- ✅ Replaced 3-clause format_bytes in settings_live.ex with imported format_bytes
+- ✅ Left service_manager.ex format_bytes as-is (different app, can't import console module)
+- ✅ 1 commit — 3 files — net -3 lines
+
 Iteration 138: DRY format_timestamp/format_uptime, Enum.reverse consistency:
 - ✅ **All tests pass: 1084 tests, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Added format_time/1 (DateTime→"HH:MM:SS") to FormatHelper
