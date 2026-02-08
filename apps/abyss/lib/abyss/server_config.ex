@@ -36,6 +36,10 @@ defmodule Abyss.ServerConfig do
           handler_memory_hard_limit: pos_integer()
         }
 
+  @connections_per_listener 100
+  @processing_time_baseline_ms 100
+  @min_processing_factor 0.5
+
   defstruct port: 4000,
             transport_module: Abyss.Transport.UDP,
             transport_options: [],
@@ -174,13 +178,12 @@ defmodule Abyss.ServerConfig do
   """
   @spec calculate_optimal_listeners(pos_integer(), float()) :: pos_integer()
   def calculate_optimal_listeners(current_connections, avg_processing_time_ms) do
-    # Start with at least 1 listener per 100 connections
-    # This provides better granularity for low to medium loads
-    base_listeners = max(div(current_connections, 100), 1)
+    # Start with at least 1 listener per @connections_per_listener connections
+    base_listeners = max(div(current_connections, @connections_per_listener), 1)
 
     # Adjust for processing time (slower processing = more listeners needed)
-    # Normalize to 100ms baseline, with minimum factor of 0.5
-    processing_factor = max(avg_processing_time_ms / 100, 0.5)
+    # Normalize to @processing_time_baseline_ms baseline
+    processing_factor = max(avg_processing_time_ms / @processing_time_baseline_ms, @min_processing_factor)
 
     optimal = round(base_listeners * processing_factor)
 

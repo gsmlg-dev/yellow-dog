@@ -11,7 +11,7 @@ defmodule DNS.Message.Record.Data.TXT do
   defstruct raw: nil, type: DNS.ResourceRecordType.new(16), rdlength: nil, data: nil
 
   def new(text) do
-    raw = Enum.reduce(text, <<>>, fn x, acc -> <<acc::binary, byte_size(x)::8, x::binary>> end)
+    raw = Enum.map_join(text, fn x -> <<byte_size(x)::8, x::binary>> end)
     %__MODULE__{raw: raw, data: text, rdlength: byte_size(raw)}
   end
 
