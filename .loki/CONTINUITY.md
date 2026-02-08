@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 170)
+**Phase**: IN_PROGRESS (Iteration 171)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 170 of 1000
+**Iteration**: 171 of 1000
 
 ## Session Summary
+Iteration 171: Replace Enum.empty? with == [] across 11 modules:
+- ✅ **All tests pass: 309 mDNS, 1083 DNS, 1106 console, 4764 ex_dns, 0 failures**
+- ✅ 15 instances across mDNS (5), DNS (6), console (2), ex_dns (2)
+- ✅ More idiomatic: == [] is O(1) for lists, avoids Enum protocol dispatch
+- ✅ 1 commit — 11 files — net 0 lines (style improvement)
+
 Iteration 170: Replace Enum.filter|>Enum.map with for comprehensions:
 - ✅ **All tests pass: 1083 DNS, 4764 ex_dns, 0 failures, 0 warnings**
 - ✅ metrics_collector.ex: filter+map on ETS tab2list → for with pin match
