@@ -420,6 +420,13 @@ defmodule YellowDog.Dns.MetricsCollector do
     end
   end
 
+  defp read_bound(table, bound) do
+    case :ets.lookup(table, {:histogram, :response_time, bound}) do
+      [{_, v}] -> v
+      [] -> nil
+    end
+  end
+
   defp read_counter(table, key) do
     case :ets.lookup(table, key) do
       [{^key, value}] -> value
@@ -449,26 +456,17 @@ defmodule YellowDog.Dns.MetricsCollector do
   end
 
   defp update_min_max(table, value) do
-    case :ets.lookup(table, {:histogram, :response_time, :min}) do
-      [{_, nil}] ->
-        :ets.insert(table, {{:histogram, :response_time, :min}, value})
+    update_bound(table, :min, value, &Kernel.</2)
+    update_bound(table, :max, value, &Kernel.>/2)
+  end
 
-      [{_, current}] when value < current ->
-        :ets.insert(table, {{:histogram, :response_time, :min}, value})
+  defp update_bound(table, bound, value, better?) do
+    key = {:histogram, :response_time, bound}
 
-      _ ->
-        :ok
-    end
-
-    case :ets.lookup(table, {:histogram, :response_time, :max}) do
-      [{_, nil}] ->
-        :ets.insert(table, {{:histogram, :response_time, :max}, value})
-
-      [{_, current}] when value > current ->
-        :ets.insert(table, {{:histogram, :response_time, :max}, value})
-
-      _ ->
-        :ok
+    case :ets.lookup(table, key) do
+      [{_, nil}] -> :ets.insert(table, {key, value})
+      [{_, current}] -> if better?.(value, current), do: :ets.insert(table, {key, value})
+      _ -> :ok
     end
   end
 
@@ -480,17 +478,8 @@ defmodule YellowDog.Dns.MetricsCollector do
     count = read_counter(table, {:histogram, :response_time, :count})
     sum = read_counter(table, {:histogram, :response_time, :sum})
 
-    min_val =
-      case :ets.lookup(table, {:histogram, :response_time, :min}) do
-        [{_, v}] -> v
-        [] -> nil
-      end
-
-    max_val =
-      case :ets.lookup(table, {:histogram, :response_time, :max}) do
-        [{_, v}] -> v
-        [] -> nil
-      end
+    min_val = read_bound(table, :min)
+    max_val = read_bound(table, :max)
 
     buckets =
       Enum.map(@response_time_buckets ++ [:inf], fn bucket ->
