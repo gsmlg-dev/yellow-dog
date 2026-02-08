@@ -482,10 +482,7 @@ defmodule YellowDog.Dns.Zone.Auth do
         records = rrsets_to_records(zone)
         count = length(records)
 
-        Enum.each(records, fn record ->
-          key = {normalize_name(record.name), normalize_type(record.type)}
-          :ets.insert(state.table, {key, record})
-        end)
+        insert_records(state.table, records)
 
         new_state = %{
           state
@@ -889,6 +886,13 @@ defmodule YellowDog.Dns.Zone.Auth do
     String.ends_with?(qname, zone_suffix) or qname == zone_suffix
   end
 
+  defp insert_records(table, records) do
+    for record <- records do
+      key = {normalize_name(record.name), normalize_type(record.type)}
+      :ets.insert(table, {key, record})
+    end
+  end
+
   defp normalize_name(name) do
     name
     |> to_string()
@@ -1002,10 +1006,7 @@ defmodule YellowDog.Dns.Zone.Auth do
       end)
 
     # Insert all records into ETS with normalized keys
-    Enum.each(zone_data, fn record ->
-      key = {normalize_name(record.name), normalize_type(record.type)}
-      :ets.insert(state.table, {key, record})
-    end)
+    insert_records(state.table, zone_data)
 
     %{state | soa: soa, ns_records: Enum.reverse(ns_records)}
   end

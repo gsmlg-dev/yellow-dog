@@ -270,22 +270,13 @@ defmodule YellowDog.Dns.Zone.RPZ do
   end
 
   defp evaluate_policies(state, query, response) do
-    # Check QNAME first
     qname = get_qname(query)
 
-    case lookup_qname_policy(state, qname) do
-      {:ok, policy} ->
-        {:match, Map.get(policy, :action), policy}
-
-      :no_match ->
-        # Check response IPs
-        case check_response_ips(state, response) do
-          {:ok, policy} ->
-            {:match, Map.get(policy, :action), policy}
-
-          :no_match ->
-            :no_match
-        end
+    with :no_match <- lookup_qname_policy(state, qname),
+         :no_match <- check_response_ips(state, response) do
+      :no_match
+    else
+      {:ok, policy} -> {:match, Map.get(policy, :action), policy}
     end
   end
 
