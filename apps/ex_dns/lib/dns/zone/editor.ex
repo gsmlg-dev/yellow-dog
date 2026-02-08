@@ -497,30 +497,8 @@ defmodule DNS.Zone.Editor do
   end
 
   defp get_all_records(zone) do
-    # Collect all records from zone options
-    record_types = [
-      :soa_records,
-      :ns_records,
-      :a_records,
-      :aaaa_records,
-      :cname_records,
-      :mx_records,
-      :txt_records,
-      :srv_records,
-      :ptr_records,
-      :caa_records,
-      :tlsa_records,
-      :https_records,
-      :svcb_records,
-      :dnskey_records,
-      :ds_records,
-      :rrsig_records,
-      :nsec_records,
-      :nsec3_records
-    ]
-
-    Enum.flat_map(record_types, fn type ->
-      Keyword.get(zone.options, type, [])
+    Enum.flat_map(Map.values(@record_key_map), fn key ->
+      Keyword.get(zone.options, key, [])
     end)
   end
 
