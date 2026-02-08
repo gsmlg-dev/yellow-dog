@@ -115,9 +115,7 @@ defmodule YellowDog.ServiceHeartbeat do
   defp emit_heartbeats do
     services = [:dns, :mdns, :dhcpv4, :dhcpv6]
 
-    Enum.each(services, fn service ->
-      emit_service_heartbeat(service)
-    end)
+    Enum.each(services, &emit_service_heartbeat/1)
   end
 
   defp emit_service_heartbeat(:dns) do

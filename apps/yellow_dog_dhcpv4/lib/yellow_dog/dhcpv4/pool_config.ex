@@ -211,9 +211,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
 
       ranges when is_list(ranges) ->
         parsed_ranges =
-          Enum.map(ranges, fn range_str ->
-            parse_range_string(range_str)
-          end)
+          Enum.map(ranges, &parse_range_string/1)
 
         errors = Enum.filter(parsed_ranges, &match?({:error, _}, &1))
 

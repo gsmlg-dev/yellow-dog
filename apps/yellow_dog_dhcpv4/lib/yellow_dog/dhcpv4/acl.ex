@@ -240,9 +240,7 @@ defmodule YellowDog.Dhcpv4.ACL do
 
   defp parse_rules(%{"rules" => rules}) when is_list(rules) do
     results =
-      Enum.map(rules, fn rule_config ->
-        validate_rule(rule_config)
-      end)
+      Enum.map(rules, &validate_rule/1)
 
     errors = Enum.filter(results, &match?({:error, _}, &1))
 

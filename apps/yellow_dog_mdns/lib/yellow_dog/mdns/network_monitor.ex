@@ -421,9 +421,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     services = extract_services_from_message(message, source_ip)
 
-    Enum.each(services, fn service ->
-      update_or_create_service(service)
-    end)
+    Enum.each(services, &update_or_create_service/1)
   end
 
   defp extract_services_from_message(message, source_ip) do

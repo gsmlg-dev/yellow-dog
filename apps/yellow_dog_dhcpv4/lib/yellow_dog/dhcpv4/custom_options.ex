@@ -218,9 +218,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
 
   defp parse_option_sets(%{"option_sets" => sets}) when is_list(sets) do
     results =
-      Enum.map(sets, fn set_config ->
-        validate_option_set(set_config)
-      end)
+      Enum.map(sets, &validate_option_set/1)
 
     errors = Enum.filter(results, &match?({:error, _}, &1))
 
