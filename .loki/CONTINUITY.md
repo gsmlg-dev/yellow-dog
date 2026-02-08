@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 166)
+**Phase**: IN_PROGRESS (Iteration 167)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 166 of 1000
+**Iteration**: 167 of 1000
 
 ## Session Summary
+Iteration 167: Replace Enum.reduce with for comprehension in prefix_pool:
+- ✅ **All tests pass: 299 DHCPv6, 0 failures, 0 warnings**
+- ✅ Extracted parse_prefix_reservation/1 helper (3 clauses: string prefix, tuple prefix, catch-all)
+- ✅ for comprehension with into: %{} replaces 19-line multi-clause Enum.reduce
+- ✅ 1 commit — 1 file — net +1 line (cleaner structure)
+
 Iteration 166: Add @impl true annotations + for comprehension in DHCPv6:
 - ✅ **All tests pass: 309 mDNS, 299 DHCPv6, 0 failures, 0 warnings**
 - ✅ 5 missing @impl true on handle_call in service_registry.ex
