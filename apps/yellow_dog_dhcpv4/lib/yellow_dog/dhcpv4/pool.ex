@@ -104,12 +104,12 @@ defmodule YellowDog.Dhcpv4.Pool do
       "name" => pool.name,
       "enabled" => pool.enabled,
       "subnet" => %{
-        "address" => format_ip(subnet_ip),
+        "address" => Ipv4Util.format(subnet_ip),
         "prefix_len" => prefix_len
       },
       "range" => %{
-        "start" => format_ip(range_start),
-        "end" => format_ip(range_end)
+        "start" => Ipv4Util.format(range_start),
+        "end" => Ipv4Util.format(range_end)
       },
       "lease_time" => %{
         "default" => pool.lease_time.default,
@@ -119,9 +119,9 @@ defmodule YellowDog.Dhcpv4.Pool do
     }
 
     base
-    |> maybe_put("gateway", format_ip(pool.gateway))
+    |> maybe_put("gateway", Ipv4Util.format(pool.gateway))
     |> maybe_put("domain_name", pool.domain_name)
-    |> maybe_put_list("dns_servers", Enum.map(pool.dns_servers, &format_ip/1))
+    |> maybe_put_list("dns_servers", Enum.map(pool.dns_servers, &Ipv4Util.format/1))
     |> maybe_put_map("reservations", format_reservations(pool.reservations))
     |> maybe_put_map("options", format_options(pool.options))
     |> maybe_put_acl("acl", pool.acl)
@@ -370,16 +370,10 @@ defmodule YellowDog.Dhcpv4.Pool do
     if invalid, do: {:error, "Reservation #{inspect(invalid)} outside subnet"}, else: :ok
   end
 
-  # Formatting helpers
-
-  defp format_ip(nil), do: nil
-  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(ip) when is_binary(ip), do: ip
-
   defp format_reservations(map) when map == %{}, do: nil
 
   defp format_reservations(map) do
-    Map.new(map, fn {mac, ip} -> {mac, format_ip(ip)} end)
+    Map.new(map, fn {mac, ip} -> {mac, Ipv4Util.format(ip)} end)
   end
 
   defp format_options(map) when map == %{}, do: nil

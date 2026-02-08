@@ -12,7 +12,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   - Atomic updates to individual pools without affecting others
   """
 
-  alias YellowDog.Dhcpv4.AddressPool
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
   import YellowDog.Config.TomlHelpers
 
   @type pool_config :: %{
@@ -469,7 +469,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
       if pool[:dns_servers] && pool[:dns_servers] != [] do
         dns_list =
           Enum.map_join(pool[:dns_servers], ", ", fn ip ->
-            ip |> format_ip_for_toml() |> encode_toml_string()
+            ip |> Ipv4Util.format() |> encode_toml_string()
           end)
 
         ["dns_servers = [#{dns_list}]"]
@@ -480,8 +480,8 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     range_lines =
       if pool[:range_start] do
         [
-          "range_start = #{encode_toml_string(format_ip_for_toml(pool[:range_start]))}",
-          "range_end = #{encode_toml_string(format_ip_for_toml(pool[:range_end]))}"
+          "range_start = #{encode_toml_string(Ipv4Util.format(pool[:range_start]))}",
+          "range_end = #{encode_toml_string(Ipv4Util.format(pool[:range_end]))}"
         ]
       else
         []
@@ -502,7 +502,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
           else: []
         ),
         if(pool[:gateway],
-          do: "gateway = #{encode_toml_string(format_ip_for_toml(pool[:gateway]))}",
+          do: "gateway = #{encode_toml_string(Ipv4Util.format(pool[:gateway]))}",
           else: []
         ),
         if(pool[:domain_name],
@@ -514,10 +514,6 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
     Enum.join(lines, "\n") <> "\n"
   end
-
-  defp format_ip_for_toml(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip_for_toml(ip) when is_binary(ip), do: ip
-  defp format_ip_for_toml(nil), do: nil
 
   # ============================================================================
   # Lease Persistence Functions
@@ -714,7 +710,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     # Handle legacy map format
     """
     [[leases]]
-    ip = "#{format_ip_for_toml(lease[:ip_address])}"
+    ip = "#{Ipv4Util.format(lease[:ip_address])}"
     mac = "#{format_mac_for_toml(lease[:mac_address])}"
     pool_name = "#{lease[:pool_name] || "default"}"
     starts_at = "#{format_datetime(lease[:created_at])}"

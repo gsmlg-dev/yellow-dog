@@ -700,11 +700,11 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
       Enum.map(state.pools, fn pool ->
         %{
           name: pool.name,
-          range_start: format_ip(pool.range_start),
-          range_end: format_ip(pool.range_end),
-          subnet_mask: format_ip(pool.subnet_mask),
-          gateway: format_ip(pool.gateway),
-          dns_servers: Enum.map(pool.dns_servers, &format_ip/1),
+          range_start: Ipv4Util.format(pool.range_start),
+          range_end: Ipv4Util.format(pool.range_end),
+          subnet_mask: Ipv4Util.format(pool.subnet_mask),
+          gateway: Ipv4Util.format(pool.gateway),
+          dns_servers: Enum.map(pool.dns_servers, &Ipv4Util.format/1),
           domain_name: pool.domain_name,
           lease_time: pool.lease_time,
           max_leases: Map.get(pool, :max_leases, 1000),
@@ -1101,24 +1101,16 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     start1_int <= end2_int and start2_int <= end1_int
   end
 
-  defp format_ip(nil), do: nil
-
-  defp format_ip(ip) when tuple_size(ip) == 4 do
-    ip |> :inet.ntoa() |> to_string()
-  end
-
-  defp format_ip(ip) when is_binary(ip), do: ip
-
   # Convert a pool struct to a config map suitable for PoolStore
   defp pool_struct_to_config(pool) do
     %{
       name: pool.name,
       network: Map.get(pool, :network),
-      range_start: format_ip(pool.range_start),
-      range_end: format_ip(pool.range_end),
-      subnet_mask: format_ip(pool.subnet_mask),
-      gateway: format_ip(pool.gateway),
-      dns_servers: Enum.map(pool.dns_servers || [], &format_ip/1),
+      range_start: Ipv4Util.format(pool.range_start),
+      range_end: Ipv4Util.format(pool.range_end),
+      subnet_mask: Ipv4Util.format(pool.subnet_mask),
+      gateway: Ipv4Util.format(pool.gateway),
+      dns_servers: Enum.map(pool.dns_servers || [], &Ipv4Util.format/1),
       domain_name: pool.domain_name,
       lease_time: pool.lease_time,
       max_leases: Map.get(pool, :max_leases, 1000),

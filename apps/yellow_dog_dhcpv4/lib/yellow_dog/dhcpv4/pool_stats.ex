@@ -9,7 +9,7 @@ defmodule YellowDog.Dhcpv4.PoolStats do
   - Allocation rates and trends
   """
 
-  alias YellowDog.Dhcpv4.{AddressPool, LeaseStorage}
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util, LeaseStorage}
 
   @type pool_stats :: %{
           pool_name: String.t(),
@@ -258,9 +258,7 @@ defmodule YellowDog.Dhcpv4.PoolStats do
 
   defp format_ranges(ranges) do
     Enum.map_join(ranges, ", ", fn {start_ip, end_ip} ->
-      "#{format_ip(start_ip)} - #{format_ip(end_ip)}"
+      "#{Ipv4Util.format(start_ip)} - #{Ipv4Util.format(end_ip)}"
     end)
   end
-
-  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
 end

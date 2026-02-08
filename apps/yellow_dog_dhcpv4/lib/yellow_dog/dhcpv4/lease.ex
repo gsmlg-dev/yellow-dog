@@ -6,6 +6,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   a MAC address to an IP address with timestamps.
   """
 
+  alias YellowDog.Dhcpv4.Ipv4Util
   import YellowDog.ConfigHelpers
 
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
@@ -97,7 +98,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   @spec to_toml_map(t()) :: map()
   def to_toml_map(%__MODULE__{} = lease) do
     base = %{
-      "ip" => format_ip(lease.ip),
+      "ip" => Ipv4Util.format(lease.ip),
       "mac" => format_mac_string(lease.mac),
       "pool_name" => lease.pool_name,
       "starts_at" => DateTime.to_iso8601(lease.starts_at),
@@ -227,10 +228,6 @@ defmodule YellowDog.Dhcpv4.Lease do
       :error -> str
     end
   end
-
-  # Formatting helpers
-
-  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
 
   defp format_mac_string(mac) when is_binary(mac) do
     YellowDog.Dhcpv4.MacFormat.format(mac, case: :lower) || mac

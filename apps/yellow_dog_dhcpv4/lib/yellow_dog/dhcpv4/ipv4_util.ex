@@ -21,4 +21,10 @@ defmodule YellowDog.Dhcpv4.Ipv4Util do
   def from_integer(int) when is_integer(int) do
     {int >>> 24 &&& 0xFF, int >>> 16 &&& 0xFF, int >>> 8 &&& 0xFF, int &&& 0xFF}
   end
+
+  @doc "Formats an IPv4 address as a dotted-decimal string. Passes through binaries."
+  @spec format(ipv4_address() | binary() | nil) :: String.t() | nil
+  def format(nil), do: nil
+  def format(ip) when is_binary(ip), do: ip
+  def format(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
 end
