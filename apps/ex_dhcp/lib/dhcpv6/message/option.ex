@@ -239,13 +239,11 @@ defmodule DHCPv6.Message.Option do
     t2_bin = <<t2::32>>
 
     iaaddr_options =
-      Enum.map(addresses, fn addr ->
+      Enum.map_join(addresses, fn addr ->
         addr_bin = ip6_to_binary(addr)
-        # IAADDR option
         iaaddr_opt = new(5, addr_bin)
         to_iodata(iaaddr_opt)
       end)
-      |> Enum.join()
 
     ia_na_data = <<iaid_bin::binary, t1_bin::binary, t2_bin::binary, iaaddr_options::binary>>
     # IA_NA option code

@@ -277,13 +277,11 @@ defmodule DHCPv6.Client do
     ia_na_data = <<iaid::32, 0::32, 0::32>>
 
     iaaddr_options =
-      Enum.map(addresses, fn addr ->
+      Enum.map_join(addresses, fn addr ->
         addr_bin = ip6_to_binary(addr)
-        # IAADDR option
         iaaddr_opt = Option.new(5, addr_bin)
         Option.to_iodata(iaaddr_opt)
       end)
-      |> Enum.join()
 
     ia_na_data = <<ia_na_data::binary, iaaddr_options::binary>>
     # IA_NA option code

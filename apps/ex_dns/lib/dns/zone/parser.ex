@@ -105,8 +105,8 @@ defmodule DNS.Zone.Parser do
   end
 
   # Main tokenization loop
-  defp do_tokenize(%{current_char: nil} = lexer, tokens) do
-    [{:eof, nil, {lexer.line, lexer.column}} | tokens]
+  defp do_tokenize(%{current_char: nil, line: line, column: column}, tokens) do
+    [{:eof, nil, {line, column}} | tokens]
   end
 
   defp do_tokenize(lexer, tokens) do
@@ -117,8 +117,8 @@ defmodule DNS.Zone.Parser do
   end
 
   # Lexer functions (embedded from DNSZoneLexer)
-  defp next_token(%{current_char: nil} = lexer) do
-    {{:eof, nil, {lexer.line, lexer.column}}, lexer}
+  defp next_token(%{current_char: nil, line: line, column: column} = lexer) do
+    {{:eof, nil, {line, column}}, lexer}
   end
 
   defp next_token(lexer) do
