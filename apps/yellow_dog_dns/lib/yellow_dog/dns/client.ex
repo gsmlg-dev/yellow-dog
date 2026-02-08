@@ -62,31 +62,11 @@ defmodule YellowDog.Dns.Client do
   @spec query(String.t(), record_type(), :inet.ip_address(), query_opts()) ::
           {:ok, DNS.Message.t()} | {:error, term()}
   def query(name, type, server, opts \\ []) do
-    port = Keyword.get(opts, :port, @default_port)
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    rd = if Keyword.get(opts, :recursion_desired, true), do: 1, else: 0
+    {request_binary, port, timeout, client_opts} = build_request(name, type, opts)
 
-    # Build DNS query message
-    question = DNS.Message.Question.new(name, type, :in)
-
-    message =
-      DNS.Message.new()
-      |> DNS.Message.add_question(question)
-      |> DNS.Message.update_header_attr(:rd, rd)
-
-    # Serialize to binary
-    request_binary = DNS.to_iodata(message) |> IO.iodata_to_binary()
-
-    # Build client options
-    client_opts = build_client_opts(opts)
-
-    # Send query and wait for response
     case Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
-      {:ok, response_binary} ->
-        parse_response(response_binary)
-
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, response_binary} -> parse_response(response_binary)
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -107,20 +87,7 @@ defmodule YellowDog.Dns.Client do
   @spec query_raw(String.t(), record_type(), :inet.ip_address(), query_opts()) ::
           {:ok, binary()} | {:error, term()}
   def query_raw(name, type, server, opts \\ []) do
-    port = Keyword.get(opts, :port, @default_port)
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    rd = if Keyword.get(opts, :recursion_desired, true), do: 1, else: 0
-
-    question = DNS.Message.Question.new(name, type, :in)
-
-    message =
-      DNS.Message.new()
-      |> DNS.Message.add_question(question)
-      |> DNS.Message.update_header_attr(:rd, rd)
-
-    request_binary = DNS.to_iodata(message) |> IO.iodata_to_binary()
-    client_opts = build_client_opts(opts)
-
+    {request_binary, port, timeout, client_opts} = build_request(name, type, opts)
     Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts)
   end
 
@@ -154,6 +121,24 @@ defmodule YellowDog.Dns.Client do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Build a serialized DNS request from name, type, and options
+  defp build_request(name, type, opts) do
+    port = Keyword.get(opts, :port, @default_port)
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+    rd = if Keyword.get(opts, :recursion_desired, true), do: 1, else: 0
+
+    question = DNS.Message.Question.new(name, type, :in)
+
+    request_binary =
+      DNS.Message.new()
+      |> DNS.Message.add_question(question)
+      |> DNS.Message.update_header_attr(:rd, rd)
+      |> DNS.to_iodata()
+      |> IO.iodata_to_binary()
+
+    {request_binary, port, timeout, build_client_opts(opts)}
   end
 
   # Build Abyss.Client options from query options
