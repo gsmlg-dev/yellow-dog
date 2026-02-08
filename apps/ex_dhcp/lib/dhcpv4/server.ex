@@ -1,5 +1,5 @@
 defmodule DHCPv4.Server do
-  import Bitwise
+  import DHCPv4.IpUtil
 
   @moduledoc """
   DHCP Server Core - Pure Elixir DHCP protocol implementation for :abyss integration.
@@ -382,17 +382,6 @@ defmodule DHCPv4.Server do
       if option.type == 12, do: option.value |> String.trim(<<0>>)
     end)
   end
-
-  defp ip_to_int({a, b, c, d}),
-    do: Bitwise.bsl(a, 24) ||| Bitwise.bsl(b, 16) ||| Bitwise.bsl(c, 8) ||| d
-
-  defp int_to_ip(int),
-    do:
-      {Bitwise.bsr(int, 24) &&& 0xFF, Bitwise.bsr(int, 16) &&& 0xFF, Bitwise.bsr(int, 8) &&& 0xFF,
-       int &&& 0xFF}
-
-  defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
-  defp binary_to_ip(<<a, b, c, d>>), do: {a, b, c, d}
 
   defp encode_option_value(value, :ip), do: ip_to_binary(value)
 

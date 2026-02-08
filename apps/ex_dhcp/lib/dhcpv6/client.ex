@@ -6,6 +6,8 @@ defmodule DHCPv6.Client do
   DHCPv6 server implementations.
   """
 
+  import DHCPv6.IpUtil, only: [ip6_to_binary: 1]
+
   alias DHCPv6.Message
   alias DHCPv6.Message.Option
   alias DHCP.SecureRandom
@@ -324,7 +326,4 @@ defmodule DHCPv6.Client do
     add_option(message, 6, oro_data)
   end
 
-  defp ip6_to_binary({a, b, c, d, e, f, g, h}) do
-    <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
-  end
 end

@@ -1,5 +1,5 @@
 defmodule DHCPv4.Config do
-  import Bitwise
+  import DHCPv4.IpUtil, only: [ip_to_int: 1]
 
   @moduledoc """
   DHCP Server configuration schema and validation.
@@ -134,6 +134,4 @@ defmodule DHCPv4.Config do
     Bitwise.band(ip_int, netmask_int) == subnet_int
   end
 
-  defp ip_to_int({a, b, c, d}),
-    do: Bitwise.bsl(a, 24) ||| Bitwise.bsl(b, 16) ||| Bitwise.bsl(c, 8) ||| d
 end

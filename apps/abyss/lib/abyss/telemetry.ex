@@ -449,7 +449,7 @@ defmodule Abyss.Telemetry do
     end
 
     # Update accepts in current window
-    update_accept_rate_window()
+    update_rate_window(:accept_rate_window_start, :accepts_in_window)
 
     # Increment active connections
     case :ets.lookup(table, :connections_active) do
@@ -510,7 +510,7 @@ defmodule Abyss.Telemetry do
     end
 
     # Update responses in current window
-    update_response_rate_window()
+    update_rate_window(:response_rate_window_start, :responses_in_window)
 
     # Emit response time event
     :telemetry.execute(
@@ -554,8 +554,8 @@ defmodule Abyss.Telemetry do
         [] -> 0
       end
 
-    accepts_per_sec = get_accept_rate()
-    responses_per_sec = get_response_rate()
+    accepts_per_sec = get_rate(:accept_rate_window_start, :accepts_in_window)
+    responses_per_sec = get_rate(:response_rate_window_start, :responses_in_window)
 
     %{
       connections_active: connections_active,
@@ -586,110 +586,43 @@ defmodule Abyss.Telemetry do
 
   # Private functions
 
-  defp update_accept_rate_window do
+  defp update_rate_window(window_key, counter_key) do
     table = get_metrics_table()
     current_time = System.monotonic_time(:millisecond)
 
-    # Use try/rescue for atomic increment
     try do
-      # Atomically increment counter
-      :ets.update_counter(table, :accepts_in_window, {2, 1})
+      :ets.update_counter(table, counter_key, {2, 1})
 
-      # Check if window needs reset (non-atomic read is acceptable here)
-      case :ets.lookup(table, :accept_rate_window_start) do
-        [{:accept_rate_window_start, window_start}] ->
+      case :ets.lookup(table, window_key) do
+        [{^window_key, window_start}] ->
           if current_time - window_start >= 1000 do
-            # Reset window - these operations are eventually consistent
-            :ets.insert(table, {:accept_rate_window_start, current_time})
-            :ets.insert(table, {:accepts_in_window, 1})
+            :ets.insert(table, {window_key, current_time})
+            :ets.insert(table, {counter_key, 1})
           end
 
         [] ->
-          # Initialize window
-          :ets.insert(table, {:accept_rate_window_start, current_time})
-          :ets.insert(table, {:accepts_in_window, 1})
+          :ets.insert(table, {window_key, current_time})
+          :ets.insert(table, {counter_key, 1})
       end
     rescue
       ArgumentError ->
-        # Counter doesn't exist, initialize it
-        :ets.insert(table, {:accept_rate_window_start, current_time})
-        :ets.insert(table, {:accepts_in_window, 1})
+        :ets.insert(table, {window_key, current_time})
+        :ets.insert(table, {counter_key, 1})
     end
   end
 
-  defp update_response_rate_window do
+  defp get_rate(window_key, counter_key) do
     table = get_metrics_table()
     current_time = System.monotonic_time(:millisecond)
 
-    # Use try/rescue for atomic increment
-    try do
-      # Atomically increment counter
-      :ets.update_counter(table, :responses_in_window, {2, 1})
-
-      # Check if window needs reset (non-atomic read is acceptable here)
-      case :ets.lookup(table, :response_rate_window_start) do
-        [{:response_rate_window_start, window_start}] ->
-          if current_time - window_start >= 1000 do
-            # Reset window - these operations are eventually consistent
-            :ets.insert(table, {:response_rate_window_start, current_time})
-            :ets.insert(table, {:responses_in_window, 1})
-          end
-
-        [] ->
-          # Initialize window
-          :ets.insert(table, {:response_rate_window_start, current_time})
-          :ets.insert(table, {:responses_in_window, 1})
-      end
-    rescue
-      ArgumentError ->
-        # Counter doesn't exist, initialize it
-        :ets.insert(table, {:response_rate_window_start, current_time})
-        :ets.insert(table, {:responses_in_window, 1})
-    end
-  end
-
-  defp get_accept_rate do
-    table = get_metrics_table()
-    current_time = System.monotonic_time(:millisecond)
-
-    case :ets.lookup(table, :accept_rate_window_start) do
-      [{:accept_rate_window_start, window_start}] ->
+    case :ets.lookup(table, window_key) do
+      [{^window_key, window_start}] ->
         time_diff = current_time - window_start
 
         if time_diff > 0 do
-          case :ets.lookup(table, :accepts_in_window) do
-            [{:accepts_in_window, count}] ->
-              # Calculate rate per second
-              round(count * 1000 / time_diff)
-
-            [] ->
-              0
-          end
-        else
-          0
-        end
-
-      [] ->
-        0
-    end
-  end
-
-  defp get_response_rate do
-    table = get_metrics_table()
-    current_time = System.monotonic_time(:millisecond)
-
-    case :ets.lookup(table, :response_rate_window_start) do
-      [{:response_rate_window_start, window_start}] ->
-        time_diff = current_time - window_start
-
-        if time_diff > 0 do
-          case :ets.lookup(table, :responses_in_window) do
-            [{:responses_in_window, count}] ->
-              # Calculate rate per second
-              round(count * 1000 / time_diff)
-
-            [] ->
-              0
+          case :ets.lookup(table, counter_key) do
+            [{^counter_key, count}] -> round(count * 1000 / time_diff)
+            [] -> 0
           end
         else
           0

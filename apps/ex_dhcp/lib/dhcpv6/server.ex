@@ -1,5 +1,5 @@
 defmodule DHCPv6.Server do
-  import Bitwise
+  import DHCPv6.IpUtil
 
   @moduledoc """
   DHCPv6 Server Core - Pure Elixir DHCPv6 protocol implementation.
@@ -420,24 +420,6 @@ defmodule DHCPv6.Server do
     end)
   end
 
-  defp ip6_to_int({a, b, c, d, e, f, g, h}) do
-    Bitwise.bsl(a, 112) ||| Bitwise.bsl(b, 96) ||| Bitwise.bsl(c, 80) ||| Bitwise.bsl(d, 64) |||
-      Bitwise.bsl(e, 48) ||| Bitwise.bsl(f, 32) ||| Bitwise.bsl(g, 16) ||| h
-  end
-
-  defp int_to_ip6(int) do
-    {
-      Bitwise.bsr(int, 112) &&& 0xFFFF,
-      Bitwise.bsr(int, 96) &&& 0xFFFF,
-      Bitwise.bsr(int, 80) &&& 0xFFFF,
-      Bitwise.bsr(int, 64) &&& 0xFFFF,
-      Bitwise.bsr(int, 48) &&& 0xFFFF,
-      Bitwise.bsr(int, 32) &&& 0xFFFF,
-      Bitwise.bsr(int, 16) &&& 0xFFFF,
-      int &&& 0xFFFF
-    }
-  end
-
   ## Message Building
 
   defp build_advertise(state, message, addresses) do
@@ -559,7 +541,7 @@ defmodule DHCPv6.Server do
     parse_ia_addresses(data, MapSet.new())
   end
 
-  defp parse_ia_addresses("<<>>", acc), do: acc
+  defp parse_ia_addresses(<<>>, acc), do: acc
 
   defp parse_ia_addresses(
          <<5::16, option_length::16, addr_data::binary-size(option_length), rest::binary>>,
@@ -583,7 +565,4 @@ defmodule DHCPv6.Server do
     Enum.any?(message.options, &(&1.option_code == 14))
   end
 
-  defp ip6_to_binary({a, b, c, d, e, f, g, h}) do
-    <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
-  end
 end

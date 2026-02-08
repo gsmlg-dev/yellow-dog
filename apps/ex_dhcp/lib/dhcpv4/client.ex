@@ -6,6 +6,8 @@ defmodule DHCPv4.Client do
   DHCP server implementations.
   """
 
+  import DHCPv4.IpUtil, only: [ip_to_binary: 1]
+
   alias DHCPv4.Message
   alias DHCPv4.Message.Option
   alias DHCP.SecureRandom
@@ -239,5 +241,4 @@ defmodule DHCPv4.Client do
     %{message | options: [option | message.options]}
   end
 
-  defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>
 end

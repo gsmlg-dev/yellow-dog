@@ -1,4 +1,6 @@
 defmodule DHCPv6.Config do
+  import DHCPv6.IpUtil, only: [ip6_to_int: 1]
+
   @moduledoc """
   DHCPv6 Server configuration schema and validation according to RFC 3315.
 
@@ -132,25 +134,4 @@ defmodule DHCPv6.Config do
     Bitwise.band(ip_int, mask) == Bitwise.band(prefix_int, mask)
   end
 
-  defp ip6_to_int({a, b, c, d, e, f, g, h}) do
-    Bitwise.bor(
-      Bitwise.bsl(a, 112),
-      Bitwise.bor(
-        Bitwise.bsl(b, 96),
-        Bitwise.bor(
-          Bitwise.bsl(c, 80),
-          Bitwise.bor(
-            Bitwise.bsl(d, 64),
-            Bitwise.bor(
-              Bitwise.bsl(e, 48),
-              Bitwise.bor(
-                Bitwise.bsl(f, 32),
-                Bitwise.bor(Bitwise.bsl(g, 16), h)
-              )
-            )
-          )
-        )
-      )
-    )
-  end
 end

@@ -1,4 +1,6 @@
 defmodule DHCPv6.Message.Option do
+  import DHCPv6.IpUtil, only: [ip6_to_binary: 1]
+
   @moduledoc """
   # DHCPv6 Option
 
@@ -276,10 +278,6 @@ defmodule DHCPv6.Message.Option do
   def dns_servers(servers) do
     server_data = Enum.map_join(servers, "", &ip6_to_binary/1)
     new(23, server_data)
-  end
-
-  defp ip6_to_binary({a, b, c, d, e, f, g, h}) do
-    <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
   end
 
   defimpl DHCP.Parameter, for: DHCPv6.Message.Option do
