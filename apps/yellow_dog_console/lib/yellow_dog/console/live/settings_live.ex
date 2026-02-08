@@ -16,6 +16,8 @@ defmodule YellowDog.Console.SettingsLive do
 
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.FormatHelper, only: [format_bytes: 1]
+
   alias YellowDog.Console.ConfigManager
   alias YellowDog.Console.ServiceManager
   alias YellowDog.Console.Settings.{ConfigurationVersion, ServiceConfiguration}
@@ -741,10 +743,6 @@ defmodule YellowDog.Console.SettingsLive do
         {:error, :invalid_format}
     end
   end
-
-  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KB"
-  defp format_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
 
   defp dns_reload(scope) do
     try do

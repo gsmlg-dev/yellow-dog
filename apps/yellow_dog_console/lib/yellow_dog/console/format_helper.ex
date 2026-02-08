@@ -115,6 +115,19 @@ defmodule YellowDog.Console.FormatHelper do
 
   def format_uptime(_), do: "0s"
 
+  @kb 1024
+  @mb 1024 * 1024
+  @gb 1024 * 1024 * 1024
+
+  @doc "Formats a byte count as a human-readable string (B/KB/MB/GB)."
+  @spec format_bytes(integer() | nil) :: String.t()
+  def format_bytes(nil), do: "N/A"
+  def format_bytes(bytes) when is_integer(bytes) and bytes < @kb, do: "#{bytes}B"
+  def format_bytes(bytes) when is_integer(bytes) and bytes < @mb, do: "#{Float.round(bytes / @kb, 2)}KB"
+  def format_bytes(bytes) when is_integer(bytes) and bytes < @gb, do: "#{Float.round(bytes / @mb, 2)}MB"
+  def format_bytes(bytes) when is_integer(bytes), do: "#{Float.round(bytes / @gb, 2)}GB"
+  def format_bytes(_), do: "N/A"
+
   @doc "Formats a duration in seconds as a compact human-readable string."
   @spec format_duration(integer()) :: String.t()
   def format_duration(seconds) when is_integer(seconds) do

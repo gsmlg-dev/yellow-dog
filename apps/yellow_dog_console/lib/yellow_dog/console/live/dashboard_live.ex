@@ -10,7 +10,7 @@ defmodule YellowDog.Console.DashboardLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.ConfigHelpers, only: [get_value: 2]
-  import YellowDog.Console.FormatHelper, only: [format_uptime: 1]
+  import YellowDog.Console.FormatHelper, only: [format_bytes: 1, format_uptime: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -154,7 +154,7 @@ defmodule YellowDog.Console.DashboardLive do
           error: error,
           port: port,
           pid: format_pid(service_status[:pid]),
-          memory: format_memory(service_status[:memory]),
+          memory: format_bytes(service_status[:memory]),
           uptime: service_status[:uptime],
           children_count: service_status[:children_count],
           running_children: service_status[:running_children]
@@ -193,20 +193,6 @@ defmodule YellowDog.Console.DashboardLive do
   defp format_pid(nil), do: "N/A"
   defp format_pid(pid), do: inspect(pid)
 
-  defp format_memory(nil), do: "N/A"
-  defp format_memory(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes}B"
-
-  defp format_memory(bytes) when is_integer(bytes) and bytes < 1024 * 1024,
-    do: "#{Float.round(bytes / 1024, 2)}KB"
-
-  defp format_memory(bytes) when is_integer(bytes) and bytes < 1024 * 1024 * 1024,
-    do: "#{Float.round(bytes / (1024 * 1024), 2)}MB"
-
-  defp format_memory(bytes) when is_integer(bytes),
-    do: "#{Float.round(bytes / (1024 * 1024 * 1024), 2)}GB"
-
-  defp format_memory(_), do: "N/A"
-
   defp get_system_health do
     memory = :erlang.memory()
     total_memory = memory[:total] || 0
@@ -223,9 +209,9 @@ defmodule YellowDog.Console.DashboardLive do
     process_pct = if process_limit > 0, do: round(process_count / process_limit * 100), else: 0
 
     %{
-      memory_total: format_memory(total_memory),
-      memory_processes: format_memory(process_memory),
-      memory_system: format_memory(system_memory),
+      memory_total: format_bytes(total_memory),
+      memory_processes: format_bytes(process_memory),
+      memory_system: format_bytes(system_memory),
       memory_pct: memory_pct,
       process_count: process_count,
       process_limit: process_limit,
