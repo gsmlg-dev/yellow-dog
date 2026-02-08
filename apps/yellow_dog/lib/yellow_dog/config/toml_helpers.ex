@@ -11,10 +11,18 @@ defmodule YellowDog.Config.TomlHelpers do
   # Map Accessors — polymorphic over atom/string keys
   # ──────────────────────────────────────────────────────────────────
 
-  @doc "Finds the first matching key's value, returning `default` if none match."
+  @doc """
+  Finds the first matching key's value, returning `default` if none match.
+
+  Uses `Map.has_key?/2` instead of `Enum.find_value/3` so that falsy values
+  like `false` and `0` are correctly returned rather than skipped.
+  """
   @spec get_value(map(), [atom() | String.t()], term()) :: term()
   def get_value(map, keys, default \\ nil) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
+    case Enum.find(keys, fn key -> Map.has_key?(map, key) end) do
+      nil -> default
+      key -> Map.get(map, key)
+    end
   end
 
   @doc "Like `get_value/3` but coerces the result to an integer."
@@ -54,7 +62,7 @@ defmodule YellowDog.Config.TomlHelpers do
   @doc "Like `get_value/3` but returns `default` unless the value is a list."
   @spec get_list(map(), [atom() | String.t()], list()) :: list()
   def get_list(map, keys, default \\ []) do
-    case Enum.find_value(keys, fn key -> Map.get(map, key) end) do
+    case get_value(map, keys) do
       nil -> default
       value when is_list(value) -> value
       _ -> default
@@ -64,7 +72,7 @@ defmodule YellowDog.Config.TomlHelpers do
   @doc "Like `get_value/3` but returns `default` unless the value is a map."
   @spec get_map(map(), [atom() | String.t()], map()) :: map()
   def get_map(map, keys, default) do
-    case Enum.find_value(keys, fn key -> Map.get(map, key) end) do
+    case get_value(map, keys) do
       nil -> default
       value when is_map(value) -> value
       _ -> default

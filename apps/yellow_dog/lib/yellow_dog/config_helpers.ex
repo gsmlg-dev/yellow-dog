@@ -25,9 +25,11 @@ defmodule YellowDog.ConfigHelpers do
   """
   @spec get_value(map(), atom(), term()) :: term()
   def get_value(config, key, default \\ nil) when is_atom(key) do
-    Map.get(config, key) ||
-      Map.get(config, Atom.to_string(key)) ||
-      default
+    cond do
+      Map.has_key?(config, key) -> Map.get(config, key)
+      Map.has_key?(config, Atom.to_string(key)) -> Map.get(config, Atom.to_string(key))
+      true -> default
+    end
   end
 
   @doc """

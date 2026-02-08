@@ -10,6 +10,7 @@ defmodule YellowDog.Dhcpv6 do
   """
 
   alias YellowDog.Dhcpv6.{LeaseManager, PoolStore, Supervisor}
+  import YellowDog.ConfigHelpers, only: [get_value: 3]
 
   @doc """
   Starts the Dhcpv6 supervisor.
@@ -407,23 +408,11 @@ defmodule YellowDog.Dhcpv6 do
       range_end: config[:range_end] || config["range_end"],
       dns_servers: config[:dns_servers] || config["dns_servers"] || [],
       domain_name: config[:domain_name] || config["domain_name"],
-      preferred_lifetime: get_config_value(config, :preferred_lifetime, 3600),
-      valid_lifetime: get_config_value(config, :valid_lifetime, 7200),
-      max_leases: get_config_value(config, :max_leases, 1000),
-      enabled: get_config_value(config, :enabled, true)
+      preferred_lifetime: get_value(config, :preferred_lifetime, 3600),
+      valid_lifetime: get_value(config, :valid_lifetime, 7200),
+      max_leases: get_value(config, :max_leases, 1000),
+      enabled: get_value(config, :enabled, true)
     }
   end
 
-  # Fetches a config value by atom key then string key, falling back to default.
-  # Unlike ||, this correctly handles falsy values (false, 0).
-  defp get_config_value(config, key, default) do
-    atom_key = key
-    string_key = Atom.to_string(key)
-
-    cond do
-      Map.has_key?(config, atom_key) -> config[atom_key]
-      Map.has_key?(config, string_key) -> config[string_key]
-      true -> default
-    end
-  end
 end
