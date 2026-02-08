@@ -249,13 +249,16 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_ipv6_list(_), do: []
 
-  defp parse_mode(:slaac), do: :slaac
-  defp parse_mode(:stateful), do: :stateful
-  defp parse_mode(:stateless), do: :stateless
-  defp parse_mode("slaac"), do: :slaac
-  defp parse_mode("stateful"), do: :stateful
-  defp parse_mode("stateless"), do: :stateless
-  defp parse_mode(_), do: :stateful
+  @valid_modes %{
+    "slaac" => :slaac,
+    "stateful" => :stateful,
+    "stateless" => :stateless,
+    slaac: :slaac,
+    stateful: :stateful,
+    stateless: :stateless
+  }
+
+  defp parse_mode(mode), do: Map.get(@valid_modes, mode, :stateful)
 
   defp parse_lifetimes(config) do
     case get_value(config, :lifetimes) do
@@ -333,15 +336,15 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_acl_rules(_), do: []
 
-  defp parse_acl_rule(%{"type" => "duid", "pattern" => pattern}), do: {:duid, pattern}
-  defp parse_acl_rule(%{type: "duid", pattern: pattern}), do: {:duid, pattern}
+  defp parse_acl_rule(map) when is_map(map) do
+    case get_value(map, :type) do
+      "duid" -> {:duid, get_value(map, :pattern)}
+      "option" -> {:option, get_value(map, :code), get_value(map, :value)}
+      "vendor_class" -> {:vendor_class, get_value(map, :value)}
+      _ -> nil
+    end
+  end
 
-  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}),
-    do: {:option, code, value}
-
-  defp parse_acl_rule(%{type: "option", code: code, value: value}), do: {:option, code, value}
-  defp parse_acl_rule(%{"type" => "vendor_class", "value" => value}), do: {:vendor_class, value}
-  defp parse_acl_rule(%{type: "vendor_class", value: value}), do: {:vendor_class, value}
   defp parse_acl_rule(_), do: nil
 
   # Validation helpers

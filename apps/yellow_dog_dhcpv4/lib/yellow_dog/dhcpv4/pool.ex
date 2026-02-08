@@ -303,15 +303,16 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp parse_acl_rules(_), do: []
 
-  defp parse_acl_rule(%{"type" => "mac", "pattern" => pattern}), do: {:mac, pattern}
-  defp parse_acl_rule(%{type: "mac", pattern: pattern}), do: {:mac, pattern}
+  defp parse_acl_rule(map) when is_map(map) do
+    case get_value(map, :type) do
+      "mac" -> {:mac, get_value(map, :pattern)}
+      "option" -> {:option, get_value(map, :code), get_value(map, :value)}
+      "vendor_class" -> {:vendor_class, get_value(map, :value)}
+      "user_class" -> {:user_class, get_value(map, :value)}
+      _ -> nil
+    end
+  end
 
-  defp parse_acl_rule(%{"type" => "option", "code" => code, "value" => value}),
-    do: {:option, code, value}
-
-  defp parse_acl_rule(%{type: "option", code: code, value: value}), do: {:option, code, value}
-  defp parse_acl_rule(%{"type" => "vendor_class", "value" => value}), do: {:vendor_class, value}
-  defp parse_acl_rule(%{type: "vendor_class", value: value}), do: {:vendor_class, value}
   defp parse_acl_rule(_), do: nil
 
   # Validation helpers
