@@ -37,11 +37,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   @impl true
   def handle_event("reset", _params, socket) do
-    try do
-      MetricsCollector.reset()
-    catch
-      _, _ -> :ok
-    end
+    safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, :ok)
 
     {:noreply,
      socket
@@ -82,43 +78,27 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   defp fetch_metrics do
-    try do
-      MetricsCollector.get_metrics()
-    catch
-      _, _ -> default_metrics()
-    end
+    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_metrics() end, default_metrics())
   end
 
   defp fetch_summary do
-    try do
-      MetricsCollector.summary()
-    catch
-      _, _ -> default_summary()
-    end
+    safe_call(YellowDog.Dns, fn -> MetricsCollector.summary() end, default_summary())
   end
 
   defp fetch_top_domains do
-    try do
-      MetricsCollector.get_top_domains(limit: 10)
-    catch
-      _, _ -> []
-    end
+    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_domains(limit: 10) end, [])
   end
 
   defp fetch_top_clients do
-    try do
-      MetricsCollector.get_top_clients(limit: 10)
-    catch
-      _, _ -> []
-    end
+    safe_call(YellowDog.Dns, fn -> MetricsCollector.get_top_clients(limit: 10) end, [])
   end
 
   defp fetch_response_times do
-    try do
-      MetricsCollector.get_response_times()
-    catch
-      _, _ -> %{count: 0, sum: 0, min: 0, max: 0, avg: 0.0, buckets: []}
-    end
+    safe_call(
+      YellowDog.Dns,
+      fn -> MetricsCollector.get_response_times() end,
+      %{count: 0, sum: 0, min: 0, max: 0, avg: 0.0, buckets: []}
+    )
   end
 
   defp default_metrics do

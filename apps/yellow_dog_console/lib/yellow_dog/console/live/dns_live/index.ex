@@ -67,8 +67,18 @@ defmodule YellowDog.Console.DnsLive.Index do
     })
   end
 
+  @default_dns_stats %{
+    view_count: 0,
+    total_zones: 0,
+    total_queries: 0,
+    total_hits: 0,
+    total_misses: 0,
+    total_cache: 0,
+    views: []
+  }
+
   defp get_dns_stats do
-    try do
+    safe_call(YellowDog.Dns, fn ->
       views = YellowDog.Dns.ViewManager.list_views()
 
       view_stats =
@@ -102,38 +112,43 @@ defmodule YellowDog.Console.DnsLive.Index do
         total_cache: cache,
         views: view_stats
       }
-    catch
-      _, _ ->
-        %{
-          view_count: 0,
-          total_zones: 0,
-          total_queries: 0,
-          total_hits: 0,
-          total_misses: 0,
-          total_cache: 0,
-          views: []
-        }
-    end
+    end, @default_dns_stats)
   end
 
+  @default_cache_stats %{
+    total_entries: 0,
+    hit_count: 0,
+    miss_count: 0,
+    insert_count: 0,
+    eviction_count: 0,
+    max_entries: @max_cache_entries
+  }
+
+  @cache_stat_defaults %{
+    current_size: 0,
+    hit_count: 0,
+    miss_count: 0,
+    insert_count: 0,
+    eviction_count: 0
+  }
+
   defp get_cache_stats do
-    try do
+    safe_call(YellowDog.Dns, fn ->
       zones = YellowDog.Dns.ZoneController.list_zones()
 
       cache_stats =
         for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
-        |> Enum.reduce(
-          %{current_size: 0, hit_count: 0, miss_count: 0, insert_count: 0, eviction_count: 0},
-          fn stat, acc ->
-            %{
-              current_size: acc.current_size + Map.get(stat, :current_size, 0),
-              hit_count: acc.hit_count + Map.get(stat, :hit_count, 0),
-              miss_count: acc.miss_count + Map.get(stat, :miss_count, 0),
-              insert_count: acc.insert_count + Map.get(stat, :insert_count, 0),
-              eviction_count: acc.eviction_count + Map.get(stat, :eviction_count, 0)
-            }
-          end
-        )
+        |> Enum.reduce(@cache_stat_defaults, fn stat, acc ->
+          stat = Map.merge(@cache_stat_defaults, stat)
+
+          %{
+            current_size: acc.current_size + stat.current_size,
+            hit_count: acc.hit_count + stat.hit_count,
+            miss_count: acc.miss_count + stat.miss_count,
+            insert_count: acc.insert_count + stat.insert_count,
+            eviction_count: acc.eviction_count + stat.eviction_count
+          }
+        end)
 
       %{
         total_entries: cache_stats.current_size,
@@ -143,17 +158,7 @@ defmodule YellowDog.Console.DnsLive.Index do
         eviction_count: cache_stats.eviction_count,
         max_entries: @max_cache_entries
       }
-    catch
-      _, _ ->
-        %{
-          total_entries: 0,
-          hit_count: 0,
-          miss_count: 0,
-          insert_count: 0,
-          eviction_count: 0,
-          max_entries: @max_cache_entries
-        }
-    end
+    end, @default_cache_stats)
   end
 
   defp calculate_hit_rate(hits, misses) do
