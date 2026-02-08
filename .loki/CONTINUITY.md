@@ -1,11 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 186)
+**Phase**: IN_PROGRESS (Iteration 187)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 186 of 1000
+**Iteration**: 187 of 1000
 
 ## Session Summary
+Iteration 187: map+reject(nil) → for comprehensions:
+- ✅ **All tests pass: 1122 console, 1083 DNS, 309 mDNS — 0 failures, 0 warnings**
+- ✅ Replaced 5× `Enum.map(...) |> Enum.reject(&is_nil/1)` with `for` comprehensions
+- ✅ stub.ex: glue record lookup with guard filter
+- ✅ service_registry.ex: parse_addresses with guard filter
+- ✅ process_inspector.ex (3×): supervisor tree building with nil guard
+- ✅ pools_live.ex: parse_dns_servers with guard filter
+- ✅ 1 commit — 4 files — net -10 lines
+
 Iteration 186: merge consecutive Enum.map into single pass:
 - ✅ **All tests pass: 4764 ex_dns, 1122 console — 0 failures, 0 warnings**
 - ✅ Merged 3× double `Enum.map` chains into single-pass lambdas
