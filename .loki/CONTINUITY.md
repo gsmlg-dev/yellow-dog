@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 198)
+**Phase**: IN_PROGRESS (Iteration 199)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 198 of 1000
+**Iteration**: 199 of 1000
 
 ## Session Summary
+Iteration 199: get_in for nested lookups + magic number extraction:
+- ✅ **All tests pass: 670 ex_dhcp, 299 DHCPv6, 1122 console — 0 failures, 0 warnings**
+- ✅ DHCPv6 server: 3× nested Map.get → get_in(leases, [duid, iaid])
+- ✅ DHCPv6 server: simplified release_addresses (removed redundant nil check) + update_lease (collapsed 2-branch case)
+- ✅ metrics_live: @million/@thousand module attributes + merged format_latency float/int clauses via is_number guard
+- ✅ 1 commit — 2 files — net -14 lines
+
 Iteration 198: CSS class strings → module attributes + minor cleanups:
 - ✅ **All tests pass: 1122 console — 0 failures, 0 warnings**
 - ✅ metrics_live: @rcode_colors + @type_colors maps replace 12 defp clauses → 2
