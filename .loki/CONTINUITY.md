@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 191)
+**Phase**: IN_PROGRESS (Iteration 192)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 191 of 1000
+**Iteration**: 192 of 1000
 
 ## Session Summary
+Iteration 192: Map.put chains → Map.merge (DHCP batch):
+- ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6 — 0 failures, 0 warnings**
+- ✅ handler.ex: 4 DHCP response builders (offer, ack, nak, inform) — 44 Map.put → 4 Map.merge
+- ✅ dhcpv4 lease_manager: Map.merge |> Map.put → single Map.merge
+- ✅ dhcpv6 lease_manager: 2-put compat chain → extract ip + Map.merge; merge |> put → single merge
+- ✅ 1 commit — 3 files — net -3 lines
+
 Iteration 191: Map.put chains → Map.merge:
 - ✅ **All tests pass: 1122 console, 36 telemetry — 0 failures, 0 warnings**
 - ✅ telemetry.ex: 3 chains (2+2+4 puts) → 3 Map.merge calls
