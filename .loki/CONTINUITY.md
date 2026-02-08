@@ -1,11 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 177)
+**Phase**: IN_PROGRESS (Iteration 178)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 177 of 1000
+**Iteration**: 178 of 1000
 
 ## Session Summary
+Iteration 178: DRY record type mapping + dead code cleanup:
+- ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 1115 console, 0 failures, 0 warnings**
+- ✅ Extracted shared @record_type_to_option_key map to DNS.Zone as single source of truth
+- ✅ Added Zone.all_records/1, Zone.record_option_key/1, Zone.record_type_to_option_key/0
+- ✅ DRY'd editor.ex, validator.ex, transfer.ex — eliminated 3× duplicated 18-item mapping
+- ✅ Removed dead code path in auth.ex do_save/1 (nil check after pattern-matched guard)
+- ✅ Replaced Enum.map+Enum.sum → Enum.sum_by, Enum.map+Enum.uniq → Enum.uniq_by in validator
+- ✅ Removed unused _rrsig_records in validate_dnssec_signatures
+- ✅ Simplified validator comparison: == "" or == nil → in ["", nil]
+- ✅ 3 commits — 6 files — net -51 lines
+
 Iteration 177: Data-driven telemetry handlers + atom safety + format:
 - ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 1115 console, 404 DHCPv4, 299 DHCPv6, 309 mDNS, 0 failures, 0 warnings**
 - ✅ Refactored attach_all/0: 11 repetitive :telemetry.attach_many → @handler_specs data structure + for comprehension
