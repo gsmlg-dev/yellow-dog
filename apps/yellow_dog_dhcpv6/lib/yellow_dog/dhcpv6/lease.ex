@@ -6,6 +6,8 @@ defmodule YellowDog.Dhcpv6.Lease do
   a DUID+IAID to an IPv6 address with timestamps.
   """
 
+  import YellowDog.DHCP.ConfigHelpers
+
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
   @type duid :: binary()
@@ -213,12 +215,6 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   # Parsing helpers
 
-  defp get_value(config, key, default \\ nil) when is_atom(key) do
-    Map.get(config, key) ||
-      Map.get(config, Atom.to_string(key)) ||
-      default
-  end
-
   defp parse_ipv6(nil), do: {:error, "IPv6 address is required"}
   defp parse_ipv6(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: {:ok, ip}
 
@@ -250,30 +246,6 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   defp parse_iaid(_), do: {:error, "Invalid IAID"}
 
-  defp parse_datetime(nil), do: {:ok, DateTime.utc_now()}
-  defp parse_datetime(%DateTime{} = dt), do: {:ok, dt}
-
-  defp parse_datetime(str) when is_binary(str) do
-    case DateTime.from_iso8601(str) do
-      {:ok, dt, _offset} -> {:ok, dt}
-      {:error, _} -> {:error, "Invalid datetime format"}
-    end
-  end
-
-  defp parse_datetime(unix) when is_integer(unix) do
-    {:ok, DateTime.from_unix!(unix)}
-  end
-
-  defp parse_datetime(_), do: {:error, "Invalid datetime"}
-
-  defp parse_state(state) when is_atom(state), do: state
-  defp parse_state("active"), do: :active
-  defp parse_state("offered"), do: :offered
-  defp parse_state("declined"), do: :declined
-  defp parse_state("released"), do: :released
-  defp parse_state("expired"), do: :expired
-  defp parse_state(_), do: :active
-
   # Formatting helpers
 
   defp format_ipv6(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
@@ -298,9 +270,6 @@ defmodule YellowDog.Dhcpv6.Lease do
     |> String.replace([":", "-", " "], "")
     |> String.upcase()
   end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   # Validation helpers
 

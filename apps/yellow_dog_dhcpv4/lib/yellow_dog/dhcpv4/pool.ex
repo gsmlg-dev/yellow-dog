@@ -7,6 +7,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   """
 
   import Bitwise
+  import YellowDog.DHCP.ConfigHelpers
 
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: <<_::48>> | String.t()
@@ -157,12 +158,6 @@ defmodule YellowDog.Dhcpv4.Pool do
     end
   end
 
-  defp get_value(config, key, default \\ nil) when is_atom(key) do
-    Map.get(config, key) ||
-      Map.get(config, Atom.to_string(key)) ||
-      default
-  end
-
   defp parse_subnet(config) do
     case get_value(config, :subnet) do
       %{"address" => addr, "prefix_len" => prefix} ->
@@ -299,17 +294,6 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp parse_options(_), do: %{}
 
-  defp parse_option_code(code) when is_integer(code), do: code
-
-  defp parse_option_code(code) when is_binary(code) do
-    case Integer.parse(code) do
-      {int, ""} -> int
-      _ -> 0
-    end
-  end
-
-  defp parse_option_code(code), do: parse_option_code(to_string(code))
-
   defp parse_acl(nil), do: %{allow: [], deny: []}
 
   defp parse_acl(%{} = acl) do
@@ -398,16 +382,6 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp format_options(map) when map == %{}, do: nil
   defp format_options(map), do: map
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp maybe_put_list(map, _key, []), do: map
-  defp maybe_put_list(map, key, list), do: Map.put(map, key, list)
-
-  defp maybe_put_map(map, _key, nil), do: map
-  defp maybe_put_map(map, _key, m) when map_size(m) == 0, do: map
-  defp maybe_put_map(map, key, value), do: Map.put(map, key, value)
 
   defp maybe_put_acl(map, _key, %{allow: [], deny: []}), do: map
   defp maybe_put_acl(map, key, acl), do: Map.put(map, key, format_acl(acl))

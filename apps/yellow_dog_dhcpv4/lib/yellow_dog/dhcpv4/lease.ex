@@ -6,6 +6,8 @@ defmodule YellowDog.Dhcpv4.Lease do
   a MAC address to an IP address with timestamps.
   """
 
+  import YellowDog.DHCP.ConfigHelpers
+
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()
   @type lease_state :: :active | :offered | :declined | :released | :expired
@@ -176,12 +178,6 @@ defmodule YellowDog.Dhcpv4.Lease do
 
   # Parsing helpers
 
-  defp get_value(config, key, default \\ nil) when is_atom(key) do
-    Map.get(config, key) ||
-      Map.get(config, Atom.to_string(key)) ||
-      default
-  end
-
   defp parse_ip(nil), do: {:error, "IP address is required"}
   defp parse_ip({_, _, _, _} = ip), do: {:ok, ip}
 
@@ -222,30 +218,6 @@ defmodule YellowDog.Dhcpv4.Lease do
     end
   end
 
-  defp parse_datetime(nil), do: {:ok, DateTime.utc_now()}
-  defp parse_datetime(%DateTime{} = dt), do: {:ok, dt}
-
-  defp parse_datetime(str) when is_binary(str) do
-    case DateTime.from_iso8601(str) do
-      {:ok, dt, _offset} -> {:ok, dt}
-      {:error, _} -> {:error, "Invalid datetime format"}
-    end
-  end
-
-  defp parse_datetime(unix) when is_integer(unix) do
-    {:ok, DateTime.from_unix!(unix)}
-  end
-
-  defp parse_datetime(_), do: {:error, "Invalid datetime"}
-
-  defp parse_state(state) when is_atom(state), do: state
-  defp parse_state("active"), do: :active
-  defp parse_state("offered"), do: :offered
-  defp parse_state("declined"), do: :declined
-  defp parse_state("released"), do: :released
-  defp parse_state("expired"), do: :expired
-  defp parse_state(_), do: :active
-
   defp parse_client_id(nil), do: nil
 
   defp parse_client_id(str) when is_binary(str) do
@@ -279,9 +251,6 @@ defmodule YellowDog.Dhcpv4.Lease do
   end
 
   defp normalize_mac(mac), do: mac
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   # Validation helpers
 
