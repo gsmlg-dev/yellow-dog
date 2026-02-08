@@ -198,22 +198,17 @@ defmodule YellowDog.Mdns.MessageCache do
   defp store_message(message, source_ip, source_port) do
     now = System.system_time(:second)
 
-    # Extract and cache answers
-    Enum.each(message.anlist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :answer)
-    end)
+    # Cache records from each DNS message section
+    for {section_list, section} <- [
+          {message.anlist, :answer},
+          {message.nslist, :authority},
+          {message.arlist, :additional}
+        ],
+        record <- section_list do
+      cache_record(record, message, source_ip, source_port, now, section)
+    end
 
-    # Extract and cache authority records
-    Enum.each(message.nslist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :authority)
-    end)
-
-    # Extract and cache additional records
-    Enum.each(message.arlist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :additional)
-    end)
-
-    # Also cache the questions for service discovery
+    # Cache questions for service discovery
     Enum.each(message.qdlist, fn question ->
       cache_question(question, message, source_ip, source_port, now)
     end)
