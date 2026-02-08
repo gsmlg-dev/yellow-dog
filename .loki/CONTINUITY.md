@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 149)
+**Phase**: IN_PROGRESS (Iteration 150)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 149 of 1000
+**Iteration**: 150 of 1000
 
 ## Session Summary
+Iteration 150: Replace binary reduce with map_join + extract constants:
+- ✅ **All tests pass: 4764 ex_dns, 479 abyss, 0 failures, 0 credo issues, 0 warnings**
+- ✅ ex_dns TXT.new/1: Enum.reduce with <<acc::binary, ...>> → Enum.map_join (O(n) vs O(n²))
+- ✅ abyss ServerConfig: extracted 3 module attributes for magic numbers in calculate_optimal_listeners
+- ✅ 1 commit — 2 files — net +3 lines
+
 Iteration 149: Replace sort|>dedup with uniq|>sort + MapSet for counting:
 - ✅ **All tests pass: 1106 console, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Replaced 7 Enum.sort|>Enum.dedup with Enum.uniq|>Enum.sort across 5 files
