@@ -256,8 +256,8 @@ defmodule YellowDog.RateLimiter do
     app_config = Application.get_env(otp_app, module, [])
 
     default_config
-    |> Map.merge(Enum.into(app_config, %{}))
-    |> Map.merge(Enum.into(opts, %{}))
+    |> Map.merge(Map.new(app_config))
+    |> Map.merge(Map.new(opts))
   end
 
   @doc false

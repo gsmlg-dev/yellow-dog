@@ -311,9 +311,9 @@ defmodule YellowDog.Dns.ViewManager do
   @spec update_views(Supervisor.supervisor(), [map() | keyword()]) :: :ok | {:error, term()}
   def update_views(supervisor, view_configs) do
     current =
-      list_views(supervisor) |> Enum.map(fn {name, _pid, _prio} -> name end) |> MapSet.new()
+      MapSet.new(list_views(supervisor), fn {name, _pid, _prio} -> name end)
 
-    new_names = Enum.map(view_configs, &get_view_name/1) |> MapSet.new()
+    new_names = MapSet.new(view_configs, &get_view_name/1)
     current_names = current
 
     # Stop removed views (except default)

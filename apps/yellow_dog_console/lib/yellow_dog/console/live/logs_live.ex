@@ -118,7 +118,7 @@ defmodule YellowDog.Console.LogsLive do
 
   @impl true
   def handle_event("select_all_apps", _params, socket) do
-    all_apps = @available_apps |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+    all_apps = MapSet.new(@available_apps, &elem(&1, 0))
     {:noreply, assign(socket, selected_apps: all_apps)}
   end
 
