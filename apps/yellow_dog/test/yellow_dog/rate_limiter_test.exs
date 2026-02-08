@@ -33,7 +33,9 @@ defmodule YellowDog.RateLimiterTest do
         config: %{global_tokens: 100, global_refill_rate: 10}
       }
 
-      {allowed, tokens, _time} = RateLimiter.check_global_limit(state, System.monotonic_time(:millisecond))
+      {allowed, tokens, _time} =
+        RateLimiter.check_global_limit(state, System.monotonic_time(:millisecond))
+
       assert allowed
       assert tokens >= 10
     end

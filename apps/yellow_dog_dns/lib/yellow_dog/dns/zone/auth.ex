@@ -61,7 +61,10 @@ defmodule YellowDog.Dns.Zone.Auth do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :auth, zone_name))
+
+    GenServer.start_link(__MODULE__, opts,
+      name: Behaviour.zone_via_tuple(view_name, :auth, zone_name)
+    )
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -1056,5 +1059,4 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     File.write(file_path, content)
   end
-
 end

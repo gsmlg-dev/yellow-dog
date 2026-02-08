@@ -14,7 +14,9 @@ defmodule YellowDog.Dhcpv6.PoolTest do
       assert {:ok, pool} = Pool.new(@valid_config)
       assert pool.name == "ipv6-lan"
       assert pool.prefix == {{0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0}, 48}
-      assert pool.range == {{0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0x100}, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0x200}}
+
+      assert pool.range ==
+               {{0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0x100}, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0x200}}
     end
 
     test "creates pool from structured prefix" do
@@ -57,7 +59,9 @@ defmodule YellowDog.Dhcpv6.PoolTest do
     end
 
     test "parses dns_servers" do
-      config = Map.put(@valid_config, :dns_servers, ["2001:4860:4860::8888", "2001:4860:4860::8844"])
+      config =
+        Map.put(@valid_config, :dns_servers, ["2001:4860:4860::8888", "2001:4860:4860::8844"])
+
       assert {:ok, pool} = Pool.new(config)
       assert length(pool.dns_servers) == 2
     end
@@ -69,12 +73,15 @@ defmodule YellowDog.Dhcpv6.PoolTest do
     end
 
     test "parses PD pools" do
-      config = Map.put(@valid_config, :pd_pools, [
-        %{prefix: "2001:db8:1::", length: 48, delegated_len: 56}
-      ])
+      config =
+        Map.put(@valid_config, :pd_pools, [
+          %{prefix: "2001:db8:1::", length: 48, delegated_len: 56}
+        ])
 
       assert {:ok, pool} = Pool.new(config)
-      assert [%{prefix: {0x2001, 0x0DB8, 1, 0, 0, 0, 0, 0}, length: 48, delegated_len: 56}] = pool.pd_pools
+
+      assert [%{prefix: {0x2001, 0x0DB8, 1, 0, 0, 0, 0, 0}, length: 48, delegated_len: 56}] =
+               pool.pd_pools
     end
 
     test "parses lifetimes" do
@@ -89,10 +96,11 @@ defmodule YellowDog.Dhcpv6.PoolTest do
     end
 
     test "parses ACL rules" do
-      config = Map.put(@valid_config, :acl, %{
-        allow: [%{type: "duid", pattern: "0001*"}],
-        deny: [%{type: "vendor_class", value: "blocked"}]
-      })
+      config =
+        Map.put(@valid_config, :acl, %{
+          allow: [%{type: "duid", pattern: "0001*"}],
+          deny: [%{type: "vendor_class", value: "blocked"}]
+        })
 
       assert {:ok, pool} = Pool.new(config)
       assert pool.acl.allow == [{:duid, "0001*"}]
@@ -152,10 +160,11 @@ defmodule YellowDog.Dhcpv6.PoolTest do
     end
 
     test "parses option ACL rules from string-keyed maps" do
-      config = Map.put(@valid_config, :acl, %{
-        "allow" => [%{"type" => "duid", "pattern" => "0001*"}],
-        "deny" => [%{"type" => "option", "code" => 16, "value" => "test"}]
-      })
+      config =
+        Map.put(@valid_config, :acl, %{
+          "allow" => [%{"type" => "duid", "pattern" => "0001*"}],
+          "deny" => [%{"type" => "option", "code" => 16, "value" => "test"}]
+        })
 
       assert {:ok, pool} = Pool.new(config)
       assert pool.acl.allow == [{:duid, "0001*"}]

@@ -91,7 +91,10 @@ defmodule YellowDog.Dns.Zone.Stub do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :stub, zone_name))
+
+    GenServer.start_link(__MODULE__, opts,
+      name: Behaviour.zone_via_tuple(view_name, :stub, zone_name)
+    )
   end
 
   @impl YellowDog.Dns.Zone.Behaviour
@@ -391,10 +394,12 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   defp parse_glue_records(glue_records) when is_map(glue_records) do
     Map.new(glue_records, fn {hostname, ip} ->
-      parsed = case IpFormat.parse(ip) do
-        {:ok, addr} -> addr
-        {:error, _} -> nil
-      end
+      parsed =
+        case IpFormat.parse(ip) do
+          {:ok, addr} -> addr
+          {:error, _} -> nil
+        end
+
       {String.downcase(to_string(hostname)), parsed}
     end)
   end
@@ -420,5 +425,4 @@ defmodule YellowDog.Dns.Zone.Stub do
     data = DNS.to_iodata(query)
     :gen_udp.send(state.socket, ns_ip, @default_port, data)
   end
-
 end

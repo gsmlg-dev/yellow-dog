@@ -498,7 +498,7 @@ defmodule YellowDog.Dns.MetricsCollector do
 
   defp read_top_keyed(table, prefix, limit) do
     # Scan ETS for all entries with the given prefix
-    (for {{:counter, ^prefix, key}, count} <- :ets.tab2list(table), do: {key, count})
+    for({{:counter, ^prefix, key}, count} <- :ets.tab2list(table), do: {key, count})
     |> Enum.sort_by(fn {_key, count} -> count end, :desc)
     |> Enum.take(limit)
   end
@@ -523,5 +523,4 @@ defmodule YellowDog.Dns.MetricsCollector do
       uptime_seconds: DateTime.diff(DateTime.utc_now(), started_at, :second)
     }
   end
-
 end

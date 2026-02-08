@@ -173,5 +173,4 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
       _ -> nil
     end
   end
-
 end

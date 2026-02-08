@@ -195,5 +195,4 @@ defmodule YellowDog.Dns.Handler.TCP do
         })
     end
   end
-
 end

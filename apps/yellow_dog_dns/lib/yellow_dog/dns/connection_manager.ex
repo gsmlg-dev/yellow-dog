@@ -145,5 +145,4 @@ defmodule YellowDog.Dns.ConnectionManager do
   end
 
   # Private helpers
-
 end

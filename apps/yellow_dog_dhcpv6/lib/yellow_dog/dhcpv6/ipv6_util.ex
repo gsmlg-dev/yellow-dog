@@ -27,9 +27,8 @@ defmodule YellowDog.Dhcpv6.Ipv6Util do
   @doc "Converts a 128-bit integer to an IPv6 8-tuple."
   @spec from_integer(non_neg_integer()) :: ipv6_address()
   def from_integer(int) when is_integer(int) do
-    {int >>> 112 &&& 0xFFFF, int >>> 96 &&& 0xFFFF, int >>> 80 &&& 0xFFFF,
-     int >>> 64 &&& 0xFFFF, int >>> 48 &&& 0xFFFF, int >>> 32 &&& 0xFFFF,
-     int >>> 16 &&& 0xFFFF, int &&& 0xFFFF}
+    {int >>> 112 &&& 0xFFFF, int >>> 96 &&& 0xFFFF, int >>> 80 &&& 0xFFFF, int >>> 64 &&& 0xFFFF,
+     int >>> 48 &&& 0xFFFF, int >>> 32 &&& 0xFFFF, int >>> 16 &&& 0xFFFF, int &&& 0xFFFF}
   end
 
   @doc """

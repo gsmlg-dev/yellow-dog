@@ -9,7 +9,8 @@ defmodule YellowDog.Dhcpv6.LeaseTest do
 
   describe "create/6" do
     test "creates a lease with defaults" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
 
       assert lease.ip == @valid_ip
       assert lease.duid == @valid_duid
@@ -23,19 +24,32 @@ defmodule YellowDog.Dhcpv6.LeaseTest do
     end
 
     test "normalizes DUID by removing separators" do
-      lease = Lease.create(@valid_ip, "00:01:00:01:AA:BB:CC:DD", @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, "00:01:00:01:AA:BB:CC:DD", @valid_iaid, "pool1", %{
+          preferred: 3600,
+          valid: 7200
+        })
 
       assert lease.duid == @valid_duid
     end
 
     test "sets hostname from opts" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200}, hostname: "host1")
+      lease =
+        Lease.create(
+          @valid_ip,
+          @valid_duid,
+          @valid_iaid,
+          "pool1",
+          %{preferred: 3600, valid: 7200},
+          hostname: "host1"
+        )
 
       assert lease.hostname == "host1"
     end
 
     test "preferred_until is before valid_until" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
 
       assert DateTime.before?(lease.preferred_until, lease.valid_until)
     end
@@ -288,7 +302,9 @@ defmodule YellowDog.Dhcpv6.LeaseTest do
 
   describe "release/1 and decline/1" do
     setup do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+
       %{lease: lease}
     end
 
@@ -323,7 +339,9 @@ defmodule YellowDog.Dhcpv6.LeaseTest do
 
   describe "validate/1" do
     test "returns :ok for valid lease" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+
       assert :ok = Lease.validate(lease)
     end
 
@@ -360,14 +378,18 @@ defmodule YellowDog.Dhcpv6.LeaseTest do
 
   describe "lease_key/1" do
     test "returns {duid, iaid} tuple" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+
       assert {@valid_duid, @valid_iaid} = Lease.lease_key(lease)
     end
   end
 
   describe "TOML round-trip" do
     test "to_toml_map then from_toml_map preserves data" do
-      lease = Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+      lease =
+        Lease.create(@valid_ip, @valid_duid, @valid_iaid, "pool1", %{preferred: 3600, valid: 7200})
+
       toml = Lease.to_toml_map(lease)
 
       assert is_map(toml)

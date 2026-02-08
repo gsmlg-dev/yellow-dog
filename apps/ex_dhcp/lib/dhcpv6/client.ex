@@ -325,5 +325,4 @@ defmodule DHCPv6.Client do
     # ORO option
     add_option(message, 6, oro_data)
   end
-
 end

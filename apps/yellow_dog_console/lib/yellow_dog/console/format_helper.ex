@@ -123,8 +123,13 @@ defmodule YellowDog.Console.FormatHelper do
   @spec format_bytes(integer() | nil) :: String.t()
   def format_bytes(nil), do: "N/A"
   def format_bytes(bytes) when is_integer(bytes) and bytes < @kb, do: "#{bytes}B"
-  def format_bytes(bytes) when is_integer(bytes) and bytes < @mb, do: "#{Float.round(bytes / @kb, 2)}KB"
-  def format_bytes(bytes) when is_integer(bytes) and bytes < @gb, do: "#{Float.round(bytes / @mb, 2)}MB"
+
+  def format_bytes(bytes) when is_integer(bytes) and bytes < @mb,
+    do: "#{Float.round(bytes / @kb, 2)}KB"
+
+  def format_bytes(bytes) when is_integer(bytes) and bytes < @gb,
+    do: "#{Float.round(bytes / @mb, 2)}MB"
+
   def format_bytes(bytes) when is_integer(bytes), do: "#{Float.round(bytes / @gb, 2)}GB"
   def format_bytes(_), do: "N/A"
 

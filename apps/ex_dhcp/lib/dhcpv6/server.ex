@@ -562,5 +562,4 @@ defmodule DHCPv6.Server do
   defp has_rapid_commit(message) do
     Enum.any?(message.options, &(&1.option_code == 14))
   end
-
 end

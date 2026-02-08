@@ -83,7 +83,10 @@ defmodule YellowDog.Dns.Zone.Forward do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :forward, zone_name))
+
+    GenServer.start_link(__MODULE__, opts,
+      name: Behaviour.zone_via_tuple(view_name, :forward, zone_name)
+    )
   end
 
   @impl YellowDog.Dns.Zone.Behaviour

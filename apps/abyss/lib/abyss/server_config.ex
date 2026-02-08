@@ -183,7 +183,8 @@ defmodule Abyss.ServerConfig do
 
     # Adjust for processing time (slower processing = more listeners needed)
     # Normalize to @processing_time_baseline_ms baseline
-    processing_factor = max(avg_processing_time_ms / @processing_time_baseline_ms, @min_processing_factor)
+    processing_factor =
+      max(avg_processing_time_ms / @processing_time_baseline_ms, @min_processing_factor)
 
     optimal = round(base_listeners * processing_factor)
 

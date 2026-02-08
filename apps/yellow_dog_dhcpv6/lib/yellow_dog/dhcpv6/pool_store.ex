@@ -721,5 +721,4 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   end
 
   defp format_duid(_), do: ""
-
 end

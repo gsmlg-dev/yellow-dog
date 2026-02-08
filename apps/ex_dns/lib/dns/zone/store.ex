@@ -63,7 +63,7 @@ defmodule DNS.Zone.Store do
   def list_zones() do
     ensure_initialized()
 
-    (for {_key, zone} <- :ets.tab2list(@table_name), do: zone)
+    for({_key, zone} <- :ets.tab2list(@table_name), do: zone)
     |> Enum.sort_by(& &1.name.value)
   end
 

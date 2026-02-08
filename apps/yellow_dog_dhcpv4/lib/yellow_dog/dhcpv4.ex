@@ -475,5 +475,4 @@ defmodule YellowDog.Dhcpv4 do
       enabled: get_value(config, :enabled, true)
     }
   end
-
 end

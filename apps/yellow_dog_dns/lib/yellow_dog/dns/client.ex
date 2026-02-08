@@ -64,7 +64,8 @@ defmodule YellowDog.Dns.Client do
   def query(name, type, server, opts \\ []) do
     {request_binary, port, timeout, client_opts} = build_request(name, type, opts)
 
-    with {:ok, response_binary} <- Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
+    with {:ok, response_binary} <-
+           Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
       parse_response(response_binary)
     end
   end
@@ -113,7 +114,8 @@ defmodule YellowDog.Dns.Client do
     request_binary = DNS.to_iodata(message) |> IO.iodata_to_binary()
     client_opts = build_client_opts(opts)
 
-    with {:ok, response_binary} <- Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
+    with {:ok, response_binary} <-
+           Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
       parse_response(response_binary)
     end
   end

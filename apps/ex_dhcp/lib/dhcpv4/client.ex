@@ -240,5 +240,4 @@ defmodule DHCPv4.Client do
     option = Option.new(type, length, value)
     %{message | options: [option | message.options]}
   end
-
 end

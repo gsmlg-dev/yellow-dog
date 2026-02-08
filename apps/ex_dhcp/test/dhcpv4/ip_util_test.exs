@@ -13,7 +13,8 @@ defmodule DHCPv4.IpUtilTest do
     end
 
     test "converts {192, 168, 1, 100}" do
-      assert IpUtil.ip_to_int({192, 168, 1, 100}) == 192 * 16_777_216 + 168 * 65_536 + 1 * 256 + 100
+      assert IpUtil.ip_to_int({192, 168, 1, 100}) ==
+               192 * 16_777_216 + 168 * 65_536 + 1 * 256 + 100
     end
   end
 
@@ -29,7 +30,13 @@ defmodule DHCPv4.IpUtilTest do
 
   describe "round-trip" do
     test "ip_to_int then int_to_ip returns original" do
-      for ip <- [{0, 0, 0, 0}, {127, 0, 0, 1}, {192, 168, 1, 1}, {10, 0, 0, 1}, {255, 255, 255, 255}] do
+      for ip <- [
+            {0, 0, 0, 0},
+            {127, 0, 0, 1},
+            {192, 168, 1, 1},
+            {10, 0, 0, 1},
+            {255, 255, 255, 255}
+          ] do
         assert ip |> IpUtil.ip_to_int() |> IpUtil.int_to_ip() == ip
       end
     end

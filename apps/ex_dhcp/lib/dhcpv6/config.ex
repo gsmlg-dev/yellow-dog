@@ -133,5 +133,4 @@ defmodule DHCPv6.Config do
 
     Bitwise.band(ip_int, mask) == Bitwise.band(prefix_int, mask)
   end
-
 end

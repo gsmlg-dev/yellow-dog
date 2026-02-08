@@ -39,7 +39,15 @@ defmodule YellowDog.Dns.AclStore do
         }
 
   import YellowDog.Config.TomlHelpers,
-    only: [parse_toml: 1, get_value: 2, get_value: 3, get_list: 3, encode_toml_string: 1, ensure_directory: 1, atomic_write: 2]
+    only: [
+      parse_toml: 1,
+      get_value: 2,
+      get_value: 3,
+      get_list: 3,
+      encode_toml_string: 1,
+      ensure_directory: 1,
+      atomic_write: 2
+    ]
 
   @type acl_config :: %{
           name: String.t(),
@@ -165,14 +173,15 @@ defmodule YellowDog.Dns.AclStore do
   end
 
   defp acl_to_toml(acl) do
-    base = [
-      "",
-      "[[acl]]",
-      "name = #{encode_toml_string(acl.name)}",
-      acl[:description] && acl.description != "" &&
-        "description = #{encode_toml_string(acl.description)}"
-    ]
-    |> Enum.reject(&is_nil/1)
+    base =
+      [
+        "",
+        "[[acl]]",
+        "name = #{encode_toml_string(acl.name)}",
+        acl[:description] && acl.description != "" &&
+          "description = #{encode_toml_string(acl.description)}"
+      ]
+      |> Enum.reject(&is_nil/1)
 
     rules_lines =
       Enum.flat_map(acl.rules || [], fn rule ->
@@ -199,5 +208,4 @@ defmodule YellowDog.Dns.AclStore do
 
     Enum.join(base ++ rules_lines, "\n")
   end
-
 end

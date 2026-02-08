@@ -265,6 +265,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
     case Map.get(config, "options", []) do
       options when is_list(options) ->
         results = Enum.map(options, &validate_option/1)
+
         case collect_ok(results) do
           {:ok, _} = ok -> ok
           {:error, errors} -> {:error, {:invalid_options, errors}}

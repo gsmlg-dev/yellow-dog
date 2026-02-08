@@ -180,5 +180,4 @@ defmodule YellowDog.Dns.Handler.UDP do
         })
     end
   end
-
 end

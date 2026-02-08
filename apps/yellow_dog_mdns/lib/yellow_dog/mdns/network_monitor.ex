@@ -118,9 +118,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     limit = Keyword.get(opts, :limit, 100)
     since = Keyword.get(opts, :since, System.system_time(:second) - @query_lookback_seconds)
 
-    (for {_key, entry} <- :ets.tab2list(@query_table),
-         entry.timestamp >= since,
-         do: entry)
+    for(
+      {_key, entry} <- :ets.tab2list(@query_table),
+      entry.timestamp >= since,
+      do: entry
+    )
     |> Enum.sort_by(& &1.timestamp, :desc)
     |> Enum.take(limit)
   end
@@ -130,9 +132,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   """
   @spec get_unanswered_queries() :: [query_entry()]
   def get_unanswered_queries do
-    (for {_key, entry} <- :ets.tab2list(@query_table),
-         not entry.answered,
-         do: entry)
+    for(
+      {_key, entry} <- :ets.tab2list(@query_table),
+      not entry.answered,
+      do: entry
+    )
     |> Enum.sort_by(& &1.timestamp, :desc)
   end
 
@@ -144,9 +148,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     now = System.system_time(:second)
     stale_threshold = now - @stale_service_seconds
 
-    (for {_key, service} <- :ets.tab2list(@services_table),
-         service.last_seen > stale_threshold,
-         do: service)
+    for(
+      {_key, service} <- :ets.tab2list(@services_table),
+      service.last_seen > stale_threshold,
+      do: service
+    )
     |> Enum.sort_by(& &1.name)
   end
 

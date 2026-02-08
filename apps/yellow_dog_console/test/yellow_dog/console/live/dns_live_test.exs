@@ -606,7 +606,8 @@ defmodule YellowDog.Console.DnsLiveTest do
         |> render_submit()
 
       # Should stay on page showing validation error (zone already exists or other error)
-      assert result =~ "flash-error" or result =~ "Zone &#39;forwarded.com&#39; created successfully"
+      assert result =~ "flash-error" or
+               result =~ "Zone &#39;forwarded.com&#39; created successfully"
     end
 
     test "create zone form submits stub zone with NS records", %{conn: conn} do
@@ -636,7 +637,8 @@ defmodule YellowDog.Console.DnsLiveTest do
         |> render_submit()
 
       # Should stay on page showing validation error (zone already exists or other error)
-      assert result =~ "flash-error" or result =~ "Zone &#39;stub.example.org&#39; created successfully"
+      assert result =~ "flash-error" or
+               result =~ "Zone &#39;stub.example.org&#39; created successfully"
     end
 
     test "validate_zone event updates form type", %{conn: conn} do

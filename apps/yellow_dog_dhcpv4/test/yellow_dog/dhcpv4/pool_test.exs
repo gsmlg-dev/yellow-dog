@@ -69,10 +69,11 @@ defmodule YellowDog.Dhcpv4.PoolTest do
     end
 
     test "parses ACL rules" do
-      config = Map.put(@valid_config, :acl, %{
-        allow: [%{type: "mac", pattern: "AA:BB:*"}],
-        deny: [%{type: "vendor_class", value: "blocked"}]
-      })
+      config =
+        Map.put(@valid_config, :acl, %{
+          allow: [%{type: "mac", pattern: "AA:BB:*"}],
+          deny: [%{type: "vendor_class", value: "blocked"}]
+        })
 
       assert {:ok, pool} = Pool.new(config)
       assert pool.acl.allow == [{:mac, "AA:BB:*"}]
@@ -80,11 +81,16 @@ defmodule YellowDog.Dhcpv4.PoolTest do
     end
 
     test "returns error for missing name" do
-      assert {:error, _} = Pool.new(%{subnet: "192.168.1.0/24", range: %{start: "192.168.1.100", end: "192.168.1.200"}})
+      assert {:error, _} =
+               Pool.new(%{
+                 subnet: "192.168.1.0/24",
+                 range: %{start: "192.168.1.100", end: "192.168.1.200"}
+               })
     end
 
     test "returns error for missing subnet" do
-      assert {:error, _} = Pool.new(%{name: "lan", range: %{start: "192.168.1.100", end: "192.168.1.200"}})
+      assert {:error, _} =
+               Pool.new(%{name: "lan", range: %{start: "192.168.1.100", end: "192.168.1.200"}})
     end
 
     test "returns error for missing range" do

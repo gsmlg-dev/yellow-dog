@@ -289,16 +289,17 @@ defmodule YellowDog.Dns.ViewStore do
         _ -> 100
       end
 
-    base = [
-      "",
-      "[[view]]",
-      "name = #{encode_toml_string(view.name)}",
-      "priority = #{priority}",
-      view[:match_clients] && "match_clients = #{encode_toml_string(view.match_clients)}",
-      "recursion = #{view[:recursion] || false}",
-      "ecs_enabled = #{view[:ecs_enabled] || false}"
-    ]
-    |> Enum.reject(&is_nil/1)
+    base =
+      [
+        "",
+        "[[view]]",
+        "name = #{encode_toml_string(view.name)}",
+        "priority = #{priority}",
+        view[:match_clients] && "match_clients = #{encode_toml_string(view.match_clients)}",
+        "recursion = #{view[:recursion] || false}",
+        "ecs_enabled = #{view[:ecs_enabled] || false}"
+      ]
+      |> Enum.reject(&is_nil/1)
 
     zones_line =
       if view[:zones] && view.zones != [] do
@@ -343,5 +344,4 @@ defmodule YellowDog.Dns.ViewStore do
 
     Enum.join(base ++ zones_line ++ acl_lines, "\n")
   end
-
 end

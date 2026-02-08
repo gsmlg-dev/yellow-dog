@@ -319,15 +319,16 @@ defmodule YellowDog.Mdns.ServiceStore do
   end
 
   defp service_to_toml(service) do
-    base = [
-      "[[service]]",
-      "name = #{encode_toml_string(service.name)}",
-      "type = #{encode_toml_string(service.type)}",
-      "port = #{service.port}",
-      "enabled = #{Map.get(service, :enabled, true)}",
-      service[:host] && "host = #{encode_toml_string(service.host)}"
-    ]
-    |> Enum.reject(&is_nil/1)
+    base =
+      [
+        "[[service]]",
+        "name = #{encode_toml_string(service.name)}",
+        "type = #{encode_toml_string(service.type)}",
+        "port = #{service.port}",
+        "enabled = #{Map.get(service, :enabled, true)}",
+        service[:host] && "host = #{encode_toml_string(service.host)}"
+      ]
+      |> Enum.reject(&is_nil/1)
 
     txt_lines =
       if service[:txt] && map_size(service.txt) > 0 do
@@ -359,5 +360,4 @@ defmodule YellowDog.Mdns.ServiceStore do
 
     Enum.join(base ++ txt_lines ++ addr_lines, "\n")
   end
-
 end

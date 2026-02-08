@@ -349,5 +349,4 @@ defmodule YellowDog.Dns.Server do
   end
 
   defp normalize_ip(_), do: {0, 0, 0, 0}
-
 end

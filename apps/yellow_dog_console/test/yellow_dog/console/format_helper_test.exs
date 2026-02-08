@@ -5,7 +5,8 @@ defmodule YellowDog.Console.FormatHelperTest do
 
   describe "format_mac/1" do
     test "formats 6-byte binary as colon-separated uppercase hex" do
-      assert FormatHelper.format_mac(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>) == "AA:BB:CC:DD:EE:FF"
+      assert FormatHelper.format_mac(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>) ==
+               "AA:BB:CC:DD:EE:FF"
     end
 
     test "formats zero MAC" do
@@ -292,7 +293,8 @@ defmodule YellowDog.Console.FormatHelperTest do
 
   describe "parse_mac_string/1" do
     test "parses colon-separated MAC string" do
-      assert FormatHelper.parse_mac_string("AA:BB:CC:DD:EE:FF") == <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+      assert FormatHelper.parse_mac_string("AA:BB:CC:DD:EE:FF") ==
+               <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
     end
 
     test "returns zero MAC for invalid input" do

@@ -342,8 +342,7 @@ defmodule YellowDog.Console.ConfigManager do
 
             in_arr && trimmed =~ ~r/^\[/ ->
               # Next section/array table starts
-              {[line | acc], trimmed =~ ~r/^\[#{section}\]/,
-               trimmed == array_table_header, idx}
+              {[line | acc], trimmed =~ ~r/^\[#{section}\]/, trimmed == array_table_header, idx}
 
             in_arr ->
               # Skip array table content

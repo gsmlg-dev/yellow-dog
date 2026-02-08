@@ -84,7 +84,10 @@ defmodule YellowDog.Dns.Zone.RPZ do
   def start_link(opts) do
     zone_name = Keyword.fetch!(opts, :name)
     view_name = Keyword.get(opts, :view_name, "default")
-    GenServer.start_link(__MODULE__, opts, name: Behaviour.zone_via_tuple(view_name, :rpz, zone_name))
+
+    GenServer.start_link(__MODULE__, opts,
+      name: Behaviour.zone_via_tuple(view_name, :rpz, zone_name)
+    )
   end
 
   @doc """
@@ -261,11 +264,14 @@ defmodule YellowDog.Dns.Zone.RPZ do
     # Sort by specificity (more specific patterns first)
     policies
     |> Enum.with_index()
-    |> Enum.sort_by(fn {policy, _idx} ->
-      pattern = Map.get(policy, :pattern, "")
-      # More labels = more specific = earlier in order
-      pattern |> String.split(".") |> length()
-    end, :desc)
+    |> Enum.sort_by(
+      fn {policy, _idx} ->
+        pattern = Map.get(policy, :pattern, "")
+        # More labels = more specific = earlier in order
+        pattern |> String.split(".") |> length()
+      end,
+      :desc
+    )
     |> Enum.map(fn {policy, _idx} -> policy end)
   end
 
@@ -432,5 +438,4 @@ defmodule YellowDog.Dns.Zone.RPZ do
 
     Enum.join(parts, ".")
   end
-
 end

@@ -296,5 +296,4 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
     header <> rows
   end
-
 end

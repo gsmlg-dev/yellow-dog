@@ -647,7 +647,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp format_rdata(:srv, rdata), do: format_srv(rdata)
   defp format_rdata(_type, rdata), do: to_string(rdata)
 
-  defp format_ip_address(%{address: addr}) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
+  defp format_ip_address(%{address: addr}) when is_tuple(addr),
+    do: :inet.ntoa(addr) |> to_string()
+
   defp format_ip_address(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
   defp format_ip_address(rdata), do: to_string(rdata)
 

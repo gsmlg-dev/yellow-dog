@@ -164,5 +164,4 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
 
     header <> rows
   end
-
 end

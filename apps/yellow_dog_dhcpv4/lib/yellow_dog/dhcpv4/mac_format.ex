@@ -32,7 +32,9 @@ defmodule YellowDog.Dhcpv4.MacFormat do
       |> :binary.bin_to_list()
       |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
 
-    if Keyword.get(opts, :case, :upper) == :lower, do: String.downcase(hex), else: String.upcase(hex)
+    if Keyword.get(opts, :case, :upper) == :lower,
+      do: String.downcase(hex),
+      else: String.upcase(hex)
   end
 
   def format(_, _opts), do: nil

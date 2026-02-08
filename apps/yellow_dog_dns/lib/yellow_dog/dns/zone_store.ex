@@ -312,5 +312,4 @@ defmodule YellowDog.Dns.ZoneStore do
     # Zone names may contain dots, so we need to quote them
     "\"#{String.replace(key, "\"", "\\\"")}\""
   end
-
 end

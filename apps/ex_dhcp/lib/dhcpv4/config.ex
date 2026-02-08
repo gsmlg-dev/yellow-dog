@@ -133,5 +133,4 @@ defmodule DHCPv4.Config do
 
     Bitwise.band(ip_int, netmask_int) == subnet_int
   end
-
 end

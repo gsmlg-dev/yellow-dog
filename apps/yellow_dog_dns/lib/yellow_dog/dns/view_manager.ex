@@ -479,5 +479,4 @@ defmodule YellowDog.Dns.ViewManager do
 
   defp get_view_name(config) when is_map(config), do: Map.get(config, :name)
   defp get_view_name(config) when is_list(config), do: Keyword.get(config, :name)
-
 end
