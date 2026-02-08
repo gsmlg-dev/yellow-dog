@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 169)
+**Phase**: IN_PROGRESS (Iteration 170)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 169 of 1000
+**Iteration**: 170 of 1000
 
 ## Session Summary
+Iteration 170: Replace Enum.filter|>Enum.map with for comprehensions:
+- ✅ **All tests pass: 1083 DNS, 4764 ex_dns, 0 failures, 0 warnings**
+- ✅ metrics_collector.ex: filter+map on ETS tab2list → for with pin match
+- ✅ recursive.ex: 2× filter+map chains → for comprehensions with guards
+- ✅ 1 commit — 2 files — net -14 lines
+
 Iteration 169: Use for comprehension and Enum.sum_by across 4 modules:
 - ✅ **All tests pass: 479 abyss, 309 mDNS, 404 DHCPv4, 299 DHCPv6, 0 failures**
 - ✅ listener_pool.ex: Enum.reduce filter+extract → for comprehension
