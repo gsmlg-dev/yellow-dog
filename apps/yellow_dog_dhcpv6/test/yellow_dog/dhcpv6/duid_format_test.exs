@@ -43,4 +43,26 @@ defmodule YellowDog.Dhcpv6.DuidFormatTest do
       assert result == "AB:CD:EF"
     end
   end
+
+  describe "format!/2" do
+    test "returns formatted string for valid DUID" do
+      assert DuidFormat.format!(<<0x00, 0x01>>) == "00:01"
+    end
+
+    test "returns UNKNOWN for nil" do
+      assert DuidFormat.format!(nil) == "UNKNOWN"
+    end
+
+    test "returns UNKNOWN for empty binary" do
+      assert DuidFormat.format!(<<>>) == "UNKNOWN"
+    end
+
+    test "returns UNKNOWN for non-binary" do
+      assert DuidFormat.format!(123) == "UNKNOWN"
+    end
+
+    test "passes options through to format/2" do
+      assert DuidFormat.format!(<<0xAB, 0xCD>>, case: :lower) == "ab:cd"
+    end
+  end
 end
