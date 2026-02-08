@@ -365,143 +365,61 @@ defmodule Abyss.Handler do
       end
 
       # Called by GenServer if we hit our read_timeout. Socket is still open
-      def terminate(
-            {:shutdown, :timeout},
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          ) do
+      def terminate({:shutdown, :timeout}, state) do
         out = __MODULE__.handle_timeout(state)
-        # Only call controlling_process if socket is not a reference (test environment)
-        unless is_reference(listener_socket) do
-          Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
-        end
-
-        # Track connection closure
-        Abyss.Telemetry.track_connection_closed()
-
-        # Calculate response time if we have accept start time
-        response_time = calculate_response_time(state)
-
-        if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
-        end
-
-        Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: :timeout})
+        terminate_cleanup(state, :timeout)
         out
       end
 
       # Called if we're being shutdown in an orderly manner. Socket is still open
-      def terminate(
-            :shutdown,
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          ) do
+      def terminate(:shutdown, state) do
         out = __MODULE__.handle_shutdown(state)
-        # Only call controlling_process if socket is not a reference (test environment)
-        unless is_reference(listener_socket) do
-          Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
-        end
-
-        # Track connection closure
-        Abyss.Telemetry.track_connection_closed()
-
-        # Calculate response time if we have accept start time
-        response_time = calculate_response_time(state)
-
-        if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
-        end
-
-        Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: :shutdown})
+        terminate_cleanup(state, :shutdown)
         out
       end
 
       # Called if the socket encountered an error and we are configured to shutdown silently.
       # Socket is closed
-      def terminate(
-            {:shutdown, {:silent_termination, reason}},
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          ) do
-        out =
-          __MODULE__.handle_error(
-            reason,
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          )
-
-        # Only call controlling_process if socket is not a reference (test environment)
-        unless is_reference(listener_socket) do
-          Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
-        end
-
-        # Track connection closure
-        Abyss.Telemetry.track_connection_closed()
-
-        # Calculate response time if we have accept start time
-        response_time = calculate_response_time(state)
-
-        if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
-        end
-
-        Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: reason})
+      def terminate({:shutdown, {:silent_termination, reason}}, state) do
+        out = __MODULE__.handle_error(reason, state)
+        terminate_cleanup(state, reason)
         out
       end
 
       # Called if the remote end shut down the connection, or if the local end closed the
       # connection by returning a `{:close,...}` tuple (in which case the socket will be open)
-      def terminate(
-            {:shutdown, reason},
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          ) do
+      def terminate({:shutdown, reason}, state) do
         out = __MODULE__.handle_close(state)
-        # Only call controlling_process if socket is not a reference (test environment)
-        unless is_reference(listener_socket) do
-          Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
-        end
-
-        # Track connection closure
-        Abyss.Telemetry.track_connection_closed()
-
-        # Calculate response time if we have accept start time
-        response_time = calculate_response_time(state)
-
-        if response_time do
-          Abyss.Telemetry.track_response_sent(response_time)
-        end
-
-        Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: reason})
+        terminate_cleanup(state, reason)
         out
       end
 
       # This clause could happen if we do not have a socket defined in state (either because the
       # process crashed before setting it up, or because the user sent an invalid state)
       @impl GenServer
-      def terminate(
-            reason,
-            %{connection_span: connection_span, listener: listener_pid, socket: listener_socket} =
-              state
-          ) do
+      def terminate(reason, state) do
+        terminate_cleanup(state, reason)
+        :ok
+      end
+
+      defp terminate_cleanup(
+             %{connection_span: span, listener: listener_pid, socket: socket} = state,
+             reason
+           ) do
         # Only call controlling_process if socket is not a reference (test environment)
-        unless is_reference(listener_socket) do
-          Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
+        unless is_reference(socket) do
+          Abyss.Transport.UDP.controlling_process(socket, listener_pid)
         end
 
-        # Track connection closure
         Abyss.Telemetry.track_connection_closed()
 
-        # Calculate response time if we have accept start time
         response_time = calculate_response_time(state)
 
         if response_time do
           Abyss.Telemetry.track_response_sent(response_time)
         end
 
-        Abyss.Telemetry.stop_span(connection_span, %{}, %{reason: reason})
-
-        :ok
+        Abyss.Telemetry.stop_span(span, %{}, %{reason: reason})
       end
 
       # Private helper functions
