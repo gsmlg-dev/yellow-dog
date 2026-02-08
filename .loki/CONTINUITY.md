@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 172)
+**Phase**: IN_PROGRESS (Iteration 173)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 172 of 1000
+**Iteration**: 173 of 1000
 
 ## Session Summary
+Iteration 173: Use MapSet.new/2 and for-into across 7 modules:
+- ✅ **All tests pass: 650 ex_dhcp, 404 DHCPv4, 299 DHCPv6, 4764 ex_dns, 1106 console, 0 failures**
+- ✅ Enum.map |> MapSet.new() → MapSet.new(enum, fn) in 3 modules (lease_manager, lease_storage, discovery_live)
+- ✅ for(...) |> MapSet.new() → for ... into: MapSet.new() in 3 modules (lease_storage v6, zone validator x2)
+- ✅ Enum.reduce(range, MapSet.new(), put) → MapSet.new(range, fn) in 2 modules (dhcpv4/v6 server)
+- ✅ Eliminated expired_ips intermediate variable in both ex_dhcp servers
+- ✅ 1 commit — 7 files — net -7 lines
+
 Iteration 172: Reuse get_service/1 in service_registry handle_call clauses:
 - ✅ **All tests pass: 309 mDNS, 0 failures, 0 warnings**
 - ✅ 3 handle_call clauses now use public get_service/1 instead of raw ETS lookup
