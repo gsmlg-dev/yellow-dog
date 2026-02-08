@@ -1,11 +1,24 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 135)
+**Phase**: IN_PROGRESS (Iteration 136)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 135 of 1000
+**Iteration**: 136 of 1000
 
 ## Session Summary
+Iteration 136: Tests, performance, DRY delegation, single-pass joins:
+- ✅ **All tests pass: 0 failures, 0 credo issues, 0 warnings**
+- ✅ Added 22 unit tests for IpFormat module (format, parse, parse_v4, parse_v6)
+- ✅ Removed dead `format_pid/1` clause in dashboard_live.ex (redundant guard)
+- ✅ Optimized zone parser from O(n²) to O(n) — replaced `++ [item]` with prepend+reverse
+- ✅ Added 3 unit tests for Behaviour.zone_via_tuple/3
+- ✅ FormatHelper.format_mac delegates to MacFormat.format!/2 (eliminated duplicate hex logic)
+- ✅ FormatHelper.format_duid delegates to DuidFormat.format!/2 (eliminated duplicate hex logic)
+- ✅ DuidFormat.format!/2 updated to accept :default option (matching MacFormat pattern)
+- ✅ FormatHelper.format_ipv6 delegates to Ipv6Util.format/1
+- ✅ Replaced 3 `Enum.map |> Enum.join` with `Enum.map_join` (core_components, file_parser, view_live)
+- ✅ 6 commits — net -20+ lines, +25 tests
+
 Iteration 135: Replace parse_ipv6 duplicate in DHCPv6 pool.ex:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ pool.ex: simplified 4-clause `parse_ipv6` to 1-clause `Ipv6Util.parse/1` wrapper
