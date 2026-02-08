@@ -22,7 +22,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
-  alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util, LeaseStorage, PoolStore}
+  alias YellowDog.Dhcpv6.{AddressPool, DuidFormat, Ipv6Util, LeaseStorage, PoolStore}
 
   @table_name :dhcpv6_leases_cache
   @ets_options [:named_table, :public, :set, read_concurrency: true]
@@ -432,14 +432,14 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :lease_manager, :lease_released],
           %{count: 1},
-          %{duid: format_duid(duid), iaid: iaid}
+          %{duid: DuidFormat.format!(duid), iaid: iaid}
         )
 
       {:error, reason} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :lease_manager, :release_failed],
           %{count: 1},
-          %{duid: format_duid(duid), iaid: iaid, reason: inspect(reason)}
+          %{duid: DuidFormat.format!(duid), iaid: iaid, reason: inspect(reason)}
         )
     end
 
@@ -462,7 +462,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease_manager, :ip_declined],
       %{count: 1},
-      %{ip: inspect(ip), duid: format_duid(duid)}
+      %{ip: inspect(ip), duid: DuidFormat.format!(duid)}
     )
 
     {:reply, :ok, state}
@@ -696,7 +696,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   defp make_lease_key(duid, iaid) do
-    "#{format_duid(duid)}:#{iaid}"
+    "#{DuidFormat.format!(duid)}:#{iaid}"
   end
 
   defp do_allocate_lease(duid, iaid, requested_ip, pool) do
@@ -717,7 +717,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :lease_manager, :lease_renewed],
           %{count: 1},
-          %{duid: format_duid(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
+          %{duid: DuidFormat.format!(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
         )
 
         {:ok, renewed_lease}
@@ -734,7 +734,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease_manager, :lease_renewed_from_storage],
               %{count: 1},
-              %{duid: format_duid(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
+              %{duid: DuidFormat.format!(duid), iaid: iaid, ip: inspect(renewed_lease.ip)}
             )
 
             {:ok, renewed_lease}
@@ -787,7 +787,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       :telemetry.execute(
         [:yellow_dog, :dhcpv6, :lease_manager, :lease_allocated],
         %{count: 1},
-        %{duid: format_duid(duid), iaid: iaid, ip: ip, pool: pool.name}
+        %{duid: DuidFormat.format!(duid), iaid: iaid, ip: ip, pool: pool.name}
       )
 
       {:ok, lease}
@@ -1026,8 +1026,6 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
     :ok
   end
-
-  defp format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format(duid) || "UNKNOWN"
 
   defp calculate_pool_stats(pool) do
     # Get all leases for this pool

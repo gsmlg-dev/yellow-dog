@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   Supports multiple pools, static reservations, and prefix delegation.
   """
 
-  alias YellowDog.Dhcpv6.Ipv6Util
+  alias YellowDog.Dhcpv6.{DuidFormat, Ipv6Util}
 
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
@@ -229,7 +229,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   @spec get_static_reservation(pool_config(), duid()) ::
           {:ok, ipv6_address()} | :not_found
   def get_static_reservation(pool, duid) do
-    case Map.get(pool.static_reservations, format_duid(duid)) do
+    case Map.get(pool.static_reservations, DuidFormat.format!(duid)) do
       nil -> :not_found
       ip -> {:ok, ip}
     end
@@ -267,13 +267,13 @@ defmodule YellowDog.Dhcpv6.AddressPool do
 
   defp parse_reservation(%{duid: duid, address: address}) when is_binary(address) do
     case Ipv6Util.parse_string(address) do
-      {:ok, ip_tuple} -> {:ok, format_duid(duid), ip_tuple}
+      {:ok, ip_tuple} -> {:ok, DuidFormat.format!(duid), ip_tuple}
       _ -> :skip
     end
   end
 
   defp parse_reservation(%{duid: duid, address: address}) when is_tuple(address) do
-    {:ok, format_duid(duid), address}
+    {:ok, DuidFormat.format!(duid), address}
   end
 
   defp parse_reservation(_), do: :skip
@@ -306,27 +306,18 @@ defmodule YellowDog.Dhcpv6.AddressPool do
     start_int = Ipv6Util.to_integer(start_ip)
     end_int = Ipv6Util.to_integer(end_ip)
 
-    # For large IPv6 ranges, we can't iterate through all addresses
-    # Instead, use a random approach with collision detection
-    max_attempts = 100
-
+    # For large IPv6 ranges, use random probing with collision detection
     result =
-      Enum.reduce_while(1..max_attempts, nil, fn _attempt, _acc ->
-        # Generate a random offset within the range
+      Enum.find_value(1..100, fn _attempt ->
         offset = :rand.uniform(end_int - start_int + 1) - 1
-        ip_int = start_int + offset
-        ip = Ipv6Util.from_integer(ip_int)
+        ip = Ipv6Util.from_integer(start_int + offset)
 
-        if not MapSet.member?(unavailable_ips, ip) do
-          {:halt, {:ok, ip}}
-        else
-          {:cont, nil}
-        end
+        if not MapSet.member?(unavailable_ips, ip), do: ip
       end)
 
     case result do
       nil -> {:error, :pool_exhausted}
-      {:ok, ip} -> {:ok, ip}
+      ip -> {:ok, ip}
     end
   end
 
@@ -347,6 +338,4 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   end
 
   defp parse_dns_servers(_), do: []
-
-  defp format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format(duid) || "UNKNOWN"
 end

@@ -32,4 +32,10 @@ defmodule YellowDog.Dhcpv6.DuidFormat do
   end
 
   def format(_, _opts), do: nil
+
+  @doc """
+  Like `format/2` but returns `"UNKNOWN"` instead of `nil`.
+  """
+  @spec format!(binary(), keyword()) :: String.t()
+  def format!(duid, opts \\ []), do: format(duid, opts) || "UNKNOWN"
 end

@@ -27,7 +27,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
   This would allocate /56 prefixes from the 2001:db8:1000::/48 block.
   """
 
-  alias YellowDog.Dhcpv6.Ipv6Util
+  alias YellowDog.Dhcpv6.{DuidFormat, Ipv6Util}
 
   import Bitwise
 
@@ -157,7 +157,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
   """
   @spec get_static_reservation(prefix_pool_config(), duid()) :: {:ok, prefix()} | :not_found
   def get_static_reservation(pool, duid) do
-    formatted_duid = format_duid(duid)
+    formatted_duid = DuidFormat.format!(duid)
 
     case Map.get(pool.static_reservations, formatted_duid) do
       nil -> :not_found
@@ -266,7 +266,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
       when is_binary(prefix_str) and is_integer(len) ->
         case Ipv6Util.parse_string(prefix_str) do
           {:ok, prefix_addr} ->
-            Map.put(acc, format_duid(duid), {prefix_addr, len})
+            Map.put(acc, DuidFormat.format!(duid), {prefix_addr, len})
 
           _ ->
             acc
@@ -274,7 +274,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
 
       %{duid: duid, prefix: prefix_addr, prefix_length: len}, acc
       when is_tuple(prefix_addr) and is_integer(len) ->
-        Map.put(acc, format_duid(duid), {prefix_addr, len})
+        Map.put(acc, DuidFormat.format!(duid), {prefix_addr, len})
 
       _, acc ->
         acc
@@ -338,6 +338,4 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
       ((1 <<< prefix_length) - 1) <<< (128 - prefix_length)
     end
   end
-
-  defp format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format(duid) || "UNKNOWN"
 end
