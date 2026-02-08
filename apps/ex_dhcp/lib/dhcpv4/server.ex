@@ -386,6 +386,6 @@ defmodule DHCPv4.Server do
   defp encode_option_value(value, :ip), do: ip_to_binary(value)
 
   defp encode_option_value(values, :ip_list) when is_list(values) do
-    Enum.reduce(values, <<>>, fn ip, acc -> <<acc::binary, ip_to_binary(ip)::binary>> end)
+    Enum.map_join(values, <<>>, &ip_to_binary/1)
   end
 end

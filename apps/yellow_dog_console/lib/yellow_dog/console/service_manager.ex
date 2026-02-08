@@ -12,6 +12,11 @@ defmodule YellowDog.Console.ServiceManager do
   - Verify service health
   """
 
+  @termination_timeout 5_000
+  @max_restart_attempts 10
+  @backoff_base_ms 100
+  @health_check_delay_ms 500
+
   @doc """
   Applies pending configuration for a service and restarts it.
 
@@ -52,38 +57,14 @@ defmodule YellowDog.Console.ServiceManager do
             if Map.get(new_config, "enabled", false) do
               start_service(service)
             else
-              # Service is disabled and not running - nothing to do
-              :telemetry.execute(
-                [:yellow_dog, :console, :service, :action],
-                %{count: 1},
-                %{
-                  source: __MODULE__,
-                  service: service,
-                  action: :config_updated,
-                  enabled: false,
-                  severity: :info
-                }
-              )
-
+              emit_action(service, :config_updated, :info)
               :ok
             end
         end
 
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
-
-        :telemetry.execute(
-          [:yellow_dog, :console, :service, :action],
-          %{count: 1},
-          %{
-            source: __MODULE__,
-            service: service,
-            action: :config_update_failed,
-            reason: inspect(reason),
-            severity: :error
-          }
-        )
-
+        emit_action(service, :config_update_failed, :error, reason: inspect(reason))
         error
     end
   end
@@ -93,101 +74,40 @@ defmodule YellowDog.Console.ServiceManager do
          {:ok, new_pid} <- wait_for_restart(service, old_pid),
          :ok <- verify_service_health(service, new_pid) do
       emit_telemetry(:service_restarted, %{service: service})
-
-      :telemetry.execute(
-        [:yellow_dog, :console, :service, :action],
-        %{count: 1},
-        %{source: __MODULE__, service: service, action: :restarted, severity: :info}
-      )
-
+      emit_action(service, :restarted, :info)
       :ok
     else
       {:error, reason} = error ->
         emit_telemetry(:service_restart_failed, %{service: service, reason: reason})
-
-        :telemetry.execute(
-          [:yellow_dog, :console, :service, :action],
-          %{count: 1},
-          %{
-            source: __MODULE__,
-            service: service,
-            action: :restart_failed,
-            reason: inspect(reason),
-            severity: :error
-          }
-        )
-
+        emit_action(service, :restart_failed, :error, reason: inspect(reason))
         error
     end
   end
 
   defp start_service(service) do
-    # Try to start the service via the main YellowDog application
-    :telemetry.execute(
-      [:yellow_dog, :console, :service, :action],
-      %{count: 1},
-      %{source: __MODULE__, service: service, action: :starting, severity: :info}
-    )
+    emit_action(service, :starting, :info)
 
-    # The service should be started by YellowDog.Application
-    # We need to trigger a reload of the service configuration
     case YellowDog.start_service(service) do
       :ok ->
         emit_telemetry(:service_started, %{service: service})
-
-        :telemetry.execute(
-          [:yellow_dog, :console, :service, :action],
-          %{count: 1},
-          %{source: __MODULE__, service: service, action: :started, severity: :info}
-        )
-
+        emit_action(service, :started, :info)
         :ok
 
       {:error, reason} = error ->
         emit_telemetry(:service_start_failed, %{service: service, reason: reason})
-
-        :telemetry.execute(
-          [:yellow_dog, :console, :service, :action],
-          %{count: 1},
-          %{
-            source: __MODULE__,
-            service: service,
-            action: :start_failed,
-            reason: inspect(reason),
-            severity: :error
-          }
-        )
-
+        emit_action(service, :start_failed, :error, reason: inspect(reason))
         error
     end
   rescue
-    # If YellowDog.start_service doesn't exist, emit warning
     e in UndefinedFunctionError ->
-      :telemetry.execute(
-        [:yellow_dog, :console, :service, :action],
-        %{count: 1},
-        %{
-          source: __MODULE__,
-          service: service,
-          action: :start_not_available,
-          error: inspect(e),
-          severity: :warning
-        }
-      )
-
+      emit_action(service, :start_not_available, :warning, error: inspect(e))
       {:error, :start_not_implemented}
   end
 
   # Private Functions
 
   defp update_config(service, new_config) do
-    # Update YellowDog.Config Agent with new configuration
-    :telemetry.execute(
-      [:yellow_dog, :console, :service, :action],
-      %{count: 1},
-      %{source: __MODULE__, service: service, action: :updating_config, severity: :debug}
-    )
-
+    emit_action(service, :updating_config, :debug)
     YellowDog.Config.update(service, new_config)
   end
 
@@ -218,28 +138,23 @@ defmodule YellowDog.Console.ServiceManager do
     receive do
       {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
     after
-      5000 -> {:error, :termination_timeout}
+      @termination_timeout -> {:error, :termination_timeout}
     end
   end
 
   defp wait_for_restart(service, old_pid, attempt \\ 1) do
-    max_attempts = 10
-
-    if attempt > max_attempts do
+    if attempt > @max_restart_attempts do
       {:error, :restart_timeout}
     else
       supervisor_name = supervisor_module(service)
 
       case Process.whereis(supervisor_name) do
         nil ->
-          # Not restarted yet, wait and retry
-          # Exponential backoff
-          Process.sleep(100 * attempt)
+          Process.sleep(@backoff_base_ms * attempt)
           wait_for_restart(service, old_pid, attempt + 1)
 
         ^old_pid ->
-          # Same PID? Shouldn't happen, but handle it
-          Process.sleep(100 * attempt)
+          Process.sleep(@backoff_base_ms * attempt)
           wait_for_restart(service, old_pid, attempt + 1)
 
         new_pid ->
@@ -249,14 +164,8 @@ defmodule YellowDog.Console.ServiceManager do
   end
 
   defp verify_service_health(service, pid) do
-    # Give service time to initialize
-    Process.sleep(500)
-
-    :telemetry.execute(
-      [:yellow_dog, :console, :service, :action],
-      %{count: 1},
-      %{source: __MODULE__, service: service, action: :verifying_health, severity: :debug}
-    )
+    Process.sleep(@health_check_delay_ms)
+    emit_action(service, :verifying_health, :debug)
 
     # Check if supervisor is still alive
     if Process.alive?(pid) do
@@ -276,5 +185,13 @@ defmodule YellowDog.Console.ServiceManager do
       %{timestamp: System.monotonic_time()},
       metadata
     )
+  end
+
+  defp emit_action(service, action, severity, extra \\ []) do
+    metadata =
+      %{source: __MODULE__, service: service, action: action, severity: severity}
+      |> Map.merge(Map.new(extra))
+
+    :telemetry.execute([:yellow_dog, :console, :service, :action], %{count: 1}, metadata)
   end
 end
