@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 155)
+**Phase**: IN_PROGRESS (Iteration 156)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 155 of 1000
+**Iteration**: 156 of 1000
 
 ## Session Summary
+Iteration 156: DRY RPZ response builders:
+- ✅ **All tests pass: 35 RPZ, 1083 DNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ 4 create_*_response functions → thin wrappers over shared build_rpz_response/2
+- ✅ Parameterize aa, tc, rcode, anlist via keyword opts
+- ✅ 1 commit — 1 file — net -11 lines
+
 Iteration 155: DRY metrics_collector min/max tracking:
 - ✅ **All tests pass: 1083 DNS, 16 metrics, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Extracted update_bound/4 with comparator fn (replaces 2 identical case blocks)
