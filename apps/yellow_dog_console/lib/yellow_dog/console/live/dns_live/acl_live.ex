@@ -464,10 +464,10 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   defp format_acl_rule(rule), do: inspect(rule)
 
   defp parse_acl_rules(text) when is_binary(text) do
-    text
-    |> StringHelper.split_and_trim("\n")
-    |> Enum.map(&parse_acl_rule_line/1)
-    |> Enum.reject(&is_nil/1)
+    for line <- StringHelper.split_and_trim(text, "\n"),
+        rule = parse_acl_rule_line(line),
+        rule != nil,
+        do: rule
   end
 
   defp parse_acl_rule_line(line) do
@@ -601,10 +601,10 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   defp build_named_acl_rules("custom", rules_text, _selected_countries) do
-    rules_text
-    |> StringHelper.split_and_trim("\n")
-    |> Enum.map(&parse_named_acl_rule_line/1)
-    |> Enum.reject(&is_nil/1)
+    for line <- StringHelper.split_and_trim(rules_text, "\n"),
+        rule = parse_named_acl_rule_line(line),
+        rule != nil,
+        do: rule
   end
 
   defp build_named_acl_rules(_, _, _), do: []

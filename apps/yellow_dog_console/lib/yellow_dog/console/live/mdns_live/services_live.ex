@@ -244,16 +244,11 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   defp parse_txt_records(txt_string) when is_binary(txt_string) do
-    txt_string
-    |> StringHelper.split_and_trim("\n")
-    |> Enum.map(fn line ->
-      case String.split(line, "=", parts: 2) do
-        [key, value] -> {String.trim(key), String.trim(value)}
-        _ -> nil
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Map.new()
+    for line <- StringHelper.split_and_trim(txt_string, "\n"),
+        [key, value] <- [String.split(line, "=", parts: 2)],
+        into: %{} do
+      {String.trim(key), String.trim(value)}
+    end
   end
 
   defp parse_txt_records(_), do: %{}

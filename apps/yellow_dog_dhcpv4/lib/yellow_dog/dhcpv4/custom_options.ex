@@ -187,13 +187,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   """
   @spec encode_options([option_definition()]) :: [map()]
   def encode_options(options) do
-    Enum.map(options, fn opt ->
-      case encode_option(opt) do
-        {:ok, encoded} -> encoded
-        {:error, _reason} -> nil
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
+    for opt <- options, {:ok, encoded} <- [encode_option(opt)], do: encoded
   end
 
   @doc """

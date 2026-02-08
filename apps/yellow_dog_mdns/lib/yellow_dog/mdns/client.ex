@@ -171,11 +171,10 @@ defmodule YellowDog.Mdns.Client do
 
         # Query for SRV and TXT records for each instance
         services =
-          instances
-          |> Enum.map(fn instance_name ->
-            fetch_service_details(instance_name, opts)
-          end)
-          |> Enum.reject(&is_nil/1)
+          for name <- instances,
+              svc = fetch_service_details(name, opts),
+              svc != nil,
+              do: svc
 
         {:ok, services}
 
