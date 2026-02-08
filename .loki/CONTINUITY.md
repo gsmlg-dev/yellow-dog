@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 157)
+**Phase**: IN_PROGRESS (Iteration 158)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 157 of 1000
+**Iteration**: 158 of 1000
 
 ## Session Summary
+Iteration 158: Extract check_cache/2 in zone cache:
+- ✅ **All tests pass: 32 cache, 0 failures, 0 credo issues, 0 warnings**
+- ✅ DRY ETS lookup + expiry check + hit/miss counting from resolve and lookup handlers
+- ✅ Returns {:hit, entry, state} | {:miss, state} for clean pattern matching
+- ✅ 1 commit — 1 file — net -4 lines
+
 Iteration 157: Simplify RPZ evaluation + extract insert_records in auth:
 - ✅ **All tests pass: 98 RPZ+auth, 0 failures, 0 credo issues, 0 warnings**
 - ✅ rpz.ex: nested case → with chain for evaluate_policies
