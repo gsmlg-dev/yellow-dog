@@ -69,7 +69,7 @@ defmodule YellowDog.Dhcpv4.Pool do
   """
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(config) when is_map(config) do
-    with {:ok, name} <- get_required(config, :name, "name"),
+    with {:ok, name} <- get_required(config, :name),
          {:ok, subnet} <- parse_subnet(config),
          {:ok, range} <- parse_range(config),
          :ok <- validate_range_in_subnet(range, subnet) do
@@ -147,16 +147,10 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   # Parsing helpers
 
-  defp get_required(config, atom_key, string_key) do
-    case get_value(config, atom_key) do
-      nil ->
-        case Map.get(config, string_key) do
-          nil -> {:error, "Missing required field: #{atom_key}"}
-          value -> {:ok, value}
-        end
-
-      value ->
-        {:ok, value}
+  defp get_required(config, key) do
+    case get_value(config, key) do
+      nil -> {:error, "Missing required field: #{key}"}
+      value -> {:ok, value}
     end
   end
 

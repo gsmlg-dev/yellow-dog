@@ -1059,12 +1059,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
   # Check if a new pool's range overlaps with any existing pools
   defp check_range_overlap(new_pool, existing_pools) do
-    overlaps =
-      Enum.any?(existing_pools, fn existing ->
-        ranges_overlap?(new_pool.ranges, existing.ranges)
-      end)
-
-    if overlaps do
+    if Enum.any?(existing_pools, &ranges_overlap?(new_pool.ranges, &1.ranges)) do
       {:error, :range_overlap}
     else
       :ok
