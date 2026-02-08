@@ -229,7 +229,7 @@ defmodule DNS.Zone.Transfer do
 
   defp ip_matches?(allowed_subnet, client_ip) when is_binary(allowed_subnet) do
     # Simple subnet matching - TODO: Implement proper CIDR matching
-    String.contains?(allowed_subnet, "/") == false and
+    not String.contains?(allowed_subnet, "/") and
       allowed_subnet == to_string(:inet_parse.ntoa(client_ip))
   end
 

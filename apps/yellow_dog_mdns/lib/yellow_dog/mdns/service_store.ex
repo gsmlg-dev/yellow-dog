@@ -353,7 +353,7 @@ defmodule YellowDog.Mdns.ServiceStore do
           ipv6 != [] &&
             "  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"
         ]
-        |> Enum.reject(&(&1 == nil or &1 == false))
+        |> Enum.filter(& &1)
       else
         []
       end
