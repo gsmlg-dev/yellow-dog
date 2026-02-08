@@ -421,49 +421,20 @@ defmodule DNS.Zone.Validator do
   """
   @spec generate_recommendations(Zone.t()) :: list(String.t())
   def generate_recommendations(zone) do
-    recommendations = []
-
-    # Check for missing records
-    ns_records = Keyword.get(zone.options, :ns_records, [])
-
-    recommendations =
-      if ns_records == [] do
-        ["Add NS records for proper delegation" | recommendations]
-      else
-        recommendations
-      end
-
-    a_records = Keyword.get(zone.options, :a_records, [])
-
-    recommendations =
-      if a_records == [] do
-        ["Consider adding A records for better functionality" | recommendations]
-      else
-        recommendations
-      end
-
-    # Check TTL distribution
     all_records = get_all_records(zone)
 
     avg_ttl =
       if all_records != [], do: Enum.sum_by(all_records, & &1.ttl) / length(all_records), else: 0
 
-    recommendations =
-      if avg_ttl < 300 do
-        ["Consider increasing average TTL for better caching" | recommendations]
-      else
-        recommendations
-      end
+    checks = [
+      {Keyword.get(zone.options, :ns_records, []) == [], "Add NS records for proper delegation"},
+      {Keyword.get(zone.options, :a_records, []) == [],
+       "Consider adding A records for better functionality"},
+      {avg_ttl < 300, "Consider increasing average TTL for better caching"},
+      {not has_dnssec?(zone), "Consider enabling DNSSEC for security"}
+    ]
 
-    # Check DNSSEC status
-    recommendations =
-      if has_dnssec?(zone) do
-        recommendations
-      else
-        ["Consider enabling DNSSEC for security" | recommendations]
-      end
-
-    Enum.reverse(recommendations)
+    for {true, message} <- checks, do: message
   end
 
   @doc """
