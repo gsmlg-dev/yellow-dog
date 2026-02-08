@@ -160,16 +160,15 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_prefix(config) do
     case get_value(config, :prefix) do
-      %{"address" => addr, "prefix_len" => prefix} ->
-        case parse_ipv6(addr) do
-          nil -> {:error, "Invalid prefix address"}
-          ip -> {:ok, {ip, prefix}}
-        end
-
-      %{address: addr, prefix_len: prefix} ->
-        case parse_ipv6(addr) do
-          nil -> {:error, "Invalid prefix address"}
-          ip -> {:ok, {ip, prefix}}
+      map when is_map(map) ->
+        case {get_value(map, :address), get_value(map, :prefix_len)} do
+          {nil, _} -> {:error, "Invalid prefix address"}
+          {_, nil} -> {:error, "Missing prefix length"}
+          {addr, prefix} ->
+            case parse_ipv6(addr) do
+              nil -> {:error, "Invalid prefix address"}
+              ip -> {:ok, {ip, prefix}}
+            end
         end
 
       cidr when is_binary(cidr) ->
@@ -204,11 +203,8 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_range(config, _prefix) do
     case get_value(config, :range) do
-      %{"start" => start_str, "end" => end_str} ->
-        parse_range_pair(start_str, end_str)
-
-      %{start: start_str, end: end_str} ->
-        parse_range_pair(start_str, end_str)
+      map when is_map(map) ->
+        parse_range_pair(get_value(map, :start), get_value(map, :end))
 
       nil ->
         # Try legacy range_start/range_end
@@ -263,11 +259,11 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_lifetimes(config) do
     case get_value(config, :lifetimes) do
-      %{"preferred" => pref, "valid" => valid} ->
-        %{preferred: pref, valid: valid}
-
-      %{preferred: pref, valid: valid} ->
-        %{preferred: pref, valid: valid}
+      map when is_map(map) ->
+        %{
+          preferred: get_value(map, :preferred, 3600),
+          valid: get_value(map, :valid, 7200)
+        }
 
       _ ->
         # Try legacy field names
@@ -295,17 +291,14 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   defp parse_pd_pools(_), do: []
 
-  defp parse_pd_pool(%{"prefix" => prefix, "length" => len, "delegated_len" => del_len}) do
-    case parse_ipv6(prefix) do
-      nil -> nil
-      ip -> %{prefix: ip, length: len, delegated_len: del_len}
-    end
-  end
-
-  defp parse_pd_pool(%{prefix: prefix, length: len, delegated_len: del_len}) do
-    case parse_ipv6(prefix) do
-      nil -> nil
-      ip -> %{prefix: ip, length: len, delegated_len: del_len}
+  defp parse_pd_pool(map) when is_map(map) do
+    with prefix when not is_nil(prefix) <- get_value(map, :prefix),
+         len when not is_nil(len) <- get_value(map, :length),
+         del_len when not is_nil(del_len) <- get_value(map, :delegated_len),
+         ip when not is_nil(ip) <- parse_ipv6(prefix) do
+      %{prefix: ip, length: len, delegated_len: del_len}
+    else
+      _ -> nil
     end
   end
 

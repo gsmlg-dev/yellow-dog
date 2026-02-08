@@ -162,16 +162,15 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp parse_subnet(config) do
     case get_value(config, :subnet) do
-      %{"address" => addr, "prefix_len" => prefix} ->
-        case parse_ip(addr) do
-          nil -> {:error, "Invalid subnet address"}
-          ip -> {:ok, {ip, prefix}}
-        end
-
-      %{address: addr, prefix_len: prefix} ->
-        case parse_ip(addr) do
-          nil -> {:error, "Invalid subnet address"}
-          ip -> {:ok, {ip, prefix}}
+      map when is_map(map) ->
+        case {get_value(map, :address), get_value(map, :prefix_len)} do
+          {nil, _} -> {:error, "Invalid subnet address"}
+          {_, nil} -> {:error, "Missing prefix length"}
+          {addr, prefix} ->
+            case parse_ip(addr) do
+              nil -> {:error, "Invalid subnet address"}
+              ip -> {:ok, {ip, prefix}}
+            end
         end
 
       cidr when is_binary(cidr) ->
@@ -206,11 +205,8 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp parse_range(config) do
     case get_value(config, :range) do
-      %{"start" => start_str, "end" => end_str} ->
-        parse_range_pair(start_str, end_str)
-
-      %{start: start_str, end: end_str} ->
-        parse_range_pair(start_str, end_str)
+      map when is_map(map) ->
+        parse_range_pair(get_value(map, :start), get_value(map, :end))
 
       nil ->
         # Try legacy range_start/range_end
@@ -263,11 +259,8 @@ defmodule YellowDog.Dhcpv4.Pool do
 
   defp parse_lease_time(config) do
     case get_value(config, :lease_time) do
-      %{"default" => default, "max" => max} ->
-        %{default: default, max: max}
-
-      %{default: default, max: max} ->
-        %{default: default, max: max}
+      map when is_map(map) ->
+        %{default: get_value(map, :default, 3600), max: get_value(map, :max, 86400)}
 
       seconds when is_integer(seconds) ->
         %{default: seconds, max: seconds * 2}
