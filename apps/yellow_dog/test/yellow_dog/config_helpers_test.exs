@@ -24,6 +24,22 @@ defmodule YellowDog.ConfigHelpersTest do
       map = Map.put(%{name: "atom"}, "name", "string")
       assert ConfigHelpers.get_value(map, :name) == "atom"
     end
+
+    test "returns false when value is false (not default)" do
+      assert ConfigHelpers.get_value(%{enabled: false}, :enabled, true) == false
+    end
+
+    test "returns 0 when value is zero (not default)" do
+      assert ConfigHelpers.get_value(%{count: 0}, :count, 100) == 0
+    end
+
+    test "returns false from string key when value is false" do
+      assert ConfigHelpers.get_value(%{"enabled" => false}, :enabled, true) == false
+    end
+
+    test "returns 0 from string key when value is zero" do
+      assert ConfigHelpers.get_value(%{"lease_time" => 0}, :lease_time, 86400) == 0
+    end
   end
 
   describe "parse_state/1" do

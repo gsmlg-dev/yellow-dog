@@ -26,6 +26,18 @@ defmodule YellowDog.Config.TomlHelpersTest do
       # String key also works
       assert TomlHelpers.get_value(%{"name" => "str_val"}, [:name, "name"]) == "str_val"
     end
+
+    test "returns false when value is false (not default)" do
+      assert TomlHelpers.get_value(%{enabled: false}, [:enabled, "enabled"], true) == false
+    end
+
+    test "returns 0 when value is zero (not default)" do
+      assert TomlHelpers.get_value(%{count: 0}, [:count, "count"], 100) == 0
+    end
+
+    test "returns nil when value is explicitly nil (not default)" do
+      assert TomlHelpers.get_value(%{field: nil}, [:field], "default") == nil
+    end
   end
 
   describe "get_integer/3" do
@@ -43,6 +55,10 @@ defmodule YellowDog.Config.TomlHelpersTest do
 
     test "returns default when key not found" do
       assert TomlHelpers.get_integer(%{}, [:port, "port"], 53) == 53
+    end
+
+    test "returns 0 when value is zero (not default)" do
+      assert TomlHelpers.get_integer(%{port: 0}, [:port, "port"], 8080) == 0
     end
   end
 
