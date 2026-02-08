@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 158)
+**Phase**: IN_PROGRESS (Iteration 159)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 158 of 1000
+**Iteration**: 159 of 1000
 
 ## Session Summary
+Iteration 159: Simplify geo_ip_db database.ex:
+- ✅ **All tests pass: 24 geo_ip_db, 0 failures, 0 credo issues, 0 warnings**
+- ✅ &elem(&1, 0) capture shorthand replaces fn {name, _, _, _} -> name end
+- ✅ Nested case File.read → case parse_database → with chain
+- ✅ 1 commit — 1 file — net -6 lines
+
 Iteration 158: Extract check_cache/2 in zone cache:
 - ✅ **All tests pass: 32 cache, 0 failures, 0 credo issues, 0 warnings**
 - ✅ DRY ETS lookup + expiry check + hit/miss counting from resolve and lookup handlers
