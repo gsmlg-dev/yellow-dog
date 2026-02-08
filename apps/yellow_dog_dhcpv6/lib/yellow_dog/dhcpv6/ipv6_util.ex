@@ -56,4 +56,16 @@ defmodule YellowDog.Dhcpv6.Ipv6Util do
       {:error, _} -> {:error, "Invalid IPv6 address string: #{ip_string}"}
     end
   end
+
+  @doc "Parses an IPv6 value (string, tuple, or other) into an 8-tuple."
+  @spec parse(term()) :: {:ok, ipv6_address()} | {:error, String.t()}
+  def parse(ip) when is_binary(ip) do
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, addr} when tuple_size(addr) == 8 -> {:ok, addr}
+      _ -> {:error, "Invalid IPv6 address: #{ip}"}
+    end
+  end
+
+  def parse(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: {:ok, ip}
+  def parse(_), do: {:error, "Invalid IPv6 format"}
 end

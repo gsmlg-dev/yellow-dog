@@ -415,7 +415,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   defp validate_network_cidr(network) when is_binary(network) do
     case String.split(network, "/") do
       [ip, prefix] ->
-        with {:ok, _} <- parse_ipv6(ip),
+        with {:ok, _} <- Ipv6Util.parse(ip),
              {prefix_int, ""} <- Integer.parse(prefix),
              true <- prefix_int >= 0 and prefix_int <= 128 do
           :ok
@@ -442,8 +442,8 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     cond do
       range_start && range_end ->
-        with {:ok, _} <- parse_ipv6(range_start),
-             {:ok, _} <- parse_ipv6(range_end) do
+        with {:ok, _} <- Ipv6Util.parse(range_start),
+             {:ok, _} <- Ipv6Util.parse(range_end) do
           :ok
         end
 
@@ -452,16 +452,6 @@ defmodule YellowDog.Dhcpv6.PoolStore do
         :ok
     end
   end
-
-  defp parse_ipv6(ip) when is_binary(ip) do
-    case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, addr} when tuple_size(addr) == 8 -> {:ok, addr}
-      _ -> {:error, "Invalid IPv6 address: #{ip}"}
-    end
-  end
-
-  defp parse_ipv6(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: {:ok, ip}
-  defp parse_ipv6(_), do: {:error, "Invalid IPv6 format"}
 
   defp pool_to_toml(pool) do
     dns_line =
