@@ -292,27 +292,19 @@ defmodule YellowDog.Dns.ViewStore do
         _ -> 100
       end
 
-    lines = [
+    base = [
       "",
       "[[view]]",
       "name = #{encode_toml_string(view.name)}",
-      "priority = #{priority}"
+      "priority = #{priority}",
+      view[:match_clients] && "match_clients = #{encode_toml_string(view.match_clients)}",
+      "recursion = #{view[:recursion] || false}",
+      "ecs_enabled = #{view[:ecs_enabled] || false}"
     ]
+    |> Enum.reject(&is_nil/1)
 
-    lines =
-      if view[:match_clients] do
-        lines ++ ["match_clients = #{encode_toml_string(view.match_clients)}"]
-      else
-        lines
-      end
-
-    lines = lines ++ ["recursion = #{view[:recursion] || false}"]
-    lines = lines ++ ["ecs_enabled = #{view[:ecs_enabled] || false}"]
-
-    lines =
+    zones_line =
       if view[:zones] && view.zones != [] do
-        # Zones may be stored as {type, name} tuples or just names
-        # Convert to just names for TOML storage (type is in zones.toml)
         zone_names =
           Enum.map(view.zones, fn
             {_type, name} when is_binary(name) -> name
@@ -320,44 +312,39 @@ defmodule YellowDog.Dns.ViewStore do
             other -> to_string(other)
           end)
 
-        zones_str = Enum.map_join(zone_names, ", ", &encode_toml_string/1)
-        lines ++ ["zones = [#{zones_str}]"]
+        ["zones = [#{Enum.map_join(zone_names, ", ", &encode_toml_string/1)}]"]
       else
-        lines
+        []
       end
 
-    lines =
+    acl_lines =
       if view[:acl] && view.acl != [] do
-        acl_lines =
-          Enum.flat_map(view.acl, fn acl_entry ->
-            base_lines = [
-              "",
-              "[[view.acl]]",
-              "action = #{encode_toml_string(to_string(acl_entry.action))}"
-            ]
+        Enum.flat_map(view.acl, fn acl_entry ->
+          base_rule = [
+            "",
+            "[[view.acl]]",
+            "action = #{encode_toml_string(to_string(acl_entry.action))}"
+          ]
 
-            # Add either network or geo_countries
+          extra =
             cond do
               Map.has_key?(acl_entry, :geo_countries) and is_list(acl_entry.geo_countries) ->
-                countries_str =
-                  Enum.map_join(acl_entry.geo_countries, ", ", &encode_toml_string/1)
-
-                base_lines ++ ["geo_countries = [#{countries_str}]"]
+                "geo_countries = [#{Enum.map_join(acl_entry.geo_countries, ", ", &encode_toml_string/1)}]"
 
               Map.has_key?(acl_entry, :network) and acl_entry.network != nil ->
-                base_lines ++ ["network = #{encode_toml_string(acl_entry.network)}"]
+                "network = #{encode_toml_string(acl_entry.network)}"
 
               true ->
-                base_lines
+                nil
             end
-          end)
 
-        lines ++ acl_lines
+          if extra, do: base_rule ++ [extra], else: base_rule
+        end)
       else
-        lines
+        []
       end
 
-    Enum.join(lines, "\n")
+    Enum.join(base ++ zones_line ++ acl_lines, "\n")
   end
 
 end

@@ -322,62 +322,45 @@ defmodule YellowDog.Mdns.ServiceStore do
   end
 
   defp service_to_toml(service) do
-    lines = [
+    base = [
       "[[service]]",
       "name = #{encode_toml_string(service.name)}",
       "type = #{encode_toml_string(service.type)}",
       "port = #{service.port}",
-      "enabled = #{Map.get(service, :enabled, true)}"
+      "enabled = #{Map.get(service, :enabled, true)}",
+      service[:host] && "host = #{encode_toml_string(service.host)}"
     ]
+    |> Enum.reject(&is_nil/1)
 
-    lines =
-      if service[:host] do
-        lines ++ ["host = #{encode_toml_string(service.host)}"]
-      else
-        lines
-      end
-
-    lines =
+    txt_lines =
       if service[:txt] && map_size(service.txt) > 0 do
-        txt_lines =
-          ["", "  [service.txt]"] ++
-            Enum.map(service.txt, fn {k, v} ->
-              "  #{k} = #{encode_toml_string(v)}"
-            end)
-
-        lines ++ txt_lines
+        ["", "  [service.txt]"] ++
+          Enum.map(service.txt, fn {k, v} ->
+            "  #{k} = #{encode_toml_string(v)}"
+          end)
       else
-        lines
+        []
       end
 
-    lines =
+    addr_lines =
       if service[:addresses] && service.addresses != [] do
         ipv4 = Enum.filter(service.addresses, &valid_ipv4?/1)
         ipv6 = Enum.filter(service.addresses, &valid_ipv6?/1)
 
-        addr_lines = []
-
-        addr_lines =
-          if Enum.any?(ipv4) || Enum.any?(ipv6),
-            do: addr_lines ++ ["", "  [service.addresses]"],
-            else: addr_lines
-
-        addr_lines =
-          if Enum.any?(ipv4),
-            do: addr_lines ++ ["  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]"],
-            else: addr_lines
-
-        addr_lines =
-          if Enum.any?(ipv6),
-            do: addr_lines ++ ["  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"],
-            else: addr_lines
-
-        lines ++ addr_lines
+        [
+          (ipv4 != [] or ipv6 != []) && "",
+          (ipv4 != [] or ipv6 != []) && "  [service.addresses]",
+          ipv4 != [] &&
+            "  ipv4 = [#{Enum.map_join(ipv4, ", ", &encode_toml_string/1)}]",
+          ipv6 != [] &&
+            "  ipv6 = [#{Enum.map_join(ipv6, ", ", &encode_toml_string/1)}]"
+        ]
+        |> Enum.reject(&(&1 == nil or &1 == false))
       else
-        lines
+        []
       end
 
-    Enum.join(lines, "\n")
+    Enum.join(base ++ txt_lines ++ addr_lines, "\n")
   end
 
 end

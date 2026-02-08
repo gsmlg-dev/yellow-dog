@@ -165,42 +165,39 @@ defmodule YellowDog.Dns.AclStore do
   end
 
   defp acl_to_toml(acl) do
-    lines = [
+    base = [
       "",
       "[[acl]]",
-      "name = #{encode_toml_string(acl.name)}"
+      "name = #{encode_toml_string(acl.name)}",
+      acl[:description] && acl.description != "" &&
+        "description = #{encode_toml_string(acl.description)}"
     ]
+    |> Enum.reject(&is_nil/1)
 
-    lines =
-      if acl[:description] && acl.description != "" do
-        lines ++ ["description = #{encode_toml_string(acl.description)}"]
-      else
-        lines
-      end
-
-    # Add rules
     rules_lines =
       Enum.flat_map(acl.rules || [], fn rule ->
-        rule_lines = [
+        base_rule = [
           "",
           "[[acl.rules]]",
           "action = #{encode_toml_string(to_string(rule.action))}"
         ]
 
-        cond do
-          Map.has_key?(rule, :geo_countries) and is_list(rule.geo_countries) ->
-            countries_str = Enum.map_join(rule.geo_countries, ", ", &encode_toml_string/1)
-            rule_lines ++ ["geo_countries = [#{countries_str}]"]
+        extra =
+          cond do
+            Map.has_key?(rule, :geo_countries) and is_list(rule.geo_countries) ->
+              "geo_countries = [#{Enum.map_join(rule.geo_countries, ", ", &encode_toml_string/1)}]"
 
-          Map.has_key?(rule, :network) and rule.network != nil ->
-            rule_lines ++ ["network = #{encode_toml_string(rule.network)}"]
+            Map.has_key?(rule, :network) and rule.network != nil ->
+              "network = #{encode_toml_string(rule.network)}"
 
-          true ->
-            rule_lines
-        end
+            true ->
+              nil
+          end
+
+        if extra, do: base_rule ++ [extra], else: base_rule
       end)
 
-    Enum.join(lines ++ rules_lines, "\n")
+    Enum.join(base ++ rules_lines, "\n")
   end
 
 end

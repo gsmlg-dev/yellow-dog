@@ -290,44 +290,25 @@ defmodule YellowDog.Dns.ZoneStore do
         "#{view_name}:#{name}"
       end
 
-    lines = [
+    base = [
       "",
       "[zones.#{encode_toml_key(zone_key)}]",
       "type = #{encode_toml_string(type)}",
       "view_name = #{encode_toml_string(view_name)}"
     ]
 
-    lines =
-      if zone[:file] do
-        lines ++ ["file = #{encode_toml_string(zone.file)}"]
-      else
-        lines
-      end
+    optional =
+      [
+        zone[:file] && "file = #{encode_toml_string(zone.file)}",
+        zone[:upstreams] && zone.upstreams != [] &&
+          "upstreams = [#{Enum.map_join(zone.upstreams, ", ", &encode_toml_string/1)}]",
+        zone[:ns_records] && zone.ns_records != [] &&
+          "ns_records = [#{Enum.map_join(zone.ns_records, ", ", &encode_toml_string/1)}]",
+        zone[:ttl] && "ttl = #{zone.ttl}"
+      ]
+      |> Enum.reject(&is_nil/1)
 
-    lines =
-      if zone[:upstreams] && zone.upstreams != [] do
-        upstreams_str = Enum.map_join(zone.upstreams, ", ", &encode_toml_string/1)
-        lines ++ ["upstreams = [#{upstreams_str}]"]
-      else
-        lines
-      end
-
-    lines =
-      if zone[:ns_records] && zone.ns_records != [] do
-        ns_str = Enum.map_join(zone.ns_records, ", ", &encode_toml_string/1)
-        lines ++ ["ns_records = [#{ns_str}]"]
-      else
-        lines
-      end
-
-    lines =
-      if zone[:ttl] do
-        lines ++ ["ttl = #{zone.ttl}"]
-      else
-        lines
-      end
-
-    Enum.join(lines, "\n")
+    Enum.join(base ++ optional, "\n")
   end
 
   defp encode_toml_key(key) when is_binary(key) do
