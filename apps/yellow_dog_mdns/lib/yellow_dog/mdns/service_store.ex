@@ -327,7 +327,7 @@ defmodule YellowDog.Mdns.ServiceStore do
       "name = #{encode_toml_string(service.name)}",
       "type = #{encode_toml_string(service.type)}",
       "port = #{service.port}",
-      "enabled = #{service[:enabled] || true}"
+      "enabled = #{Map.get(service, :enabled, true)}"
     ]
 
     lines =
