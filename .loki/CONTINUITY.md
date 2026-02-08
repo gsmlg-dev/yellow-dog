@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 141)
+**Phase**: IN_PROGRESS (Iteration 142)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 141 of 1000
+**Iteration**: 142 of 1000
 
 ## Session Summary
+Iteration 142: Eliminate repeated ++ appends in TOML store serializers:
+- ✅ **All tests pass: 1083 DNS, 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ zone_store.ex: replaced 4 conditional lines ++ [item] with filter-based approach
+- ✅ acl_store.ex: replaced conditional ++ with inline nil-filter in base list + cond→single value
+- ✅ view_store.ex: replaced 5 conditional ++ with separate list sections + final concat
+- ✅ service_store.ex: replaced 4 conditional ++ with filter-based approach
+- ✅ 1 commit — 4 files — net -52 lines
+
 Iteration 141: DRY query_logger buffer reads + simplify dhcp_updates pool map:
 - ✅ **All tests pass: 1107 console, 1083 DNS, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Extracted buffer_newest_first/1 helper in QueryLogger (DRY 4 :queue.to_list|>reverse instances)
