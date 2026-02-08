@@ -1,5 +1,5 @@
 defmodule DNS.Zone.ValidatorTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias DNS.Zone
   alias DNS.Zone.Validator
