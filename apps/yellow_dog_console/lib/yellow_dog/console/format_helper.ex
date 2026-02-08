@@ -32,11 +32,9 @@ defmodule YellowDog.Console.FormatHelper do
   def format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format!(duid, default: "Unknown")
 
   @doc "Formats an IPv6 8-tuple as colon-separated hex."
-  @spec format_ipv6(tuple()) :: String.t()
-  def format_ipv6({a, b, c, d, e, f, g, h}) do
-    [a, b, c, d, e, f, g, h]
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.downcase() end)
-  end
+  @spec format_ipv6(term()) :: String.t()
+  def format_ipv6(addr) when is_tuple(addr) and tuple_size(addr) == 8,
+    do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   def format_ipv6(_), do: "Unknown"
 
