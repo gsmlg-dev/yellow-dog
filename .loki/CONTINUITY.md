@@ -1,11 +1,21 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 137)
+**Phase**: IN_PROGRESS (Iteration 138)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 137 of 1000
+**Iteration**: 138 of 1000
 
 ## Session Summary
+Iteration 138: DRY format_timestamp/format_uptime, Enum.reverse consistency:
+- ✅ **All tests pass: 1084 tests, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Added format_time/1 (DateTime→"HH:MM:SS") to FormatHelper
+- ✅ Added format_time_ms/1 (DateTime→"HH:MM:SS.mmm") to FormatHelper
+- ✅ Added format_uptime/1 (seconds→compound "1h 5m") to FormatHelper
+- ✅ Replaced 5 duplicate format_timestamp across query_history, result_display, query_logs, logs, monitor
+- ✅ Replaced 2 duplicate format_uptime in dashboard_live (ms) and metrics_live (seconds)
+- ✅ Replaced :lists.reverse with Enum.reverse in process_inspector and config_manager
+- ✅ 1 commit — 10 files — net -10 lines
+
 Iteration 137: DRY format_ip, Enum pattern simplification, frequencies_by:
 - ✅ **All tests pass: 0 failures, 0 credo issues, 0 warnings**
 - ✅ Replaced format_ip in custom_options.ex (3→1 clause via Ipv4Util.format/1)
