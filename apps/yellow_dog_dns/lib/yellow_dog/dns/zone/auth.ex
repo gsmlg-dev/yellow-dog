@@ -783,13 +783,10 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   # Extract address from A/AAAA records
-  defp extract_address(%{data: {_, _, _, _} = ip}), do: ip |> :inet.ntoa() |> to_string()
-
-  defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}),
-    do: ip |> :inet.ntoa() |> to_string()
-
-  defp extract_address({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
-  defp extract_address({_, _, _, _, _, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
+  defp extract_address(%{data: {_, _, _, _} = ip}), do: IpFormat.format(ip)
+  defp extract_address(%{data: {_, _, _, _, _, _, _, _} = ip}), do: IpFormat.format(ip)
+  defp extract_address({_, _, _, _} = ip), do: IpFormat.format(ip)
+  defp extract_address({_, _, _, _, _, _, _, _} = ip), do: IpFormat.format(ip)
   defp extract_address(rdata) when is_struct(rdata), do: to_string(rdata)
   defp extract_address(rdata), do: to_string(rdata)
 

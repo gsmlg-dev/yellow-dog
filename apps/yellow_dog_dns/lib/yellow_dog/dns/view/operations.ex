@@ -6,7 +6,7 @@ defmodule YellowDog.Dns.View.Operations do
   and administrative interfaces.
   """
 
-  alias YellowDog.Dns.ViewManager
+  alias YellowDog.Dns.{IpFormat, ViewManager}
 
   @doc """
   Get system status.
@@ -151,7 +151,7 @@ defmodule YellowDog.Dns.View.Operations do
   """
   @spec test_client_match(:inet.ip_address()) :: {:ok, map()} | {:error, map()}
   def test_client_match(ip) do
-    ip_string = :inet.ntoa(ip) |> to_string()
+    ip_string = IpFormat.format(ip)
 
     # Check if any views exist
     views = try_list_views()

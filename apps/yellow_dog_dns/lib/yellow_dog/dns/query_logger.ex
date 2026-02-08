@@ -20,6 +20,7 @@ defmodule YellowDog.Dns.QueryLogger do
 
   use GenServer
 
+  alias YellowDog.Dns.IpFormat
   alias YellowDog.Telemetry
 
   @default_buffer_size 1000
@@ -254,13 +255,13 @@ defmodule YellowDog.Dns.QueryLogger do
   @impl true
   def handle_call({:get_logs_by_client, client_ip, opts}, _from, state) do
     limit = Keyword.get(opts, :limit, 100)
-    normalized_ip = normalize_ip(client_ip)
+    normalized_ip = IpFormat.format(client_ip)
 
     entries =
       state.buffer
       |> :queue.to_list()
       |> Enum.reverse()
-      |> Enum.filter(fn entry -> normalize_ip(entry.client_ip) == normalized_ip end)
+      |> Enum.filter(fn entry -> IpFormat.format(entry.client_ip) == normalized_ip end)
       |> Enum.take(limit)
 
     {:reply, entries, state}
@@ -358,10 +359,6 @@ defmodule YellowDog.Dns.QueryLogger do
   defp generate_id do
     :crypto.strong_rand_bytes(8) |> Base.hex_encode32(case: :lower, padding: false)
   end
-
-  defp normalize_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp normalize_ip(ip) when is_binary(ip), do: ip
-  defp normalize_ip(ip), do: inspect(ip)
 
   defp broadcast_log(entry) do
     # Use dynamic dispatch to avoid compile-time dependency on Phoenix.PubSub

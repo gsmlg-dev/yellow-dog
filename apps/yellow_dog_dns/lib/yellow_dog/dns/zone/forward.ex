@@ -379,7 +379,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   defp format_upstream({ip, port}) do
-    "#{:inet.ntoa(ip)}:#{port}"
+    "#{IpFormat.format(ip)}:#{port}"
   end
 
   # ===========================================================================
