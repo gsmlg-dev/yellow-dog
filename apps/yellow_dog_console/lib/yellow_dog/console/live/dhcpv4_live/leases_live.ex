@@ -119,8 +119,8 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
   defp get_unique_pools(leases) do
     leases
     |> Enum.map(& &1.pool_name)
+    |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.dedup()
   end
 
   defp filter_leases(leases, %{search_query: query, filter_state: state, filter_pool: pool}) do

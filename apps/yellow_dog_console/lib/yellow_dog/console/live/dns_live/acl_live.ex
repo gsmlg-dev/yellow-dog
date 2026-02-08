@@ -431,8 +431,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       {:deny, {:geo, countries}} -> countries
       _ -> []
     end)
+    |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.dedup()
   end
 
   defp extract_geo_countries(_), do: []
@@ -570,7 +570,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
       end)
 
     if geo_countries != [] do
-      {"geo", geo_countries |> Enum.sort() |> Enum.dedup()}
+      {"geo", geo_countries |> Enum.uniq() |> Enum.sort()}
     else
       {"custom", []}
     end
@@ -676,8 +676,8 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   def unique_acl_types(views) do
     views
     |> Enum.map(& &1.acl_type)
+    |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.dedup()
   end
 
   defp build_csv(acls) do

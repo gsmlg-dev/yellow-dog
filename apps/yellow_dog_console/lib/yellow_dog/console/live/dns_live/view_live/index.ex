@@ -578,7 +578,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       end)
 
     if geo_countries != [] do
-      {"geo", geo_countries |> Enum.sort() |> Enum.dedup()}
+      {"geo", geo_countries |> Enum.uniq() |> Enum.sort()}
     else
       {"custom", []}
     end
