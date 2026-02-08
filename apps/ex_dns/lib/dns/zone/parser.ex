@@ -126,10 +126,10 @@ defmodule DNS.Zone.Parser do
     start_line = lexer.line
     start_column = lexer.column
 
-    lexer
-    |> skip_whitespace()
-    |> case do
-      %{current_char: nil} = l ->
+    l = skip_whitespace(lexer)
+
+    case l do
+      %{current_char: nil} ->
         {{:eof, nil, {l.line, l.column}}, l}
 
       %{current_char: ";"} = l ->

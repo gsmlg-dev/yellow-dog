@@ -244,7 +244,7 @@ defmodule YellowDog.Console.LogsLive do
     term = String.downcase(search)
 
     Enum.filter(logs, fn log ->
-      downcase_contains?(log.message || "", term)
+      downcase_contains?(log.message, term)
     end)
   end
 

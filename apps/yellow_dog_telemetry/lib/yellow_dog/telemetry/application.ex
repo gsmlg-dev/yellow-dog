@@ -83,12 +83,12 @@ defmodule YellowDog.Telemetry.Application do
     location = "#{inspect(module)}.#{function}:#{line}"
 
     # Extract additional metadata (excluding standard fields)
+    extra = Map.drop(metadata, [:message, :app, :module, :function, :line, :span_id])
+
     extra_metadata =
-      metadata
-      |> Map.drop([:message, :app, :module, :function, :line, :span_id])
-      |> case do
-        map when map_size(map) == 0 -> ""
-        map -> " " <> inspect(map, pretty: true, limit: :infinity)
+      case map_size(extra) do
+        0 -> ""
+        _ -> " " <> inspect(extra, pretty: true, limit: :infinity)
       end
 
     Logger.log(

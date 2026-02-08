@@ -513,13 +513,15 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   defp parse_forwarder_ips(forwarder_strs) when is_list(forwarder_strs) do
-    Enum.reduce_while(forwarder_strs, {:ok, []}, fn str, {:ok, acc} ->
-      case :inet.parse_address(String.to_charlist(str)) do
-        {:ok, ip} -> {:cont, {:ok, [ip | acc]}}
-        _ -> {:halt, {:error, :invalid_forwarders}}
-      end
-    end)
-    |> case do
+    result =
+      Enum.reduce_while(forwarder_strs, {:ok, []}, fn str, {:ok, acc} ->
+        case :inet.parse_address(String.to_charlist(str)) do
+          {:ok, ip} -> {:cont, {:ok, [ip | acc]}}
+          _ -> {:halt, {:error, :invalid_forwarders}}
+        end
+      end)
+
+    case result do
       {:ok, ips} -> {:ok, Enum.reverse(ips)}
       error -> error
     end

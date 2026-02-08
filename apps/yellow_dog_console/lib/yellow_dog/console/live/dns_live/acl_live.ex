@@ -640,7 +640,7 @@ defmodule YellowDog.Console.DnsLive.AclLive do
 
     Enum.filter(acls, fn acl ->
       downcase_contains?(acl.name, filter_lower) or
-        downcase_contains?(acl.description || "", filter_lower)
+        downcase_contains?(acl.description, filter_lower)
     end)
   end
 

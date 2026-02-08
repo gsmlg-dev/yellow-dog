@@ -220,8 +220,8 @@ defmodule YellowDog.Console.FormatHelper do
 
     Enum.filter(pools, fn pool ->
       downcase_contains?(pool.name, term) or
-        downcase_contains?(pool[:network] || "", term) or
-        downcase_contains?(format_ip(pool.range_start) || "", term)
+        downcase_contains?(pool[:network], term) or
+        downcase_contains?(format_ip(pool.range_start), term)
     end)
   end
 

@@ -100,7 +100,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     term = String.downcase(search)
 
     Enum.filter(queries, fn query ->
-      downcase_contains?(query.name || "", term) or
+      downcase_contains?(query.name, term) or
         downcase_contains?(to_string(query.type), term) or
         downcase_contains?(format_ip(query.source_ip), term)
     end)
