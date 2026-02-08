@@ -148,6 +148,30 @@ defmodule YellowDog.Telemetry.LoggerHandlersTest do
     end
   end
 
+  describe "handler_ids/0" do
+    test "returns all 11 handler IDs" do
+      ids = LoggerHandlers.handler_ids()
+      assert length(ids) == 11
+      assert "yellow-dog-dns-logger" in ids
+      assert "yellow-dog-dhcpv4-logger" in ids
+      assert "yellow-dog-dhcpv6-logger" in ids
+      assert "yellow-dog-mdns-logger" in ids
+      assert "yellow-dog-service-logger" in ids
+      assert "yellow-dog-dns-query-logger" in ids
+      assert "yellow-dog-dns-root-zone-logger" in ids
+      assert "yellow-dog-application-logger" in ids
+      assert "yellow-dog-config-logger" in ids
+      assert "yellow-dog-console-logger" in ids
+      assert "yellow-dog-infrastructure-logger" in ids
+    end
+
+    test "all IDs are unique strings" do
+      ids = LoggerHandlers.handler_ids()
+      assert length(ids) == length(Enum.uniq(ids))
+      assert Enum.all?(ids, &is_binary/1)
+    end
+  end
+
   describe "per-service log level filtering" do
     test "handler respects config.level parameter" do
       # This is a placeholder test - actual level filtering is done by Logger
