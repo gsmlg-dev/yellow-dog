@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   Supports multiple pools, static reservations, and prefix delegation.
   """
 
-  import Bitwise
+  alias YellowDog.Dhcpv6.Ipv6Util
 
   @type ipv6_address ::
           {0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535, 0..65535}
@@ -55,7 +55,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         |> Map.get(:exclude_addresses, [])
         |> Enum.flat_map(fn
           addr when is_binary(addr) ->
-            case parse_ipv6_string(addr) do
+            case Ipv6Util.parse_string(addr) do
               {:ok, ip_tuple} -> [ip_tuple]
               _ -> []
             end
@@ -162,7 +162,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         {:ok, ip}
 
       ip when is_binary(ip) ->
-        parse_ipv6_string(ip)
+        Ipv6Util.parse_string(ip)
 
       _ ->
         {:error, "Invalid IPv6 address format for range #{key}"}
@@ -214,11 +214,11 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   """
   @spec in_range?(pool_config(), ipv6_address()) :: boolean()
   def in_range?(pool, ip) do
-    ip_int = ipv6_to_integer(ip)
+    ip_int = Ipv6Util.to_integer(ip)
 
     Enum.any?(pool.ranges, fn range ->
-      start_int = ipv6_to_integer(range.start)
-      end_int = ipv6_to_integer(range.end)
+      start_int = Ipv6Util.to_integer(range.start)
+      end_int = Ipv6Util.to_integer(range.end)
       start_int <= ip_int and ip_int <= end_int
     end)
   end
@@ -242,8 +242,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   def pool_size(pool) do
     total_size =
       Enum.reduce(pool.ranges, 0, fn range, acc ->
-        start_int = ipv6_to_integer(range.start)
-        end_int = ipv6_to_integer(range.end)
+        start_int = Ipv6Util.to_integer(range.start)
+        end_int = Ipv6Util.to_integer(range.end)
         acc + (end_int - start_int + 1)
       end)
 
@@ -266,7 +266,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   defp parse_static_reservations(_), do: %{}
 
   defp parse_reservation(%{duid: duid, address: address}) when is_binary(address) do
-    case parse_ipv6_string(address) do
+    case Ipv6Util.parse_string(address) do
       {:ok, ip_tuple} -> {:ok, format_duid(duid), ip_tuple}
       _ -> :skip
     end
@@ -287,7 +287,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         {:ok, ip}
 
       ip when is_binary(ip) ->
-        parse_ipv6_string(ip)
+        Ipv6Util.parse_string(ip)
 
       _ ->
         {:error, "Invalid IPv6 address format for #{key}"}
@@ -295,7 +295,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   end
 
   defp validate_range_order(start_ip, end_ip) do
-    if ipv6_to_integer(start_ip) <= ipv6_to_integer(end_ip) do
+    if Ipv6Util.to_integer(start_ip) <= Ipv6Util.to_integer(end_ip) do
       :ok
     else
       {:error, "range_start must be less than or equal to range_end"}
@@ -303,8 +303,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   end
 
   defp find_next_available(start_ip, end_ip, unavailable_ips) do
-    start_int = ipv6_to_integer(start_ip)
-    end_int = ipv6_to_integer(end_ip)
+    start_int = Ipv6Util.to_integer(start_ip)
+    end_int = Ipv6Util.to_integer(end_ip)
 
     # For large IPv6 ranges, we can't iterate through all addresses
     # Instead, use a random approach with collision detection
@@ -315,7 +315,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         # Generate a random offset within the range
         offset = :rand.uniform(end_int - start_int + 1) - 1
         ip_int = start_int + offset
-        ip = integer_to_ipv6(ip_int)
+        ip = Ipv6Util.from_integer(ip_int)
 
         if not MapSet.member?(unavailable_ips, ip) do
           {:halt, {:ok, ip}}
@@ -330,40 +330,10 @@ defmodule YellowDog.Dhcpv6.AddressPool do
     end
   end
 
-  defp ipv6_to_integer({a, b, c, d, e, f, g, h}) do
-    a * (1 <<< 112) +
-      b * (1 <<< 96) +
-      c * (1 <<< 80) +
-      d * (1 <<< 64) +
-      e * (1 <<< 48) +
-      f * (1 <<< 32) +
-      g * (1 <<< 16) +
-      h
-  end
-
-  defp integer_to_ipv6(int) do
-    a = int >>> 112 &&& 0xFFFF
-    b = int >>> 96 &&& 0xFFFF
-    c = int >>> 80 &&& 0xFFFF
-    d = int >>> 64 &&& 0xFFFF
-    e = int >>> 48 &&& 0xFFFF
-    f = int >>> 32 &&& 0xFFFF
-    g = int >>> 16 &&& 0xFFFF
-    h = int &&& 0xFFFF
-    {a, b, c, d, e, f, g, h}
-  end
-
-  defp parse_ipv6_string(ip_string) do
-    case :inet.parse_ipv6_address(String.to_charlist(ip_string)) do
-      {:ok, ip_tuple} -> {:ok, ip_tuple}
-      {:error, _} -> {:error, "Invalid IPv6 address string: #{ip_string}"}
-    end
-  end
-
   defp parse_dns_servers(dns_servers) when is_list(dns_servers) do
     Enum.flat_map(dns_servers, fn
       server when is_binary(server) ->
-        case parse_ipv6_string(server) do
+        case Ipv6Util.parse_string(server) do
           {:ok, ip_tuple} -> [ip_tuple]
           _ -> []
         end

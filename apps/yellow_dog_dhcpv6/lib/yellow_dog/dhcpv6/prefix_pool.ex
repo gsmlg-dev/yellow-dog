@@ -27,6 +27,8 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
   This would allocate /56 prefixes from the 2001:db8:1000::/48 block.
   """
 
+  alias YellowDog.Dhcpv6.Ipv6Util
+
   import Bitwise
 
   @type ipv6_address ::
@@ -131,8 +133,8 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
       false
     else
       # Check if prefix falls within the pool's base prefix
-      pool_int = ipv6_to_integer(pool.prefix)
-      prefix_int = ipv6_to_integer(prefix_addr)
+      pool_int = Ipv6Util.to_integer(pool.prefix)
+      prefix_int = Ipv6Util.to_integer(prefix_addr)
 
       # Create mask for the pool's prefix length
       mask = create_prefix_mask(pool.prefix_length)
@@ -197,7 +199,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
         {:ok, prefix}
 
       prefix when is_binary(prefix) ->
-        parse_ipv6_string(prefix)
+        Ipv6Util.parse_string(prefix)
 
       _ ->
         {:error, "Invalid IPv6 prefix format"}
@@ -236,7 +238,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
       prefix_str when is_binary(prefix_str) ->
         case String.split(prefix_str, "/") do
           [addr_str, len_str] ->
-            with {:ok, addr} <- parse_ipv6_string(addr_str),
+            with {:ok, addr} <- Ipv6Util.parse_string(addr_str),
                  {len, ""} <- Integer.parse(len_str) do
               [{addr, len}]
             else
@@ -262,7 +264,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
     Enum.reduce(reservations, %{}, fn
       %{duid: duid, prefix: prefix_str, prefix_length: len}, acc
       when is_binary(prefix_str) and is_integer(len) ->
-        case parse_ipv6_string(prefix_str) do
+        case Ipv6Util.parse_string(prefix_str) do
           {:ok, prefix_addr} ->
             Map.put(acc, format_duid(duid), {prefix_addr, len})
 
@@ -312,7 +314,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
 
   defp calculate_delegated_prefix(pool, offset) do
     # Calculate the prefix at the given offset
-    pool_int = ipv6_to_integer(pool.prefix)
+    pool_int = Ipv6Util.to_integer(pool.prefix)
 
     # Shift offset by the number of bits in each delegated prefix
     shift_amount = 128 - pool.delegated_length
@@ -324,7 +326,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
     mask = create_prefix_mask(pool.delegated_length)
     final_int = delegated_int &&& (mask ||| (1 <<< (128 - pool.delegated_length)) - 1)
 
-    prefix_addr = integer_to_ipv6(final_int)
+    prefix_addr = Ipv6Util.from_integer(final_int)
     {prefix_addr, pool.delegated_length}
   end
 
@@ -334,36 +336,6 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
     else
       # Create a mask with 'prefix_length' ones, followed by zeros
       ((1 <<< prefix_length) - 1) <<< (128 - prefix_length)
-    end
-  end
-
-  defp ipv6_to_integer({a, b, c, d, e, f, g, h}) do
-    a * (1 <<< 112) +
-      b * (1 <<< 96) +
-      c * (1 <<< 80) +
-      d * (1 <<< 64) +
-      e * (1 <<< 48) +
-      f * (1 <<< 32) +
-      g * (1 <<< 16) +
-      h
-  end
-
-  defp integer_to_ipv6(int) do
-    a = int >>> 112 &&& 0xFFFF
-    b = int >>> 96 &&& 0xFFFF
-    c = int >>> 80 &&& 0xFFFF
-    d = int >>> 64 &&& 0xFFFF
-    e = int >>> 48 &&& 0xFFFF
-    f = int >>> 32 &&& 0xFFFF
-    g = int >>> 16 &&& 0xFFFF
-    h = int &&& 0xFFFF
-    {a, b, c, d, e, f, g, h}
-  end
-
-  defp parse_ipv6_string(ip_string) do
-    case :inet.parse_ipv6_address(String.to_charlist(ip_string)) do
-      {:ok, ip_tuple} -> {:ok, ip_tuple}
-      {:error, _} -> {:error, "Invalid IPv6 address string: #{ip_string}"}
     end
   end
 

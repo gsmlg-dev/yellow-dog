@@ -22,7 +22,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
-  alias YellowDog.Dhcpv6.{AddressPool, LeaseStorage, PoolStore}
+  alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util, LeaseStorage, PoolStore}
 
   @table_name :dhcpv6_leases_cache
   @ets_options [:named_table, :public, :set, read_concurrency: true]
@@ -1137,19 +1137,13 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   defp extract_range_bounds({start_addr, end_addr}), do: {start_addr, end_addr}
 
   defp range_intersects?(start1, end1, start2, end2) do
-    start1_int = ipv6_to_integer(start1)
-    end1_int = ipv6_to_integer(end1)
-    start2_int = ipv6_to_integer(start2)
-    end2_int = ipv6_to_integer(end2)
+    start1_int = Ipv6Util.to_integer(start1)
+    end1_int = Ipv6Util.to_integer(end1)
+    start2_int = Ipv6Util.to_integer(start2)
+    end2_int = Ipv6Util.to_integer(end2)
 
     # Ranges overlap if one starts before the other ends and vice versa
     start1_int <= end2_int and start2_int <= end1_int
-  end
-
-  defp ipv6_to_integer({a, b, c, d, e, f, g, h}) do
-    Enum.reduce([a, b, c, d, e, f, g, h], 0, fn segment, acc ->
-      acc * 65536 + segment
-    end)
   end
 
   defp format_ipv6(nil), do: nil
