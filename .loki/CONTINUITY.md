@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 173)
+**Phase**: IN_PROGRESS (Iteration 174)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 173 of 1000
+**Iteration**: 174 of 1000
 
 ## Session Summary
+Iteration 174: Fix DNS zone form submission test expectations:
+- ✅ **All tests pass: 1106 console, 0 failures, 0 warnings**
+- ✅ Fixed 2 failing tests expecting incorrect redirect behavior
+- ✅ Tests now correctly validate form rendering with success/error messages
+- ✅ Forward zone test: validates "forwarded.com" creation with upstreams
+- ✅ Stub zone test: validates "stub.example.org" creation with NS records
+- ✅ 1 commit — 1 file — net +3 lines
+
 Iteration 173: Use MapSet.new/2 and for-into across 7 modules:
 - ✅ **All tests pass: 650 ex_dhcp, 404 DHCPv4, 299 DHCPv6, 4764 ex_dns, 1106 console, 0 failures**
 - ✅ Enum.map |> MapSet.new() → MapSet.new(enum, fn) in 3 modules (lease_manager, lease_storage, discovery_live)
