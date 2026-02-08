@@ -132,12 +132,6 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     end
   end
 
-  defp format_timestamp(timestamp) when is_integer(timestamp) do
-    timestamp |> DateTime.from_unix!() |> format_time()
-  end
-
-  defp format_timestamp(_), do: "Unknown"
-
   defp build_monitor_csv(stats, queries) do
     # Section 1: Network Statistics
     stats_section =
@@ -168,7 +162,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
           "Time,Source IP,Query Name,Type,Class\n" <>
           Enum.map_join(queries, "\n", fn query ->
             [
-              csv_escape(format_timestamp(query.timestamp)),
+              csv_escape(format_time(query.timestamp)),
               csv_escape(format_ip(query.source_ip)),
               csv_escape(query.name),
               csv_escape(to_string(query.type)),

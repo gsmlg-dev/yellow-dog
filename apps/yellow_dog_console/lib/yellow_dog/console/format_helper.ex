@@ -85,13 +85,17 @@ defmodule YellowDog.Console.FormatHelper do
 
   def format_prefix(_), do: "Unknown"
 
-  @doc "Formats a DateTime as HH:MM:SS."
-  @spec format_time(DateTime.t() | nil) :: String.t()
+  @doc "Formats a DateTime or unix timestamp as HH:MM:SS."
+  @spec format_time(DateTime.t() | integer() | nil) :: String.t()
   def format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
+  def format_time(ts) when is_integer(ts), do: ts |> DateTime.from_unix!() |> format_time()
   def format_time(_), do: ""
 
-  @doc "Formats a DateTime as HH:MM:SS.mmm (with milliseconds)."
-  @spec format_time_ms(DateTime.t() | nil) :: String.t()
+  @doc "Formats a DateTime or unix nanosecond timestamp as HH:MM:SS.mmm (with milliseconds)."
+  @spec format_time_ms(DateTime.t() | integer() | nil) :: String.t()
+  def format_time_ms(ts) when is_integer(ts),
+    do: ts |> DateTime.from_unix!(:nanosecond) |> format_time_ms()
+
   def format_time_ms(%DateTime{microsecond: {us, _}} = dt) do
     ms = div(us, 1000)
     Calendar.strftime(dt, "%H:%M:%S") <> "." <> String.pad_leading(Integer.to_string(ms), 3, "0")
@@ -145,6 +149,21 @@ defmodule YellowDog.Console.FormatHelper do
   end
 
   def format_duration(_), do: "N/A"
+
+  @doc "Formats a unix timestamp as 'Xs ago', 'Xm ago', 'Xh ago', or 'Xd ago'."
+  @spec format_time_ago(integer() | nil) :: String.t()
+  def format_time_ago(timestamp) when is_integer(timestamp) do
+    diff = System.system_time(:second) - timestamp
+
+    cond do
+      diff < 60 -> "#{diff}s ago"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      true -> "#{div(diff, 86400)}d ago"
+    end
+  end
+
+  def format_time_ago(_), do: "Unknown"
 
   @doc "Formats remaining time until a unix timestamp as a compact string."
   @spec format_expires(integer()) :: String.t()

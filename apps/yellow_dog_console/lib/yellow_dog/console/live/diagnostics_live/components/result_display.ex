@@ -8,7 +8,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
   use Phoenix.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.HexDump
-  alias YellowDog.Console.FormatHelper
+  import YellowDog.Console.FormatHelper, only: [format_time: 1, format_ip: 1]
   alias DNS.Message
   alias DHCPv4.Message, as: DHCPv4Message
 
@@ -40,7 +40,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
           {format_latency(@result.latency_ms)}
         </span>
         <span class="text-sm text-base-content/50">
-          {format_timestamp(@result.timestamp)}
+          {format_time(@result.timestamp)}
         </span>
       </div>
 
@@ -196,8 +196,6 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
 
   defp format_latency(_), do: ""
 
-  defp format_timestamp(dt), do: FormatHelper.format_time(dt)
-
   defp format_struct(nil), do: "(empty)"
 
   # DNS messages have a nice to_string implementation
@@ -215,5 +213,5 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
     inspect(struct, pretty: true, limit: :infinity, width: 80)
   end
 
-  defp format_address(addr), do: YellowDog.Console.FormatHelper.format_ip(addr) || inspect(addr)
+  defp format_address(addr), do: format_ip(addr) || inspect(addr)
 end

@@ -185,7 +185,7 @@
               <tbody>
                 <tr :for={query <- filtered_queries(@queries, @search)}>
                   <td class="text-base-content/60">
-                    {format_timestamp(query.timestamp)}
+                    {format_time(query.timestamp)}
                   </td>
                   <td class="font-medium">
                     {format_ip(query.source_ip)}

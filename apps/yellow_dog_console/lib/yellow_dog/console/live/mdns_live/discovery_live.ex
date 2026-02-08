@@ -5,6 +5,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_expiration: 1, format_time_ago: 1]
   import YellowDog.Console.ServiceHelper
 
   @impl true
@@ -123,27 +124,6 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
     Enum.reduce(services, 0, fn s, acc -> max(s.last_seen, acc) end)
   end
 
-  defp format_time(timestamp) when is_integer(timestamp) do
-    datetime = DateTime.from_unix!(timestamp)
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S")
-  end
-
-  defp format_time(_), do: "Unknown"
-
-  defp format_time_ago(timestamp) when is_integer(timestamp) do
-    now = System.system_time(:second)
-    diff = now - timestamp
-
-    cond do
-      diff < 60 -> "#{diff}s ago"
-      diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86400 -> "#{div(diff, 3600)}h ago"
-      true -> "#{div(diff, 86400)}d ago"
-    end
-  end
-
-  defp format_time_ago(_), do: "Unknown"
-
   defp build_csv(services) do
     header =
       "Service Name,Type,Host,Port,IP Addresses,TXT Records,Last Seen\r\n"
@@ -157,7 +137,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
           csv_escape(to_string(service.port || "")),
           csv_escape(format_addresses_for_csv(service.addresses)),
           csv_escape(format_txt_for_csv(service.txt)),
-          csv_escape(format_time(service.last_seen))
+          csv_escape(format_expiration(service.last_seen))
         ]
         |> Enum.join(",")
       end)

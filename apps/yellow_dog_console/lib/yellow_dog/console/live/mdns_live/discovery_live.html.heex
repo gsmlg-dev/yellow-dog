@@ -78,7 +78,7 @@
       <div class="card bg-base-100 shadow-sm p-4">
         <p class="text-sm text-base-content/60">Last Updated</p>
         <p class="mt-1 text-sm font-semibold">
-          {format_time(get_most_recent_update(@services))}
+          {format_expiration(get_most_recent_update(@services))}
         </p>
       </div>
     </div>
@@ -273,7 +273,7 @@
                 <div>
                   <dt class="text-sm text-base-content/60">Last Seen</dt>
                   <dd class="mt-1 text-sm font-medium">
-                    {format_time(@selected_service.last_seen)}
+                    {format_expiration(@selected_service.last_seen)}
                   </dd>
                 </div>
               </dl>

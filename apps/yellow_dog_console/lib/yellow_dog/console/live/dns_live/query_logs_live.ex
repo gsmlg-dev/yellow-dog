@@ -192,8 +192,6 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   defp format_ip(nil), do: "-"
   defp format_ip(ip), do: YellowDog.Dns.IpFormat.format(ip)
 
-  defp format_timestamp(dt), do: format_time_ms(dt)
-
   defp format_response_time(nil), do: "-"
   defp format_response_time(us) when us < 1_000, do: "#{us}us"
   defp format_response_time(us) when us < 1_000_000, do: "#{Float.round(us / 1_000, 1)}ms"
@@ -216,7 +214,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     rows =
       Enum.map_join(entries, "\r\n", fn e ->
         [
-          csv_escape(format_timestamp(e.timestamp)),
+          csv_escape(format_time_ms(e.timestamp)),
           csv_escape(format_ip(e.client_ip)),
           csv_escape(to_string(e.qname || "")),
           csv_escape(to_string(e.qtype || "")),
@@ -440,7 +438,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                     <%= for entry <- @entries do %>
                       <tr class="hover">
                         <td class="font-mono text-xs whitespace-nowrap">
-                          {format_timestamp(entry.timestamp)}
+                          {format_time_ms(entry.timestamp)}
                         </td>
                         <td class="font-mono text-xs">
                           {format_ip(entry.client_ip)}

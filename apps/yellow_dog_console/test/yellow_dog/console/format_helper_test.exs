@@ -148,9 +148,13 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.format_time(nil) == ""
     end
 
-    test "returns empty string for non-DateTime" do
+    test "formats unix timestamp as HH:MM:SS" do
+      # 12345 seconds from epoch = 03:25:45 UTC
+      assert FormatHelper.format_time(12345) == "03:25:45"
+    end
+
+    test "returns empty string for non-DateTime and non-integer" do
       assert FormatHelper.format_time("14:30:45") == ""
-      assert FormatHelper.format_time(12345) == ""
     end
   end
 
@@ -174,8 +178,41 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.format_time_ms(nil) == "--:--:--.---"
     end
 
+    test "formats unix nanosecond timestamp" do
+      # 1718458245_123_456_789 ns from epoch
+      ts = 1_718_458_245_123_456_789
+      result = FormatHelper.format_time_ms(ts)
+      assert result =~ ~r/^\d{2}:\d{2}:\d{2}\.\d{3}$/
+    end
+
     test "returns placeholder for non-DateTime" do
       assert FormatHelper.format_time_ms("14:30:45") == "--:--:--.---"
+    end
+  end
+
+  describe "format_time_ago/1" do
+    test "formats seconds ago" do
+      ts = System.system_time(:second) - 30
+      assert FormatHelper.format_time_ago(ts) == "30s ago"
+    end
+
+    test "formats minutes ago" do
+      ts = System.system_time(:second) - 120
+      assert FormatHelper.format_time_ago(ts) == "2m ago"
+    end
+
+    test "formats hours ago" do
+      ts = System.system_time(:second) - 7200
+      assert FormatHelper.format_time_ago(ts) == "2h ago"
+    end
+
+    test "formats days ago" do
+      ts = System.system_time(:second) - 172_800
+      assert FormatHelper.format_time_ago(ts) == "2d ago"
+    end
+
+    test "returns Unknown for nil" do
+      assert FormatHelper.format_time_ago(nil) == "Unknown"
     end
   end
 

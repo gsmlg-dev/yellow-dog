@@ -7,7 +7,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
   """
   use Phoenix.Component
 
-  alias YellowDog.Console.FormatHelper
+  import YellowDog.Console.FormatHelper, only: [format_time: 1]
 
   @doc """
   Renders the query history panel.
@@ -54,7 +54,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
                 </div>
                 <div class="flex items-center gap-2 text-xs text-base-content/50">
                   <span>{format_latency(entry.latency_ms)}</span>
-                  <span>{format_timestamp(entry.timestamp)}</span>
+                  <span>{format_time(entry.timestamp)}</span>
                 </div>
               </div>
             <% end %>
@@ -102,6 +102,4 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
   defp format_latency(ms) when is_integer(ms) and ms < 1000, do: "#{ms}ms"
   defp format_latency(ms) when is_integer(ms), do: "#{Float.round(ms / 1000, 1)}s"
   defp format_latency(_), do: ""
-
-  defp format_timestamp(dt), do: FormatHelper.format_time(dt)
 end

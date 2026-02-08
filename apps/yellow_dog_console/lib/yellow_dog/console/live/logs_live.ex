@@ -202,12 +202,6 @@ defmodule YellowDog.Console.LogsLive do
     Enum.take(merged, @max_logs)
   end
 
-  defp format_timestamp(system_time) when is_integer(system_time) do
-    system_time |> DateTime.from_unix!(:nanosecond) |> format_time_ms()
-  end
-
-  defp format_timestamp(_), do: "--:--:--.---"
-
   defp level_color(:debug), do: "text-base-content/60"
   defp level_color(:info), do: "text-info"
   defp level_color(:warning), do: "text-warning"
@@ -499,7 +493,7 @@ defmodule YellowDog.Console.LogsLive do
                 <%!-- Log Entry Row --%>
                 <div class="flex items-start gap-2">
                   <span class="text-base-content/50 shrink-0">
-                    {format_timestamp(log.timestamp)}
+                    {format_time_ms(log.timestamp)}
                   </span>
                   <span class={"badge badge-xs " <> level_badge(log.level)}>
                     {log.level}
