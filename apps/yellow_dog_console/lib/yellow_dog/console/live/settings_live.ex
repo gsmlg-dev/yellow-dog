@@ -580,17 +580,13 @@ defmodule YellowDog.Console.SettingsLive do
   end
 
   defp dhcp_updates(service_key, changes) do
-    updates = %{}
-
     updates =
-      if changes.gateway,
-        do: Map.put(updates, "#{service_key}.gateway", changes.gateway),
-        else: updates
-
-    updates =
-      if changes.domain,
-        do: Map.put(updates, "#{service_key}.domain", changes.domain),
-        else: updates
+      [
+        {changes.gateway, "#{service_key}.gateway"},
+        {changes.domain, "#{service_key}.domain"}
+      ]
+      |> Enum.reject(fn {val, _key} -> is_nil(val) end)
+      |> Map.new(fn {val, key} -> {key, val} end)
 
     updates =
       if changes.dns_servers && changes.dns_servers != [],
@@ -599,63 +595,33 @@ defmodule YellowDog.Console.SettingsLive do
 
     # Handle pools for DHCP services
     pools = changes.pools || []
+    formatted_pools = Enum.map(pools, &format_pool_for_toml/1)
+    Map.put(updates, "#{service_key}.pools", formatted_pools)
+  end
 
-    if pools != [] do
-      formatted_pools =
-        Enum.map(pools, fn pool ->
-          # Start with base pool fields (exclude :id which is client-side only)
-          pool_map = %{
-            "name" => pool.name,
-            "range_start" => pool.range_start,
-            "range_end" => pool.range_end
-          }
+  defp format_pool_for_toml(pool) do
+    base = %{
+      "name" => pool.name,
+      "range_start" => pool.range_start,
+      "range_end" => pool.range_end
+    }
 
-          # Add DHCPv4-specific fields
-          pool_map =
-            if pool.lease_time do
-              Map.put(pool_map, "lease_time", pool.lease_time)
-            else
-              pool_map
-            end
+    optional =
+      [
+        {"lease_time", pool.lease_time},
+        {"gateway", pool.gateway},
+        {"preferred_lifetime", pool.preferred_lifetime},
+        {"valid_lifetime", pool.valid_lifetime}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+      |> Map.new()
 
-          pool_map =
-            if pool.gateway && pool.gateway != "" do
-              Map.put(pool_map, "gateway", pool.gateway)
-            else
-              pool_map
-            end
+    optional =
+      if pool.dns_servers && pool.dns_servers != [],
+        do: Map.put(optional, "dns_servers", pool.dns_servers),
+        else: optional
 
-          # Add DHCPv6-specific fields
-          pool_map =
-            if pool.preferred_lifetime do
-              Map.put(pool_map, "preferred_lifetime", pool.preferred_lifetime)
-            else
-              pool_map
-            end
-
-          pool_map =
-            if pool.valid_lifetime do
-              Map.put(pool_map, "valid_lifetime", pool.valid_lifetime)
-            else
-              pool_map
-            end
-
-          # Add DNS servers if present
-          pool_map =
-            if pool.dns_servers && pool.dns_servers != [] do
-              Map.put(pool_map, "dns_servers", pool.dns_servers)
-            else
-              pool_map
-            end
-
-          pool_map
-        end)
-
-      Map.put(updates, "#{service_key}.pools", formatted_pools)
-    else
-      # Even if no pools, we should clear the pools array in TOML
-      Map.put(updates, "#{service_key}.pools", [])
-    end
+    Map.merge(base, optional)
   end
 
   defp extract_service_config(pending_changes) do

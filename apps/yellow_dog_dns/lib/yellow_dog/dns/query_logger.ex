@@ -248,7 +248,7 @@ defmodule YellowDog.Dns.QueryLogger do
   @impl true
   def handle_call({:get_recent_logs, opts}, _from, state) do
     limit = Keyword.get(opts, :limit, 100)
-    entries = state.buffer |> :queue.to_list() |> Enum.reverse() |> Enum.take(limit)
+    entries = state.buffer |> buffer_newest_first() |> Enum.take(limit)
     {:reply, entries, state}
   end
 
@@ -259,8 +259,7 @@ defmodule YellowDog.Dns.QueryLogger do
 
     entries =
       state.buffer
-      |> :queue.to_list()
-      |> Enum.reverse()
+      |> buffer_newest_first()
       |> Enum.filter(fn entry -> IpFormat.format(entry.client_ip) == normalized_ip end)
       |> Enum.take(limit)
 
@@ -273,8 +272,7 @@ defmodule YellowDog.Dns.QueryLogger do
 
     entries =
       state.buffer
-      |> :queue.to_list()
-      |> Enum.reverse()
+      |> buffer_newest_first()
       |> Enum.filter(fn entry -> entry.view == view end)
       |> Enum.take(limit)
 
@@ -288,8 +286,7 @@ defmodule YellowDog.Dns.QueryLogger do
 
     entries =
       state.buffer
-      |> :queue.to_list()
-      |> Enum.reverse()
+      |> buffer_newest_first()
       |> Enum.filter(fn entry ->
         entry.qname != nil and
           String.contains?(String.downcase(to_string(entry.qname)), pattern_lower)
@@ -323,6 +320,10 @@ defmodule YellowDog.Dns.QueryLogger do
   end
 
   # Private Functions
+
+  defp buffer_newest_first(buffer) do
+    buffer |> :queue.to_list() |> Enum.reverse()
+  end
 
   defp build_entry(attrs) do
     %Entry{
