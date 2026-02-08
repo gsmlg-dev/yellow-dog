@@ -808,8 +808,8 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   def unique_zone_types(zones) do
     zones
     |> Enum.map(& &1.type)
-    |> Enum.uniq()
     |> Enum.sort()
+    |> Enum.dedup()
   end
 
   defp build_zones_csv(zones) do

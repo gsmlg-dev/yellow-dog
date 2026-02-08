@@ -7,6 +7,8 @@ defmodule YellowDog.Console.ProcessMapLive do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.FormatHelper, only: [format_time: 1]
+
   alias YellowDog.Console.ProcessInspector
 
   @refresh_interval 5_000
@@ -581,12 +583,6 @@ defmodule YellowDog.Console.ProcessMapLive do
   end
 
   # Helper functions
-
-  defp format_time(datetime) do
-    Calendar.strftime(datetime, "%H:%M:%S")
-  end
-
-  # format_number is now provided by CoreComponents
 
   defp truncate_label(label, max_length) do
     if String.length(label) > max_length do

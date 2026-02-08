@@ -132,6 +132,114 @@ defmodule YellowDog.Console.FormatHelperTest do
     end
   end
 
+  describe "format_time/1" do
+    test "formats DateTime as HH:MM:SS" do
+      dt = ~U[2024-06-15 14:30:45Z]
+      assert FormatHelper.format_time(dt) == "14:30:45"
+    end
+
+    test "formats midnight correctly" do
+      dt = ~U[2024-01-01 00:00:00Z]
+      assert FormatHelper.format_time(dt) == "00:00:00"
+    end
+
+    test "returns empty string for nil" do
+      assert FormatHelper.format_time(nil) == ""
+    end
+
+    test "returns empty string for non-DateTime" do
+      assert FormatHelper.format_time("14:30:45") == ""
+      assert FormatHelper.format_time(12345) == ""
+    end
+  end
+
+  describe "format_time_ms/1" do
+    test "formats DateTime with milliseconds" do
+      dt = ~U[2024-06-15 14:30:45.123456Z]
+      assert FormatHelper.format_time_ms(dt) == "14:30:45.123"
+    end
+
+    test "pads milliseconds with leading zeros" do
+      dt = ~U[2024-06-15 14:30:45.005000Z]
+      assert FormatHelper.format_time_ms(dt) == "14:30:45.005"
+    end
+
+    test "formats zero microseconds as .000" do
+      dt = ~U[2024-06-15 14:30:45.000000Z]
+      assert FormatHelper.format_time_ms(dt) == "14:30:45.000"
+    end
+
+    test "returns placeholder for nil" do
+      assert FormatHelper.format_time_ms(nil) == "--:--:--.---"
+    end
+
+    test "returns placeholder for non-DateTime" do
+      assert FormatHelper.format_time_ms("14:30:45") == "--:--:--.---"
+    end
+  end
+
+  describe "format_uptime/1" do
+    test "formats seconds only" do
+      assert FormatHelper.format_uptime(45) == "45s"
+    end
+
+    test "formats minutes and seconds" do
+      assert FormatHelper.format_uptime(125) == "2m 5s"
+    end
+
+    test "formats hours and minutes" do
+      assert FormatHelper.format_uptime(3725) == "1h 2m"
+    end
+
+    test "formats large hours" do
+      assert FormatHelper.format_uptime(36000) == "10h 0m"
+    end
+
+    test "formats zero" do
+      assert FormatHelper.format_uptime(0) == "0s"
+    end
+
+    test "truncates floats" do
+      assert FormatHelper.format_uptime(65.7) == "1m 5s"
+    end
+
+    test "returns 0s for non-number" do
+      assert FormatHelper.format_uptime(nil) == "0s"
+      assert FormatHelper.format_uptime("1h") == "0s"
+    end
+  end
+
+  describe "format_bytes/1" do
+    test "formats nil as N/A" do
+      assert FormatHelper.format_bytes(nil) == "N/A"
+    end
+
+    test "formats bytes" do
+      assert FormatHelper.format_bytes(500) == "500B"
+    end
+
+    test "formats kilobytes" do
+      assert FormatHelper.format_bytes(2048) == "2.0KB"
+    end
+
+    test "formats megabytes" do
+      assert FormatHelper.format_bytes(1_572_864) == "1.5MB"
+    end
+
+    test "formats gigabytes" do
+      assert FormatHelper.format_bytes(2_147_483_648) == "2.0GB"
+    end
+
+    test "formats zero" do
+      assert FormatHelper.format_bytes(0) == "0B"
+    end
+
+    test "returns N/A for non-integer" do
+      assert FormatHelper.format_bytes("1024") == "N/A"
+      assert FormatHelper.format_bytes(1.5) == "N/A"
+    end
+  end
+
   describe "format_duration/1" do
     test "formats seconds" do
       assert FormatHelper.format_duration(30) == "30s"

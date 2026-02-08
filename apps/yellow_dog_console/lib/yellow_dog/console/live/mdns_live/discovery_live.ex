@@ -110,8 +110,8 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   defp get_service_types(services) do
     services
     |> Enum.map(& &1.type)
-    |> Enum.uniq()
     |> Enum.sort()
+    |> Enum.dedup()
   end
 
   defp count_unique_hosts(services) do
