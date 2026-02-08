@@ -16,6 +16,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   alias YellowDog.Dns.MetricsCollector
 
   @refresh_interval 5_000
+  @million 1_000_000
+  @thousand 1_000
 
   @rcode_colors %{
     "noerror" => "bg-success",
@@ -145,27 +147,20 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     }
   end
 
-  defp fmt_count(n) when is_integer(n) and n >= 1_000_000 do
-    "#{Float.round(n / 1_000_000, 1)}M"
-  end
+  defp fmt_count(n) when is_integer(n) and n >= @million,
+    do: "#{Float.round(n / @million, 1)}M"
 
-  defp fmt_count(n) when is_integer(n) and n >= 1_000 do
-    "#{Float.round(n / 1_000, 1)}k"
-  end
+  defp fmt_count(n) when is_integer(n) and n >= @thousand,
+    do: "#{Float.round(n / @thousand, 1)}k"
 
   defp fmt_count(n) when is_integer(n), do: Integer.to_string(n)
   defp fmt_count(n) when is_float(n), do: Float.to_string(Float.round(n, 1))
   defp fmt_count(_), do: "0"
 
-  defp format_latency(us) when is_float(us) and us >= 1_000 do
-    "#{Float.round(us / 1_000, 1)}ms"
-  end
+  defp format_latency(us) when is_number(us) and us >= @thousand,
+    do: "#{Float.round(us / @thousand, 1)}ms"
 
   defp format_latency(us) when is_float(us), do: "#{Float.round(us, 0)}us"
-
-  defp format_latency(us) when is_integer(us) and us >= 1_000,
-    do: "#{Float.round(us / 1_000, 1)}ms"
-
   defp format_latency(us) when is_integer(us), do: "#{us}us"
   defp format_latency(_), do: "0us"
 

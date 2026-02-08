@@ -262,7 +262,7 @@ defmodule DHCPv6.Server do
   defp validate_addresses(state, duid, ia_na_options) do
     ia_na_options
     |> Enum.map(fn {iaid, t1, t2, requested_addrs} ->
-      case Map.get(state.leases, duid) && Map.get(state.leases[duid], iaid) do
+      case get_in(state.leases, [duid, iaid]) do
         nil ->
           # New assignment
           assign_new_address(state, duid, iaid, t1, t2, requested_addrs)
@@ -305,7 +305,7 @@ defmodule DHCPv6.Server do
   defp renew_addresses(state, duid, ia_na_options) do
     ia_na_options
     |> Enum.map(fn {iaid, t1, t2, requested_addrs} ->
-      case Map.get(state.leases, duid) && Map.get(state.leases[duid], iaid) do
+      case get_in(state.leases, [duid, iaid]) do
         nil ->
           assign_new_address(state, duid, iaid, t1, t2, requested_addrs)
 
@@ -342,15 +342,11 @@ defmodule DHCPv6.Server do
           acc_state
 
         lease ->
-          new_leases =
-            case Map.get(acc_state.leases, duid) do
-              nil -> acc_state.leases
-              duid_leases -> Map.put(acc_state.leases, duid, Map.delete(duid_leases, iaid))
-            end
+          duid_leases = Map.delete(acc_state.leases[duid], iaid)
 
           %{
             acc_state
-            | leases: new_leases,
+            | leases: Map.put(acc_state.leases, duid, duid_leases),
               used_ips: MapSet.delete(acc_state.used_ips, lease.ip)
           }
       end
@@ -360,7 +356,7 @@ defmodule DHCPv6.Server do
   defp validate_existing_addresses(state, duid, ia_na_options) do
     ia_na_options
     |> Enum.map(fn {iaid, _t1, _t2, requested_addrs} ->
-      case Map.get(state.leases, duid) && Map.get(state.leases[duid], iaid) do
+      case get_in(state.leases, [duid, iaid]) do
         nil ->
           {:error, :no_binding}
 
@@ -394,13 +390,8 @@ defmodule DHCPv6.Server do
   end
 
   defp update_lease(state, duid, iaid, lease) do
-    case Map.get(state.leases, duid) do
-      nil ->
-        %{state | leases: Map.put(state.leases, duid, Map.put(%{}, iaid, lease))}
-
-      duid_leases ->
-        %{state | leases: Map.put(state.leases, duid, Map.put(duid_leases, iaid, lease))}
-    end
+    duid_leases = Map.get(state.leases, duid, %{})
+    %{state | leases: Map.put(state.leases, duid, Map.put(duid_leases, iaid, lease))}
   end
 
   defp choose_ip(available_ips, requested_addrs) do
