@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 168)
+**Phase**: IN_PROGRESS (Iteration 169)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 168 of 1000
+**Iteration**: 169 of 1000
 
 ## Session Summary
+Iteration 169: Use for comprehension and Enum.sum_by across 4 modules:
+- ✅ **All tests pass: 479 abyss, 309 mDNS, 404 DHCPv4, 299 DHCPv6, 0 failures**
+- ✅ listener_pool.ex: Enum.reduce filter+extract → for comprehension
+- ✅ responder.ex: 2× Enum.reduce sum → Enum.sum_by (Elixir 1.18)
+- ✅ address_pool.ex (v4+v6): Enum.reduce sum → Enum.sum_by
+- ✅ 1 commit — 4 files — net -11 lines
+
 Iteration 168: Replace Enum.filter|>Enum.reduce with for comprehension in pool_store:
 - ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6, 0 failures, 0 warnings**
 - ✅ Both DHCPv4 and DHCPv6 pool_store load_all_leases use for comprehension
