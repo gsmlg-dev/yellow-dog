@@ -113,24 +113,15 @@ end
 
 # Helper function to parse CLI argument value
 get_cli_arg = fn arg_name ->
-  case System.argv() do
-    args ->
-      args
-      |> Enum.with_index()
-      |> Enum.find(fn {arg, _index} -> arg == arg_name end)
-      |> case do
-        nil ->
-          nil
+  args = System.argv()
 
-        {_arg, index} ->
-          value = Enum.at(args, index + 1)
+  case Enum.find_index(args, &(&1 == arg_name)) do
+    nil ->
+      nil
 
-          if value && not String.starts_with?(value, "-") do
-            value
-          else
-            nil
-          end
-      end
+    index ->
+      value = Enum.at(args, index + 1)
+      if value && not String.starts_with?(value, "-"), do: value
   end
 end
 
