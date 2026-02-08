@@ -587,7 +587,6 @@ defmodule YellowDog.Dns.View do
 
   defp apply_rpz_policies(state, query, response) do
     alias YellowDog.Dns.Zone.RPZ
-    alias YellowDog.Dns.ZoneController
 
     Enum.reduce_while(state.rpz_zones, response, fn rpz_zone_name, acc ->
       case ZoneController.find_zone(state.name, :rpz, rpz_zone_name) do

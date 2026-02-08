@@ -613,69 +613,65 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp rrset_data_to_record(name, type, ttl, data, origin) do
-    # Resolve @ to origin
     resolved_name = resolve_name(name, origin)
-
-    case type do
-      :a ->
-        ip = parse_ip4(data[:address] || data.address)
-        if ip, do: Message.Record.new(resolved_name, :a, :in, ttl, ip)
-
-      :aaaa ->
-        ip = parse_ip6(data[:address] || data.address)
-        if ip, do: Message.Record.new(resolved_name, :aaaa, :in, ttl, ip)
-
-      :ns ->
-        nsdname = data[:nsdname] || data.nsdname
-        Message.Record.new(resolved_name, :ns, :in, ttl, to_string(nsdname))
-
-      :cname ->
-        cname = data[:cname] || data.cname
-        Message.Record.new(resolved_name, :cname, :in, ttl, to_string(cname))
-
-      :mx ->
-        preference = data[:preference] || data.preference
-        exchange = data[:exchange] || data.exchange
-        Message.Record.new(resolved_name, :mx, :in, ttl, {preference, to_string(exchange)})
-
-      :txt ->
-        txtdata = data[:txtdata] || data.txtdata
-        # TXT records expect a list of strings
-        txt_list = if is_list(txtdata), do: txtdata, else: [to_string(txtdata)]
-        Message.Record.new(resolved_name, :txt, :in, ttl, txt_list)
-
-      :srv ->
-        priority = data[:priority] || data.priority
-        weight = data[:weight] || data.weight
-        port = data[:port] || data.port
-        target = data[:target] || data.target
-
-        Message.Record.new(
-          resolved_name,
-          :srv,
-          :in,
-          ttl,
-          {priority, weight, port, to_string(target)}
-        )
-
-      :ptr ->
-        ptrdname = data[:ptrdname] || data.ptrdname
-        Message.Record.new(resolved_name, :ptr, :in, ttl, to_string(ptrdname))
-
-      :caa ->
-        flags = data[:flags] || data.flags
-        tag = data[:tag] || data.tag
-        value = data[:value] || data.value
-        Message.Record.new(resolved_name, :caa, :in, ttl, {flags, tag, value})
-
-      :soa ->
-        # SOA records are handled separately via state.soa
-        nil
-
-      _ ->
-        nil
-    end
+    build_record(type, resolved_name, ttl, data)
   end
+
+  defp build_record(:a, name, ttl, data) do
+    ip = parse_ip4(data[:address] || data.address)
+    if ip, do: Message.Record.new(name, :a, :in, ttl, ip)
+  end
+
+  defp build_record(:aaaa, name, ttl, data) do
+    ip = parse_ip6(data[:address] || data.address)
+    if ip, do: Message.Record.new(name, :aaaa, :in, ttl, ip)
+  end
+
+  defp build_record(:ns, name, ttl, data) do
+    nsdname = data[:nsdname] || data.nsdname
+    Message.Record.new(name, :ns, :in, ttl, to_string(nsdname))
+  end
+
+  defp build_record(:cname, name, ttl, data) do
+    cname = data[:cname] || data.cname
+    Message.Record.new(name, :cname, :in, ttl, to_string(cname))
+  end
+
+  defp build_record(:mx, name, ttl, data) do
+    preference = data[:preference] || data.preference
+    exchange = data[:exchange] || data.exchange
+    Message.Record.new(name, :mx, :in, ttl, {preference, to_string(exchange)})
+  end
+
+  defp build_record(:txt, name, ttl, data) do
+    txtdata = data[:txtdata] || data.txtdata
+    txt_list = if is_list(txtdata), do: txtdata, else: [to_string(txtdata)]
+    Message.Record.new(name, :txt, :in, ttl, txt_list)
+  end
+
+  defp build_record(:srv, name, ttl, data) do
+    priority = data[:priority] || data.priority
+    weight = data[:weight] || data.weight
+    port = data[:port] || data.port
+    target = data[:target] || data.target
+    Message.Record.new(name, :srv, :in, ttl, {priority, weight, port, to_string(target)})
+  end
+
+  defp build_record(:ptr, name, ttl, data) do
+    ptrdname = data[:ptrdname] || data.ptrdname
+    Message.Record.new(name, :ptr, :in, ttl, to_string(ptrdname))
+  end
+
+  defp build_record(:caa, name, ttl, data) do
+    flags = data[:flags] || data.flags
+    tag = data[:tag] || data.tag
+    value = data[:value] || data.value
+    Message.Record.new(name, :caa, :in, ttl, {flags, tag, value})
+  end
+
+  # SOA records are handled separately via state.soa
+  defp build_record(:soa, _name, _ttl, _data), do: nil
+  defp build_record(_type, _name, _ttl, _data), do: nil
 
   defp resolve_name(nil, origin), do: normalize_origin(origin)
   defp resolve_name("@", origin), do: normalize_origin(origin)
