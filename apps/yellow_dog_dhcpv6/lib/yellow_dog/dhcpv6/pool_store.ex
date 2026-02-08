@@ -736,10 +736,4 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
   defp format_duid(_), do: ""
 
-  defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-
-  defp format_datetime(unix) when is_integer(unix),
-    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
-
-  defp format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
 end

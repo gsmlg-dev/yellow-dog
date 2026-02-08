@@ -130,6 +130,15 @@ defmodule YellowDog.Config.TomlHelpers do
     end
   end
 
+  @doc "Formats a datetime value to ISO 8601 string for TOML serialization."
+  @spec format_datetime(DateTime.t() | integer() | term()) :: String.t()
+  def format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+
+  def format_datetime(unix) when is_integer(unix),
+    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
+
+  def format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
+
   @doc "Creates a `.backup` copy of `file_path` if `backup?` is true and the file exists."
   @spec maybe_create_backup(Path.t(), boolean()) :: :ok | {:error, term()}
   def maybe_create_backup(_file_path, false), do: :ok

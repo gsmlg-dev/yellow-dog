@@ -734,13 +734,6 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
   defp format_mac_for_toml(_), do: "00:00:00:00:00:00"
 
-  defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-
-  defp format_datetime(unix) when is_integer(unix),
-    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
-
-  defp format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
-
   defp format_client_id(nil), do: nil
   defp format_client_id(bytes) when is_binary(bytes), do: Base.encode16(bytes, case: :lower)
 end
