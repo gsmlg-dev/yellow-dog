@@ -1,11 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 197)
+**Phase**: IN_PROGRESS (Iteration 198)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 197 of 1000
+**Iteration**: 198 of 1000
 
 ## Session Summary
+Iteration 198: CSS class strings → module attributes + minor cleanups:
+- ✅ **All tests pass: 1122 console — 0 failures, 0 warnings**
+- ✅ metrics_live: @rcode_colors + @type_colors maps replace 12 defp clauses → 2
+- ✅ query_logs_live: @rcode_badges + @protocol_badges maps replace 8 defp clauses → 2
+- ✅ logs_live: @level_colors + @level_badges + @app_names + @app_badge_colors maps replace 26 defp clauses → 4
+- ✅ core_components: ia_type_text_color derived from ia_type_color (DRY, same pattern as lease_state_text_color)
+- ✅ format_helper: merged redundant expiration_color clause (remaining<=0 ⊂ remaining<3600)
+- ✅ 1 commit — 5 files — net +22 lines (maps are verbose but more maintainable)
+
 Iteration 197: destructure socket.assigns in LiveViews:
 - ✅ **All tests pass: 1122 console — 0 failures, 0 warnings**
 - ✅ rr_live/index.ex: 7 blocks of repeated socket.assigns.xxx → destructured pattern match
