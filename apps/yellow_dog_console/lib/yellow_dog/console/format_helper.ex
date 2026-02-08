@@ -7,6 +7,11 @@ defmodule YellowDog.Console.FormatHelper do
   IPv4/IPv6 addresses, or lease timestamps.
   """
 
+  @seconds_per_minute 60
+  @seconds_per_hour 3_600
+  @seconds_per_day 86_400
+  @seconds_per_two_hours 7_200
+
   @doc "Formats a 6-byte MAC address binary as colon-separated hex."
   @spec format_mac(binary()) :: String.t()
   def format_mac(<<mac::binary-size(6)>>) do
@@ -65,9 +70,9 @@ defmodule YellowDog.Console.FormatHelper do
 
     cond do
       remaining <= 0 -> "Expired"
-      remaining < 3600 -> "#{div(remaining, 60)}m remaining"
-      remaining < 86400 -> "#{div(remaining, 3600)}h remaining"
-      true -> "#{div(remaining, 86400)}d remaining"
+      remaining < @seconds_per_hour -> "#{div(remaining, @seconds_per_minute)}m remaining"
+      remaining < @seconds_per_day -> "#{div(remaining, @seconds_per_hour)}h remaining"
+      true -> "#{div(remaining, @seconds_per_day)}d remaining"
     end
   end
 
@@ -80,8 +85,8 @@ defmodule YellowDog.Console.FormatHelper do
 
     cond do
       remaining <= 0 -> "text-error"
-      remaining < 3600 -> "text-error"
-      remaining < 7200 -> "text-warning"
+      remaining < @seconds_per_hour -> "text-error"
+      remaining < @seconds_per_two_hours -> "text-warning"
       true -> "text-base-content/50"
     end
   end
@@ -100,10 +105,10 @@ defmodule YellowDog.Console.FormatHelper do
   @spec format_duration(integer()) :: String.t()
   def format_duration(seconds) when is_integer(seconds) do
     cond do
-      seconds < 60 -> "#{seconds}s"
-      seconds < 3600 -> "#{div(seconds, 60)}m"
-      seconds < 86400 -> "#{div(seconds, 3600)}h"
-      true -> "#{div(seconds, 86400)}d"
+      seconds < @seconds_per_minute -> "#{seconds}s"
+      seconds < @seconds_per_hour -> "#{div(seconds, @seconds_per_minute)}m"
+      seconds < @seconds_per_day -> "#{div(seconds, @seconds_per_hour)}h"
+      true -> "#{div(seconds, @seconds_per_day)}d"
     end
   end
 
@@ -116,10 +121,10 @@ defmodule YellowDog.Console.FormatHelper do
 
     cond do
       remaining < 0 -> "Expired"
-      remaining < 60 -> "#{remaining}s"
-      remaining < 3600 -> "#{div(remaining, 60)}m"
-      remaining < 86400 -> "#{div(remaining, 3600)}h"
-      true -> "#{div(remaining, 86400)}d"
+      remaining < @seconds_per_minute -> "#{remaining}s"
+      remaining < @seconds_per_hour -> "#{div(remaining, @seconds_per_minute)}m"
+      remaining < @seconds_per_day -> "#{div(remaining, @seconds_per_hour)}h"
+      true -> "#{div(remaining, @seconds_per_day)}d"
     end
   end
 

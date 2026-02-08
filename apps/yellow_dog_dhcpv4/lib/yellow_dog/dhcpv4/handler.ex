@@ -775,11 +775,8 @@ defmodule YellowDog.Dhcpv4.Handler do
   defp integer_to_ip_tuple(0), do: nil
 
   defp integer_to_ip_tuple(ip_int) when is_integer(ip_int) do
-    a = div(ip_int, 256 * 256 * 256)
-    b = div(rem(ip_int, 256 * 256 * 256), 256 * 256)
-    c = div(rem(ip_int, 256 * 256), 256)
-    d = rem(ip_int, 256)
-    {a, b, c, d}
+    import Bitwise
+    {ip_int >>> 24 &&& 0xFF, ip_int >>> 16 &&& 0xFF, ip_int >>> 8 &&& 0xFF, ip_int &&& 0xFF}
   end
 
   defp get_server_identifier do
