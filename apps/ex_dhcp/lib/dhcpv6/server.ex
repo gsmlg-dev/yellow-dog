@@ -57,10 +57,8 @@ defmodule DHCPv6.Server do
       3 -> handle_request(state, message)
       # CONFIRM
       4 -> handle_confirm(state, message)
-      # RENEW
-      5 -> handle_renew(state, message)
-      # REBIND
-      6 -> handle_rebind(state, message)
+      # RENEW / REBIND
+      type when type in [5, 6] -> handle_renew_or_rebind(state, message)
       # RELEASE
       8 -> handle_release(state, message)
       # INFORMATION-REQUEST
@@ -166,14 +164,6 @@ defmodule DHCPv6.Server do
       {:error, reason} ->
         {state, [build_reply_failure(message, reason)]}
     end
-  end
-
-  defp handle_renew(state, message) do
-    handle_renew_or_rebind(state, message)
-  end
-
-  defp handle_rebind(state, message) do
-    handle_renew_or_rebind(state, message)
   end
 
   defp handle_renew_or_rebind(state, message) do
@@ -337,7 +327,7 @@ defmodule DHCPv6.Server do
   defp release_addresses(state, duid, ia_na_options) do
     ia_na_options
     |> Enum.reduce(state, fn {iaid, _t1, _t2, _requested_addrs}, acc_state ->
-      case Map.get(acc_state.leases, duid) && Map.get(acc_state.leases[duid], iaid) do
+      case get_in(acc_state.leases, [duid, iaid]) do
         nil ->
           acc_state
 
