@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 167)
+**Phase**: IN_PROGRESS (Iteration 168)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 167 of 1000
+**Iteration**: 168 of 1000
 
 ## Session Summary
+Iteration 168: Replace Enum.filter|>Enum.reduce with for comprehension in pool_store:
+- ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6, 0 failures, 0 warnings**
+- ✅ Both DHCPv4 and DHCPv6 pool_store load_all_leases use for comprehension
+- ✅ Combines filter + reduce into single for with into: %{}
+- ✅ 1 commit — 2 files — net -8 lines
+
 Iteration 167: Replace Enum.reduce with for comprehension in prefix_pool:
 - ✅ **All tests pass: 299 DHCPv6, 0 failures, 0 warnings**
 - ✅ Extracted parse_prefix_reservation/1 helper (3 clauses: string prefix, tuple prefix, catch-all)
