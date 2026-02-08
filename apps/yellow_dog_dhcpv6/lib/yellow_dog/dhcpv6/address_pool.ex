@@ -254,12 +254,10 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   # Private helper functions
 
   defp parse_static_reservations(list) when is_list(list) do
-    Enum.reduce(list, %{}, fn reservation, acc ->
-      case parse_reservation(reservation) do
-        {:ok, duid, ip} -> Map.put(acc, duid, ip)
-        :skip -> acc
-      end
-    end)
+    for reservation <- list,
+        {:ok, duid, ip} <- [parse_reservation(reservation)],
+        into: %{},
+        do: {duid, ip}
   end
 
   defp parse_static_reservations(map) when is_map(map), do: map

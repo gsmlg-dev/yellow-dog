@@ -275,6 +275,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
+  @impl true
   def handle_call({:unregister_service, service_id, opts}, _from, state) do
     persist = Keyword.get(opts, :persist, false)
 
@@ -294,6 +295,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
+  @impl true
   def handle_call({:update_service, service_id, updates, opts}, _from, state) do
     persist = Keyword.get(opts, :persist, false)
 
@@ -314,6 +316,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
+  @impl true
   def handle_call({:toggle_service, service_id}, _from, state) do
     case :ets.lookup(@table_name, service_id) do
       [{^service_id, service}] ->
@@ -332,6 +335,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
+  @impl true
   def handle_call(:load_from_file, _from, state) do
     case ServiceStore.load_services(state.storage_file) do
       {:ok, services} ->
@@ -349,6 +353,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
+  @impl true
   def handle_call(:save_to_file, _from, state) do
     result = save_services_to_file(state)
     {:reply, result, state}
