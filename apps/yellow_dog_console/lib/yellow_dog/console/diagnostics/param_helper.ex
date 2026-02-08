@@ -46,9 +46,11 @@ defmodule YellowDog.Console.Diagnostics.ParamHelper do
   # Fetches a value from params, checking atom key first then string key.
   # Uses Map.has_key?/2 to avoid treating falsy values (false, 0) as missing.
   defp fetch_param(params, key, default) do
+    string_key = to_string(key)
+
     cond do
       Map.has_key?(params, key) -> Map.get(params, key)
-      Map.has_key?(params, to_string(key)) -> Map.get(params, to_string(key))
+      Map.has_key?(params, string_key) -> Map.get(params, string_key)
       true -> default
     end
   end

@@ -103,12 +103,12 @@ defmodule YellowDog.Console.CoreComponents do
   Used in overview/pool pages for state breakdowns.
   """
   @spec lease_state_text_color(atom()) :: String.t()
-  def lease_state_text_color(:active), do: "text-success"
-  def lease_state_text_color(:offered), do: "text-info"
-  def lease_state_text_color(:released), do: "text-warning"
-  def lease_state_text_color(:expired), do: "text-error"
-  def lease_state_text_color(:declined), do: "text-error"
-  def lease_state_text_color(_), do: "text-base-content"
+  def lease_state_text_color(state) do
+    case lease_state_color(state) do
+      "ghost" -> "text-base-content"
+      color -> "text-#{color}"
+    end
+  end
 
   @doc """
   Returns a DaisyUI color name for pool utilization percentage.
@@ -123,10 +123,7 @@ defmodule YellowDog.Console.CoreComponents do
   Returns a DaisyUI text color class for pool utilization percentage.
   """
   @spec utilization_text_color(number()) :: String.t()
-  def utilization_text_color(percent) when percent >= 90, do: "text-error"
-  def utilization_text_color(percent) when percent >= 75, do: "text-warning"
-  def utilization_text_color(percent) when percent >= 50, do: "text-info"
-  def utilization_text_color(_), do: "text-success"
+  def utilization_text_color(percent), do: "text-#{utilization_color(percent)}"
 
   @doc "Returns a DaisyUI badge color for a DHCPv6 IA type."
   @spec ia_type_color(atom()) :: String.t()
