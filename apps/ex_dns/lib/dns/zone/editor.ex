@@ -317,8 +317,7 @@ defmodule DNS.Zone.Editor do
 
   ## Private functions
 
-  defp normalize_zone_name(name) when is_binary(name), do: String.downcase(name)
-  defp normalize_zone_name(%Name{value: value}), do: String.downcase(value)
+  defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
 
   defp valid_zone_name?(name) do
     # Basic zone name validation

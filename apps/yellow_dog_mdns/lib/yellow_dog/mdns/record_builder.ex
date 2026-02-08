@@ -261,9 +261,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
   # Private helper functions
 
-  defp normalize_name(name) do
-    name |> to_string() |> String.downcase() |> String.trim_trailing(".")
-  end
+  defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
   defp is_ipv4?({_, _, _, _}), do: true
   defp is_ipv4?(_), do: false

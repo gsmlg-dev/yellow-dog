@@ -488,9 +488,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     end
   end
 
-  defp normalize_name(name) do
-    name |> to_string() |> String.downcase() |> String.trim_trailing(".")
-  end
+  defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
   defp apply_filters(services, filter, source_filter) do
     services

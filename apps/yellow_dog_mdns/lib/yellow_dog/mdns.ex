@@ -251,6 +251,16 @@ defmodule YellowDog.Mdns do
     end
   end
 
+  # Shared Utilities
+
+  @doc """
+  Normalizes an mDNS name: converts to lowercase string, strips trailing dot.
+  """
+  @spec normalize_name(String.t() | atom()) :: String.t()
+  def normalize_name(name) do
+    name |> to_string() |> String.downcase() |> String.trim_trailing(".")
+  end
+
   defp get_mode_from_config do
     Application.get_env(:yellow_dog_mdns, :mode, :hybrid)
   end

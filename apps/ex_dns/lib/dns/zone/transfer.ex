@@ -207,8 +207,7 @@ defmodule DNS.Zone.Transfer do
 
   ## Private functions
 
-  defp normalize_zone_name(name) when is_binary(name), do: String.downcase(name)
-  defp normalize_zone_name(%Name{value: value}), do: String.downcase(value)
+  defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
 
   defp get_zone_records(zone) do
     Enum.flat_map(@record_type_keys, fn {_type, key} ->

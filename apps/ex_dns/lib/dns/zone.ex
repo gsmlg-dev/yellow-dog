@@ -316,6 +316,11 @@ defmodule DNS.Zone do
     }
   end
 
+  @doc "Normalizes a zone name (binary or Name struct) to lowercase string."
+  @spec normalize_zone_name(binary() | Name.t()) :: String.t()
+  def normalize_zone_name(name) when is_binary(name), do: String.downcase(name)
+  def normalize_zone_name(%Name{value: value}), do: String.downcase(value)
+
   @spec hostname(Name.t(), DNS.Message.Domain.t()) :: Name.t() | false
   def hostname(%Name{value: "."} = _zone_name, %DNS.Message.Domain{} = domain) do
     Name.from_domain(domain)

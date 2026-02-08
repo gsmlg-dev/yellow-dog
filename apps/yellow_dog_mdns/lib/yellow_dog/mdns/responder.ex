@@ -143,12 +143,7 @@ defmodule YellowDog.Mdns.Responder do
       normalize_data(record1.data, record1.type) == normalize_data(record2.data, record2.type)
   end
 
-  defp normalize_name(name) do
-    name
-    |> to_string()
-    |> String.downcase()
-    |> String.trim_trailing(".")
-  end
+  defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
   defp normalize_data(data, :PTR), do: normalize_name(data)
   defp normalize_data(data, :TXT) when is_list(data), do: Enum.sort(data)
