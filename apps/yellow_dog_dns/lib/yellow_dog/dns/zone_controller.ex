@@ -226,23 +226,22 @@ defmodule YellowDog.Dns.ZoneController do
 
   # Get zone name from process
   defp get_zone_name_from_pid(modules, pid) do
-    module = List.first(modules)
-
-    try do
-      module.get_name(pid)
-    catch
-      _, _ -> nil
-    end
+    safe_call_module(modules, pid, :get_name, nil)
   end
 
   # Get zone view from process
   defp get_zone_view_from_pid(modules, pid) do
+    safe_call_module(modules, pid, :get_view, @default_view)
+  end
+
+  # Safely call a module function with default fallback on error
+  defp safe_call_module(modules, pid, function, default) do
     module = List.first(modules)
 
     try do
-      module.get_view(pid)
+      apply(module, function, [pid])
     catch
-      _, _ -> @default_view
+      _, _ -> default
     end
   end
 
