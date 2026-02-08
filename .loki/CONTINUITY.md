@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 185)
+**Phase**: IN_PROGRESS (Iteration 186)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 185 of 1000
+**Iteration**: 186 of 1000
 
 ## Session Summary
+Iteration 186: merge consecutive Enum.map into single pass:
+- ✅ **All tests pass: 4764 ex_dns, 1122 console — 0 failures, 0 warnings**
+- ✅ Merged 3× double `Enum.map` chains into single-pass lambdas
+- ✅ file_parser.ex: `map(trim) |> map(remove_comments)` → single map
+- ✅ dhcpv4_client.ex, dhcpv6_client.ex: `map(trim) |> map(to_integer)` → single map
+- ✅ 1 commit — 3 files — net -3 lines
+
 Iteration 185: safe_call/3 adoption + module attribute defaults:
 - ✅ **All tests pass: 1122 console (7 doctests), 0 failures, 0 warnings**
 - ✅ Replaced 6× manual try/catch in MetricsLive with safe_call(YellowDog.Dns, ...) — fetch_metrics, fetch_summary, fetch_top_domains, fetch_top_clients, fetch_response_times, reset
