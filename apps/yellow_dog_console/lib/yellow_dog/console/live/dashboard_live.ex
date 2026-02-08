@@ -190,7 +190,6 @@ defmodule YellowDog.Console.DashboardLive do
   end
 
   defp format_pid(nil), do: "N/A"
-  defp format_pid(pid) when is_pid(pid), do: inspect(pid)
   defp format_pid(pid), do: inspect(pid)
 
   defp format_memory(nil), do: "N/A"
