@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 184)
+**Phase**: IN_PROGRESS (Iteration 185)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 184 of 1000
+**Iteration**: 185 of 1000
 
 ## Session Summary
+Iteration 185: safe_call/3 adoption + module attribute defaults:
+- ✅ **All tests pass: 1122 console (7 doctests), 0 failures, 0 warnings**
+- ✅ Replaced 6× manual try/catch in MetricsLive with safe_call(YellowDog.Dns, ...) — fetch_metrics, fetch_summary, fetch_top_domains, fetch_top_clients, fetch_response_times, reset
+- ✅ Replaced 2× try/catch in DnsLive.Index (get_dns_stats, get_cache_stats) with safe_call
+- ✅ Extracted @default_dns_stats, @default_cache_stats, @cache_stat_defaults module attributes
+- ✅ Also replaced 5× Map.get(stat, :key, 0) in cache reduce with Map.merge + direct access
+- ✅ 1 commit — 2 files — net -15 lines
+
 Iteration 184: DRY get_string + @view_stat_defaults extraction:
 - ✅ **All tests pass: 1122 console (7 doctests), 0 failures, 0 warnings**
 - ✅ Simplified ParamHelper.get_string/2 to delegate to fetch_param/3 with nil coalescing
