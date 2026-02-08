@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 165)
+**Phase**: IN_PROGRESS (Iteration 166)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 165 of 1000
+**Iteration**: 166 of 1000
 
 ## Session Summary
+Iteration 166: Add @impl true annotations + for comprehension in DHCPv6:
+- ✅ **All tests pass: 309 mDNS, 299 DHCPv6, 0 failures, 0 warnings**
+- ✅ 5 missing @impl true on handle_call in service_registry.ex
+- ✅ Enum.reduce → for comprehension in address_pool.ex parse_static_reservations
+- ✅ 1 commit — 2 files — net +3 lines
+
 Iteration 165: Add tests for ConfigHelpers.collect_ok/1:
 - ✅ **All tests pass: 34 config_helpers, 0 failures**
 - ✅ 5 new tests: all-ok, empty input, single error, multiple errors, complex values
