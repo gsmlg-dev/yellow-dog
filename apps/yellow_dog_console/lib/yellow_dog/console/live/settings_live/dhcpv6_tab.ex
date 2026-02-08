@@ -64,7 +64,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv6Tab do
               placeholder="::"
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :listen)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :listen) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:listen} />
@@ -87,7 +87,7 @@ defmodule YellowDog.Console.SettingsLive.Dhcpv6Tab do
               placeholder="547"
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :port)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :port) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:port} />

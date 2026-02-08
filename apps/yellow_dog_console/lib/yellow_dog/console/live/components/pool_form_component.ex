@@ -101,7 +101,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               class={[
                 "input input-bordered w-full",
                 @mode == :edit && "input-disabled",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :name)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :name) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:name} />
@@ -124,7 +124,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               placeholder={network_placeholder(@protocol)}
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :network)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :network) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:network} />
@@ -146,7 +146,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 placeholder={range_placeholder(@protocol, :start)}
                 class={[
                   "input input-bordered w-full",
-                  !Enum.empty?(Keyword.get_values(@changeset.errors, :range_start)) &&
+                  Keyword.has_key?(@changeset.errors, :range_start) &&
                     "input-error"
                 ]}
               />
@@ -164,7 +164,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 placeholder={range_placeholder(@protocol, :end)}
                 class={[
                   "input input-bordered w-full",
-                  !Enum.empty?(Keyword.get_values(@changeset.errors, :range_end)) && "input-error"
+                  Keyword.has_key?(@changeset.errors, :range_end) && "input-error"
                 ]}
               />
               <.input_error changeset={@changeset} field={:range_end} />
@@ -185,7 +185,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 min="60"
                 class={[
                   "input input-bordered w-full",
-                  !Enum.empty?(Keyword.get_values(@changeset.errors, :lease_time)) && "input-error"
+                  Keyword.has_key?(@changeset.errors, :lease_time) && "input-error"
                 ]}
               />
               <.input_error changeset={@changeset} field={:lease_time} />
@@ -205,7 +205,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                 placeholder="192.168.1.1"
                 class={[
                   "input input-bordered w-full",
-                  !Enum.empty?(Keyword.get_values(@changeset.errors, :gateway)) && "input-error"
+                  Keyword.has_key?(@changeset.errors, :gateway) && "input-error"
                 ]}
               />
               <.input_error changeset={@changeset} field={:gateway} />
@@ -225,7 +225,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                   min="60"
                   class={[
                     "input input-bordered w-full",
-                    !Enum.empty?(Keyword.get_values(@changeset.errors, :preferred_lifetime)) &&
+                    Keyword.has_key?(@changeset.errors, :preferred_lifetime) &&
                       "input-error"
                   ]}
                 />
@@ -244,7 +244,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
                   min="60"
                   class={[
                     "input input-bordered w-full",
-                    !Enum.empty?(Keyword.get_values(@changeset.errors, :valid_lifetime)) &&
+                    Keyword.has_key?(@changeset.errors, :valid_lifetime) &&
                       "input-error"
                   ]}
                 />
@@ -265,7 +265,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
               placeholder={dns_placeholder(@protocol)}
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :dns_servers)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :dns_servers) && "input-error"
               ]}
               phx-debounce="300"
             />

@@ -63,7 +63,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
               placeholder="0.0.0.0 or ::"
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :listen)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :listen) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:listen} />
@@ -86,7 +86,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
               placeholder="5353"
               class={[
                 "input input-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :port)) && "input-error"
+                Keyword.has_key?(@changeset.errors, :port) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:port} />
@@ -105,7 +105,7 @@ defmodule YellowDog.Console.SettingsLive.MdnsTab do
               aria-label="mDNS mode"
               class={[
                 "select select-bordered w-full",
-                !Enum.empty?(Keyword.get_values(@changeset.errors, :mode)) && "select-error"
+                Keyword.has_key?(@changeset.errors, :mode) && "select-error"
               ]}
             >
               <option value="" disabled selected={is_nil(Ecto.Changeset.get_field(@changeset, :mode))}>
