@@ -396,7 +396,14 @@ defmodule DNS.Zone.Parser do
   end
 
   defp do_parse_zone_file(%{current_token: {:eof, _, _}} = parser) do
-    {parser.zone_file, parser}
+    # Reverse prepended lists to restore original parse order
+    zone_file = %{
+      parser.zone_file
+      | records: Enum.reverse(parser.zone_file.records),
+        comments: Enum.reverse(parser.zone_file.comments)
+    }
+
+    {zone_file, parser}
   end
 
   defp do_parse_zone_file(parser) do
@@ -407,9 +414,8 @@ defmodule DNS.Zone.Parser do
         do_parse_zone_file(parser)
 
       {:comment, comment, _} ->
-        # Comments are collected in the order they appear
-        # Correctly update the comments list within the existing ZoneFile struct
-        updated_zone = %{parser.zone_file | comments: parser.zone_file.comments ++ [comment]}
+        # Prepend for O(1) — reversed at :eof
+        updated_zone = %{parser.zone_file | comments: [comment | parser.zone_file.comments]}
         parser = %{advance(parser) | zone_file: updated_zone}
         do_parse_zone_file(parser)
 
@@ -419,22 +425,18 @@ defmodule DNS.Zone.Parser do
       # A name token can start a resource record or be a standalone name
       {:name, _, _} ->
         {record, new_parser} = parse_resource_record(parser)
-        # Records are collected in the order they appear
-        # Correctly update the records list within the existing ZoneFile struct
-        updated_zone = %{parser.zone_file | records: parser.zone_file.records ++ [record]}
+        # Prepend for O(1) — reversed at :eof
+        updated_zone = %{parser.zone_file | records: [record | parser.zone_file.records]}
         parser = %{new_parser | zone_file: updated_zone}
         do_parse_zone_file(parser)
 
       # A domain token can also start a resource record implicitly
       {:domain, _, _} ->
         {record, new_parser} = parse_resource_record(parser)
-        # Correctly update the records list within the existing ZoneFile struct
-        updated_zone = %{parser.zone_file | records: parser.zone_file.records ++ [record]}
+        # Prepend for O(1) — reversed at :eof
+        updated_zone = %{parser.zone_file | records: [record | parser.zone_file.records]}
         parser = %{new_parser | zone_file: updated_zone}
         do_parse_zone_file(parser)
-
-      {:eof, _, _} ->
-        {parser.zone_file, parser}
 
       _ ->
         # Skip unexpected tokens, but raise an error if it's not a known starting token
