@@ -1,11 +1,42 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 128)
+**Phase**: IN_PROGRESS (Iteration 133)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 128 of 1000
+**Iteration**: 133 of 1000
 
 ## Session Summary
+Iteration 133: Add Ipv4Util.format/1, replace 5 format_ip copies:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Added `format/1` to Ipv4Util (nil→nil, tuple→string, binary→passthrough)
+- ✅ Replaced 5 identical `defp format_ip` in pool_stats, pool, lease_manager, pool_store, lease
+- ✅ 6 files — net -17 lines
+
+Iteration 132: Add MacFormat.format!/2 with configurable default:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Added `format!/2` to MacFormat (returns default string instead of nil on failure)
+- ✅ Used in AddressPool to simplify format_mac wrapper
+- ✅ 2 files — net +25 lines (utility function with docs/specs)
+
+Iteration 131: Add Ipv6Util.parse/1 and read_toml_file helper:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Added polymorphic `parse/1` to Ipv6Util (string/tuple/other)
+- ✅ Replaced duplicate `defp parse_ipv6` in DHCPv6 pool_store.ex
+- ✅ Added `read_toml_file/1` to TomlHelpers for File.read+Toml.decode combo
+- ✅ 3 files — net +12 lines (utility functions)
+
+Iteration 130: Extract shared Helpers module for DNS mix tasks:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Created `Mix.Tasks.Dns.Helpers` with `format_datetime/1` and `colorize/2`
+- ✅ Replaced 3 duplicate `format_datetime` and 2 duplicate `colorize` across Status/Health/Metrics/Reload
+- ✅ 1 file — net -5 lines
+
+Iteration 129: Extract format_datetime to shared TomlHelpers:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Added `format_datetime/1` (3 clauses) to TomlHelpers
+- ✅ Removed duplicate from DHCPv4 pool_store.ex and DHCPv6 pool_store.ex
+- ✅ 3 files — net -4 lines
+
 Iteration 128: Extract IpFormat module, remove 8 duplicate format_ip copies:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ Created `YellowDog.Dns.IpFormat` with `format/1` handling tuple/binary/other
