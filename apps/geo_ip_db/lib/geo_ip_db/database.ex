@@ -73,7 +73,7 @@ defmodule GeoIpDb.Database do
   @spec list_databases() :: [atom()]
   def list_databases do
     :ets.tab2list(@table_name)
-    |> Enum.map(fn {name, _, _, _} -> name end)
+    |> Enum.map(&elem(&1, 0))
   end
 
   @doc """
@@ -155,19 +155,13 @@ defmodule GeoIpDb.Database do
   end
 
   defp do_load(name, path) do
-    case File.read(path) do
-      {:ok, data} ->
-        case MMDB2Decoder.parse_database(data) do
-          {:ok, meta, tree, db_data} ->
-            :ets.insert(@table_name, {name, meta, tree, db_data})
-            :ok
-
-          {:error, reason} ->
-            {:error, {:parse_error, reason}}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, data} <- File.read(path),
+         {:ok, meta, tree, db_data} <- MMDB2Decoder.parse_database(data) do
+      :ets.insert(@table_name, {name, meta, tree, db_data})
+      :ok
+    else
+      {:error, reason} when is_atom(reason) -> {:error, reason}
+      {:error, reason} -> {:error, {:parse_error, reason}}
     end
   end
 
