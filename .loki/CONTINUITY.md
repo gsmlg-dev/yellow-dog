@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 140)
+**Phase**: IN_PROGRESS (Iteration 141)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 140 of 1000
+**Iteration**: 141 of 1000
 
 ## Session Summary
+Iteration 141: DRY query_logger buffer reads + simplify dhcp_updates pool map:
+- ✅ **All tests pass: 1107 console, 1083 DNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Extracted buffer_newest_first/1 helper in QueryLogger (DRY 4 :queue.to_list|>reverse instances)
+- ✅ Simplified dhcp_updates pool map building with filter-based approach (5 conditional Map.put → tuple filter)
+- ✅ Extracted format_pool_for_toml/1 from nested anonymous function
+- ✅ 1 commit — 2 files — net -33 lines
+
 Iteration 140: FormatHelper tests + DRY format_time + sort|>dedup optimization:
 - ✅ **All tests pass: 1107 tests, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Added 28 unit tests for format_time, format_time_ms, format_uptime, format_bytes
