@@ -185,8 +185,7 @@ defmodule DNS.Zone.FileParser do
   defp preprocess_content(content) do
     content
     |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.map(&remove_comments/1)
+    |> Enum.map(fn line -> line |> String.trim() |> remove_comments() end)
     |> Enum.reject(&(&1 == ""))
     |> handle_continuations()
   end

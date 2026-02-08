@@ -157,8 +157,7 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
   defp parse_options(options_string) when is_binary(options_string) do
     options_string
     |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.map(&String.to_integer/1)
+    |> Enum.map(fn s -> s |> String.trim() |> String.to_integer() end)
   rescue
     _ -> [1, 3, 6, 15]
   end
