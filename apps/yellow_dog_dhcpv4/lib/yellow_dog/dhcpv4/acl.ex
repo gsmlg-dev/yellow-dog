@@ -242,14 +242,13 @@ defmodule YellowDog.Dhcpv4.ACL do
     results =
       Enum.map(rules, &validate_rule/1)
 
-    errors = Enum.filter(results, &match?({:error, _}, &1))
+    case collect_ok(results) do
+      {:ok, rules} ->
+        emit_loaded_telemetry(length(rules))
+        {:ok, rules}
 
-    if Enum.empty?(errors) do
-      rules = Enum.map(results, fn {:ok, rule} -> rule end)
-      emit_loaded_telemetry(length(rules))
-      {:ok, rules}
-    else
-      {:error, {:validation_errors, errors}}
+      {:error, errors} ->
+        {:error, {:validation_errors, errors}}
     end
   end
 
@@ -340,6 +339,16 @@ defmodule YellowDog.Dhcpv4.ACL do
   end
 
   defp format_mac(_), do: ""
+
+  defp collect_ok(results) do
+    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if errors == [] do
+      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
+    else
+      {:error, errors}
+    end
+  end
 
   # Telemetry helpers
 

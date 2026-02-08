@@ -220,14 +220,13 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
     results =
       Enum.map(sets, &validate_option_set/1)
 
-    errors = Enum.filter(results, &match?({:error, _}, &1))
+    case collect_ok(results) do
+      {:ok, option_sets} ->
+        emit_loaded_telemetry(length(option_sets))
+        {:ok, option_sets}
 
-    if Enum.empty?(errors) do
-      option_sets = Enum.map(results, fn {:ok, set} -> set end)
-      emit_loaded_telemetry(length(option_sets))
-      {:ok, option_sets}
-    else
-      {:error, {:validation_errors, errors}}
+      {:error, errors} ->
+        {:error, {:validation_errors, errors}}
     end
   end
 
@@ -265,12 +264,9 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
     case Map.get(config, "options", []) do
       options when is_list(options) ->
         results = Enum.map(options, &validate_option/1)
-        errors = Enum.filter(results, &match?({:error, _}, &1))
-
-        if Enum.empty?(errors) do
-          {:ok, Enum.map(results, fn {:ok, opt} -> opt end)}
-        else
-          {:error, {:invalid_options, errors}}
+        case collect_ok(results) do
+          {:ok, _} = ok -> ok
+          {:error, errors} -> {:error, {:invalid_options, errors}}
         end
 
       _ ->
@@ -342,12 +338,10 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
 
   defp parse_ip_list(ip_strs) do
     results = Enum.map(ip_strs, &parse_ip/1)
-    errors = Enum.filter(results, &match?({:error, _}, &1))
 
-    if Enum.empty?(errors) do
-      {:ok, Enum.map(results, fn {:ok, ip} -> ip end)}
-    else
-      {:error, {:invalid_ip_list, errors}}
+    case collect_ok(results) do
+      {:ok, _} = ok -> ok
+      {:error, errors} -> {:error, {:invalid_ip_list, errors}}
     end
   end
 
@@ -424,6 +418,16 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   defp format_mac(mac) when is_binary(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || mac
 
   defp format_ip(ip), do: Ipv4Util.format(ip) || ""
+
+  defp collect_ok(results) do
+    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if errors == [] do
+      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
+    else
+      {:error, errors}
+    end
+  end
 
   # Telemetry helpers
 
