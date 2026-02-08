@@ -335,13 +335,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   def handle_call(:load_from_file, _from, state) do
     case ServiceStore.load_services(state.storage_file) do
       {:ok, services} ->
-        # Clear existing file-based services
-        list_services(source: :file)
-        |> Enum.each(fn service ->
-          :ets.delete(@table_name, service.id)
-        end)
+        # Clear existing file-based services and register new ones
+        clear_file_services()
 
-        # Register new services
         Enum.each(services, fn service_def ->
           register_service_internal(service_def, state, source: :file)
         end)
@@ -360,13 +356,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   @impl true
   def handle_cast({:reload_from_file, services}, state) do
-    # Remove old file-based services
-    list_services(source: :file)
-    |> Enum.each(fn service ->
-      :ets.delete(@table_name, service.id)
-    end)
+    # Clear old file-based services and register new ones
+    clear_file_services()
 
-    # Register new services from file
     Enum.each(services, fn service_def ->
       register_service_internal(service_def, state, source: :file)
     end)
@@ -385,6 +377,14 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   defp init_table do
     if :ets.whereis(@table_name) == :undefined do
       :ets.new(@table_name, @ets_options)
+    end
+
+    :ok
+  end
+
+  defp clear_file_services do
+    for service <- list_services(source: :file) do
+      :ets.delete(@table_name, service.id)
     end
 
     :ok
