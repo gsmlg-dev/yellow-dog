@@ -502,8 +502,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
       dns_servers: parse_dns_servers(pool.dns_servers),
       enabled: true
     }
-    |> Enum.reject(fn {_, v} -> is_nil(v) || v == "" end)
-    |> Map.new()
+    |> Map.reject(fn {_, v} -> is_nil(v) || v == "" end)
   end
 
   defp parse_dns_servers(nil), do: nil

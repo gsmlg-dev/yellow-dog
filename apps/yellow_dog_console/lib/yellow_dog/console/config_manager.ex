@@ -370,7 +370,7 @@ defmodule YellowDog.Console.ConfigManager do
 
   defp format_table_entries(map) when is_map(map) do
     map
-    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    |> Map.reject(fn {_k, v} -> is_nil(v) or v == "" end)
     |> Enum.sort()
     |> Enum.map(fn {key, value} ->
       encoded = encode_toml_value(value)

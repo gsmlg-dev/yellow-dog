@@ -503,14 +503,12 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp parse_txt_records(txt_record) do
     case txt_record.data do
       list when is_list(list) ->
-        list
-        |> Enum.map(fn str ->
+        Map.new(list, fn str ->
           case String.split(str, "=", parts: 2) do
             [key, value] -> {key, value}
             [key] -> {key, ""}
           end
         end)
-        |> Map.new()
 
       _ ->
         %{}
