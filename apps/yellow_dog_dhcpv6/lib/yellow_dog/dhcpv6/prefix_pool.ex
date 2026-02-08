@@ -298,11 +298,7 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
           offset = :rand.uniform(max_prefixes) - 1
           candidate = calculate_delegated_prefix(pool, offset)
 
-          if not MapSet.member?(unavailable_prefixes, candidate) do
-            candidate
-          else
-            nil
-          end
+          unless MapSet.member?(unavailable_prefixes, candidate), do: candidate
         end)
 
       case result do

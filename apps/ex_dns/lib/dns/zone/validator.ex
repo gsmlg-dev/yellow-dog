@@ -206,12 +206,12 @@ defmodule DNS.Zone.Validator do
             aaaa.name.value == ns_name || String.ends_with?(ns_name, aaaa.name.value)
           end)
 
-        if not (has_a_record or has_aaaa_record) do
+        if has_a_record or has_aaaa_record do
+          warn_acc
+        else
           # Remove trailing dot for consistent formatting
           clean_name = String.trim_trailing(ns_name, ".")
           ["NS record #{clean_name} has no corresponding A/AAAA record" | warn_acc]
-        else
-          warn_acc
         end
       end)
 

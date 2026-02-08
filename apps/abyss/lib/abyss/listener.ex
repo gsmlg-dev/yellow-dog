@@ -236,7 +236,7 @@ defmodule Abyss.Listener do
       cache_listener_info(self(), {ip, port})
 
       # Start listening immediately for non-broadcast mode
-      if not broadcast do
+      unless broadcast do
         Process.send_after(self(), :start_listening, 0)
       end
 

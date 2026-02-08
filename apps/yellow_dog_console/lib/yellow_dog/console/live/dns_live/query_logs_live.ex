@@ -110,12 +110,12 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   @impl true
   def handle_info(:refresh, socket) do
     socket =
-      if not socket.assigns.paused do
+      if socket.assigns.paused do
+        socket
+      else
         socket
         |> load_entries()
         |> assign(:stats, fetch_stats())
-      else
-        socket
       end
 
     Process.send_after(self(), :refresh, @refresh_interval)

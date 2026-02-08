@@ -372,7 +372,7 @@ defmodule Abyss.Handler do
           ) do
         out = __MODULE__.handle_timeout(state)
         # Only call controlling_process if socket is not a reference (test environment)
-        if not is_reference(listener_socket) do
+        unless is_reference(listener_socket) do
           Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
         end
 
@@ -398,7 +398,7 @@ defmodule Abyss.Handler do
           ) do
         out = __MODULE__.handle_shutdown(state)
         # Only call controlling_process if socket is not a reference (test environment)
-        if not is_reference(listener_socket) do
+        unless is_reference(listener_socket) do
           Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
         end
 
@@ -431,7 +431,7 @@ defmodule Abyss.Handler do
           )
 
         # Only call controlling_process if socket is not a reference (test environment)
-        if not is_reference(listener_socket) do
+        unless is_reference(listener_socket) do
           Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
         end
 
@@ -458,7 +458,7 @@ defmodule Abyss.Handler do
           ) do
         out = __MODULE__.handle_close(state)
         # Only call controlling_process if socket is not a reference (test environment)
-        if not is_reference(listener_socket) do
+        unless is_reference(listener_socket) do
           Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
         end
 
@@ -485,7 +485,7 @@ defmodule Abyss.Handler do
               state
           ) do
         # Only call controlling_process if socket is not a reference (test environment)
-        if not is_reference(listener_socket) do
+        unless is_reference(listener_socket) do
           Abyss.Transport.UDP.controlling_process(listener_socket, listener_pid)
         end
 

@@ -135,25 +135,7 @@ defmodule YellowDog.RateLimiter do
         {global_allowed, new_global_tokens, new_global_time} =
           YellowDog.RateLimiter.check_global_limit(state, now)
 
-        if not global_allowed do
-          :telemetry.execute(
-            @telemetry_prefix ++ [:denied],
-            %{count: 1},
-            %{
-              reason: :global_limit,
-              client_id: YellowDog.RateLimiter.normalize_client_id(client_id)
-            }
-          )
-
-          new_state = %{
-            state
-            | global_tokens: new_global_tokens,
-              global_last_update: new_global_time,
-              total_denied: state.total_denied + 1
-          }
-
-          {:reply, {:error, :rate_limited}, new_state}
-        else
+        if global_allowed do
           client_key = YellowDog.RateLimiter.normalize_client_id(client_id)
 
           {client_allowed, _tokens} =
@@ -184,6 +166,24 @@ defmodule YellowDog.RateLimiter do
 
             {:reply, {:error, :rate_limited}, new_state}
           end
+        else
+          :telemetry.execute(
+            @telemetry_prefix ++ [:denied],
+            %{count: 1},
+            %{
+              reason: :global_limit,
+              client_id: YellowDog.RateLimiter.normalize_client_id(client_id)
+            }
+          )
+
+          new_state = %{
+            state
+            | global_tokens: new_global_tokens,
+              global_last_update: new_global_time,
+              total_denied: state.total_denied + 1
+          }
+
+          {:reply, {:error, :rate_limited}, new_state}
         end
       end
 

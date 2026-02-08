@@ -283,10 +283,10 @@ defmodule YellowDog.Dhcpv6.Lease do
   defp validate_iaid(_), do: {:error, "Invalid IAID"}
 
   defp validate_timestamps(%DateTime{} = start, %DateTime{} = valid) do
-    if not DateTime.after?(start, valid) do
-      :ok
-    else
+    if DateTime.after?(start, valid) do
       {:error, "Start time must be before or equal to valid_until time"}
+    else
+      :ok
     end
   end
 

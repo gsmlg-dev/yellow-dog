@@ -312,7 +312,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
         offset = :rand.uniform(end_int - start_int + 1) - 1
         ip = Ipv6Util.from_integer(start_int + offset)
 
-        if not MapSet.member?(unavailable_ips, ip), do: ip
+        unless MapSet.member?(unavailable_ips, ip), do: ip
       end)
 
     case result do

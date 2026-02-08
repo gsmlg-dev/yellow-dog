@@ -265,10 +265,10 @@ defmodule YellowDog.Dhcpv4.Lease do
   defp validate_mac(_), do: {:error, "Invalid MAC address"}
 
   defp validate_timestamps(%DateTime{} = start, %DateTime{} = expires) do
-    if not DateTime.after?(start, expires) do
-      :ok
-    else
+    if DateTime.after?(start, expires) do
       {:error, "Start time must be before or equal to expiration time"}
+    else
+      :ok
     end
   end
 
