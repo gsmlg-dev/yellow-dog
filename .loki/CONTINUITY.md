@@ -1,11 +1,16 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 164)
+**Phase**: IN_PROGRESS (Iteration 165)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 164 of 1000
+**Iteration**: 165 of 1000
 
 ## Session Summary
+Iteration 165: Add tests for ConfigHelpers.collect_ok/1:
+- ✅ **All tests pass: 34 config_helpers, 0 failures**
+- ✅ 5 new tests: all-ok, empty input, single error, multiple errors, complex values
+- ✅ 1 commit — 1 file — +25 lines
+
 Iteration 164: DRY supervisor child lookups in abyss server:
 - ✅ **All tests pass: 479 abyss, 0 failures, 0 warnings**
 - ✅ Extracted find_child_pid/2 from 2 identical try/rescue/catch blocks
