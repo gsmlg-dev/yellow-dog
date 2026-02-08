@@ -65,4 +65,22 @@ defmodule YellowDog.Dhcpv6.Ipv6UtilTest do
       assert {:error, _} = Ipv6Util.parse_string("")
     end
   end
+
+  describe "format/1" do
+    test "formats IPv6 tuple as lowercase colon-hex" do
+      assert Ipv6Util.format({0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1}) == "2001:db8:0:0:0:0:0:1"
+    end
+
+    test "formats all-zeros tuple" do
+      assert Ipv6Util.format({0, 0, 0, 0, 0, 0, 0, 0}) == "0:0:0:0:0:0:0:0"
+    end
+
+    test "passes through binary strings" do
+      assert Ipv6Util.format("fe80::1") == "fe80::1"
+    end
+
+    test "returns nil for nil" do
+      assert Ipv6Util.format(nil) == nil
+    end
+  end
 end

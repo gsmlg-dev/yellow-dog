@@ -377,15 +377,7 @@ defmodule YellowDog.Dhcpv6.Pool do
 
   # Formatting helpers
 
-  defp format_ipv6(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
-    addr
-    |> Tuple.to_list()
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
-    |> String.downcase()
-  end
-
-  defp format_ipv6(ip) when is_binary(ip), do: ip
-  defp format_ipv6(nil), do: nil
+  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   defp format_reservations(map) when map == %{}, do: nil
 

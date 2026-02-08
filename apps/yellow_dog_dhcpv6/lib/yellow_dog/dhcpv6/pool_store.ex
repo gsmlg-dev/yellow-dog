@@ -510,15 +510,7 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     Enum.join(lines, "\n") <> "\n"
   end
 
-  defp format_ipv6_for_toml(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
-    addr
-    |> Tuple.to_list()
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
-    |> String.downcase()
-  end
-
-  defp format_ipv6_for_toml(ip) when is_binary(ip), do: ip
-  defp format_ipv6_for_toml(nil), do: nil
+  defp format_ipv6_for_toml(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   # ============================================================================
   # Lease Persistence Functions

@@ -32,6 +32,22 @@ defmodule YellowDog.Dhcpv6.Ipv6Util do
      int >>> 16 &&& 0xFFFF, int &&& 0xFFFF}
   end
 
+  @doc """
+  Formats an IPv6 address as a lowercase colon-separated hex string.
+
+  Passes through binaries unchanged and returns `nil` for `nil`.
+  """
+  @spec format(ipv6_address() | binary() | nil) :: String.t() | nil
+  def format(nil), do: nil
+  def format(ip) when is_binary(ip), do: ip
+
+  def format(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
+    addr
+    |> Tuple.to_list()
+    |> Enum.map_join(":", &Integer.to_string(&1, 16))
+    |> String.downcase()
+  end
+
   @doc "Parses an IPv6 string into an 8-tuple."
   @spec parse_string(String.t()) :: {:ok, ipv6_address()} | {:error, String.t()}
   def parse_string(ip_string) when is_binary(ip_string) do

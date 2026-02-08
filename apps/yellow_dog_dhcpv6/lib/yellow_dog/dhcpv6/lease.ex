@@ -248,12 +248,7 @@ defmodule YellowDog.Dhcpv6.Lease do
 
   # Formatting helpers
 
-  defp format_ipv6(addr) when is_tuple(addr) and tuple_size(addr) == 8 do
-    addr
-    |> Tuple.to_list()
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
-    |> String.downcase()
-  end
+  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   defp format_duid_string(duid) when is_binary(duid) do
     # If it's already hex-encoded (contains colons or all hex chars), return as-is

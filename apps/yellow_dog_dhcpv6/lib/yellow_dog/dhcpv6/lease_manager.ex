@@ -1144,15 +1144,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     start1_int <= end2_int and start2_int <= end1_int
   end
 
-  defp format_ipv6(nil), do: nil
-
-  defp format_ipv6({a, b, c, d, e, f, g, h}) do
-    [a, b, c, d, e, f, g, h]
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
-    |> String.downcase()
-  end
-
-  defp format_ipv6(ip) when is_binary(ip), do: ip
+  defp format_ipv6(addr), do: YellowDog.Dhcpv6.Ipv6Util.format(addr)
 
   # Convert a pool struct to a config map suitable for PoolStore
   defp pool_struct_to_config(pool) do
