@@ -870,37 +870,24 @@ defmodule YellowDog.Dns.Zone.Auth do
     qname = normalize_name(question.name)
     qtype = normalize_type(question.type)
 
-    # Check if name is in this zone
     if in_zone?(state.name, qname) do
       records = lookup_records(state.table, qname, qtype)
+      cname_records = lookup_records(state.table, qname, :cname)
 
-      if Enum.any?(records) do
-        # Found matching records
-        response = build_response(query, records, state)
-        {:ok, response}
-      else
-        # Check for CNAME
-        cname_records = lookup_records(state.table, qname, :cname)
+      cond do
+        Enum.any?(records) ->
+          {:ok, build_response(query, records, state)}
 
-        if Enum.any?(cname_records) do
-          # Return CNAME
-          response = build_response(query, cname_records, state)
-          {:ok, response}
-        else
-          # Check if name exists (for NODATA vs NXDOMAIN)
-          if name_exists?(state.table, qname) do
-            # NODATA - name exists but no records of requested type
-            response = build_nodata_response(query, state)
-            {:ok, response}
-          else
-            # NXDOMAIN - name does not exist
-            response = build_nxdomain_response(query, state)
-            {:ok, response}
-          end
-        end
+        Enum.any?(cname_records) ->
+          {:ok, build_response(query, cname_records, state)}
+
+        name_exists?(state.table, qname) ->
+          {:ok, build_nodata_response(query, state)}
+
+        true ->
+          {:ok, build_nxdomain_response(query, state)}
       end
     else
-      # Not in this zone
       {:error, :refused}
     end
   end

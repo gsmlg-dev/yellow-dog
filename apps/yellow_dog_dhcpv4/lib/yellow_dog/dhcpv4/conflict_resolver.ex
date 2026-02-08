@@ -312,45 +312,36 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
     # Combine to get unavailable IPs
     unavailable_ips = MapSet.union(allocated_ips, quarantined_ips)
 
-    # Get pool configuration
-    case LeaseManager.get_pool_config(pool_name) do
-      {:ok, pool} ->
-        case AddressPool.get_available_ip(pool, unavailable_ips, mac) do
-          {:ok, new_ip} ->
-            # Allocate the new lease
-            case LeaseManager.allocate_lease(mac, new_ip, nil, pool_name) do
-              {:ok, lease} ->
-                :telemetry.execute(
-                  [:yellow_dog, :dhcpv4, :conflict, :reassigned],
-                  %{count: 1},
-                  %{
-                    client_mac: format_mac(mac),
-                    new_ip: format_ip(new_ip),
-                    pool_name: pool_name
-                  }
-                )
+    # Get pool configuration, find available IP, and allocate lease
+    with {:ok, pool} <- LeaseManager.get_pool_config(pool_name),
+         {:ok, new_ip} <- AddressPool.get_available_ip(pool, unavailable_ips, mac),
+         {:ok, lease} <- LeaseManager.allocate_lease(mac, new_ip, nil, pool_name) do
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :conflict, :reassigned],
+        %{count: 1},
+        %{
+          client_mac: format_mac(mac),
+          new_ip: format_ip(new_ip),
+          pool_name: pool_name
+        }
+      )
 
-                Logger.info("[DHCPv4] Conflict resolved",
-                  client_mac: format_mac(mac),
-                  new_ip: format_ip(lease.ip_address)
-                )
+      Logger.info("[DHCPv4] Conflict resolved",
+        client_mac: format_mac(mac),
+        new_ip: format_ip(lease.ip_address)
+      )
 
-                {:ok, new_ip}
+      {:ok, new_ip}
+    else
+      {:error, :pool_exhausted} ->
+        Logger.error("[DHCPv4] Cannot reassign after conflict: pool exhausted",
+          pool: pool_name
+        )
 
-              {:error, reason} ->
-                {:error, reason}
-            end
+        {:error, :pool_exhausted}
 
-          {:error, :pool_exhausted} ->
-            Logger.error("[DHCPv4] Cannot reassign after conflict: pool exhausted",
-              pool: pool_name
-            )
-
-            {:error, :pool_exhausted}
-        end
-
-      {:error, :pool_not_found} ->
-        {:error, :pool_not_found}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
