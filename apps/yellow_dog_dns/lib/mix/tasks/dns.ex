@@ -1,3 +1,19 @@
+defmodule Mix.Tasks.Dns.Helpers do
+  @moduledoc false
+
+  def format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
+
+  def colorize(text, color) do
+    case color do
+      :green -> IO.ANSI.format([:green, text]) |> IO.iodata_to_binary()
+      :yellow -> IO.ANSI.format([:yellow, text]) |> IO.iodata_to_binary()
+      :red -> IO.ANSI.format([:red, text]) |> IO.iodata_to_binary()
+      :blue -> IO.ANSI.format([:blue, text]) |> IO.iodata_to_binary()
+      _ -> text
+    end
+  end
+end
+
 defmodule Mix.Tasks.Dns do
   @moduledoc """
   Mix tasks for DNS server management and operations.
@@ -58,6 +74,7 @@ defmodule Mix.Tasks.Dns.Status do
   """
 
   use Mix.Task
+  import Mix.Tasks.Dns.Helpers
   @shortdoc "Display DNS server status"
 
   def run(_args) do
@@ -114,17 +131,6 @@ defmodule Mix.Tasks.Dns.Status do
         Mix.shell().error("Failed to get status: #{inspect(reason)}")
     end
   end
-
-  defp format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-
-  defp colorize(text, color) do
-    case color do
-      :green -> IO.ANSI.format([:green, text]) |> IO.iodata_to_binary()
-      :yellow -> IO.ANSI.format([:yellow, text]) |> IO.iodata_to_binary()
-      :red -> IO.ANSI.format([:red, text]) |> IO.iodata_to_binary()
-      _ -> text
-    end
-  end
 end
 
 defmodule Mix.Tasks.Dns.Health do
@@ -139,6 +145,7 @@ defmodule Mix.Tasks.Dns.Health do
   """
 
   use Mix.Task
+  import Mix.Tasks.Dns.Helpers
   @shortdoc "Run health check"
 
   def run(_args) do
@@ -193,16 +200,6 @@ defmodule Mix.Tasks.Dns.Health do
       System.halt(1)
     end
   end
-
-  defp colorize(text, color) do
-    case color do
-      :green -> IO.ANSI.format([:green, text]) |> IO.iodata_to_binary()
-      :yellow -> IO.ANSI.format([:yellow, text]) |> IO.iodata_to_binary()
-      :red -> IO.ANSI.format([:red, text]) |> IO.iodata_to_binary()
-      :blue -> IO.ANSI.format([:blue, text]) |> IO.iodata_to_binary()
-      _ -> text
-    end
-  end
 end
 
 defmodule Mix.Tasks.Dns.Metrics do
@@ -217,6 +214,7 @@ defmodule Mix.Tasks.Dns.Metrics do
   """
 
   use Mix.Task
+  import Mix.Tasks.Dns.Helpers
   @shortdoc "Display server metrics"
 
   def run(_args) do
@@ -258,8 +256,6 @@ defmodule Mix.Tasks.Dns.Metrics do
 
     Mix.shell().info("")
   end
-
-  defp format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
 end
 
 defmodule Mix.Tasks.Dns.Views do
@@ -432,6 +428,7 @@ defmodule Mix.Tasks.Dns.Reload do
   """
 
   use Mix.Task
+  import Mix.Tasks.Dns.Helpers
   @shortdoc "Trigger configuration reload"
 
   def run(_args) do
@@ -454,6 +451,4 @@ defmodule Mix.Tasks.Dns.Reload do
         Mix.shell().error("✗ Reload failed: #{inspect(reason)}")
     end
   end
-
-  defp format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
 end
