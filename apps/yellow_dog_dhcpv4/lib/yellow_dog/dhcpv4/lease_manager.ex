@@ -614,7 +614,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         existing_pool = Enum.at(state.pools, index)
 
         # Merge updates with existing pool config, preserving the name
-        updated_config = Map.merge(existing_pool, pool_config) |> Map.put(:name, pool_name)
+        updated_config = Map.merge(existing_pool, Map.put(pool_config, :name, pool_name))
 
         case AddressPool.new(updated_config) do
           {:ok, updated_pool} ->

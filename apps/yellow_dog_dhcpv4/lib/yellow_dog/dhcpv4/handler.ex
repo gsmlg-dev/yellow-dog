@@ -410,19 +410,19 @@ defmodule YellowDog.Dhcpv4.Handler do
       pool_name: lease.pool_name
     }
 
-    DHCPv4.Message.new()
-    # BOOTREPLY = 2
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, discover.htype)
-    |> Map.put(:hlen, discover.hlen)
-    |> Map.put(:xid, discover.xid)
-    |> Map.put(:flags, discover.flags)
-    |> Map.put(:ciaddr, 0)
-    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip_address))
-    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
-    |> Map.put(:giaddr, ip_tuple_to_integer(discover.giaddr))
-    |> Map.put(:chaddr, discover.chaddr)
-    |> Map.put(:options, build_dhcp_options(2, pool, lease, context, option_set_name))
+    Map.merge(DHCPv4.Message.new(), %{
+      op: 2,
+      htype: discover.htype,
+      hlen: discover.hlen,
+      xid: discover.xid,
+      flags: discover.flags,
+      ciaddr: 0,
+      yiaddr: ip_tuple_to_integer(lease.ip_address),
+      siaddr: ip_tuple_to_integer(pool.gateway),
+      giaddr: ip_tuple_to_integer(discover.giaddr),
+      chaddr: discover.chaddr,
+      options: build_dhcp_options(2, pool, lease, context, option_set_name)
+    })
   end
 
   defp create_dhcp_ack(request, parsed_opts, _client_ip, request_state) do
@@ -515,19 +515,19 @@ defmodule YellowDog.Dhcpv4.Handler do
       pool_name: lease.pool_name
     }
 
-    DHCPv4.Message.new()
-    # BOOTREPLY = 2
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, request.htype)
-    |> Map.put(:hlen, request.hlen)
-    |> Map.put(:xid, request.xid)
-    |> Map.put(:flags, request.flags)
-    |> Map.put(:ciaddr, ip_tuple_to_integer(request.ciaddr))
-    |> Map.put(:yiaddr, ip_tuple_to_integer(lease.ip_address))
-    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
-    |> Map.put(:giaddr, ip_tuple_to_integer(request.giaddr))
-    |> Map.put(:chaddr, request.chaddr)
-    |> Map.put(:options, build_dhcp_options(5, pool, lease, context))
+    Map.merge(DHCPv4.Message.new(), %{
+      op: 2,
+      htype: request.htype,
+      hlen: request.hlen,
+      xid: request.xid,
+      flags: request.flags,
+      ciaddr: ip_tuple_to_integer(request.ciaddr),
+      yiaddr: ip_tuple_to_integer(lease.ip_address),
+      siaddr: ip_tuple_to_integer(pool.gateway),
+      giaddr: ip_tuple_to_integer(request.giaddr),
+      chaddr: request.chaddr,
+      options: build_dhcp_options(5, pool, lease, context)
+    })
   end
 
   defp build_dhcp_nak(request, reason) do
@@ -535,20 +535,20 @@ defmodule YellowDog.Dhcpv4.Handler do
     pool = get_default_pool()
 
     # Build DHCPNAK message according to RFC 2131
-    DHCPv4.Message.new()
-    # BOOTREPLY = 2
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, request.htype)
-    |> Map.put(:hlen, request.hlen)
-    |> Map.put(:xid, request.xid)
-    |> Map.put(:flags, request.flags)
     # RFC 2131: ciaddr, yiaddr, siaddr, and giaddr are set to 0
-    |> Map.put(:ciaddr, 0)
-    |> Map.put(:yiaddr, 0)
-    |> Map.put(:siaddr, 0)
-    |> Map.put(:giaddr, 0)
-    |> Map.put(:chaddr, request.chaddr)
-    |> Map.put(:options, build_dhcp_nak_options(pool, reason))
+    Map.merge(DHCPv4.Message.new(), %{
+      op: 2,
+      htype: request.htype,
+      hlen: request.hlen,
+      xid: request.xid,
+      flags: request.flags,
+      ciaddr: 0,
+      yiaddr: 0,
+      siaddr: 0,
+      giaddr: 0,
+      chaddr: request.chaddr,
+      options: build_dhcp_nak_options(pool, reason)
+    })
   end
 
   defp build_dhcp_nak_options(pool, reason) do
@@ -598,18 +598,17 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp build_dhcp_ack_inform(inform, client_ip, pool) do
-    DHCPv4.Message.new()
-    # BOOTREPLY = 2
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, inform.htype)
-    |> Map.put(:hlen, inform.hlen)
-    |> Map.put(:xid, inform.xid)
-    |> Map.put(:flags, inform.flags)
-    |> Map.put(:ciaddr, ip_tuple_to_integer(client_ip))
-    |> Map.put(:siaddr, ip_tuple_to_integer(pool.gateway))
-    |> Map.put(:giaddr, ip_tuple_to_integer(inform.giaddr))
-    |> Map.put(:chaddr, inform.chaddr)
-    |> Map.put(:options, [
+    Map.merge(DHCPv4.Message.new(), %{
+      op: 2,
+      htype: inform.htype,
+      hlen: inform.hlen,
+      xid: inform.xid,
+      flags: inform.flags,
+      ciaddr: ip_tuple_to_integer(client_ip),
+      siaddr: ip_tuple_to_integer(pool.gateway),
+      giaddr: ip_tuple_to_integer(inform.giaddr),
+      chaddr: inform.chaddr,
+      options: [
       # DHCPACK = 5
       %DHCPv4.Message.Option{type: 53, length: 1, value: <<5>>},
       # server identifier
@@ -622,7 +621,7 @@ defmodule YellowDog.Dhcpv4.Handler do
       %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
       # :end
       %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
-    ])
+    ]})
   end
 
   defp send_dhcp_response(response, client_ip, client_port, state) do

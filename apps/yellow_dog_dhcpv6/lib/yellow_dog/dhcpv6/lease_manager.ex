@@ -522,7 +522,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         existing_pool = Enum.at(state.pools, index)
 
         # Merge updates with existing pool config, preserving the name
-        updated_config = Map.merge(existing_pool, pool_config) |> Map.put(:name, pool_name)
+        updated_config = Map.merge(existing_pool, Map.put(pool_config, :name, pool_name))
 
         case AddressPool.new(updated_config) do
           {:ok, updated_pool} ->
@@ -985,10 +985,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         lease_key = make_lease_key(lease.duid, lease.iaid)
 
         # Ensure lease has both ip and ip_address for compatibility
-        lease_with_compat =
-          lease
-          |> Map.put(:ip, lease[:ip_address] || lease[:ip])
-          |> Map.put(:ip_address, lease[:ip_address] || lease[:ip])
+        ip = lease[:ip_address] || lease[:ip]
+        lease_with_compat = Map.merge(lease, %{ip: ip, ip_address: ip})
 
         :ets.insert(@table_name, {lease_key, lease_with_compat})
         count + 1
