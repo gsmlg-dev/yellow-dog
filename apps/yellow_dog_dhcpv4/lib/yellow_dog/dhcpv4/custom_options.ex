@@ -38,6 +38,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   """
 
   require Logger
+  import YellowDog.ConfigHelpers, only: [collect_ok: 1]
 
   alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
 
@@ -418,16 +419,6 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   defp format_mac(mac) when is_binary(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || mac
 
   defp format_ip(ip), do: Ipv4Util.format(ip) || ""
-
-  defp collect_ok(results) do
-    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
-
-    if errors == [] do
-      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
-    else
-      {:error, errors}
-    end
-  end
 
   # Telemetry helpers
 

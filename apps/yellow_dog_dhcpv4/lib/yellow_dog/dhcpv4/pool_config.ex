@@ -27,6 +27,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
 
   require Logger
   import Bitwise
+  import YellowDog.ConfigHelpers, only: [collect_ok: 1]
 
   alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
 
@@ -343,18 +344,6 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   end
 
   defp validate_mac(_), do: {:error, :invalid_mac_type}
-
-  # Partitions a list of {:ok, val} | {:error, reason} results.
-  # Returns {:ok, values} if all succeeded, {:error, errors} otherwise.
-  defp collect_ok(results) do
-    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
-
-    if errors == [] do
-      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
-    else
-      {:error, errors}
-    end
-  end
 
   # Telemetry helpers
 

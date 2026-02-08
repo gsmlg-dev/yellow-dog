@@ -29,6 +29,7 @@ defmodule YellowDog.Dhcpv4.ACL do
   """
 
   require Logger
+  import YellowDog.ConfigHelpers, only: [collect_ok: 1]
 
   @type mac_address :: binary()
   @type action :: :allow | :deny | :custom_options
@@ -339,16 +340,6 @@ defmodule YellowDog.Dhcpv4.ACL do
   end
 
   defp format_mac(_), do: ""
-
-  defp collect_ok(results) do
-    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
-
-    if errors == [] do
-      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
-    else
-      {:error, errors}
-    end
-  end
 
   # Telemetry helpers
 

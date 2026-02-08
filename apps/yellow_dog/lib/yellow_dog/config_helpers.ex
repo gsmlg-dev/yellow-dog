@@ -112,6 +112,23 @@ defmodule YellowDog.ConfigHelpers do
   def parse_option_code(code), do: parse_option_code(to_string(code))
 
   @doc """
+  Partitions a list of `{:ok, val} | {:error, reason}` results.
+
+  Returns `{:ok, values}` if all results are ok, `{:error, errors}` otherwise.
+  """
+  @spec collect_ok([{:ok, term()} | {:error, term()}]) ::
+          {:ok, [term()]} | {:error, [{:error, term()}]}
+  def collect_ok(results) do
+    {oks, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if errors == [] do
+      {:ok, Enum.map(oks, fn {:ok, val} -> val end)}
+    else
+      {:error, errors}
+    end
+  end
+
+  @doc """
   Conditionally puts a value into a map, skipping `nil` values.
   """
   @spec maybe_put(map(), String.t(), term()) :: map()
