@@ -92,7 +92,7 @@ defmodule DNS.Zone.Recursive do
                  header = resp_message.header
                  rcode = header.rcode
 
-                 if to_string(rcode) == "NoError" do
+                 if rcode == DNS.Message.RCode.no_error() do
                    if header.ancount > 0 do
                      awnsers = resp_message.anlist
                      {:ok, {:awnsers, awnsers, resp_message}}

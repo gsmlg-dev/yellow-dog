@@ -617,37 +617,24 @@ defmodule DNS.Zone.Editor do
     "#{name} #{record.ttl} IN #{String.upcase(to_string(record.type))} #{format_record_data(record)}"
   end
 
-  defp format_record_data_for_export(record) do
-    type_str = to_string(record.type)
+  defp format_record_data_for_export(%{type: :a} = record),
+    do: record.data.data |> Tuple.to_list() |> Enum.join(".")
 
-    cond do
-      type_str == "A" ->
-        record.data.data |> Tuple.to_list() |> Enum.join(".")
+  defp format_record_data_for_export(%{type: :aaaa} = record),
+    do: record.data.data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
 
-      type_str == "AAAA" ->
-        record.data.data
-        |> Tuple.to_list()
-        |> Enum.map_join(":", &Integer.to_string(&1, 16))
+  defp format_record_data_for_export(%{type: type} = record) when type in [:cname, :ns, :txt],
+    do: to_string(record.data.data)
 
-      type_str == "CNAME" ->
-        to_string(record.data.data)
-
-      type_str == "NS" ->
-        to_string(record.data.data)
-
-      type_str == "MX" ->
-        {priority, exchange} = record.data.data
-        "#{priority} #{exchange}"
-
-      type_str == "TXT" ->
-        to_string(record.data.data)
-
-      type_str == "SOA" ->
-        {mname, rname, serial, refresh, retry, expire, minimum} = record.data.data
-        "#{mname} #{rname} #{serial} #{refresh} #{retry} #{expire} #{minimum}"
-
-      true ->
-        inspect(record.data.data)
-    end
+  defp format_record_data_for_export(%{type: :mx} = record) do
+    {priority, exchange} = record.data.data
+    "#{priority} #{exchange}"
   end
+
+  defp format_record_data_for_export(%{type: :soa} = record) do
+    {mname, rname, serial, refresh, retry, expire, minimum} = record.data.data
+    "#{mname} #{rname} #{serial} #{refresh} #{retry} #{expire} #{minimum}"
+  end
+
+  defp format_record_data_for_export(record), do: inspect(record.data.data)
 end
