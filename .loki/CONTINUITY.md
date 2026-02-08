@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 200)
+**Phase**: IN_PROGRESS (Iteration 201)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 200 of 1000
+**Iteration**: 201 of 1000
 
 ## Session Summary
+Iteration 201: inline DHCPv6 renew/rebind + fix missed get_in:
+- ✅ **All tests pass: 670 ex_dhcp, 299 DHCPv6 — 0 failures, 0 warnings**
+- ✅ Inlined handle_renew/handle_rebind wrappers → single `type when type in [5, 6]` guard
+- ✅ Fixed missed nested Map.get in release_addresses (acc_state vs state variable name)
+- ✅ 1 commit — 1 file — net -10 lines
+
 Iteration 200: MapSet.size comparisons → Enum.empty?:
 - ✅ **All tests pass: 670 ex_dhcp, 1122 console — 0 failures, 0 warnings**
 - ✅ DHCPv4 server: 1× MapSet.size(x) > 0 → unless Enum.empty?(x)
