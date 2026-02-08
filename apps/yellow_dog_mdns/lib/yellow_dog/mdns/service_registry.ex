@@ -279,8 +279,11 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   def handle_call({:unregister_service, service_id, opts}, _from, state) do
     persist = Keyword.get(opts, :persist, false)
 
-    case :ets.lookup(@table_name, service_id) do
-      [{^service_id, _service}] ->
+    case get_service(service_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      _service ->
         :ets.delete(@table_name, service_id)
 
         if persist and state.auto_save do
@@ -289,9 +292,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
         notify_service_change(:unregistered, service_id)
         {:reply, :ok, state}
-
-      [] ->
-        {:reply, {:error, :not_found}, state}
     end
   end
 
@@ -299,8 +299,11 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   def handle_call({:update_service, service_id, updates, opts}, _from, state) do
     persist = Keyword.get(opts, :persist, false)
 
-    case :ets.lookup(@table_name, service_id) do
-      [{^service_id, service}] ->
+    case get_service(service_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      service ->
         updated_service = Map.merge(service, updates)
         :ets.insert(@table_name, {service_id, updated_service})
 
@@ -310,16 +313,16 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
         notify_service_change(:updated, service_id)
         {:reply, :ok, state}
-
-      [] ->
-        {:reply, {:error, :not_found}, state}
     end
   end
 
   @impl true
   def handle_call({:toggle_service, service_id}, _from, state) do
-    case :ets.lookup(@table_name, service_id) do
-      [{^service_id, service}] ->
+    case get_service(service_id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      service ->
         updated_service = %{service | enabled: not service.enabled}
         :ets.insert(@table_name, {service_id, updated_service})
 
@@ -329,9 +332,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
         notify_service_change(:toggled, service_id)
         {:reply, :ok, state}
-
-      [] ->
-        {:reply, {:error, :not_found}, state}
     end
   end
 
