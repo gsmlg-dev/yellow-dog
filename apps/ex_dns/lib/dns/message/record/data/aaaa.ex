@@ -1,4 +1,6 @@
 defmodule DNS.Message.Record.Data.AAAA do
+  @moduledoc false
+
   @type t :: %__MODULE__{
           type: DNS.ResourceRecordType.t(),
           rdlength: 16,

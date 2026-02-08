@@ -1,4 +1,6 @@
 defmodule DNS.Message.Record.Data.NSEC do
+  @moduledoc false
+
   alias DNS.Message.Domain
 
   @type t :: %__MODULE__{

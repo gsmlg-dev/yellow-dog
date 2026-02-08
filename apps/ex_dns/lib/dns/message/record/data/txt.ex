@@ -1,4 +1,6 @@
 defmodule DNS.Message.Record.Data.TXT do
+  @moduledoc false
+
   @type t :: %__MODULE__{
           type: DNS.ResourceRecordType.t(),
           rdlength: 1..65535,
