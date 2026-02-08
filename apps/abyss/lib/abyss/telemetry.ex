@@ -677,9 +677,10 @@ defmodule Abyss.Telemetry do
   @spec start_child_span(t(), span_name(), measurements(), metadata()) :: t()
   def start_child_span(parent_span, span_name, measurements \\ %{}, metadata \\ %{}) do
     metadata =
-      metadata
-      |> Map.put(:parent_telemetry_span_context, parent_span.telemetry_span_context)
-      |> Map.put(:handler, parent_span.start_metadata.handler)
+      Map.merge(metadata, %{
+        parent_telemetry_span_context: parent_span.telemetry_span_context,
+        handler: parent_span.start_metadata.handler
+      })
 
     start_span(span_name, measurements, metadata)
   end
@@ -695,9 +696,10 @@ defmodule Abyss.Telemetry do
         opts \\ []
       ) do
     metadata =
-      metadata
-      |> Map.put(:parent_telemetry_span_context, parent_span.telemetry_span_context)
-      |> Map.put(:handler, parent_span.start_metadata.handler)
+      Map.merge(metadata, %{
+        parent_telemetry_span_context: parent_span.telemetry_span_context,
+        handler: parent_span.start_metadata.handler
+      })
 
     start_span_with_sampling(span_name, measurements, metadata, opts)
   end

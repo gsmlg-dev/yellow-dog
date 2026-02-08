@@ -247,42 +247,39 @@ defmodule DHCPv4.Server do
   ## Message Building
 
   defp build_offer(state, request, lease) do
-    Message.new()
-    # BOOTREPLY
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, request.htype)
-    |> Map.put(:hlen, request.hlen)
-    |> Map.put(:xid, request.xid)
-    |> Map.put(:yiaddr, lease.ip)
-    |> Map.put(:siaddr, state.config.gateway || {0, 0, 0, 0})
-    |> Map.put(:chaddr, request.chaddr)
-    # DHCPOFFER
+    Map.merge(Message.new(), %{
+      op: 2,
+      htype: request.htype,
+      hlen: request.hlen,
+      xid: request.xid,
+      yiaddr: lease.ip,
+      siaddr: state.config.gateway || {0, 0, 0, 0},
+      chaddr: request.chaddr
+    })
     |> add_dhcp_options(0, lease, 2, state)
   end
 
   defp build_ack(state, request, lease) do
-    Message.new()
-    # BOOTREPLY
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, request.htype)
-    |> Map.put(:hlen, request.hlen)
-    |> Map.put(:xid, request.xid)
-    |> Map.put(:yiaddr, (lease && lease.ip) || {0, 0, 0, 0})
-    |> Map.put(:siaddr, state.config.gateway || {0, 0, 0, 0})
-    |> Map.put(:chaddr, request.chaddr)
-    # DHCPACK
+    Map.merge(Message.new(), %{
+      op: 2,
+      htype: request.htype,
+      hlen: request.hlen,
+      xid: request.xid,
+      yiaddr: (lease && lease.ip) || {0, 0, 0, 0},
+      siaddr: state.config.gateway || {0, 0, 0, 0},
+      chaddr: request.chaddr
+    })
     |> add_dhcp_options(0, lease, 5, state)
   end
 
   defp build_nak(request, message) do
-    Message.new()
-    # BOOTREPLY
-    |> Map.put(:op, 2)
-    |> Map.put(:htype, request.htype)
-    |> Map.put(:hlen, request.hlen)
-    |> Map.put(:xid, request.xid)
-    |> Map.put(:chaddr, request.chaddr)
-    # DHCPNAK
+    Map.merge(Message.new(), %{
+      op: 2,
+      htype: request.htype,
+      hlen: request.hlen,
+      xid: request.xid,
+      chaddr: request.chaddr
+    })
     |> add_option(53, 1, <<6>>)
     |> add_option(56, byte_size(message), message)
   end

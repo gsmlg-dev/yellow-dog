@@ -425,10 +425,7 @@ defmodule DHCPv6.Server do
   end
 
   defp build_advertise_no_addrs(message) do
-    Message.new()
-    # ADVERTISE
-    |> Map.put(:msg_type, 2)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 2, transaction_id: message.transaction_id})
     |> add_status_code_option(2, "No addresses available")
   end
 
@@ -437,44 +434,29 @@ defmodule DHCPv6.Server do
   end
 
   defp build_reply_message(state, message, addresses, include_ia_na, rapid_commit) do
-    Message.new()
-    # REPLY
-    |> Map.put(:msg_type, 7)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 7, transaction_id: message.transaction_id})
     |> maybe_add_rapid_commit(rapid_commit)
     |> add_dns_servers(state.config.dns_servers)
     |> add_ia_na_options(addresses, include_ia_na)
   end
 
   defp build_reply_no_addrs(message) do
-    Message.new()
-    # REPLY
-    |> Map.put(:msg_type, 7)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 7, transaction_id: message.transaction_id})
     |> add_status_code_option(2, "No addresses available")
   end
 
   defp build_reply_failure(message, reason) do
-    Message.new()
-    # REPLY
-    |> Map.put(:msg_type, 7)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 7, transaction_id: message.transaction_id})
     |> add_status_code_option(1, Atom.to_string(reason))
   end
 
   defp build_reply_release(message) do
-    Message.new()
-    # REPLY
-    |> Map.put(:msg_type, 7)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 7, transaction_id: message.transaction_id})
     |> add_status_code_option(0, "Success")
   end
 
   defp build_information_reply(state, message) do
-    Message.new()
-    # REPLY
-    |> Map.put(:msg_type, 7)
-    |> Map.put(:transaction_id, message.transaction_id)
+    Map.merge(Message.new(), %{msg_type: 7, transaction_id: message.transaction_id})
     |> add_dns_servers(state.config.dns_servers)
     |> add_status_code_option(0, "Success")
   end

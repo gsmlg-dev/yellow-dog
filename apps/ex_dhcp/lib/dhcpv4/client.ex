@@ -29,16 +29,7 @@ defmodule DHCPv4.Client do
     hostname = Keyword.get(opts, :hostname)
     requested_ip = Keyword.get(opts, :requested_ip)
 
-    Message.new()
-    # BOOTREQUEST
-    |> Map.put(:op, 1)
-    # Ethernet
-    |> Map.put(:htype, 1)
-    # MAC length
-    |> Map.put(:hlen, 6)
-    |> Map.put(:xid, xid)
-    |> Map.put(:chaddr, pad_mac(mac))
-    # DHCPDISCOVER
+    Map.merge(Message.new(), %{op: 1, htype: 1, hlen: 6, xid: xid, chaddr: pad_mac(mac)})
     |> add_option(53, 1, <<1>>)
     |> maybe_add_option(12, hostname)
     |> maybe_add_option(50, requested_ip)
@@ -61,16 +52,7 @@ defmodule DHCPv4.Client do
     requested_ip = Keyword.fetch!(opts, :requested_ip)
     xid = Keyword.get(opts, :xid, SecureRandom.generate_dhcpv4_xid())
 
-    Message.new()
-    # BOOTREQUEST
-    |> Map.put(:op, 1)
-    # Ethernet
-    |> Map.put(:htype, 1)
-    # MAC length
-    |> Map.put(:hlen, 6)
-    |> Map.put(:xid, xid)
-    |> Map.put(:chaddr, pad_mac(mac))
-    # DHCPREQUEST
+    Map.merge(Message.new(), %{op: 1, htype: 1, hlen: 6, xid: xid, chaddr: pad_mac(mac)})
     |> add_option(53, 1, <<3>>)
     |> add_option(54, 4, ip_to_binary(server_ip))
     |> add_option(50, 4, ip_to_binary(requested_ip))
@@ -93,17 +75,14 @@ defmodule DHCPv4.Client do
     leased_ip = Keyword.fetch!(opts, :leased_ip)
     xid = Keyword.get(opts, :xid, SecureRandom.generate_dhcpv4_xid())
 
-    Message.new()
-    # BOOTREQUEST
-    |> Map.put(:op, 1)
-    # Ethernet
-    |> Map.put(:htype, 1)
-    # MAC length
-    |> Map.put(:hlen, 6)
-    |> Map.put(:xid, xid)
-    |> Map.put(:ciaddr, leased_ip)
-    |> Map.put(:chaddr, pad_mac(mac))
-    # DHCPRELEASE
+    Map.merge(Message.new(), %{
+      op: 1,
+      htype: 1,
+      hlen: 6,
+      xid: xid,
+      ciaddr: leased_ip,
+      chaddr: pad_mac(mac)
+    })
     |> add_option(53, 1, <<7>>)
     |> add_option(54, 4, ip_to_binary(server_ip))
   end
@@ -125,16 +104,7 @@ defmodule DHCPv4.Client do
     declined_ip = Keyword.fetch!(opts, :declined_ip)
     xid = Keyword.get(opts, :xid, SecureRandom.generate_dhcpv4_xid())
 
-    Message.new()
-    # BOOTREQUEST
-    |> Map.put(:op, 1)
-    # Ethernet
-    |> Map.put(:htype, 1)
-    # MAC length
-    |> Map.put(:hlen, 6)
-    |> Map.put(:xid, xid)
-    |> Map.put(:chaddr, pad_mac(mac))
-    # DHCPDECLINE
+    Map.merge(Message.new(), %{op: 1, htype: 1, hlen: 6, xid: xid, chaddr: pad_mac(mac)})
     |> add_option(53, 1, <<4>>)
     |> add_option(54, 4, ip_to_binary(server_ip))
     |> add_option(50, 4, ip_to_binary(declined_ip))

@@ -34,11 +34,7 @@ defmodule DHCPv6.Client do
     rapid_commit = Keyword.get(opts, :rapid_commit, false)
     dns_servers = Keyword.get(opts, :dns_servers, true)
 
-    Message.new()
-    # SOLICIT
-    |> Map.put(:msg_type, 1)
-    |> Map.put(:transaction_id, <<transaction_id::24>>)
-    # CLIENTID
+    Map.merge(Message.new(), %{msg_type: 1, transaction_id: <<transaction_id::24>>})
     |> add_option(1, duid)
     |> add_ia_na(iaid)
     |> maybe_add_rapid_commit(rapid_commit)
@@ -66,11 +62,7 @@ defmodule DHCPv6.Client do
     transaction_id =
       Keyword.get(opts, :transaction_id, SecureRandom.generate_dhcpv6_transaction_id())
 
-    Message.new()
-    # REQUEST
-    |> Map.put(:msg_type, 3)
-    |> Map.put(:transaction_id, <<transaction_id::24>>)
-    # CLIENTID
+    Map.merge(Message.new(), %{msg_type: 3, transaction_id: <<transaction_id::24>>})
     |> add_option(1, duid)
     # SERVERID
     |> add_option(2, server_duid)
@@ -98,11 +90,7 @@ defmodule DHCPv6.Client do
     transaction_id =
       Keyword.get(opts, :transaction_id, SecureRandom.generate_dhcpv6_transaction_id())
 
-    Message.new()
-    # RENEW
-    |> Map.put(:msg_type, 5)
-    |> Map.put(:transaction_id, <<transaction_id::24>>)
-    # CLIENTID
+    Map.merge(Message.new(), %{msg_type: 5, transaction_id: <<transaction_id::24>>})
     |> add_option(1, duid)
     # SERVERID
     |> add_option(2, server_duid)
@@ -130,11 +118,7 @@ defmodule DHCPv6.Client do
     transaction_id =
       Keyword.get(opts, :transaction_id, SecureRandom.generate_dhcpv6_transaction_id())
 
-    Message.new()
-    # RELEASE
-    |> Map.put(:msg_type, 8)
-    |> Map.put(:transaction_id, <<transaction_id::24>>)
-    # CLIENTID
+    Map.merge(Message.new(), %{msg_type: 8, transaction_id: <<transaction_id::24>>})
     |> add_option(1, duid)
     # SERVERID
     |> add_option(2, server_duid)
@@ -159,11 +143,7 @@ defmodule DHCPv6.Client do
 
     dns_servers = Keyword.get(opts, :dns_servers, true)
 
-    Message.new()
-    # INFORMATION-REQUEST
-    |> Map.put(:msg_type, 10)
-    |> Map.put(:transaction_id, <<transaction_id::24>>)
-    # CLIENTID
+    Map.merge(Message.new(), %{msg_type: 10, transaction_id: <<transaction_id::24>>})
     |> add_option(1, duid)
     |> maybe_add_oro(dns_servers)
   end
