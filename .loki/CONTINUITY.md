@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 143)
+**Phase**: IN_PROGRESS (Iteration 144)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 143 of 1000
+**Iteration**: 144 of 1000
 
 ## Session Summary
+Iteration 144: Use Map.reject and Map.new for idiomatic map operations:
+- ✅ **All tests pass: 1111 console, 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Replaced Enum.reject|>Map.new with Map.reject on map literals (pools_live x2, config_manager)
+- ✅ Replaced Enum.map|>Map.new with Map.new(enum, fn) in network_monitor
+- ✅ 1 commit — 4 files — net -4 lines
+
 Iteration 143: DRY format_dns_servers into FormatHelper:
 - ✅ **All tests pass: 1111 console, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Extracted format_dns_servers/1 from dhcpv4 + dhcpv6 pools_live into FormatHelper
