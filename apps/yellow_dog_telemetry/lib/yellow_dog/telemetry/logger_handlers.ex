@@ -176,11 +176,7 @@ defmodule YellowDog.Telemetry.LoggerHandlers do
   """
   @spec detach_all() :: :ok
   def detach_all do
-    Enum.each(@handler_ids, fn handler_id ->
-      # Ignore errors from detaching non-existent handlers
-      :telemetry.detach(handler_id)
-    end)
-
+    for id <- @handler_ids, do: :telemetry.detach(id)
     :ok
   end
 
