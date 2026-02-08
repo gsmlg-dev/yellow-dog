@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 178)
+**Phase**: IN_PROGRESS (Iteration 179)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 178 of 1000
+**Iteration**: 179 of 1000
 
 ## Session Summary
+Iteration 179: Data-driven recommendations + DRY timestamp formatters:
+- ✅ **All tests pass: 1122 console (7 new), 0 failures, 0 warnings**
+- ✅ Converted generate_recommendations/1 from mutable-rebinding to data-driven checks list with for comprehension (30→15 lines)
+- ✅ Added integer overloads: format_time/1 (unix s), format_time_ms/1 (unix ns), new format_time_ago/1
+- ✅ Removed 6 duplicate defp format_timestamp/format_time wrappers across 6 LiveView modules
+- ✅ discovery_live, monitor_live, logs_live, query_logs_live, query_history, result_display all import from FormatHelper
+- ✅ 2 commits — 11 files — net -19 lines
+
 Iteration 178: DRY record type mapping + dead code cleanup:
 - ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 1115 console, 0 failures, 0 warnings**
 - ✅ Extracted shared @record_type_to_option_key map to DNS.Zone as single source of truth
