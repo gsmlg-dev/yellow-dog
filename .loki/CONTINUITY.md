@@ -1,11 +1,32 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 125)
+**Phase**: IN_PROGRESS (Iteration 128)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 125 of 1000
+**Iteration**: 128 of 1000
 
 ## Session Summary
+Iteration 128: Extract IpFormat module, remove 8 duplicate format_ip copies:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Created `YellowDog.Dns.IpFormat` with `format/1` handling tuple/binary/other
+- ✅ Removed identical `defp format_ip` from 8 DNS modules: server, metrics_collector, view_manager, connection_process, connection_manager, handler/tcp, handler/udp, supervisor, zone/stub
+- ✅ 10 files (1 new + 9 modified) — net -9 lines
+
+Iteration 127: Fix O(n²) list building, remove format_ipv6 wrappers:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Replaced `acc ++ [...]` inside `Enum.reduce` with `Enum.flat_map` in editor.ex export functions
+- ✅ Removed 4 identical `defp format_ipv6` wrappers in DHCPv6 modules (lease, pool, lease_manager, pool_store)
+- ✅ Each wrapper just delegated to `Ipv6Util.format/1` — now uses alias directly
+- ✅ 5 files — net -4 lines
+
+Iteration 126: IpUtil tests, zone_not_found helper, pattern matching refactor:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Added 20 unit tests for DHCPv4.IpUtil and DHCPv6.IpUtil (round-trip, edge cases)
+- ✅ Extracted `zone_not_found/1` helper in editor.ex (7 occurrences) and transfer.ex (3 occurrences)
+- ✅ Refactored `format_record_data_for_export` from cond+to_string to multi-head function clauses
+- ✅ Replaced `to_string(rcode) == "NoError"` with struct equality `rcode == RCode.no_error()`
+- ✅ 3 commits
+
 Iteration 125: CSV bug fix, DRY magic cookie constants:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ Fixed DHCPv6 pools CSV filename — was missing date timestamp (copy-paste bug from DHCPv4)
