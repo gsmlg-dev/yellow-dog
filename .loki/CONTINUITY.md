@@ -1,11 +1,25 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 136)
+**Phase**: IN_PROGRESS (Iteration 137)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 136 of 1000
+**Iteration**: 137 of 1000
 
 ## Session Summary
+Iteration 137: DRY format_ip, Enum pattern simplification, frequencies_by:
+- ✅ **All tests pass: 0 failures, 0 credo issues, 0 warnings**
+- ✅ Replaced format_ip in custom_options.ex (3→1 clause via Ipv4Util.format/1)
+- ✅ Replaced format_ip in conflict_resolver.ex (2→1 clause via Ipv4Util.format/1)
+- ✅ Merged identical format_ipv4/format_ipv6 into format_ip_address in rr_live/index.ex
+- ✅ Replaced format_ip in query_logs_live.ex (4→2 clauses via IpFormat.format/1)
+- ✅ Replaced group_by+Map.new(length) with Enum.frequencies_by in pool_stats.ex
+- ✅ Extracted sum_range_sizes/1 helper in address_pool.ex (DRY 2 identical reductions)
+- ✅ Simplified merge_option_sets: reduce+Map.merge → flat_map+Map.new
+- ✅ Replaced 3 group_by+Map.new(length) with frequencies_by in DHCPv6 lease_manager
+- ✅ Replaced 7-clause Map.update! reduce with frequencies_by+Enum.count in mDNS service_registry
+- ✅ Replaced Enum.filter+length with Enum.count/2 in abyss listener_pool_scaler
+- ✅ 4 commits — net -50+ lines
+
 Iteration 136: Tests, performance, DRY delegation, single-pass joins:
 - ✅ **All tests pass: 0 failures, 0 credo issues, 0 warnings**
 - ✅ Added 22 unit tests for IpFormat module (format, parse, parse_v4, parse_v6)
