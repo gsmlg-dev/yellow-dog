@@ -261,27 +261,28 @@ defmodule YellowDog.Dhcpv6.PrefixPool do
   defp parse_prefix_list(_), do: []
 
   defp parse_reservations(reservations) when is_list(reservations) do
-    Enum.reduce(reservations, %{}, fn
-      %{duid: duid, prefix: prefix_str, prefix_length: len}, acc
-      when is_binary(prefix_str) and is_integer(len) ->
-        case Ipv6Util.parse_string(prefix_str) do
-          {:ok, prefix_addr} ->
-            Map.put(acc, DuidFormat.format!(duid), {prefix_addr, len})
-
-          _ ->
-            acc
-        end
-
-      %{duid: duid, prefix: prefix_addr, prefix_length: len}, acc
-      when is_tuple(prefix_addr) and is_integer(len) ->
-        Map.put(acc, DuidFormat.format!(duid), {prefix_addr, len})
-
-      _, acc ->
-        acc
-    end)
+    for r <- reservations,
+        {key, val} <- [parse_prefix_reservation(r)],
+        into: %{},
+        do: {key, val}
   end
 
   defp parse_reservations(_), do: %{}
+
+  defp parse_prefix_reservation(%{duid: duid, prefix: prefix_str, prefix_length: len})
+       when is_binary(prefix_str) and is_integer(len) do
+    case Ipv6Util.parse_string(prefix_str) do
+      {:ok, addr} -> {DuidFormat.format!(duid), {addr, len}}
+      _ -> nil
+    end
+  end
+
+  defp parse_prefix_reservation(%{duid: duid, prefix: addr, prefix_length: len})
+       when is_tuple(addr) and is_integer(len) do
+    {DuidFormat.format!(duid), {addr, len}}
+  end
+
+  defp parse_prefix_reservation(_), do: nil
 
   defp find_available_prefix(pool, unavailable_prefixes) do
     max_prefixes = pool_size(pool)
