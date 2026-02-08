@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 203)
+**Phase**: IN_PROGRESS (Iteration 204)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 203 of 1000
+**Iteration**: 204 of 1000
 
 ## Session Summary
+Iteration 204: DRY parse_acl_rule + parse_mode via get_value/map lookup:
+- ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6 — 0 failures, 0 warnings**
+- ✅ DHCPv4 pool: parse_acl_rule 8 clauses → 1 using get_value + case
+- ✅ DHCPv6 pool: parse_acl_rule 8 clauses → 1; parse_mode 7 clauses → @valid_modes map + Map.get
+- ✅ Mixed atom/string key maps: string keys must come before keyword syntax in Elixir
+- ✅ 1 commit — 2 files — net +4 lines (but fewer branches)
+
 Iteration 203: simplify get_required + inline overlap checks:
 - ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6 — 0 failures, 0 warnings**
 - ✅ DHCPv4 pool: get_required/3 → get_required/2 (uses get_value for dual-key lookup)
