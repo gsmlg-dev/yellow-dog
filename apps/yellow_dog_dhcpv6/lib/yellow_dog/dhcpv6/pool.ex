@@ -238,17 +238,12 @@ defmodule YellowDog.Dhcpv6.Pool do
     end
   end
 
-  defp parse_ipv6(nil), do: nil
-  defp parse_ipv6(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: ip
-
-  defp parse_ipv6(ip) when is_binary(ip) do
-    case :inet.parse_ipv6_address(String.to_charlist(ip)) do
-      {:ok, addr} -> addr
+  defp parse_ipv6(ip) do
+    case Ipv6Util.parse(ip) do
+      {:ok, ip_tuple} -> ip_tuple
       {:error, _} -> nil
     end
   end
-
-  defp parse_ipv6(_), do: nil
 
   defp parse_ipv6_list(nil), do: []
 

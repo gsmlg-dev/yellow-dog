@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 133)
+**Phase**: IN_PROGRESS (Iteration 134)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 133 of 1000
+**Iteration**: 134 of 1000
 
 ## Session Summary
+Iteration 134: Replace 4 parse_ip duplicates with Ipv4Util.parse/1:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ custom_options.ex: replaced manual string parsing with `Ipv4Util.parse/1`
+- ✅ lease.ex: removed 4-clause `parse_ip`, uses `Ipv4Util.parse/1` directly
+- ✅ lease_manager.ex: removed `parse_ip` wrapper, uses `Ipv4Util.parse/1` directly
+- ✅ pool.ex: simplified 4-clause `parse_ip` to 1-clause `Ipv4Util.parse/1` wrapper (nil-on-error)
+- ✅ 5 files (4 source + 1 test) — net -31 lines
+
 Iteration 133: Add Ipv4Util.format/1, replace 5 format_ip copies:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ Added `format/1` to Ipv4Util (nil→nil, tuple→string, binary→passthrough)
@@ -814,6 +822,9 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 - GeoIP support, DNSSEC signing, Zone transfers (deferred per PRD)
 
 ## Commit History (This Iteration)
+1. `808dab5` - refactor(dhcpv4): replace 4 parse_ip duplicates with Ipv4Util.parse
+
+Previous iteration 25 commits:
 1. `027e136` - fix(dhcpv6): return {:error, reason} instead of bare :error in store_lease_to_mnesia
 2. `67ead22` - refactor: replace bare rescue with explicit exception types, add @default_port
 
