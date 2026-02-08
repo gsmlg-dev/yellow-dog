@@ -1,11 +1,16 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 159)
+**Phase**: IN_PROGRESS (Iteration 160)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 159 of 1000
+**Iteration**: 160 of 1000
 
 ## Session Summary
+Iteration 160: Capture shorthand across 5 modules:
+- ✅ **All tests pass: 243 core, 309 mDNS, 404 DHCPv4, 0 failures, 0 warnings**
+- ✅ fn x -> f(x) end → &f/1 in acl, network_monitor, pool_config, heartbeat, custom_options
+- ✅ 1 commit — 5 files — net -10 lines
+
 Iteration 159: Simplify geo_ip_db database.ex:
 - ✅ **All tests pass: 24 geo_ip_db, 0 failures, 0 credo issues, 0 warnings**
 - ✅ &elem(&1, 0) capture shorthand replaces fn {name, _, _, _} -> name end
