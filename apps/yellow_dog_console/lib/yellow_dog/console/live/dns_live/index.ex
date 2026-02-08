@@ -4,6 +4,8 @@ defmodule YellowDog.Console.DnsLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
+
   alias YellowDog.Dns.View
 
   @max_cache_entries 10_000
@@ -50,11 +52,10 @@ defmodule YellowDog.Console.DnsLive.Index do
   end
 
   defp get_dns_status do
-    try do
-      YellowDog.Dns.status()
-    catch
-      _, _ -> %{running: false, info: "DNS service not running"}
-    end
+    safe_call(YellowDog.Dns, fn -> YellowDog.Dns.status() end, %{
+      running: false,
+      info: "DNS service not running"
+    })
   end
 
   defp get_dns_stats do

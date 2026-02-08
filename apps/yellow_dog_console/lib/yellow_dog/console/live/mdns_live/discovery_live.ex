@@ -76,11 +76,7 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   end
 
   defp list_discovered_services do
-    try do
-      YellowDog.Mdns.list_discovered_services()
-    catch
-      _, _ -> []
-    end
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_discovered_services() end, [])
   end
 
   defp filter_services(search, type_filter) do

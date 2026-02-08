@@ -240,11 +240,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   end
 
   defp list_services(opts \\ []) do
-    try do
-      YellowDog.Mdns.list_registered_services(opts)
-    catch
-      _, _ -> []
-    end
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_registered_services(opts) end, [])
   end
 
   defp parse_txt_records(txt_string) when is_binary(txt_string) do

@@ -4,6 +4,8 @@ defmodule YellowDog.Console.MdnsLive.Index do
   """
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -48,44 +50,29 @@ defmodule YellowDog.Console.MdnsLive.Index do
   end
 
   defp get_mdns_status do
-    try do
-      YellowDog.Mdns.status()
-    catch
-      _, _ ->
-        %{running: false, mode: :unknown, registered_services: 0, discovered_services: 0}
-    end
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.status() end, %{
+      running: false,
+      mode: :unknown,
+      registered_services: 0,
+      discovered_services: 0
+    })
   end
 
   defp get_mdns_stats do
-    try do
-      registry_stats = YellowDog.Mdns.ServiceRegistry.stats()
-      %{registry_stats: registry_stats}
-    catch
-      _, _ ->
-        %{
-          registry_stats: %{
-            total: 0,
-            enabled: 0,
-            disabled: 0,
-            registered: 0,
-            from_file: 0
-          }
-        }
-    end
+    safe_call(
+      YellowDog.Mdns.ServiceRegistry,
+      fn -> %{registry_stats: YellowDog.Mdns.ServiceRegistry.stats()} end,
+      %{registry_stats: %{total: 0, enabled: 0, disabled: 0, registered: 0, from_file: 0}}
+    )
   end
 
   defp get_network_stats do
-    try do
-      YellowDog.Mdns.network_stats()
-    catch
-      _, _ ->
-        %{
-          total_responses: 0,
-          total_queries: 0,
-          active_services: 0,
-          unique_hosts: 0,
-          queries_per_minute: 0.0
-        }
-    end
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
+      total_responses: 0,
+      total_queries: 0,
+      active_services: 0,
+      unique_hosts: 0,
+      queries_per_minute: 0.0
+    })
   end
 end

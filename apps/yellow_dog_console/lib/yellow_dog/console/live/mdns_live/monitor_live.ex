@@ -106,30 +106,18 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   end
 
   defp get_recent_queries(limit) do
-    try do
-      YellowDog.Mdns.get_recent_queries(limit: limit)
-    catch
-      :exit, _ -> []
-      :error, _ -> []
-    end
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_recent_queries(limit: limit) end, [])
   end
 
   defp get_network_stats do
-    default = %{
+    safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.network_stats() end, %{
       total_responses: 0,
       total_queries: 0,
       active_services: 0,
       unique_hosts: 0,
       queries_per_minute: 0.0,
       most_queried_services: []
-    }
-
-    try do
-      YellowDog.Mdns.network_stats()
-    catch
-      :exit, _ -> default
-      :error, _ -> default
-    end
+    })
   end
 
   defp build_monitor_csv(stats, queries) do

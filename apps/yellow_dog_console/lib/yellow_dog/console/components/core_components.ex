@@ -614,14 +614,7 @@ defmodule YellowDog.Console.CoreComponents do
       "0"
   """
   def format_number(number) when is_integer(number) do
-    number
-    |> Integer.to_string()
-    |> String.graphemes()
-    |> Enum.reverse()
-    |> Enum.chunk_every(3)
-    |> Enum.map(&Enum.reverse/1)
-    |> Enum.reverse()
-    |> Enum.map_join(",", &Enum.join/1)
+    number |> Integer.to_string() |> String.replace(~r/\B(?=(\d{3})+$)/, ",")
   end
 
   def format_number(number) when is_float(number) do
