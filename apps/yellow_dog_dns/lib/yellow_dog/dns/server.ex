@@ -139,29 +139,21 @@ defmodule YellowDog.Dns.Server do
 
   @spec get_udp_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
   def get_udp_port(supervisor) do
-    case find_abyss_pid(supervisor) do
-      nil ->
-        {:error, :abyss_not_found}
-
-      abyss_pid ->
-        case Abyss.Server.listener_pool_pid(abyss_pid) do
-          nil ->
-            {:error, :no_listener_pool}
-
-          pool_pid ->
-            case Abyss.ListenerPool.listener_pids(pool_pid) do
-              [] ->
-                {:error, :no_listeners}
-
-              [listener_pid | _] ->
-                # Use cached lookup to avoid GenServer call timeout when listener is blocked in recv
-                case Abyss.Listener.listener_info_cached(listener_pid) do
-                  {:ok, {_ip, port}} when is_integer(port) -> {:ok, port}
-                  {:ok, _} -> {:error, :invalid_listener_info}
-                  :error -> {:error, :listener_info_not_cached}
-                end
-            end
-        end
+    # Use cached lookup to avoid GenServer call timeout when listener is blocked in recv
+    with {:abyss, abyss_pid} when abyss_pid != nil <-
+           {:abyss, find_abyss_pid(supervisor)},
+         {:pool, pool_pid} when pool_pid != nil <-
+           {:pool, Abyss.Server.listener_pool_pid(abyss_pid)},
+         [listener_pid | _] <- Abyss.ListenerPool.listener_pids(pool_pid),
+         {:ok, {_ip, port}} when is_integer(port) <-
+           Abyss.Listener.listener_info_cached(listener_pid) do
+      {:ok, port}
+    else
+      {:abyss, nil} -> {:error, :abyss_not_found}
+      {:pool, nil} -> {:error, :no_listener_pool}
+      [] -> {:error, :no_listeners}
+      {:ok, _} -> {:error, :invalid_listener_info}
+      :error -> {:error, :listener_info_not_cached}
     end
   end
 
@@ -173,17 +165,13 @@ defmodule YellowDog.Dns.Server do
 
   @spec get_tcp_port(pid() | atom()) :: {:ok, :inet.port_number()} | {:error, term()}
   def get_tcp_port(supervisor) do
-    case find_thousand_island_pid(supervisor) do
-      nil ->
-        {:error, :thousand_island_not_found}
-
-      ti_pid ->
-        # ThousandIsland.listener_info returns {:ok, {ip, port}} or :error
-        case ThousandIsland.listener_info(ti_pid) do
-          {:ok, {_ip, port}} when is_integer(port) -> {:ok, port}
-          {:ok, _other} -> {:error, :invalid_listener_info}
-          :error -> {:error, :port_not_available}
-        end
+    with ti_pid when ti_pid != nil <- find_thousand_island_pid(supervisor),
+         {:ok, {_ip, port}} when is_integer(port) <- ThousandIsland.listener_info(ti_pid) do
+      {:ok, port}
+    else
+      nil -> {:error, :thousand_island_not_found}
+      {:ok, _} -> {:error, :invalid_listener_info}
+      :error -> {:error, :port_not_available}
     end
   end
 

@@ -47,35 +47,7 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   def new(config) do
     with {:ok, validated_config} <- validate_pool_config(config) do
       # Parse static reservations
-      reservations =
-        case Map.get(config, :static_reservations, %{}) do
-          list when is_list(list) ->
-            # Convert list format to map
-            Enum.reduce(list, %{}, fn reservation, acc ->
-              case reservation do
-                %{duid: duid, address: address} when is_binary(address) ->
-                  case parse_ipv6_string(address) do
-                    {:ok, ip_tuple} ->
-                      Map.put(acc, format_duid(duid), ip_tuple)
-
-                    _ ->
-                      acc
-                  end
-
-                %{duid: duid, address: address} when is_tuple(address) ->
-                  Map.put(acc, format_duid(duid), address)
-
-                _ ->
-                  acc
-              end
-            end)
-
-          map when is_map(map) ->
-            map
-
-          _ ->
-            %{}
-        end
+      reservations = parse_static_reservations(Map.get(config, :static_reservations, %{}))
 
       # Parse exclude addresses
       exclude_addresses =
@@ -280,6 +252,31 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   end
 
   # Private helper functions
+
+  defp parse_static_reservations(list) when is_list(list) do
+    Enum.reduce(list, %{}, fn reservation, acc ->
+      case parse_reservation(reservation) do
+        {:ok, duid, ip} -> Map.put(acc, duid, ip)
+        :skip -> acc
+      end
+    end)
+  end
+
+  defp parse_static_reservations(map) when is_map(map), do: map
+  defp parse_static_reservations(_), do: %{}
+
+  defp parse_reservation(%{duid: duid, address: address}) when is_binary(address) do
+    case parse_ipv6_string(address) do
+      {:ok, ip_tuple} -> {:ok, format_duid(duid), ip_tuple}
+      _ -> :skip
+    end
+  end
+
+  defp parse_reservation(%{duid: duid, address: address}) when is_tuple(address) do
+    {:ok, format_duid(duid), address}
+  end
+
+  defp parse_reservation(_), do: :skip
 
   defp get_required_ipv6(config, key) do
     case Map.get(config, key) do
