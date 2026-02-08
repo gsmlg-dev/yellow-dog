@@ -1,12 +1,43 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 117)
+**Phase**: IN_PROGRESS (Iteration 120)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 117 of 1000
+**Iteration**: 120 of 1000
 
 ## Session Summary
-Iteration 117: Fix flaky DNS zone tests (async race condition):
+Iteration 120: Code quality sweep — style fixes, DRY extraction, dead code removal:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Removed redundant `|| false` in ex_dhcp, extracted `normalize_name/1` in mDNS (2 modules)
+- ✅ Removed dead `Transform.transform/3` function
+- ✅ Simplified IP parsing in transform.ex and forward.ex using `:inet` helpers
+- ✅ Replaced 12 `if not` patterns with `unless` or swapped branches across 10 files
+- ✅ Flattened triple-nested case → with-expression in conflict_resolver.ex
+- ✅ Flattened 4-level nested if → cond in zone/auth.ex resolve_question
+- ✅ Extracted terminate_cleanup/2 to DRY 5 terminate clauses in abyss handler (-82 lines)
+- ✅ Removed dead `_cache_size` variable and `@default_cache_size` in dns/view.ex
+- ✅ Flattened nested case → with in config.ex get_dns_zone_file
+- ✅ Consolidated 3 identical error clauses in forward.ex get_required/2
+- ✅ Replaced two-pass parse_forwarder_ips with reduce_while (fail-fast)
+- ✅ Removed redundant Map.get/dot-access in DHCPv4/DHCPv6 pool_store
+- ✅ 8 commits — net -180+ lines
+
+Previous iteration 119: Fix falsy-value bugs in shared config helpers + DRY cleanup:
+- ✅ **All 3,354 tests pass: 0 failures, 0 credo issues**
+- ✅ TomlHelpers.get_value: replaced Enum.find_value (skips false/0) with Map.has_key? lookup
+- ✅ ConfigHelpers.get_value: replaced || chains (skips false/0) with Map.has_key? lookup
+- ✅ Removed duplicate get_config_value/3 from dhcpv4.ex and dhcpv6.ex (now use ConfigHelpers)
+- ✅ Simplified get_boolean, get_list, get_map to delegate to now-falsy-safe get_value
+- ✅ 4 files — **2 commits** — net -26 lines
+
+Previous iteration 118: @impl annotations + falsy-value bugs + DNS client DRY:
+- ✅ Added 2 missing @impl true to file_watcher.ex and network_monitor.ex
+- ✅ Fixed falsy-value bug in DHCPv4/DHCPv6 normalize_pool_config (enabled: false, lease_time: 0)
+- ✅ Fixed falsy-value bug in mDNS service_store TOML serialization
+- ✅ Extracted build_request from duplicate query/query_raw code in DNS client (-15 lines)
+- ✅ 6 files — **4 commits**
+
+Previous iteration 117: Fix flaky DNS zone tests (async race condition):
 - ✅ **All 9,780 tests pass: 0 failures across 11 test suites**
 - ✅ editor_test, validator_test, manager_test changed from `async: true` to `async: false`
 - ✅ Tests share global ETS state via Manager.init()/Store.clear() — concurrent access caused intermittent failures
