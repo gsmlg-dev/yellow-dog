@@ -39,7 +39,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
 
   require Logger
 
-  alias YellowDog.Dhcpv4.AddressPool
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
 
   @type ip_address :: AddressPool.ip_address()
   @type mac_address :: binary()
@@ -346,20 +346,9 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   end
 
   defp parse_ip(ip_str) do
-    case String.split(ip_str, ".") do
-      [a, b, c, d] ->
-        with {ai, ""} <- Integer.parse(a),
-             {bi, ""} <- Integer.parse(b),
-             {ci, ""} <- Integer.parse(c),
-             {di, ""} <- Integer.parse(d),
-             true <- ai in 0..255 and bi in 0..255 and ci in 0..255 and di in 0..255 do
-          {:ok, {ai, bi, ci, di}}
-        else
-          _ -> {:error, {:invalid_ip, ip_str}}
-        end
-
-      _ ->
-        {:error, {:invalid_ip, ip_str}}
+    case Ipv4Util.parse(ip_str) do
+      {:ok, ip_tuple} -> {:ok, ip_tuple}
+      {:error, _} -> {:error, {:invalid_ip, ip_str}}
     end
   end
 

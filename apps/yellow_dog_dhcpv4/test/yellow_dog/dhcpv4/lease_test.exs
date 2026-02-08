@@ -72,7 +72,7 @@ defmodule YellowDog.Dhcpv4.LeaseTest do
 
     test "returns error for missing IP" do
       config = %{mac: @valid_mac}
-      assert {:error, "IP address is required"} = Lease.new(config)
+      assert {:error, _} = Lease.new(config)
     end
 
     test "returns error for missing MAC" do

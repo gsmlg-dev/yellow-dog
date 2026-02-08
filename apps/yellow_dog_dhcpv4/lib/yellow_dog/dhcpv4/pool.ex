@@ -233,24 +233,26 @@ defmodule YellowDog.Dhcpv4.Pool do
     end_ip = parse_ip(end_val)
 
     cond do
-      is_nil(start_ip) -> {:error, "Invalid range start IP"}
-      is_nil(end_ip) -> {:error, "Invalid range end IP"}
-      Ipv4Util.to_integer(start_ip) > Ipv4Util.to_integer(end_ip) -> {:error, "Range start must be <= range end"}
-      true -> {:ok, {start_ip, end_ip}}
+      is_nil(start_ip) ->
+        {:error, "Invalid range start IP"}
+
+      is_nil(end_ip) ->
+        {:error, "Invalid range end IP"}
+
+      Ipv4Util.to_integer(start_ip) > Ipv4Util.to_integer(end_ip) ->
+        {:error, "Range start must be <= range end"}
+
+      true ->
+        {:ok, {start_ip, end_ip}}
     end
   end
 
-  defp parse_ip(nil), do: nil
-  defp parse_ip({_, _, _, _} = ip), do: ip
-
-  defp parse_ip(ip) when is_binary(ip) do
-    case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, {_, _, _, _} = ip_tuple} -> ip_tuple
-      _ -> nil
+  defp parse_ip(ip) do
+    case Ipv4Util.parse(ip) do
+      {:ok, ip_tuple} -> ip_tuple
+      {:error, _} -> nil
     end
   end
-
-  defp parse_ip(_), do: nil
 
   defp parse_ip_list(nil), do: []
 
@@ -336,7 +338,9 @@ defmodule YellowDog.Dhcpv4.Pool do
   defp validate_subnet(_), do: {:error, "Invalid subnet"}
 
   defp validate_range({start_ip, end_ip}) when is_tuple(start_ip) and is_tuple(end_ip) do
-    if Ipv4Util.to_integer(start_ip) <= Ipv4Util.to_integer(end_ip), do: :ok, else: {:error, "Invalid range"}
+    if Ipv4Util.to_integer(start_ip) <= Ipv4Util.to_integer(end_ip),
+      do: :ok,
+      else: {:error, "Invalid range"}
   end
 
   defp validate_range(_), do: {:error, "Invalid range"}

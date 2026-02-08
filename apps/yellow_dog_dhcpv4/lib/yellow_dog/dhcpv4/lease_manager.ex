@@ -971,11 +971,7 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     now = System.system_time(:second)
 
     # Parse IP address if it's a string
-    ip =
-      case lease_data.ip do
-        ip when is_tuple(ip) -> ip
-        ip when is_binary(ip) -> parse_ip(ip)
-      end
+    {:ok, ip} = Ipv4Util.parse(lease_data.ip)
 
     # Parse MAC address
     mac =
@@ -996,14 +992,6 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
       created_at: lease_data.starts_at || now,
       updated_at: now
     }
-  end
-
-  # Parse IP address string to tuple
-  defp parse_ip(ip_string) when is_binary(ip_string) do
-    case :inet.parse_address(String.to_charlist(ip_string)) do
-      {:ok, ip_tuple} -> ip_tuple
-      {:error, _} -> nil
-    end
   end
 
   # Parse MAC address from various formats

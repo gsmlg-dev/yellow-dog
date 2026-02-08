@@ -47,7 +47,7 @@ defmodule YellowDog.Dhcpv4.Lease do
   """
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(config) when is_map(config) do
-    with {:ok, ip} <- parse_ip(get_value(config, :ip)),
+    with {:ok, ip} <- Ipv4Util.parse(get_value(config, :ip)),
          {:ok, mac} <- parse_mac(get_value(config, :mac)),
          {:ok, starts_at} <- parse_datetime(get_value(config, :starts_at)),
          {:ok, expires_at} <- parse_datetime(get_value(config, :expires_at)) do
@@ -178,18 +178,6 @@ defmodule YellowDog.Dhcpv4.Lease do
   end
 
   # Parsing helpers
-
-  defp parse_ip(nil), do: {:error, "IP address is required"}
-  defp parse_ip({_, _, _, _} = ip), do: {:ok, ip}
-
-  defp parse_ip(ip) when is_binary(ip) do
-    case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
-      _ -> {:error, "Invalid IP address format"}
-    end
-  end
-
-  defp parse_ip(_), do: {:error, "Invalid IP address"}
 
   defp parse_mac(nil), do: {:error, "MAC address is required"}
   defp parse_mac(mac) when is_binary(mac) and byte_size(mac) == 6, do: {:ok, mac}
