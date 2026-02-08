@@ -153,7 +153,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   @spec get_records_for_query([DNS.Question.t()]) :: [service()]
   def get_records_for_query(questions) do
     Enum.flat_map(questions, fn question ->
-      qname = to_string(question.name) |> String.downcase() |> String.trim_trailing(".")
+      qname = normalize_name(question.name)
       qtype = question.type
 
       # Find matching services
@@ -466,12 +466,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   defp matches_query?(service, qname, qtype) do
     # Match service FQDN or type enumeration
-    service_fqdn = String.downcase(service.fqdn) |> String.trim_trailing(".")
-
-    service_type =
-      String.downcase("#{service.type}.#{service.domain}") |> String.trim_trailing(".")
-
-    service_host = String.downcase(service.host) |> String.trim_trailing(".")
+    service_fqdn = normalize_name(service.fqdn)
+    service_type = normalize_name("#{service.type}.#{service.domain}")
+    service_host = normalize_name(service.host)
 
     cond do
       # Direct service name query
@@ -489,6 +486,10 @@ defmodule YellowDog.Mdns.ServiceRegistry do
       true ->
         false
     end
+  end
+
+  defp normalize_name(name) do
+    name |> to_string() |> String.downcase() |> String.trim_trailing(".")
   end
 
   defp apply_filters(services, filter, source_filter) do

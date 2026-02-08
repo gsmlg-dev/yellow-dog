@@ -489,7 +489,7 @@ defmodule DHCPv4.Message.Option.Types do
     int
   end
 
-  defp to_bool(<<val::8>>), do: val == 1 || false
+  defp to_bool(<<val::8>>), do: val == 1
 
   defp to_binary_string(value), do: value
 
