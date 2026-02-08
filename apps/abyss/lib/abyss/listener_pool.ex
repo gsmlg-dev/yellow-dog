@@ -48,12 +48,7 @@ defmodule Abyss.ListenerPool do
   def listener_pids(supervisor) do
     try do
       if Process.alive?(supervisor) do
-        supervisor
-        |> Supervisor.which_children()
-        |> Enum.reduce([], fn
-          {_, listener_pid, _, _}, acc when is_pid(listener_pid) -> [listener_pid | acc]
-          _, acc -> acc
-        end)
+        for {_, pid, _, _} when is_pid(pid) <- Supervisor.which_children(supervisor), do: pid
       else
         []
       end

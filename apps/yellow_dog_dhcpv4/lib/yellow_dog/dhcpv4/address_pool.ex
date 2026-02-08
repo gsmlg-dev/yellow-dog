@@ -247,8 +247,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   end
 
   defp sum_range_sizes(ranges) do
-    Enum.reduce(ranges, 0, fn {start_ip, end_ip}, acc ->
-      acc + Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
+    Enum.sum_by(ranges, fn {start_ip, end_ip} ->
+      Ipv4Util.to_integer(end_ip) - Ipv4Util.to_integer(start_ip) + 1
     end)
   end
 

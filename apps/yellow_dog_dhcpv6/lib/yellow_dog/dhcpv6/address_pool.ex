@@ -241,10 +241,8 @@ defmodule YellowDog.Dhcpv6.AddressPool do
   @spec pool_size(pool_config()) :: non_neg_integer()
   def pool_size(pool) do
     total_size =
-      Enum.reduce(pool.ranges, 0, fn range, acc ->
-        start_int = Ipv6Util.to_integer(range.start)
-        end_int = Ipv6Util.to_integer(range.end)
-        acc + (end_int - start_int + 1)
+      Enum.sum_by(pool.ranges, fn range ->
+        Ipv6Util.to_integer(range.end) - Ipv6Util.to_integer(range.start) + 1
       end)
 
     # Subtract excluded addresses
