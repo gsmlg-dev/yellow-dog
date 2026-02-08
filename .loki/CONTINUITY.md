@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 142)
+**Phase**: IN_PROGRESS (Iteration 143)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 142 of 1000
+**Iteration**: 143 of 1000
 
 ## Session Summary
+Iteration 143: DRY format_dns_servers into FormatHelper:
+- ✅ **All tests pass: 1111 console, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Extracted format_dns_servers/1 from dhcpv4 + dhcpv6 pools_live into FormatHelper
+- ✅ Added 4 unit tests for format_dns_servers
+- ✅ 1 commit — 4 files — net +19 lines, +4 tests
+
 Iteration 142: Eliminate repeated ++ appends in TOML store serializers:
 - ✅ **All tests pass: 1083 DNS, 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
 - ✅ zone_store.ex: replaced 4 conditional lines ++ [item] with filter-based approach
