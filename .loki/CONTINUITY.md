@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 179)
+**Phase**: IN_PROGRESS (Iteration 180)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 179 of 1000
+**Iteration**: 180 of 1000
 
 ## Session Summary
+Iteration 180: format_number regex + safe_call adoption:
+- ✅ **All tests pass: 1122 console, 0 failures, 0 warnings**
+- ✅ Simplified format_number from 8-line reverse/chunk/map pipeline to single regex replacement
+- ✅ Replaced 8 inline try/catch blocks with safe_call/3 across 5 LiveView modules
+- ✅ mdns/index (3), mdns/monitor (2), mdns/discovery (1), mdns/services (1), dns/index (1)
+- ✅ 1 commit — 6 files — net -39 lines
+
 Iteration 179: Data-driven recommendations + DRY timestamp formatters:
 - ✅ **All tests pass: 1122 console (7 new), 0 failures, 0 warnings**
 - ✅ Converted generate_recommendations/1 from mutable-rebinding to data-driven checks list with for comprehension (30→15 lines)
