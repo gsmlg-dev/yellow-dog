@@ -1,32 +1,32 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 113)
+**Phase**: IN_PROGRESS (Iteration 117)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 113 of 1000
+**Iteration**: 117 of 1000
 
 ## Session Summary
-Iteration 113: Add unit tests for DHCPv4 Pool (20) and DHCPv6 Pool (23) structs:
-- ✅ **All 43 tests pass: 0 failures**
-- ✅ DHCPv4 Pool: new/1, validate/1, to_toml_map/1 (CIDR, structured, string-keyed, parsing, validation)
-- ✅ DHCPv6 Pool: new/1, validate/1, to_toml_map/1 (CIDR, prefix, PD pools, SLAAC mode, ACL)
-- ✅ Found & fixed bug: `format_pd_pools([])` returned `nil` instead of `[]`, causing `maybe_put_list` to insert `"pd_pools" => nil`
-- ✅ 2 new test files + 1 fix — **1 commit** — net +344 lines
+Iteration 117: Fix flaky DNS zone tests (async race condition):
+- ✅ **All 9,780 tests pass: 0 failures across 11 test suites**
+- ✅ editor_test, validator_test, manager_test changed from `async: true` to `async: false`
+- ✅ Tests share global ETS state via Manager.init()/Store.clear() — concurrent access caused intermittent failures
+- ✅ 3 files — **1 commit**
 
-Previous iteration 112: Add unit tests for DHCPv6 Lease struct (30 tests):
-- ✅ Tests: create/6, new/1, expired?/1, deprecated?/1, active?/1, release/1, decline/1, renew/2, validate/1, lease_key/1, TOML round-trip
-- ✅ 1 new file — **1 commit** — net +387 lines
+Previous iteration 116: Add edge case tests for Pool option parsing (+13 tests):
+- ✅ DHCPv4 Pool: options parsing (int/string keys), enabled default, domain_name, legacy range/network fields (+6)
+- ✅ DHCPv6 Pool: options parsing, stateless mode, domain_name, legacy network, string-keyed ACL rules (+7)
 
-Previous iteration 111: Replace try/rescue with Base.decode16 in MAC parsing:
-- ✅ DHCPv4 lease.ex `parse_mac_string` — replaced `String.to_integer/2` + rescue with `Base.decode16`
-- ✅ Console dhcpv4_client.ex `parse_mac` — same pattern fix
-- ✅ 2 files — **1 commit** — net +4 lines
+Previous iteration 115: Replace String.to_integer with Integer.parse in parse_options:
+- ✅ Extracted `parse_option_code/1` with safe `Integer.parse` in both DHCPv4/v6 Pool
 
-Previous iteration 110: Replace rescue with guard in get_value across 4 modules:
-- ✅ 4 modules simplified — net -20 lines
+Previous iteration 114: Replace Base.decode16! + rescue in DHCPv4 lease_manager:
+- ✅ Replaced with `Base.decode16/2` + case pattern matching
 
-Previous iteration 109: Add unit tests for DHCPv4 Lease struct (24 tests):
-- ✅ 1 new file — **1 commit** — net +229 lines
+Previous iteration 113: Add unit tests for Pool structs (43 tests) + fix format_pd_pools bug
+
+Previous iteration 112: Add unit tests for DHCPv6 Lease struct (30 tests)
+
+Previous iteration 111: Replace try/rescue with Base.decode16 in MAC parsing
 
 Previous iteration 108: Add unit tests for RateLimiter shared functions (15 tests):
 - ✅ **All 15 tests pass: 0 failures**
