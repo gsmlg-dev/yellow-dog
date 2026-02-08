@@ -6,7 +6,7 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   Supports multiple pools, static reservations, and address conflict detection.
   """
 
-  alias YellowDog.Dhcpv4.Ipv4Util
+  alias YellowDog.Dhcpv4.{Ipv4Util, MacFormat}
 
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()
@@ -384,5 +384,5 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     end
   end
 
-  defp format_mac(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || "UNKNOWN"
+  defp format_mac(mac), do: MacFormat.format!(mac)
 end

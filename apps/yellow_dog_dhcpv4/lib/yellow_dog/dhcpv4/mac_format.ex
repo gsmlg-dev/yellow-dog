@@ -36,4 +36,29 @@ defmodule YellowDog.Dhcpv4.MacFormat do
   end
 
   def format(_, _opts), do: nil
+
+  @doc """
+  Like `format/2` but returns `default` instead of `nil` on failure.
+
+  ## Options
+
+    * `:case` - `:upper` (default) or `:lower`
+    * `:default` - fallback string (default `"UNKNOWN"`)
+
+  ## Examples
+
+      iex> MacFormat.format!(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>)
+      "AA:BB:CC:DD:EE:FF"
+
+      iex> MacFormat.format!(nil)
+      "UNKNOWN"
+
+      iex> MacFormat.format!(nil, default: "")
+      ""
+  """
+  @spec format!(term(), keyword()) :: String.t()
+  def format!(mac, opts \\ []) do
+    {default, format_opts} = Keyword.pop(opts, :default, "UNKNOWN")
+    format(mac, format_opts) || default
+  end
 end
