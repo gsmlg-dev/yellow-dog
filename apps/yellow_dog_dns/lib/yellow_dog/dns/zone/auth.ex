@@ -552,36 +552,21 @@ defmodule YellowDog.Dns.Zone.Auth do
   end
 
   defp do_save(state) do
-    # Determine the file path
-    file_path =
-      cond do
-        state.zone_file != nil ->
-          state.zone_file
+    file_path = state.zone_file || Path.join(state.zone_data_path, "#{state.name}.zone")
 
-        state.zone_data_path != nil ->
-          Path.join(state.zone_data_path, "#{state.name}.zone")
+    # Build zone struct from current state
+    records = get_all_records_from_table(state.table)
+    zone = build_zone_struct(state, records)
 
-        true ->
-          nil
-      end
+    # Ensure directory exists
+    dir = Path.dirname(file_path)
 
-    if file_path == nil do
-      {:error, "No zone file path configured"}
-    else
-      # Build zone struct from current state
-      records = get_all_records_from_table(state.table)
-      zone = build_zone_struct(state, records)
+    case File.mkdir_p(dir) do
+      :ok ->
+        Zone.Loader.save_zone_to_file(zone, file_path)
 
-      # Ensure directory exists
-      dir = Path.dirname(file_path)
-
-      case File.mkdir_p(dir) do
-        :ok ->
-          Zone.Loader.save_zone_to_file(zone, file_path)
-
-        {:error, reason} ->
-          {:error, "Failed to create directory: #{reason}"}
-      end
+      {:error, reason} ->
+        {:error, "Failed to create directory: #{reason}"}
     end
   end
 

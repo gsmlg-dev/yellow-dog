@@ -59,7 +59,7 @@ defmodule DNS.Zone.Validator do
 
     # Check zone name
     errors =
-      if zone.name.value == "" or zone.name.value == nil do
+      if zone.name.value in ["", nil] do
         ["Zone name is empty" | errors]
       else
         errors
