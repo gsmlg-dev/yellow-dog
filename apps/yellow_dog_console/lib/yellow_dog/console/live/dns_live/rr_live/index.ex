@@ -636,8 +636,8 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp extract_rdata(%{data: data}), do: data
   defp extract_rdata(_record), do: nil
 
-  defp format_rdata(:a, rdata), do: format_ipv4(rdata)
-  defp format_rdata(:aaaa, rdata), do: format_ipv6(rdata)
+  defp format_rdata(:a, rdata), do: format_ip_address(rdata)
+  defp format_rdata(:aaaa, rdata), do: format_ip_address(rdata)
   defp format_rdata(:cname, rdata), do: format_domain(rdata)
   defp format_rdata(:ns, rdata), do: format_domain(rdata)
   defp format_rdata(:ptr, rdata), do: format_domain(rdata)
@@ -647,13 +647,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp format_rdata(:srv, rdata), do: format_srv(rdata)
   defp format_rdata(_type, rdata), do: to_string(rdata)
 
-  defp format_ipv4(%{address: addr}) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
-  defp format_ipv4(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
-  defp format_ipv4(rdata), do: to_string(rdata)
-
-  defp format_ipv6(%{address: addr}) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
-  defp format_ipv6(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
-  defp format_ipv6(rdata), do: to_string(rdata)
+  defp format_ip_address(%{address: addr}) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
+  defp format_ip_address(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> to_string()
+  defp format_ip_address(rdata), do: to_string(rdata)
 
   defp format_domain(%{name: name}), do: to_string(name)
   defp format_domain(%DNS.Message.Domain{} = domain), do: to_string(domain)

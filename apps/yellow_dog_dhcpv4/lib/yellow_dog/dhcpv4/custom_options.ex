@@ -435,9 +435,7 @@ defmodule YellowDog.Dhcpv4.CustomOptions do
   defp format_mac(nil), do: ""
   defp format_mac(mac) when is_binary(mac), do: YellowDog.Dhcpv4.MacFormat.format(mac) || mac
 
-  defp format_ip(nil), do: ""
-  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(_), do: ""
+  defp format_ip(ip), do: Ipv4Util.format(ip) || ""
 
   # Telemetry helpers
 

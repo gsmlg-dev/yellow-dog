@@ -25,7 +25,7 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
 
   require Logger
 
-  alias YellowDog.Dhcpv4.{AddressPool, LeaseManager, LeaseStorage}
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util, LeaseManager, LeaseStorage}
 
   # Default quarantine time: 1 hour
   @default_quarantine_time 3600
@@ -355,6 +355,5 @@ defmodule YellowDog.Dhcpv4.ConflictResolver do
 
   defp format_mac(_), do: "UNKNOWN"
 
-  defp format_ip(ip) when tuple_size(ip) == 4, do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(_), do: "UNKNOWN"
+  defp format_ip(ip), do: Ipv4Util.format(ip) || "UNKNOWN"
 end

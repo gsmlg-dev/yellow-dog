@@ -188,10 +188,8 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     %{buffer_size: 0, current_entries: 0, total_logged: 0, enabled: false}
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(ip) when is_binary(ip), do: ip
   defp format_ip(nil), do: "-"
-  defp format_ip(other), do: inspect(other)
+  defp format_ip(ip), do: YellowDog.Dns.IpFormat.format(ip)
 
   defp format_timestamp(%DateTime{} = dt) do
     Calendar.strftime(dt, "%H:%M:%S") <> "." <> format_ms(dt)
