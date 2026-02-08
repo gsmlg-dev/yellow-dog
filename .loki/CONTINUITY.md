@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 156)
+**Phase**: IN_PROGRESS (Iteration 157)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 156 of 1000
+**Iteration**: 157 of 1000
 
 ## Session Summary
+Iteration 157: Simplify RPZ evaluation + extract insert_records in auth:
+- ✅ **All tests pass: 98 RPZ+auth, 0 failures, 0 credo issues, 0 warnings**
+- ✅ rpz.ex: nested case → with chain for evaluate_policies
+- ✅ auth.ex: extract insert_records/2 (DRY 2 identical Enum.each blocks)
+- ✅ 1 commit — 2 files — net -8 lines
+
 Iteration 156: DRY RPZ response builders:
 - ✅ **All tests pass: 35 RPZ, 1083 DNS, 0 failures, 0 credo issues, 0 warnings**
 - ✅ 4 create_*_response functions → thin wrappers over shared build_rpz_response/2
