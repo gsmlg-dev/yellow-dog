@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 139)
+**Phase**: IN_PROGRESS (Iteration 140)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 139 of 1000
+**Iteration**: 140 of 1000
 
 ## Session Summary
+Iteration 140: FormatHelper tests + DRY format_time + sort|>dedup optimization:
+- ✅ **All tests pass: 1107 tests, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Added 28 unit tests for format_time, format_time_ms, format_uptime, format_bytes
+- ✅ Replaced duplicate format_time in process_map_live.ex with FormatHelper import
+- ✅ Replaced 7 Enum.uniq|>Enum.sort with Enum.sort|>Enum.dedup across 5 files
+- ✅ 1 commit — 7 files — +28 tests, net +104 lines
+
 Iteration 139: DRY format_bytes/format_memory into FormatHelper:
 - ✅ **All tests pass: 1084 tests, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Added format_bytes/1 to FormatHelper with named constants (@kb, @mb, @gb)
