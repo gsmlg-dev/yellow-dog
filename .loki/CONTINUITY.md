@@ -1,11 +1,25 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 174)
+**Phase**: IN_PROGRESS (Iteration 176)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 174 of 1000
+**Iteration**: 176 of 1000
 
 ## Session Summary
+Iteration 176: Extract StringHelper.split_and_trim/2 helper:
+- ✅ **All tests pass: 1115 console (13 new), 0 failures, 0 warnings**
+- ✅ Created StringHelper module with split_and_trim/2 for parsing input
+- ✅ Replaced 16 instances of String.split + Enum.map(&String.trim/1) + Enum.reject
+- ✅ Across 5 modules: acl_live, view_live, zone_live, services_live, address_pool
+- ✅ Added 9 unit tests + 4 doctests (13 total)
+- ✅ 2 commits (zone_controller safe_call, StringHelper) — net +66 lines, better abstraction
+
+Iteration 175: Extract safe_call_module/4 helper in zone_controller:
+- ✅ **All tests pass: 1083 DNS, 0 failures, 0 warnings**
+- ✅ DRY 2 identical try/catch patterns into generic helper
+- ✅ Uses apply/3 for dynamic function invocation with default fallback
+- ✅ 1 commit — 1 file — net -1 line
+
 Iteration 174: Fix DNS zone form submission test expectations:
 - ✅ **All tests pass: 1106 console, 0 failures, 0 warnings**
 - ✅ Fixed 2 failing tests expecting incorrect redirect behavior
