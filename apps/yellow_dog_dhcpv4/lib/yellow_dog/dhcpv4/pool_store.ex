@@ -715,15 +715,15 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     # Handle legacy map format
     """
     [[leases]]
-    ip = "#{format_ip_for_toml(lease[:ip_address] || lease.ip_address)}"
-    mac = "#{format_mac_for_toml(lease[:mac_address] || lease.mac_address)}"
-    pool_name = "#{lease[:pool_name] || lease.pool_name || "default"}"
-    starts_at = "#{format_datetime(lease[:created_at] || lease.created_at)}"
-    expires_at = "#{format_datetime(lease[:expires_at] || lease.expires_at)}"
-    state = "#{lease[:state] || lease.state || "active"}"
+    ip = "#{format_ip_for_toml(lease[:ip_address])}"
+    mac = "#{format_mac_for_toml(lease[:mac_address])}"
+    pool_name = "#{lease[:pool_name] || "default"}"
+    starts_at = "#{format_datetime(lease[:created_at])}"
+    expires_at = "#{format_datetime(lease[:expires_at])}"
+    state = "#{lease[:state] || "active"}"
     """ <>
-      maybe_field("hostname", lease[:hostname] || Map.get(lease, :hostname)) <>
-      maybe_field("client_id", format_client_id(lease[:client_id] || Map.get(lease, :client_id)))
+      maybe_field("hostname", lease[:hostname]) <>
+      maybe_field("client_id", format_client_id(lease[:client_id]))
   end
 
   defp maybe_field(_name, nil), do: ""

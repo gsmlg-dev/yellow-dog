@@ -713,23 +713,23 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   end
 
   defp lease_to_toml_entry(lease) when is_map(lease) do
-    # Handle legacy map format
-    ip = lease[:ip_address] || lease[:ip] || Map.get(lease, :ip_address) || Map.get(lease, :ip)
-    duid = lease[:duid] || Map.get(lease, :duid)
-    iaid = lease[:iaid] || Map.get(lease, :iaid) || 1
+    # Handle legacy map format with alternative field names
+    ip = lease[:ip_address] || lease[:ip]
+    duid = lease[:duid]
+    iaid = lease[:iaid] || 1
 
     """
     [[leases]]
     ip = "#{format_ipv6_for_toml(ip)}"
     duid = "#{format_duid(duid)}"
     iaid = #{iaid}
-    pool_name = "#{lease[:pool_name] || Map.get(lease, :pool_name) || "default"}"
-    starts_at = "#{format_datetime(lease[:created_at] || lease[:starts_at] || Map.get(lease, :created_at))}"
-    preferred_until = "#{format_datetime(lease[:preferred_until] || Map.get(lease, :preferred_until))}"
-    valid_until = "#{format_datetime(lease[:valid_until] || lease[:expires_at] || Map.get(lease, :valid_until))}"
-    state = "#{lease[:state] || Map.get(lease, :state) || "active"}"
+    pool_name = "#{lease[:pool_name] || "default"}"
+    starts_at = "#{format_datetime(lease[:created_at] || lease[:starts_at])}"
+    preferred_until = "#{format_datetime(lease[:preferred_until])}"
+    valid_until = "#{format_datetime(lease[:valid_until] || lease[:expires_at])}"
+    state = "#{lease[:state] || "active"}"
     """ <>
-      maybe_field("hostname", lease[:hostname] || Map.get(lease, :hostname))
+      maybe_field("hostname", lease[:hostname])
   end
 
   defp maybe_field(_name, nil), do: ""
