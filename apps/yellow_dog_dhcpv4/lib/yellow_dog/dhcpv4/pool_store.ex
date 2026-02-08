@@ -621,16 +621,12 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     case File.ls(leases_dir) do
       {:ok, files} ->
         leases_map =
-          files
-          |> Enum.filter(&String.ends_with?(&1, ".toml"))
-          |> Enum.reduce(%{}, fn file, acc ->
-            pool_name = Path.rootname(file)
-
-            case load_leases(pool_name) do
-              {:ok, leases} -> Map.put(acc, pool_name, leases)
-              {:error, _} -> acc
-            end
-          end)
+          for file <- files,
+              String.ends_with?(file, ".toml"),
+              pool_name = Path.rootname(file),
+              {:ok, leases} <- [load_leases(pool_name)],
+              into: %{},
+              do: {pool_name, leases}
 
         {:ok, leases_map}
 
