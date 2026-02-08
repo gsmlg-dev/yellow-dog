@@ -179,17 +179,9 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     active_leases = Enum.filter(all_entries, fn lease -> lease.expires_at > now end)
     expired_leases = Enum.filter(all_entries, fn lease -> lease.expires_at <= now end)
 
-    # Group by state
-    by_state =
-      all_entries
-      |> Enum.group_by(& &1.state)
-      |> Map.new(fn {state, leases} -> {state, length(leases)} end)
-
-    # Group by IA type
-    by_ia_type =
-      all_entries
-      |> Enum.group_by(& &1.ia_type)
-      |> Map.new(fn {ia_type, leases} -> {ia_type, length(leases)} end)
+    # Count by state and IA type (single pass each)
+    by_state = Enum.frequencies_by(all_entries, & &1.state)
+    by_ia_type = Enum.frequencies_by(all_entries, & &1.ia_type)
 
     %{
       total_leases: length(all_entries),
@@ -1021,11 +1013,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     now = System.system_time(:second)
     active_leases = Enum.filter(all_leases, fn l -> l.expires_at > now end)
 
-    # Group leases by state
-    leases_by_state =
-      all_leases
-      |> Enum.group_by(& &1.state)
-      |> Map.new(fn {state, leases} -> {state, length(leases)} end)
+    leases_by_state = Enum.frequencies_by(all_leases, & &1.state)
 
     # Calculate pool size based on pool type
     total_count =
