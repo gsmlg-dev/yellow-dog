@@ -13,15 +13,8 @@ defmodule YellowDog.Console.FormatHelper do
   @seconds_per_two_hours 7_200
 
   @doc "Formats a 6-byte MAC address binary as colon-separated hex."
-  @spec format_mac(binary()) :: String.t()
-  def format_mac(<<mac::binary-size(6)>>) do
-    mac
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
-  end
-
-  def format_mac(_), do: "Unknown"
+  @spec format_mac(term()) :: String.t()
+  def format_mac(mac), do: YellowDog.Dhcpv4.MacFormat.format!(mac, default: "Unknown")
 
   @doc "Formats an IP address (IPv4 or IPv6 tuple, binary, or nil) as a string."
   @spec format_ip(tuple() | binary() | nil) :: String.t() | nil
@@ -35,15 +28,8 @@ defmodule YellowDog.Console.FormatHelper do
   def format_ip(_), do: "Unknown"
 
   @doc "Formats a DHCPv6 DUID binary as colon-separated hex."
-  @spec format_duid(binary()) :: String.t()
-  def format_duid(duid) when is_binary(duid) do
-    duid
-    |> :binary.bin_to_list()
-    |> Enum.map_join(":", fn b -> b |> Integer.to_string(16) |> String.pad_leading(2, "0") end)
-    |> String.upcase()
-  end
-
-  def format_duid(_), do: "Unknown"
+  @spec format_duid(term()) :: String.t()
+  def format_duid(duid), do: YellowDog.Dhcpv6.DuidFormat.format!(duid, default: "Unknown")
 
   @doc "Formats an IPv6 8-tuple as colon-separated hex."
   @spec format_ipv6(tuple()) :: String.t()

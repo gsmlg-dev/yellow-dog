@@ -34,8 +34,16 @@ defmodule YellowDog.Dhcpv6.DuidFormat do
   def format(_, _opts), do: nil
 
   @doc """
-  Like `format/2` but returns `"UNKNOWN"` instead of `nil`.
+  Like `format/2` but returns a default string instead of `nil`.
+
+  ## Options
+
+    * `:default` - fallback string (default `"UNKNOWN"`)
+    * All other options are passed to `format/2`
   """
-  @spec format!(binary(), keyword()) :: String.t()
-  def format!(duid, opts \\ []), do: format(duid, opts) || "UNKNOWN"
+  @spec format!(term(), keyword()) :: String.t()
+  def format!(duid, opts \\ []) do
+    {default, format_opts} = Keyword.pop(opts, :default, "UNKNOWN")
+    format(duid, format_opts) || default
+  end
 end
