@@ -171,11 +171,7 @@ defmodule YellowDog.Console.ProcessInspector do
 
     # If no children or collapsed, just position this node
     if children == [] or not is_expanded do
-      node_with_pos =
-        node
-        |> Map.put(:x, x)
-        |> Map.put(:y, y)
-        |> Map.put(:expanded, is_expanded)
+      node_with_pos = Map.merge(node, %{x: x, y: y, expanded: is_expanded})
 
       {node_with_pos, y + node_height + v_spacing}
     else
@@ -209,11 +205,7 @@ defmodule YellowDog.Console.ProcessInspector do
       parent_y = max(y, parent_y)
 
       node_with_pos =
-        node
-        |> Map.put(:x, x)
-        |> Map.put(:y, parent_y)
-        |> Map.put(:children, laid_out_children)
-        |> Map.put(:expanded, is_expanded)
+        Map.merge(node, %{x: x, y: parent_y, children: laid_out_children, expanded: is_expanded})
 
       {node_with_pos, next_y}
     end

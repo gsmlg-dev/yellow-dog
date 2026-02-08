@@ -411,9 +411,10 @@ defmodule YellowDog.Telemetry do
   @spec start_child_span(t(), span_name(), measurements(), metadata()) :: t()
   def start_child_span(parent_span, span_name, measurements \\ %{}, metadata \\ %{}) do
     metadata =
-      metadata
-      |> Map.put(:parent_telemetry_span_context, parent_span.telemetry_span_context)
-      |> Map.put(:handler, parent_span.start_metadata.handler)
+      Map.merge(metadata, %{
+        parent_telemetry_span_context: parent_span.telemetry_span_context,
+        handler: parent_span.start_metadata.handler
+      })
 
     start_span(span_name, measurements, metadata)
   end
@@ -443,9 +444,10 @@ defmodule YellowDog.Telemetry do
           :ok
   def untimed_span_event(span, name, measurements \\ %{}, metadata \\ %{}) do
     metadata =
-      metadata
-      |> Map.put(:telemetry_span_context, span.telemetry_span_context)
-      |> Map.put(:handler, span.start_metadata.handler)
+      Map.merge(metadata, %{
+        telemetry_span_context: span.telemetry_span_context,
+        handler: span.start_metadata.handler
+      })
 
     event([span.span_name, name], measurements, metadata)
   end
@@ -551,10 +553,7 @@ defmodule YellowDog.Telemetry do
       # Build full metadata
       full_metadata =
         metadata
-        |> Map.put(:app, app)
-        |> Map.put(:module, caller.module)
-        |> Map.put(:function, caller.function)
-        |> Map.put(:line, caller.line)
+        |> Map.merge(%{app: app, module: caller.module, function: caller.function, line: caller.line})
         |> maybe_add_span_context()
 
       # Emit telemetry event
