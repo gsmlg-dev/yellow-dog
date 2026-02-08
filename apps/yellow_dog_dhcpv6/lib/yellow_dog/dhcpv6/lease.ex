@@ -52,7 +52,7 @@ defmodule YellowDog.Dhcpv6.Lease do
   """
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(config) when is_map(config) do
-    with {:ok, ip} <- parse_ipv6(get_value(config, :ip)),
+    with {:ok, ip} <- Ipv6Util.parse(get_value(config, :ip)),
          {:ok, duid} <- parse_duid(get_value(config, :duid)),
          {:ok, iaid} <- parse_iaid(get_value(config, :iaid)),
          {:ok, starts_at} <- parse_datetime(get_value(config, :starts_at)),
@@ -216,18 +216,6 @@ defmodule YellowDog.Dhcpv6.Lease do
   def lease_key(%__MODULE__{duid: duid, iaid: iaid}), do: {duid, iaid}
 
   # Parsing helpers
-
-  defp parse_ipv6(nil), do: {:error, "IPv6 address is required"}
-  defp parse_ipv6(ip) when is_tuple(ip) and tuple_size(ip) == 8, do: {:ok, ip}
-
-  defp parse_ipv6(ip) when is_binary(ip) do
-    case :inet.parse_ipv6_address(String.to_charlist(ip)) do
-      {:ok, addr} -> {:ok, addr}
-      {:error, _} -> {:error, "Invalid IPv6 address format"}
-    end
-  end
-
-  defp parse_ipv6(_), do: {:error, "Invalid IPv6 address"}
 
   defp parse_duid(nil), do: {:error, "DUID is required"}
 

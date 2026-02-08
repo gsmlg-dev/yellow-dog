@@ -28,7 +28,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   require Logger
   import Bitwise
 
-  alias YellowDog.Dhcpv4.AddressPool
+  alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
 
   @type pool_definition :: %{
           name: String.t(),
@@ -231,8 +231,8 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   defp parse_range_string(range_str) when is_binary(range_str) do
     case String.split(range_str, "-") do
       [start_str, end_str] ->
-        with {:ok, start_ip} <- parse_ip_string(String.trim(start_str)),
-             {:ok, end_ip} <- parse_ip_string(String.trim(end_str)) do
+        with {:ok, start_ip} <- Ipv4Util.parse(String.trim(start_str)),
+             {:ok, end_ip} <- Ipv4Util.parse(String.trim(end_str)) do
           {:ok, {start_ip, end_ip}}
         end
 
@@ -283,7 +283,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   defp validate_gateway(pool_config) do
     case Map.get(pool_config, "gateway") do
       nil -> {:error, :missing_gateway}
-      ip_str when is_binary(ip_str) -> parse_ip_string(ip_str)
+      ip_str when is_binary(ip_str) -> Ipv4Util.parse(ip_str)
       _ -> {:error, :invalid_gateway}
     end
   end
@@ -296,7 +296,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
       servers when is_list(servers) ->
         parsed =
           Enum.map(servers, fn server_str ->
-            parse_ip_string(server_str)
+            Ipv4Util.parse(server_str)
           end)
 
         errors = Enum.filter(parsed, &match?({:error, _}, &1))
@@ -321,7 +321,7 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
         parsed =
           Enum.map(reservations, fn res ->
             with {:ok, mac} <- validate_mac(Map.get(res, "mac")),
-                 {:ok, ip} <- parse_ip_string(Map.get(res, "address", "")) do
+                 {:ok, ip} <- Ipv4Util.parse(Map.get(res, "address", "")) do
               {:ok, {mac, ip}}
             end
           end)
@@ -359,15 +359,6 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
   end
 
   defp validate_mac(_), do: {:error, :invalid_mac_type}
-
-  defp parse_ip_string(ip_string) when is_binary(ip_string) do
-    case :inet.parse_address(String.to_charlist(ip_string)) do
-      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
-      _ -> {:error, {:invalid_ip_format, ip_string}}
-    end
-  end
-
-  defp parse_ip_string(_), do: {:error, :invalid_ip_type}
 
   # Telemetry helpers
 

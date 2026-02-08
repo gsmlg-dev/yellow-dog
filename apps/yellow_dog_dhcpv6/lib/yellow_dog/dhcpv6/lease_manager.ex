@@ -899,11 +899,7 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     now = System.system_time(:second)
 
     # Parse IPv6 address if it's a string
-    ip =
-      case lease_data.ip do
-        ip when is_tuple(ip) -> ip
-        ip when is_binary(ip) -> parse_ipv6(ip)
-      end
+    {:ok, ip} = Ipv6Util.parse(lease_data.ip)
 
     # Calculate expires_at from valid_until (DateTime or unix timestamp)
     expires_at =
@@ -925,14 +921,6 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       valid_lifetime: pool.valid_lifetime,
       expires_at: expires_at
     }
-  end
-
-  # Parse IPv6 address string to tuple
-  defp parse_ipv6(ip_string) when is_binary(ip_string) do
-    case :inet.parse_address(String.to_charlist(ip_string)) do
-      {:ok, ip_tuple} -> ip_tuple
-      {:error, _} -> nil
-    end
   end
 
   # Flush all leases to TOML files

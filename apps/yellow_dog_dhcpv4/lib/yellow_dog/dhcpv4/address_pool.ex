@@ -329,7 +329,7 @@ defmodule YellowDog.Dhcpv4.AddressPool do
   end
 
   defp normalize_ip(ip) when is_tuple(ip) and tuple_size(ip) == 4, do: {:ok, ip}
-  defp normalize_ip(ip) when is_binary(ip), do: parse_ip_string(ip)
+  defp normalize_ip(ip) when is_binary(ip), do: Ipv4Util.parse(ip)
   defp normalize_ip(_), do: {:error, "Invalid IP format"}
 
   defp get_required_ip(config, key) do
@@ -341,7 +341,7 @@ defmodule YellowDog.Dhcpv4.AddressPool do
         {:ok, ip}
 
       ip when is_binary(ip) ->
-        parse_ip_string(ip)
+        Ipv4Util.parse(ip)
 
       _ ->
         {:error, "Invalid IP address format for #{key}"}
@@ -374,13 +374,6 @@ defmodule YellowDog.Dhcpv4.AddressPool do
 
       ip_int ->
         {:ok, Ipv4Util.from_integer(ip_int)}
-    end
-  end
-
-  defp parse_ip_string(ip_string) do
-    case :inet.parse_address(String.to_charlist(ip_string)) do
-      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
-      _ -> {:error, "Invalid IP address string: #{ip_string}"}
     end
   end
 

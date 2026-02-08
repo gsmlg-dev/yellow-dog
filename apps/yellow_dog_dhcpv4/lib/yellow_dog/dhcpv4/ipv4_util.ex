@@ -22,6 +22,18 @@ defmodule YellowDog.Dhcpv4.Ipv4Util do
     {int >>> 24 &&& 0xFF, int >>> 16 &&& 0xFF, int >>> 8 &&& 0xFF, int &&& 0xFF}
   end
 
+  @doc "Parses an IPv4 value (string, tuple, or other) into a 4-tuple."
+  @spec parse(term()) :: {:ok, ipv4_address()} | {:error, String.t()}
+  def parse(ip) when is_binary(ip) do
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, {_, _, _, _} = ip_tuple} -> {:ok, ip_tuple}
+      _ -> {:error, "Invalid IPv4 address: #{ip}"}
+    end
+  end
+
+  def parse(ip) when is_tuple(ip) and tuple_size(ip) == 4, do: {:ok, ip}
+  def parse(_), do: {:error, "Invalid IPv4 format"}
+
   @doc "Formats an IPv4 address as a dotted-decimal string. Passes through binaries."
   @spec format(ipv4_address() | binary() | nil) :: String.t() | nil
   def format(nil), do: nil
