@@ -100,13 +100,12 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
         # Format fallback forwarders for display
         fallback_display =
           (config.fallback_forwarders || [])
-          |> Enum.map(fn
+          |> Enum.map_join("\n", fn
             {ip, port} when port == 53 -> format_ip(ip)
             {ip, port} -> "#{format_ip(ip)}:#{port}"
             ip when is_tuple(ip) -> format_ip(ip)
             s when is_binary(s) -> s
           end)
-          |> Enum.join("\n")
 
         form_data = %{
           "name" => config.name,

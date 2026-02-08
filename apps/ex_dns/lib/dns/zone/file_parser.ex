@@ -767,10 +767,9 @@ defmodule DNS.Zone.FileParser do
   defp format_errors(errors) do
     errors
     |> Enum.reverse()
-    |> Enum.map(fn error ->
+    |> Enum.map_join("\n", fn error ->
       "Line #{error.line}: #{error.message} (#{error.context})"
     end)
-    |> Enum.join("\n")
   end
 
   defp generate_soa_record(soa) do
