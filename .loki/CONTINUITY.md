@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 189)
+**Phase**: IN_PROGRESS (Iteration 190)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 189 of 1000
+**Iteration**: 190 of 1000
 
 ## Session Summary
+Iteration 190: remove redundant is_struct guard clauses:
+- ✅ **All tests pass: 1083 DNS — 0 failures, 0 warnings**
+- ✅ auth.ex extract_target: removed is_struct guard clause redundant with catch-all (3→2 clauses)
+- ✅ auth.ex extract_address: removed is_struct guard clause redundant with catch-all (5→4 clauses)
+- ✅ 1 commit — 1 file — net -2 lines
+
 Iteration 189: map+reject(nil) → for comprehensions (batch 3 — DNS):
 - ✅ **All tests pass: 1083 DNS — 0 failures, 0 warnings**
 - ✅ auth.ex: nested flat_map+reject → nested for comprehension for rrsets_to_records
