@@ -316,6 +316,49 @@ defmodule DNS.Zone do
     }
   end
 
+  # Canonical mapping from record type atom to zone options keyword key.
+  # Used by Zone.Editor, Zone.Validator, and Zone.Transfer to avoid duplication.
+  @record_type_to_option_key %{
+    soa: :soa_records,
+    ns: :ns_records,
+    a: :a_records,
+    aaaa: :aaaa_records,
+    cname: :cname_records,
+    mx: :mx_records,
+    txt: :txt_records,
+    srv: :srv_records,
+    ptr: :ptr_records,
+    caa: :caa_records,
+    tlsa: :tlsa_records,
+    https: :https_records,
+    svcb: :svcb_records,
+    dnskey: :dnskey_records,
+    ds: :ds_records,
+    rrsig: :rrsig_records,
+    nsec: :nsec_records,
+    nsec3: :nsec3_records
+  }
+
+  @doc "Returns the canonical mapping from record type atom to zone options keyword key."
+  @spec record_type_to_option_key() :: %{atom() => atom()}
+  def record_type_to_option_key, do: @record_type_to_option_key
+
+  @doc "Returns the list of all zone option keys (e.g., `:soa_records`, `:a_records`)."
+  @spec record_option_keys() :: [atom()]
+  def record_option_keys, do: Map.values(@record_type_to_option_key)
+
+  @doc "Returns the option key for a given record type atom, or nil if unknown."
+  @spec record_option_key(atom()) :: atom() | nil
+  def record_option_key(type) when is_atom(type), do: Map.get(@record_type_to_option_key, type)
+
+  @doc "Collects all records from a zone's options across all record type keys."
+  @spec all_records(t()) :: [term()]
+  def all_records(%__MODULE__{} = zone) do
+    Enum.flat_map(Map.values(@record_type_to_option_key), fn key ->
+      Keyword.get(zone.options, key, [])
+    end)
+  end
+
   @doc "Normalizes a zone name (binary or Name struct) to lowercase string."
   @spec normalize_zone_name(binary() | Name.t()) :: String.t()
   def normalize_zone_name(name) when is_binary(name), do: String.downcase(name)

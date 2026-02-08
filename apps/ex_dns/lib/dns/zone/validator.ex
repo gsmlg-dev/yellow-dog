@@ -497,33 +497,7 @@ defmodule DNS.Zone.Validator do
 
   ## Private functions
 
-  defp get_all_records(zone) do
-    # Collect all records from zone options
-    record_types = [
-      :soa_records,
-      :ns_records,
-      :a_records,
-      :aaaa_records,
-      :cname_records,
-      :mx_records,
-      :txt_records,
-      :srv_records,
-      :ptr_records,
-      :caa_records,
-      :tlsa_records,
-      :https_records,
-      :svcb_records,
-      :dnskey_records,
-      :ds_records,
-      :rrsig_records,
-      :nsec_records,
-      :nsec3_records
-    ]
-
-    Enum.flat_map(record_types, fn type ->
-      Keyword.get(zone.options, type, [])
-    end)
-  end
+  defp get_all_records(zone), do: Zone.all_records(zone)
 
   defp find_duplicates(records) do
     records

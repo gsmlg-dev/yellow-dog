@@ -317,30 +317,7 @@ defmodule DNS.Zone.Editor do
 
   ## Private functions
 
-  # Safe mapping from record type atoms to record key atoms.
-  # Avoids runtime atom creation via :"#{type}_records" interpolation.
-  @record_key_map %{
-    soa: :soa_records,
-    ns: :ns_records,
-    a: :a_records,
-    aaaa: :aaaa_records,
-    cname: :cname_records,
-    mx: :mx_records,
-    txt: :txt_records,
-    srv: :srv_records,
-    ptr: :ptr_records,
-    caa: :caa_records,
-    tlsa: :tlsa_records,
-    https: :https_records,
-    svcb: :svcb_records,
-    dnskey: :dnskey_records,
-    ds: :ds_records,
-    rrsig: :rrsig_records,
-    nsec: :nsec_records,
-    nsec3: :nsec3_records
-  }
-
-  defp record_key(type), do: Map.get(@record_key_map, type)
+  defp record_key(type), do: Zone.record_option_key(type)
 
   defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
   defp zone_not_found(zone_name), do: {:error, "Zone not found: #{zone_name}"}
@@ -496,11 +473,7 @@ defmodule DNS.Zone.Editor do
     updated_record
   end
 
-  defp get_all_records(zone) do
-    Enum.flat_map(Map.values(@record_key_map), fn key ->
-      Keyword.get(zone.options, key, [])
-    end)
-  end
+  defp get_all_records(zone), do: Zone.all_records(zone)
 
   defp format_record_data(record) do
     case record.type do

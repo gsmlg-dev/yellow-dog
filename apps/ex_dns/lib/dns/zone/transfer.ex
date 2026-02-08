@@ -11,28 +11,6 @@ defmodule DNS.Zone.Transfer do
   alias DNS.Message.Record
   alias DNS.Zone.Manager
 
-  # Mapping from record type atom to zone options keyword key.
-  # Used by get_zone_records/1 and update_zone_with_records/2.
-  @record_type_keys [
-    soa: :soa_records,
-    ns: :ns_records,
-    a: :a_records,
-    aaaa: :aaaa_records,
-    cname: :cname_records,
-    mx: :mx_records,
-    txt: :txt_records,
-    srv: :srv_records,
-    ptr: :ptr_records,
-    caa: :caa_records,
-    tlsa: :tlsa_records,
-    https: :https_records,
-    svcb: :svcb_records,
-    dnskey: :dnskey_records,
-    ds: :ds_records,
-    rrsig: :rrsig_records,
-    nsec: :nsec_records,
-    nsec3: :nsec3_records
-  ]
 
   @doc """
   Perform full zone transfer (AXFR) for a zone.
@@ -210,11 +188,7 @@ defmodule DNS.Zone.Transfer do
   defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
   defp zone_not_found(zone_name), do: {:error, "Zone not found: #{zone_name}"}
 
-  defp get_zone_records(zone) do
-    Enum.flat_map(@record_type_keys, fn {_type, key} ->
-      Keyword.get(zone.options, key, [])
-    end)
-  end
+  defp get_zone_records(zone), do: Zone.all_records(zone)
 
   defp get_zone_serial(zone) do
     case Keyword.get(zone.options, :soa_records, []) do
@@ -285,7 +259,7 @@ defmodule DNS.Zone.Transfer do
     categorized = Enum.group_by(records, & &1.type)
 
     record_options =
-      Enum.map(@record_type_keys, fn {type, key} ->
+      Enum.map(Zone.record_type_to_option_key(), fn {type, key} ->
         {key, Map.get(categorized, type, [])}
       end)
 
