@@ -1,11 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 187)
+**Phase**: IN_PROGRESS (Iteration 188)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 187 of 1000
+**Iteration**: 188 of 1000
 
 ## Session Summary
+Iteration 188: map+reject(nil) → for comprehensions (batch 2):
+- ✅ **All tests pass: 1122 console, 404 DHCPv4, 309 mDNS — 0 failures, 0 warnings**
+- ✅ Replaced 5 more `Enum.map(...) |> Enum.reject(&is_nil/1)` with `for` comprehensions
+- ✅ custom_options.ex: encode_options with pattern match on {:ok, encoded}
+- ✅ client.ex: service discovery with nil guard
+- ✅ acl_live.ex (2×): parse_acl_rules and build_named_acl_rules with nil guard
+- ✅ services_live.ex: parse_txt_records with pattern match and `into: %{}`
+- ✅ 1 commit — 4 files — net -12 lines
+
 Iteration 187: map+reject(nil) → for comprehensions:
 - ✅ **All tests pass: 1122 console, 1083 DNS, 309 mDNS — 0 failures, 0 warnings**
 - ✅ Replaced 5× `Enum.map(...) |> Enum.reject(&is_nil/1)` with `for` comprehensions
