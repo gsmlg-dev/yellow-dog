@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 134)
+**Phase**: IN_PROGRESS (Iteration 135)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 134 of 1000
+**Iteration**: 135 of 1000
 
 ## Session Summary
+Iteration 135: Replace parse_ipv6 duplicate in DHCPv6 pool.ex:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ pool.ex: simplified 4-clause `parse_ipv6` to 1-clause `Ipv6Util.parse/1` wrapper
+- ✅ Matches DHCPv4 pool.ex pattern (nil-on-error for backward compatibility)
+- ✅ 1 file — net -6 lines
+
 Iteration 134: Replace 4 parse_ip duplicates with Ipv4Util.parse/1:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ custom_options.ex: replaced manual string parsing with `Ipv4Util.parse/1`
@@ -823,6 +829,7 @@ Previous iteration 12: Event handler tests + resilience + debounce:
 
 ## Commit History (This Iteration)
 1. `808dab5` - refactor(dhcpv4): replace 4 parse_ip duplicates with Ipv4Util.parse
+2. `32f7f3c` - refactor(dhcpv6): replace parse_ipv6 duplicate with Ipv6Util.parse
 
 Previous iteration 25 commits:
 1. `027e136` - fix(dhcpv6): return {:error, reason} instead of bare :error in store_lease_to_mnesia
