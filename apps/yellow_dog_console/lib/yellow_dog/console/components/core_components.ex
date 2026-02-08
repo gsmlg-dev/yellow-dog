@@ -90,13 +90,11 @@ defmodule YellowDog.Console.CoreComponents do
 
   Used by DHCPv4 and DHCPv6 lease/pool views.
   """
+  @lease_state_colors %{active: "success", offered: "info", released: "warning",
+    expired: "error", declined: "error"}
+
   @spec lease_state_color(atom()) :: String.t()
-  def lease_state_color(:active), do: "success"
-  def lease_state_color(:offered), do: "info"
-  def lease_state_color(:released), do: "warning"
-  def lease_state_color(:expired), do: "error"
-  def lease_state_color(:declined), do: "error"
-  def lease_state_color(_), do: "ghost"
+  def lease_state_color(state), do: Map.get(@lease_state_colors, state, "ghost")
 
   @doc """
   Returns a DaisyUI text color class for a DHCP lease state.
@@ -126,11 +124,10 @@ defmodule YellowDog.Console.CoreComponents do
   def utilization_text_color(percent), do: "text-#{utilization_color(percent)}"
 
   @doc "Returns a DaisyUI badge color for a DHCPv6 IA type."
+  @ia_type_colors %{ia_na: "primary", ia_ta: "secondary", ia_pd: "accent"}
+
   @spec ia_type_color(atom()) :: String.t()
-  def ia_type_color(:ia_na), do: "primary"
-  def ia_type_color(:ia_ta), do: "secondary"
-  def ia_type_color(:ia_pd), do: "accent"
-  def ia_type_color(_), do: "ghost"
+  def ia_type_color(type), do: Map.get(@ia_type_colors, type, "ghost")
 
   @doc "Returns a DaisyUI text color class for a DHCPv6 IA type."
   @spec ia_type_text_color(atom()) :: String.t()

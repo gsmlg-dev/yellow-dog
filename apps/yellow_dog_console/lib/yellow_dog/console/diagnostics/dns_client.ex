@@ -110,11 +110,9 @@ defmodule YellowDog.Console.Diagnostics.DnsClient do
 
   defp parse_record_type(type) when is_atom(type), do: type
 
-  defp parse_protocol("udp"), do: :udp
-  defp parse_protocol("tcp"), do: :tcp
-  defp parse_protocol(:udp), do: :udp
-  defp parse_protocol(:tcp), do: :tcp
-  defp parse_protocol(_), do: :udp
+  @protocols %{"udp" => :udp, "tcp" => :tcp, udp: :udp, tcp: :tcp}
+
+  defp parse_protocol(proto), do: Map.get(@protocols, proto, :udp)
 
   defp parse_ip(ip_string) when is_binary(ip_string) do
     case :inet.parse_address(String.to_charlist(ip_string)) do
