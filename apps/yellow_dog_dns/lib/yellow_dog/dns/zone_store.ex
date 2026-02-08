@@ -220,14 +220,13 @@ defmodule YellowDog.Dns.ZoneStore do
     }
   end
 
+  @zone_types %{
+    "auth" => :auth, "forward" => :forward, "stub" => :stub,
+    "cache" => :cache, "root" => :root, "rpz" => :rpz
+  }
+
   defp normalize_type(type) when is_atom(type), do: type
-  defp normalize_type("auth"), do: :auth
-  defp normalize_type("forward"), do: :forward
-  defp normalize_type("stub"), do: :stub
-  defp normalize_type("cache"), do: :cache
-  defp normalize_type("root"), do: :root
-  defp normalize_type("rpz"), do: :rpz
-  defp normalize_type(_), do: :auth
+  defp normalize_type(type), do: Map.get(@zone_types, type, :auth)
 
   defp validate_required_fields(zone) do
     cond do

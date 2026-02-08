@@ -101,13 +101,13 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
     end
   end
 
-  defp parse_message_type("discover"), do: :discover
-  defp parse_message_type("request"), do: :request
-  defp parse_message_type("decline"), do: :decline
-  defp parse_message_type("release"), do: :release
-  defp parse_message_type("inform"), do: :inform
+  @dhcpv4_message_types %{
+    "discover" => :discover, "request" => :request, "decline" => :decline,
+    "release" => :release, "inform" => :inform
+  }
+
   defp parse_message_type(type) when is_atom(type), do: type
-  defp parse_message_type(_), do: :discover
+  defp parse_message_type(type), do: Map.get(@dhcpv4_message_types, type, :discover)
 
   defp parse_mac(""), do: generate_mac()
 

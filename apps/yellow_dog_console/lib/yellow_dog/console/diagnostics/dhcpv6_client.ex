@@ -104,15 +104,14 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
     end
   end
 
-  defp parse_message_type("solicit"), do: :solicit
-  defp parse_message_type("request"), do: :request
-  defp parse_message_type("renew"), do: :renew
-  defp parse_message_type("rebind"), do: :rebind
-  defp parse_message_type("release"), do: :release
-  defp parse_message_type("decline"), do: :decline
-  defp parse_message_type("information_request"), do: :information_request
+  @dhcpv6_message_types %{
+    "solicit" => :solicit, "request" => :request, "renew" => :renew,
+    "rebind" => :rebind, "release" => :release, "decline" => :decline,
+    "information_request" => :information_request
+  }
+
   defp parse_message_type(type) when is_atom(type), do: type
-  defp parse_message_type(_), do: :solicit
+  defp parse_message_type(type), do: Map.get(@dhcpv6_message_types, type, :solicit)
 
   defp parse_duid(""), do: generate_duid()
 

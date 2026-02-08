@@ -485,21 +485,17 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     target
   end
 
-  defp acl_type_label("any"), do: "Allow All"
-  defp acl_type_label("none"), do: "Deny All"
-  defp acl_type_label("localhost"), do: "Localhost Only"
-  defp acl_type_label("localnets"), do: "Local Networks"
-  defp acl_type_label("geo"), do: "Geographic"
-  defp acl_type_label("custom"), do: "Custom Rules"
-  defp acl_type_label(_), do: "Unknown"
+  @acl_type_labels %{
+    "any" => "Allow All", "none" => "Deny All", "localhost" => "Localhost Only",
+    "localnets" => "Local Networks", "geo" => "Geographic", "custom" => "Custom Rules"
+  }
+  @acl_type_badges %{
+    "any" => "success", "none" => "error", "localhost" => "warning",
+    "localnets" => "info", "geo" => "secondary", "custom" => "primary"
+  }
 
-  defp acl_type_badge("any"), do: "success"
-  defp acl_type_badge("none"), do: "error"
-  defp acl_type_badge("localhost"), do: "warning"
-  defp acl_type_badge("localnets"), do: "info"
-  defp acl_type_badge("geo"), do: "secondary"
-  defp acl_type_badge("custom"), do: "primary"
-  defp acl_type_badge(_), do: "ghost"
+  defp acl_type_label(type), do: Map.get(@acl_type_labels, type, "Unknown")
+  defp acl_type_badge(type), do: Map.get(@acl_type_badges, type, "ghost")
 
   # Named ACL functions
 
