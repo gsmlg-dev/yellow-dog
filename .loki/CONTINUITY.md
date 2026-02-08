@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 181)
+**Phase**: IN_PROGRESS (Iteration 182)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 181 of 1000
+**Iteration**: 182 of 1000
 
 ## Session Summary
+Iteration 182: downcase_contains? search helper:
+- ✅ **All tests pass: 1122 console (7 doctests), 0 failures, 0 warnings**
+- ✅ Added StringHelper.downcase_contains?/2 with nil-safe fallback
+- ✅ Replaced 15× `String.contains?(String.downcase(...), term)` across 9 modules
+- ✅ format_helper, logs_live, monitor_live, discovery_live, view_live, query_logs_live, acl_live, zone_live
+- ✅ 1 commit — 9 files — net +34 lines (new function + 3 doctests)
+
 Iteration 181: capture syntax + find_index cleanup:
 - ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 309 mDNS, abyss — 0 failures, 0 warnings**
 - ✅ Replaced 4× `fn {x, _} -> x end` with `&elem(&1, 0)` in config_watcher, rpz, utils
