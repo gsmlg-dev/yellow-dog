@@ -64,9 +64,8 @@ defmodule YellowDog.Dns.Client do
   def query(name, type, server, opts \\ []) do
     {request_binary, port, timeout, client_opts} = build_request(name, type, opts)
 
-    case Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
-      {:ok, response_binary} -> parse_response(response_binary)
-      {:error, reason} -> {:error, reason}
+    with {:ok, response_binary} <- Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
+      parse_response(response_binary)
     end
   end
 
@@ -114,12 +113,8 @@ defmodule YellowDog.Dns.Client do
     request_binary = DNS.to_iodata(message) |> IO.iodata_to_binary()
     client_opts = build_client_opts(opts)
 
-    case Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
-      {:ok, response_binary} ->
-        parse_response(response_binary)
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, response_binary} <- Abyss.Client.send_recv(server, port, request_binary, timeout, client_opts) do
+      parse_response(response_binary)
     end
   end
 
@@ -142,17 +137,7 @@ defmodule YellowDog.Dns.Client do
   end
 
   # Build Abyss.Client options from query options
-  defp build_client_opts(opts) do
-    client_opts = []
-
-    client_opts =
-      case Keyword.get(opts, :source) do
-        nil -> client_opts
-        source -> [{:source, source} | client_opts]
-      end
-
-    client_opts
-  end
+  defp build_client_opts(opts), do: Keyword.take(opts, [:source])
 
   # Parse DNS response binary
   defp parse_response(response_binary) do

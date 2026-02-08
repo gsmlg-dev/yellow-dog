@@ -201,10 +201,7 @@ defmodule YellowDog.Mdns.ServiceStore do
   defp validate_and_normalize_service(service) do
     normalized = normalize_service_keys(service)
 
-    case validate_service(normalized) do
-      :ok -> {:ok, normalized}
-      {:error, reason} -> {:error, reason}
-    end
+    with :ok <- validate_service(normalized), do: {:ok, normalized}
   end
 
   defp normalize_service_keys(service) when is_map(service) do

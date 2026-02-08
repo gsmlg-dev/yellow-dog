@@ -487,12 +487,7 @@ defmodule YellowDog.Config do
   """
   @spec ensure_service_data_dir(service_name()) :: :ok | {:error, term()}
   def ensure_service_data_dir(service) do
-    dir = get_service_data_dir(service)
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    service |> get_service_data_dir() |> File.mkdir_p()
   end
 
   @doc """
@@ -521,11 +516,6 @@ defmodule YellowDog.Config do
   """
   @spec ensure_mnesia_dir() :: :ok | {:error, term()}
   def ensure_mnesia_dir do
-    dir = get_mnesia_dir()
-
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    get_mnesia_dir() |> File.mkdir_p()
   end
 end

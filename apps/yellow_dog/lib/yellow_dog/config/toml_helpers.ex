@@ -86,11 +86,7 @@ defmodule YellowDog.Config.TomlHelpers do
   @doc "Reads a file and decodes it as TOML. Returns `{:ok, []}` for missing files."
   @spec read_toml_file(Path.t()) :: {:ok, map()} | {:error, term()}
   def read_toml_file(path) do
-    case File.read(path) do
-      {:ok, content} -> parse_toml(content)
-      {:error, :enoent} -> {:error, :enoent}
-      {:error, reason} -> {:error, reason}
-    end
+    with {:ok, content} <- File.read(path), do: parse_toml(content)
   end
 
   # ──────────────────────────────────────────────────────────────────

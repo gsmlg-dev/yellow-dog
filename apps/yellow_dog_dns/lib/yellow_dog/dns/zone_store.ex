@@ -205,10 +205,7 @@ defmodule YellowDog.Dns.ZoneStore do
   defp validate_and_normalize_zone(zone) do
     normalized = normalize_zone_keys(zone)
 
-    case validate_zone(normalized) do
-      :ok -> {:ok, normalized}
-      {:error, reason} -> {:error, reason}
-    end
+    with :ok <- validate_zone(normalized), do: {:ok, normalized}
   end
 
   defp normalize_zone_keys(zone) when is_map(zone) do

@@ -187,10 +187,7 @@ defmodule YellowDog.Dns.ViewStore do
   defp validate_and_normalize_view(view) do
     normalized = normalize_view_keys(view)
 
-    case validate_view(normalized) do
-      :ok -> {:ok, normalized}
-      {:error, reason} -> {:error, reason}
-    end
+    with :ok <- validate_view(normalized), do: {:ok, normalized}
   end
 
   defp normalize_view_keys(view) when is_map(view) do
