@@ -11,6 +11,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
   import YellowDog.Console.FormatHelper, only: [format_ip: 1, filtered_countries: 2]
   import YellowDog.Console.ServiceHelper
 
+  alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
@@ -427,9 +428,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       if forwarders != "" do
         invalid =
           forwarders
-          |> String.split("\n", trim: true)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
+          |> StringHelper.split_and_trim("\n")
           |> Enum.find(fn entry ->
             # Strip optional :port suffix
             ip =
@@ -598,9 +597,7 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
 
   defp parse_forwarders(text) do
     text
-    |> String.split("\n", trim: true)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    |> StringHelper.split_and_trim("\n")
     |> Enum.map(fn entry ->
       case String.split(entry, ":") do
         [ip, port_str] ->

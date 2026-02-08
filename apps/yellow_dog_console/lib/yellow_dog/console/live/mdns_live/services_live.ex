@@ -7,6 +7,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
+  alias YellowDog.Console.StringHelper
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -212,9 +214,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
         addresses_str ->
           invalid =
             addresses_str
-            |> String.split("\n", trim: true)
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
+            |> StringHelper.split_and_trim("\n")
             |> Enum.reject(fn addr ->
               match?({:ok, _}, :inet.parse_address(String.to_charlist(addr)))
             end)
@@ -249,9 +249,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   defp parse_txt_records(txt_string) when is_binary(txt_string) do
     txt_string
-    |> String.split("\n", trim: true)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    |> StringHelper.split_and_trim("\n")
     |> Enum.map(fn line ->
       case String.split(line, "=", parts: 2) do
         [key, value] -> {String.trim(key), String.trim(value)}
@@ -266,9 +264,7 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   defp parse_addresses(addresses_string) when is_binary(addresses_string) do
     addresses_string
-    |> String.split("\n", trim: true)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    |> StringHelper.split_and_trim("\n")
   end
 
   defp parse_addresses(_), do: []

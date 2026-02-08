@@ -7,6 +7,7 @@ defmodule YellowDog.Console.Settings.AddressPool do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias YellowDog.Console.StringHelper
 
   alias YellowDog.Console.Validators
 
@@ -84,11 +85,7 @@ defmodule YellowDog.Console.Settings.AddressPool do
   end
 
   defp parse_dns_servers_str(%{"dns_servers_str" => str} = attrs) when is_binary(str) do
-    servers =
-      str
-      |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+    servers = StringHelper.split_and_trim(str, ",")
 
     attrs
     |> Map.delete("dns_servers_str")

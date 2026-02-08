@@ -11,6 +11,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
+  alias YellowDog.Console.StringHelper
   alias YellowDog.Console.Validators
   alias YellowDog.Dns.View
   alias YellowDog.Dns.ViewManager
@@ -381,9 +382,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
         invalid =
           upstreams
-          |> String.split("\n", trim: true)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
+          |> StringHelper.split_and_trim("\n")
           |> Enum.find(fn ip ->
             Validators.validate_ip(ip, :ipv4) != :ok and
               Validators.validate_ip(ip, :ipv6) != :ok
@@ -405,9 +404,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
 
         invalid =
           ns_records
-          |> String.split("\n", trim: true)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
+          |> StringHelper.split_and_trim("\n")
           |> Enum.find(fn ns ->
             Validators.validate_domain_name(ns) != :ok
           end)
@@ -521,9 +518,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp build_zone_config(:forward, params) do
     upstreams =
       params["upstreams"]
-      |> String.split("\n", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+      |> StringHelper.split_and_trim("\n")
 
     [upstreams: upstreams]
   end
@@ -531,9 +526,7 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
   defp build_zone_config(:stub, params) do
     ns_records =
       params["ns_records"]
-      |> String.split("\n", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+      |> StringHelper.split_and_trim("\n")
 
     [ns_records: ns_records]
   end
