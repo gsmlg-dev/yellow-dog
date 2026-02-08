@@ -342,15 +342,12 @@ defmodule YellowDog.Config do
   """
   @spec get_dns_zone_file(zone_name()) :: {:ok, String.t()} | {:error, :not_found}
   def get_dns_zone_file(zone_name) do
-    case get_dns_zone(zone_name) do
-      {:ok, zone_config} ->
-        case Map.get(zone_config, "file") do
-          nil -> {:error, :not_found}
-          file_path -> {:ok, file_path}
-        end
-
-      {:error, :not_found} = error ->
-        error
+    with {:ok, zone_config} <- get_dns_zone(zone_name),
+         file_path when is_binary(file_path) <- Map.get(zone_config, "file") do
+      {:ok, file_path}
+    else
+      {:error, :not_found} -> {:error, :not_found}
+      nil -> {:error, :not_found}
     end
   end
 

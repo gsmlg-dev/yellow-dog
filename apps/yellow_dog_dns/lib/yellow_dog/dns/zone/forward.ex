@@ -507,28 +507,21 @@ defmodule YellowDog.Dns.Zone.Forward do
   @valid_required_keys %{"name" => :missing_name, "forwarders" => :missing_forwarders}
   defp get_required(config, key) when is_map_key(@valid_required_keys, key) do
     case Map.get(config, key) do
-      nil -> {:error, @valid_required_keys[key]}
-      "" -> {:error, @valid_required_keys[key]}
-      [] -> {:error, @valid_required_keys[key]}
+      value when value in [nil, "", []] -> {:error, @valid_required_keys[key]}
       value -> {:ok, value}
     end
   end
 
   defp parse_forwarder_ips(forwarder_strs) when is_list(forwarder_strs) do
-    results =
-      Enum.map(forwarder_strs, fn str ->
-        charlist = String.to_charlist(str)
-
-        case :inet.parse_address(charlist) do
-          {:ok, ip} -> {:ok, ip}
-          _ -> :error
-        end
-      end)
-
-    if Enum.any?(results, fn r -> r == :error end) do
-      {:error, :invalid_forwarders}
-    else
-      {:ok, Enum.map(results, fn {:ok, ip} -> ip end)}
+    Enum.reduce_while(forwarder_strs, {:ok, []}, fn str, {:ok, acc} ->
+      case :inet.parse_address(String.to_charlist(str)) do
+        {:ok, ip} -> {:cont, {:ok, [ip | acc]}}
+        _ -> {:halt, {:error, :invalid_forwarders}}
+      end
+    end)
+    |> case do
+      {:ok, ips} -> {:ok, Enum.reverse(ips)}
+      error -> error
     end
   end
 

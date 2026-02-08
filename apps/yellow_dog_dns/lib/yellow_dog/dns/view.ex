@@ -42,7 +42,7 @@ defmodule YellowDog.Dns.View do
   alias YellowDog.Dns.ZoneController
   alias DNS.Message
 
-  @default_cache_size 1000
+
   @default_priority 100
 
   defstruct [
@@ -183,8 +183,6 @@ defmodule YellowDog.Dns.View do
     enabled = Map.get(config, :enabled, true)
     recursion_enabled = Map.get(config, :recursion_enabled, true)
     ecs_enabled = Map.get(config, :ecs_enabled, false)
-    _cache_size = Map.get(config, :cache_size, @default_cache_size)
-
     # Create view-local cache
     cache_table =
       :ets.new(:"view_cache_#{view_name}", [
