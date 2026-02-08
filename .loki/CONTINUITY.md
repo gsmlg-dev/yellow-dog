@@ -1,11 +1,19 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 204)
+**Phase**: IN_PROGRESS (Iteration 205)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 204 of 1000
+**Iteration**: 205 of 1000
 
 ## Session Summary
+Iteration 205: multi-clause string→value functions → module attribute maps:
+- ✅ **All tests pass: 1122 console, 1083 DNS — 0 failures, 0 warnings**
+- ✅ acl_live: acl_type_label + acl_type_badge (14 clauses → 2 maps + 2 Map.get)
+- ✅ zone_store: normalize_type (7 clauses → @zone_types map)
+- ✅ dhcpv4_client: parse_message_type (7 clauses → @dhcpv4_message_types map)
+- ✅ dhcpv6_client: parse_message_type (9 clauses → @dhcpv6_message_types map)
+- ✅ 1 commit — 4 files — net -6 lines
+
 Iteration 204: DRY parse_acl_rule + parse_mode via get_value/map lookup:
 - ✅ **All tests pass: 404 DHCPv4, 299 DHCPv6 — 0 failures, 0 warnings**
 - ✅ DHCPv4 pool: parse_acl_rule 8 clauses → 1 using get_value + case
