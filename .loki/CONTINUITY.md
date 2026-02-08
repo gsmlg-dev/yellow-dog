@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 150)
+**Phase**: IN_PROGRESS (Iteration 151)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 150 of 1000
+**Iteration**: 151 of 1000
 
 ## Session Summary
+Iteration 151: Replace reverse+reduce binary building with map_join + DRY message cache:
+- ✅ **All tests pass: 4764 ex_dns, 1083 DNS, 309 mDNS, 0 failures, 0 credo issues, 0 warnings**
+- ✅ ex_dns Name.to_iodata + Domain.to_iodata + domain_byte_size: Enum.reverse|>Enum.reduce(<<0>>) → Enum.map_join <> <<0>>
+- ✅ mdns message_cache: 3 identical Enum.each(cache_record) → single for comprehension
+- ✅ 1 commit — 3 files — net -14 lines
+
 Iteration 150: Replace binary reduce with map_join + extract constants:
 - ✅ **All tests pass: 4764 ex_dns, 479 abyss, 0 failures, 0 credo issues, 0 warnings**
 - ✅ ex_dns TXT.new/1: Enum.reduce with <<acc::binary, ...>> → Enum.map_join (O(n) vs O(n²))
