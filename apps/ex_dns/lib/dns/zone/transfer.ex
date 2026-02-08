@@ -48,7 +48,7 @@ defmodule DNS.Zone.Transfer do
         {:ok, records}
 
       {:error, :not_found} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
 
       {:error, reason} ->
         {:error, "AXFR failed: #{inspect(reason)}"}
@@ -77,7 +77,7 @@ defmodule DNS.Zone.Transfer do
         end
 
       {:error, :not_found} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
 
       {:error, reason} ->
         {:error, "IXFR failed: #{inspect(reason)}"}
@@ -101,7 +101,7 @@ defmodule DNS.Zone.Transfer do
         end
 
       {:error, :not_found} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
 
       {:error, reason} ->
         {:error, "IXFR failed: #{inspect(reason)}"}
@@ -208,6 +208,7 @@ defmodule DNS.Zone.Transfer do
   ## Private functions
 
   defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
+  defp zone_not_found(zone_name), do: {:error, "Zone not found: #{zone_name}"}
 
   defp get_zone_records(zone) do
     Enum.flat_map(@record_type_keys, fn {_type, key} ->

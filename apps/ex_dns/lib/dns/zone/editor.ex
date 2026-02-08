@@ -81,7 +81,7 @@ defmodule DNS.Zone.Editor do
         end
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -113,7 +113,7 @@ defmodule DNS.Zone.Editor do
         end
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -153,7 +153,7 @@ defmodule DNS.Zone.Editor do
         end
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -182,7 +182,7 @@ defmodule DNS.Zone.Editor do
         {:ok, formatted_records}
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -217,7 +217,7 @@ defmodule DNS.Zone.Editor do
         {:ok, formatted_records}
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -240,7 +240,7 @@ defmodule DNS.Zone.Editor do
         end
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -256,7 +256,7 @@ defmodule DNS.Zone.Editor do
         Validator.validate_zone(zone)
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
@@ -311,13 +311,14 @@ defmodule DNS.Zone.Editor do
         end
 
       {:error, _reason} ->
-        {:error, "Zone not found: #{zone_name}"}
+        zone_not_found(zone_name)
     end
   end
 
   ## Private functions
 
   defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
+  defp zone_not_found(zone_name), do: {:error, "Zone not found: #{zone_name}"}
 
   defp valid_zone_name?(name) do
     # Basic zone name validation
