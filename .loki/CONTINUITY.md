@@ -1,11 +1,16 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 161)
+**Phase**: IN_PROGRESS (Iteration 162)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 161 of 1000
+**Iteration**: 162 of 1000
 
 ## Session Summary
+Iteration 162: Extract collect_ok/1 in acl and custom_options:
+- ✅ **All tests pass: 404 DHCPv4, 0 failures, 0 warnings**
+- ✅ DRY 4× filter-error/map-ok pattern → collect_ok/1 across acl.ex (1) + custom_options.ex (3)
+- ✅ 1 commit — 2 files — net +13 lines (added helpers, saved at call sites)
+
 Iteration 161: Extract collect_ok/1 in pool_config + capture shorthand:
 - ✅ **All tests pass: 404 DHCPv4, 0 failures, 0 credo issues, 0 warnings**
 - ✅ DRY 4× filter-error/map-ok pattern → collect_ok/1 using Enum.split_with
