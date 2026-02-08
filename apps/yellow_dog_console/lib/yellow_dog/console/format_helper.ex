@@ -212,6 +212,11 @@ defmodule YellowDog.Console.FormatHelper do
   def filter_by_pool(items, "all"), do: items
   def filter_by_pool(items, pool), do: Enum.filter(items, fn item -> item.pool_name == pool end)
 
+  @doc "Formats a list of IP addresses as display strings (for DNS server lists)."
+  @spec format_dns_servers(list() | nil) :: [String.t()]
+  def format_dns_servers(nil), do: []
+  def format_dns_servers(servers) when is_list(servers), do: Enum.map(servers, &format_ip/1)
+
   @doc "Parses a colon-separated hex DUID string into a binary."
   @spec parse_duid_string(String.t()) :: binary()
   def parse_duid_string(duid_str) do

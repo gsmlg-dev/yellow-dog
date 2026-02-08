@@ -12,7 +12,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_duration: 1, filtered_pools: 2]
+  import YellowDog.Console.FormatHelper,
+    only: [format_ip: 1, format_dns_servers: 1, format_duration: 1, filtered_pools: 2]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Components.PoolFormComponent
@@ -525,12 +526,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
     servers
     |> Enum.map(&parse_ip/1)
     |> Enum.reject(&is_nil/1)
-  end
-
-  defp format_dns_servers(nil), do: []
-
-  defp format_dns_servers(servers) when is_list(servers) do
-    Enum.map(servers, &format_ip/1)
   end
 
 end

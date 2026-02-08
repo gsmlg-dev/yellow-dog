@@ -434,4 +434,24 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.filtered_pools([], "test") == []
     end
   end
+
+  describe "format_dns_servers/1" do
+    test "returns empty list for nil" do
+      assert FormatHelper.format_dns_servers(nil) == []
+    end
+
+    test "formats IPv4 tuple servers" do
+      result = FormatHelper.format_dns_servers([{8, 8, 8, 8}, {8, 8, 4, 4}])
+      assert result == ["8.8.8.8", "8.8.4.4"]
+    end
+
+    test "passes through string servers" do
+      result = FormatHelper.format_dns_servers(["8.8.8.8", "1.1.1.1"])
+      assert result == ["8.8.8.8", "1.1.1.1"]
+    end
+
+    test "handles empty list" do
+      assert FormatHelper.format_dns_servers([]) == []
+    end
+  end
 end
