@@ -11,13 +11,13 @@ defmodule Mix.Tasks.Dns.FetchRoot do
     data_dir = DNS.Zone.RootHint.data_dir()
 
     unless File.exists?(data_dir) do
-      IO.puts("data_dir not exists, create it #{data_dir}")
+      Mix.shell().info("data_dir not exists, create it #{data_dir}")
       File.mkdir_p!(data_dir)
     end
   end
 
   defp write_file(name, data) do
-    IO.puts("wrtiting #{String.length(data)} bytes to file #{name}")
+    Mix.shell().info("writing #{String.length(data)} bytes to file #{name}")
     data_dir = DNS.Zone.RootHint.data_dir()
     path = Path.join(data_dir, name)
     _ = File.write(path, data)
@@ -64,7 +64,7 @@ defmodule Mix.Tasks.Dns.FetchRoot do
           :ok
 
         {:error, reason} ->
-          IO.puts("Error fetching #{name} #{url}: #{inspect(reason)}")
+          Mix.shell().info("Error fetching #{name} #{url}: #{inspect(reason)}")
           :error
       end
     end
@@ -74,7 +74,7 @@ defmodule Mix.Tasks.Dns.FetchRoot do
 
     for {name, file_name} <- files do
       file_url = "#{base_url}#{file_name}"
-      IO.puts("Fetching #{name} from #{file_url}")
+      Mix.shell().info("Fetching #{name} from #{file_url}")
 
       case fetch(file_url) do
         {:ok, data} ->
@@ -82,7 +82,7 @@ defmodule Mix.Tasks.Dns.FetchRoot do
           :ok
 
         {:error, reason} ->
-          IO.puts("Error fetching #{name} #{file_url}: #{inspect(reason)}")
+          Mix.shell().info("Error fetching #{name} #{file_url}: #{inspect(reason)}")
           :error
       end
     end

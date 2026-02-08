@@ -62,7 +62,7 @@ defmodule DNS.Zone.Editor do
         record = create_record(zone_name, record_type, options)
 
         # Add record to appropriate category
-        record_key = :"#{record_type}_records"
+        record_key = record_key(record_type)
         existing_records = Keyword.get(zone.options, record_key, [])
         updated_records = [record | existing_records]
 
@@ -95,7 +95,7 @@ defmodule DNS.Zone.Editor do
 
     case Manager.get_zone(zone_name) do
       {:ok, zone} ->
-        record_key = :"#{record_type}_records"
+        record_key = record_key(record_type)
         existing_records = Keyword.get(zone.options, record_key, [])
 
         # Find matching records
@@ -127,7 +127,7 @@ defmodule DNS.Zone.Editor do
 
     case Manager.get_zone(zone_name) do
       {:ok, zone} ->
-        record_key = :"#{record_type}_records"
+        record_key = record_key(record_type)
         existing_records = Keyword.get(zone.options, record_key, [])
 
         # Find and update matching records
@@ -316,6 +316,31 @@ defmodule DNS.Zone.Editor do
   end
 
   ## Private functions
+
+  # Safe mapping from record type atoms to record key atoms.
+  # Avoids runtime atom creation via :"#{type}_records" interpolation.
+  @record_key_map %{
+    soa: :soa_records,
+    ns: :ns_records,
+    a: :a_records,
+    aaaa: :aaaa_records,
+    cname: :cname_records,
+    mx: :mx_records,
+    txt: :txt_records,
+    srv: :srv_records,
+    ptr: :ptr_records,
+    caa: :caa_records,
+    tlsa: :tlsa_records,
+    https: :https_records,
+    svcb: :svcb_records,
+    dnskey: :dnskey_records,
+    ds: :ds_records,
+    rrsig: :rrsig_records,
+    nsec: :nsec_records,
+    nsec3: :nsec3_records
+  }
+
+  defp record_key(type), do: Map.get(@record_key_map, type)
 
   defp normalize_zone_name(name), do: DNS.Zone.normalize_zone_name(name)
   defp zone_not_found(zone_name), do: {:error, "Zone not found: #{zone_name}"}
