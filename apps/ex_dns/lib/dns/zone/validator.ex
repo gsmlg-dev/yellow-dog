@@ -411,7 +411,7 @@ defmodule DNS.Zone.Validator do
         Enum.map(records_by_type, fn {type, records} ->
           {type, length(records)}
         end),
-      unique_names: length(Enum.uniq(Enum.map(all_records, & &1.name.value))),
+      unique_names: all_records |> Enum.uniq_by(& &1.name.value) |> length(),
       dnssec_enabled: has_dnssec?(zone),
       last_modified: Keyword.get(zone.options, :last_modified, DateTime.utc_now())
     }
@@ -445,8 +445,9 @@ defmodule DNS.Zone.Validator do
 
     # Check TTL distribution
     all_records = get_all_records(zone)
-    ttl_values = Enum.map(all_records, & &1.ttl)
-    avg_ttl = if ttl_values != [], do: Enum.sum(ttl_values) / length(ttl_values), else: 0
+
+    avg_ttl =
+      if all_records != [], do: Enum.sum_by(all_records, & &1.ttl) / length(all_records), else: 0
 
     recommendations =
       if avg_ttl < 300 do
@@ -513,12 +514,8 @@ defmodule DNS.Zone.Validator do
 
   defp validate_dnssec_signatures(zone) do
     # Basic DNSSEC validation - check for required records
-    dnskey_records = Keyword.get(zone.options, :dnskey_records, [])
-    _rrsig_records = Keyword.get(zone.options, :rrsig_records, [])
-
-    # For testing purposes, DNSSEC is valid if DNSKEY records exist
-    # In real implementation, this would validate signatures
-    dnskey_records != []
+    # In real implementation, this would also validate RRSIG signatures
+    Keyword.get(zone.options, :dnskey_records, []) != []
   end
 
   defp has_transfer_restrictions?(zone) do
