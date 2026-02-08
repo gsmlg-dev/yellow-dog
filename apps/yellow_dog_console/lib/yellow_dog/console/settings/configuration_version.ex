@@ -45,7 +45,7 @@ defmodule YellowDog.Console.Settings.ConfigurationVersion do
   """
   @spec get_version(String.t()) :: version_info()
   def get_version(file_path) do
-    version = Agent.get(__MODULE__, fn state -> state.current_version end)
+    version = Agent.get(__MODULE__, & &1.current_version)
     timestamp = get_file_timestamp(file_path)
 
     %{

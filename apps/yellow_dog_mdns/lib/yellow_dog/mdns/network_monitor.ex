@@ -365,20 +365,15 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp store_response(message, source_ip, source_port) do
     now = System.system_time(:second)
 
-    # Store answer records
-    Enum.each(message.anlist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :answer)
-    end)
-
-    # Store authority records
-    Enum.each(message.nslist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :authority)
-    end)
-
-    # Store additional records
-    Enum.each(message.arlist, fn record ->
-      cache_record(record, message, source_ip, source_port, now, :additional)
-    end)
+    # Cache records from each DNS message section
+    for {section_list, section} <- [
+          {message.anlist, :answer},
+          {message.nslist, :authority},
+          {message.arlist, :additional}
+        ],
+        record <- section_list do
+      cache_record(record, message, source_ip, source_port, now, section)
+    end
   end
 
   defp cache_record(record, message, source_ip, source_port, received_at, section) do
@@ -464,7 +459,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
           |> Enum.filter(fn record ->
             record.type in [:A, :AAAA] and to_string(record.name) == host
           end)
-          |> Enum.map(fn record -> record.data end)
+          |> Enum.map(& &1.data)
         else
           []
         end
