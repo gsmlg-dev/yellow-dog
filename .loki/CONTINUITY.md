@@ -1,11 +1,17 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 148)
+**Phase**: IN_PROGRESS (Iteration 149)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 148 of 1000
+**Iteration**: 149 of 1000
 
 ## Session Summary
+Iteration 149: Replace sort|>dedup with uniq|>sort + MapSet for counting:
+- ✅ **All tests pass: 1106 console, 0 failures, 0 credo issues, 0 warnings**
+- ✅ Replaced 7 Enum.sort|>Enum.dedup with Enum.uniq|>Enum.sort across 5 files
+- ✅ Used MapSet.new|>MapSet.size for count_unique_hosts in discovery_live
+- ✅ 1 commit — 5 files — net 0 lines (cleaner semantics)
+
 Iteration 148: DRY telemetry + extract constants + map_join optimization:
 - ✅ **All tests pass: 1106 console, 670 ex_dhcp, 0 failures, 0 credo issues, 0 warnings**
 - ✅ Replaced 10 inline :telemetry.execute calls with emit_action/3,4 helper in service_manager
