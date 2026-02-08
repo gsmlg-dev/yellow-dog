@@ -242,22 +242,11 @@ defmodule YellowDog.Config.Transform do
     ArgumentError -> key
   end
 
-  # IPv4 parsing helpers
+  # IPv4 parsing — delegates to :inet.parse_ipv4_address/1
   defp parse_ipv4(ip_string) when is_binary(ip_string) do
-    case String.split(ip_string, ".") do
-      [a, b, c, d] ->
-        with {ia, ""} <- Integer.parse(a),
-             {ib, ""} <- Integer.parse(b),
-             {ic, ""} <- Integer.parse(c),
-             {id, ""} <- Integer.parse(d),
-             true <- ia in 0..255 and ib in 0..255 and ic in 0..255 and id in 0..255 do
-          {:ok, {ia, ib, ic, id}}
-        else
-          _ -> :error
-        end
-
-      _ ->
-        :error
+    case :inet.parse_ipv4_address(String.to_charlist(ip_string)) do
+      {:ok, _ip_tuple} = ok -> ok
+      {:error, _} -> :error
     end
   end
 
@@ -270,12 +259,10 @@ defmodule YellowDog.Config.Transform do
     end
   end
 
-  # IPv6 parsing helpers
-  defp parse_ipv6("::"), do: {:ok, {0, 0, 0, 0, 0, 0, 0, 0}}
-
+  # IPv6 parsing — delegates to :inet.parse_ipv6_address/1
   defp parse_ipv6(ip_string) when is_binary(ip_string) do
     case :inet.parse_ipv6_address(String.to_charlist(ip_string)) do
-      {:ok, ip_tuple} -> {:ok, ip_tuple}
+      {:ok, _ip_tuple} = ok -> ok
       {:error, _} -> :error
     end
   end

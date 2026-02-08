@@ -367,12 +367,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   defp parse_ip(ip_str) do
-    charlist = String.to_charlist(ip_str)
-
-    case :inet.parse_address(charlist) do
-      {:ok, ip} -> {:ok, ip}
-      _ -> :error
-    end
+    :inet.parse_address(String.to_charlist(ip_str))
   end
 
   defp select_upstream(state) do
