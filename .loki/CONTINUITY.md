@@ -1,12 +1,22 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 120)
+**Phase**: IN_PROGRESS (Iteration 121)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 120 of 1000
+**Iteration**: 121 of 1000
 
 ## Session Summary
-Iteration 120: Code quality sweep — style fixes, DRY extraction, dead code removal:
+Iteration 121: DRY extraction, module attribute cleanup, moduledoc:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ Extracted 4 duplicate `format_ipv6` → shared `Ipv6Util.format/1` (lease, pool, lease_manager, pool_store)
+- ✅ Extracted repeated guard values to module attributes in parser.ex (@digits, @whitespace, @time_units, @dns_classes, @record_types)
+- ✅ Extracted `@valid_classes` in file_parser.ex, `@valid_actions` in acl.ex (4× inline list → 1 attribute)
+- ✅ Added `@moduledoc false` to 9 DNS record data modules (AAAA, CNAME, MX, NS, NSEC, PTR, SOA, SRV, TXT)
+- ✅ Simplified `extract_pool_names` in DHCPv4 pool_store with `for` comprehension
+- ✅ 4 commits
+- ⚠️ Gotcha: `~w(\t)` produces literal "\\t" not tab char — must use string list for non-printable chars
+
+Previous iteration 120: Code quality sweep — style fixes, DRY extraction, dead code removal:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ Removed redundant `|| false` in ex_dhcp, extracted `normalize_name/1` in mDNS (2 modules)
 - ✅ Removed dead `Transform.transform/3` function
