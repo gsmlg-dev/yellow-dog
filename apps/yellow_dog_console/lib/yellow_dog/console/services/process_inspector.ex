@@ -41,14 +41,11 @@ defmodule YellowDog.Console.ProcessInspector do
   def get_tree do
     # Build trees for all running YellowDog application supervisors
     app_trees =
-      @app_supervisors
-      |> Enum.map(fn supervisor_name ->
-        case Process.whereis(supervisor_name) do
-          nil -> nil
-          pid -> build_tree_from_supervisor(pid, format_supervisor_label(supervisor_name))
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
+      for supervisor_name <- @app_supervisors,
+          pid = Process.whereis(supervisor_name),
+          pid != nil do
+        build_tree_from_supervisor(pid, format_supervisor_label(supervisor_name))
+      end
 
     case app_trees do
       [] ->
@@ -274,11 +271,10 @@ defmodule YellowDog.Console.ProcessInspector do
   defp build_tree_from_supervisor(pid, label) when is_pid(pid) do
     children =
       try do
-        Supervisor.which_children(pid)
-        |> Enum.map(fn {id, child_pid, type, _modules} ->
-          build_child_node(id, child_pid, type)
-        end)
-        |> Enum.reject(&is_nil/1)
+        for {id, child_pid, type, _modules} <- Supervisor.which_children(pid),
+            node = build_child_node(id, child_pid, type),
+            node != nil,
+            do: node
       catch
         _, _ -> []
       end
@@ -300,11 +296,10 @@ defmodule YellowDog.Console.ProcessInspector do
     children =
       if type == :supervisor and status == :running do
         try do
-          Supervisor.which_children(pid)
-          |> Enum.map(fn {child_id, child_pid, child_type, _modules} ->
-            build_child_node(child_id, child_pid, child_type)
-          end)
-          |> Enum.reject(&is_nil/1)
+          for {child_id, child_pid, child_type, _modules} <- Supervisor.which_children(pid),
+              node = build_child_node(child_id, child_pid, child_type),
+              node != nil,
+              do: node
         catch
           _, _ -> []
         end

@@ -407,12 +407,10 @@ defmodule YellowDog.Dns.Zone.Stub do
   defp parse_glue_records(_), do: %{}
 
   defp get_available_ns_servers(state) do
-    state.ns_records
-    |> Enum.map(fn ns ->
-      hostname = String.downcase(ns)
-      Map.get(state.glue_records, hostname)
-    end)
-    |> Enum.reject(&is_nil/1)
+    for ns <- state.ns_records,
+        ip = Map.get(state.glue_records, String.downcase(ns)),
+        ip != nil,
+        do: ip
   end
 
   defp select_ns_server(state, servers) do

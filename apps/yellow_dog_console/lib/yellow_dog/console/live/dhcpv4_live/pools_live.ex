@@ -524,8 +524,6 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
   defp parse_dns_servers([]), do: nil
 
   defp parse_dns_servers(servers) when is_list(servers) do
-    servers
-    |> Enum.map(&parse_ip/1)
-    |> Enum.reject(&is_nil/1)
+    for s <- servers, ip = parse_ip(s), ip != nil, do: ip
   end
 end

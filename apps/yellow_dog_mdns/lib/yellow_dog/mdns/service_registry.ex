@@ -452,8 +452,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   end
 
   defp parse_addresses(addresses) when is_list(addresses) do
-    Enum.map(addresses, &parse_address/1)
-    |> Enum.reject(&is_nil/1)
+    for addr <- addresses, ip = parse_address(addr), ip != nil, do: ip
   end
 
   defp parse_addresses(_), do: []
