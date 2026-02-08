@@ -1,11 +1,18 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 183)
+**Phase**: IN_PROGRESS (Iteration 184)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 183 of 1000
+**Iteration**: 184 of 1000
 
 ## Session Summary
+Iteration 184: DRY get_string + @view_stat_defaults extraction:
+- ✅ **All tests pass: 1122 console (7 doctests), 0 failures, 0 warnings**
+- ✅ Simplified ParamHelper.get_string/2 to delegate to fetch_param/3 with nil coalescing
+- ✅ Extracted @view_stat_defaults module attribute in DnsLive.Index (replaced 6× Map.get with defaults)
+- ✅ Used Map.merge(@view_stat_defaults, View.stats(pid)) for cleaner stat aggregation
+- ✅ 1 commit — 2 files — net +7 lines
+
 Iteration 183: nil-guard cleanup + pipe-case-do refactor:
 - ✅ **All tests pass: 1122 console, 4764 ex_dns, 1083 DNS — 0 failures, 0 warnings**
 - ✅ Removed 5× unnecessary `|| ""` guards since downcase_contains?/2 is nil-safe
