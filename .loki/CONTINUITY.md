@@ -1,12 +1,20 @@
 # Loki Mode Continuity - DNS Server Implementation Status
 
 ## Current Status
-**Phase**: IN_PROGRESS (Iteration 121)
+**Phase**: IN_PROGRESS (Iteration 122)
 **PRD**: PRD.md (DNS Server & Console Completion)
-**Iteration**: 121 of 1000
+**Iteration**: 122 of 1000
 
 ## Session Summary
-Iteration 121: DRY extraction, module attribute cleanup, moduledoc:
+Iteration 122: Pipeline simplification, DRY name normalization:
+- ✅ **All tests pass: 0 failures, 0 credo issues**
+- ✅ 3× `Enum.map |> MapSet.new` → `MapSet.new/2` (logs_live, view_manager)
+- ✅ `Enum.into(%{})` → `Map.new/1` in rate_limiter.ex
+- ✅ 3× duplicate `normalize_name/1` in mDNS → shared `YellowDog.Mdns.normalize_name/1`
+- ✅ 2× duplicate `normalize_zone_name/2` in DNS → shared `DNS.Zone.normalize_zone_name/1`
+- ✅ 2 commits
+
+Previous iteration 121: DRY extraction, module attribute cleanup, moduledoc:
 - ✅ **All tests pass: 0 failures, 0 credo issues**
 - ✅ Extracted 4 duplicate `format_ipv6` → shared `Ipv6Util.format/1` (lease, pool, lease_manager, pool_store)
 - ✅ Extracted repeated guard values to module attributes in parser.ex (@digits, @whitespace, @time_units, @dns_classes, @record_types)
