@@ -70,4 +70,35 @@ defmodule YellowDog.Dhcpv4.Ipv4UtilTest do
       assert Ipv4Util.format(nil) == nil
     end
   end
+
+  describe "parse/1" do
+    test "parses valid IPv4 string" do
+      assert {:ok, {192, 168, 1, 1}} = Ipv4Util.parse("192.168.1.1")
+    end
+
+    test "parses all-zeros string" do
+      assert {:ok, {0, 0, 0, 0}} = Ipv4Util.parse("0.0.0.0")
+    end
+
+    test "passes through valid 4-tuple" do
+      tuple = {10, 0, 0, 1}
+      assert {:ok, ^tuple} = Ipv4Util.parse(tuple)
+    end
+
+    test "returns error for invalid string" do
+      assert {:error, _} = Ipv4Util.parse("not-an-ip")
+    end
+
+    test "returns error for IPv6 string" do
+      assert {:error, _} = Ipv4Util.parse("::1")
+    end
+
+    test "returns error for nil" do
+      assert {:error, _} = Ipv4Util.parse(nil)
+    end
+
+    test "returns error for integer" do
+      assert {:error, _} = Ipv4Util.parse(42)
+    end
+  end
 end
