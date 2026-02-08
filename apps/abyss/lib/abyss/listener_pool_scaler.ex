@@ -204,8 +204,7 @@ defmodule Abyss.ListenerPoolScaler do
         DynamicSupervisor.start_child(supervisor, child_spec)
       end)
 
-    success = Enum.filter(results, &match?({:ok, _}, &1))
-    {:ok, length(success)}
+    {:ok, Enum.count(results, &match?({:ok, _}, &1))}
   end
 
   defp stop_listeners(supervisor, count) do
@@ -217,8 +216,7 @@ defmodule Abyss.ListenerPoolScaler do
         DynamicSupervisor.terminate_child(supervisor, pid)
       end)
 
-    success = Enum.filter(results, &match?(:ok, &1))
-    {:ok, length(success)}
+    {:ok, Enum.count(results, &match?(:ok, &1))}
   end
 
   defp generate_listener_id do
