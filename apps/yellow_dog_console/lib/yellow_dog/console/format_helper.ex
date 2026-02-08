@@ -85,6 +85,36 @@ defmodule YellowDog.Console.FormatHelper do
 
   def format_prefix(_), do: "Unknown"
 
+  @doc "Formats a DateTime as HH:MM:SS."
+  @spec format_time(DateTime.t() | nil) :: String.t()
+  def format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
+  def format_time(_), do: ""
+
+  @doc "Formats a DateTime as HH:MM:SS.mmm (with milliseconds)."
+  @spec format_time_ms(DateTime.t() | nil) :: String.t()
+  def format_time_ms(%DateTime{microsecond: {us, _}} = dt) do
+    ms = div(us, 1000)
+    Calendar.strftime(dt, "%H:%M:%S") <> "." <> String.pad_leading(Integer.to_string(ms), 3, "0")
+  end
+
+  def format_time_ms(_), do: "--:--:--.---"
+
+  @doc "Formats a duration in seconds as compound human-readable (e.g. '1h 5m')."
+  @spec format_uptime(number()) :: String.t()
+  def format_uptime(seconds) when is_number(seconds) do
+    s = trunc(seconds)
+    hours = div(s, @seconds_per_hour)
+    mins = div(rem(s, @seconds_per_hour), @seconds_per_minute)
+
+    cond do
+      hours > 0 -> "#{hours}h #{mins}m"
+      mins > 0 -> "#{mins}m #{rem(s, @seconds_per_minute)}s"
+      true -> "#{s}s"
+    end
+  end
+
+  def format_uptime(_), do: "0s"
+
   @doc "Formats a duration in seconds as a compact human-readable string."
   @spec format_duration(integer()) :: String.t()
   def format_duration(seconds) when is_integer(seconds) do

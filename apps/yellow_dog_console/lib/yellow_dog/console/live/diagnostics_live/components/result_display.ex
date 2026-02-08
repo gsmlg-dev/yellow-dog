@@ -8,6 +8,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
   use Phoenix.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.HexDump
+  alias YellowDog.Console.FormatHelper
   alias DNS.Message
   alias DHCPv4.Message, as: DHCPv4Message
 
@@ -195,11 +196,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
 
   defp format_latency(_), do: ""
 
-  defp format_timestamp(nil), do: ""
-
-  defp format_timestamp(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%H:%M:%S")
-  end
+  defp format_timestamp(dt), do: FormatHelper.format_time(dt)
 
   defp format_struct(nil), do: "(empty)"
 

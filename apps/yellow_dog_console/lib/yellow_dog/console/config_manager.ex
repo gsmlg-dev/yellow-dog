@@ -359,7 +359,7 @@ defmodule YellowDog.Console.ConfigManager do
           end
       end)
 
-    {:lists.reverse(reversed_result), last_section_idx}
+    {Enum.reverse(reversed_result), last_section_idx}
   end
 
   defp generate_array_table_entries(header, items) when is_list(items) do

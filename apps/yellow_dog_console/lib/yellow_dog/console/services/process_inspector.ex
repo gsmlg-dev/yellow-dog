@@ -203,7 +203,7 @@ defmodule YellowDog.Console.ProcessInspector do
           {[laid_out_child | acc], new_y}
         end)
 
-      laid_out_children = :lists.reverse(reversed_children)
+      laid_out_children = Enum.reverse(reversed_children)
 
       # Center parent vertically relative to children
       children_start = y

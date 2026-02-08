@@ -5,7 +5,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_ip: 1]
+  import YellowDog.Console.FormatHelper, only: [format_ip: 1, format_time: 1]
   import YellowDog.Console.ServiceHelper
 
   @impl true
@@ -133,8 +133,7 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   end
 
   defp format_timestamp(timestamp) when is_integer(timestamp) do
-    datetime = DateTime.from_unix!(timestamp)
-    Calendar.strftime(datetime, "%H:%M:%S")
+    timestamp |> DateTime.from_unix!() |> format_time()
   end
 
   defp format_timestamp(_), do: "Unknown"

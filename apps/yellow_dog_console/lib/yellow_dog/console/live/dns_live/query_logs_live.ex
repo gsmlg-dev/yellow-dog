@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -191,18 +192,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
   defp format_ip(nil), do: "-"
   defp format_ip(ip), do: YellowDog.Dns.IpFormat.format(ip)
 
-  defp format_timestamp(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%H:%M:%S") <> "." <> format_ms(dt)
-  end
-
-  defp format_timestamp(_), do: "--:--:--.---"
-
-  defp format_ms(%DateTime{microsecond: {us, _}}) do
-    ms = div(us, 1000)
-    String.pad_leading(Integer.to_string(ms), 3, "0")
-  end
-
-  defp format_ms(_), do: "000"
+  defp format_timestamp(dt), do: format_time_ms(dt)
 
   defp format_response_time(nil), do: "-"
   defp format_response_time(us) when us < 1_000, do: "#{us}us"

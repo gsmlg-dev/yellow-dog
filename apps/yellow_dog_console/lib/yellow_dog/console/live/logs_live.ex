@@ -8,6 +8,7 @@ defmodule YellowDog.Console.LogsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
 
   alias YellowDog.Console.LogBroadcaster
 
@@ -202,16 +203,10 @@ defmodule YellowDog.Console.LogsLive do
   end
 
   defp format_timestamp(system_time) when is_integer(system_time) do
-    datetime = DateTime.from_unix!(system_time, :nanosecond)
-    Calendar.strftime(datetime, "%H:%M:%S") <> "." <> format_milliseconds(system_time)
+    system_time |> DateTime.from_unix!(:nanosecond) |> format_time_ms()
   end
 
   defp format_timestamp(_), do: "--:--:--.---"
-
-  defp format_milliseconds(system_time) do
-    ms = rem(div(system_time, 1_000_000), 1000)
-    String.pad_leading(Integer.to_string(ms), 3, "0")
-  end
 
   defp level_color(:debug), do: "text-base-content/60"
   defp level_color(:info), do: "text-info"
@@ -278,7 +273,8 @@ defmodule YellowDog.Console.LogsLive do
 
   defp format_csv_timestamp(system_time) when is_integer(system_time) do
     datetime = DateTime.from_unix!(system_time, :nanosecond)
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S") <> "." <> format_milliseconds(system_time)
+    ms = rem(div(system_time, 1_000_000), 1000)
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S") <> "." <> String.pad_leading(Integer.to_string(ms), 3, "0")
   end
 
   defp format_csv_timestamp(_), do: ""

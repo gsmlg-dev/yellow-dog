@@ -10,6 +10,7 @@ defmodule YellowDog.Console.DashboardLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.ConfigHelpers, only: [get_value: 2]
+  import YellowDog.Console.FormatHelper, only: [format_uptime: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -229,20 +230,11 @@ defmodule YellowDog.Console.DashboardLive do
       process_count: process_count,
       process_limit: process_limit,
       process_pct: process_pct,
-      uptime: format_uptime(uptime_ms)
+      uptime: format_uptime_ms(uptime_ms)
     }
   end
 
-  defp format_uptime(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
-
-  defp format_uptime(ms) when ms < 3_600_000,
-    do: "#{div(ms, 60_000)}m #{div(rem(ms, 60_000), 1_000)}s"
-
-  defp format_uptime(ms) do
-    hours = div(ms, 3_600_000)
-    mins = div(rem(ms, 3_600_000), 60_000)
-    "#{hours}h #{mins}m"
-  end
+  defp format_uptime_ms(ms), do: format_uptime(div(ms, 1_000))
 
   defp get_fallback_status do
     # Return default status when service manager is unavailable

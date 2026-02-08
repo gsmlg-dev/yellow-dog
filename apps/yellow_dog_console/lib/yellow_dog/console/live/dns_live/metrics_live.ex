@@ -9,6 +9,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_uptime: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -171,19 +172,6 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   defp format_latency(us) when is_integer(us), do: "#{us}us"
   defp format_latency(_), do: "0us"
-
-  defp format_uptime(seconds) when is_number(seconds) do
-    hours = div(trunc(seconds), 3600)
-    mins = div(rem(trunc(seconds), 3600), 60)
-
-    cond do
-      hours > 0 -> "#{hours}h #{mins}m"
-      mins > 0 -> "#{mins}m"
-      true -> "#{trunc(seconds)}s"
-    end
-  end
-
-  defp format_uptime(_), do: "0s"
 
   defp bar_width(count, max) when max > 0, do: Float.round(count / max * 100, 0)
   defp bar_width(_, _), do: 0
