@@ -461,7 +461,7 @@ defmodule YellowDog.Console.ProcessMapLive do
 
   defp status_panel(assigns) do
     ~H"""
-    <div class="fixed lg:absolute right-0 top-0 w-full lg:w-96 h-full bg-base-100 shadow-xl border-l border-base-300 z-50 overflow-y-auto">
+    <div class="fixed right-0 top-16 bottom-0 w-full lg:w-96 bg-base-100 shadow-xl border-l border-base-300 z-50 overflow-y-auto">
       <div class="p-4">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-bold">Process Status</h3>
