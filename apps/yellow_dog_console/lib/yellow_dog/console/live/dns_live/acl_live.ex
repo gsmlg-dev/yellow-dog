@@ -486,12 +486,20 @@ defmodule YellowDog.Console.DnsLive.AclLive do
   end
 
   @acl_type_labels %{
-    "any" => "Allow All", "none" => "Deny All", "localhost" => "Localhost Only",
-    "localnets" => "Local Networks", "geo" => "Geographic", "custom" => "Custom Rules"
+    "any" => "Allow All",
+    "none" => "Deny All",
+    "localhost" => "Localhost Only",
+    "localnets" => "Local Networks",
+    "geo" => "Geographic",
+    "custom" => "Custom Rules"
   }
   @acl_type_badges %{
-    "any" => "success", "none" => "error", "localhost" => "warning",
-    "localnets" => "info", "geo" => "secondary", "custom" => "primary"
+    "any" => "success",
+    "none" => "error",
+    "localhost" => "warning",
+    "localnets" => "info",
+    "geo" => "secondary",
+    "custom" => "primary"
   }
 
   defp acl_type_label(type), do: Map.get(@acl_type_labels, type, "Unknown")

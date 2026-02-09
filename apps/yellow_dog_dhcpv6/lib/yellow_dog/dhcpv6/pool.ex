@@ -162,8 +162,12 @@ defmodule YellowDog.Dhcpv6.Pool do
     case get_value(config, :prefix) do
       map when is_map(map) ->
         case {get_value(map, :address), get_value(map, :prefix_len)} do
-          {nil, _} -> {:error, "Invalid prefix address"}
-          {_, nil} -> {:error, "Missing prefix length"}
+          {nil, _} ->
+            {:error, "Invalid prefix address"}
+
+          {_, nil} ->
+            {:error, "Missing prefix length"}
+
           {addr, prefix} ->
             case parse_ipv6(addr) do
               nil -> {:error, "Invalid prefix address"}

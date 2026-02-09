@@ -221,8 +221,12 @@ defmodule YellowDog.Dns.ZoneStore do
   end
 
   @zone_types %{
-    "auth" => :auth, "forward" => :forward, "stub" => :stub,
-    "cache" => :cache, "root" => :root, "rpz" => :rpz
+    "auth" => :auth,
+    "forward" => :forward,
+    "stub" => :stub,
+    "cache" => :cache,
+    "root" => :root,
+    "rpz" => :rpz
   }
 
   defp normalize_type(type) when is_atom(type), do: type

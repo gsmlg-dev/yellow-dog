@@ -102,8 +102,11 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv4Client do
   end
 
   @dhcpv4_message_types %{
-    "discover" => :discover, "request" => :request, "decline" => :decline,
-    "release" => :release, "inform" => :inform
+    "discover" => :discover,
+    "request" => :request,
+    "decline" => :decline,
+    "release" => :release,
+    "inform" => :inform
   }
 
   defp parse_message_type(type) when is_atom(type), do: type

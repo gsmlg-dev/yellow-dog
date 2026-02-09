@@ -64,6 +64,9 @@ defmodule YellowDog.Console.MixProject do
       {:yellow_dog_dhcpv4, in_umbrella: true},
       {:yellow_dog_dhcpv6, in_umbrella: true},
       {:yellow_dog_dns, in_umbrella: true},
+      {:geo_ip_db, in_umbrella: true},
+      {:gsmlg_whois, "~> 0.5"},
+      {:gsmlg_mac, "~> 0.1"},
 
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

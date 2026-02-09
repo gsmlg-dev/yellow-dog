@@ -158,8 +158,12 @@ defmodule YellowDog.Dhcpv4.Pool do
     case get_value(config, :subnet) do
       map when is_map(map) ->
         case {get_value(map, :address), get_value(map, :prefix_len)} do
-          {nil, _} -> {:error, "Invalid subnet address"}
-          {_, nil} -> {:error, "Missing prefix length"}
+          {nil, _} ->
+            {:error, "Invalid subnet address"}
+
+          {_, nil} ->
+            {:error, "Missing prefix length"}
+
           {addr, prefix} ->
             case parse_ip(addr) do
               nil -> {:error, "Invalid subnet address"}

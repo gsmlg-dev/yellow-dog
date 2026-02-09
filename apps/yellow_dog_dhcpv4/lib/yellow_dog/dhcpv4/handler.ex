@@ -609,19 +609,20 @@ defmodule YellowDog.Dhcpv4.Handler do
       giaddr: ip_tuple_to_integer(inform.giaddr),
       chaddr: inform.chaddr,
       options: [
-      # DHCPACK = 5
-      %DHCPv4.Message.Option{type: 53, length: 1, value: <<5>>},
-      # server identifier
-      %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
-      # subnet mask
-      %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
-      # router
-      %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
-      # DNS servers
-      %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
-      # :end
-      %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
-    ]})
+        # DHCPACK = 5
+        %DHCPv4.Message.Option{type: 53, length: 1, value: <<5>>},
+        # server identifier
+        %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
+        # subnet mask
+        %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
+        # router
+        %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
+        # DNS servers
+        %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
+        # :end
+        %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+      ]
+    })
   end
 
   defp send_dhcp_response(response, client_ip, client_port, state) do

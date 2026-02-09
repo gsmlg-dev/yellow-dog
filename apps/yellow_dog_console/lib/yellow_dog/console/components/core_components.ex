@@ -90,8 +90,13 @@ defmodule YellowDog.Console.CoreComponents do
 
   Used by DHCPv4 and DHCPv6 lease/pool views.
   """
-  @lease_state_colors %{active: "success", offered: "info", released: "warning",
-    expired: "error", declined: "error"}
+  @lease_state_colors %{
+    active: "success",
+    offered: "info",
+    released: "warning",
+    expired: "error",
+    declined: "error"
+  }
 
   @spec lease_state_color(atom()) :: String.t()
   def lease_state_color(state), do: Map.get(@lease_state_colors, state, "ghost")

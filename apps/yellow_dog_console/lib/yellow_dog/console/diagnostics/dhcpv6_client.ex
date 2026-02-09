@@ -105,8 +105,12 @@ defmodule YellowDog.Console.Diagnostics.Dhcpv6Client do
   end
 
   @dhcpv6_message_types %{
-    "solicit" => :solicit, "request" => :request, "renew" => :renew,
-    "rebind" => :rebind, "release" => :release, "decline" => :decline,
+    "solicit" => :solicit,
+    "request" => :request,
+    "renew" => :renew,
+    "rebind" => :rebind,
+    "release" => :release,
+    "decline" => :decline,
     "information_request" => :information_request
   }
 

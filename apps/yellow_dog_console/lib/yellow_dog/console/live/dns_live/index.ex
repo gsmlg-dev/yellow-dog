@@ -78,41 +78,45 @@ defmodule YellowDog.Console.DnsLive.Index do
   }
 
   defp get_dns_stats do
-    safe_call(YellowDog.Dns, fn ->
-      views = YellowDog.Dns.ViewManager.list_views()
+    safe_call(
+      YellowDog.Dns,
+      fn ->
+        views = YellowDog.Dns.ViewManager.list_views()
 
-      view_stats =
-        Enum.map(views, fn {view_name, pid, priority} ->
-          stats = Map.merge(@view_stat_defaults, View.stats(pid))
+        view_stats =
+          Enum.map(views, fn {view_name, pid, priority} ->
+            stats = Map.merge(@view_stat_defaults, View.stats(pid))
 
-          %{
-            name: view_name,
-            priority: priority,
-            recursion_enabled: stats.recursion_enabled,
-            zone_count: length(stats.zones),
-            query_count: stats.query_count,
-            hit_count: stats.hit_count,
-            miss_count: stats.miss_count,
-            cache_size: stats.cache_size
-          }
-        end)
+            %{
+              name: view_name,
+              priority: priority,
+              recursion_enabled: stats.recursion_enabled,
+              zone_count: length(stats.zones),
+              query_count: stats.query_count,
+              hit_count: stats.hit_count,
+              miss_count: stats.miss_count,
+              cache_size: stats.cache_size
+            }
+          end)
 
-      {zones, queries, hits, misses, cache} =
-        Enum.reduce(view_stats, {0, 0, 0, 0, 0}, fn s, {z, q, h, m, c} ->
-          {z + s.zone_count, q + s.query_count, h + s.hit_count, m + s.miss_count,
-           c + s.cache_size}
-        end)
+        {zones, queries, hits, misses, cache} =
+          Enum.reduce(view_stats, {0, 0, 0, 0, 0}, fn s, {z, q, h, m, c} ->
+            {z + s.zone_count, q + s.query_count, h + s.hit_count, m + s.miss_count,
+             c + s.cache_size}
+          end)
 
-      %{
-        view_count: length(views),
-        total_zones: zones,
-        total_queries: queries,
-        total_hits: hits,
-        total_misses: misses,
-        total_cache: cache,
-        views: view_stats
-      }
-    end, @default_dns_stats)
+        %{
+          view_count: length(views),
+          total_zones: zones,
+          total_queries: queries,
+          total_hits: hits,
+          total_misses: misses,
+          total_cache: cache,
+          views: view_stats
+        }
+      end,
+      @default_dns_stats
+    )
   end
 
   @default_cache_stats %{
@@ -133,32 +137,36 @@ defmodule YellowDog.Console.DnsLive.Index do
   }
 
   defp get_cache_stats do
-    safe_call(YellowDog.Dns, fn ->
-      zones = YellowDog.Dns.ZoneController.list_zones()
+    safe_call(
+      YellowDog.Dns,
+      fn ->
+        zones = YellowDog.Dns.ZoneController.list_zones()
 
-      cache_stats =
-        for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
-        |> Enum.reduce(@cache_stat_defaults, fn stat, acc ->
-          stat = Map.merge(@cache_stat_defaults, stat)
+        cache_stats =
+          for({:cache, _name, pid} <- zones, do: YellowDog.Dns.Zone.Cache.stats(pid))
+          |> Enum.reduce(@cache_stat_defaults, fn stat, acc ->
+            stat = Map.merge(@cache_stat_defaults, stat)
 
-          %{
-            current_size: acc.current_size + stat.current_size,
-            hit_count: acc.hit_count + stat.hit_count,
-            miss_count: acc.miss_count + stat.miss_count,
-            insert_count: acc.insert_count + stat.insert_count,
-            eviction_count: acc.eviction_count + stat.eviction_count
-          }
-        end)
+            %{
+              current_size: acc.current_size + stat.current_size,
+              hit_count: acc.hit_count + stat.hit_count,
+              miss_count: acc.miss_count + stat.miss_count,
+              insert_count: acc.insert_count + stat.insert_count,
+              eviction_count: acc.eviction_count + stat.eviction_count
+            }
+          end)
 
-      %{
-        total_entries: cache_stats.current_size,
-        hit_count: cache_stats.hit_count,
-        miss_count: cache_stats.miss_count,
-        insert_count: cache_stats.insert_count,
-        eviction_count: cache_stats.eviction_count,
-        max_entries: @max_cache_entries
-      }
-    end, @default_cache_stats)
+        %{
+          total_entries: cache_stats.current_size,
+          hit_count: cache_stats.hit_count,
+          miss_count: cache_stats.miss_count,
+          insert_count: cache_stats.insert_count,
+          eviction_count: cache_stats.eviction_count,
+          max_entries: @max_cache_entries
+        }
+      end,
+      @default_cache_stats
+    )
   end
 
   defp calculate_hit_rate(hits, misses) do

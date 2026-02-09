@@ -382,6 +382,49 @@ defmodule YellowDog.Console.Layouts do
             </details>
           </li>
           
+    <!-- Tools -->
+          <li class="menu-title mt-4">
+            <span>Tools</span>
+          </li>
+          <li>
+            <details open>
+              <summary class="gap-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"
+                  />
+                </svg>
+                <span>Network</span>
+              </summary>
+              <ul>
+                <li>
+                  <.link navigate="/tools/geoip" class={active?(@current_path, "/tools/geoip")}>
+                    GeoIP Lookup
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/tools/whois" class={active?(@current_path, "/tools/whois")}>
+                    Whois Lookup
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/tools/mac" class={active?(@current_path, "/tools/mac")}>
+                    MAC Lookup
+                  </.link>
+                </li>
+              </ul>
+            </details>
+          </li>
+          
     <!-- Settings -->
           <li class="menu-title mt-4">
             <span>System</span>
