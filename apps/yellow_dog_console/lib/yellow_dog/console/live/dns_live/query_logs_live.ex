@@ -447,8 +447,11 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
                         <td class="font-mono text-xs">
                           {format_ip(entry.client_ip)}
                         </td>
-                        <td class="font-mono text-sm max-w-xs truncate" title={entry.qname}>
-                          {entry.qname || "-"}
+                        <td
+                          class="font-mono text-sm max-w-xs truncate"
+                          title={to_string(entry.qname || "")}
+                        >
+                          {to_string(entry.qname || "-")}
                         </td>
                         <td>
                           <span class="badge badge-ghost badge-xs">

@@ -112,11 +112,17 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   end
 
   defp fetch_response_times do
-    safe_call(
-      YellowDog.Dns,
-      fn -> MetricsCollector.get_response_times() end,
-      %{count: 0, sum: 0, min: 0, max: 0, avg: 0.0, buckets: []}
-    )
+    data =
+      safe_call(
+        YellowDog.Dns,
+        fn -> MetricsCollector.get_response_times() end,
+        %{count: 0, sum: 0, min: 0, max: 0, buckets: []}
+      )
+
+    # Compute avg if not provided by MetricsCollector
+    Map.put_new_lazy(data, :avg, fn ->
+      if data.count > 0, do: data.sum / data.count, else: 0.0
+    end)
   end
 
   defp default_metrics do
@@ -515,7 +521,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         "Metric,Value\r\n" <>
         "Count,#{response_times.count}\r\n" <>
         "Min,#{format_latency(response_times.min)}\r\n" <>
-        "Avg,#{format_latency(response_times.avg)}\r\n" <>
+        "Avg,#{format_latency(Map.get(response_times, :avg, 0))}\r\n" <>
         "Max,#{format_latency(response_times.max)}"
 
     buckets =
