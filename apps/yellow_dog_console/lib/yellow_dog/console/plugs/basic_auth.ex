@@ -82,35 +82,33 @@ defmodule YellowDog.Console.Plugs.BasicAuth do
     realm = Keyword.get(config, :realm, @default_realm)
     client_ip = get_client_ip(conn)
 
-    cond do
-      is_nil(password) or password == "" ->
-        Logger.warning(
-          "Basic auth is enabled but CONSOLE_PASSWORD is not set. " <>
-            "Authentication is disabled until password is configured."
-        )
+    if is_nil(password) or password == "" do
+      Logger.warning(
+        "Basic auth is enabled but CONSOLE_PASSWORD is not set. " <>
+          "Authentication is disabled until password is configured."
+      )
 
-        conn
+      conn
+    else
+      # Check rate limiting before processing credentials
+      case AuthRateLimiter.check_rate_limit(client_ip) do
+        {:error, :locked_out, seconds_remaining} ->
+          Logger.warning("[BasicAuth] IP locked out due to failed attempts",
+            ip: client_ip,
+            lockout_seconds: seconds_remaining
+          )
 
-      true ->
-        # Check rate limiting before processing credentials
-        case AuthRateLimiter.check_rate_limit(client_ip) do
-          {:error, :locked_out, seconds_remaining} ->
-            Logger.warning("[BasicAuth] IP locked out due to failed attempts",
-              ip: client_ip,
-              lockout_seconds: seconds_remaining
-            )
+          too_many_requests(conn, seconds_remaining)
 
-            too_many_requests(conn, seconds_remaining)
+        {:ok, _attempts_remaining} ->
+          case get_auth_header(conn) do
+            nil ->
+              unauthorized(conn, realm)
 
-          {:ok, _attempts_remaining} ->
-            case get_auth_header(conn) do
-              nil ->
-                unauthorized(conn, realm)
-
-              credentials ->
-                verify_credentials(conn, credentials, username, password, realm, client_ip)
-            end
-        end
+            credentials ->
+              verify_credentials(conn, credentials, username, password, realm, client_ip)
+          end
+      end
     end
   end
 

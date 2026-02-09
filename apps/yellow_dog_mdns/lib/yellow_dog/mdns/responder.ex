@@ -243,22 +243,9 @@ defmodule YellowDog.Mdns.Responder do
       service_type = normalize_name("#{service.type}.#{service.domain}")
       service_host = normalize_name(service.host)
 
-      cond do
-        # PTR query for service type
-        qtype == :PTR and qname == service_type ->
-          true
-
-        # SRV/TXT/ANY query for service instance
-        qtype in [:SRV, :TXT, :ANY] and qname == service_fqdn ->
-          true
-
-        # A/AAAA query for host
-        qtype in [:A, :AAAA, :ANY] and qname == service_host ->
-          true
-
-        true ->
-          false
-      end
+      (qtype == :PTR and qname == service_type) or
+        (qtype in [:SRV, :TXT, :ANY] and qname == service_fqdn) or
+        (qtype in [:A, :AAAA, :ANY] and qname == service_host)
     end)
   end
 
@@ -277,11 +264,8 @@ defmodule YellowDog.Mdns.Responder do
         service_type = normalize_name("#{service.type}.#{service.domain}")
         service_fqdn = normalize_name(service.fqdn)
 
-        cond do
-          query_type == :PTR and qname == service_type -> true
-          query_type in [:SRV, :ANY] and qname == service_fqdn -> true
-          true -> false
-        end
+        (query_type == :PTR and qname == service_type) or
+          (query_type in [:SRV, :ANY] and qname == service_fqdn)
       end)
 
     if matching_services == [] do
