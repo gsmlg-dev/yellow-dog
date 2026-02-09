@@ -290,6 +290,14 @@ defmodule YellowDog.Console.Layouts do
                     Pools
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    navigate="/dhcpv4/activity"
+                    class={active?(@current_path, "/dhcpv4/activity")}
+                  >
+                    Activity
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
@@ -328,6 +336,14 @@ defmodule YellowDog.Console.Layouts do
                 <li>
                   <.link navigate="/dhcpv6/pools" class={active?(@current_path, "/dhcpv6/pools")}>
                     Pools
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    navigate="/dhcpv6/activity"
+                    class={active?(@current_path, "/dhcpv6/activity")}
+                  >
+                    Activity
                   </.link>
                 </li>
               </ul>
