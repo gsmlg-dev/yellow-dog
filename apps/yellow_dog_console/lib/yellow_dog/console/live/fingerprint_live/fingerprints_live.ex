@@ -1,0 +1,314 @@
+defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
+  @moduledoc "Fingerprint management — browse known and classify unknown fingerprints."
+  use YellowDog.Console, :live_view
+
+  import YellowDog.Console.CsvHelper
+  import YellowDog.Console.ServiceHelper
+
+  alias YellowDog.Console.Layouts
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(
+       page_title: "Fingerprints",
+       tab: "unknown",
+       search_query: "",
+       show_classify: false,
+       selected_fp: nil,
+       profiles: []
+     )
+     |> load_data()}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-4xl font-bold">Fingerprints</h1>
+            <p class="mt-2 text-base-content/70">
+              Manage device fingerprint database and classify unknown fingerprints
+            </p>
+          </div>
+          <button
+            phx-click="export_csv"
+            id="export-csv"
+            phx-hook="CsvDownload"
+            class="btn btn-outline btn-sm"
+          >
+            Export CSV
+          </button>
+        </div>
+
+        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
+          <div class="stat">
+            <div class="stat-title">Known Fingerprints</div>
+            <div class="stat-value text-success">{@known_count}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Unknown Fingerprints</div>
+            <div class="stat-value text-warning">{@unknown_count}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">V4 Database</div>
+            <div class="stat-value text-sm">{@stats.fingerprints_v4}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">V6 Database</div>
+            <div class="stat-value text-sm">{@stats.fingerprints_v6}</div>
+          </div>
+        </div>
+
+        <div role="tablist" class="tabs tabs-bordered">
+          <a
+            role="tab"
+            class={"tab #{if @tab == "unknown", do: "tab-active"}"}
+            phx-click="switch_tab"
+            phx-value-tab="unknown"
+          >
+            Unknown ({@unknown_count})
+          </a>
+          <a
+            role="tab"
+            class={"tab #{if @tab == "known", do: "tab-active"}"}
+            phx-click="switch_tab"
+            phx-value-tab="known"
+          >
+            Known ({@known_count})
+          </a>
+        </div>
+
+        <.card>
+          <div class="mb-4">
+            <label class="input input-bordered flex items-center gap-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                class="h-4 w-4 opacity-70"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <input
+                type="text"
+                class="grow"
+                placeholder="Search by vendor class, profile, or parameter list..."
+                value={@search_query}
+                phx-change="search"
+                phx-debounce="300"
+                name="search"
+              />
+            </label>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead>
+                <tr>
+                  <th>Parameter List</th>
+                  <th>Vendor Class</th>
+                  <th>Profile</th>
+                  <th>Confidence</th>
+                  <th>Hits</th>
+                  <th :if={@tab == "unknown"}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :if={@filtered_fingerprints == []}>
+                  <td colspan="6" class="text-center text-base-content/50 py-8">
+                    No fingerprints found
+                  </td>
+                </tr>
+                <tr :for={fp <- @filtered_fingerprints}>
+                  <td class="font-mono text-xs max-w-xs truncate">
+                    {format_param_list(fp)}
+                  </td>
+                  <td class="text-sm">{fp[:vendor_class] || "-"}</td>
+                  <td>
+                    <.badge :if={fp[:profile_id]} color="info" size="sm">
+                      {fp[:profile_id]}
+                    </.badge>
+                    <span :if={!fp[:profile_id]} class="text-base-content/50">unclassified</span>
+                  </td>
+                  <td>{fp[:confidence] || 0}%</td>
+                  <td>{fp[:hit_count] || 0}</td>
+                  <td :if={@tab == "unknown"}>
+                    <button
+                      phx-click="classify"
+                      phx-value-hash={fp[:hash]}
+                      class="btn btn-xs btn-primary"
+                    >
+                      Classify
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+
+        <.modal :if={@show_classify} id="classify-modal" show>
+          <h3 class="text-lg font-bold mb-4">Classify Fingerprint</h3>
+          <form phx-submit="save_override">
+            <input type="hidden" name="hash" value={@selected_fp} />
+            <div class="form-control mb-4">
+              <label class="label"><span class="label-text">Profile</span></label>
+              <select name="profile_id" class="select select-bordered w-full">
+                <option :for={p <- @profiles} value={p.id}>{p.name}</option>
+              </select>
+            </div>
+            <div class="form-control mb-4">
+              <label class="label"><span class="label-text">Note (optional)</span></label>
+              <input
+                type="text"
+                name="note"
+                class="input input-bordered"
+                placeholder="e.g. Floor 3 sensors"
+              />
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+              <button type="button" phx-click="close_classify" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Override</button>
+            </div>
+          </form>
+        </.modal>
+      </div>
+    </Layouts.app>
+    """
+  end
+
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, socket |> assign(:tab, tab) |> apply_filters()}
+  end
+
+  def handle_event("search", %{"search" => query}, socket) do
+    {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
+  end
+
+  def handle_event("classify", %{"hash" => hash}, socket) do
+    profiles =
+      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_profiles() end, [])
+
+    {:noreply, assign(socket, show_classify: true, selected_fp: hash, profiles: profiles)}
+  end
+
+  def handle_event("close_classify", _params, socket) do
+    {:noreply, assign(socket, show_classify: false, selected_fp: nil)}
+  end
+
+  def handle_event("save_override", %{"hash" => hash, "profile_id" => pid} = params, socket) do
+    note = Map.get(params, "note", "")
+
+    case safe_call(
+           YellowDog.Fingerprint,
+           fn -> YellowDog.Fingerprint.create_override(hash, pid, note) end,
+           {:error, :service_unavailable}
+         ) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Override saved successfully")
+         |> assign(show_classify: false, selected_fp: nil)
+         |> load_data()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to save override: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("export_csv", _params, socket) do
+    csv = build_csv(socket.assigns.filtered_fingerprints)
+    filename = "fingerprints_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- Private ---
+
+  defp load_data(socket) do
+    all =
+      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_fingerprints() end, [])
+
+    stats =
+      safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.database_stats() end, %{
+        fingerprints_v4: 0,
+        fingerprints_v6: 0,
+        profiles: 0,
+        overrides: 0
+      })
+
+    known = Enum.filter(all, &(&1[:profile_id] != nil))
+    unknown = Enum.filter(all, &(&1[:profile_id] == nil))
+
+    socket
+    |> assign(:all_fingerprints, all)
+    |> assign(:known_fingerprints, known)
+    |> assign(:unknown_fingerprints, unknown)
+    |> assign(:known_count, length(known))
+    |> assign(:unknown_count, length(unknown))
+    |> assign(:stats, stats)
+    |> apply_filters()
+  end
+
+  defp apply_filters(socket) do
+    source =
+      case socket.assigns.tab do
+        "unknown" -> socket.assigns[:unknown_fingerprints] || []
+        "known" -> socket.assigns[:known_fingerprints] || []
+        _ -> socket.assigns[:all_fingerprints] || []
+      end
+
+    filtered = filter_by_search(source, socket.assigns.search_query)
+    assign(socket, :filtered_fingerprints, filtered)
+  end
+
+  def filter_by_search(fps, ""), do: fps
+
+  def filter_by_search(fps, query) do
+    q = String.downcase(query)
+
+    Enum.filter(fps, fn fp ->
+      (fp[:vendor_class] && String.contains?(String.downcase(fp[:vendor_class]), q)) ||
+        (fp[:profile_id] && String.contains?(String.downcase(fp[:profile_id]), q)) ||
+        (fp[:parameter_list] && String.contains?(inspect(fp[:parameter_list]), q))
+    end)
+  end
+
+  defp format_param_list(fp) do
+    case fp[:parameter_list] do
+      list when is_list(list) -> Enum.join(list, ", ")
+      _ -> "-"
+    end
+  end
+
+  defp build_csv(fingerprints) do
+    header = "Parameter List,Vendor Class,Profile,Confidence,Hit Count\r\n"
+
+    rows =
+      Enum.map_join(fingerprints, "\r\n", fn fp ->
+        [
+          csv_escape(format_param_list(fp)),
+          csv_escape(fp[:vendor_class] || ""),
+          csv_escape(fp[:profile_id] || "unknown"),
+          csv_escape(to_string(fp[:confidence] || 0)),
+          csv_escape(to_string(fp[:hit_count] || 0))
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+end

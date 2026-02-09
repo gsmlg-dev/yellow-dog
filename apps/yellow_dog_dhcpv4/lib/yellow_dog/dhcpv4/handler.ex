@@ -58,11 +58,11 @@ defmodule YellowDog.Dhcpv4.Handler do
     try do
       message = DHCPv4.Message.from_iodata(data)
 
-      # Emit telemetry event for message received
+      # Emit telemetry event for message received (includes fingerprint signals)
       :telemetry.execute(
-        [:yellow_dog, :dhcpv4, :message_received],
+        [:yellow_dog, :dhcpv4, :message, :received],
         %{duration: System.monotonic_time(:microsecond) - start_time},
-        %{client_ip: ip, client_port: port, message_type: message.op}
+        fingerprint_metadata(message, ip)
       )
 
       # Process the DHCP message
@@ -777,6 +777,44 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Get the gateway IP from the default pool as our server identifier
     pool = get_default_pool()
     ip_to_binary(pool.gateway)
+  end
+
+  # Builds telemetry metadata with fingerprint-relevant DHCP options
+  defp fingerprint_metadata(message, source_ip) do
+    opts = message.options
+
+    %{
+      message_type: message.op,
+      chaddr: message.chaddr,
+      source_ip: source_ip,
+      option_55: extract_raw_option_list(opts, 55),
+      option_60: extract_raw_option_string(opts, 60),
+      option_12: extract_raw_option_string(opts, 12),
+      option_61: extract_raw_option_binary(opts, 61),
+      option_57: extract_raw_option_binary(opts, 57),
+      option_93: extract_raw_option_binary(opts, 93)
+    }
+  end
+
+  defp extract_raw_option_list(options, code) do
+    Enum.find_value(options, [], fn
+      %{type: ^code, value: value} -> :binary.bin_to_list(value)
+      _ -> nil
+    end)
+  end
+
+  defp extract_raw_option_string(options, code) do
+    Enum.find_value(options, fn
+      %{type: ^code, value: value} -> String.trim_trailing(value, <<0>>)
+      _ -> nil
+    end)
+  end
+
+  defp extract_raw_option_binary(options, code) do
+    Enum.find_value(options, fn
+      %{type: ^code, value: value} -> value
+      _ -> nil
+    end)
   end
 
   defp ip_to_binary({a, b, c, d}), do: <<a, b, c, d>>

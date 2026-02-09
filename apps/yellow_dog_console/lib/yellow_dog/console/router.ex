@@ -98,6 +98,11 @@ defmodule YellowDog.Console.Router do
     live "/dns/logs", DnsLive.QueryLogsLive
     live "/dns/metrics", DnsLive.MetricsLive
 
+    # Fingerprint
+    live "/fingerprint/devices", FingerprintLive.DevicesLive
+    live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
+    live "/fingerprint/fingerprints", FingerprintLive.FingerprintsLive
+
     # Tools
     live "/tools/geoip", ToolsLive.GeoipLive
     live "/tools/whois", ToolsLive.WhoisLive

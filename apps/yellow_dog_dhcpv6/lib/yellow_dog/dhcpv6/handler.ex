@@ -81,7 +81,7 @@ defmodule YellowDog.Dhcpv6.Handler do
           :telemetry.execute(
             [:yellow_dog, :dhcpv6, :message, :received],
             %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-            %{client_ip: client_ip, client_port: client_port, msg_type: message.msg_type}
+            fingerprint_metadata_v6(message, client_ip)
           )
 
           handle_dhcpv6_message(message, client_ip, client_port, state, start_time)
@@ -845,6 +845,55 @@ defmodule YellowDog.Dhcpv6.Handler do
   end
 
   # Utility functions
+
+  # Builds telemetry metadata with fingerprint-relevant DHCPv6 options
+  defp fingerprint_metadata_v6(message, source_ip) do
+    opts = message.options
+
+    %{
+      msg_type: message.msg_type,
+      source_ip: source_ip,
+      duid: extract_v6_option(opts, 1),
+      option_6: decode_v6_option_request(extract_v6_option(opts, 6)),
+      option_16: decode_v6_vendor_class(extract_v6_option(opts, 16)),
+      option_39: decode_v6_fqdn(extract_v6_option(opts, 39)),
+      has_ia_na: has_v6_option?(opts, 3),
+      has_ia_pd: has_v6_option?(opts, 25)
+    }
+  end
+
+  defp extract_v6_option(options, code) do
+    Enum.find_value(options, fn
+      %{option_code: ^code, option_data: data} -> data
+      _ -> nil
+    end)
+  end
+
+  defp has_v6_option?(options, code) do
+    Enum.any?(options, fn
+      %{option_code: ^code} -> true
+      _ -> false
+    end)
+  end
+
+  defp decode_v6_option_request(nil), do: []
+  defp decode_v6_option_request(data), do: decode_v6_codes(data, [])
+
+  defp decode_v6_codes(<<>>, acc), do: Enum.reverse(acc)
+  defp decode_v6_codes(<<code::16, rest::binary>>, acc), do: decode_v6_codes(rest, [code | acc])
+  defp decode_v6_codes(_, acc), do: Enum.reverse(acc)
+
+  defp decode_v6_vendor_class(nil), do: nil
+
+  defp decode_v6_vendor_class(<<enterprise_id::32, rest::binary>>) do
+    %{enterprise_id: enterprise_id, data: rest}
+  end
+
+  defp decode_v6_vendor_class(_), do: nil
+
+  defp decode_v6_fqdn(nil), do: nil
+  defp decode_v6_fqdn(<<_flags::8, rest::binary>>), do: String.trim_trailing(rest, <<0>>)
+  defp decode_v6_fqdn(_), do: nil
 
   defp ipv6_to_binary({a, b, c, d, e, f, g, h}) do
     <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
