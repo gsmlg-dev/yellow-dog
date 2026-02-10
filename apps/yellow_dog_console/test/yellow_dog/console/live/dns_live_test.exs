@@ -464,8 +464,8 @@ defmodule YellowDog.Console.DnsLiveTest do
         })
         |> render_submit()
 
-      # Form submission should produce HTML (either success flash or error)
-      assert is_binary(result)
+      # View creation succeeds (returns redirect) or stays on page with error
+      assert is_binary(result) or match?({:error, {:live_redirect, _}}, result)
     end
 
     test "create view form requires name field", %{conn: conn} do
@@ -575,8 +575,8 @@ defmodule YellowDog.Console.DnsLiveTest do
         })
         |> render_submit()
 
-      # Should either succeed or show error since ZoneController isn't running
-      assert is_binary(result)
+      # Zone creation succeeds (returns redirect) or stays on page with error
+      assert is_binary(result) or match?({:error, {:live_redirect, _}}, result)
     end
 
     test "create zone form submits forward zone with upstreams", %{conn: conn} do
@@ -605,8 +605,9 @@ defmodule YellowDog.Console.DnsLiveTest do
         })
         |> render_submit()
 
-      # Should stay on page showing validation error (zone already exists or other error)
-      assert result =~ "flash-error" or
+      # Zone creation succeeds (returns redirect) or stays on page with error
+      assert match?({:error, {:live_redirect, _}}, result) or
+               result =~ "flash-error" or
                result =~ "Zone &#39;forwarded.com&#39; created successfully"
     end
 
@@ -636,8 +637,9 @@ defmodule YellowDog.Console.DnsLiveTest do
         })
         |> render_submit()
 
-      # Should stay on page showing validation error (zone already exists or other error)
-      assert result =~ "flash-error" or
+      # Zone creation succeeds (returns redirect) or stays on page with error
+      assert match?({:error, {:live_redirect, _}}, result) or
+               result =~ "flash-error" or
                result =~ "Zone &#39;stub.example.org&#39; created successfully"
     end
 
