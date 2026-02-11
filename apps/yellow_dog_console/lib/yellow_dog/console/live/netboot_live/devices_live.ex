@@ -478,27 +478,36 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     else
       macs = MapSet.to_list(socket.assigns.selected_devices)
 
-      Enum.each(macs, fn mac ->
-        with {:ok, device} <-
-               safe_call(
-                 YellowDog.Netboot.Device.Registry,
-                 fn -> YellowDog.Netboot.Device.Registry.get(mac) end,
-                 {:error, :unavailable}
-               ) do
-          new_tags = Enum.uniq(device.tags ++ [tag])
+      results =
+        Enum.map(macs, fn mac ->
+          with {:ok, device} <-
+                 safe_call(
+                   YellowDog.Netboot.Device.Registry,
+                   fn -> YellowDog.Netboot.Device.Registry.get(mac) end,
+                   {:error, :unavailable}
+                 ) do
+            new_tags = Enum.uniq(device.tags ++ [tag])
 
-          safe_call(
-            YellowDog.Netboot.Device.Registry,
-            fn -> YellowDog.Netboot.Device.Registry.update_tags(mac, new_tags) end,
-            {:error, :unavailable}
-          )
+            safe_call(
+              YellowDog.Netboot.Device.Registry,
+              fn -> YellowDog.Netboot.Device.Registry.update_tags(mac, new_tags) end,
+              {:error, :unavailable}
+            )
+          end
+        end)
+
+      ok_count = Enum.count(results, &(&1 == :ok))
+
+      socket =
+        if ok_count == length(macs) do
+          put_flash(socket, :info, "Added tag \"#{tag}\" to #{ok_count} device(s)")
+        else
+          put_flash(socket, :warning, "Added tag to #{ok_count} of #{length(macs)} device(s)")
         end
-      end)
 
       {:noreply,
        socket
        |> assign(:selected_devices, MapSet.new())
-       |> put_flash(:info, "Added tag \"#{tag}\" to #{length(macs)} device(s)")
        |> load_devices()}
     end
   end
@@ -507,18 +516,27 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   def handle_event("bulk_delete", _params, socket) do
     macs = MapSet.to_list(socket.assigns.selected_devices)
 
-    Enum.each(macs, fn mac ->
-      safe_call(
-        YellowDog.Netboot.Device.Registry,
-        fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
-        :ok
-      )
-    end)
+    results =
+      Enum.map(macs, fn mac ->
+        safe_call(
+          YellowDog.Netboot.Device.Registry,
+          fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
+          {:error, :service_unavailable}
+        )
+      end)
+
+    ok_count = Enum.count(results, &(&1 == :ok))
+
+    socket =
+      if ok_count == length(macs) do
+        put_flash(socket, :info, "Deleted #{ok_count} device(s) successfully")
+      else
+        put_flash(socket, :warning, "Deleted #{ok_count} of #{length(macs)} device(s)")
+      end
 
     {:noreply,
      socket
      |> assign(:selected_devices, MapSet.new())
-     |> put_flash(:info, "Deleted #{length(macs)} device(s)")
      |> load_devices()}
   end
 

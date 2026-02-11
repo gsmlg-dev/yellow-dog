@@ -453,16 +453,23 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
   @impl true
   def handle_event("rescan", _params, socket) do
-    safe_call(
-      YellowDog.Netboot.TFTP.FileIndex,
-      fn ->
-        root = YellowDog.Netboot.TFTP.Server.root_dir()
-        YellowDog.Netboot.TFTP.FileIndex.scan(root)
-      end,
-      :ok
-    )
+    result =
+      safe_call(
+        YellowDog.Netboot.TFTP.FileIndex,
+        fn ->
+          root = YellowDog.Netboot.TFTP.Server.root_dir()
+          YellowDog.Netboot.TFTP.FileIndex.scan(root)
+        end,
+        {:error, :service_unavailable}
+      )
 
-    {:noreply, socket |> put_flash(:info, "File index rescanned") |> load_data()}
+    socket =
+      case result do
+        :ok -> socket |> put_flash(:info, "File index rescanned successfully") |> load_data()
+        {:error, _} -> put_flash(socket, :error, "Failed to rescan file index")
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
