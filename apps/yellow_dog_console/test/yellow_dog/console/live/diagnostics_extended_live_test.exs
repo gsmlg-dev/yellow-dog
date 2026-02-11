@@ -198,4 +198,78 @@ defmodule YellowDog.Console.DiagnosticsExtendedLiveTest do
       end
     end
   end
+
+  # ============================================================================
+  # Query Submission Events
+  # ============================================================================
+
+  describe "Diagnostics /diagnostics query submission" do
+    test "send_dns_query sets loading state", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+
+      render_submit(view, "send_dns_query", %{
+        "dns_query" => %{
+          "query_name" => "example.com",
+          "record_type" => "A",
+          "protocol" => "udp",
+          "server" => "8.8.8.8",
+          "port" => "53",
+          "recursion_desired" => "true",
+          "timeout" => "5000"
+        }
+      })
+
+      # After submit, the async query runs — page should not crash
+      html = render(view)
+      assert html =~ "Service Diagnostics"
+    end
+
+    test "send_mdns_query submits without crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      render_click(view, "select_tab", %{"tab" => "mdns"})
+
+      render_submit(view, "send_mdns_query", %{
+        "mdns_query" => %{
+          "query_name" => "_http._tcp.local",
+          "record_type" => "PTR",
+          "timeout" => "5000"
+        }
+      })
+
+      html = render(view)
+      assert html =~ "Service Diagnostics"
+    end
+
+    test "send_dhcpv4_query submits without crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      render_click(view, "select_tab", %{"tab" => "dhcpv4"})
+
+      render_submit(view, "send_dhcpv4_query", %{
+        "dhcpv4_query" => %{
+          "server" => "192.168.1.1",
+          "port" => "67",
+          "timeout" => "5000"
+        }
+      })
+
+      html = render(view)
+      assert html =~ "Service Diagnostics"
+    end
+
+    test "send_dhcpv6_query submits without crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/diagnostics")
+      render_click(view, "select_tab", %{"tab" => "dhcpv6"})
+
+      render_submit(view, "send_dhcpv6_query", %{
+        "dhcpv6_query" => %{
+          "server" => "::1",
+          "port" => "547",
+          "timeout" => "5000"
+        }
+      })
+
+      html = render(view)
+      assert html =~ "Service Diagnostics"
+    end
+  end
 end

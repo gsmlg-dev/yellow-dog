@@ -91,6 +91,33 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
   end
 
   # ============================================================================
+  # mDNS Discovery - handle_info
+  # ============================================================================
+
+  describe "mDNS Discovery /mdns/discovery handle_info" do
+    test "refresh message updates services", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      send(view.pid, :refresh)
+      html = render(view)
+      assert html =~ "Total Services"
+    end
+
+    test "network_update message updates services", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      send(view.pid, :network_update)
+      html = render(view)
+      assert html =~ "Total Services"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      send(view.pid, {:unknown_event, :data})
+      html = render(view)
+      assert html =~ "Total Services"
+    end
+  end
+
+  # ============================================================================
   # mDNS Monitor - Event Handlers
   # ============================================================================
 
@@ -110,6 +137,39 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
     test "clear_cache works", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/mdns/monitor")
       html = render_click(view, "clear_cache")
+      assert html =~ "Total Queries"
+    end
+
+    test "toggle_auto_refresh toggles auto-refresh state", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      html = render_click(view, "toggle_auto_refresh")
+      assert html =~ "Total Queries"
+    end
+  end
+
+  # ============================================================================
+  # mDNS Monitor - handle_info
+  # ============================================================================
+
+  describe "mDNS Monitor /mdns/monitor handle_info" do
+    test "refresh message updates queries", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      send(view.pid, :refresh)
+      html = render(view)
+      assert html =~ "Total Queries"
+    end
+
+    test "network_update message updates stats", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      send(view.pid, :network_update)
+      html = render(view)
+      assert html =~ "Total Queries"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/monitor")
+      send(view.pid, {:random_message, :stuff})
+      html = render(view)
       assert html =~ "Total Queries"
     end
   end

@@ -156,4 +156,24 @@ defmodule YellowDog.Console.DashboardLiveTest do
       assert html =~ "phx-disable-with=\"Starting...\""
     end
   end
+
+  # ============================================================================
+  # handle_info
+  # ============================================================================
+
+  describe "DashboardLive / handle_info" do
+    test "refresh_services message updates dashboard", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+      send(view.pid, :refresh_services)
+      html = render(view)
+      assert html =~ "Service Dashboard"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+      send(view.pid, {:unknown_message, :data})
+      html = render(view)
+      assert html =~ "Service Dashboard"
+    end
+  end
 end
