@@ -3,6 +3,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.FormatHelper, only: [format_bytes: 1]
 
   alias YellowDog.Console.Layouts
 
@@ -181,12 +182,29 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   end
 
   def handle_info({:tftp_transfer_started, metadata}, socket) do
-    entry = log_entry("tftp", "Transfer started: #{inspect(metadata)}")
+    file = Map.get(metadata, :file_path, "unknown")
+    size = Map.get(metadata, :total_size, 0)
+    entry = log_entry("tftp", "Transfer started: #{file} (#{format_bytes(size)})")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:tftp_transfer_complete, metadata}, socket) do
-    entry = log_entry("tftp", "Transfer complete: #{inspect(metadata)}")
+    file = Map.get(metadata, :file_path, "unknown")
+    duration = Map.get(metadata, :duration, 0)
+    entry = log_entry("tftp", "Transfer complete: #{file} (#{duration}ms)")
+    {:noreply, add_entry(socket, entry)}
+  end
+
+  def handle_info({:tftp_request_accepted, metadata}, socket) do
+    file = Map.get(metadata, :file, "unknown")
+    entry = log_entry("tftp", "Request accepted: #{file}")
+    {:noreply, add_entry(socket, entry)}
+  end
+
+  def handle_info({:tftp_request_rejected, metadata}, socket) do
+    file = Map.get(metadata, :file, "unknown")
+    reason = Map.get(metadata, :reason, "unknown")
+    entry = log_entry("tftp", "Request rejected: #{file} (#{reason})")
     {:noreply, add_entry(socket, entry)}
   end
 

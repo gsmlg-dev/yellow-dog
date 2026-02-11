@@ -14,6 +14,9 @@ defmodule YellowDog.Netboot.Application do
       {YellowDog.Netboot.Boot.Profile, :for_device}
     )
 
+    # Bridge TFTP telemetry events to PubSub for console Boot Log
+    YellowDog.Netboot.TelemetryHandler.attach()
+
     children = [
       {YellowDog.Netboot.Supervisor, []}
     ]
