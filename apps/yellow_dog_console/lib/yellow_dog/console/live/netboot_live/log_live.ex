@@ -24,6 +24,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
        log_entries: [],
        search_query: "",
        filter_type: "all",
+       filter_level: "all",
        paused: false
      )}
   end
@@ -96,13 +97,24 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
               <option value="device">Device Events</option>
               <option value="tftp">TFTP Events</option>
             </select>
+            <select
+              class="select select-bordered"
+              phx-change="filter_level"
+              name="level"
+              value={@filter_level}
+            >
+              <option value="all">All Levels</option>
+              <option value="error">Errors Only</option>
+              <option value="warning">Warnings+</option>
+              <option value="info">Info+</option>
+            </select>
           </div>
         </.card>
 
         <.card>
           <div class="flex justify-between items-center mb-2">
             <span :if={@log_entries != []} class="text-sm text-base-content/70">
-              {length(filtered_entries(@log_entries, @search_query, @filter_type))} of {length(@log_entries)} entries
+              {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(@log_entries)} entries
             </span>
             <span :if={@log_entries == []} class="text-sm text-base-content/70"></span>
             <span :if={connected?(@socket)} class="flex items-center gap-1 text-xs text-base-content/50">
@@ -120,19 +132,23 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
                 <tr>
                   <th>Time</th>
                   <th>Type</th>
+                  <th>Level</th>
                   <th>Details</th>
                 </tr>
               </thead>
               <tbody>
-                <tr :if={filtered_entries(@log_entries, @search_query, @filter_type) == []}>
-                  <td colspan="3" class="text-center text-base-content/50 py-8">
+                <tr :if={filtered_entries(@log_entries, @search_query, @filter_type, @filter_level) == []}>
+                  <td colspan="4" class="text-center text-base-content/50 py-8">
                     No log entries yet — activity will appear in real-time
                   </td>
                 </tr>
-                <tr :for={entry <- filtered_entries(@log_entries, @search_query, @filter_type)}>
+                <tr :for={entry <- filtered_entries(@log_entries, @search_query, @filter_type, @filter_level)}>
                   <td class="text-sm font-mono whitespace-nowrap">{format_log_time(entry.time)}</td>
                   <td>
                     <.badge color={type_color(entry.type)} size="sm">{entry.type}</.badge>
+                  </td>
+                  <td>
+                    <.badge color={level_color(entry.level)} size="sm">{entry.level}</.badge>
                   </td>
                   <td class="text-sm">{entry.message}</td>
                 </tr>
@@ -154,6 +170,10 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, assign(socket, :filter_type, type)}
   end
 
+  def handle_event("filter_level", %{"level" => level}, socket) do
+    {:noreply, assign(socket, :filter_level, level)}
+  end
+
   def handle_event("toggle_pause", _params, socket) do
     {:noreply, assign(socket, :paused, !socket.assigns.paused)}
   end
@@ -167,7 +187,8 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
       filtered_entries(
         socket.assigns.log_entries,
         socket.assigns.search_query,
-        socket.assigns.filter_type
+        socket.assigns.filter_type,
+        socket.assigns.filter_level
       )
 
     csv = build_csv(entries)
@@ -181,44 +202,45 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   end
 
   def handle_info({:device_state_changed, device}, socket) do
-    entry = log_entry("device", "Device #{device.mac} → #{device.state}")
+    level = if device.state == :failed, do: "warning", else: "info"
+    entry = log_entry("device", level, "Device #{device.mac} → #{device.state}")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:device_registered, device}, socket) do
-    entry = log_entry("device", "Device #{device.mac} registered")
+    entry = log_entry("device", "info", "Device #{device.mac} registered")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:device_deleted, mac}, socket) do
-    entry = log_entry("device", "Device #{mac} deleted")
+    entry = log_entry("device", "info", "Device #{mac} deleted")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:tftp_transfer_started, metadata}, socket) do
     file = Map.get(metadata, :file_path, "unknown")
     size = Map.get(metadata, :total_size, 0)
-    entry = log_entry("tftp", "Transfer started: #{file} (#{format_bytes(size)})")
+    entry = log_entry("tftp", "info", "Transfer started: #{file} (#{format_bytes(size)})")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:tftp_transfer_complete, metadata}, socket) do
     file = Map.get(metadata, :file_path, "unknown")
     duration = Map.get(metadata, :duration, 0)
-    entry = log_entry("tftp", "Transfer complete: #{file} (#{duration}ms)")
+    entry = log_entry("tftp", "info", "Transfer complete: #{file} (#{duration}ms)")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:tftp_request_accepted, metadata}, socket) do
     file = Map.get(metadata, :file, "unknown")
-    entry = log_entry("tftp", "Request accepted: #{file}")
+    entry = log_entry("tftp", "info", "Request accepted: #{file}")
     {:noreply, add_entry(socket, entry)}
   end
 
   def handle_info({:tftp_request_rejected, metadata}, socket) do
     file = Map.get(metadata, :file, "unknown")
     reason = Map.get(metadata, :reason, "unknown")
-    entry = log_entry("tftp", "Request rejected: #{file} (#{reason})")
+    entry = log_entry("tftp", "error", "Request rejected: #{file} (#{reason})")
     {:noreply, add_entry(socket, entry)}
   end
 
@@ -233,10 +255,11 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     end
   end
 
-  defp log_entry(type, message) do
+  defp log_entry(type, level, message) do
     %{
       time: DateTime.utc_now(),
       type: type,
+      level: level,
       message: message
     }
   end
@@ -244,9 +267,10 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   defp format_log_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
   defp format_log_time(time) when is_binary(time), do: time
 
-  def filtered_entries(entries, search, type_filter) do
+  def filtered_entries(entries, search, type_filter, level_filter) do
     entries
     |> filter_by_type(type_filter)
+    |> filter_by_level(level_filter)
     |> filter_by_search(search)
   end
 
@@ -260,16 +284,34 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   def filter_by_type(entries, "all"), do: entries
   def filter_by_type(entries, type), do: Enum.filter(entries, &(&1.type == type))
 
+  def filter_by_level(entries, "all"), do: entries
+  def filter_by_level(entries, "error"), do: Enum.filter(entries, &(&1.level == "error"))
+
+  def filter_by_level(entries, "warning"),
+    do: Enum.filter(entries, &(&1.level in ["warning", "error"]))
+
+  def filter_by_level(entries, _), do: entries
+
   defp type_color("device"), do: "info"
   defp type_color("tftp"), do: "warning"
   defp type_color(_), do: "neutral"
 
+  defp level_color("error"), do: "error"
+  defp level_color("warning"), do: "warning"
+  defp level_color("info"), do: "ghost"
+  defp level_color(_), do: "neutral"
+
   defp build_csv(entries) do
-    header = "Time,Type,Message\r\n"
+    header = "Time,Type,Level,Message\r\n"
 
     rows =
       Enum.map_join(entries, "\r\n", fn e ->
-        [csv_escape(format_log_time(e.time)), csv_escape(e.type), csv_escape(e.message)]
+        [
+          csv_escape(format_log_time(e.time)),
+          csv_escape(e.type),
+          csv_escape(e.level),
+          csv_escape(e.message)
+        ]
         |> Enum.join(",")
       end)
 

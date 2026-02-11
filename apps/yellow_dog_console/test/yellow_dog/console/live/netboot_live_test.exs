@@ -1004,11 +1004,103 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Boot Log"
     end
 
+    test "level filter dropdown is present", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      assert has_element?(view, "select[name=level]")
+    end
+
+    test "level filter works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      html = view |> element("select[name=level]") |> render_change(%{"level" => "error"})
+      assert html =~ "Boot Log"
+    end
+
+    test "log table has Level column header", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/log")
+
+      assert html =~ "<th>Level</th>"
+    end
+
+    test "device_state_changed to :failed uses warning level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :failed}})
+      html = render(view)
+      assert html =~ "warning"
+      assert html =~ "failed"
+    end
+
+    test "device_registered uses info level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:device_registered, %{mac: "11:22:33:44:55:66"}})
+      html = render(view)
+      assert html =~ "info"
+      assert html =~ "registered"
+    end
+
+    test "tftp_request_rejected uses error level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_request_rejected, %{file: "missing.bin", reason: "not found"}})
+      html = render(view)
+      assert html =~ "error"
+      assert html =~ "rejected"
+    end
+
     test "shows live indicator", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/log")
 
       assert html =~ "animate-pulse"
       assert html =~ "Live"
+    end
+  end
+
+  describe "Boot Log filtering" do
+    alias YellowDog.Console.NetbootLive.LogLive
+
+    test "filtered_entries with level filter 'error' returns only errors" do
+      entries = [
+        %{type: "device", level: "info", message: "registered", time: DateTime.utc_now()},
+        %{type: "tftp", level: "error", message: "rejected", time: DateTime.utc_now()},
+        %{type: "device", level: "warning", message: "failed", time: DateTime.utc_now()}
+      ]
+
+      result = LogLive.filtered_entries(entries, "", "all", "error")
+      assert length(result) == 1
+      assert hd(result).level == "error"
+    end
+
+    test "filtered_entries with level filter 'warning' returns warnings and errors" do
+      entries = [
+        %{type: "device", level: "info", message: "registered", time: DateTime.utc_now()},
+        %{type: "tftp", level: "error", message: "rejected", time: DateTime.utc_now()},
+        %{type: "device", level: "warning", message: "failed", time: DateTime.utc_now()}
+      ]
+
+      result = LogLive.filtered_entries(entries, "", "all", "warning")
+      assert length(result) == 2
+      levels = Enum.map(result, & &1.level)
+      assert "error" in levels
+      assert "warning" in levels
+    end
+
+    test "filter_by_level 'all' returns everything" do
+      entries = [
+        %{level: "info"}, %{level: "warning"}, %{level: "error"}
+      ]
+
+      assert length(LogLive.filter_by_level(entries, "all")) == 3
+    end
+
+    test "filter_by_level 'info' returns everything (info includes all)" do
+      entries = [
+        %{level: "info"}, %{level: "warning"}, %{level: "error"}
+      ]
+
+      assert length(LogLive.filter_by_level(entries, "info")) == 3
     end
   end
 
