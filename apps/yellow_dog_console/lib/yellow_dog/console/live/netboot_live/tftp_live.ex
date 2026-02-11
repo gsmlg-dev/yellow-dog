@@ -3,6 +3,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.NetbootComponents, only: [format_size: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -451,14 +452,6 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   defp upload_error_to_string(:too_many_files), do: "Too many files (max 5)"
   defp upload_error_to_string(:external_client_failure), do: "Upload failed"
   defp upload_error_to_string(err), do: "Error: #{inspect(err)}"
-
-  defp format_size(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
-
-  defp format_size(bytes) when is_integer(bytes) and bytes < 1_048_576,
-    do: "#{Float.round(bytes / 1024, 1)} KB"
-
-  defp format_size(bytes) when is_integer(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
-  defp format_size(_), do: "-"
 
   defp format_addr(addr) when is_tuple(addr), do: to_string(:inet.ntoa(addr))
   defp format_addr(addr) when is_binary(addr), do: addr

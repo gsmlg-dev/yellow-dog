@@ -31,4 +31,17 @@ defmodule YellowDog.Console.NetbootComponents do
   @doc "Formats a DateTime with seconds precision."
   def format_datetime_full(nil), do: "-"
   def format_datetime_full(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
+
+  @doc "Formats a byte count as a human-readable string with space separator."
+  def format_size(bytes) when is_integer(bytes) and bytes >= 1_073_741_824,
+    do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
+
+  def format_size(bytes) when is_integer(bytes) and bytes >= 1_048_576,
+    do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+
+  def format_size(bytes) when is_integer(bytes) and bytes >= 1024,
+    do: "#{Float.round(bytes / 1024, 1)} KB"
+
+  def format_size(bytes) when is_integer(bytes), do: "#{bytes} B"
+  def format_size(_), do: "-"
 end

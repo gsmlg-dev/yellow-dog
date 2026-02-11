@@ -75,7 +75,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
           </div>
           <div class="stat">
             <div class="stat-title">Bytes Transferred</div>
-            <div class="stat-value text-sm">{format_bytes(@metrics.tftp_bytes_transferred)}</div>
+            <div class="stat-value text-sm">{format_size(@metrics.tftp_bytes_transferred)}</div>
           </div>
         </div>
 
@@ -252,19 +252,4 @@ defmodule YellowDog.Console.NetbootLive.Index do
     }
   end
 
-  defp format_bytes(0), do: "0 B"
-
-  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-
-  defp format_bytes(bytes) when bytes < 1_048_576 do
-    "#{Float.round(bytes / 1024, 1)} KB"
-  end
-
-  defp format_bytes(bytes) when bytes < 1_073_741_824 do
-    "#{Float.round(bytes / 1_048_576, 1)} MB"
-  end
-
-  defp format_bytes(bytes) do
-    "#{Float.round(bytes / 1_073_741_824, 1)} GB"
-  end
 end
