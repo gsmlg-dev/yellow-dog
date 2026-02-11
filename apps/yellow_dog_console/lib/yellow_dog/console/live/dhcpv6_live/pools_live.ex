@@ -104,7 +104,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
         {:noreply,
          socket
          |> load_pools()
-         |> put_flash(:info, "Pool '#{pool_name}' force deleted")}
+         |> put_flash(:info, "Pool '#{pool_name}' force deleted successfully")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to delete pool: #{inspect(reason)}")}

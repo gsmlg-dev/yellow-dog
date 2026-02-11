@@ -267,7 +267,7 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
          socket
          |> assign(:delete_confirm, nil)
          |> load_records()
-         |> put_flash(:info, "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted")}
+         |> put_flash(:info, "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted successfully")}
 
       {:error, reason} ->
         {:noreply,

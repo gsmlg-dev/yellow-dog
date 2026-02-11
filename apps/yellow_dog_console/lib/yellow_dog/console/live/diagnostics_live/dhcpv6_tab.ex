@@ -163,6 +163,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
               type="submit"
               class={["btn btn-primary", @tab.loading && "loading"]}
               disabled={@tab.loading}
+              phx-disable-with="Sending..."
             >
               <%= if @tab.loading do %>
                 <span class="loading loading-spinner loading-sm"></span> Sending...

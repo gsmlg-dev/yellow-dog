@@ -241,16 +241,25 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
 
   @impl true
   def handle_event("delete_profile", %{"id" => id}, socket) do
-    safe_call(
-      YellowDog.Netboot.Manifest.Store,
-      fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
-      :ok
-    )
+    result =
+      safe_call(
+        YellowDog.Netboot.Manifest.Store,
+        fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
+        {:error, :service_unavailable}
+      )
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Profile #{id} deleted")
-     |> load_profiles()}
+    socket =
+      case result do
+        :ok ->
+          socket
+          |> put_flash(:info, "Profile '#{id}' deleted successfully")
+          |> load_profiles()
+
+        {:error, _reason} ->
+          put_flash(socket, :error, "Failed to delete profile '#{id}'")
+      end
+
+    {:noreply, socket}
   end
 
   @impl true

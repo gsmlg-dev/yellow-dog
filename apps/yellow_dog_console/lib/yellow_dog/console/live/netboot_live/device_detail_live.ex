@@ -374,12 +374,27 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
   @impl true
   def handle_event("delete_device", _params, socket) do
-    YellowDog.Netboot.Device.Registry.delete(socket.assigns.mac)
+    mac = socket.assigns.mac
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Device deleted")
-     |> push_navigate(to: "/netboot/devices")}
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
+        {:error, :service_unavailable}
+      )
+
+    socket =
+      case result do
+        :ok ->
+          socket
+          |> put_flash(:info, "Device '#{mac}' deleted successfully")
+          |> push_navigate(to: "/netboot/devices")
+
+        {:error, _reason} ->
+          put_flash(socket, :error, "Failed to delete device '#{mac}'")
+      end
+
+    {:noreply, socket}
   end
 
   @impl true

@@ -113,6 +113,7 @@ defmodule YellowDog.Console.DiagnosticsLive.MdnsTab do
               type="submit"
               class={["btn btn-primary", @tab.loading && "loading"]}
               disabled={@tab.loading}
+              phx-disable-with="Discovering..."
             >
               <%= if @tab.loading do %>
                 <span class="loading loading-spinner loading-sm"></span> Discovering...

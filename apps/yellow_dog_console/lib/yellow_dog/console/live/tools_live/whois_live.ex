@@ -36,7 +36,12 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
             disabled={@loading}
             autofocus
           />
-          <button type="submit" class="btn btn-primary" disabled={@loading}>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            disabled={@loading}
+            phx-disable-with="Looking up..."
+          >
             <span :if={@loading} class="loading loading-spinner loading-sm"></span> Lookup
           </button>
         </form>

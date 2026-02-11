@@ -295,7 +295,7 @@ defmodule YellowDog.Console.SettingsLive do
       socket
       |> assign(:"#{service}_changeset", updated_changeset)
       |> maybe_update_pending_changes(service, updated_changeset)
-      |> put_flash(:info, "Pool deleted")
+      |> put_flash(:info, "Pool deleted successfully")
 
     {:noreply, socket}
   end
