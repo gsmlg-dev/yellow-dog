@@ -19,9 +19,12 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
      |> assign(
        page_title: "Netboot Devices",
        search_query: "",
-       filter_state: "all"
+       filter_state: "all",
+       selected_devices: MapSet.new(),
+       bulk_profile: nil
      )
-     |> load_devices()}
+     |> load_devices()
+     |> load_profiles()}
   end
 
   @impl true
@@ -104,11 +107,43 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </div>
         </.card>
 
+        <div :if={MapSet.size(@selected_devices) > 0} class="flex items-center gap-3 p-3 bg-primary/10 rounded-lg">
+          <span class="text-sm font-medium">
+            {MapSet.size(@selected_devices)} device(s) selected
+          </span>
+          <select
+            class="select select-bordered select-sm"
+            phx-change="bulk_select_profile"
+            name="profile"
+          >
+            <option value="">Assign Profile...</option>
+            <option :for={p <- @profiles} value={p.id}>{p.id}</option>
+          </select>
+          <button
+            :if={@bulk_profile}
+            phx-click="bulk_assign_profile"
+            class="btn btn-primary btn-sm"
+          >
+            Apply to {MapSet.size(@selected_devices)} device(s)
+          </button>
+          <button phx-click="bulk_clear" class="btn btn-ghost btn-sm">
+            Clear Selection
+          </button>
+        </div>
+
         <.card>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm"
+                      phx-click="toggle_select_all"
+                      checked={@filtered_devices != [] && all_selected?(@filtered_devices, @selected_devices)}
+                    />
+                  </th>
                   <th>MAC Address</th>
                   <th>Hostname</th>
                   <th>Arch</th>
@@ -120,11 +155,20 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_devices == []}>
-                  <td colspan="7" class="text-center text-base-content/50 py-8">
+                  <td colspan="8" class="text-center text-base-content/50 py-8">
                     No devices found
                   </td>
                 </tr>
                 <tr :for={device <- @filtered_devices}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm"
+                      phx-click="toggle_select"
+                      phx-value-mac={device.mac}
+                      checked={MapSet.member?(@selected_devices, device.mac)}
+                    />
+                  </td>
                   <td class="font-mono text-sm">
                     <.link navigate={"/netboot/devices/#{device.mac}"} class="link link-primary">
                       {device.mac}
@@ -161,11 +205,101 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  def handle_event("toggle_select", %{"mac" => mac}, socket) do
+    selected = socket.assigns.selected_devices
+
+    selected =
+      if MapSet.member?(selected, mac),
+        do: MapSet.delete(selected, mac),
+        else: MapSet.put(selected, mac)
+
+    {:noreply, assign(socket, :selected_devices, selected)}
+  end
+
+  def handle_event("toggle_select_all", _params, socket) do
+    macs = Enum.map(socket.assigns.filtered_devices, & &1.mac)
+
+    selected =
+      if all_selected?(socket.assigns.filtered_devices, socket.assigns.selected_devices) do
+        MapSet.new()
+      else
+        MapSet.new(macs)
+      end
+
+    {:noreply, assign(socket, :selected_devices, selected)}
+  end
+
+  def handle_event("bulk_select_profile", %{"profile" => ""}, socket) do
+    {:noreply, assign(socket, :bulk_profile, nil)}
+  end
+
+  def handle_event("bulk_select_profile", %{"profile" => profile_id}, socket) do
+    {:noreply, assign(socket, :bulk_profile, profile_id)}
+  end
+
+  def handle_event("bulk_assign_profile", _params, socket) do
+    profile_id = socket.assigns.bulk_profile
+    macs = MapSet.to_list(socket.assigns.selected_devices)
+
+    results =
+      Enum.map(macs, fn mac ->
+        safe_call(
+          YellowDog.Netboot.Device.Registry,
+          fn -> YellowDog.Netboot.Device.Registry.assign_profile(mac, profile_id) end,
+          {:error, :service_unavailable}
+        )
+      end)
+
+    ok_count = Enum.count(results, &match?({:ok, _}, &1))
+    err_count = length(results) - ok_count
+
+    socket =
+      socket
+      |> assign(:selected_devices, MapSet.new())
+      |> assign(:bulk_profile, nil)
+      |> load_devices()
+
+    socket =
+      cond do
+        err_count > 0 && ok_count > 0 ->
+          put_flash(socket, :info, "Assigned profile to #{ok_count} device(s), #{err_count} failed")
+
+        err_count > 0 ->
+          put_flash(socket, :error, "Failed to assign profile to #{err_count} device(s)")
+
+        true ->
+          put_flash(socket, :info, "Assigned \"#{profile_id}\" to #{ok_count} device(s)")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("bulk_clear", _params, socket) do
+    {:noreply, assign(socket, selected_devices: MapSet.new(), bulk_profile: nil)}
+  end
+
   @impl true
   def handle_info({:device_state_changed, _}, socket), do: {:noreply, load_devices(socket)}
   def handle_info({:device_registered, _}, socket), do: {:noreply, load_devices(socket)}
   def handle_info({:device_deleted, _}, socket), do: {:noreply, load_devices(socket)}
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp load_profiles(socket) do
+    profiles =
+      safe_call(
+        YellowDog.Netboot.Manifest.Store,
+        fn -> YellowDog.Netboot.Manifest.Store.list_profiles() end,
+        []
+      )
+
+    assign(socket, :profiles, profiles)
+  end
+
+  defp all_selected?([], _selected), do: false
+
+  defp all_selected?(filtered, selected) do
+    Enum.all?(filtered, &MapSet.member?(selected, &1.mac))
+  end
 
   defp load_devices(socket) do
     all =
