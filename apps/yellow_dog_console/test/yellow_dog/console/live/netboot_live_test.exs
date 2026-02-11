@@ -139,6 +139,15 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "a[href='/netboot/devices']")
     end
+
+    test "renders device info section when device not found", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+
+      # With no registry running, device is nil, so we see the warning
+      assert html =~ "Device not found"
+      # The info card with IP Address only shows when device exists
+      refute html =~ "Hardware Info"
+    end
   end
 
   describe "Boot Profiles page" do

@@ -58,6 +58,10 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               />
               <.info_row label="State" value={to_string(@device.state)} />
               <.info_row label="Profile" value={@device.profile_id || "None"} />
+              <.info_row
+                label="IP Address"
+                value={if @device.ip_address, do: format_ip(@device.ip_address), else: "-"}
+              />
               <.info_row label="Install Attempts" value={to_string(@device.install_attempts)} />
               <.info_row label="Last Error" value={@device.last_error || "-"} />
               <.info_row label="First Seen" value={format_datetime_full(@device.first_seen)} />
@@ -65,6 +69,17 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <.info_row
                 label="Tags"
                 value={Enum.join(@device.tags, ", ") |> then(&if(&1 == "", do: "-", else: &1))}
+              />
+            </div>
+          </.card>
+
+          <.card :if={@device.hardware_info != %{}}>
+            <h2 class="card-title mb-4">Hardware Info</h2>
+            <div class="space-y-2">
+              <.info_row
+                :for={{key, val} <- @device.hardware_info}
+                label={humanize_key(key)}
+                value={to_string(val)}
               />
             </div>
           </.card>
@@ -208,4 +223,15 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
       _ -> assign(socket, :device, nil)
     end
   end
+
+  defp format_ip(ip) when is_tuple(ip), do: to_string(:inet.ntoa(ip))
+  defp format_ip(ip) when is_binary(ip), do: ip
+  defp format_ip(_), do: "-"
+
+  defp humanize_key(key) when is_binary(key) do
+    key |> String.replace("_", " ") |> String.capitalize()
+  end
+
+  defp humanize_key(key) when is_atom(key), do: humanize_key(to_string(key))
+  defp humanize_key(key), do: to_string(key)
 end

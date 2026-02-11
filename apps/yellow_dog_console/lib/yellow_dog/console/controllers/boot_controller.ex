@@ -82,23 +82,28 @@ defmodule YellowDog.Console.BootController do
   def register_device(conn, params) do
     mac = Map.get(params, "mac", "")
 
-    if mac == "" do
-      conn |> put_status(400) |> json(%{error: "mac required"})
-    else
-      attrs = %{
-        hostname: Map.get(params, "hostname"),
-        uuid: Map.get(params, "uuid"),
-        arch: parse_arch(Map.get(params, "arch")),
-        hardware_info: Map.get(params, "hardware_info", %{})
-      }
+    cond do
+      mac == "" ->
+        conn |> put_status(400) |> json(%{error: "mac required"})
 
-      case Registry.register(mac, attrs) do
-        {:ok, device} ->
-          json(conn, %{status: "ok", mac: device.mac, state: to_string(device.state)})
+      not valid_mac?(mac) ->
+        conn |> put_status(400) |> json(%{error: "invalid MAC address format"})
 
-        {:error, reason} ->
-          conn |> put_status(422) |> json(%{error: inspect(reason)})
-      end
+      true ->
+        attrs = %{
+          hostname: Map.get(params, "hostname"),
+          uuid: Map.get(params, "uuid"),
+          arch: parse_arch(Map.get(params, "arch")),
+          hardware_info: Map.get(params, "hardware_info", %{})
+        }
+
+        case Registry.register(mac, attrs) do
+          {:ok, device} ->
+            json(conn, %{status: "ok", mac: device.mac, state: to_string(device.state)})
+
+          {:error, reason} ->
+            conn |> put_status(422) |> json(%{error: inspect(reason)})
+        end
     end
   end
 
@@ -107,19 +112,24 @@ defmodule YellowDog.Console.BootController do
     mac = Map.get(params, "mac", "")
     status = Map.get(params, "status", "")
 
-    if mac == "" or status == "" do
-      conn |> put_status(400) |> json(%{error: "mac and status required"})
-    else
-      new_state = status_to_state(status)
-      metadata = Map.get(params, "metadata", %{})
+    cond do
+      mac == "" or status == "" ->
+        conn |> put_status(400) |> json(%{error: "mac and status required"})
 
-      case Registry.update_state(mac, new_state, metadata) do
-        {:ok, device} ->
-          json(conn, %{status: "ok", mac: device.mac, state: to_string(device.state)})
+      not valid_mac?(mac) ->
+        conn |> put_status(400) |> json(%{error: "invalid MAC address format"})
 
-        {:error, reason} ->
-          conn |> put_status(422) |> json(%{error: inspect(reason)})
-      end
+      true ->
+        new_state = status_to_state(status)
+        metadata = Map.get(params, "metadata", %{})
+
+        case Registry.update_state(mac, new_state, metadata) do
+          {:ok, device} ->
+            json(conn, %{status: "ok", mac: device.mac, state: to_string(device.state)})
+
+          {:error, reason} ->
+            conn |> put_status(422) |> json(%{error: inspect(reason)})
+        end
     end
   end
 
@@ -185,6 +195,10 @@ defmodule YellowDog.Console.BootController do
       {:error, _} -> conn |> put_status(500) |> text("#!ipxe\necho Error rendering script\nshell")
     end
   end
+
+  # MAC address: 12 hex chars with optional separators (colon, dash, dot, or none)
+  @mac_pattern ~r/\A[0-9a-fA-F]{2}([:\-.]?[0-9a-fA-F]{2}){5}\z/
+  defp valid_mac?(mac), do: Regex.match?(@mac_pattern, mac)
 
   @valid_statuses ~w(booting installing installed failed)
   defp status_to_state(status) when status in @valid_statuses, do: String.to_existing_atom(status)

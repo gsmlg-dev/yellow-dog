@@ -96,6 +96,25 @@ defmodule YellowDog.Console.BootControllerTest do
       assert {:ok, device} = YellowDog.Netboot.Device.Registry.get("AA:BB:CC:DD:EE:03")
       assert device.arch == :x86_64
     end
+
+    test "rejects invalid MAC format", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/boot/register", %{mac: "not-a-mac"})
+
+      assert json_response(conn, 400)["error"] == "invalid MAC address format"
+    end
+
+    test "accepts dash-separated MAC format", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/boot/register", %{mac: "AA-BB-CC-DD-EE-06"})
+
+      resp = json_response(conn, 200)
+      assert resp["status"] == "ok"
+    end
   end
 
   describe "POST /boot/status" do
@@ -131,6 +150,15 @@ defmodule YellowDog.Console.BootControllerTest do
         |> post("/boot/status", %{mac: "AA:BB:CC:DD:EE:05"})
 
       assert json_response(conn, 400)["error"] == "mac and status required"
+    end
+
+    test "rejects invalid MAC format in status update", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/boot/status", %{mac: "xyz", status: "installed"})
+
+      assert json_response(conn, 400)["error"] == "invalid MAC address format"
     end
   end
 end
