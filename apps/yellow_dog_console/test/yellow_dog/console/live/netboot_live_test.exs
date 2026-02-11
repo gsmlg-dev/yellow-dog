@@ -267,6 +267,40 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       refute html =~ "label-text-alt text-error"
     end
+
+    test "shows iPXE script preview when kernel and initrd are set", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      html =
+        view
+        |> form("form",
+          profile: %{
+            id: "test",
+            kernel: "nixos/bzImage",
+            initrd: "nixos/initrd.img",
+            kernel_args: "init=/nix/store/init ip=dhcp"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "iPXE Script Preview"
+      assert html =~ "#!ipxe"
+      assert html =~ "kernel ${base-url}/nixos/bzImage"
+      assert html =~ "initrd ${base-url}/nixos/initrd.img"
+      assert html =~ "init=/nix/store/init ip=dhcp"
+      assert html =~ "boot"
+    end
+
+    test "hides iPXE preview when kernel or initrd empty", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      html =
+        view
+        |> form("form", profile: %{id: "test", kernel: "k", initrd: ""})
+        |> render_change()
+
+      refute html =~ "iPXE Script Preview"
+    end
   end
 
   describe "Profile Editor — edit profile" do

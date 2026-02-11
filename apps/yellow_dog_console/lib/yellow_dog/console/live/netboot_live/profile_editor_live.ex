@@ -201,6 +201,11 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
             </div>
           </form>
         </.card>
+
+        <.card :if={@form[:kernel].value != "" and @form[:initrd].value != ""}>
+          <h2 class="card-title mb-4">iPXE Script Preview</h2>
+          <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{render_preview(@form)}</pre>
+        </.card>
       </div>
     </Layouts.app>
     """
@@ -318,6 +323,28 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
         end),
       manifest: manifest
     }
+  end
+
+  defp render_preview(form) do
+    kernel = form[:kernel].value || ""
+    initrd = form[:initrd].value || ""
+    kernel_args = form[:kernel_args].value || ""
+
+    args =
+      [kernel_args, "yellowdog.mac=${mac}", "yellowdog.api=http://<server>:<port>"]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join(" ")
+
+    """
+    #!ipxe
+    echo YellowDog Netboot - ${mac}
+    dhcp
+    set base-url http://<server>:<port>/boot/assets
+
+    kernel ${base-url}/#{kernel} #{args}
+    initrd ${base-url}/#{initrd}
+    boot\
+    """
   end
 
   defp maybe_put(map, _key, ""), do: map
