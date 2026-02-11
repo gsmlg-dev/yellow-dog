@@ -78,6 +78,7 @@ defmodule YellowDog.Console.LogsLive do
     {:ok,
      assign(socket,
        page_title: "Logs",
+       connected: connected?(socket),
        logs: [],
        pending_logs: [],
        pending_count: 0,
@@ -550,7 +551,7 @@ defmodule YellowDog.Console.LogsLive do
           <span>
             Showing {length(filtered_logs(@logs, @search))} of {length(@logs)} log entries (max {@max_logs})
           </span>
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
           </span>
         </div>

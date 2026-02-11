@@ -25,6 +25,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
        bulk_profile: nil,
        sort_field: "last_seen",
        sort_dir: "desc",
+       connected: connected?(socket),
        service_running: service_running?(YellowDog.Netboot.Device.Registry)
      )
      |> load_devices()
@@ -324,7 +325,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
         </.card>
 
         <div class="text-xs text-base-content/50 flex justify-end">
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
         </div>

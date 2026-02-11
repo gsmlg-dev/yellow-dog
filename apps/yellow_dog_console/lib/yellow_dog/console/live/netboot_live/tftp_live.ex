@@ -21,6 +21,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
      socket
      |> assign(
        page_title: "TFTP Server",
+       connected: connected?(socket),
        upload_path: "",
        active_transfers_map: %{},
        transfer_history: [],
@@ -282,7 +283,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         </.card>
 
         <div class="text-xs text-base-content/50 flex justify-end">
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
         </div>

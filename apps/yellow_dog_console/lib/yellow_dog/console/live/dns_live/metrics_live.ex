@@ -44,6 +44,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
     {:ok,
      assign(socket,
        page_title: "DNS Metrics",
+       connected: connected?(socket),
        service_running: service_running?(YellowDog.Dns),
        metrics: fetch_metrics(),
        summary: fetch_summary(),
@@ -443,7 +444,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         <%!-- Footer --%>
         <div class="text-xs text-base-content/50 flex justify-between">
           <span>Data from MetricsCollector</span>
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
           </span>
         </div>

@@ -39,6 +39,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
      socket
      |> assign(
        page_title: "DNS Query Logs",
+       connected: connected?(socket),
        service_running: service_running?(YellowDog.Dns),
        search_query: "",
        filter_view: "all",
@@ -495,7 +496,7 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
         <%!-- Footer --%>
         <div class="text-xs text-base-content/50 flex justify-between">
           <span>Showing {length(@entries)} entries</span>
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected
           </span>
         </div>

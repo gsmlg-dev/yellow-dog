@@ -24,7 +24,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Device: #{mac}", mac: mac, profiles: profiles)
+     |> assign(page_title: "Device: #{mac}", mac: mac, profiles: profiles, connected: connected?(socket))
      |> load_device(mac)
      |> load_boot_script()}
   end
@@ -235,7 +235,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
         </.card>
 
         <div class="text-xs text-base-content/50 flex justify-end">
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
         </div>

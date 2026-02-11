@@ -21,6 +21,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
      socket
      |> assign(
        page_title: "Boot Log",
+       connected: connected?(socket),
        log_entries: [],
        search_query: "",
        filter_type: "all",
@@ -146,7 +147,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
               {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(@log_entries)} entries
             </span>
             <span :if={@log_entries == []} class="text-sm text-base-content/70"></span>
-            <span :if={connected?(@socket)} class="flex items-center gap-1 text-xs text-base-content/50">
+            <span :if={@connected} class="flex items-center gap-1 text-xs text-base-content/50">
               <span :if={@paused} class="flex items-center gap-1">
                 <span class="w-2 h-2 bg-warning rounded-full"></span> Paused
               </span>

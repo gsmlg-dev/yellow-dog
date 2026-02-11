@@ -21,6 +21,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
      socket
      |> assign(
        page_title: "Netboot Dashboard",
+       connected: connected?(socket),
        service_running: service_running?(YellowDog.Netboot.TFTP.Server)
      )
      |> load_data()}
@@ -199,7 +200,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
           </div>
         </.card>
         <div class="text-xs text-base-content/50 flex justify-end">
-          <span :if={connected?(@socket)} class="flex items-center gap-1">
+          <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
         </div>
