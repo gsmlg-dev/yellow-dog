@@ -100,9 +100,18 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
         </.card>
 
         <.card>
-          <div :if={@log_entries != []} class="flex justify-between items-center mb-2">
-            <span class="text-sm text-base-content/70">
+          <div class="flex justify-between items-center mb-2">
+            <span :if={@log_entries != []} class="text-sm text-base-content/70">
               {length(filtered_entries(@log_entries, @search_query, @filter_type))} of {length(@log_entries)} entries
+            </span>
+            <span :if={@log_entries == []} class="text-sm text-base-content/70"></span>
+            <span :if={connected?(@socket)} class="flex items-center gap-1 text-xs text-base-content/50">
+              <span :if={@paused} class="flex items-center gap-1">
+                <span class="w-2 h-2 bg-warning rounded-full"></span> Paused
+              </span>
+              <span :if={!@paused} class="flex items-center gap-1">
+                <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
+              </span>
             </span>
           </div>
           <div class="overflow-x-auto max-h-[600px] overflow-y-auto">

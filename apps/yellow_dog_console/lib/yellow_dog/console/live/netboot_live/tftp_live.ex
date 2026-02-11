@@ -260,6 +260,12 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             <.file_tree_node :for={node <- @file_tree} node={node} />
           </div>
         </.card>
+
+        <div class="text-xs text-base-content/50 flex justify-end">
+          <span :if={connected?(@socket)} class="flex items-center gap-1">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
+          </span>
+        </div>
       </div>
     </Layouts.app>
     """

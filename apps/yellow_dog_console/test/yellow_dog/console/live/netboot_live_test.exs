@@ -932,6 +932,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = view |> render_hook("delete_file", %{"path" => "test/file.bin"})
       assert html =~ "Failed to delete"
     end
+
+    test "shows live indicator", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/tftp")
+
+      assert html =~ "animate-pulse"
+      assert html =~ "Live"
+    end
   end
 
   describe "Boot Log page" do
@@ -967,6 +974,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Resume"
     end
 
+    test "shows paused indicator when paused", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      html = view |> element("button", "Pause") |> render_click()
+      assert html =~ "Paused"
+      refute html =~ "animate-pulse"
+    end
+
     test "clear log works", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/log")
 
@@ -986,6 +1001,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       html = view |> element("select[name=type]") |> render_change(%{"type" => "device"})
       assert html =~ "Boot Log"
+    end
+
+    test "shows live indicator", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/log")
+
+      assert html =~ "animate-pulse"
+      assert html =~ "Live"
     end
   end
 
