@@ -59,11 +59,15 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
         emit_telemetry(:start, state)
 
-        if map_size(opts) > 0 do
-          send_oack(state, opts)
-        else
-          send_next_block(%{state | current_block: 1})
-        end
+        state =
+          if map_size(opts) > 0 do
+            send_oack(state, opts)
+            state
+          else
+            state = %{state | current_block: 1}
+            send_next_block(state)
+            state
+          end
 
         {:ok, state, @timeout_ms}
 
@@ -141,8 +145,12 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   end
 
   defp transfer_complete?(state) do
-    offset = state.current_block * state.block_size
-    offset >= byte_size(state.file_data)
+    # The last block sent was less than block_size, signaling end of transfer.
+    # For exact multiples of block_size, we must send a final empty block first.
+    offset = (state.current_block - 1) * state.block_size
+    remaining = byte_size(state.file_data) - offset
+    last_chunk_size = min(max(remaining, 0), state.block_size)
+    last_chunk_size < state.block_size
   end
 
   defp emit_telemetry(event, state, extra \\ %{}) do
