@@ -216,6 +216,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     sort_field={@sort_field}
                     sort_dir={@sort_dir}
                   />
+                  <th>Tags</th>
                   <.sort_header
                     field="last_seen"
                     label="Last Seen"
@@ -227,7 +228,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_devices == []}>
-                  <td colspan="9" class="text-center text-base-content/50 py-8">
+                  <td colspan="10" class="text-center text-base-content/50 py-8">
                     No devices found
                   </td>
                 </tr>
@@ -259,6 +260,14 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   </td>
                   <td><.state_badge state={device.state} /></td>
                   <td>{device.install_attempts}</td>
+                  <td>
+                    <div class="flex flex-wrap gap-0.5">
+                      <.badge :for={tag <- Enum.take(device.tags, 3)} color="ghost" size="sm">{tag}</.badge>
+                      <span :if={length(device.tags) > 3} class="text-xs text-base-content/50">
+                        +{length(device.tags) - 3}
+                      </span>
+                    </div>
+                  </td>
                   <td class="text-sm" title={format_datetime_full(device.last_seen)}>
                     {format_time_ago(device.last_seen)}
                   </td>

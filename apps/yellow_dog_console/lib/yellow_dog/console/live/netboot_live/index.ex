@@ -112,7 +112,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
           </.card>
 
           <.card>
-            <h2 class="card-title mb-4">Boot Profiles</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="card-title">Boot Profiles</h2>
+              <.link navigate="/netboot/profiles" class="link link-primary text-sm">View all</.link>
+            </div>
             <div :if={@profiles == []} class="text-base-content/50">
               No profiles configured —
               <.link navigate="/netboot/profiles/new" class="link link-primary">create one</.link>
@@ -134,7 +137,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
         </div>
 
         <.card>
-          <h2 class="card-title mb-4">Recent Devices</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="card-title">Recent Devices</h2>
+            <.link navigate="/netboot/devices" class="link link-primary text-sm">View all</.link>
+          </div>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead>

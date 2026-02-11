@@ -215,6 +215,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             <table class="table table-sm table-zebra">
               <thead>
                 <tr>
+                  <.history_sort_header field="time" label="Time" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
                   <.history_sort_header field="client" label="Client" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
                   <.history_sort_header field="file" label="File" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
                   <.history_sort_header field="size" label="Size" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
@@ -225,6 +226,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
               </thead>
               <tbody>
                 <tr :for={t <- sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir)}>
+                  <td class="text-sm font-mono whitespace-nowrap">{format_started(t[:completed_at])}</td>
                   <td class="font-mono text-sm">{format_addr(t.client_addr)}</td>
                   <td class="font-mono text-sm">{t.file_path}</td>
                   <td>{format_size(t[:bytes] || t[:total_size] || 0)}</td>
@@ -446,7 +448,8 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   def handle_info({:tftp_transfer_complete, meta}, socket) do
     key = transfer_key(meta)
     active = Map.delete(socket.assigns.active_transfers_map, key)
-    history = [meta | socket.assigns.transfer_history] |> Enum.take(50)
+    entry = Map.put_new(meta, :completed_at, DateTime.utc_now())
+    history = [entry | socket.assigns.transfer_history] |> Enum.take(50)
     {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
   end
 
@@ -558,15 +561,16 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     if dir == "desc", do: Enum.reverse(sorted), else: sorted
   end
 
+  defp history_sort_key("time"), do: &(&1[:completed_at] || ~U[1970-01-01 00:00:00Z])
   defp history_sort_key("client"), do: &format_addr(&1[:client_addr])
   defp history_sort_key("file"), do: &to_string(&1[:file_path] || "")
   defp history_sort_key("size"), do: &(&1[:bytes] || &1[:total_size] || 0)
   defp history_sort_key("duration"), do: &(&1[:duration] || 0)
   defp history_sort_key("status"), do: &to_string(&1[:status] || "")
-  defp history_sort_key(_), do: &(&1[:bytes] || 0)
+  defp history_sort_key(_), do: &(&1[:completed_at] || ~U[1970-01-01 00:00:00Z])
 
   defp build_history_csv(entries) do
-    header = "Client,File,Size,Duration,Speed,Status\r\n"
+    header = "Time,Client,File,Size,Duration,Speed,Status\r\n"
 
     rows =
       Enum.map_join(entries, "\r\n", fn t ->
@@ -574,6 +578,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         status = if t[:status] == :error, do: "Failed", else: "Complete"
 
         [
+          csv_escape(format_started(t[:completed_at])),
           csv_escape(format_addr(t.client_addr)),
           csv_escape(to_string(t.file_path)),
           csv_escape(format_size(bytes)),

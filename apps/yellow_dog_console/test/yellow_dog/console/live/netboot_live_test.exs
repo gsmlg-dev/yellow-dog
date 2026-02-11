@@ -77,6 +77,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "a[href='/netboot/devices?state=failed']")
       assert has_element?(view, "a[href='/netboot/devices?state=installed']")
     end
+
+    test "has View All links for profiles and devices sections", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot")
+
+      assert has_element?(view, "a[href='/netboot/profiles']", "View all")
+      assert has_element?(view, "a[href='/netboot/devices']", "View all")
+    end
   end
 
   describe "Netboot Devices page" do
@@ -121,10 +128,11 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Netboot Devices"
     end
 
-    test "has Actions column header", %{conn: conn} do
+    test "has Actions and Tags column headers", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/devices")
 
       assert html =~ "Actions"
+      assert html =~ "Tags"
     end
 
     test "accepts state filter from URL query params", %{conn: conn} do
@@ -934,6 +942,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
       send(view.pid, {:tftp_transfer_complete, meta2})
       _html = render(view)
 
+      assert has_element?(view, "th[phx-click=sort_history][phx-value-field=time]")
       assert has_element?(view, "th[phx-click=sort_history][phx-value-field=client]")
       assert has_element?(view, "th[phx-click=sort_history][phx-value-field=file]")
       assert has_element?(view, "th[phx-click=sort_history][phx-value-field=size]")
