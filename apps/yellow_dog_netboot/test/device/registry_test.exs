@@ -170,6 +170,24 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
     end
   end
 
+  describe "update_tags/2" do
+    test "sets tags on a device" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      assert {:ok, device} = Registry.update_tags("AA:BB:CC:DD:EE:FF", ["gpu", "rack1"])
+      assert device.tags == ["gpu", "rack1"]
+    end
+
+    test "replaces existing tags" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF", %{tags: ["old"]})
+      assert {:ok, device} = Registry.update_tags("AA:BB:CC:DD:EE:FF", ["new1", "new2"])
+      assert device.tags == ["new1", "new2"]
+    end
+
+    test "returns error for unknown MAC" do
+      assert {:error, :not_found} = Registry.update_tags("FF:FF:FF:FF:FF:FF", ["tag"])
+    end
+  end
+
   describe "list/1 filters" do
     test "filters by arch" do
       {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{arch: :x86_64})

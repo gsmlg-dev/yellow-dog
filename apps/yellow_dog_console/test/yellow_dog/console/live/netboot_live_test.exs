@@ -259,6 +259,22 @@ defmodule YellowDog.Console.NetbootLiveTest do
       # The info card with IP Address only shows when device exists
       refute html =~ "Hardware Info"
     end
+
+    test "add_tag event does not crash when device is nil", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+
+      # Device is nil (service unavailable), add_tag should be a no-op
+      html = view |> render_hook("add_tag", %{"tag" => "test-tag"})
+      # Should not crash, page still renders
+      assert html =~ "Device not found"
+    end
+
+    test "remove_tag event does not crash when device is nil", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+
+      html = view |> render_hook("remove_tag", %{"tag" => "old-tag"})
+      assert html =~ "Device not found"
+    end
   end
 
   describe "Boot Profiles page" do
@@ -674,6 +690,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert length(TftpLive.filtered_history(history, "nixos")) == 1
       assert length(TftpLive.filtered_history(history, "192.168")) == 1
       assert length(TftpLive.filtered_history(history, "")) == 2
+    end
+
+    test "delete_file event shows error when service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      html = view |> render_hook("delete_file", %{"path" => "test/file.bin"})
+      assert html =~ "Failed to delete"
     end
   end
 

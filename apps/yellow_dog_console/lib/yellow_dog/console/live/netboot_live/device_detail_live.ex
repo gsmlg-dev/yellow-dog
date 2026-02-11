@@ -70,10 +70,37 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <.info_row label="Last Error" value={@device.last_error || "-"} />
               <.info_row label="First Seen" value={format_datetime_full(@device.first_seen)} />
               <.info_row label="Last Seen" value={format_datetime_full(@device.last_seen)} />
-              <.info_row
-                label="Tags"
-                value={Enum.join(@device.tags, ", ") |> then(&if(&1 == "", do: "-", else: &1))}
-              />
+            </div>
+
+            <div class="mt-4">
+              <label class="label"><span class="label-text font-medium">Tags</span></label>
+              <div class="flex flex-wrap gap-1 mb-2">
+                <span
+                  :for={tag <- @device.tags}
+                  class="badge badge-outline gap-1"
+                >
+                  {tag}
+                  <button
+                    phx-click="remove_tag"
+                    phx-value-tag={tag}
+                    class="text-xs opacity-70 hover:opacity-100"
+                    aria-label={"Remove tag #{tag}"}
+                  >
+                    &times;
+                  </button>
+                </span>
+                <span :if={@device.tags == []} class="text-base-content/50 text-sm">No tags</span>
+              </div>
+              <form phx-submit="add_tag" class="flex gap-2">
+                <input
+                  type="text"
+                  name="tag"
+                  placeholder="Add tag..."
+                  class="input input-bordered input-sm flex-1"
+                  value=""
+                />
+                <button type="submit" class="btn btn-outline btn-sm">Add</button>
+              </form>
             </div>
           </.card>
 
@@ -221,6 +248,52 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to toggle rescue mode")}
+    end
+  end
+
+  def handle_event("add_tag", %{"tag" => tag}, socket) do
+    tag = String.trim(tag)
+
+    if tag != "" && socket.assigns.device do
+      new_tags = Enum.uniq(socket.assigns.device.tags ++ [tag])
+
+      case safe_call(
+             YellowDog.Netboot.Device.Registry,
+             fn ->
+               YellowDog.Netboot.Device.Registry.update_tags(socket.assigns.mac, new_tags)
+             end,
+             {:error, :unavailable}
+           ) do
+        {:ok, _} ->
+          {:noreply, load_device(socket, socket.assigns.mac)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to add tag")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_tag", %{"tag" => tag}, socket) do
+    if socket.assigns.device do
+      new_tags = List.delete(socket.assigns.device.tags, tag)
+
+      case safe_call(
+             YellowDog.Netboot.Device.Registry,
+             fn ->
+               YellowDog.Netboot.Device.Registry.update_tags(socket.assigns.mac, new_tags)
+             end,
+             {:error, :unavailable}
+           ) do
+        {:ok, _} ->
+          {:noreply, load_device(socket, socket.assigns.mac)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to remove tag")}
+      end
+    else
+      {:noreply, socket}
     end
   end
 

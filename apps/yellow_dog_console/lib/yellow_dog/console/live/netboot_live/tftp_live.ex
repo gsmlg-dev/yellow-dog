@@ -252,9 +252,20 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
   defp file_tree_node(%{node: %{type: :file}} = assigns) do
     ~H"""
-    <div class="ml-2 py-0.5 flex justify-between">
+    <div class="ml-2 py-0.5 flex justify-between items-center">
       <span class="font-mono">{@node.name}</span>
-      <span class="text-base-content/50">{format_size(@node.size)}</span>
+      <span class="flex items-center gap-2">
+        <span class="text-base-content/50">{format_size(@node.size)}</span>
+        <button
+          phx-click="delete_file"
+          phx-value-path={@node.path}
+          data-confirm={"Delete #{@node.path}?"}
+          class="btn btn-ghost btn-xs text-error"
+          aria-label={"Delete #{@node.name}"}
+        >
+          &times;
+        </button>
+      </span>
     </div>
     """
   end
@@ -341,6 +352,23 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
   def handle_event("filter_history", %{"filter" => query}, socket) do
     {:noreply, assign(socket, :history_filter, query)}
+  end
+
+  def handle_event("delete_file", %{"path" => path}, socket) do
+    result =
+      safe_call(
+        YellowDog.Netboot.Asset.Store,
+        fn -> YellowDog.Netboot.Asset.Store.delete_file(path) end,
+        {:error, :service_unavailable}
+      )
+
+    case result do
+      :ok ->
+        {:noreply, socket |> put_flash(:info, "Deleted #{path}") |> load_data()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete: #{inspect(reason)}")}
+    end
   end
 
   @impl true

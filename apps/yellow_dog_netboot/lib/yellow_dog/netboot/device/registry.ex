@@ -62,6 +62,12 @@ defmodule YellowDog.Netboot.Device.Registry do
     GenServer.call(__MODULE__, {:set_rescue_mode, mac, enabled})
   end
 
+  @doc "Update a device's tags."
+  @spec update_tags(String.t(), [String.t()]) :: {:ok, Device.t()} | {:error, term()}
+  def update_tags(mac, tags) when is_list(tags) do
+    GenServer.call(__MODULE__, {:update_tags, mac, tags})
+  end
+
   @doc "Delete a device from the registry."
   @spec delete(String.t()) :: :ok
   def delete(mac) do
@@ -159,6 +165,21 @@ defmodule YellowDog.Netboot.Device.Registry do
     case :ets.lookup(@table, normalized) do
       [{^normalized, device}] ->
         updated = %{device | rescue_mode: enabled, last_seen: DateTime.utc_now()}
+        :ets.insert(@table, {normalized, updated})
+        broadcast({:device_state_changed, updated})
+        {:reply, {:ok, updated}, schedule_persist(state)}
+
+      [] ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:update_tags, mac, tags}, _from, state) do
+    normalized = Device.normalize_mac(mac)
+
+    case :ets.lookup(@table, normalized) do
+      [{^normalized, device}] ->
+        updated = %{device | tags: tags, last_seen: DateTime.utc_now()}
         :ets.insert(@table, {normalized, updated})
         broadcast({:device_state_changed, updated})
         {:reply, {:ok, updated}, schedule_persist(state)}
