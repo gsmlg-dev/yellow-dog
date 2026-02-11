@@ -587,6 +587,94 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "input[type=file]")
     end
+
+    test "shows active transfers section", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/tftp")
+
+      assert html =~ "Active Transfers"
+      assert html =~ "No active transfers"
+    end
+
+    test "shows transfer history section", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/tftp")
+
+      assert html =~ "Transfer History"
+      assert html =~ "No transfer history"
+    end
+
+    test "transfer_started adds to active transfers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      meta = %{
+        client_addr: {192, 168, 1, 10},
+        file_path: "nixos/bzImage",
+        total_size: 8_000_000,
+        bytes_sent: 0
+      }
+
+      send(view.pid, {:tftp_transfer_started, meta})
+      html = render(view)
+      assert html =~ "192.168.1.10"
+      assert html =~ "nixos/bzImage"
+    end
+
+    test "transfer_complete moves to history", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      meta = %{
+        client_addr: {10, 0, 0, 1},
+        file_path: "rescue/initrd",
+        total_size: 4_000_000,
+        bytes_sent: 4_000_000
+      }
+
+      send(view.pid, {:tftp_transfer_started, meta})
+      html = render(view)
+      assert html =~ "10.0.0.1"
+
+      complete = Map.merge(meta, %{duration: 1500, bytes: 4_000_000})
+      send(view.pid, {:tftp_transfer_complete, complete})
+      html = render(view)
+      # Should be in history now, not active
+      assert html =~ "Complete"
+      assert html =~ "1.5s"
+    end
+
+    test "history filter works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      # Add a transfer to history
+      meta = %{
+        client_addr: {172, 16, 0, 5},
+        file_path: "ubuntu/vmlinuz",
+        total_size: 10_000_000,
+        bytes_sent: 10_000_000,
+        duration: 2000,
+        bytes: 10_000_000
+      }
+
+      send(view.pid, {:tftp_transfer_complete, meta})
+
+      html =
+        view
+        |> element("input[name=filter]")
+        |> render_change(%{"filter" => "ubuntu"})
+
+      assert html =~ "ubuntu/vmlinuz"
+    end
+
+    test "filtered_history/2 filters by client and file", _context do
+      alias YellowDog.Console.NetbootLive.TftpLive
+
+      history = [
+        %{client_addr: {10, 0, 0, 1}, file_path: "nixos/bzImage", bytes: 100, duration: 50},
+        %{client_addr: {192, 168, 1, 1}, file_path: "ubuntu/vmlinuz", bytes: 200, duration: 100}
+      ]
+
+      assert length(TftpLive.filtered_history(history, "nixos")) == 1
+      assert length(TftpLive.filtered_history(history, "192.168")) == 1
+      assert length(TftpLive.filtered_history(history, "")) == 2
+    end
   end
 
   describe "Boot Log page" do

@@ -14,7 +14,13 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
     {:ok,
      socket
-     |> assign(page_title: "TFTP Server", upload_path: "")
+     |> assign(
+       page_title: "TFTP Server",
+       upload_path: "",
+       active_transfers_map: %{},
+       transfer_history: [],
+       history_filter: ""
+     )
      |> allow_upload(:boot_asset,
        accept: :any,
        max_entries: 5,
@@ -136,6 +142,88 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         </div>
 
         <.card>
+          <h2 class="card-title mb-4">Active Transfers</h2>
+          <div :if={@active_transfers_map == %{}} class="text-base-content/50">
+            No active transfers
+          </div>
+          <div :if={@active_transfers_map != %{}} class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>File</th>
+                  <th>Size</th>
+                  <th>Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={{_key, t} <- @active_transfers_map}>
+                  <td class="font-mono text-sm">{format_addr(t.client_addr)}</td>
+                  <td class="font-mono text-sm">{t.file_path}</td>
+                  <td>{format_size(t.total_size)}</td>
+                  <td class="text-sm">{format_started(t.started_at)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+
+        <.card>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="card-title">Transfer History</h2>
+            <input
+              type="text"
+              class="input input-bordered input-sm w-64"
+              placeholder="Filter by client or file..."
+              value={@history_filter}
+              phx-change="filter_history"
+              phx-debounce="300"
+              name="filter"
+            />
+          </div>
+          <div
+            :if={filtered_history(@transfer_history, @history_filter) == []}
+            class="text-base-content/50"
+          >
+            No transfer history
+          </div>
+          <div
+            :if={filtered_history(@transfer_history, @history_filter) != []}
+            class="overflow-x-auto"
+          >
+            <table class="table table-sm table-zebra">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>File</th>
+                  <th>Size</th>
+                  <th>Duration</th>
+                  <th>Speed</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={t <- filtered_history(@transfer_history, @history_filter)}>
+                  <td class="font-mono text-sm">{format_addr(t.client_addr)}</td>
+                  <td class="font-mono text-sm">{t.file_path}</td>
+                  <td>{format_size(t[:bytes] || t[:total_size] || 0)}</td>
+                  <td>{format_duration(t[:duration])}</td>
+                  <td>{format_speed(t[:bytes], t[:duration])}</td>
+                  <td>
+                    <span class={[
+                      "badge badge-sm",
+                      if(t[:status] == :error, do: "badge-error", else: "badge-success")
+                    ]}>
+                      {if t[:status] == :error, do: "Failed", else: "Complete"}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </.card>
+
+        <.card>
           <h2 class="card-title mb-4">File Browser</h2>
           <div :if={@file_tree == []} class="text-base-content/50">
             No files found in TFTP root
@@ -251,7 +339,25 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, socket |> put_flash(:info, "File index rescanned") |> load_data()}
   end
 
+  def handle_event("filter_history", %{"filter" => query}, socket) do
+    {:noreply, assign(socket, :history_filter, query)}
+  end
+
   @impl true
+  def handle_info({:tftp_transfer_started, meta}, socket) do
+    key = transfer_key(meta)
+    entry = Map.put(meta, :started_at, DateTime.utc_now())
+    active = Map.put(socket.assigns.active_transfers_map, key, entry)
+    {:noreply, assign(socket, :active_transfers_map, active)}
+  end
+
+  def handle_info({:tftp_transfer_complete, meta}, socket) do
+    key = transfer_key(meta)
+    active = Map.delete(socket.assigns.active_transfers_map, key)
+    history = [meta | socket.assigns.transfer_history] |> Enum.take(50)
+    {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, load_data(socket)}
 
   defp load_data(socket) do
@@ -283,7 +389,50 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   defp upload_error_to_string(:external_client_failure), do: "Upload failed"
   defp upload_error_to_string(err), do: "Error: #{inspect(err)}"
 
-  defp format_size(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp format_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
-  defp format_size(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+  defp format_size(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
+
+  defp format_size(bytes) when is_integer(bytes) and bytes < 1_048_576,
+    do: "#{Float.round(bytes / 1024, 1)} KB"
+
+  defp format_size(bytes) when is_integer(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+  defp format_size(_), do: "-"
+
+  defp format_addr(addr) when is_tuple(addr), do: to_string(:inet.ntoa(addr))
+  defp format_addr(addr) when is_binary(addr), do: addr
+  defp format_addr(_), do: "-"
+
+  defp format_started(%DateTime{} = dt) do
+    Calendar.strftime(dt, "%H:%M:%S")
+  end
+
+  defp format_started(_), do: "-"
+
+  defp format_duration(nil), do: "-"
+  defp format_duration(ms) when ms < 1000, do: "#{ms}ms"
+  defp format_duration(ms), do: "#{Float.round(ms / 1000, 1)}s"
+
+  defp format_speed(nil, _), do: "-"
+  defp format_speed(_, nil), do: "-"
+  defp format_speed(_, 0), do: "-"
+
+  defp format_speed(bytes, ms) do
+    bps = bytes / (ms / 1000)
+    format_size(round(bps)) <> "/s"
+  end
+
+  defp transfer_key(meta) do
+    {Map.get(meta, :client_addr), Map.get(meta, :file_path)}
+  end
+
+  def filtered_history(history, ""), do: history
+
+  def filtered_history(history, query) do
+    q = String.downcase(query)
+
+    Enum.filter(history, fn t ->
+      file = Map.get(t, :file_path, "") |> to_string() |> String.downcase()
+      addr = format_addr(Map.get(t, :client_addr)) |> String.downcase()
+      String.contains?(file, q) || String.contains?(addr, q)
+    end)
+  end
 end
