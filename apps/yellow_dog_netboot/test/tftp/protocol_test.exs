@@ -149,4 +149,73 @@ defmodule YellowDog.Netboot.TFTP.ProtocolTest do
   test "default_block_size/0 returns 512" do
     assert Protocol.default_block_size() == 512
   end
+
+  describe "decode/1 OACK edge cases" do
+    test "decodes empty OACK (no options)" do
+      packet = <<6::16>>
+      assert {:ok, {:oack, %{}}} = Protocol.decode(packet)
+    end
+
+    test "rejects OACK with incomplete option (key only, no value)" do
+      # Key without null-terminated value
+      packet = <<6::16, "blksize", 0>>
+      assert {:error, :invalid_packet} = Protocol.decode(packet)
+    end
+  end
+
+  describe "decode/1 RRQ edge cases" do
+    test "rejects RRQ with no null terminators" do
+      packet = <<1::16, "no-nulls">>
+      assert {:error, :invalid_packet} = Protocol.decode(packet)
+    end
+
+    test "rejects RRQ with only filename (no mode)" do
+      packet = <<1::16, "file.bin", 0>>
+      assert {:error, :invalid_packet} = Protocol.decode(packet)
+    end
+
+    test "decodes RRQ with options having odd key casing" do
+      packet = <<1::16, "test.bin", 0, "octet", 0, "BLKSIZE", 0, "512", 0>>
+      assert {:ok, {:rrq, "test.bin", "octet", opts}} = Protocol.decode(packet)
+      assert opts["blksize"] == "512"
+    end
+  end
+
+  describe "decode/1 WRQ edge cases" do
+    test "decodes WRQ with options" do
+      packet = <<2::16, "upload.bin", 0, "octet", 0, "tsize", 0, "1024", 0>>
+      assert {:ok, {:wrq, "upload.bin", "octet", opts}} = Protocol.decode(packet)
+      assert opts["tsize"] == "1024"
+    end
+  end
+
+  describe "decode/1 ERROR edge cases" do
+    test "rejects ERROR with no null terminator on message" do
+      packet = <<5::16, 1::16, "unterminated">>
+      assert {:error, :invalid_packet} = Protocol.decode(packet)
+    end
+  end
+
+  describe "error_packet/1 edge cases" do
+    test "builds unknown error code" do
+      packet = Protocol.error_packet(99)
+      assert {:ok, {:error, 99, "Unknown error"}} = Protocol.decode(packet)
+    end
+
+    test "builds all standard error codes" do
+      for code <- 0..7 do
+        packet = Protocol.error_packet(code)
+        assert {:ok, {:error, ^code, _msg}} = Protocol.decode(packet)
+      end
+    end
+  end
+
+  describe "encode/1 OACK with multiple options" do
+    test "encodes OACK with blksize and tsize" do
+      encoded = Protocol.encode({:oack, %{"blksize" => "1024", "tsize" => "8192"}})
+      assert {:ok, {:oack, opts}} = Protocol.decode(encoded)
+      assert opts["blksize"] == "1024"
+      assert opts["tsize"] == "8192"
+    end
+  end
 end

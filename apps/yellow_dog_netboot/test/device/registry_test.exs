@@ -129,5 +129,81 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
       assert counts[:discovered] == 1
       assert counts[:booting] == 1
     end
+
+    test "returns empty map when no devices" do
+      assert Registry.count_by_state() == %{}
+    end
+  end
+
+  describe "request_reinstall/1" do
+    test "transitions installed device to reinstall_requested" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      Registry.update_state("AA:BB:CC:DD:EE:FF", :booting)
+      Registry.update_state("AA:BB:CC:DD:EE:FF", :installing)
+      Registry.update_state("AA:BB:CC:DD:EE:FF", :installed)
+
+      assert {:ok, device} = Registry.request_reinstall("AA:BB:CC:DD:EE:FF")
+      assert device.state == :reinstall_requested
+    end
+
+    test "returns error for unknown MAC" do
+      assert {:error, :not_found} = Registry.request_reinstall("FF:FF:FF:FF:FF:FF")
+    end
+  end
+
+  describe "list/1 filters" do
+    test "filters by arch" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{arch: :x86_64})
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:02", %{arch: :aarch64})
+
+      result = Registry.list(arch: :x86_64)
+      assert length(result) == 1
+      assert hd(result).arch == :x86_64
+    end
+
+    test "filters by tag" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{tags: ["gpu", "rack1"]})
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:02", %{tags: ["rack2"]})
+
+      result = Registry.list(tag: "gpu")
+      assert length(result) == 1
+      assert hd(result).mac == "AA:BB:CC:DD:EE:01"
+    end
+
+    test "ignores unknown filter keys" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01")
+      result = Registry.list(unknown_filter: "value")
+      assert length(result) == 1
+    end
+
+    test "combines multiple filters" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{arch: :x86_64})
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:02", %{arch: :x86_64})
+      Registry.assign_profile("AA:BB:CC:DD:EE:01", "nixos")
+
+      result = Registry.list(arch: :x86_64, profile_id: "nixos")
+      assert length(result) == 1
+      assert hd(result).mac == "AA:BB:CC:DD:EE:01"
+    end
+  end
+
+  describe "register/2 re-registration updates" do
+    test "updates uuid on re-register" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      {:ok, updated} = Registry.register("AA:BB:CC:DD:EE:FF", %{uuid: "new-uuid"})
+      assert updated.uuid == "new-uuid"
+    end
+
+    test "updates ip_address on re-register" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      {:ok, updated} = Registry.register("AA:BB:CC:DD:EE:FF", %{ip_address: {10, 0, 0, 1}})
+      assert updated.ip_address == {10, 0, 0, 1}
+    end
+
+    test "nil attribute does not overwrite existing value" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF", %{hostname: "server1"})
+      {:ok, updated} = Registry.register("AA:BB:CC:DD:EE:FF", %{hostname: nil})
+      assert updated.hostname == "server1"
+    end
   end
 end
