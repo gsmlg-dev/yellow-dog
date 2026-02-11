@@ -164,8 +164,12 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       assert :ok = Store.delete_profile("rescue")
       assert {:error, :not_found} = Store.get_profile("rescue")
 
-      # Reload should restore it (but Store uses its internal config, not our test config)
-      # For this test, we manually reload with the test config
+      # Reload restores profiles from the GenServer's internal config
+      # Since the GenServer was started with %{} config (application default),
+      # reload won't restore our test profiles. But it exercises the code path.
+      Store.reload()
+
+      # Manually restore for test verification
       :ets.delete_all_objects(Store)
       load_test_config(%{
         "default_profile" => "nixos-minimal",
@@ -189,6 +193,53 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
 
       assert {:ok, profile} = Store.get_profile("rescue")
       assert profile.id == "rescue"
+    end
+
+    test "reload returns :ok" do
+      assert :ok = Store.reload()
+    end
+  end
+
+  describe "get_manifest/1 edge cases" do
+    test "returns error for profile with empty manifest" do
+      # The rescue profile has no manifest key, so it gets %{} by default
+      assert {:error, :not_found} = Store.get_manifest("rescue")
+    end
+  end
+
+  describe "config with nil and missing keys" do
+    test "handles config with no default_profile" do
+      :ets.delete_all_objects(Store)
+      load_test_config(%{
+        "profiles" => %{
+          "test" => %{
+            "description" => "Test",
+            "kernel" => "test/vmlinuz",
+            "initrd" => "test/initrd",
+            "kernel_args" => "",
+            "arch" => ["x86_64"]
+          }
+        }
+      })
+
+      assert Store.default_profile_id() == nil
+      assert {:ok, _} = Store.get_profile("test")
+    end
+
+    test "handles config with no profiles key" do
+      :ets.delete_all_objects(Store)
+      load_test_config(%{"default_profile" => "none"})
+
+      assert Store.default_profile_id() == "none"
+      assert Store.list_profiles() == []
+    end
+
+    test "handles completely empty config" do
+      :ets.delete_all_objects(Store)
+      load_test_config(%{})
+
+      assert Store.default_profile_id() == nil
+      assert Store.list_profiles() == []
     end
   end
 end

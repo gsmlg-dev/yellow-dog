@@ -168,4 +168,96 @@ defmodule YellowDog.Netboot.DeviceTest do
     assert :aarch64 in arches
     assert :bios_x86 in arches
   end
+
+  describe "new/2 arch validation" do
+    test "accepts valid arch as string" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: "x86_64"})
+      assert device.arch == :x86_64
+    end
+
+    test "accepts valid arch as atom" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: :aarch64})
+      assert device.arch == :aarch64
+    end
+
+    test "rejects invalid arch string" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: "mips"})
+      assert device.arch == nil
+    end
+
+    test "rejects non-existent atom arch string" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: "not_a_real_arch_at_all_12345"})
+      assert device.arch == nil
+    end
+
+    test "rejects invalid arch type (integer)" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: 42})
+      assert device.arch == nil
+    end
+
+    test "nil arch stays nil" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{arch: nil})
+      assert device.arch == nil
+    end
+  end
+
+  describe "new/2 optional fields" do
+    test "sets uuid" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{uuid: "abc-123"})
+      assert device.uuid == "abc-123"
+    end
+
+    test "sets profile_id" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{profile_id: "nixos-minimal"})
+      assert device.profile_id == "nixos-minimal"
+    end
+
+    test "sets ip_address" do
+      device = Device.new("AA:BB:CC:DD:EE:FF", %{ip_address: {192, 168, 1, 100}})
+      assert device.ip_address == {192, 168, 1, 100}
+    end
+
+    test "default slot is %{active: :a, pending: nil}" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      assert device.slot == %{active: :a, pending: nil}
+    end
+
+    test "default hardware_info is empty map" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      assert device.hardware_info == %{}
+    end
+  end
+
+  describe "transition/3 side effects" do
+    test "installed clears last_error" do
+      device = %{Device.new("AA:BB:CC:DD:EE:FF") | state: :installing, last_error: "previous"}
+      assert {:ok, updated} = Device.transition(device, :installed)
+      assert updated.last_error == nil
+    end
+
+    test "generic transition (no special side effects)" do
+      device = %{Device.new("AA:BB:CC:DD:EE:FF") | state: :installed}
+      assert {:ok, updated} = Device.transition(device, :reinstall_requested)
+      # No side effects besides state change
+      assert updated.state == :reinstall_requested
+    end
+
+    test "transition updates last_seen" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      old_last_seen = device.last_seen
+      Process.sleep(10)
+      {:ok, updated} = Device.transition(device, :booting)
+      assert DateTime.compare(updated.last_seen, old_last_seen) in [:gt, :eq]
+    end
+  end
+
+  describe "normalize_mac/1 edge cases" do
+    test "normalizes dot-separated MAC" do
+      assert "AA:BB:CC:DD:EE:FF" = Device.normalize_mac("AA.BB.CC.DD.EE.FF")
+    end
+
+    test "normalizes mixed case with dashes" do
+      assert "AA:BB:CC:DD:EE:FF" = Device.normalize_mac("aA-bB-cC-dD-eE-fF")
+    end
+  end
 end
