@@ -315,6 +315,13 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
       assert :sys.get_state(Registry).persist_timer != nil
     end
 
+    test "catch-all handle_info ignores unknown messages" do
+      pid = Process.whereis(Registry)
+      send(pid, :some_unknown_message)
+      Process.sleep(10)
+      assert Process.alive?(pid)
+    end
+
     @tag :tmp_dir
     test "persisted data survives forced write and reload", %{tmp_dir: tmp_dir} do
       persist_path = Path.join(tmp_dir, "devices.toml")

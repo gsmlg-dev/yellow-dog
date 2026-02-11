@@ -110,7 +110,7 @@ defmodule YellowDog.Netboot.Manifest.Store do
     end)
   end
 
-  defp get_nested(map, []) when is_map(map), do: map
+  defp get_nested(value, []), do: value
   defp get_nested(nil, _), do: nil
 
   defp get_nested(map, [key | rest]) when is_map(map) do

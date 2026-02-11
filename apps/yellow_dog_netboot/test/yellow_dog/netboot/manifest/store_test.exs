@@ -242,4 +242,61 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       assert Store.list_profiles() == []
     end
   end
+
+  describe "reload/0 with config in GenServer state" do
+    test "reload loads profiles from GenServer state config" do
+      # Inject config into the GenServer state so reload() exercises load_config/1
+      config = %{
+        "default_profile" => "arch-linux",
+        "profiles" => %{
+          "arch-linux" => %{
+            "description" => "Arch Linux",
+            "kernel" => "arch/vmlinuz",
+            "initrd" => "arch/initrd.img",
+            "kernel_args" => "root=/dev/sda1",
+            "arch" => ["x86_64"]
+          }
+        }
+      }
+
+      :sys.replace_state(Store, fn state -> %{state | config: config} end)
+      :ets.delete_all_objects(Store)
+
+      assert :ok = Store.reload()
+
+      # Verify profiles were loaded via load_config (L102, L108-109)
+      assert Store.default_profile_id() == "arch-linux"
+      assert {:ok, profile} = Store.get_profile("arch-linux")
+      assert profile.description == "Arch Linux"
+      assert profile.kernel == "arch/vmlinuz"
+    end
+
+    test "reload with config containing multiple profiles" do
+      config = %{
+        "profiles" => %{
+          "p1" => %{
+            "description" => "Profile 1",
+            "kernel" => "p1/vmlinuz",
+            "initrd" => "p1/initrd",
+            "kernel_args" => "",
+            "arch" => ["x86_64"]
+          },
+          "p2" => %{
+            "description" => "Profile 2",
+            "kernel" => "p2/vmlinuz",
+            "initrd" => "p2/initrd",
+            "kernel_args" => "",
+            "arch" => ["aarch64"]
+          }
+        }
+      }
+
+      :sys.replace_state(Store, fn state -> %{state | config: config} end)
+      :ets.delete_all_objects(Store)
+
+      assert :ok = Store.reload()
+      profiles = Store.list_profiles()
+      assert length(profiles) == 2
+    end
+  end
 end
