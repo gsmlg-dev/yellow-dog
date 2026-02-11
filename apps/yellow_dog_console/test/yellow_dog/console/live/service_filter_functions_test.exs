@@ -144,8 +144,18 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   describe "Dhcpv4Activity.filtered_entries/3" do
     @v4_entries [
-      %{type: :discover, client_mac: "AA:BB:CC:DD:EE:01", client_ip: "192.168.1.10", details: "DISCOVER from office"},
-      %{type: :ack, client_mac: "AA:BB:CC:DD:EE:02", client_ip: "10.0.0.5", details: "ACK for guest"},
+      %{
+        type: :discover,
+        client_mac: "AA:BB:CC:DD:EE:01",
+        client_ip: "192.168.1.10",
+        details: "DISCOVER from office"
+      },
+      %{
+        type: :ack,
+        client_mac: "AA:BB:CC:DD:EE:02",
+        client_ip: "10.0.0.5",
+        details: "ACK for guest"
+      },
       %{type: :nak, client_mac: "AA:BB:CC:DD:EE:03", client_ip: nil, details: "Pool exhausted"},
       %{type: :decline, client_mac: nil, client_ip: nil, details: "Client declined"}
     ]
@@ -209,8 +219,18 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   describe "Dhcpv6Activity.filtered_entries/3" do
     @v6_entries [
-      %{type: :solicit, client_duid: "00:01:00:01:AA:BB", client_ip: "2001:db8::1", details: "SOLICIT"},
-      %{type: :reply, client_duid: "00:01:00:01:CC:DD", client_ip: "fd00::5", details: "REPLY granted"},
+      %{
+        type: :solicit,
+        client_duid: "00:01:00:01:AA:BB",
+        client_ip: "2001:db8::1",
+        details: "SOLICIT"
+      },
+      %{
+        type: :reply,
+        client_duid: "00:01:00:01:CC:DD",
+        client_ip: "fd00::5",
+        details: "REPLY granted"
+      },
       %{type: :decline, client_duid: nil, client_ip: nil, details: "Client declined"}
     ]
 

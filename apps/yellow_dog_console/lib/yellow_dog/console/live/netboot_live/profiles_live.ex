@@ -208,12 +208,14 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     csv = build_csv(socket.assigns.filtered_profiles, socket.assigns.profile_usage)
     filename = "boot_profiles_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  @impl true
   def handle_event("sort", %{"field" => field}, socket) do
     dir =
       if socket.assigns.sort_field == field,
@@ -223,6 +225,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("set_default", %{"id" => id}, socket) do
     safe_call(
       YellowDog.Netboot.Manifest.Store,
@@ -236,6 +239,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
      |> load_profiles()}
   end
 
+  @impl true
   def handle_event("delete_profile", %{"id" => id}, socket) do
     safe_call(
       YellowDog.Netboot.Manifest.Store,

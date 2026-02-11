@@ -108,6 +108,7 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
     {:noreply, load_leases(socket)}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

@@ -389,6 +389,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, assign(socket, :upload_path, path)}
   end
 
+  @impl true
   def handle_event("validate_upload", _params, socket) do
     {:noreply, socket}
   end
@@ -464,10 +465,12 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, socket |> put_flash(:info, "File index rescanned") |> load_data()}
   end
 
+  @impl true
   def handle_event("filter_history", %{"filter" => query}, socket) do
     {:noreply, assign(socket, :history_filter, query)}
   end
 
+  @impl true
   def handle_event("sort_history", %{"field" => field}, socket) do
     dir =
       if socket.assigns.history_sort_field == field,
@@ -477,6 +480,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, assign(socket, history_sort_field: field, history_sort_dir: dir)}
   end
 
+  @impl true
   def handle_event("export_history_csv", _params, socket) do
     entries = filtered_history(socket.assigns.transfer_history, socket.assigns.history_filter)
     csv = build_history_csv(entries)
@@ -484,6 +488,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  @impl true
   def handle_event("export_files_csv", _params, socket) do
     files = flatten_tree(socket.assigns.file_tree)
     csv = build_files_csv(files)
@@ -491,6 +496,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  @impl true
   def handle_event("delete_file", %{"path" => path}, socket) do
     result =
       safe_call(
@@ -516,6 +522,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, assign(socket, :active_transfers_map, active)}
   end
 
+  @impl true
   def handle_info({:tftp_transfer_complete, meta}, socket) do
     key = transfer_key(meta)
     active = Map.delete(socket.assigns.active_transfers_map, key)
@@ -524,6 +531,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
   end
 
+  @impl true
   def handle_info({:tftp_transfer_failed, meta}, socket) do
     key = transfer_key(meta)
     active = Map.delete(socket.assigns.active_transfers_map, key)
@@ -532,11 +540,13 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
   end
 
+  @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_interval)
     {:noreply, load_data(socket)}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, load_data(socket)}
 
   defp load_data(socket) do

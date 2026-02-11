@@ -169,10 +169,12 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("filter_type", %{"type" => type}, socket) do
     {:noreply, socket |> assign(:filter_type, type) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     csv = build_csv(socket.assigns.filtered_devices)
     filename = "devices_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
@@ -184,6 +186,7 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
     {:noreply, load_devices(socket)}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---

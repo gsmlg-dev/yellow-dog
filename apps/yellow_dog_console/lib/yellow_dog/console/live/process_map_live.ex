@@ -129,6 +129,7 @@ defmodule YellowDog.Console.ProcessMapLive do
      )}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -160,10 +161,12 @@ defmodule YellowDog.Console.ProcessMapLive do
     end
   end
 
+  @impl true
   def handle_event("close_panel", _params, socket) do
     {:noreply, assign(socket, show_status_panel: false, selected_pid: nil, selected_status: nil)}
   end
 
+  @impl true
   def handle_event("toggle_expand", %{"pid" => pid_string}, socket) do
     case ProcessInspector.parse_pid(pid_string) do
       {:ok, pid} ->

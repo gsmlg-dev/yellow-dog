@@ -364,14 +364,17 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("filter_state", %{"state" => state}, socket) do
     {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("filter_profile", %{"profile" => profile}, socket) do
     {:noreply, socket |> assign(:filter_profile, profile) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("sort", %{"field" => field}, socket) do
     dir =
       if socket.assigns.sort_field == field,
@@ -381,12 +384,14 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     csv = build_csv(socket.assigns.filtered_devices)
     filename = "netboot_devices_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  @impl true
   def handle_event("toggle_select", %{"mac" => mac}, socket) do
     selected = socket.assigns.selected_devices
 
@@ -398,6 +403,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, assign(socket, :selected_devices, selected)}
   end
 
+  @impl true
   def handle_event("toggle_select_all", _params, socket) do
     macs = Enum.map(socket.assigns.filtered_devices, & &1.mac)
 
@@ -411,14 +417,17 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, assign(socket, :selected_devices, selected)}
   end
 
+  @impl true
   def handle_event("bulk_select_profile", %{"profile" => ""}, socket) do
     {:noreply, assign(socket, :bulk_profile, nil)}
   end
 
+  @impl true
   def handle_event("bulk_select_profile", %{"profile" => profile_id}, socket) do
     {:noreply, assign(socket, :bulk_profile, profile_id)}
   end
 
+  @impl true
   def handle_event("bulk_assign_profile", _params, socket) do
     profile_id = socket.assigns.bulk_profile
     macs = MapSet.to_list(socket.assigns.selected_devices)
@@ -460,6 +469,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("bulk_add_tag", %{"tag" => tag}, socket) do
     tag = String.trim(tag)
 
@@ -493,6 +503,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     end
   end
 
+  @impl true
   def handle_event("bulk_delete", _params, socket) do
     macs = MapSet.to_list(socket.assigns.selected_devices)
 
@@ -511,6 +522,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
      |> load_devices()}
   end
 
+  @impl true
   def handle_event("quick_reinstall", %{"mac" => mac}, socket) do
     result =
       safe_call(
@@ -528,6 +540,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, load_devices(socket)}
   end
 
+  @impl true
   def handle_event("quick_rescue", %{"mac" => mac}, socket) do
     device = Enum.find(socket.assigns.all_devices, &(&1.mac == mac))
     enabled = !(device && device.rescue_mode)
@@ -552,14 +565,18 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     {:noreply, load_devices(socket)}
   end
 
+  @impl true
   def handle_event("bulk_clear", _params, socket) do
     {:noreply, assign(socket, selected_devices: MapSet.new(), bulk_profile: nil)}
   end
 
   @impl true
   def handle_info({:device_state_changed, _}, socket), do: {:noreply, load_devices(socket)}
+  @impl true
   def handle_info({:device_registered, _}, socket), do: {:noreply, load_devices(socket)}
+  @impl true
   def handle_info({:device_deleted, _}, socket), do: {:noreply, load_devices(socket)}
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_profiles(socket) do

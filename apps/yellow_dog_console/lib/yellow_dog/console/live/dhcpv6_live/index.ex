@@ -40,6 +40,7 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
      |> load_dhcp_data()}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

@@ -237,14 +237,17 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
     {:noreply, assign(socket, :search_query, query)}
   end
 
+  @impl true
   def handle_event("filter_type", %{"type" => type}, socket) do
     {:noreply, assign(socket, :filter_type, type)}
   end
 
+  @impl true
   def handle_event("toggle_pause", _params, socket) do
     {:noreply, assign(socket, :paused, !socket.assigns.paused)}
   end
 
+  @impl true
   def handle_event("clear", _params, socket) do
     {:noreply,
      assign(socket,
@@ -254,6 +257,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
      )}
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     csv = build_csv(socket.assigns.entries)
     filename = "dhcpv4_activity_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
@@ -266,6 +270,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
     {:noreply, update_stats(socket, entry)}
   end
 
+  @impl true
   def handle_info({:dhcpv4_activity, entry}, socket) do
     entries = [entry | socket.assigns.entries] |> Enum.take(@max_entries)
 
@@ -275,12 +280,14 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
      |> update_stats(entry)}
   end
 
+  @impl true
   def handle_info(:refresh_stats, socket) do
     socket = assign(socket, :service_running, service_running?(YellowDog.Dhcpv4))
     Process.send_after(self(), :refresh_stats, @refresh_interval)
     {:noreply, socket}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

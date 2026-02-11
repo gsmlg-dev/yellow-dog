@@ -202,22 +202,27 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, assign(socket, :search_query, query)}
   end
 
+  @impl true
   def handle_event("filter_type", %{"type" => type}, socket) do
     {:noreply, assign(socket, :filter_type, type)}
   end
 
+  @impl true
   def handle_event("filter_level", %{"level" => level}, socket) do
     {:noreply, assign(socket, :filter_level, level)}
   end
 
+  @impl true
   def handle_event("toggle_pause", _params, socket) do
     {:noreply, assign(socket, :paused, !socket.assigns.paused)}
   end
 
+  @impl true
   def handle_event("clear_log", _params, socket) do
     {:noreply, assign(socket, :log_entries, [])}
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     entries =
       filtered_entries(
@@ -237,22 +242,26 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_info({:device_state_changed, device}, socket) do
     level = if device.state == :failed, do: "warning", else: "info"
     entry = log_entry("device", level, "Device #{device.mac} → #{device.state}")
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:device_registered, device}, socket) do
     entry = log_entry("device", "info", "Device #{device.mac} registered")
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:device_deleted, mac}, socket) do
     entry = log_entry("device", "info", "Device #{mac} deleted")
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:tftp_transfer_started, metadata}, socket) do
     file = Map.get(metadata, :file_path, "unknown")
     size = Map.get(metadata, :total_size, 0)
@@ -260,6 +269,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:tftp_transfer_complete, metadata}, socket) do
     file = Map.get(metadata, :file_path, "unknown")
     duration = Map.get(metadata, :duration, 0)
@@ -267,12 +277,14 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:tftp_request_accepted, metadata}, socket) do
     file = Map.get(metadata, :file, "unknown")
     entry = log_entry("tftp", "info", "Request accepted: #{file}")
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:tftp_request_rejected, metadata}, socket) do
     file = Map.get(metadata, :file, "unknown")
     reason = Map.get(metadata, :reason, "unknown")
@@ -280,12 +292,14 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info({:tftp_transfer_failed, metadata}, socket) do
     file = Map.get(metadata, :file_path, "unknown")
     entry = log_entry("tftp", "error", "Transfer failed: #{file}")
     {:noreply, add_entry(socket, entry)}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp add_entry(socket, entry) do

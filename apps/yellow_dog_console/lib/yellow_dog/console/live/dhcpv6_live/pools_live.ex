@@ -178,6 +178,7 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
     end
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

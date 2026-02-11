@@ -279,6 +279,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("assign_profile", %{"profile_id" => profile_id}, socket) do
     case YellowDog.Netboot.Device.Registry.assign_profile(socket.assigns.mac, profile_id) do
       {:ok, _} ->
@@ -290,6 +291,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_event("request_reinstall", _params, socket) do
     case YellowDog.Netboot.Device.Registry.request_reinstall(socket.assigns.mac) do
       {:ok, _} ->
@@ -301,6 +303,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_event("toggle_rescue", _params, socket) do
     enabled = not (socket.assigns.device && socket.assigns.device.rescue_mode)
 
@@ -321,6 +324,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_event("add_tag", %{"tag" => tag}, socket) do
     tag = String.trim(tag)
 
@@ -345,6 +349,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_event("remove_tag", %{"tag" => tag}, socket) do
     if socket.assigns.device do
       new_tags = List.delete(socket.assigns.device.tags, tag)
@@ -367,6 +372,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_event("delete_device", _params, socket) do
     YellowDog.Netboot.Device.Registry.delete(socket.assigns.mac)
 
@@ -381,6 +387,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     {:noreply, socket |> load_device(socket.assigns.mac) |> load_boot_script()}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp history_dot_color(:discovered), do: "bg-neutral"

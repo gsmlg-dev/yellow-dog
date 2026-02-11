@@ -50,6 +50,7 @@ defmodule YellowDog.Console.MdnsLive.Index do
     {:noreply, assign(socket, :network_stats, get_network_stats())}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

@@ -245,15 +245,18 @@ defmodule YellowDog.Console.NetbootLive.Index do
     {:noreply, load_data(socket)}
   end
 
+  @impl true
   def handle_info({:device_registered, _device}, socket) do
     {:noreply, load_data(socket)}
   end
 
+  @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_interval)
     {:noreply, load_data(socket)}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_data(socket) do

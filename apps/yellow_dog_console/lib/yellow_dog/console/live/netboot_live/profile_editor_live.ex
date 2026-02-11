@@ -288,6 +288,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
      |> assign(:file_warnings, warnings)}
   end
 
+  @impl true
   def handle_event("save", %{"profile" => params}, socket) do
     errors = validate_profile(params, socket.assigns.mode)
 
@@ -316,6 +317,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
     end
   end
 
+  @impl true
   def handle_event("delete_profile", _params, socket) do
     safe_call(
       YellowDog.Netboot.Manifest.Store,
@@ -329,6 +331,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
      |> push_navigate(to: "/netboot/profiles")}
   end
 
+  @impl true
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true

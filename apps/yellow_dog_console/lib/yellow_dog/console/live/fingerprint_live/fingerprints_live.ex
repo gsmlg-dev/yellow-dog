@@ -196,10 +196,12 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
     {:noreply, socket |> assign(:tab, tab) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("search", %{"search" => query}, socket) do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
   end
 
+  @impl true
   def handle_event("classify", %{"hash" => hash}, socket) do
     profiles =
       safe_call(YellowDog.Fingerprint, fn -> YellowDog.Fingerprint.list_profiles() end, [])
@@ -207,10 +209,12 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
     {:noreply, assign(socket, show_classify: true, selected_fp: hash, profiles: profiles)}
   end
 
+  @impl true
   def handle_event("close_classify", _params, socket) do
     {:noreply, assign(socket, show_classify: false, selected_fp: nil)}
   end
 
+  @impl true
   def handle_event("save_override", %{"hash" => hash, "profile_id" => pid} = params, socket) do
     note = Map.get(params, "note", "")
 
@@ -233,6 +237,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
     end
   end
 
+  @impl true
   def handle_event("export_csv", _params, socket) do
     csv = build_csv(socket.assigns.filtered_fingerprints)
     filename = "fingerprints_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"

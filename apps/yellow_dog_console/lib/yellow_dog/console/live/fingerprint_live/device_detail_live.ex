@@ -180,6 +180,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
     end
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---

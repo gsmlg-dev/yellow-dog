@@ -100,6 +100,7 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("save_" <> service, %{"service_configuration" => params}, socket)
       when service in @valid_settings_services do
     service_atom = String.to_existing_atom(service)
@@ -133,12 +134,14 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("apply_changes_" <> service, _params, socket)
       when service in @valid_settings_services do
     service_atom = String.to_existing_atom(service)
     handle_apply_changes(socket, service_atom)
   end
 
+  @impl true
   def handle_event("dns_reload_all", _params, socket) do
     case dns_reload(:all) do
       :ok ->
@@ -150,6 +153,7 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("dns_reload_views", _params, socket) do
     case dns_reload(:views) do
       :ok ->
@@ -160,6 +164,7 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("dns_reload_acls", _params, socket) do
     case dns_reload(:acls) do
       :ok ->
@@ -170,6 +175,7 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("reload_config", _params, socket) do
     config_path = socket.assigns.config_path
 
@@ -193,14 +199,17 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("close_conflict_modal", _params, socket) do
     {:noreply, assign(socket, :show_conflict_modal, false)}
   end
 
+  @impl true
   def handle_event("close_recovery_modal", _params, socket) do
     {:noreply, assign(socket, :show_recovery_modal, false)}
   end
 
+  @impl true
   def handle_event("restore_backup", %{"backup_path" => backup_path}, socket) do
     case ConfigManager.restore_backup(backup_path, socket.assigns.config_path) do
       :ok ->
@@ -215,6 +224,7 @@ defmodule YellowDog.Console.SettingsLive do
   @valid_pool_events ~w(dhcpv4_pool dhcpv6_pool)
 
   # Pool management events
+  @impl true
   def handle_event("add_" <> service_and_pool, _params, socket)
       when service_and_pool in @valid_pool_events do
     # Parse service type from event name (e.g., "dhcpv4_pool" -> :dhcpv4)
@@ -236,6 +246,7 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("edit_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
       when service_and_pool in @valid_pool_events do
     # Parse service type from event name
@@ -264,6 +275,7 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  @impl true
   def handle_event("delete_" <> service_and_pool, %{"pool-id" => pool_id}, socket)
       when service_and_pool in @valid_pool_events do
     # Parse service type from event name
@@ -288,6 +300,7 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_event("close_pool_form", _params, socket) do
     socket =
       socket
@@ -305,6 +318,7 @@ defmodule YellowDog.Console.SettingsLive do
     handle_event("close_pool_form", %{}, socket)
   end
 
+  @impl true
   def handle_info({:pool_saved, service, pool, mode}, socket) do
     changeset = Map.get(socket.assigns, :"#{service}_changeset")
     pools = Ecto.Changeset.get_field(changeset, :pools) || []
@@ -345,6 +359,7 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Private Functions

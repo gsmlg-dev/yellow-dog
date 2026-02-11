@@ -33,6 +33,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
     {:noreply, assign(socket, :changeset, changeset)}
   end
 
+  @impl true
   def handle_event("save", %{"address_pool" => pool_params}, socket) do
     changeset = AddressPool.changeset(socket.assigns.pool, pool_params)
 
@@ -50,6 +51,7 @@ defmodule YellowDog.Console.Components.PoolFormComponent do
     end
   end
 
+  @impl true
   def handle_event("close", _params, socket) do
     send(self(), :close_pool_form)
     {:noreply, socket}

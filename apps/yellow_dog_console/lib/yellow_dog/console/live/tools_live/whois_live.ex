@@ -100,6 +100,7 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
     end
   end
 
+  @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{assigns: %{task_ref: ref}} = socket) do
     {:noreply,
      assign(socket,
@@ -110,6 +111,7 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
      )}
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp format_error(:timeout), do: "Connection timed out"
