@@ -37,6 +37,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "table")
     end
+
+    test "shows telemetry metrics cards", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot")
+
+      assert html =~ "TFTP Requests"
+      assert html =~ "Transfers"
+      assert html =~ "Bytes Transferred"
+    end
   end
 
   describe "Netboot Devices page" do

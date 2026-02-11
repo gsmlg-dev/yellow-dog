@@ -55,6 +55,25 @@ defmodule YellowDog.Console.NetbootLive.Index do
           </div>
         </div>
 
+        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
+          <div class="stat">
+            <div class="stat-title">TFTP Requests</div>
+            <div class="stat-value text-primary">{@metrics.tftp_requests_accepted}</div>
+            <div class="stat-desc">{@metrics.tftp_requests_rejected} rejected</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Transfers</div>
+            <div class="stat-value">{@metrics.tftp_transfers_completed}</div>
+            <div class="stat-desc">
+              {@metrics.tftp_transfers_started - @metrics.tftp_transfers_completed} in progress
+            </div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Bytes Transferred</div>
+            <div class="stat-value text-sm">{format_bytes(@metrics.tftp_bytes_transferred)}</div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <.card>
             <h2 class="card-title mb-4">TFTP Server</h2>
@@ -181,10 +200,48 @@ defmodule YellowDog.Console.NetbootLive.Index do
       |> Enum.sort_by(& &1.last_seen, {:desc, DateTime})
       |> Enum.take(10)
 
+    metrics = load_metrics()
+
     socket
     |> assign(:state_counts, state_counts)
     |> assign(:tftp_status, tftp_status)
     |> assign(:profiles, profiles)
     |> assign(:recent_devices, recent)
+    |> assign(:metrics, metrics)
+  end
+
+  defp load_metrics do
+    YellowDog.Netboot.Metrics.all()
+  rescue
+    _ -> default_metrics()
+  end
+
+  defp default_metrics do
+    %{
+      tftp_requests_accepted: 0,
+      tftp_requests_rejected: 0,
+      tftp_transfers_started: 0,
+      tftp_transfers_completed: 0,
+      tftp_transfers_failed: 0,
+      tftp_bytes_transferred: 0,
+      devices_discovered: 0,
+      boot_scripts_rendered: 0
+    }
+  end
+
+  defp format_bytes(0), do: "0 B"
+
+  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
+
+  defp format_bytes(bytes) when bytes < 1_048_576 do
+    "#{Float.round(bytes / 1024, 1)} KB"
+  end
+
+  defp format_bytes(bytes) when bytes < 1_073_741_824 do
+    "#{Float.round(bytes / 1_048_576, 1)} MB"
+  end
+
+  defp format_bytes(bytes) do
+    "#{Float.round(bytes / 1_073_741_824, 1)} GB"
   end
 end

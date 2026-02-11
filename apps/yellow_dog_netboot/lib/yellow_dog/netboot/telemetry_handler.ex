@@ -7,11 +7,14 @@ defmodule YellowDog.Netboot.TelemetryHandler do
   Boot Log and TFTP pages receive real-time updates.
   """
 
+  alias YellowDog.Netboot.Metrics
+
   @tftp_topic "netboot:tftp"
   @log_topic "netboot:log"
 
   @doc "Attach all netboot telemetry handlers."
   def attach do
+    Metrics.init()
     events = [
       [:yellow_dog, :netboot, :tftp, :transfer, :start],
       [:yellow_dog, :netboot, :tftp, :transfer, :stop],
@@ -38,6 +41,7 @@ defmodule YellowDog.Netboot.TelemetryHandler do
         metadata,
         _config
       ) do
+    Metrics.increment(:tftp_transfers_started)
     broadcast(@tftp_topic, {:tftp_transfer_started, metadata})
     broadcast(@log_topic, {:tftp_transfer_started, metadata})
   end
@@ -48,6 +52,9 @@ defmodule YellowDog.Netboot.TelemetryHandler do
         metadata,
         _config
       ) do
+    Metrics.increment(:tftp_transfers_completed)
+    bytes = Map.get(measurements, :bytes_transferred, 0)
+    if bytes > 0, do: Metrics.increment(:tftp_bytes_transferred, bytes)
     data = Map.merge(metadata, measurements)
     broadcast(@tftp_topic, {:tftp_transfer_complete, data})
     broadcast(@log_topic, {:tftp_transfer_complete, data})
@@ -59,6 +66,7 @@ defmodule YellowDog.Netboot.TelemetryHandler do
         metadata,
         _config
       ) do
+    Metrics.increment(:tftp_requests_accepted)
     broadcast(@log_topic, {:tftp_request_accepted, metadata})
   end
 
@@ -68,6 +76,7 @@ defmodule YellowDog.Netboot.TelemetryHandler do
         metadata,
         _config
       ) do
+    Metrics.increment(:tftp_requests_rejected)
     broadcast(@log_topic, {:tftp_request_rejected, metadata})
   end
 
