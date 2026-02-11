@@ -180,7 +180,9 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
             </div>
             <div class="flex justify-end gap-2 mt-4">
               <button type="button" phx-click="close_classify" class="btn btn-ghost">Cancel</button>
-              <button type="submit" phx-disable-with="Saving..." class="btn btn-primary">Save Override</button>
+              <button type="submit" phx-disable-with="Saving..." class="btn btn-primary">
+                Save Override
+              </button>
             </div>
           </form>
         </.modal>

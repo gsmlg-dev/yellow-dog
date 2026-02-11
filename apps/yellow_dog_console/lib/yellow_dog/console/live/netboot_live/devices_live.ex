@@ -275,7 +275,11 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     <span :if={!device.arch}>-</span>
                   </td>
                   <td>
-                    <.link :if={device.profile_id} navigate={"/netboot/profiles/#{device.profile_id}/edit"} class="link link-primary">
+                    <.link
+                      :if={device.profile_id}
+                      navigate={"/netboot/profiles/#{device.profile_id}/edit"}
+                      class="link link-primary"
+                    >
                       {device.profile_id}
                     </.link>
                     <span :if={!device.profile_id}>-</span>
@@ -284,7 +288,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   <td>{device.install_attempts}</td>
                   <td>
                     <div class="flex flex-wrap gap-0.5">
-                      <.badge :for={tag <- Enum.take(device.tags, 3)} color="ghost" size="sm">{tag}</.badge>
+                      <.badge :for={tag <- Enum.take(device.tags, 3)} color="ghost" size="sm">
+                        {tag}
+                      </.badge>
                       <span :if={length(device.tags) > 3} class="text-xs text-base-content/50">
                         +{length(device.tags) - 3}
                       </span>
@@ -312,7 +318,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                           "btn btn-ghost btn-xs",
                           if(device.rescue_mode, do: "text-warning", else: "text-base-content/40")
                         ]}
-                        title={if device.rescue_mode, do: "Disable rescue mode", else: "Enable rescue mode"}
+                        title={
+                          if device.rescue_mode, do: "Disable rescue mode", else: "Enable rescue mode"
+                        }
                       >
                         ⛑
                       </button>

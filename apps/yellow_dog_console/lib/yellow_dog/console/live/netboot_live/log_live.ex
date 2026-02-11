@@ -144,7 +144,9 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
         <.card>
           <div class="flex justify-between items-center mb-2">
             <span :if={@log_entries != []} class="text-sm text-base-content/70">
-              {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(@log_entries)} entries
+              {length(filtered_entries(@log_entries, @search_query, @filter_type, @filter_level))} of {length(
+                @log_entries
+              )} entries
             </span>
             <span :if={@log_entries == []} class="text-sm text-base-content/70"></span>
             <span :if={@connected} class="flex items-center gap-1 text-xs text-base-content/50">
@@ -167,12 +169,16 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :if={filtered_entries(@log_entries, @search_query, @filter_type, @filter_level) == []}>
+                <tr :if={
+                  filtered_entries(@log_entries, @search_query, @filter_type, @filter_level) == []
+                }>
                   <td colspan="4" class="text-center text-base-content/50 py-8">
                     No log entries yet — activity will appear in real-time
                   </td>
                 </tr>
-                <tr :for={entry <- filtered_entries(@log_entries, @search_query, @filter_type, @filter_level)}>
+                <tr :for={
+                  entry <- filtered_entries(@log_entries, @search_query, @filter_type, @filter_level)
+                }>
                   <td class="text-sm font-mono whitespace-nowrap">{format_log_time(entry.time)}</td>
                   <td>
                     <.badge color={type_color(entry.type)} size="sm">{entry.type}</.badge>

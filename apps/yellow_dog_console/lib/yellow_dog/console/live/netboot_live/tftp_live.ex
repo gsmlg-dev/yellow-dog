@@ -215,30 +215,84 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             </div>
           </div>
           <div
-            :if={sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir) == []}
+            :if={
+              sorted_history(
+                @transfer_history,
+                @history_filter,
+                @history_sort_field,
+                @history_sort_dir
+              ) == []
+            }
             class="text-base-content/50"
           >
             No transfer history
           </div>
           <div
-            :if={sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir) != []}
+            :if={
+              sorted_history(
+                @transfer_history,
+                @history_filter,
+                @history_sort_field,
+                @history_sort_dir
+              ) != []
+            }
             class="overflow-x-auto"
           >
             <table class="table table-sm table-zebra">
               <thead>
                 <tr>
-                  <.history_sort_header field="time" label="Time" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
-                  <.history_sort_header field="client" label="Client" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
-                  <.history_sort_header field="file" label="File" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
-                  <.history_sort_header field="size" label="Size" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
-                  <.history_sort_header field="duration" label="Duration" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
+                  <.history_sort_header
+                    field="time"
+                    label="Time"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
+                  <.history_sort_header
+                    field="client"
+                    label="Client"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
+                  <.history_sort_header
+                    field="file"
+                    label="File"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
+                  <.history_sort_header
+                    field="size"
+                    label="Size"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
+                  <.history_sort_header
+                    field="duration"
+                    label="Duration"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
                   <th>Speed</th>
-                  <.history_sort_header field="status" label="Status" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
+                  <.history_sort_header
+                    field="status"
+                    label="Status"
+                    sort_field={@history_sort_field}
+                    sort_dir={@history_sort_dir}
+                  />
                 </tr>
               </thead>
               <tbody>
-                <tr :for={t <- sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir)}>
-                  <td class="text-sm font-mono whitespace-nowrap">{format_started(t[:completed_at])}</td>
+                <tr :for={
+                  t <-
+                    sorted_history(
+                      @transfer_history,
+                      @history_filter,
+                      @history_sort_field,
+                      @history_sort_dir
+                    )
+                }>
+                  <td class="text-sm font-mono whitespace-nowrap">
+                    {format_started(t[:completed_at])}
+                  </td>
                   <td class="font-mono text-sm">{format_addr(t.client_addr)}</td>
                   <td class="font-mono text-sm">{t.file_path}</td>
                   <td>{format_size(t[:bytes] || t[:total_size] || 0)}</td>
@@ -262,7 +316,9 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
           <div class="flex items-center justify-between mb-4">
             <h2 class="card-title">
               File Browser
-              <.badge :if={@status.file_count > 0} color="ghost" size="sm">{@status.file_count} files</.badge>
+              <.badge :if={@status.file_count > 0} color="ghost" size="sm">
+                {@status.file_count} files
+              </.badge>
             </h2>
             <button
               phx-click="export_files_csv"
@@ -275,7 +331,9 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
           </div>
           <div :if={@file_tree == []} class="text-base-content/50 text-center py-4">
             <p>No files found in TFTP root</p>
-            <p class="text-sm mt-1">Upload boot assets using the form above or place files in the TFTP root directory</p>
+            <p class="text-sm mt-1">
+              Upload boot assets using the form above or place files in the TFTP root directory
+            </p>
           </div>
           <div :if={@file_tree != []} class="text-sm">
             <.file_tree_node :for={node <- @file_tree} node={node} />
@@ -314,6 +372,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         <button
           phx-click="delete_file"
           phx-value-path={@node.path}
+          phx-disable-with="..."
           data-confirm={"Delete #{@node.path}?"}
           class="btn btn-ghost btn-xs text-error"
           aria-label={"Delete #{@node.name}"}

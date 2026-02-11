@@ -15,6 +15,7 @@ defmodule YellowDog.Netboot.TelemetryHandler do
   @doc "Attach all netboot telemetry handlers."
   def attach do
     Metrics.init()
+
     events = [
       [:yellow_dog, :netboot, :tftp, :transfer, :start],
       [:yellow_dog, :netboot, :tftp, :transfer, :stop],

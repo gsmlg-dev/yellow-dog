@@ -52,23 +52,38 @@ defmodule YellowDog.Console.NetbootLive.Index do
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <.link navigate="/netboot/devices?state=discovered" class="stat hover:bg-base-200 transition-colors cursor-pointer">
+          <.link
+            navigate="/netboot/devices?state=discovered"
+            class="stat hover:bg-base-200 transition-colors cursor-pointer"
+          >
             <div class="stat-title">Discovered</div>
             <div class="stat-value text-base-content">{Map.get(@state_counts, :discovered, 0)}</div>
           </.link>
-          <.link navigate="/netboot/devices?state=booting" class="stat hover:bg-base-200 transition-colors cursor-pointer">
+          <.link
+            navigate="/netboot/devices?state=booting"
+            class="stat hover:bg-base-200 transition-colors cursor-pointer"
+          >
             <div class="stat-title">Booting</div>
             <div class="stat-value text-warning">{Map.get(@state_counts, :booting, 0)}</div>
           </.link>
-          <.link navigate="/netboot/devices?state=installing" class="stat hover:bg-base-200 transition-colors cursor-pointer">
+          <.link
+            navigate="/netboot/devices?state=installing"
+            class="stat hover:bg-base-200 transition-colors cursor-pointer"
+          >
             <div class="stat-title">Installing</div>
             <div class="stat-value text-info">{Map.get(@state_counts, :installing, 0)}</div>
           </.link>
-          <.link navigate="/netboot/devices?state=installed" class="stat hover:bg-base-200 transition-colors cursor-pointer">
+          <.link
+            navigate="/netboot/devices?state=installed"
+            class="stat hover:bg-base-200 transition-colors cursor-pointer"
+          >
             <div class="stat-title">Installed</div>
             <div class="stat-value text-success">{Map.get(@state_counts, :installed, 0)}</div>
           </.link>
-          <.link navigate="/netboot/devices?state=failed" class="stat hover:bg-base-200 transition-colors cursor-pointer">
+          <.link
+            navigate="/netboot/devices?state=failed"
+            class="stat hover:bg-base-200 transition-colors cursor-pointer"
+          >
             <div class="stat-title">Failed</div>
             <div class="stat-value text-error">{Map.get(@state_counts, :failed, 0)}</div>
           </.link>
@@ -84,7 +99,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
             <div class="stat-title">Transfers</div>
             <div class="stat-value">{@metrics.tftp_transfers_completed}</div>
             <div class="stat-desc">
-              {max(@metrics.tftp_transfers_started - @metrics.tftp_transfers_completed - @metrics.tftp_transfers_failed, 0)} in progress, {@metrics.tftp_transfers_failed} failed
+              {max(
+                @metrics.tftp_transfers_started - @metrics.tftp_transfers_completed -
+                  @metrics.tftp_transfers_failed,
+                0
+              )} in progress, {@metrics.tftp_transfers_failed} failed
             </div>
           </div>
           <div class="stat">
@@ -141,7 +160,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
             </div>
             <div :for={profile <- @profiles} class="flex justify-between items-center py-1">
               <div>
-                <.link navigate={"/netboot/profiles/#{profile.id}/edit"} class="link link-primary font-medium">
+                <.link
+                  navigate={"/netboot/profiles/#{profile.id}/edit"}
+                  class="link link-primary font-medium"
+                >
                   {profile.id}
                 </.link>
                 <span :if={profile.description} class="text-base-content/70 text-sm ml-2">
@@ -186,7 +208,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
                   <td>{device.hostname || "-"}</td>
                   <td><.state_badge state={device.state} /></td>
                   <td>
-                    <.link :if={device.profile_id} navigate={"/netboot/profiles/#{device.profile_id}/edit"} class="link link-primary">
+                    <.link
+                      :if={device.profile_id}
+                      navigate={"/netboot/profiles/#{device.profile_id}/edit"}
+                      class="link link-primary"
+                    >
                       {device.profile_id}
                     </.link>
                     <span :if={!device.profile_id}>-</span>
@@ -306,5 +332,4 @@ defmodule YellowDog.Console.NetbootLive.Index do
       boot_scripts_rendered: 0
     }
   end
-
 end

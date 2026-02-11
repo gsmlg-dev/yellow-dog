@@ -169,7 +169,9 @@ defmodule YellowDog.Console.NetbootLiveTest do
     test "profile filter has unassigned option", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/devices")
 
-      html = view |> element("select[name=profile]") |> render_change(%{"profile" => "unassigned"})
+      html =
+        view |> element("select[name=profile]") |> render_change(%{"profile" => "unassigned"})
+
       assert html =~ "Netboot Devices"
     end
 
@@ -1027,10 +1029,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
       alias YellowDog.Console.NetbootLive.TftpLive
 
       tree = [
-        %{type: :directory, name: "nixos", children: [
-          %{type: :file, name: "bzImage", path: "nixos/bzImage", size: 8000},
-          %{type: :file, name: "initrd", path: "nixos/initrd", size: 4000}
-        ]},
+        %{
+          type: :directory,
+          name: "nixos",
+          children: [
+            %{type: :file, name: "bzImage", path: "nixos/bzImage", size: 8000},
+            %{type: :file, name: "initrd", path: "nixos/initrd", size: 4000}
+          ]
+        },
         %{type: :file, name: "pxelinux.0", path: "pxelinux.0", size: 100}
       ]
 
@@ -1051,8 +1057,23 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, view, _html} = live(conn, "/netboot/tftp")
 
       # Add transfers to history so headers render
-      meta1 = %{client_addr: {10, 0, 0, 1}, file_path: "a.bin", total_size: 100, bytes_sent: 100, duration: 50, bytes: 100}
-      meta2 = %{client_addr: {10, 0, 0, 2}, file_path: "b.bin", total_size: 200, bytes_sent: 200, duration: 100, bytes: 200}
+      meta1 = %{
+        client_addr: {10, 0, 0, 1},
+        file_path: "a.bin",
+        total_size: 100,
+        bytes_sent: 100,
+        duration: 50,
+        bytes: 100
+      }
+
+      meta2 = %{
+        client_addr: {10, 0, 0, 2},
+        file_path: "b.bin",
+        total_size: 200,
+        bytes_sent: 200,
+        duration: 100,
+        bytes: 200
+      }
 
       send(view.pid, {:tftp_transfer_complete, meta1})
       send(view.pid, {:tftp_transfer_complete, meta2})
@@ -1082,7 +1103,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, view, _html} = live(conn, "/netboot/tftp")
 
       # Add entries to history first
-      meta = %{client_addr: {10, 0, 0, 1}, file_path: "test.bin", total_size: 100, bytes: 100, duration: 50}
+      meta = %{
+        client_addr: {10, 0, 0, 1},
+        file_path: "test.bin",
+        total_size: 100,
+        bytes: 100,
+        duration: 50
+      }
+
       send(view.pid, {:tftp_transfer_complete, meta})
       render(view)
 
@@ -1276,7 +1304,11 @@ defmodule YellowDog.Console.NetbootLiveTest do
     test "tftp_transfer_started adds log entry", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/log")
 
-      send(view.pid, {:tftp_transfer_started, %{file_path: "nixos/bzImage", total_size: 8_000_000}})
+      send(
+        view.pid,
+        {:tftp_transfer_started, %{file_path: "nixos/bzImage", total_size: 8_000_000}}
+      )
+
       html = render(view)
       assert html =~ "Transfer started"
       assert html =~ "nixos/bzImage"
@@ -1338,7 +1370,9 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
     test "filter_by_level 'all' returns everything" do
       entries = [
-        %{level: "info"}, %{level: "warning"}, %{level: "error"}
+        %{level: "info"},
+        %{level: "warning"},
+        %{level: "error"}
       ]
 
       assert length(LogLive.filter_by_level(entries, "all")) == 3
@@ -1346,7 +1380,9 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
     test "filter_by_level 'info' returns everything (info includes all)" do
       entries = [
-        %{level: "info"}, %{level: "warning"}, %{level: "error"}
+        %{level: "info"},
+        %{level: "warning"},
+        %{level: "error"}
       ]
 
       assert length(LogLive.filter_by_level(entries, "info")) == 3

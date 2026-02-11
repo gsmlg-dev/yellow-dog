@@ -24,7 +24,12 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Device: #{mac}", mac: mac, profiles: profiles, connected: connected?(socket))
+     |> assign(
+       page_title: "Device: #{mac}",
+       mac: mac,
+       profiles: profiles,
+       connected: connected?(socket)
+     )
      |> load_device(mac)
      |> load_boot_script()}
   end
@@ -55,8 +60,19 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 class="btn btn-ghost btn-sm"
                 aria-label="Copy MAC address"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
                 </svg>
               </button>
             </div>
@@ -82,7 +98,11 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <.info_row label="State" value={to_string(@device.state)} />
               <div class="flex justify-between">
                 <span class="text-base-content/70">Profile</span>
-                <.link :if={@device.profile_id} navigate={"/netboot/profiles/#{@device.profile_id}/edit"} class="link link-primary font-medium">
+                <.link
+                  :if={@device.profile_id}
+                  navigate={"/netboot/profiles/#{@device.profile_id}/edit"}
+                  class="link link-primary font-medium"
+                >
                   {@device.profile_id}
                 </.link>
                 <span :if={!@device.profile_id} class="font-medium">None</span>
@@ -228,8 +248,9 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
         <.card :if={@boot_script}>
           <h2 class="card-title mb-4">iPXE Boot Script</h2>
           <p class="text-sm text-base-content/70 mb-2">
-            Script that would be served to this device
-            {if @device && @device.rescue_mode, do: "(rescue mode)", else: ""}
+            Script that would be served to this device {if @device && @device.rescue_mode,
+              do: "(rescue mode)",
+              else: ""}
           </p>
           <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@boot_script}</pre>
         </.card>
@@ -370,7 +391,8 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   defp history_dot_color(:reinstall_requested), do: "bg-warning"
   defp history_dot_color(_), do: "bg-neutral"
 
-  defp load_boot_script(%{assigns: %{device: nil}} = socket), do: assign(socket, :boot_script, nil)
+  defp load_boot_script(%{assigns: %{device: nil}} = socket),
+    do: assign(socket, :boot_script, nil)
 
   defp load_boot_script(%{assigns: %{device: device}} = socket) do
     if device.profile_id do
@@ -405,7 +427,11 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
       """
     else
       args =
-        [profile.kernel_args, "yellowdog.mac=#{device.mac}", "yellowdog.api=http://<server>:<port>"]
+        [
+          profile.kernel_args,
+          "yellowdog.mac=#{device.mac}",
+          "yellowdog.api=http://<server>:<port>"
+        ]
         |> Enum.reject(&(is_nil(&1) or &1 == ""))
         |> Enum.join(" ")
 

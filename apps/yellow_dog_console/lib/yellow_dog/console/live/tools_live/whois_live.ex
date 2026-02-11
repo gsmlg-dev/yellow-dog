@@ -45,7 +45,10 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
           <span>{@error}</span>
         </div>
 
-        <div :if={!@results && !@error && !@loading && @query == ""} class="text-center py-12 text-base-content/50">
+        <div
+          :if={!@results && !@error && !@loading && @query == ""}
+          class="text-center py-12 text-base-content/50"
+        >
           Enter a domain or IP address to query WHOIS records
         </div>
 
