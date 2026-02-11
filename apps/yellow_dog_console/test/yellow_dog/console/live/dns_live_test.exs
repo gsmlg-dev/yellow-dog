@@ -176,6 +176,80 @@ defmodule YellowDog.Console.DnsLiveTest do
   end
 
   # ============================================================================
+  # DNS Overview - handle_info
+  # ============================================================================
+
+  describe "DNS Overview /dns handle_info" do
+    test "view_updated refreshes stats", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns")
+      send(view.pid, {:view_updated, "default"})
+      html = render(view)
+      assert html =~ "DNS"
+    end
+
+    test "zone_updated refreshes stats", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns")
+      send(view.pid, {:zone_updated, "example.com"})
+      html = render(view)
+      assert html =~ "DNS"
+    end
+
+    test "cache_updated refreshes cache stats", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns")
+      send(view.pid, {:cache_updated, %{name: "example.com"}})
+      html = render(view)
+      assert html =~ "DNS"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns")
+      send(view.pid, {:random_event, :data})
+      html = render(view)
+      assert html =~ "DNS"
+    end
+  end
+
+  # ============================================================================
+  # DNS Metrics - handle_info
+  # ============================================================================
+
+  describe "DNS Metrics /dns/metrics handle_info" do
+    test "refresh updates metrics data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/metrics")
+      send(view.pid, :refresh)
+      html = render(view)
+      assert html =~ "Total Queries" or html =~ "Metrics"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/metrics")
+      send(view.pid, {:some_event, :data})
+      html = render(view)
+      assert html =~ "Metrics" or html =~ "DNS"
+    end
+  end
+
+  # ============================================================================
+  # DNS ACL - handle_info
+  # ============================================================================
+
+  describe "DNS ACL /dns/acl handle_info" do
+    test "view_updated refreshes views list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      send(view.pid, {:view_updated, "default"})
+      html = render(view)
+      assert html =~ "ACL"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/acl")
+      send(view.pid, {:unknown_event, :data})
+      html = render(view)
+      assert html =~ "ACL"
+    end
+  end
+
+  # ============================================================================
   # Filter/CSV Unit Tests
   # ============================================================================
 

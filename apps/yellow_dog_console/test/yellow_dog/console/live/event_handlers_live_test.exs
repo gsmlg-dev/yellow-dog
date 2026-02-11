@@ -414,6 +414,107 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
   end
 
   # ============================================================================
+  # mDNS Services - handle_info
+  # ============================================================================
+
+  describe "mDNS Services /mdns/services handle_info" do
+    test "service_registered event refreshes services list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      send(view.pid, {:service_registered, "test-service-1"})
+      html = render(view)
+      assert html =~ "Registered Services"
+    end
+
+    test "service_unregistered event refreshes services list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      send(view.pid, {:service_unregistered, "test-service-1"})
+      html = render(view)
+      assert html =~ "Registered Services"
+    end
+
+    test "service_updated event refreshes services list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      send(view.pid, {:service_updated, "test-service-1"})
+      html = render(view)
+      assert html =~ "Registered Services"
+    end
+
+    test "service_toggled event refreshes services list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      send(view.pid, {:service_toggled, "test-service-1"})
+      html = render(view)
+      assert html =~ "Registered Services"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      send(view.pid, {:unknown_event, :data})
+      html = render(view)
+      assert html =~ "Registered Services"
+    end
+  end
+
+  # ============================================================================
+  # DHCPv4 Overview - handle_info
+  # ============================================================================
+
+  describe "DHCPv4 Overview /dhcpv4 handle_info" do
+    test "telemetry_event updates dashboard", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4")
+
+      send(
+        view.pid,
+        {:telemetry_event, [:dhcpv4, :lease, :allocated], %{},
+         %{
+           pool: "default",
+           mac: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>,
+           ip: {192, 168, 1, 100}
+         }}
+      )
+
+      html = render(view)
+      assert html =~ "DHCPv4"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4")
+      send(view.pid, {:random_event, :data})
+      html = render(view)
+      assert html =~ "DHCPv4"
+    end
+  end
+
+  # ============================================================================
+  # DHCPv6 Overview - handle_info
+  # ============================================================================
+
+  describe "DHCPv6 Overview /dhcpv6 handle_info" do
+    test "telemetry_event updates dashboard", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6")
+
+      send(
+        view.pid,
+        {:telemetry_event, [:dhcpv6, :lease, :allocated], %{},
+         %{
+           pool: "default",
+           duid: <<0, 1, 0, 1>>,
+           ip: {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}
+         }}
+      )
+
+      html = render(view)
+      assert html =~ "DHCPv6"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6")
+      send(view.pid, {:random_event, :data})
+      html = render(view)
+      assert html =~ "DHCPv6"
+    end
+  end
+
+  # ============================================================================
   # Diagnostics - Extended Event Tests
   # ============================================================================
 

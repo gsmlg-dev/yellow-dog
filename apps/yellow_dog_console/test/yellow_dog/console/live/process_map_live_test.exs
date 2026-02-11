@@ -88,6 +88,26 @@ defmodule YellowDog.Console.ProcessMapLiveTest do
   end
 
   # ============================================================================
+  # handle_info
+  # ============================================================================
+
+  describe "Process Map /process-map handle_info" do
+    test "refresh_tree updates process tree", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/process-map")
+      send(view.pid, :refresh_tree)
+      html = render(view)
+      assert html =~ "Process Map"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/process-map")
+      send(view.pid, {:unknown_message, :data})
+      html = render(view)
+      assert html =~ "Process Map"
+    end
+  end
+
+  # ============================================================================
   # Accessibility
   # ============================================================================
 

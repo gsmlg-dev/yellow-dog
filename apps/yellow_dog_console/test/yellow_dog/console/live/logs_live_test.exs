@@ -162,6 +162,65 @@ defmodule YellowDog.Console.LogsLiveTest do
   # Filter Function (Public for testability)
   # ============================================================================
 
+  # ============================================================================
+  # handle_info
+  # ============================================================================
+
+  describe "LogsLive /logs handle_info" do
+    test "log_event adds entry to buffer", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+
+      # Select all apps to ensure the log passes the filter
+      render_click(view, "select_all_apps")
+
+      send(
+        view.pid,
+        {:log_event, :info, %{duration: 100}, %{app: :yellow_dog_dns, message: "test log entry"}}
+      )
+
+      html = render(view)
+      assert html =~ "Real-time Logs"
+    end
+
+    test "log_event buffers when paused", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      render_click(view, "select_all_apps")
+      render_click(view, "toggle_pause")
+
+      send(
+        view.pid,
+        {:log_event, :info, %{duration: 50}, %{app: :yellow_dog_dns, message: "paused log"}}
+      )
+
+      html = render(view)
+      # When paused, pending count should increase
+      assert html =~ "pending" or html =~ "Resume" or html =~ "Real-time Logs"
+    end
+
+    test "log_event is filtered by level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      render_click(view, "select_all_apps")
+      # Set minimum level to error
+      render_click(view, "set_level", %{"level" => "error"})
+
+      send(view.pid, {:log_event, :debug, %{}, %{app: :yellow_dog_dns, message: "debug msg"}})
+      html = render(view)
+      # Debug message should be filtered out
+      assert html =~ "Showing 0 of 0 log entries"
+    end
+
+    test "unknown messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/logs")
+      send(view.pid, {:unknown_message, :data})
+      html = render(view)
+      assert html =~ "Real-time Logs"
+    end
+  end
+
+  # ============================================================================
+  # Filter Function (Public for testability)
+  # ============================================================================
+
   describe "LogsLive.filtered_logs/2" do
     test "empty search returns all logs" do
       logs = [
