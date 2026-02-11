@@ -66,6 +66,10 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             <div class="stat-title">Active Transfers</div>
             <div class="stat-value">{@status.active_transfers}</div>
           </div>
+          <div class="stat">
+            <div class="stat-title">Total Size</div>
+            <div class="stat-value text-sm">{format_size(@total_file_size)}</div>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -467,9 +471,15 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         []
       )
 
+    total_size =
+      tree
+      |> flatten_tree()
+      |> Enum.reduce(0, fn f, acc -> acc + Map.get(f, :size, 0) end)
+
     socket
     |> assign(:status, status)
     |> assign(:file_tree, tree)
+    |> assign(:total_file_size, total_size)
   end
 
   defp upload_error_to_string(:too_large), do: "File is too large (max 500 MB)"

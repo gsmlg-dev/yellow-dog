@@ -751,6 +751,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Status"
       assert html =~ "Port"
       assert html =~ "Files Indexed"
+      assert html =~ "Total Size"
     end
 
     test "shows configuration card", %{conn: conn} do
