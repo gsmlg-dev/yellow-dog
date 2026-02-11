@@ -172,7 +172,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
               class="input input-bordered input-sm w-32"
               value=""
             />
-            <button type="submit" class="btn btn-outline btn-sm">Tag</button>
+            <button type="submit" class="btn btn-outline btn-sm" phx-disable-with="Tagging...">
+              Tag
+            </button>
           </form>
           <button
             phx-click="bulk_delete"
@@ -307,6 +309,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                         phx-value-mac={device.mac}
                         class="btn btn-ghost btn-xs"
                         title="Request reinstall"
+                        aria-label="Request reinstall"
                         data-confirm={"Request reinstall for #{device.mac}?"}
                       >
                         ↻
@@ -319,7 +322,14 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                           if(device.rescue_mode, do: "text-warning", else: "text-base-content/40")
                         ]}
                         title={
-                          if device.rescue_mode, do: "Disable rescue mode", else: "Enable rescue mode"
+                          if device.rescue_mode,
+                            do: "Disable rescue mode",
+                            else: "Enable rescue mode"
+                        }
+                        aria-label={
+                          if device.rescue_mode,
+                            do: "Disable rescue mode",
+                            else: "Enable rescue mode"
                         }
                       >
                         ⛑

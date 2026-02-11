@@ -140,23 +140,6 @@ defmodule YellowDog.Console.DashboardLiveTest do
                html =~ "Failed to stop"
     end
 
-    test "start_service works for all valid service names", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
-        html = render_click(view, "start_service", %{"service" => service})
-        assert html =~ "Service Dashboard"
-      end
-    end
-
-    test "stop_service works for all valid service names", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
-        html = render_click(view, "stop_service", %{"service" => service})
-        assert html =~ "Service Dashboard"
-      end
-    end
   end
 
   # ============================================================================

@@ -148,7 +148,9 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                   class="input input-bordered input-sm flex-1"
                   value=""
                 />
-                <button type="submit" class="btn btn-outline btn-sm">Add</button>
+                <button type="submit" class="btn btn-outline btn-sm" phx-disable-with="Adding...">
+                  Add
+                </button>
               </form>
             </div>
           </.card>
