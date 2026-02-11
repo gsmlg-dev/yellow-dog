@@ -56,7 +56,8 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   @impl true
   def handle_event("reset", _params, socket) do
-    result = safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, {:error, :service_unavailable})
+    result =
+      safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, {:error, :service_unavailable})
 
     socket =
       case result do
