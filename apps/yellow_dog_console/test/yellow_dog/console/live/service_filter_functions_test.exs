@@ -442,6 +442,39 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
     end
   end
 
+  describe "NetbootDevices.sort_devices/3" do
+    @sortable_devices [
+      %{mac: "CC:CC", hostname: "bravo", state: :new, profile_id: nil, install_attempts: 3, last_seen: ~U[2025-01-02 00:00:00Z], arch: :x86_64, tags: []},
+      %{mac: "AA:AA", hostname: "alpha", state: :provisioned, profile_id: "ubuntu", install_attempts: 1, last_seen: ~U[2025-01-03 00:00:00Z], arch: :aarch64, tags: []},
+      %{mac: "BB:BB", hostname: nil, state: :new, profile_id: nil, install_attempts: 0, last_seen: nil, arch: nil, tags: []}
+    ]
+
+    test "sorts by mac ascending" do
+      result = NetbootDevices.sort_devices(@sortable_devices, "mac", "asc")
+      assert Enum.map(result, & &1.mac) == ["AA:AA", "BB:BB", "CC:CC"]
+    end
+
+    test "sorts by mac descending" do
+      result = NetbootDevices.sort_devices(@sortable_devices, "mac", "desc")
+      assert Enum.map(result, & &1.mac) == ["CC:CC", "BB:BB", "AA:AA"]
+    end
+
+    test "sorts by hostname with nil handling" do
+      result = NetbootDevices.sort_devices(@sortable_devices, "hostname", "asc")
+      assert hd(result).hostname == nil || hd(result).hostname == ""
+    end
+
+    test "sorts by install_attempts" do
+      result = NetbootDevices.sort_devices(@sortable_devices, "install_attempts", "asc")
+      assert Enum.map(result, & &1.install_attempts) == [0, 1, 3]
+    end
+
+    test "sorts by unknown field falls back to mac" do
+      result = NetbootDevices.sort_devices(@sortable_devices, "unknown_field", "asc")
+      assert Enum.map(result, & &1.mac) == ["AA:AA", "BB:BB", "CC:CC"]
+    end
+  end
+
   # ============================================================================
   # NetbootProfiles.filter_by_search/2
   # ============================================================================
@@ -503,6 +536,77 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "returns empty for non-matching search" do
       assert NetbootTftp.filtered_history(@tftp_history, "zzz") == []
+    end
+  end
+
+  describe "NetbootTftp.sort_history/3" do
+    @sortable_history [
+      %{file_path: "/boot/a.img", bytes: 100, status: :ok, completed_at: ~U[2025-01-02 00:00:00Z]},
+      %{file_path: "/boot/c.img", bytes: 300, status: :error, completed_at: ~U[2025-01-01 00:00:00Z]},
+      %{file_path: "/boot/b.img", bytes: 200, status: :ok, completed_at: ~U[2025-01-03 00:00:00Z]}
+    ]
+
+    test "sorts by file ascending" do
+      result = NetbootTftp.sort_history(@sortable_history, "file", "asc")
+      assert Enum.map(result, & &1.file_path) == ["/boot/a.img", "/boot/b.img", "/boot/c.img"]
+    end
+
+    test "sorts by file descending" do
+      result = NetbootTftp.sort_history(@sortable_history, "file", "desc")
+      assert Enum.map(result, & &1.file_path) == ["/boot/c.img", "/boot/b.img", "/boot/a.img"]
+    end
+
+    test "sorts by size ascending" do
+      result = NetbootTftp.sort_history(@sortable_history, "size", "asc")
+      assert Enum.map(result, & &1.bytes) == [100, 200, 300]
+    end
+
+    test "sorts by time ascending" do
+      result = NetbootTftp.sort_history(@sortable_history, "time", "asc")
+      assert hd(result).completed_at == ~U[2025-01-01 00:00:00Z]
+    end
+  end
+
+  describe "NetbootTftp.flatten_tree/1" do
+    test "flattens empty list" do
+      assert NetbootTftp.flatten_tree([]) == []
+    end
+
+    test "flattens flat file list" do
+      files = [
+        %{type: :file, path: "a.txt", size: 10},
+        %{type: :file, path: "b.txt", size: 20}
+      ]
+
+      assert length(NetbootTftp.flatten_tree(files)) == 2
+    end
+
+    test "flattens nested directories" do
+      tree = [
+        %{type: :directory, path: "boot", children: [
+          %{type: :file, path: "boot/vmlinuz", size: 1000},
+          %{type: :file, path: "boot/initrd", size: 2000}
+        ]},
+        %{type: :file, path: "readme.txt", size: 50}
+      ]
+
+      result = NetbootTftp.flatten_tree(tree)
+      assert length(result) == 3
+      assert Enum.all?(result, &(&1.type == :file))
+    end
+
+    test "flattens deeply nested directories" do
+      tree = [
+        %{type: :directory, path: "a", children: [
+          %{type: :directory, path: "a/b", children: [
+            %{type: :file, path: "a/b/deep.txt", size: 5}
+          ]}
+        ]}
+      ]
+
+      result = NetbootTftp.flatten_tree(tree)
+      assert length(result) == 1
+      assert hd(result).path == "a/b/deep.txt"
     end
   end
 
