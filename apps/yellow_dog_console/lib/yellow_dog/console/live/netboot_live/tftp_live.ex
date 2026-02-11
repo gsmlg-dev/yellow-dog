@@ -2,6 +2,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   @moduledoc "TFTP server status — server config, file browser, active transfers."
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.CsvHelper
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -171,15 +172,25 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         <.card>
           <div class="flex items-center justify-between mb-4">
             <h2 class="card-title">Transfer History</h2>
-            <input
-              type="text"
-              class="input input-bordered input-sm w-64"
-              placeholder="Filter by client or file..."
-              value={@history_filter}
-              phx-change="filter_history"
-              phx-debounce="300"
-              name="filter"
-            />
+            <div class="flex items-center gap-2">
+              <input
+                type="text"
+                class="input input-bordered input-sm w-64"
+                placeholder="Filter by client or file..."
+                value={@history_filter}
+                phx-change="filter_history"
+                phx-debounce="300"
+                name="filter"
+              />
+              <button
+                phx-click="export_history_csv"
+                id="export-history-csv"
+                phx-hook="CsvDownload"
+                class="btn btn-outline btn-sm"
+              >
+                Export CSV
+              </button>
+            </div>
           </div>
           <div
             :if={filtered_history(@transfer_history, @history_filter) == []}
@@ -224,7 +235,17 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
         </.card>
 
         <.card>
-          <h2 class="card-title mb-4">File Browser</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="card-title">File Browser</h2>
+            <button
+              phx-click="export_files_csv"
+              id="export-files-csv"
+              phx-hook="CsvDownload"
+              class="btn btn-outline btn-sm"
+            >
+              Export CSV
+            </button>
+          </div>
           <div :if={@file_tree == []} class="text-base-content/50">
             No files found in TFTP root
           </div>
@@ -354,6 +375,20 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, assign(socket, :history_filter, query)}
   end
 
+  def handle_event("export_history_csv", _params, socket) do
+    entries = filtered_history(socket.assigns.transfer_history, socket.assigns.history_filter)
+    csv = build_history_csv(entries)
+    filename = "tftp_transfers_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  def handle_event("export_files_csv", _params, socket) do
+    files = flatten_tree(socket.assigns.file_tree)
+    csv = build_files_csv(files)
+    filename = "tftp_files_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
+    {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
   def handle_event("delete_file", %{"path" => path}, socket) do
     result =
       safe_call(
@@ -462,5 +497,52 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       addr = format_addr(Map.get(t, :client_addr)) |> String.downcase()
       String.contains?(file, q) || String.contains?(addr, q)
     end)
+  end
+
+  defp build_history_csv(entries) do
+    header = "Client,File,Size,Duration,Speed,Status\r\n"
+
+    rows =
+      Enum.map_join(entries, "\r\n", fn t ->
+        bytes = t[:bytes] || t[:total_size] || 0
+        status = if t[:status] == :error, do: "Failed", else: "Complete"
+
+        [
+          csv_escape(format_addr(t.client_addr)),
+          csv_escape(to_string(t.file_path)),
+          csv_escape(format_size(bytes)),
+          csv_escape(format_duration(t[:duration])),
+          csv_escape(format_speed(t[:bytes], t[:duration])),
+          csv_escape(status)
+        ]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  defp build_files_csv(files) do
+    header = "Path,Size\r\n"
+
+    rows =
+      Enum.map_join(files, "\r\n", fn f ->
+        [csv_escape(f.path), csv_escape(format_size(f.size))]
+        |> Enum.join(",")
+      end)
+
+    header <> rows
+  end
+
+  def flatten_tree(nodes), do: flatten_tree(nodes, [])
+
+  def flatten_tree([], acc), do: Enum.reverse(acc)
+
+  def flatten_tree([%{type: :file} = node | rest], acc) do
+    flatten_tree(rest, [node | acc])
+  end
+
+  def flatten_tree([%{type: :directory} = node | rest], acc) do
+    acc = flatten_tree(node.children, acc)
+    flatten_tree(rest, acc)
   end
 end

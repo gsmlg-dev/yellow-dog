@@ -718,6 +718,37 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert length(TftpLive.filtered_history(history, "")) == 2
     end
 
+    test "has export CSV buttons for history and files", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      assert has_element?(view, "button#export-history-csv")
+      assert has_element?(view, "button#export-files-csv")
+    end
+
+    test "flatten_tree/1 extracts files from nested tree", _context do
+      alias YellowDog.Console.NetbootLive.TftpLive
+
+      tree = [
+        %{type: :directory, name: "nixos", children: [
+          %{type: :file, name: "bzImage", path: "nixos/bzImage", size: 8000},
+          %{type: :file, name: "initrd", path: "nixos/initrd", size: 4000}
+        ]},
+        %{type: :file, name: "pxelinux.0", path: "pxelinux.0", size: 100}
+      ]
+
+      files = TftpLive.flatten_tree(tree)
+      assert length(files) == 3
+      paths = Enum.map(files, & &1.path)
+      assert "nixos/bzImage" in paths
+      assert "nixos/initrd" in paths
+      assert "pxelinux.0" in paths
+    end
+
+    test "flatten_tree/1 handles empty tree", _context do
+      alias YellowDog.Console.NetbootLive.TftpLive
+      assert TftpLive.flatten_tree([]) == []
+    end
+
     test "delete_file event shows error when service unavailable", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/tftp")
 
