@@ -77,7 +77,13 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 value={if @device.arch, do: to_string(@device.arch), else: "-"}
               />
               <.info_row label="State" value={to_string(@device.state)} />
-              <.info_row label="Profile" value={@device.profile_id || "None"} />
+              <div class="flex justify-between">
+                <span class="text-base-content/70">Profile</span>
+                <.link :if={@device.profile_id} navigate={"/netboot/profiles/#{@device.profile_id}/edit"} class="link link-primary font-medium">
+                  {@device.profile_id}
+                </.link>
+                <span :if={!@device.profile_id} class="font-medium">None</span>
+              </div>
               <.info_row
                 label="IP Address"
                 value={if @device.ip_address, do: format_ip(@device.ip_address), else: "-"}

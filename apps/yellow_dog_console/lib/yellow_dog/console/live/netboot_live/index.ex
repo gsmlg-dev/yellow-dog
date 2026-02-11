@@ -160,7 +160,12 @@ defmodule YellowDog.Console.NetbootLive.Index do
                   </td>
                   <td>{device.hostname || "-"}</td>
                   <td><.state_badge state={device.state} /></td>
-                  <td>{device.profile_id || "-"}</td>
+                  <td>
+                    <.link :if={device.profile_id} navigate={"/netboot/profiles/#{device.profile_id}/edit"} class="link link-primary">
+                      {device.profile_id}
+                    </.link>
+                    <span :if={!device.profile_id}>-</span>
+                  </td>
                   <td class="text-sm" title={format_datetime_full(device.last_seen)}>
                     {format_time_ago(device.last_seen)}
                   </td>
