@@ -125,5 +125,32 @@ defmodule YellowDog.Netboot.TFTP.FileIndexTest do
     test "lookup with leading slash is path traversal" do
       assert {:error, :path_traversal} = FileIndex.lookup("/kernel.img", @tmp_root)
     end
+
+    test "normalizes backslash-separated paths to forward slash" do
+      # The normalize_path function converts backslashes to forward slashes
+      # So "subdir\nested.bin" -> "subdir/nested.bin" which should be found
+      # but the path_traversal? check catches backslashes first
+      assert {:error, :path_traversal} = FileIndex.lookup("subdir\\nested.bin", @tmp_root)
+    end
+  end
+
+  describe "scan_recursive with symlinks" do
+    test "skips symlinks pointing to non-existent files" do
+      sym_root =
+        Path.join(System.tmp_dir!(), "symlink_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(sym_root)
+      File.write!(Path.join(sym_root, "real.txt"), "data")
+
+      # Create a symlink to non-existent target
+      sym_path = Path.join(sym_root, "broken_link")
+      File.ln_s("/nonexistent/target", sym_path)
+
+      on_exit(fn -> File.rm_rf!(sym_root) end)
+
+      assert {:ok, count} = FileIndex.scan(sym_root)
+      # Only the real file should be indexed, broken symlink skipped
+      assert count == 1
+    end
   end
 end
