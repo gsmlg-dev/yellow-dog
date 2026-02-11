@@ -116,7 +116,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
                   </td>
                 </tr>
                 <tr :for={entry <- filtered_entries(@log_entries, @search_query, @filter_type)}>
-                  <td class="text-sm font-mono whitespace-nowrap">{entry.time}</td>
+                  <td class="text-sm font-mono whitespace-nowrap">{format_log_time(entry.time)}</td>
                   <td>
                     <.badge color={type_color(entry.type)} size="sm">{entry.type}</.badge>
                   </td>
@@ -221,11 +221,14 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
 
   defp log_entry(type, message) do
     %{
-      time: Calendar.strftime(DateTime.utc_now(), "%H:%M:%S"),
+      time: DateTime.utc_now(),
       type: type,
       message: message
     }
   end
+
+  defp format_log_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
+  defp format_log_time(time) when is_binary(time), do: time
 
   def filtered_entries(entries, search, type_filter) do
     entries
@@ -252,7 +255,7 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
 
     rows =
       Enum.map_join(entries, "\r\n", fn e ->
-        [csv_escape(e.time), csv_escape(e.type), csv_escape(e.message)]
+        [csv_escape(format_log_time(e.time)), csv_escape(e.type), csv_escape(e.message)]
         |> Enum.join(",")
       end)
 
