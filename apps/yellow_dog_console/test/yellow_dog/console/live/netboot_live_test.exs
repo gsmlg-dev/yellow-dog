@@ -352,6 +352,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = view |> render_hook("remove_tag", %{"tag" => "old-tag"})
       assert html =~ "Device not found"
     end
+
+    test "boot script preview not shown when device not found", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/devices/FF:FF:FF:FF:FF:FF")
+
+      refute html =~ "iPXE Boot Script"
+    end
   end
 
   describe "Boot Profiles page" do

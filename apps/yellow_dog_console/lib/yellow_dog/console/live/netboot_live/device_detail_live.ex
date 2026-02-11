@@ -25,7 +25,8 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     {:ok,
      socket
      |> assign(page_title: "Device: #{mac}", mac: mac, profiles: profiles)
-     |> load_device(mac)}
+     |> load_device(mac)
+     |> load_boot_script()}
   end
 
   @impl true
@@ -217,6 +218,15 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
           </ul>
         </.card>
 
+        <.card :if={@boot_script}>
+          <h2 class="card-title mb-4">iPXE Boot Script</h2>
+          <p class="text-sm text-base-content/70 mb-2">
+            Script that would be served to this device
+            {if @device && @device.rescue_mode, do: "(rescue mode)", else: ""}
+          </p>
+          <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@boot_script}</pre>
+        </.card>
+
         <div class="text-xs text-base-content/50 flex justify-end">
           <span :if={connected?(@socket)} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
@@ -340,7 +350,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
   @impl true
   def handle_info({:device_state_changed, _}, socket) do
-    {:noreply, load_device(socket, socket.assigns.mac)}
+    {:noreply, socket |> load_device(socket.assigns.mac) |> load_boot_script()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -352,6 +362,58 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   defp history_dot_color(:failed), do: "bg-error"
   defp history_dot_color(:reinstall_requested), do: "bg-warning"
   defp history_dot_color(_), do: "bg-neutral"
+
+  defp load_boot_script(%{assigns: %{device: nil}} = socket), do: assign(socket, :boot_script, nil)
+
+  defp load_boot_script(%{assigns: %{device: device}} = socket) do
+    if device.profile_id do
+      case safe_call(
+             YellowDog.Netboot.Manifest.Store,
+             fn -> YellowDog.Netboot.Manifest.Store.get_profile(device.profile_id) end,
+             {:error, :unavailable}
+           ) do
+        {:ok, profile} ->
+          script = render_boot_preview(device, profile)
+          assign(socket, :boot_script, script)
+
+        _ ->
+          assign(socket, :boot_script, nil)
+      end
+    else
+      assign(socket, :boot_script, nil)
+    end
+  end
+
+  defp render_boot_preview(device, profile) do
+    if device.rescue_mode do
+      """
+      #!ipxe
+      echo YellowDog Rescue Shell - #{device.mac}
+      dhcp
+      set base-url http://<server>:<port>/boot/assets
+
+      kernel ${base-url}/rescue/vmlinuz rescue shell yellowdog.mac=#{device.mac}
+      initrd ${base-url}/rescue/initrd.img
+      boot\
+      """
+    else
+      args =
+        [profile.kernel_args, "yellowdog.mac=#{device.mac}", "yellowdog.api=http://<server>:<port>"]
+        |> Enum.reject(&(is_nil(&1) or &1 == ""))
+        |> Enum.join(" ")
+
+      """
+      #!ipxe
+      echo YellowDog Netboot - #{device.mac}
+      dhcp
+      set base-url http://<server>:<port>/boot/assets
+
+      kernel ${base-url}/#{profile.kernel} #{args}
+      initrd ${base-url}/#{profile.initrd}
+      boot\
+      """
+    end
+  end
 
   defp load_device(socket, mac) do
     case safe_call(
