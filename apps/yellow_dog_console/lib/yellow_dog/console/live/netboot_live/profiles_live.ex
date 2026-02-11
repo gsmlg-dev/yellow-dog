@@ -11,7 +11,12 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Boot Profiles", search_query: "")
+     |> assign(
+       page_title: "Boot Profiles",
+       search_query: "",
+       sort_field: "id",
+       sort_dir: "asc"
+     )
      |> load_profiles()}
   end
 
@@ -86,12 +91,27 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
             <table class="table table-zebra">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Description</th>
+                  <.sort_header
+                    field="id"
+                    label="ID"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="description"
+                    label="Description"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
                   <th>Kernel</th>
                   <th>Initrd</th>
                   <th>Architectures</th>
-                  <th>Devices</th>
+                  <.sort_header
+                    field="devices"
+                    label="Devices"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -100,11 +120,15 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                   <td colspan="7" class="text-center text-base-content/50 py-8">
                     No boot profiles configured
                   </td>
-
                 </tr>
                 <tr :for={p <- @filtered_profiles}>
-                  <td class="font-mono font-medium">{p.id}</td>
-                  <td>{p.description || "-"}</td>
+                  <td class="font-mono font-medium">
+                    {p.id}
+                    <.badge :if={p.id == @default_profile} color="primary" size="sm" class="ml-1">
+                      default
+                    </.badge>
+                  </td>
+                  <td class="max-w-xs truncate" title={p.description || ""}>{p.description || "-"}</td>
                   <td class="text-sm font-mono">{p.kernel}</td>
                   <td class="text-sm font-mono">{p.initrd}</td>
                   <td>
@@ -163,6 +187,15 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
 
+  def handle_event("sort", %{"field" => field}, socket) do
+    dir =
+      if socket.assigns.sort_field == field,
+        do: toggle_dir(socket.assigns.sort_dir),
+        else: "asc"
+
+    {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
+  end
+
   def handle_event("delete_profile", %{"id" => id}, socket) do
     safe_call(
       YellowDog.Netboot.Manifest.Store,
@@ -218,7 +251,15 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
   end
 
   defp apply_filters(socket) do
-    filtered = filter_by_search(socket.assigns.all_profiles, socket.assigns.search_query)
+    filtered =
+      socket.assigns.all_profiles
+      |> filter_by_search(socket.assigns.search_query)
+      |> sort_profiles(
+        socket.assigns.sort_field,
+        socket.assigns.sort_dir,
+        socket.assigns.profile_usage
+      )
+
     assign(socket, :filtered_profiles, filtered)
   end
 
@@ -232,6 +273,37 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
         (p.description && String.contains?(String.downcase(p.description), q))
     end)
   end
+
+  defp sort_header(assigns) do
+    ~H"""
+    <th
+      phx-click="sort"
+      phx-value-field={@field}
+      class="cursor-pointer select-none hover:bg-base-200"
+    >
+      <div class="flex items-center gap-1">
+        {@label}
+        <span :if={@sort_field == @field} class="text-xs">
+          {if @sort_dir == "asc", do: "\u25B2", else: "\u25BC"}
+        </span>
+      </div>
+    </th>
+    """
+  end
+
+  def sort_profiles(profiles, field, dir, usage) do
+    sorter = sort_key_fn(field, usage)
+    sorted = Enum.sort_by(profiles, sorter)
+    if dir == "desc", do: Enum.reverse(sorted), else: sorted
+  end
+
+  defp sort_key_fn("id", _usage), do: &String.downcase(&1.id)
+  defp sort_key_fn("description", _usage), do: &String.downcase(&1.description || "")
+  defp sort_key_fn("devices", usage), do: &Map.get(usage, &1.id, 0)
+  defp sort_key_fn(_, _usage), do: &String.downcase(&1.id)
+
+  defp toggle_dir("asc"), do: "desc"
+  defp toggle_dir(_), do: "asc"
 
   defp build_csv(profiles, usage) do
     header = "ID,Description,Kernel,Initrd,Kernel Args,Architectures,Devices\r\n"

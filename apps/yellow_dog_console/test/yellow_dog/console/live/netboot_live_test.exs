@@ -383,6 +383,47 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert html =~ "Devices"
     end
+
+    test "columns are sortable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles")
+
+      # Clickable sort headers exist
+      assert has_element?(view, "th[phx-click=sort][phx-value-field=id]")
+      assert has_element?(view, "th[phx-click=sort][phx-value-field=description]")
+      assert has_element?(view, "th[phx-click=sort][phx-value-field=devices]")
+
+      # Clicking toggles sort direction
+      html = view |> element("th[phx-value-field=id]") |> render_click()
+      assert html =~ "\u25BC"
+    end
+
+    test "sort_profiles sorts by device count", %{conn: _conn} do
+      alias YellowDog.Console.NetbootLive.ProfilesLive
+
+      profiles = [
+        %{id: "alpha", description: "A"},
+        %{id: "beta", description: "B"},
+        %{id: "gamma", description: "C"}
+      ]
+
+      usage = %{"beta" => 5, "gamma" => 2}
+
+      sorted = ProfilesLive.sort_profiles(profiles, "devices", "desc", usage)
+      assert Enum.map(sorted, & &1.id) == ["beta", "gamma", "alpha"]
+    end
+
+    test "sort_profiles sorts by id descending", %{conn: _conn} do
+      alias YellowDog.Console.NetbootLive.ProfilesLive
+
+      profiles = [
+        %{id: "alpha", description: "A"},
+        %{id: "charlie", description: "C"},
+        %{id: "beta", description: "B"}
+      ]
+
+      sorted = ProfilesLive.sort_profiles(profiles, "id", "desc", %{})
+      assert Enum.map(sorted, & &1.id) == ["charlie", "beta", "alpha"]
+    end
   end
 
   describe "Profile Editor — new profile" do
