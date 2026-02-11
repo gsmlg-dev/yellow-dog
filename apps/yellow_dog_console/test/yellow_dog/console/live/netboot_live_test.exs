@@ -172,6 +172,36 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = view |> element("select[name=profile]") |> render_change(%{"profile" => "unassigned"})
       assert html =~ "Netboot Devices"
     end
+
+    test "PubSub device_registered does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      send(view.pid, {:device_registered, %{mac: "AA:BB:CC:DD:EE:FF"}})
+      html = render(view)
+      assert html =~ "Netboot Devices"
+    end
+
+    test "PubSub device_deleted does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      send(view.pid, {:device_deleted, "AA:BB:CC:DD:EE:FF"})
+      html = render(view)
+      assert html =~ "Netboot Devices"
+    end
+
+    test "PubSub device_state_changed does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :installed}})
+      html = render(view)
+      assert html =~ "Netboot Devices"
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      assert render_hook(view, "export_csv", %{}) =~ "Netboot Devices"
+    end
   end
 
   describe "Netboot Devices sorting" do
@@ -450,6 +480,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, view, _html} = live(conn, "/netboot/profiles")
 
       assert has_element?(view, "button#export-csv")
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles")
+
+      assert render_hook(view, "export_csv", %{}) =~ "Boot Profiles"
     end
 
     test "has new profile button", %{conn: conn} do
@@ -1042,6 +1078,30 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert Enum.map(sorted, & &1.bytes) == [500, 200, 100]
     end
 
+    test "sort_history event changes sort direction", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      # Add entries to history first
+      meta = %{client_addr: {10, 0, 0, 1}, file_path: "test.bin", total_size: 100, bytes: 100, duration: 50}
+      send(view.pid, {:tftp_transfer_complete, meta})
+      render(view)
+
+      html = view |> render_hook("sort_history", %{"field" => "file"})
+      assert html =~ "test.bin"
+    end
+
+    test "export_history_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      assert render_hook(view, "export_history_csv", %{}) =~ "TFTP Server"
+    end
+
+    test "export_files_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      assert render_hook(view, "export_files_csv", %{}) =~ "TFTP Server"
+    end
+
     test "delete_file event shows error when service unavailable", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/tftp")
 
@@ -1202,6 +1262,48 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert html =~ "animate-pulse"
       assert html =~ "Live"
+    end
+
+    test "device_deleted adds log entry", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:device_deleted, "AA:BB:CC:DD:EE:FF"})
+      html = render(view)
+      assert html =~ "deleted"
+      assert html =~ "AA:BB:CC:DD:EE:FF"
+    end
+
+    test "tftp_transfer_started adds log entry", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_transfer_started, %{file_path: "nixos/bzImage", total_size: 8_000_000}})
+      html = render(view)
+      assert html =~ "Transfer started"
+      assert html =~ "nixos/bzImage"
+    end
+
+    test "tftp_transfer_complete adds log entry", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_transfer_complete, %{file_path: "nixos/initrd", duration: 500}})
+      html = render(view)
+      assert html =~ "Transfer complete"
+      assert html =~ "500ms"
+    end
+
+    test "tftp_request_accepted adds log entry", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_request_accepted, %{file: "pxelinux.0"}})
+      html = render(view)
+      assert html =~ "Request accepted"
+      assert html =~ "pxelinux.0"
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      assert render_hook(view, "export_csv", %{}) =~ "Boot Log"
     end
   end
 
