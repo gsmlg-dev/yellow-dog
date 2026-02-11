@@ -89,7 +89,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                 <input
                   type="text"
                   class="grow"
-                  placeholder="Search by MAC, hostname, or profile..."
+                  placeholder="Search by MAC, hostname, profile, or tag..."
                   value={@search_query}
                   phx-change="search"
                   phx-debounce="300"
@@ -142,6 +142,13 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
             />
             <button type="submit" class="btn btn-outline btn-sm">Tag</button>
           </form>
+          <button
+            phx-click="bulk_delete"
+            class="btn btn-error btn-sm"
+            data-confirm={"Delete #{MapSet.size(@selected_devices)} device(s)?"}
+          >
+            Delete
+          </button>
           <button phx-click="bulk_clear" class="btn btn-ghost btn-sm">
             Clear Selection
           </button>
@@ -390,6 +397,24 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     end
   end
 
+  def handle_event("bulk_delete", _params, socket) do
+    macs = MapSet.to_list(socket.assigns.selected_devices)
+
+    Enum.each(macs, fn mac ->
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.delete(mac) end,
+        :ok
+      )
+    end)
+
+    {:noreply,
+     socket
+     |> assign(:selected_devices, MapSet.new())
+     |> put_flash(:info, "Deleted #{length(macs)} device(s)")
+     |> load_devices()}
+  end
+
   def handle_event("bulk_clear", _params, socket) do
     {:noreply, assign(socket, selected_devices: MapSet.new(), bulk_profile: nil)}
   end
@@ -459,7 +484,8 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     Enum.filter(devices, fn d ->
       String.contains?(String.downcase(d.mac), q) ||
         (d.hostname && String.contains?(String.downcase(d.hostname), q)) ||
-        (d.profile_id && String.contains?(String.downcase(d.profile_id), q))
+        (d.profile_id && String.contains?(String.downcase(d.profile_id), q)) ||
+        Enum.any?(d.tags, &String.contains?(String.downcase(&1), q))
     end)
   end
 
@@ -490,7 +516,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   defp toggle_dir(_), do: "asc"
 
   defp build_csv(devices) do
-    header = "MAC,Hostname,Arch,Profile,State,Install Attempts,Last Seen\r\n"
+    header = "MAC,Hostname,Arch,Profile,State,Install Attempts,Tags,Last Seen\r\n"
 
     rows =
       Enum.map_join(devices, "\r\n", fn d ->
@@ -501,6 +527,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           csv_escape(d.profile_id || ""),
           csv_escape(to_string(d.state)),
           csv_escape(to_string(d.install_attempts)),
+          csv_escape(Enum.join(d.tags, "; ")),
           csv_escape(format_datetime(d.last_seen))
         ]
         |> Enum.join(",")

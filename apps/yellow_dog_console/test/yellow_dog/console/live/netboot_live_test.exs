@@ -256,6 +256,26 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = view |> render_hook("bulk_add_tag", %{"tag" => "test-tag"})
       assert html =~ "Netboot Devices"
     end
+
+    test "bulk_delete event completes gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      html = view |> render_hook("bulk_delete", %{})
+      assert html =~ "Deleted 0 device(s)"
+    end
+
+    test "filter_by_search matches tags", _context do
+      alias YellowDog.Console.NetbootLive.DevicesLive
+
+      devices = [
+        %{mac: "AA:AA:AA:AA:AA:AA", hostname: nil, profile_id: nil, tags: ["server", "rack1"]},
+        %{mac: "BB:BB:BB:BB:BB:BB", hostname: nil, profile_id: nil, tags: ["desktop"]}
+      ]
+
+      result = DevicesLive.filter_by_search(devices, "rack1")
+      assert length(result) == 1
+      assert hd(result).mac == "AA:AA:AA:AA:AA:AA"
+    end
   end
 
   describe "Netboot Device Detail page" do
@@ -375,6 +395,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "input[value='x86_64']")
       assert has_element?(view, "input[value='aarch64']")
       assert has_element?(view, "input[value='bios_x86']")
+    end
+
+    test "kernel and initrd inputs have datalist for autocomplete", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      assert has_element?(view, "input[name='profile[kernel]'][list='tftp-files']")
+      assert has_element?(view, "input[name='profile[initrd]'][list='tftp-files']")
+      assert has_element?(view, "input[name='profile[installer_image]'][list='tftp-files']")
     end
 
     test "has manifest form fields", %{conn: conn} do

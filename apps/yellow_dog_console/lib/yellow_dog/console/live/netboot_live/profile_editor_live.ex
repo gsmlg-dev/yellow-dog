@@ -83,6 +83,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                   type="text"
                   name="profile[kernel]"
                   value={@form[:kernel].value}
+                  list="tftp-files"
                   class={"input input-bordered w-full #{if @errors[:kernel], do: "input-error"}"}
                   placeholder="e.g. nixos/bzImage"
                 />
@@ -100,6 +101,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                   type="text"
                   name="profile[initrd]"
                   value={@form[:initrd].value}
+                  list="tftp-files"
                   class={"input input-bordered w-full #{if @errors[:initrd], do: "input-error"}"}
                   placeholder="e.g. nixos/initrd.img"
                 />
@@ -129,6 +131,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 type="text"
                 name="profile[installer_image]"
                 value={@form[:installer_image].value}
+                list="tftp-files"
                 class="input input-bordered w-full"
                 placeholder="e.g. nixos/installer.squashfs"
               />
@@ -209,6 +212,10 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
             </div>
           </form>
         </.card>
+
+        <datalist :if={@indexed_files} id="tftp-files">
+          <option :for={path <- indexed_file_list(@indexed_files)} value={path} />
+        </datalist>
 
         <.card :if={@form[:kernel].value != "" and @form[:initrd].value != ""}>
           <h2 class="card-title mb-4">iPXE Script Preview</h2>
@@ -372,6 +379,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
     boot\
     """
   end
+
+  defp indexed_file_list(%MapSet{} = files), do: Enum.sort(MapSet.to_list(files))
+  defp indexed_file_list(_), do: []
 
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, _key, nil), do: map
