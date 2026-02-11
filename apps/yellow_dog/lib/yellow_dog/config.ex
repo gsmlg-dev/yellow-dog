@@ -21,6 +21,7 @@ defmodule YellowDog.Config do
   @doc """
   Starts the configuration agent with the given config.
   """
+  @spec start_link(config_map()) :: Agent.on_start()
   def start_link(config) do
     Agent.start_link(fn -> config end, name: __MODULE__)
   end
