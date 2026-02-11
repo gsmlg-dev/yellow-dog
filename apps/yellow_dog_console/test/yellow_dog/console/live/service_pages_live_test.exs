@@ -205,6 +205,54 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     end
   end
 
+  describe "DHCPv4 Activity /dhcpv4/activity" do
+    test "mounts successfully with title", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/activity")
+      assert html =~ "DHCPv4 Activity Log"
+    end
+
+    test "has search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/activity")
+      assert html =~ "search" or html =~ "Search"
+    end
+
+    test "has type filter dropdown", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/activity")
+      assert html =~ "All Types"
+    end
+
+    test "has pause/clear/export buttons", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv4/activity")
+      assert html =~ "toggle_pause"
+      assert html =~ "clear"
+      assert html =~ "export_csv"
+    end
+
+    test "search event updates search query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/activity")
+      html = view |> element("input[name=search]") |> render_change(%{"search" => "test-mac"})
+      assert html =~ "DHCPv4 Activity Log"
+    end
+
+    test "filter_type event updates filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/activity")
+      html = view |> element("select[name=type]") |> render_change(%{"type" => "discover"})
+      assert html =~ "DHCPv4 Activity Log"
+    end
+
+    test "toggle_pause event works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/activity")
+      html = render_click(view, "toggle_pause")
+      assert html =~ "DHCPv4 Activity Log"
+    end
+
+    test "clear event empties entries", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/activity")
+      html = render_click(view, "clear")
+      assert html =~ "DHCPv4 Activity Log"
+    end
+  end
+
   # ============================================================================
   # DHCPv6 Pages
   # ============================================================================
@@ -252,6 +300,54 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
     test "has export CSV button", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dhcpv6/pools")
       assert html =~ "Export CSV"
+    end
+  end
+
+  describe "DHCPv6 Activity /dhcpv6/activity" do
+    test "mounts successfully with title", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/activity")
+      assert html =~ "DHCPv6 Activity Log"
+    end
+
+    test "has search input", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/activity")
+      assert html =~ "search" or html =~ "Search"
+    end
+
+    test "has type filter dropdown", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/activity")
+      assert html =~ "All Types"
+    end
+
+    test "has pause/clear/export buttons", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dhcpv6/activity")
+      assert html =~ "toggle_pause"
+      assert html =~ "clear"
+      assert html =~ "export_csv"
+    end
+
+    test "search event updates search query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/activity")
+      html = view |> element("input[name=search]") |> render_change(%{"search" => "test-duid"})
+      assert html =~ "DHCPv6 Activity Log"
+    end
+
+    test "filter_type event updates filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/activity")
+      html = view |> element("select[name=type]") |> render_change(%{"type" => "solicit"})
+      assert html =~ "DHCPv6 Activity Log"
+    end
+
+    test "toggle_pause event works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/activity")
+      html = render_click(view, "toggle_pause")
+      assert html =~ "DHCPv6 Activity Log"
+    end
+
+    test "clear event empties entries", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/activity")
+      html = render_click(view, "clear")
+      assert html =~ "DHCPv6 Activity Log"
     end
   end
 
@@ -408,8 +504,10 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {"/mdns/monitor", "mDNS Monitor"},
       {"/dhcpv4/leases", "DHCPv4 Leases"},
       {"/dhcpv4/pools", "DHCPv4 Pools"},
+      {"/dhcpv4/activity", "DHCPv4 Activity"},
       {"/dhcpv6/leases", "DHCPv6 Leases"},
       {"/dhcpv6/pools", "DHCPv6 Pools"},
+      {"/dhcpv6/activity", "DHCPv6 Activity"},
       {"/logs", "Logs"}
     ]
 
@@ -484,7 +582,9 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {"/dhcpv4/leases", "DHCPv4 Leases"},
       {"/dhcpv6/leases", "DHCPv6 Leases"},
       {"/dhcpv4/pools", "DHCPv4 Pools"},
-      {"/dhcpv6/pools", "DHCPv6 Pools"}
+      {"/dhcpv4/activity", "DHCPv4 Activity"},
+      {"/dhcpv6/pools", "DHCPv6 Pools"},
+      {"/dhcpv6/activity", "DHCPv6 Activity"}
     ]
 
     for {path, name} <- @dhcp_alert_pages do
@@ -548,10 +648,12 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {"/dns/metrics", "Metrics"},
       {"/dhcpv4", "Overview"},
       {"/dhcpv4/leases", "Leases"},
+      {"/dhcpv4/activity", "Activity"},
       {"/dhcpv4/pools", "Pools"},
       {"/dhcpv6", "Overview"},
       {"/dhcpv6/leases", "Leases"},
       {"/dhcpv6/pools", "Pools"},
+      {"/dhcpv6/activity", "Activity"},
       {"/mdns", "Overview"},
       {"/mdns/services", "Services"},
       {"/mdns/discovery", "Discovery"},
