@@ -23,7 +23,8 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
        transfer_history: [],
        history_filter: "",
        history_sort_field: "time",
-       history_sort_dir: "desc"
+       history_sort_dir: "desc",
+       service_running: service_running?(YellowDog.Netboot.TFTP.Server)
      )
      |> allow_upload(:boot_asset,
        accept: :any,
@@ -38,6 +39,8 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/settings" />
+
         <div>
           <h1 class="text-4xl font-bold">TFTP Server</h1>
           <p class="mt-2 text-base-content/70">

@@ -69,6 +69,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "animate-pulse"
       assert html =~ "Live"
     end
+
   end
 
   describe "Netboot Devices page" do

@@ -19,7 +19,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
 
     {:ok,
      socket
-     |> assign(page_title: "Netboot Dashboard")
+     |> assign(
+       page_title: "Netboot Dashboard",
+       service_running: service_running?(YellowDog.Netboot.TFTP.Server)
+     )
      |> load_data()}
   end
 
@@ -28,6 +31,8 @@ defmodule YellowDog.Console.NetbootLive.Index do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Netboot Dashboard</h1>

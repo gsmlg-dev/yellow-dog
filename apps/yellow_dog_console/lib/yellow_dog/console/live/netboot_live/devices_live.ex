@@ -23,7 +23,8 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
        selected_devices: MapSet.new(),
        bulk_profile: nil,
        sort_field: "last_seen",
-       sort_dir: "desc"
+       sort_dir: "desc",
+       service_running: service_running?(YellowDog.Netboot.Device.Registry)
      )
      |> load_devices()
      |> load_profiles()}
@@ -34,6 +35,8 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Netboot Devices</h1>
