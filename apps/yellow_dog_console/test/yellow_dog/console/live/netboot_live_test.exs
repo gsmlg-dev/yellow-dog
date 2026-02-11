@@ -975,4 +975,36 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Boot Log"
     end
   end
+
+  describe "NetbootComponents.format_time_ago/1" do
+    alias YellowDog.Console.NetbootComponents
+
+    test "returns '-' for nil" do
+      assert NetbootComponents.format_time_ago(nil) == "-"
+    end
+
+    test "returns 'just now' for recent timestamps" do
+      assert NetbootComponents.format_time_ago(DateTime.utc_now()) == "just now"
+    end
+
+    test "returns minutes ago" do
+      ts = DateTime.add(DateTime.utc_now(), -300, :second)
+      assert NetbootComponents.format_time_ago(ts) == "5m ago"
+    end
+
+    test "returns hours ago" do
+      ts = DateTime.add(DateTime.utc_now(), -7200, :second)
+      assert NetbootComponents.format_time_ago(ts) == "2h ago"
+    end
+
+    test "returns days ago" do
+      ts = DateTime.add(DateTime.utc_now(), -172_800, :second)
+      assert NetbootComponents.format_time_ago(ts) == "2d ago"
+    end
+
+    test "returns date for old timestamps" do
+      ts = DateTime.add(DateTime.utc_now(), -700_000, :second)
+      assert NetbootComponents.format_time_ago(ts) =~ ~r/^\d{4}-\d{2}-\d{2}$/
+    end
+  end
 end

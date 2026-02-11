@@ -153,7 +153,9 @@ defmodule YellowDog.Console.NetbootLive.Index do
                   <td>{device.hostname || "-"}</td>
                   <td><.state_badge state={device.state} /></td>
                   <td>{device.profile_id || "-"}</td>
-                  <td class="text-sm">{format_datetime(device.last_seen)}</td>
+                  <td class="text-sm" title={format_datetime_full(device.last_seen)}>
+                    {format_time_ago(device.last_seen)}
+                  </td>
                 </tr>
               </tbody>
             </table>

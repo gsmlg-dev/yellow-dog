@@ -32,6 +32,21 @@ defmodule YellowDog.Console.NetbootComponents do
   def format_datetime_full(nil), do: "-"
   def format_datetime_full(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
 
+  @doc "Formats a DateTime as a relative time string (e.g. \"5m ago\")."
+  def format_time_ago(nil), do: "-"
+
+  def format_time_ago(%DateTime{} = dt) do
+    diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+
+    cond do
+      diff < 60 -> "just now"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      diff < 604_800 -> "#{div(diff, 86400)}d ago"
+      true -> Calendar.strftime(dt, "%Y-%m-%d")
+    end
+  end
+
   @doc "Formats a byte count as a human-readable string with space separator."
   def format_size(bytes) when is_integer(bytes) and bytes >= 1_073_741_824,
     do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
