@@ -273,6 +273,12 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     {:noreply, add_entry(socket, entry)}
   end
 
+  def handle_info({:tftp_transfer_failed, metadata}, socket) do
+    file = Map.get(metadata, :file_path, "unknown")
+    entry = log_entry("tftp", "error", "Transfer failed: #{file}")
+    {:noreply, add_entry(socket, entry)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp add_entry(socket, entry) do

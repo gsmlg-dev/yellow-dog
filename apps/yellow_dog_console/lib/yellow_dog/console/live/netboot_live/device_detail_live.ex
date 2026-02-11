@@ -131,9 +131,12 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
             </div>
           </.card>
 
-          <.card :if={@device.hardware_info != %{}}>
+          <.card>
             <h2 class="card-title mb-4">Hardware Info</h2>
-            <div class="space-y-2">
+            <div :if={@device.hardware_info == %{}} class="text-base-content/50 text-sm">
+              No hardware info reported by device
+            </div>
+            <div :if={@device.hardware_info != %{}} class="space-y-2">
               <.info_row
                 :for={{key, val} <- @device.hardware_info}
                 label={humanize_key(key)}

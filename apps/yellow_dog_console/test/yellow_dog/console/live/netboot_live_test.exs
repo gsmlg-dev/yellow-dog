@@ -44,6 +44,8 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "TFTP Requests"
       assert html =~ "Transfers"
       assert html =~ "Bytes Transferred"
+      assert html =~ "Boot Scripts"
+      assert html =~ "iPXE scripts served"
     end
 
     test "shows profile usage stats", %{conn: conn} do
@@ -465,6 +467,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, _view, html} = live(conn, "/netboot/profiles")
 
       assert html =~ "Actions"
+    end
+
+    test "empty table has create link", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles")
+
+      assert has_element?(view, "a[href='/netboot/profiles/new']", "create one")
     end
 
     test "table has devices column", %{conn: conn} do
@@ -1154,6 +1162,16 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = render(view)
       assert html =~ "error"
       assert html =~ "rejected"
+    end
+
+    test "tftp_transfer_failed uses error level", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_transfer_failed, %{file_path: "broken.bin"}})
+      html = render(view)
+      assert html =~ "error"
+      assert html =~ "Transfer failed"
+      assert html =~ "broken.bin"
     end
 
     test "shows stats cards", %{conn: conn} do

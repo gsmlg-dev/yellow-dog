@@ -134,7 +134,9 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                 </tr>
                 <tr :for={p <- @filtered_profiles}>
                   <td class="font-mono font-medium">
-                    {p.id}
+                    <.link navigate={"/netboot/profiles/#{p.id}/edit"} class="link link-primary">
+                      {p.id}
+                    </.link>
                     <.badge :if={p.id == @default_profile} color="primary" size="sm" class="ml-1">
                       default
                     </.badge>

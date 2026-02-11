@@ -90,6 +90,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
             <div class="stat-title">Bytes Transferred</div>
             <div class="stat-value text-sm">{format_size(@metrics.tftp_bytes_transferred)}</div>
           </div>
+          <div class="stat">
+            <div class="stat-title">Boot Scripts</div>
+            <div class="stat-value">{@metrics.boot_scripts_rendered}</div>
+            <div class="stat-desc">iPXE scripts served</div>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
