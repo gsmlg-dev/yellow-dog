@@ -200,7 +200,9 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
 
       # Simulate receiving the ERROR
       msg = {:udp, state.socket, @client_addr, port, error_packet}
-      assert {:stop, {:client_error, 1, "Client error"}, _state} = Transfer.handle_info(msg, state)
+
+      assert {:stop, {:client_error, 1, "Client error"}, _state} =
+               Transfer.handle_info(msg, state)
     end
   end
 

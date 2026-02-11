@@ -27,14 +27,19 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
               Configured netboot profiles for PXE provisioning
             </p>
           </div>
-          <button
-            phx-click="export_csv"
-            id="export-csv"
-            phx-hook="CsvDownload"
-            class="btn btn-outline btn-sm"
-          >
-            Export CSV
-          </button>
+          <div class="flex gap-2">
+            <.link navigate="/netboot/profiles/new" class="btn btn-primary btn-sm">
+              New Profile
+            </.link>
+            <button
+              phx-click="export_csv"
+              id="export-csv"
+              phx-hook="CsvDownload"
+              class="btn btn-outline btn-sm"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
@@ -86,11 +91,12 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                   <th>Kernel</th>
                   <th>Initrd</th>
                   <th>Architectures</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :if={@filtered_profiles == []}>
-                  <td colspan="5" class="text-center text-base-content/50 py-8">
+                  <td colspan="6" class="text-center text-base-content/50 py-8">
                     No boot profiles configured
                   </td>
                 </tr>
@@ -104,6 +110,24 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                       {to_string(arch)}
                     </.badge>
                     <span :if={p.arch == []}>Any</span>
+                  </td>
+                  <td>
+                    <div class="flex gap-1">
+                      <.link
+                        navigate={"/netboot/profiles/#{p.id}/edit"}
+                        class="btn btn-ghost btn-xs"
+                      >
+                        Edit
+                      </.link>
+                      <button
+                        phx-click="delete_profile"
+                        phx-value-id={p.id}
+                        data-confirm={"Delete profile \"#{p.id}\"?"}
+                        class="btn btn-ghost btn-xs text-error"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -124,6 +148,19 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     csv = build_csv(socket.assigns.filtered_profiles)
     filename = "boot_profiles_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
+  end
+
+  def handle_event("delete_profile", %{"id" => id}, socket) do
+    safe_call(
+      YellowDog.Netboot.Manifest.Store,
+      fn -> YellowDog.Netboot.Manifest.Store.delete_profile(id) end,
+      :ok
+    )
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Profile #{id} deleted")
+     |> load_profiles()}
   end
 
   @impl true

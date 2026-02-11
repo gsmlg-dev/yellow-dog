@@ -107,7 +107,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </div>
         </.card>
 
-        <div :if={MapSet.size(@selected_devices) > 0} class="flex items-center gap-3 p-3 bg-primary/10 rounded-lg">
+        <div
+          :if={MapSet.size(@selected_devices) > 0}
+          class="flex items-center gap-3 p-3 bg-primary/10 rounded-lg"
+        >
           <span class="text-sm font-medium">
             {MapSet.size(@selected_devices)} device(s) selected
           </span>
@@ -141,7 +144,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                       type="checkbox"
                       class="checkbox checkbox-sm"
                       phx-click="toggle_select_all"
-                      checked={@filtered_devices != [] && all_selected?(@filtered_devices, @selected_devices)}
+                      checked={
+                        @filtered_devices != [] && all_selected?(@filtered_devices, @selected_devices)
+                      }
                     />
                   </th>
                   <th>MAC Address</th>
@@ -262,7 +267,11 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     socket =
       cond do
         err_count > 0 && ok_count > 0 ->
-          put_flash(socket, :info, "Assigned profile to #{ok_count} device(s), #{err_count} failed")
+          put_flash(
+            socket,
+            :info,
+            "Assigned profile to #{ok_count} device(s), #{err_count} failed"
+          )
 
         err_count > 0 ->
           put_flash(socket, :error, "Failed to assign profile to #{err_count} device(s)")

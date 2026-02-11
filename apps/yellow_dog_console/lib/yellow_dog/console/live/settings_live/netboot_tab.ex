@@ -50,8 +50,8 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
             </label>
             <.input_error changeset={@changeset} field={:enabled} />
           </div>
-
-          <!-- TFTP Root Directory -->
+          
+    <!-- TFTP Root Directory -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">TFTP Root Directory</span>
@@ -73,8 +73,8 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
               </span>
             </label>
           </div>
-
-          <!-- TFTP Port -->
+          
+    <!-- TFTP Port -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">TFTP Port</span>
@@ -93,11 +93,13 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
             />
             <.input_error changeset={@changeset} field={:port} />
             <label class="label">
-              <span class="label-text-alt">Default TFTP port is 69 (requires root or capabilities)</span>
+              <span class="label-text-alt">
+                Default TFTP port is 69 (requires root or capabilities)
+              </span>
             </label>
           </div>
-
-          <!-- Default Profile -->
+          
+    <!-- Default Profile -->
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Default Boot Profile</span>
@@ -107,7 +109,13 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
               aria-label="Default boot profile"
               class="select select-bordered w-full"
             >
-              <option value="" selected={is_nil(Ecto.Changeset.get_field(@changeset, :default_profile)) or Ecto.Changeset.get_field(@changeset, :default_profile) == ""}>
+              <option
+                value=""
+                selected={
+                  is_nil(Ecto.Changeset.get_field(@changeset, :default_profile)) or
+                    Ecto.Changeset.get_field(@changeset, :default_profile) == ""
+                }
+              >
                 None
               </option>
               <%= for profile <- @profiles do %>
@@ -131,8 +139,8 @@ defmodule YellowDog.Console.SettingsLive.NetbootTab do
           </div>
 
           <div class="divider"></div>
-
-          <!-- Action Buttons -->
+          
+    <!-- Action Buttons -->
           <div class="flex gap-2 justify-end">
             <%= if @pending_changes do %>
               <button

@@ -110,6 +110,8 @@ defmodule YellowDog.Console.Router do
     live "/netboot/devices", NetbootLive.DevicesLive
     live "/netboot/devices/:mac", NetbootLive.DeviceDetailLive
     live "/netboot/profiles", NetbootLive.ProfilesLive
+    live "/netboot/profiles/new", NetbootLive.ProfileEditorLive
+    live "/netboot/profiles/:id/edit", NetbootLive.ProfileEditorLive
     live "/netboot/tftp", NetbootLive.TftpLive
     live "/netboot/log", NetbootLive.LogLive
 

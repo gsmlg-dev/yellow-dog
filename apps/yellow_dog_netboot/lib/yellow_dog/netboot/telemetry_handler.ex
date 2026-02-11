@@ -32,22 +32,42 @@ defmodule YellowDog.Netboot.TelemetryHandler do
     :telemetry.detach("netboot-telemetry-handler")
   end
 
-  def handle_event([:yellow_dog, :netboot, :tftp, :transfer, :start], _measurements, metadata, _config) do
+  def handle_event(
+        [:yellow_dog, :netboot, :tftp, :transfer, :start],
+        _measurements,
+        metadata,
+        _config
+      ) do
     broadcast(@tftp_topic, {:tftp_transfer_started, metadata})
     broadcast(@log_topic, {:tftp_transfer_started, metadata})
   end
 
-  def handle_event([:yellow_dog, :netboot, :tftp, :transfer, :stop], measurements, metadata, _config) do
+  def handle_event(
+        [:yellow_dog, :netboot, :tftp, :transfer, :stop],
+        measurements,
+        metadata,
+        _config
+      ) do
     data = Map.merge(metadata, measurements)
     broadcast(@tftp_topic, {:tftp_transfer_complete, data})
     broadcast(@log_topic, {:tftp_transfer_complete, data})
   end
 
-  def handle_event([:yellow_dog, :netboot, :tftp, :request, :accepted], _measurements, metadata, _config) do
+  def handle_event(
+        [:yellow_dog, :netboot, :tftp, :request, :accepted],
+        _measurements,
+        metadata,
+        _config
+      ) do
     broadcast(@log_topic, {:tftp_request_accepted, metadata})
   end
 
-  def handle_event([:yellow_dog, :netboot, :tftp, :request, :rejected], _measurements, metadata, _config) do
+  def handle_event(
+        [:yellow_dog, :netboot, :tftp, :request, :rejected],
+        _measurements,
+        metadata,
+        _config
+      ) do
     broadcast(@log_topic, {:tftp_request_rejected, metadata})
   end
 

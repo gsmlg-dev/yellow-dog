@@ -208,5 +208,4 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
       _ -> assign(socket, :device, nil)
     end
   end
-
 end

@@ -171,6 +171,7 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
 
       # Manually restore for test verification
       :ets.delete_all_objects(Store)
+
       load_test_config(%{
         "default_profile" => "nixos-minimal",
         "profiles" => %{
@@ -210,6 +211,7 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
   describe "config with nil and missing keys" do
     test "handles config with no default_profile" do
       :ets.delete_all_objects(Store)
+
       load_test_config(%{
         "profiles" => %{
           "test" => %{

@@ -154,11 +154,186 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "button#export-csv")
     end
 
+    test "has new profile button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles")
+
+      assert has_element?(view, "a[href='/netboot/profiles/new']")
+    end
+
     test "search filters profiles", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/profiles")
 
       html = view |> element("input[name=search]") |> render_change(%{"search" => "nixos"})
       assert html =~ "Boot Profiles"
+    end
+
+    test "table has actions column", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles")
+
+      assert html =~ "Actions"
+    end
+  end
+
+  describe "Profile Editor — new profile" do
+    test "mounts new profile form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+
+      assert html =~ "New Boot Profile"
+      assert html =~ "Create a new PXE boot profile"
+    end
+
+    test "has required form fields", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      assert has_element?(view, "input[name='profile[id]']")
+      assert has_element?(view, "input[name='profile[kernel]']")
+      assert has_element?(view, "input[name='profile[initrd]']")
+      assert has_element?(view, "input[name='profile[description]']")
+      assert has_element?(view, "input[name='profile[kernel_args]']")
+      assert has_element?(view, "input[name='profile[installer_image]']")
+    end
+
+    test "has arch checkboxes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      assert has_element?(view, "input[value='x86_64']")
+      assert has_element?(view, "input[value='aarch64']")
+      assert has_element?(view, "input[value='bios_x86']")
+    end
+
+    test "has manifest form fields", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      assert has_element?(view, "select[name='profile[disk_layout]']")
+      assert has_element?(view, "select[name='profile[slot_strategy]']")
+      assert has_element?(view, "input[name='profile[flake]']")
+    end
+
+    test "has back and submit buttons", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      assert has_element?(view, "a[href='/netboot/profiles']", "Cancel")
+      assert has_element?(view, "button[type=submit]", "Create Profile")
+    end
+
+    test "validate shows errors for empty required fields", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      html =
+        view
+        |> form("form", profile: %{id: "", kernel: "", initrd: ""})
+        |> render_change()
+
+      assert html =~ "ID is required"
+      assert html =~ "Kernel path is required"
+      assert html =~ "Initrd path is required"
+    end
+
+    test "validate shows error for invalid ID format", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      html =
+        view
+        |> form("form", profile: %{id: "INVALID ID!", kernel: "k", initrd: "i"})
+        |> render_change()
+
+      assert html =~ "lowercase alphanumeric"
+    end
+
+    test "validate accepts valid input", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      html =
+        view
+        |> form("form", profile: %{id: "my-profile", kernel: "k/bzImage", initrd: "k/initrd"})
+        |> render_change()
+
+      refute html =~ "label-text-alt text-error"
+    end
+  end
+
+  describe "Profile Editor — edit profile" do
+    test "mounts edit form with profile ID", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles/test-profile/edit")
+
+      assert html =~ "Edit Profile"
+      assert html =~ "test-profile"
+    end
+
+    test "ID field is disabled in edit mode", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+
+      assert has_element?(view, "input[name='profile[id]'][disabled]")
+    end
+
+    test "has save changes button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+
+      assert has_element?(view, "button[type=submit]", "Save Changes")
+    end
+  end
+
+  describe "Profile Editor — validation" do
+    test "filter_by_search returns all for empty query" do
+      profiles = [
+        %{id: "a", description: "Alpha"},
+        %{id: "b", description: "Beta"}
+      ]
+
+      assert YellowDog.Console.NetbootLive.ProfilesLive.filter_by_search(profiles, "") == profiles
+    end
+
+    test "filter_by_search matches ID" do
+      profiles = [
+        %{id: "nixos", description: "NixOS"},
+        %{id: "ubuntu", description: "Ubuntu"}
+      ]
+
+      result = YellowDog.Console.NetbootLive.ProfilesLive.filter_by_search(profiles, "nix")
+      assert length(result) == 1
+      assert hd(result).id == "nixos"
+    end
+
+    test "validate_profile returns errors for empty fields in new mode" do
+      errors =
+        YellowDog.Console.NetbootLive.ProfileEditorLive.validate_profile(
+          %{"id" => "", "kernel" => "", "initrd" => ""},
+          :new
+        )
+
+      assert errors[:id] == "ID is required"
+      assert errors[:kernel] == "Kernel path is required"
+      assert errors[:initrd] == "Initrd path is required"
+    end
+
+    test "validate_profile skips ID check in edit mode" do
+      errors =
+        YellowDog.Console.NetbootLive.ProfileEditorLive.validate_profile(
+          %{"id" => "", "kernel" => "k", "initrd" => "i"},
+          :edit
+        )
+
+      refute Map.has_key?(errors, :id)
+    end
+
+    test "validate_profile rejects invalid ID format" do
+      errors =
+        YellowDog.Console.NetbootLive.ProfileEditorLive.validate_profile(
+          %{"id" => "Bad Name!", "kernel" => "k", "initrd" => "i"},
+          :new
+        )
+
+      assert errors[:id] =~ "lowercase"
+    end
+
+    test "validate_profile passes for valid input" do
+      errors =
+        YellowDog.Console.NetbootLive.ProfileEditorLive.validate_profile(
+          %{"id" => "my-profile", "kernel" => "k/bzImage", "initrd" => "k/initrd"},
+          :new
+        )
+
+      assert errors == %{}
     end
   end
 

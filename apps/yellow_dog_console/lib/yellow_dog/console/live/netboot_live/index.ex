@@ -187,5 +187,4 @@ defmodule YellowDog.Console.NetbootLive.Index do
     |> assign(:profiles, profiles)
     |> assign(:recent_devices, recent)
   end
-
 end

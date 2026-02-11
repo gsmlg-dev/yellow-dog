@@ -95,7 +95,10 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
                 class="border-2 border-dashed border-base-300 rounded-lg p-4 text-center"
                 phx-drop-target={@uploads.boot_asset.ref}
               >
-                <.live_file_input upload={@uploads.boot_asset} class="file-input file-input-bordered file-input-sm w-full" />
+                <.live_file_input
+                  upload={@uploads.boot_asset}
+                  class="file-input file-input-bordered file-input-sm w-full"
+                />
                 <p class="text-xs text-base-content/50 mt-1">
                   Max 500 MB per file, up to 5 files
                 </p>

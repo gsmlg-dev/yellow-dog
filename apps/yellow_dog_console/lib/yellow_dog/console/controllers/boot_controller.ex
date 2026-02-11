@@ -138,7 +138,9 @@ defmodule YellowDog.Console.BootController do
       _ ->
         # Try default profile
         case Store.default_profile_id() do
-          nil -> :no_profile
+          nil ->
+            :no_profile
+
           id ->
             case Store.get_profile(id) do
               {:ok, p} -> {:ok, p}
