@@ -100,6 +100,14 @@ defmodule YellowDog.Console.Router do
     live "/dns/logs", DnsLive.QueryLogsLive
     live "/dns/metrics", DnsLive.MetricsLive
 
+    # Netboot
+    live "/netboot", NetbootLive.Index
+    live "/netboot/devices", NetbootLive.DevicesLive
+    live "/netboot/devices/:mac", NetbootLive.DeviceDetailLive
+    live "/netboot/profiles", NetbootLive.ProfilesLive
+    live "/netboot/tftp", NetbootLive.TftpLive
+    live "/netboot/log", NetbootLive.LogLive
+
     # Fingerprint
     live "/fingerprint/devices", FingerprintLive.DevicesLive
     live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive

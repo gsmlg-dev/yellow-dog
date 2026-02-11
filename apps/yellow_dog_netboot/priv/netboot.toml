@@ -1,0 +1,18 @@
+[netboot]
+tftp_root = "/srv/netboot/tftp"
+tftp_port = 69
+default_profile = "nixos-minimal"
+
+[netboot.profiles.nixos-minimal]
+description = "NixOS Minimal Install"
+kernel = "nixos/bzImage"
+initrd = "nixos/initrd.img"
+kernel_args = "init=/nix/store/init ip=dhcp"
+arch = ["x86_64"]
+
+[netboot.profiles.rescue]
+description = "Rescue Shell"
+kernel = "rescue/vmlinuz"
+initrd = "rescue/initrd.img"
+kernel_args = "rescue shell"
+arch = ["x86_64", "aarch64"]

@@ -1,0 +1,8 @@
+#!ipxe
+echo YellowDog Rescue Shell - ${mac}
+dhcp
+set base-url http://<%= @server %>:<%= @port %>/boot/assets
+
+kernel ${base-url}/rescue/vmlinuz rescue shell yellowdog.mac=<%= @mac %>
+initrd ${base-url}/rescue/initrd.img
+boot

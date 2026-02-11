@@ -398,6 +398,62 @@ defmodule YellowDog.Console.Layouts do
             </details>
           </li>
           
+    <!-- Netboot -->
+          <li>
+            <details open>
+              <summary class="gap-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
+                  />
+                </svg>
+                <span>Netboot</span>
+              </summary>
+              <ul>
+                <li>
+                  <.link navigate="/netboot" class={active?(@current_path, "/netboot", :exact)}>
+                    Dashboard
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    navigate="/netboot/devices"
+                    class={active?(@current_path, "/netboot/devices")}
+                  >
+                    Devices
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    navigate="/netboot/profiles"
+                    class={active?(@current_path, "/netboot/profiles")}
+                  >
+                    Boot Profiles
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/netboot/tftp" class={active?(@current_path, "/netboot/tftp")}>
+                    TFTP Server
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate="/netboot/log" class={active?(@current_path, "/netboot/log")}>
+                    Boot Log
+                  </.link>
+                </li>
+              </ul>
+            </details>
+          </li>
+          
     <!-- Tools -->
           <li class="menu-title mt-4">
             <span>Tools</span>

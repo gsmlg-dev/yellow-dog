@@ -1,0 +1,8 @@
+#!ipxe
+echo YellowDog Netboot - ${mac} (<%= @arch %>)
+dhcp
+set base-url http://<%= @server %>:<%= @port %>/boot/assets
+
+kernel ${base-url}/<%= @kernel %> <%= @kernel_args %> yellowdog.mac=<%= @mac %> yellowdog.api=http://<%= @server %>:<%= @port %>
+initrd ${base-url}/<%= @initrd %>
+boot

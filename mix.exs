@@ -17,6 +17,7 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_mdns: :permanent,
             yellow_dog_dhcpv4: :permanent,
             yellow_dog_dhcpv6: :permanent,
+            yellow_dog_netboot: :permanent,
             yellow_dog_console: :permanent
           ]
         ]
