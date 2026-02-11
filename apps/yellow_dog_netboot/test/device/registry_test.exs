@@ -206,4 +206,139 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
       assert updated.hostname == "server1"
     end
   end
+
+  describe "persistence integration" do
+    @tag :tmp_dir
+    test "mutations schedule a persist timer", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      # Swap persist path to a writable temp location
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01")
+
+      # After a mutation, a persist timer should be scheduled
+      gen_state = :sys.get_state(Registry)
+      assert gen_state.persist_timer != nil
+      assert is_reference(gen_state.persist_timer)
+    end
+
+    @tag :tmp_dir
+    test "persist message writes devices to disk", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{hostname: "srv1"})
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:02", %{hostname: "srv2"})
+
+      # Force immediate persist by sending the message
+      send(Process.whereis(Registry), :persist)
+      # Give GenServer time to handle the message
+      Process.sleep(50)
+
+      assert File.exists?(persist_path)
+      content = File.read!(persist_path)
+      assert String.contains?(content, "AA:BB:CC:DD:EE:01")
+      assert String.contains?(content, "AA:BB:CC:DD:EE:02")
+      assert String.contains?(content, "srv1")
+    end
+
+    @tag :tmp_dir
+    test "persist clears the timer reference", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01")
+
+      # Timer should be set
+      assert :sys.get_state(Registry).persist_timer != nil
+
+      # Force persist
+      send(Process.whereis(Registry), :persist)
+      Process.sleep(50)
+
+      # Timer should be cleared after persist
+      assert :sys.get_state(Registry).persist_timer == nil
+    end
+
+    @tag :tmp_dir
+    test "delete also triggers persist", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01")
+
+      # Cancel the timer from register, clear it
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_timer: nil}
+      end)
+
+      :ok = Registry.delete("AA:BB:CC:DD:EE:01")
+
+      # Delete should schedule a new timer
+      assert :sys.get_state(Registry).persist_timer != nil
+    end
+
+    @tag :tmp_dir
+    test "assign_profile triggers persist", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.assign_profile("AA:BB:CC:DD:EE:01", "nixos")
+      assert :sys.get_state(Registry).persist_timer != nil
+    end
+
+    @tag :tmp_dir
+    test "persisted data survives forced write and reload", %{tmp_dir: tmp_dir} do
+      persist_path = Path.join(tmp_dir, "devices.toml")
+
+      :sys.replace_state(Registry, fn state ->
+        if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+        %{state | persist_path: persist_path, persist_timer: nil}
+      end)
+
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{hostname: "host1", arch: :x86_64})
+      {:ok, _} = Registry.assign_profile("AA:BB:CC:DD:EE:01", "nixos-minimal")
+
+      # Force persist
+      send(Process.whereis(Registry), :persist)
+      Process.sleep(50)
+
+      # Verify persisted data can be loaded by Persistence module
+      {:ok, devices} = YellowDog.Netboot.Device.Persistence.load(persist_path)
+      assert length(devices) == 1
+      device = hd(devices)
+      assert device.mac == "AA:BB:CC:DD:EE:01"
+      assert device.hostname == "host1"
+      assert device.arch == :x86_64
+      assert device.profile_id == "nixos-minimal"
+    end
+  end
 end

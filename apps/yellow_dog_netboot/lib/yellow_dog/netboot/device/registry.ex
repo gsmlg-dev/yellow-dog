@@ -4,14 +4,18 @@ defmodule YellowDog.Netboot.Device.Registry do
 
   Tracks all netboot devices and their lifecycle states.
   Broadcasts state changes on "netboot:devices" topic.
+  Persists device state to TOML file with debounced writes.
   """
 
   use GenServer
 
   alias YellowDog.Netboot.Device
+  alias YellowDog.Netboot.Device.Persistence
 
   @table __MODULE__
   @pubsub_topic "netboot:devices"
+  @persist_delay_ms 5_000
+  @default_persist_path "/var/lib/yellow_dog/netboot/devices.toml"
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -76,9 +80,14 @@ defmodule YellowDog.Netboot.Device.Registry do
   # --- GenServer callbacks ---
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
-    {:ok, %{}}
+    config = Keyword.get(opts, :config, %{})
+    persist_path = persist_path(config)
+
+    load_persisted_devices(persist_path)
+
+    {:ok, %{persist_path: persist_path, persist_timer: nil}}
   end
 
   @impl true
@@ -100,7 +109,7 @@ defmodule YellowDog.Netboot.Device.Registry do
 
     :ets.insert(@table, {normalized, device})
     broadcast({:device_registered, device})
-    {:reply, {:ok, device}, state}
+    {:reply, {:ok, device}, schedule_persist(state)}
   end
 
   def handle_call({:update_state, mac, new_state, metadata}, _from, state) do
@@ -112,7 +121,7 @@ defmodule YellowDog.Netboot.Device.Registry do
           {:ok, updated} ->
             :ets.insert(@table, {normalized, updated})
             broadcast({:device_state_changed, updated})
-            {:reply, {:ok, updated}, state}
+            {:reply, {:ok, updated}, schedule_persist(state)}
 
           {:error, _} = err ->
             {:reply, err, state}
@@ -131,7 +140,7 @@ defmodule YellowDog.Netboot.Device.Registry do
         updated = %{device | profile_id: profile_id, last_seen: DateTime.utc_now()}
         :ets.insert(@table, {normalized, updated})
         broadcast({:device_profile_assigned, updated})
-        {:reply, {:ok, updated}, state}
+        {:reply, {:ok, updated}, schedule_persist(state)}
 
       [] ->
         {:reply, {:error, :not_found}, state}
@@ -142,7 +151,17 @@ defmodule YellowDog.Netboot.Device.Registry do
     normalized = Device.normalize_mac(mac)
     :ets.delete(@table, normalized)
     broadcast({:device_deleted, normalized})
-    {:reply, :ok, state}
+    {:reply, :ok, schedule_persist(state)}
+  end
+
+  @impl true
+  def handle_info(:persist, state) do
+    persist_to_disk(state.persist_path)
+    {:noreply, %{state | persist_timer: nil}}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
   end
 
   # --- Private ---
@@ -177,6 +196,37 @@ defmodule YellowDog.Netboot.Device.Registry do
   end
 
   defp apply_filters(devices, [_ | rest]), do: apply_filters(devices, rest)
+
+  defp schedule_persist(state) do
+    if state.persist_timer, do: Process.cancel_timer(state.persist_timer)
+    timer = Process.send_after(self(), :persist, @persist_delay_ms)
+    %{state | persist_timer: timer}
+  end
+
+  defp persist_to_disk(path) do
+    devices = list()
+    Persistence.save(path, devices)
+  rescue
+    _ -> :ok
+  end
+
+  defp load_persisted_devices(path) do
+    case Persistence.load(path) do
+      {:ok, devices} ->
+        Enum.each(devices, fn device ->
+          :ets.insert(@table, {device.mac, device})
+        end)
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  defp persist_path(config) when is_map(config) do
+    Map.get(config, :persist_path, @default_persist_path)
+  end
+
+  defp persist_path(_), do: @default_persist_path
 
   defp broadcast(message) do
     Phoenix.PubSub.broadcast(
