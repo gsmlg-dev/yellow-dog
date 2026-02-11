@@ -141,6 +141,21 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert html =~ "Netboot Devices"
     end
+
+    test "has profile filter dropdown", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      assert has_element?(view, "select[name=profile]")
+      html = view |> element("select[name=profile]") |> render_change(%{"profile" => "all"})
+      assert html =~ "All Profiles"
+    end
+
+    test "profile filter has unassigned option", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      html = view |> element("select[name=profile]") |> render_change(%{"profile" => "unassigned"})
+      assert html =~ "Netboot Devices"
+    end
   end
 
   describe "Netboot Devices sorting" do
@@ -251,6 +266,23 @@ defmodule YellowDog.Console.NetbootLiveTest do
       sorted = DevicesLive.sort_devices(devices, "hostname", "asc")
       # nil sorts first (empty string)
       assert Enum.map(sorted, & &1.mac) == ["BB:BB:BB:BB:BB:BB", "AA:AA:AA:AA:AA:AA"]
+    end
+
+    test "filter_by_profile/2 filters devices by profile", _context do
+      alias YellowDog.Console.NetbootLive.DevicesLive
+
+      devices = [
+        %{mac: "AA:AA:AA:AA:AA:AA", profile_id: "nixos"},
+        %{mac: "BB:BB:BB:BB:BB:BB", profile_id: "ubuntu"},
+        %{mac: "CC:CC:CC:CC:CC:CC", profile_id: nil}
+      ]
+
+      assert length(DevicesLive.filter_by_profile(devices, "all")) == 3
+      assert length(DevicesLive.filter_by_profile(devices, "nixos")) == 1
+      assert length(DevicesLive.filter_by_profile(devices, "unassigned")) == 1
+
+      [d] = DevicesLive.filter_by_profile(devices, "unassigned")
+      assert d.mac == "CC:CC:CC:CC:CC:CC"
     end
   end
 
@@ -865,6 +897,23 @@ defmodule YellowDog.Console.NetbootLiveTest do
       # Should be in history now, not active
       assert html =~ "Complete"
       assert html =~ "1.5s"
+    end
+
+    test "transfer_failed moves to history with error status", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      meta = %{
+        client_addr: {10, 0, 0, 5},
+        file_path: "missing/file",
+        total_size: 0,
+        bytes_sent: 0
+      }
+
+      send(view.pid, {:tftp_transfer_started, meta})
+      send(view.pid, {:tftp_transfer_failed, meta})
+      html = render(view)
+      assert html =~ "Failed"
+      assert html =~ "missing/file"
     end
 
     test "history filter works", %{conn: conn} do

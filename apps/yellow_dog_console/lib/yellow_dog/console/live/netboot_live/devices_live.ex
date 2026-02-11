@@ -20,6 +20,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
        page_title: "Netboot Devices",
        search_query: "",
        filter_state: "all",
+       filter_profile: "all",
        selected_devices: MapSet.new(),
        bulk_profile: nil,
        sort_field: "last_seen",
@@ -33,7 +34,8 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   @impl true
   def handle_params(params, _uri, socket) do
     state = Map.get(params, "state", socket.assigns.filter_state)
-    {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
+    profile = Map.get(params, "profile", socket.assigns.filter_profile)
+    {:noreply, socket |> assign(filter_state: state, filter_profile: profile) |> apply_filters()}
   end
 
   @impl true
@@ -123,6 +125,16 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
             >
               <option value="all">All States</option>
               <option :for={s <- @available_states} value={s}>{s}</option>
+            </select>
+            <select
+              class="select select-bordered"
+              phx-change="filter_profile"
+              name="profile"
+              value={@filter_profile}
+            >
+              <option value="all">All Profiles</option>
+              <option value="unassigned">Unassigned</option>
+              <option :for={p <- @profiles} value={p.id}>{p.id}</option>
             </select>
           </div>
         </.card>
@@ -337,6 +349,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
   def handle_event("filter_state", %{"state" => state}, socket) do
     {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
+  end
+
+  def handle_event("filter_profile", %{"profile" => profile}, socket) do
+    {:noreply, socket |> assign(:filter_profile, profile) |> apply_filters()}
   end
 
   def handle_event("sort", %{"field" => field}, socket) do
@@ -575,6 +591,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
       socket.assigns.all_devices
       |> filter_by_search(socket.assigns.search_query)
       |> filter_by_state(socket.assigns.filter_state)
+      |> filter_by_profile(socket.assigns.filter_profile)
       |> sort_devices(socket.assigns.sort_field, socket.assigns.sort_dir)
 
     assign(socket, :filtered_devices, devices)
@@ -595,6 +612,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
   def filter_by_state(devices, "all"), do: devices
   def filter_by_state(devices, state), do: Enum.filter(devices, &(to_string(&1.state) == state))
+
+  def filter_by_profile(devices, "all"), do: devices
+  def filter_by_profile(devices, "unassigned"), do: Enum.filter(devices, &is_nil(&1.profile_id))
+  def filter_by_profile(devices, pid), do: Enum.filter(devices, &(&1.profile_id == pid))
 
   def sort_devices(devices, field, dir) do
     sorter = sort_key_fn(field)

@@ -128,7 +128,8 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
               <tbody>
                 <tr :if={@filtered_profiles == []}>
                   <td colspan="7" class="text-center text-base-content/50 py-8">
-                    No boot profiles configured
+                    No boot profiles configured —
+                    <.link navigate="/netboot/profiles/new" class="link link-primary">create one</.link>
                   </td>
                 </tr>
                 <tr :for={p <- @filtered_profiles}>

@@ -458,7 +458,15 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   def handle_info({:tftp_transfer_complete, meta}, socket) do
     key = transfer_key(meta)
     active = Map.delete(socket.assigns.active_transfers_map, key)
-    entry = Map.put_new(meta, :completed_at, DateTime.utc_now())
+    entry = meta |> Map.put_new(:completed_at, DateTime.utc_now()) |> Map.put_new(:status, :ok)
+    history = [entry | socket.assigns.transfer_history] |> Enum.take(50)
+    {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
+  end
+
+  def handle_info({:tftp_transfer_failed, meta}, socket) do
+    key = transfer_key(meta)
+    active = Map.delete(socket.assigns.active_transfers_map, key)
+    entry = meta |> Map.put(:completed_at, DateTime.utc_now()) |> Map.put(:status, :error)
     history = [entry | socket.assigns.transfer_history] |> Enum.take(50)
     {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
   end
