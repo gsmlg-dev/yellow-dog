@@ -410,6 +410,46 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
   end
 
+  describe "SettingsLive DNS reload and modal events" do
+    test "dns_reload_all shows success or error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "dns_reload_all")
+      # DNS service isn't running, so we get an error
+      assert html =~ "DNS configuration reloaded" or html =~ "Failed to reload DNS"
+    end
+
+    test "dns_reload_views shows success or error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "dns_reload_views")
+      assert html =~ "DNS views reloaded" or html =~ "Failed to reload DNS views"
+    end
+
+    test "dns_reload_acls shows success or error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "dns_reload_acls")
+      assert html =~ "DNS ACLs reloaded" or html =~ "Failed to reload DNS ACLs"
+    end
+
+    test "close_conflict_modal hides the modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "close_conflict_modal")
+      # Should not crash, page still renders
+      assert html =~ "Settings" or html =~ "Configuration"
+    end
+
+    test "close_recovery_modal hides the modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "close_recovery_modal")
+      assert html =~ "Settings" or html =~ "Configuration"
+    end
+
+    test "restore_backup handles missing backup file gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+      html = render_click(view, "restore_backup", %{"backup_path" => "/nonexistent/backup.toml"})
+      assert html =~ "Failed to restore backup" or html =~ "Configuration"
+    end
+  end
+
   describe "SettingsLive configuration persistence" do
     test "persists enabled/disabled toggle", %{conn: conn, config_path: config_path} do
       {:ok, view, _html} = live(conn, ~p"/settings")

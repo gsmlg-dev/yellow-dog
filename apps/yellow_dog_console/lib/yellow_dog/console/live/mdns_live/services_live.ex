@@ -46,7 +46,11 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   @impl true
   def handle_event("toggle_service", %{"id" => service_id}, socket) do
-    case YellowDog.Mdns.toggle_service(service_id) do
+    case safe_call(
+           YellowDog.Mdns,
+           fn -> YellowDog.Mdns.toggle_service(service_id) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket
@@ -60,7 +64,11 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   @impl true
   def handle_event("delete_service", %{"id" => service_id}, socket) do
-    case YellowDog.Mdns.unregister_service(service_id, persist: true) do
+    case safe_call(
+           YellowDog.Mdns,
+           fn -> YellowDog.Mdns.unregister_service(service_id, persist: true) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket
@@ -89,7 +97,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
 
   @impl true
   def handle_event("show_edit_form", %{"id" => service_id}, socket) do
-    service = YellowDog.Mdns.get_registered_service(service_id)
+    service =
+      safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.get_registered_service(service_id) end, nil)
 
     {:noreply,
      socket
@@ -128,13 +137,23 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
       result =
         case socket.assigns.form_mode do
           :new ->
-            YellowDog.Mdns.register_service(service_def, persist: true)
+            safe_call(
+              YellowDog.Mdns,
+              fn -> YellowDog.Mdns.register_service(service_def, persist: true) end,
+              {:error, :service_unavailable}
+            )
 
           :edit ->
-            YellowDog.Mdns.update_service(
-              socket.assigns.editing_service.id,
-              service_def,
-              persist: true
+            safe_call(
+              YellowDog.Mdns,
+              fn ->
+                YellowDog.Mdns.update_service(
+                  socket.assigns.editing_service.id,
+                  service_def,
+                  persist: true
+                )
+              end,
+              {:error, :service_unavailable}
             )
         end
 

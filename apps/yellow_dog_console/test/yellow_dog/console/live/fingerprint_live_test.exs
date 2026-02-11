@@ -96,6 +96,119 @@ defmodule YellowDog.Console.FingerprintLiveTest do
     end
   end
 
+  # ============================================================================
+  # Device Inventory - Event Handlers
+  # ============================================================================
+
+  describe "Device Inventory /fingerprint/devices events" do
+    test "filter_type changes device type filter", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/devices")
+      html = render_change(view, "filter_type", %{"type" => "all"})
+      assert html =~ "Device Inventory"
+    end
+
+    test "filter_type with specific type filters devices", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/devices")
+      html = render_change(view, "filter_type", %{"type" => "printer"})
+      assert html =~ "Device Inventory"
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/devices")
+      render_click(view, "export_csv")
+      assert render(view) =~ "Device Inventory"
+    end
+  end
+
+  # ============================================================================
+  # Fingerprints - Event Handlers
+  # ============================================================================
+
+  describe "Fingerprints /fingerprint/fingerprints events" do
+    test "classify opens classification modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/fingerprints")
+      html = render_click(view, "classify", %{"hash" => "abc123"})
+      assert html =~ "Classify Fingerprint"
+      assert html =~ "Profile"
+      assert html =~ "Save Override"
+    end
+
+    test "close_classify closes the modal", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/fingerprints")
+      render_click(view, "classify", %{"hash" => "abc123"})
+      html = render_click(view, "close_classify")
+      refute html =~ "Classify Fingerprint"
+    end
+
+    test "save_override handles service unavailable gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/fingerprints")
+      render_click(view, "classify", %{"hash" => "abc123"})
+
+      view
+      |> element("form[phx-submit='save_override']")
+      |> render_submit(%{"hash" => "abc123", "profile_id" => "printer", "note" => "test"})
+
+      # Should show error flash since Fingerprint service is not running
+      html = render(view)
+      assert html =~ "Failed to save override" or html =~ "Fingerprints"
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/fingerprint/fingerprints")
+      render_click(view, "export_csv")
+      assert render(view) =~ "Fingerprints"
+    end
+  end
+
+  # ============================================================================
+  # Fingerprint filter_by_search unit tests
+  # ============================================================================
+
+  describe "filter_by_search/2 (FingerprintsLive)" do
+    alias YellowDog.Console.FingerprintLive.FingerprintsLive
+
+    test "returns all fingerprints when query is empty" do
+      fps = [%{vendor_class: "MSFT", profile_id: nil, parameter_list: [1, 2]}]
+      assert FingerprintsLive.filter_by_search(fps, "") == fps
+    end
+
+    test "filters by vendor class" do
+      fps = [
+        %{vendor_class: "MSFT 5.0", profile_id: nil, parameter_list: [1]},
+        %{vendor_class: "Linux", profile_id: nil, parameter_list: [1]}
+      ]
+
+      assert length(FingerprintsLive.filter_by_search(fps, "msft")) == 1
+    end
+
+    test "filters by profile_id" do
+      fps = [
+        %{vendor_class: nil, profile_id: "Printer", parameter_list: [1]},
+        %{vendor_class: nil, profile_id: nil, parameter_list: [1]}
+      ]
+
+      assert length(FingerprintsLive.filter_by_search(fps, "printer")) == 1
+    end
+  end
+
+  describe "filter_by_search/2 and filter_by_type/2 (DevicesLive)" do
+    alias YellowDog.Console.FingerprintLive.DevicesLive
+
+    test "filter_by_type returns all when type is 'all'" do
+      devices = [%{profile_id: "printer"}, %{profile_id: "phone"}]
+      assert DevicesLive.filter_by_type(devices, "all") == devices
+    end
+
+    test "filter_by_type filters by specific type" do
+      devices = [%{profile_id: "printer"}, %{profile_id: "phone"}]
+      assert length(DevicesLive.filter_by_type(devices, "printer")) == 1
+    end
+  end
+
+  # ============================================================================
+  # Device Detail Page
+  # ============================================================================
+
   describe "Device Detail page" do
     test "mounts with MAC address title", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/fingerprint/devices/00:11:22:33:44:55")

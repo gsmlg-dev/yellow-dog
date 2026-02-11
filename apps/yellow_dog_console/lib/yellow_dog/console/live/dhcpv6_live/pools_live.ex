@@ -74,7 +74,11 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   @impl true
   def handle_event("delete_pool", %{"pool-name" => pool_name}, socket) do
-    case YellowDog.Dhcpv6.remove_pool(pool_name, force: false) do
+    case safe_call(
+           YellowDog.Dhcpv6,
+           fn -> YellowDog.Dhcpv6.remove_pool(pool_name, force: false) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket
@@ -99,7 +103,11 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
 
   @impl true
   def handle_event("force_delete_pool", %{"pool-name" => pool_name}, socket) do
-    case YellowDog.Dhcpv6.remove_pool(pool_name, force: true) do
+    case safe_call(
+           YellowDog.Dhcpv6,
+           fn -> YellowDog.Dhcpv6.remove_pool(pool_name, force: true) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket

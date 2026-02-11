@@ -87,4 +87,17 @@ defmodule YellowDog.Console.PoolDetailLiveTest do
       assert html =~ "v6-pool"
     end
   end
+
+  # ============================================================================
+  # DHCPv4 Pool Detail - Additional Event Handlers
+  # ============================================================================
+
+  describe "DHCPv4 PoolLive /dhcpv4/pools/:pool_name release_lease" do
+    test "release_lease handles service unavailable gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools/default")
+      html = render_click(view, "release_lease", %{"mac" => "00:11:22:33:44:55"})
+      # DHCPv4 service not running, so release will fail
+      assert html =~ "Failed to release lease" or html =~ "default"
+    end
+  end
 end

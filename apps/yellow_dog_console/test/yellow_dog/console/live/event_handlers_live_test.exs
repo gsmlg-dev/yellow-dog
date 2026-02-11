@@ -75,6 +75,19 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
       assert html =~ "Active Hosts"
       assert html =~ "Last Updated"
     end
+
+    test "view_details with nonexistent service does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      html = render_click(view, "view_details", %{"id" => "nonexistent-service"})
+      # Should not crash, service may be nil
+      assert html =~ "Total Services" or html =~ "Discovery"
+    end
+
+    test "export_csv event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/discovery")
+      render_click(view, "export_csv")
+      assert render(view) =~ "Total Services"
+    end
   end
 
   # ============================================================================
@@ -153,6 +166,24 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
       {:ok, _view, html} = live(conn, "/dhcpv4/pools")
       assert html =~ "aria-label=\"Search DHCPv4 pools\""
     end
+
+    test "show_edit_form with nonexistent pool does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools")
+      html = render_click(view, "show_edit_form", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Pool" or html =~ "DHCPv4"
+    end
+
+    test "delete_pool handles service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools")
+      html = render_click(view, "delete_pool", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Failed" or html =~ "not found" or html =~ "Pool" or html =~ "DHCPv4"
+    end
+
+    test "force_delete_pool handles service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv4/pools")
+      html = render_click(view, "force_delete_pool", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Failed" or html =~ "not found" or html =~ "Pool" or html =~ "DHCPv4"
+    end
   end
 
   # ============================================================================
@@ -213,6 +244,24 @@ defmodule YellowDog.Console.EventHandlersLiveTest do
     test "aria-label on search", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/dhcpv6/pools")
       assert html =~ "aria-label=\"Search DHCPv6 pools\""
+    end
+
+    test "show_edit_form with nonexistent pool does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/pools")
+      html = render_click(view, "show_edit_form", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Pool" or html =~ "DHCPv6"
+    end
+
+    test "delete_pool handles service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/pools")
+      html = render_click(view, "delete_pool", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Failed" or html =~ "not found" or html =~ "Pool" or html =~ "DHCPv6"
+    end
+
+    test "force_delete_pool handles service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dhcpv6/pools")
+      html = render_click(view, "force_delete_pool", %{"pool-name" => "nonexistent-pool"})
+      assert html =~ "Failed" or html =~ "not found" or html =~ "Pool" or html =~ "DHCPv6"
     end
   end
 

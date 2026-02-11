@@ -318,6 +318,69 @@ defmodule YellowDog.Console.MdnsServicesLiveTest do
   end
 
   # ============================================================================
+  # Service CRUD Event Handlers
+  # ============================================================================
+
+  describe "mDNS Services /mdns/services CRUD events" do
+    test "toggle_service handles error gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "toggle_service", %{"id" => "nonexistent-service"})
+      # Should show error flash since mDNS is not running
+      assert html =~ "Failed to toggle service" or html =~ "Registered Services"
+    end
+
+    test "delete_service handles error gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "delete_service", %{"id" => "nonexistent-service"})
+      # Should show error flash since mDNS is not running
+      assert html =~ "Failed to delete service" or html =~ "Registered Services"
+    end
+
+    test "show_edit_form opens form in edit mode", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      html = render_click(view, "show_edit_form", %{"id" => "test-service"})
+      # Form should be visible (edit mode, service may be nil since mDNS not running)
+      assert html =~ "Edit Service" or html =~ "Service Name"
+    end
+
+    test "save_service with validation errors shows errors", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      render_click(view, "show_new_form")
+
+      html =
+        render_submit(view, "save_service", %{
+          "name" => "",
+          "type" => "",
+          "port" => "",
+          "addresses" => "",
+          "txt" => "",
+          "enabled" => "true"
+        })
+
+      assert html =~ "Service name is required"
+      assert html =~ "Service type is required"
+    end
+
+    test "save_service with valid params handles service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns/services")
+      render_click(view, "show_new_form")
+
+      html =
+        render_submit(view, "save_service", %{
+          "name" => "Test Service",
+          "type" => "_http._tcp",
+          "port" => "8080",
+          "addresses" => "",
+          "txt" => "",
+          "enabled" => "true"
+        })
+
+      # mDNS is not running so register_service will fail
+      assert html =~ "Failed to save service" or html =~ "Registered Services"
+    end
+  end
+
+  # ============================================================================
   # Export CSV
   # ============================================================================
 

@@ -53,7 +53,11 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
   def handle_event("release_lease", %{"mac" => mac}, socket) do
     mac_binary = parse_mac_string(mac)
 
-    case YellowDog.Dhcpv4.release_lease(mac_binary) do
+    case safe_call(
+           YellowDog.Dhcpv4,
+           fn -> YellowDog.Dhcpv4.release_lease(mac_binary) end,
+           {:error, :service_unavailable}
+         ) do
       :ok ->
         {:noreply,
          socket

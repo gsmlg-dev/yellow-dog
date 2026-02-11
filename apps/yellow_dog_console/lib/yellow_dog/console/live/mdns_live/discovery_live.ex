@@ -46,7 +46,13 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
 
   @impl true
   def handle_event("view_details", %{"id" => service_id}, socket) do
-    service = YellowDog.Mdns.get_discovered_service(service_id)
+    service =
+      safe_call(
+        YellowDog.Mdns,
+        fn -> YellowDog.Mdns.get_discovered_service(service_id) end,
+        nil
+      )
+
     {:noreply, assign(socket, :selected_service, service)}
   end
 
