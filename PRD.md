@@ -1,582 +1,606 @@
-# YellowDog.Fingerprint PRD
+# YellowDog Netboot PRD
 
 ## Overview
 
-Passive device identification for YellowDog's DHCPv4 and DHCPv6 servers. Identifies device type, OS, and vendor by analyzing DHCP option patterns without active probing.
+`yellow_dog_netboot` is a new umbrella app providing integrated network boot provisioning — TFTP server, HTTP boot endpoints, dynamic iPXE script generation, device registry, and install manifest API. Paired with `yellow_dog_dhcp` for boot option injection and `yellow_dog_console` for LiveView management UI.
 
-**App:** `yellow_dog_fingerprint` (umbrella app)
-**Dependencies:** `yellow_dog_telemetry`
-**Consumers:** `yellow_dog_console` (LiveView UI), `yellow_dog_dhcpv4`, `yellow_dog_dhcpv6` (telemetry emitters)
+**Umbrella app**: `apps/yellow_dog_netboot/`
+**Module namespace**: `YellowDog.Netboot`
+**Dependencies**: `yellow_dog` (core config), `yellow_dog_telemetry`, `abyss` (UDP transport for TFTP)
 
-**Context:** DHCP clients reveal identity through the options they request and how they identify themselves. DHCPv4 clients send a Parameter Request List (Option 55) with a specific ordering of requested options — this sequence is nearly unique per OS/device stack. DHCPv6 clients similarly expose identity through the Option Request Option (Option 6) and Vendor Class (Option 16). By passively collecting these signals during normal DHCP operations, YellowDog can build a real-time device inventory without any additional network traffic.
+---
 
-## Design Principles
+## Architecture
 
-- **Passive** — No active probing; fingerprints extracted from normal DHCP message flow
-- **Decoupled** — DHCP servers emit telemetry events; fingerprint app subscribes. No compile-time dependency from DHCP apps to fingerprint app
-- **Protocol-agnostic pipeline** — Parsers are protocol-specific; matching, storage, and device registry are shared
-- **Local-first** — Local database and user overrides; optional upstream API as fallback
-- **Off critical path** — Fingerprint processing never delays DHCP responses
+```
+yellowdog/apps/
+├── yellow_dog/                 # Core config, orchestration
+├── yellow_dog_netboot/         # ← NEW: TFTP + netboot engine
+├── yellow_dog_dhcp/            # Boot option injection (opt 66/67)
+├── yellow_dog_console/         # LiveView UI (new netboot pages)
+├── yellow_dog_dns/
+├── yellow_dog_telemetry/
+└── ...
+```
 
-## Data Model
+### Supervision Tree
 
-### Fingerprint
+```
+YellowDog.Netboot.Supervisor
+├── TFTP.Server                 # UDP listener on :69, read-only RRQ
+├── TFTP.TransferSupervisor     # DynamicSupervisor for active transfers
+├── Device.Registry             # ETS-backed device state machine
+├── Manifest.Store              # Profile/manifest config from TOML
+├── Boot.ScriptEngine           # iPXE script template rendering
+└── Asset.Store                 # Boot asset file index (kernels, initrds, iPXE binaries)
+```
 
-A deterministic signature derived from a DHCP message.
+### Inter-App Communication
 
+```
+yellow_dog_dhcp ──→ YellowDog.Netboot.BootProfile.for_device/1
+                    (query boot config during OFFER/ACK construction)
+
+yellow_dog_netboot ──→ YellowDog.DHCP.Leases.lookup/1
+                       (correlate device discovery from lease data)
+
+yellow_dog_console ──→ YellowDog.Netboot.Device.Registry
+                       YellowDog.Netboot.Manifest.Store
+                       YellowDog.Netboot.TFTP.Server
+                       (LiveView reads state, pushes config changes)
+```
+
+No circular deps — DHCP calls into Netboot, Netboot reads from DHCP, Console reads/writes to Netboot.
+
+---
+
+## Component Specifications
+
+### 1. TFTP Server
+
+Pure Elixir implementation of RFC 1350 (read-only).
+
+**Scope**: Serve static boot assets — iPXE binaries, kernels, initrds. Read-only (RRQ only, reject WRQ/delete).
+
+**Protocol**:
+- UDP port 69 (configurable)
+- RRQ → open ephemeral port per transfer → 512-byte DATA blocks → ACK-based flow control
+- Support `blksize` option (RFC 2348) for larger blocks (1468 typical for ethernet MTU)
+- Support `tsize` option (RFC 2349) for transfer size reporting
+
+**Process model**:
+- Listener GenServer on port 69 accepts RRQ, spawns transfer worker under `TransferSupervisor`
+- Each transfer is a short-lived process with its own ephemeral UDP socket
+- Transfer timeout: 30s idle, 5 retries per block
+
+**File serving**:
+- Configurable root directory (e.g., `/srv/netboot/tftp/`)
+- Path traversal prevention (reject `..`, absolute paths)
+- File index cached in ETS, invalidated on filesystem watch or manual reload
+
+**Telemetry**:
 ```elixir
-@type t :: %Fingerprint{
-  id: binary(),                  # BLAKE3 hash of canonical form
-  protocol: :dhcpv4 | :dhcpv6,
-  parameter_list: [non_neg_integer()],  # Option 55 (v4) or Option 6 (v6) values, ordered
-  vendor_class: String.t() | nil,       # Option 60 (v4) or Option 16 (v6)
-  hostname_pattern: String.t() | nil,   # Option 12 (v4) or Option 39 (v6), normalized
+[:yellow_dog, :netboot, :tftp, :request]    # RRQ received
+[:yellow_dog, :netboot, :tftp, :transfer]   # transfer complete/failed
+[:yellow_dog, :netboot, :tftp, :error]      # protocol errors
+```
+
+### 2. HTTP Boot Endpoint
+
+Phoenix routes in `yellow_dog_console` (or standalone Plug if console not running).
+
+**Endpoints**:
+
+| Route | Purpose |
+|-------|---------|
+| `GET /boot/ipxe` | Dynamic iPXE script (query params: mac, arch, uuid) |
+| `GET /boot/assets/:path` | Static boot asset serving (kernel, initrd, images) |
+| `GET /boot/manifest/:device_id` | Install manifest JSON for installer |
+| `POST /boot/register` | Device self-registration from installer environment |
+| `POST /boot/status` | Device install status callback |
+
+**iPXE script generation** (`/boot/ipxe`):
+- Input: `?mac=AA:BB:CC:DD:EE:FF&arch=x86_64&uuid=...`
+- Lookup device in registry → match to boot profile
+- Render iPXE script from template with profile-specific kernel/initrd/args
+- Fallback: default profile or rescue shell
+
+### 3. Device Registry
+
+ETS-backed state machine with persistence to TOML.
+
+**Device record**:
+```elixir
+%Device{
+  mac: "AA:BB:CC:DD:EE:FF",
+  uuid: nil | String.t(),
+  hostname: nil | String.t(),
+  arch: :x86_64 | :aarch64 | :bios_x86,
+  profile_id: String.t(),
+  state: :discovered | :booting | :installing | :installed | :failed | :reinstall_requested,
+  ip_address: nil | :inet.ip_address(),
+  hardware_info: map(),          # populated by installer registration
   first_seen: DateTime.t(),
   last_seen: DateTime.t(),
-  hit_count: non_neg_integer()
+  install_attempts: integer(),
+  last_error: nil | String.t(),
+  tags: [String.t()],
+  slot: %{active: :a | :b, pending: nil | :a | :b}  # future A/B
 }
 ```
 
-**Canonical hash:** `BLAKE3(protocol <> ":" <> Enum.join(parameter_list, ",") <> ":" <> (vendor_class || ""))`
+**State transitions**:
+```
+discovered ──→ booting ──→ installing ──→ installed
+    ↑              │            │              │
+    │              └──→ failed ←┘              │
+    │                     │                    │
+    └─────────────────────┘                    │
+                                               ↓
+                                    reinstall_requested ──→ booting
+```
 
-The parameter list preserves ordering — `[1,3,6,15]` and `[1,6,3,15]` produce different fingerprints.
-
-### Device Profile
-
-What a fingerprint resolves to — the identity.
-
+**API**:
 ```elixir
-@type t :: %DeviceProfile{
-  id: binary(),
-  name: String.t(),              # "Windows 11", "iPhone 15", "Cisco IP Phone 7960"
-  os_family: String.t() | nil,   # "Windows", "iOS", "Android", "Linux"
-  os_version: String.t() | nil,  # "11", "17.2", "14"
-  device_type: device_type(),    # :computer, :phone, :tablet, :printer, :iot, ...
-  vendor: String.t() | nil,      # "Apple", "Samsung", "Cisco"
-  confidence: non_neg_integer(), # 0-100
-  source: :local | :fingerbank | :user_override
-}
-
-@type device_type ::
-  :computer | :phone | :tablet | :printer | :voip_phone |
-  :camera | :tv | :game_console | :iot | :network_equipment |
-  :server | :virtual_machine | :container | :unknown
+Device.Registry.register(mac, attrs)
+Device.Registry.update_state(mac, new_state, metadata \\ %{})
+Device.Registry.get(mac)
+Device.Registry.list(filters \\ [])
+Device.Registry.assign_profile(mac, profile_id)
+Device.Registry.request_reinstall(mac)
 ```
 
-### Device
+**PubSub**: Broadcasts state changes on `"netboot:devices"` topic for LiveView updates.
 
-An observed network entity. Correlates v4 and v6 observations.
+### 4. Boot Profile / Manifest Store
 
-```elixir
-@type t :: %Device{
-  id: binary(),                       # Primary key (generated)
-  mac: String.t(),                    # MAC address, normalized "aa:bb:cc:dd:ee:ff"
-  oui_vendor: String.t() | nil,       # IEEE OUI resolved vendor
-  duid: binary() | nil,               # DHCPv6 DUID (if observed)
-  ipv4_addresses: [String.t()],       # Currently/recently assigned v4 addresses
-  ipv6_addresses: [String.t()],       # Currently/recently assigned v6 addresses
-  hostname: String.t() | nil,         # Last observed hostname
-  fingerprint_v4_id: binary() | nil,  # Current v4 fingerprint hash
-  fingerprint_v6_id: binary() | nil,  # Current v6 fingerprint hash
-  profile_id: binary() | nil,         # Best-match device profile
-  profile_confidence: non_neg_integer(),
-  first_seen: DateTime.t(),
-  last_seen: DateTime.t(),
-  observation_count: non_neg_integer(),
-  metadata: map()                     # Extensible: relay info, VLAN, etc.
-}
-```
+TOML-based configuration for boot profiles and install manifests.
 
-**Device identity key:** MAC address is the primary correlation key between v4 and v6 observations. For v6-only environments without MAC visibility, DUID serves as fallback identifier.
-
-### OUI Entry
-
-IEEE OUI vendor lookup.
-
-```elixir
-@type t :: %OUI{
-  prefix: binary(),       # "AA:BB:CC" (3-byte) or "AA:BB:CC:DD" (4-byte MA-M/MA-S)
-  vendor: String.t(),
-  short_name: String.t()  # Abbreviated vendor name
-}
-```
-
-## Fingerprint Extraction
-
-### DHCPv4 Signals
-
-Extracted from DISCOVER and REQUEST messages:
-
-| Signal | DHCP Option | Weight | Notes |
-|--------|-------------|--------|-------|
-| Parameter Request List | Option 55 | Primary | Ordered list of requested option codes |
-| Vendor Class Identifier | Option 60 | High | e.g., `MSFT 5.0`, `android-dhcp-12`, `udhcp 1.24.2` |
-| Hostname | Option 12 | Low | Naming patterns hint at device type |
-| Client Identifier | Option 61 | Correlation | Usually contains MAC |
-| Max Message Size | Option 57 | Supplementary | Stack-specific default values |
-| Client Architecture | Option 93 | Supplementary | PXE boot environment type |
-
-### DHCPv6 Signals
-
-Extracted from SOLICIT and REQUEST messages:
-
-| Signal | DHCP Option | Weight | Notes |
-|--------|-------------|--------|-------|
-| Option Request | Option 6 | Primary | Ordered list of requested option codes |
-| Vendor Class | Option 16 | High | Enterprise number + vendor data |
-| Client FQDN | Option 39 | Low | Hostname pattern |
-| DUID | Option 1 | Correlation | Type reveals stack: DUID-LLT (type 1), DUID-EN (type 2), DUID-LL (type 3), DUID-UUID (type 4) |
-| IA_NA/IA_PD presence | Options 3/25 | Supplementary | Requesting addresses vs prefixes distinguishes hosts from routers |
-| Elapsed Time | Option 8 | Supplementary | Retransmission behavior varies by stack |
-
-### DUID Type Analysis
-
-The DUID type itself is a fingerprint signal:
-
-- **DUID-LLT (1):** Contains hardware type + time + link-layer address. Extract MAC for OUI. Common in dhclient, Windows.
-- **DUID-EN (2):** Contains enterprise number (IANA PEN). Identifies software vendor, not hardware. e.g., PEN 43793 = systemd-networkd.
-- **DUID-LL (3):** Contains hardware type + link-layer address. Extract MAC for OUI. Common in ISC DHCP.
-- **DUID-UUID (4):** Opaque UUID. No vendor extraction possible. Common in modern systemd.
-
-## Telemetry Events
-
-DHCP servers emit raw option data. No dependency on fingerprint app.
-
-### Emitted by DHCPv4 Server
-
-```elixir
-:telemetry.execute(
-  [:yellow_dog, :dhcpv4, :message, :received],
-  %{timestamp: System.monotonic_time()},
-  %{
-    message_type: :discover | :request | :inform,
-    chaddr: <<mac::binary-6>>,
-    option_55: [1, 3, 6, 15, 119, 252],
-    option_60: "MSFT 5.0",
-    option_12: "DESKTOP-ABC123",
-    option_61: <<client_id::binary>>,
-    source_ip: {192, 168, 1, 100},
-    gateway_ip: {0, 0, 0, 0},
-    interface: "eth0"
-  }
-)
-```
-
-### Emitted by DHCPv6 Server
-
-```elixir
-:telemetry.execute(
-  [:yellow_dog, :dhcpv6, :message, :received],
-  %{timestamp: System.monotonic_time()},
-  %{
-    message_type: :solicit | :request | :information_request,
-    duid: <<duid::binary>>,
-    option_6: [23, 24, 39, 73],
-    option_16: %{enterprise_id: 43793, data: <<vendor_data::binary>>},
-    option_39: "host.example.com",
-    has_ia_na: true,
-    has_ia_pd: false,
-    source_ip: {0xfe80, 0, 0, 0, 0x1234, 0x56ff, 0xfe78, 0x9abc},
-    interface: "eth0"
-  }
-)
-```
-
-### Emitted by Fingerprint App
-
-```elixir
-# Device identified or updated
-[:yellow_dog, :fingerprint, :device, :identified]
-metadata: %{mac: mac, profile: profile_name, confidence: score, new_device: boolean}
-
-# Unknown fingerprint observed
-[:yellow_dog, :fingerprint, :unknown]
-metadata: %{fingerprint_id: hash, protocol: :dhcpv4 | :dhcpv6, parameter_list: [...]}
-
-# Fingerprint changed for known device (possible OS upgrade/change)
-[:yellow_dog, :fingerprint, :device, :changed]
-metadata: %{mac: mac, old_profile: name, new_profile: name}
-```
-
-## Matching Engine
-
-### Match Flow
-
-```
-Raw DHCP options
-  │
-  ├─ Parser.V4 or Parser.V6
-  │   └─ Extract signals → %Fingerprint{}
-  │
-  ├─ Compute canonical hash
-  │
-  ├─ Exact match (ETS lookup by hash)
-  │   ├─ Hit → return %DeviceProfile{} with confidence
-  │   └─ Miss ↓
-  │
-  ├─ Fuzzy match (parameter list similarity)
-  │   ├─ Jaccard similarity on option set (ignoring order)
-  │   ├─ Ordered subsequence bonus
-  │   ├─ Threshold: >= 0.8 similarity
-  │   └─ Best match → return %DeviceProfile{} with reduced confidence
-  │
-  ├─ Vendor class match (regex patterns)
-  │   ├─ "MSFT 5.0" → Windows
-  │   ├─ "android-dhcp-*" → Android
-  │   ├─ "udhcp*" → Embedded Linux
-  │   └─ Match → return %DeviceProfile{} with medium confidence
-  │
-  ├─ Fingerbank API fallback (optional, if configured)
-  │   ├─ POST /api/v2/combinations/interrogate
-  │   ├─ Cache result locally on success
-  │   └─ Rate limited: max 300/hr
-  │
-  └─ No match → register as unknown, OUI enrichment only
-```
-
-### Confidence Scoring
-
-| Match Type | Base Confidence | Notes |
-|------------|----------------|-------|
-| Exact hash match (local override) | 95-100 | User classified |
-| Exact hash match (fingerbank DB) | 80-95 | Depends on DB confidence |
-| Fuzzy match (>= 0.9 Jaccard) | 60-80 | Reduced by delta from exact |
-| Fuzzy match (>= 0.8 Jaccard) | 40-60 | Low confidence |
-| Vendor class only | 30-50 | Broad category only |
-| Fingerbank API result | Per API | Score 0-100 from API |
-| OUI only | 10-20 | Manufacturer known, device type unknown |
-
-### Priority
-
-1. User overrides (`:user_override`) — always win
-2. Local database exact match
-3. Local database fuzzy match
-4. Fingerbank API (if enabled)
-5. OUI-only identification
-
-## Fingerprint Database
-
-### Local Database
-
-ETS-backed, loaded from TOML at boot. Two tiers:
-
-**Bundled database** — shipped with YellowDog, seeded from Fingerbank's open dataset (ODbL licensed). Approximately 15k DHCPv4 fingerprints, sparse DHCPv6 coverage.
-
-**User overrides** — managed via LiveView console. Stored in `data/fingerprint/overrides.toml`. Always take priority over bundled data.
-
-### Database Schema (TOML)
-
-**`data/fingerprint/profiles.toml`** — Bundled device profiles:
+**Config structure** (`priv/netboot.toml` or global yellowdog config):
 
 ```toml
-[[profiles]]
-id = "windows-11"
-name = "Windows 11"
-os_family = "Windows"
-os_version = "11"
-device_type = "computer"
-vendor = "Microsoft"
+[netboot]
+tftp_root = "/srv/netboot/tftp"
+tftp_port = 69
+default_profile = "nixos-minimal"
 
-[[profiles]]
-id = "iphone-ios17"
-name = "iPhone (iOS 17)"
-os_family = "iOS"
-os_version = "17"
-device_type = "phone"
-vendor = "Apple"
+[netboot.profiles.nixos-minimal]
+description = "NixOS Minimal Install"
+kernel = "nixos/bzImage"
+initrd = "nixos/initrd.img"
+kernel_args = "init=/nix/store/...-init ip=dhcp"
+installer_image = "nixos/installer.squashfs"
+arch = ["x86_64"]
+
+[netboot.profiles.nixos-desktop]
+description = "NixOS Desktop (Flake)"
+kernel = "nixos/bzImage"
+initrd = "nixos/initrd.img"
+kernel_args = "init=/nix/store/...-init ip=dhcp"
+installer_image = "nixos/installer.squashfs"
+arch = ["x86_64"]
+
+[netboot.profiles.nixos-desktop.manifest]
+profile = "nixos-desktop"
+disk_layout = "single-root-btrfs"
+flake = "github:user/system#x86_64-linux"
+slot_strategy = "single"
+post_install_hooks = []
+
+[netboot.profiles.rescue]
+description = "Rescue Shell"
+kernel = "rescue/vmlinuz"
+initrd = "rescue/initrd.img"
+kernel_args = "rescue shell"
+arch = ["x86_64", "aarch64"]
 ```
 
-**`data/fingerprint/fingerprints_v4.toml`** — DHCPv4 fingerprint → profile mappings:
-
-```toml
-[[fingerprints]]
-parameter_list = [1, 121, 3, 6, 15, 114, 119, 252]
-vendor_class_pattern = "MSFT 5.0"
-profile_id = "windows-11"
-confidence = 90
-
-[[fingerprints]]
-parameter_list = [1, 121, 3, 6, 15, 119, 252]
-vendor_class_pattern = "android-dhcp-*"
-profile_id = "android-generic"
-confidence = 75
+**API**:
+```elixir
+Manifest.Store.get_profile(profile_id)
+Manifest.Store.list_profiles()
+Manifest.Store.get_manifest(profile_id)
+Manifest.Store.reload()                     # hot-reload from TOML
 ```
 
-**`data/fingerprint/fingerprints_v6.toml`** — DHCPv6 fingerprint → profile mappings:
+### 5. DHCP Integration
 
-```toml
-[[fingerprints]]
-parameter_list = [1, 2, 3, 6, 11, 12, 23, 24, 39, 73, 74]
-duid_type = 4
-enterprise_id = 43793
-profile_id = "linux-systemd"
-confidence = 70
-```
+`yellow_dog_dhcp` must inject PXE boot options based on client architecture.
 
-**`data/fingerprint/overrides.toml`** — User-managed overrides:
-
-```toml
-[[overrides]]
-fingerprint_hash = "a1b2c3d4..."
-profile_id = "custom-iot-sensor"
-note = "Floor 3 temperature sensors"
-created_at = 2026-01-15T10:30:00Z
-
-[[custom_profiles]]
-id = "custom-iot-sensor"
-name = "AcmeCorp Temperature Sensor v2"
-device_type = "iot"
-vendor = "AcmeCorp"
-```
-
-### OUI Database
-
-IEEE MA-L/MA-M/MA-S database. Loaded from `data/fingerprint/oui.txt` (IEEE format). Updated manually or via scheduled download from `https://standards-oui.ieee.org/oui/oui.txt`.
-
-### Device Registry
-
-Runtime state of observed devices. Persisted to `data/fingerprint/devices.toml` periodically (flush interval: 60s, immediate on shutdown). Consistent with DHCP pool persistence pattern.
-
-```toml
-[[devices]]
-mac = "aa:bb:cc:dd:ee:ff"
-oui_vendor = "Apple, Inc."
-hostname = "iPhone"
-fingerprint_v4_id = "a1b2c3d4..."
-profile_id = "iphone-ios17"
-profile_confidence = 90
-first_seen = 2026-01-01T00:00:00Z
-last_seen = 2026-02-09T12:00:00Z
-observation_count = 147
-ipv4_addresses = ["192.168.1.42"]
-ipv6_addresses = ["fd00::1234"]
-```
-
-## Fingerbank API Integration
-
-Optional upstream integration. Disabled by default.
-
-### Configuration
-
-```toml
-[fingerprint.fingerbank]
-enabled = false
-api_key = ""
-base_url = "https://api.fingerbank.org"
-cache_ttl_hours = 168           # 7 days
-rate_limit_per_hour = 300
-submit_unknown = false          # Submit unknown fingerprints upstream
-```
-
-### API Usage
-
-Query: `GET /api/v2/combinations/interrogate`
-
-```json
-{
-  "dhcp_fingerprint": "1,121,3,6,15,119,252",
-  "dhcp_vendor": "dhcpcd-5.5.6",
-  "mac": "aabbccddeeff"
-}
-```
-
-Response includes device hierarchy, name, and confidence score (0-100).
-
-Results cached locally in ETS with TTL. Cached results persisted across restarts in `data/fingerprint/.cache/fingerbank_cache.toml`.
-
-### DHCPv6 API Support
-
-Fingerbank supports DHCPv6 fingerprints via `dhcp6_fingerprint` and `dhcp6_enterprise` fields:
-
-```json
-{
-  "dhcp6_fingerprint": "1,2,3,6,11,12,23,24,39,73,74",
-  "dhcp6_enterprise": "43793",
-  "mac": "aabbccddeeff"
-}
-```
-
-## Process Architecture
-
-```
-yellow_dog_fingerprint (Application)
-├── Fingerprint.Supervisor
-│   ├── Fingerprint.Observer          # Telemetry handler, routes to workers
-│   ├── Fingerprint.Database          # ETS tables, TOML load/save
-│   ├── Fingerprint.DeviceRegistry    # Device state, periodic flush
-│   ├── Fingerprint.OUI              # OUI lookup table
-│   └── Fingerprint.FingerbankClient  # Optional API client (GenServer)
-```
-
-**Observer** attaches to telemetry events on `init/1`. Extracts fingerprint, runs match pipeline, updates device registry. All processing is synchronous within the telemetry handler — acceptable because fingerprinting is cheap (ETS lookups) and DHCP message rate is low (tens per second, not thousands).
-
-If Fingerbank API fallback is needed (cache miss for unknown fingerprint), the observer spawns a `Task` to avoid blocking the telemetry handler. The task result updates ETS asynchronously.
-
-## LiveView Console
-
-### Device Inventory Page (`/devices`)
-
-Real-time device table via `Phoenix.PubSub`:
-
-- **Columns:** MAC, IP(s), Hostname, Device Type, OS, Vendor (OUI), Profile, Confidence, First Seen, Last Seen
-- **Sort:** Any column, default by last_seen desc
-- **Filter:** Device type, OS family, vendor, confidence threshold, subnet, "unknown only"
-- **Search:** MAC, hostname, IP
-- **Live updates:** New devices appear immediately, last_seen updates in real-time
-- **Export:** CSV download of current filtered view
-
-### Fingerprint Management Page (`/fingerprints`)
-
-- **Known fingerprints:** Browse with matched profile, hit count, last seen
-- **Unknown fingerprints:** Ranked by frequency (most-seen first). This is the primary actionable list.
-- **Classify unknown:** Select unknown fingerprint → assign existing or create new profile → saves to overrides.toml
-- **Import/Export:** Upload/download fingerprint database (TOML format)
-
-### Device Detail Page (`/devices/:mac`)
-
-- Protocol correlation: side-by-side v4 and v6 fingerprint
-- DHCP interaction timeline (leases, renewals, releases)
-- Fingerprint change history (OS upgrade detection)
-- Raw fingerprint data display
-
-### Dashboard Widgets (`/dashboard`)
-
-Available as components for the main YellowDog dashboard:
-
-- Device type distribution (bar chart)
-- New devices over time (line chart)
-- Unknown fingerprint count (metric card, links to classification page)
-- Top vendors (pie chart)
-
-## PubSub Topics
+**Boot option injection logic** (called during OFFER/ACK construction):
 
 ```elixir
-# New device or device update — LiveView subscribes
-Phoenix.PubSub.broadcast(YellowDog.PubSub, "fingerprint:devices", {:device_updated, device})
+# In yellow_dog_dhcp worker, during response building:
+case YellowDog.Netboot.BootProfile.for_device(client_mac, client_arch) do
+  {:ok, %{boot_mode: :tftp, filename: filename, server: server}} ->
+    # Set Option 66 (TFTP server) + Option 67 (boot filename)
+    add_options(response, [{66, server}, {67, filename}])
 
-# New unknown fingerprint — dashboard widget subscribes
-Phoenix.PubSub.broadcast(YellowDog.PubSub, "fingerprint:unknown", {:new_unknown, fingerprint})
+  {:ok, %{boot_mode: :http, url: url}} ->
+    # UEFI HTTP Boot - set vendor option with boot URL
+    add_options(response, [{67, url}])
 
-# Fingerprint change detected — alert/notification
-Phoenix.PubSub.broadcast(YellowDog.PubSub, "fingerprint:changes", {:profile_changed, mac, old, new})
+  :no_boot ->
+    # Not a netboot device, skip
+    response
+end
 ```
+
+**Architecture detection** from DHCP Option 60 / Option 93:
+
+| Client Arch (Opt 93) | Type | Boot File |
+|----------------------|------|-----------|
+| 0x0000 | BIOS x86 | `undionly.kpxe` |
+| 0x0006 | UEFI x86 | `ipxe.efi` |
+| 0x0007 | UEFI x64 | `ipxe.efi` |
+| 0x0009 | UEFI x64 | `ipxe.efi` |
+| 0x000B | UEFI ARM64 | `ipxe-arm64.efi` |
+
+### 6. iPXE Script Engine
+
+Template-based dynamic iPXE script generation.
+
+**Default template**:
+```
+#!ipxe
+echo YellowDog Netboot - ${mac} (${arch})
+dhcp
+set base-url http://${yellowdog_ip}:${port}/boot/assets
+
+kernel ${base-url}/${kernel} ${kernel_args} yellowdog.mac=${mac} yellowdog.api=http://${yellowdog_ip}:${port}
+initrd ${base-url}/${initrd}
+boot
+```
+
+**Conditional logic support**:
+- Per-device overrides (rescue mode, reinstall flag)
+- Profile-based kernel/initrd selection
+- Architecture-specific boot paths
+- Fallback chain on boot failure
+
+---
+
+## Console UI (LiveView)
+
+All netboot management integrated into `yellow_dog_console` under `/netboot/*` routes.
+
+### Navigation
+
+Add "Netboot" section to main sidebar:
+```
+Netboot
+├── Dashboard         /netboot
+├── Devices           /netboot/devices
+├── Boot Profiles     /netboot/profiles
+├── TFTP Server       /netboot/tftp
+└── Boot Log          /netboot/log
+```
+
+### Pages
+
+#### Dashboard (`/netboot`)
+
+Overview cards:
+- **Device summary**: count by state (discovered / booting / installing / installed / failed)
+- **TFTP status**: running/stopped, port, total transfers today
+- **Active transfers**: list of in-progress TFTP transfers
+- **Recent activity**: last 10 state transitions across all devices
+
+Real-time updates via PubSub subscriptions to `"netboot:devices"` and `"netboot:tftp"` topics.
+
+#### Devices (`/netboot/devices`)
+
+**List view**:
+- Table: MAC, hostname, IP, arch, profile, state, last seen, actions
+- Filterable by state, profile, arch, tags
+- Sortable columns
+- Color-coded state badges (green=installed, yellow=booting/installing, red=failed, gray=discovered)
+
+**Device detail** (`/netboot/devices/:mac`):
+- Full device record display
+- State history timeline
+- Assigned boot profile (editable dropdown)
+- Hardware info (populated after installer registration)
+- Tags (editable)
+- Actions: Assign Profile, Request Reinstall, Delete, Boot to Rescue
+- Install log (if available)
+
+**Bulk actions**:
+- Select multiple → Assign Profile, Request Reinstall, Add Tag
+
+#### Boot Profiles (`/netboot/profiles`)
+
+**List view**:
+- Table: name, description, arch support, kernel path, device count using profile
+- Create / Edit / Delete actions
+
+**Profile editor** (`/netboot/profiles/:id/edit`):
+- Form fields: name, description, kernel, initrd, kernel_args, arch (multi-select), installer_image
+- Manifest sub-form: disk_layout, flake URL, slot_strategy, post_install_hooks
+- Preview: rendered iPXE script for this profile
+- Validation: check that referenced files exist in TFTP root
+
+**Create profile** (`/netboot/profiles/new`):
+- Same form as editor
+- Option to clone from existing profile
+
+#### TFTP Server (`/netboot/tftp`)
+
+**Status panel**:
+- Running/stopped indicator with start/stop toggle
+- Port configuration
+- TFTP root path
+- File count in root
+
+**File browser**:
+- Tree view of TFTP root directory
+- File sizes, modification dates
+- Upload new files (iPXE binaries, kernels, initrds)
+- Delete files (with confirmation)
+- Refresh / rescan
+
+**Active transfers**:
+- Live table: client IP, filename, progress (bytes/total), speed, elapsed time
+- Auto-updates via PubSub
+
+**Transfer history**:
+- Recent completed/failed transfers
+- Filterable by client, filename, status
+
+#### Boot Log (`/netboot/log`)
+
+**Unified activity log**:
+- Chronological stream of all netboot events
+- Event types: device discovery, boot request, TFTP transfer, state change, install callback, errors
+- Filterable by device MAC, event type, time range
+- Auto-scroll with pause button
+- Export to CSV
+
+### LiveView Implementation Notes
+
+**PubSub topics**:
+```elixir
+"netboot:devices"          # device state changes
+"netboot:devices:#{mac}"   # single device updates
+"netboot:tftp"             # TFTP server events
+"netboot:tftp:transfers"   # active transfer updates
+"netboot:log"              # all events stream
+```
+
+**Handle patterns**:
+```elixir
+# In LiveView mount
+def mount(_params, _session, socket) do
+  if connected?(socket) do
+    Phoenix.PubSub.subscribe(YellowDog.PubSub, "netboot:devices")
+    Phoenix.PubSub.subscribe(YellowDog.PubSub, "netboot:tftp")
+  end
+  # load initial state from Registry/Store
+end
+
+def handle_info({:device_state_changed, device}, socket) do
+  # update assigns, stream_insert for device list
+end
+```
+
+**Components** (reusable across pages):
+- `NetbootComponents.state_badge/1` — colored state indicator
+- `NetbootComponents.device_row/1` — table row for device list
+- `NetbootComponents.transfer_row/1` — active transfer display
+- `NetbootComponents.profile_select/1` — profile dropdown
+- `NetbootComponents.file_tree/1` — TFTP file browser tree
+
+---
 
 ## File Structure
 
 ```
-apps/yellow_dog_fingerprint/
-├── lib/yellow_dog/fingerprint/
+apps/yellow_dog_netboot/
+├── lib/yellow_dog/netboot/
 │   ├── application.ex
 │   ├── supervisor.ex
-│   ├── observer.ex             # Telemetry event handler
-│   ├── database.ex             # ETS tables, TOML load/save
-│   ├── device_registry.ex      # Device state management
-│   ├── matcher.ex              # Match pipeline
-│   ├── oui.ex                  # OUI lookup
-│   ├── fingerbank_client.ex    # Optional API client
-│   ├── parser/
-│   │   ├── v4.ex               # DHCPv4 signal extraction
-│   │   └── v6.ex               # DHCPv6 signal extraction
-│   └── types/
-│       ├── fingerprint.ex
-│       ├── device_profile.ex
-│       └── device.ex
-├── test/yellow_dog/fingerprint/
-│   ├── observer_test.exs
-│   ├── database_test.exs
-│   ├── matcher_test.exs
-│   ├── device_registry_test.exs
-│   ├── oui_test.exs
-│   └── parser/
-│       ├── v4_test.exs
-│       └── v6_test.exs
+│   ├── tftp/
+│   │   ├── server.ex              # UDP listener, RRQ dispatch
+│   │   ├── transfer.ex            # Per-transfer worker process
+│   │   ├── transfer_supervisor.ex # DynamicSupervisor
+│   │   ├── protocol.ex            # TFTP packet encode/decode
+│   │   └── file_index.ex          # ETS-cached file lookup
+│   ├── device/
+│   │   ├── registry.ex            # ETS-backed device store
+│   │   ├── device.ex              # Device struct + state machine
+│   │   └── persistence.ex         # TOML persistence
+│   ├── boot/
+│   │   ├── profile.ex             # Boot profile struct + API
+│   │   ├── script_engine.ex       # iPXE template rendering
+│   │   └── arch.ex                # Architecture detection helpers
+│   ├── manifest/
+│   │   ├── store.ex               # Profile/manifest config store
+│   │   └── manifest.ex            # Install manifest struct
+│   └── asset/
+│       └── store.ex               # Boot asset file management
+├── priv/
+│   ├── templates/
+│   │   ├── default.ipxe.eex       # Default iPXE template
+│   │   └── rescue.ipxe.eex        # Rescue mode template
+│   └── netboot.toml               # Default configuration
+├── test/
+│   ├── tftp/
+│   │   ├── server_test.exs
+│   │   ├── transfer_test.exs
+│   │   └── protocol_test.exs
+│   ├── device/
+│   │   └── registry_test.exs
+│   ├── boot/
+│   │   └── script_engine_test.exs
+│   └── test_helper.exs
 └── mix.exs
+
+# Console routes + LiveView pages:
+apps/yellow_dog_console/lib/yellow_dog_console_web/
+├── router.ex                           # add /netboot scope
+├── live/netboot/
+│   ├── dashboard_live.ex
+│   ├── devices_live.ex
+│   ├── device_detail_live.ex
+│   ├── profiles_live.ex
+│   ├── profile_editor_live.ex
+│   ├── tftp_live.ex
+│   └── log_live.ex
+└── components/
+    └── netboot_components.ex
 ```
 
-Data directory:
+---
 
-```
-data/fingerprint/
-├── profiles.toml               # Bundled device profiles
-├── fingerprints_v4.toml        # Bundled v4 fingerprint mappings
-├── fingerprints_v6.toml        # Bundled v6 fingerprint mappings
-├── overrides.toml              # User-managed overrides + custom profiles
-├── devices.toml                # Persisted device registry
-├── oui.txt                     # IEEE OUI database
-└── .cache/
-    └── fingerbank_cache.toml   # Cached API results
-```
+## Configuration (TOML)
 
-## Configuration
+Integrated into main YellowDog config:
 
 ```toml
-[fingerprint]
-enabled = true
-device_flush_interval_ms = 60000
-max_devices = 10000
-unknown_retention_days = 90
+[services]
+netboot = true
 
-[fingerprint.matching]
-fuzzy_threshold = 0.8
-vendor_class_enabled = true
+[netboot]
+tftp_port = 69
+tftp_root = "/srv/netboot/tftp"
+http_boot_enabled = true
+default_profile = "nixos-minimal"
+device_persistence_path = "/var/lib/yellowdog/netboot/devices.toml"
 
-[fingerprint.fingerbank]
-enabled = false
-api_key = ""
-cache_ttl_hours = 168
-rate_limit_per_hour = 300
-submit_unknown = false
-
-[fingerprint.oui]
-path = "data/fingerprint/oui.txt"
+[netboot.security]
+require_https = false          # phase 1: HTTP ok
+device_token_enabled = false   # phase 2: per-device tokens
 ```
 
-## Testing Requirements
+---
 
-### Unit Tests
+## Telemetry Events
 
-1. **Parser.V4** — Extract fingerprint from raw v4 options; handle missing/malformed options
-2. **Parser.V6** — Extract fingerprint from raw v6 options; DUID type parsing; enterprise ID extraction
-3. **Matcher** — Exact match; fuzzy match at various thresholds; vendor class regex matching; priority ordering (user override > local > API)
-4. **OUI** — 3-byte and 4-byte prefix lookup; unknown MAC handling
-5. **Database** — TOML round-trip; override priority; hash computation consistency
-6. **DeviceRegistry** — Create/update device; v4+v6 correlation by MAC; fingerprint change detection
+```elixir
+# TFTP
+[:yellow_dog, :netboot, :tftp, :request, :start]
+[:yellow_dog, :netboot, :tftp, :request, :stop]
+[:yellow_dog, :netboot, :tftp, :transfer, :start]
+[:yellow_dog, :netboot, :tftp, :transfer, :stop]
+[:yellow_dog, :netboot, :tftp, :transfer, :exception]
 
-### Integration Tests
+# Device lifecycle
+[:yellow_dog, :netboot, :device, :discovered]
+[:yellow_dog, :netboot, :device, :state_changed]
+[:yellow_dog, :netboot, :device, :registered]
 
-1. **End-to-end observation** — Emit telemetry event → observer processes → device appears in registry
-2. **LiveView updates** — Device registry change → PubSub → LiveView receives update
-3. **Persistence** — Registry flush → restart → devices recovered
-4. **Fingerbank API** — Mock API response → cached locally → used on subsequent lookup
+# Boot
+[:yellow_dog, :netboot, :boot, :script_rendered]
+[:yellow_dog, :netboot, :boot, :manifest_served]
 
-### Property-Based Tests
+# Install callbacks
+[:yellow_dog, :netboot, :install, :started]
+[:yellow_dog, :netboot, :install, :completed]
+[:yellow_dog, :netboot, :install, :failed]
+```
 
-1. **Hash determinism** — Same inputs always produce same fingerprint hash
-2. **Fuzzy symmetry** — similarity(A, B) == similarity(B, A)
-3. **TOML round-trip** — All types serialize and deserialize without loss
+---
 
-## Out of Scope
+## Testing Strategy
 
-- Active probing (nmap-style)
-- TCP/IP stack fingerprinting (p0f)
-- HTTP User-Agent fingerprinting (no HTTP visibility)
-- RADIUS/802.1X integration
-- Multi-node device registry replication
-- Automatic OUI database updates (manual download for v1)
+**Unit tests**:
+- TFTP protocol encode/decode (packet fixtures from real PXE clients)
+- Device state machine transitions (all valid/invalid paths)
+- iPXE script rendering with various profile configs
+- Boot profile matching (MAC → profile resolution)
+- File index path traversal prevention
+
+**Integration tests**:
+- TFTP server: open socket, send RRQ, receive DATA blocks, verify file content
+- Device registry: register → state transitions → persistence round-trip
+- HTTP boot endpoints: request iPXE script, verify correct profile rendering
+- DHCP integration: mock DHCP worker calling `BootProfile.for_device/1`
+
+**LiveView tests**:
+- Dashboard renders device counts
+- Device list filters and sorts correctly
+- Profile editor validates and saves
+- PubSub updates propagate to connected clients
+
+---
+
+## Implementation Phases
+
+### Phase 1 — Foundation
+- TFTP server (read-only, static file serving)
+- Basic device registry (ETS, no persistence)
+- DHCP boot option injection (Option 66/67)
+- Static iPXE boot chain
+- Console: TFTP status page, file browser
+
+### Phase 2 — Dynamic Boot
+- Dynamic iPXE script engine with templates
+- Boot profile configuration (TOML)
+- Device registry with persistence
+- HTTP boot endpoints
+- Console: Device list, profile editor, dashboard
+
+### Phase 3 — Install Automation
+- Install manifest API
+- Installer registration/callback endpoints
+- Device state machine (full lifecycle)
+- Console: Device detail, boot log, bulk actions
+
+### Phase 4 — Hardening (Future)
+- HTTPS for iPXE chain
+- Per-device install tokens
+- A/B slot support in manifest/registry
+- Health check and rollback
+- Image-based deployment
+
+---
 
 ## Acceptance Criteria
 
-- [ ] DHCPv4 fingerprints extracted from DISCOVER/REQUEST messages
-- [ ] DHCPv6 fingerprints extracted from SOLICIT/REQUEST messages
-- [ ] Exact match against local fingerprint database works
-- [ ] Fuzzy matching identifies close variants
-- [ ] OUI lookup resolves MAC → vendor
-- [ ] Device registry correlates v4 and v6 by MAC
-- [ ] Fingerprint change detection triggers event
-- [ ] User overrides take priority over bundled database
-- [ ] Device registry persists across restarts
-- [ ] LiveView device inventory shows real-time updates
-- [ ] Unknown fingerprints surfaced for manual classification
-- [ ] Fingerbank API integration works when enabled
-- [ ] Unit and integration tests pass
-- [ ] TOML schema documented with examples
+### Phase 1
+- [ ] TFTP server serves files from configured root directory
+- [ ] TFTP rejects WRQ and path traversal attempts
+- [ ] DHCP OFFER/ACK includes boot options for PXE clients
+- [ ] iPXE binary chainloads successfully from TFTP
+- [ ] Console shows TFTP server status and file browser
+- [ ] Telemetry events emitted for all TFTP operations
+
+### Phase 2
+- [ ] iPXE script dynamically generated per device MAC/arch
+- [ ] Boot profiles configurable via TOML and console UI
+- [ ] Device registry tracks discovered devices with state
+- [ ] Console device list with filtering and profile assignment
+- [ ] Hot-reload of boot profiles without restart
+
+### Phase 3
+- [ ] Installer fetches manifest from HTTP API
+- [ ] Device state transitions through full lifecycle
+- [ ] Install success/failure reported back via callback
+- [ ] Console shows device detail with state history
+- [ ] Boot log with filtering and export
+
+---
+
+## Security Considerations
+
+- TFTP: read-only, no write/delete, path traversal blocked
+- HTTP boot endpoints: rate limiting on script generation
+- Device registration: validate MAC format, deduplicate
+- Phase 2+: per-device tokens for manifest API authentication
+- Phase 4: HTTPS required for iPXE chain and install API
+- Privileged port 69: requires `CAP_NET_BIND_SERVICE` or root (same pattern as DNS/DHCP)
+
+---
+
+## Dependencies
+
+| Dependency | Usage | Existing? |
+|-----------|-------|-----------|
+| `abyss` | UDP transport for TFTP server | Yes |
+| `yellow_dog` | Core config loading | Yes |
+| `yellow_dog_telemetry` | Event emission | Yes |
+| `yellow_dog_console` | LiveView UI routes | Yes |
+| `yellow_dog_dhcp` | Boot option injection caller | Yes |
+| `phoenix_pubsub` | Real-time UI updates | Yes (via console) |
+| `eex` | iPXE template rendering | Stdlib |
+| `:gen_udp` | TFTP socket (via Abyss or direct) | OTP |
