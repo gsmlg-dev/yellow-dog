@@ -38,6 +38,12 @@ defmodule YellowDog.Netboot.Asset.Store do
     GenServer.call(__MODULE__, :root_dir)
   end
 
+  @doc "Upload a file to the TFTP root."
+  @spec upload_file(String.t(), String.t()) :: :ok | {:error, term()}
+  def upload_file(relative_path, source_path) do
+    GenServer.call(__MODULE__, {:upload_file, relative_path, source_path})
+  end
+
   @doc "Build a directory tree structure."
   @spec file_tree() :: [map()]
   def file_tree do
@@ -70,6 +76,22 @@ defmodule YellowDog.Netboot.Asset.Store do
 
       case File.rm(full_path) do
         :ok -> {:reply, :ok, state}
+        {:error, reason} -> {:reply, {:error, reason}, state}
+      end
+    end
+  end
+
+  def handle_call({:upload_file, path, source}, _from, state) do
+    if YellowDog.Netboot.TFTP.FileIndex.path_traversal?(path) do
+      {:reply, {:error, :path_traversal}, state}
+    else
+      dest = Path.join(state.root, path)
+      dest_dir = Path.dirname(dest)
+
+      with :ok <- File.mkdir_p(dest_dir),
+           {:ok, _bytes} <- File.copy(source, dest) do
+        {:reply, :ok, state}
+      else
         {:error, reason} -> {:reply, {:error, reason}, state}
       end
     end

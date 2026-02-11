@@ -165,6 +165,37 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "button", "Rescan Files")
     end
+
+    test "shows upload card with form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/tftp")
+
+      assert html =~ "Upload Boot Assets"
+      assert html =~ "Target Directory"
+      assert html =~ "Max 500 MB per file"
+    end
+
+    test "has upload submit button (disabled when no files)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      assert has_element?(view, "button[disabled]", "Upload Files")
+    end
+
+    test "validate_upload updates target path", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      html =
+        view
+        |> element("form[phx-change=validate_upload]")
+        |> render_change(%{"upload_path" => "nixos/"})
+
+      assert html =~ "nixos/"
+    end
+
+    test "file input is present for boot_asset upload", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      assert has_element?(view, "input[type=file]")
+    end
   end
 
   describe "Boot Log page" do

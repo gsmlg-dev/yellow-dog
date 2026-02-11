@@ -14,7 +14,12 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
     {:ok,
      socket
-     |> assign(page_title: "TFTP Server")
+     |> assign(page_title: "TFTP Server", upload_path: "")
+     |> allow_upload(:boot_asset,
+       accept: :any,
+       max_entries: 5,
+       max_file_size: 500_000_000
+     )
      |> load_data()}
   end
 
@@ -71,15 +76,71 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
           </.card>
 
           <.card>
-            <h2 class="card-title mb-4">File Browser</h2>
-            <div :if={@file_tree == []} class="text-base-content/50">
-              No files found in TFTP root
-            </div>
-            <div :if={@file_tree != []} class="text-sm">
-              <.file_tree_node :for={node <- @file_tree} node={node} />
-            </div>
+            <h2 class="card-title mb-4">Upload Boot Assets</h2>
+            <.form for={%{}} phx-change="validate_upload" phx-submit="save_upload" class="space-y-3">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Target Directory (relative to TFTP root)</span>
+                </label>
+                <input
+                  type="text"
+                  name="upload_path"
+                  value={@upload_path}
+                  placeholder="e.g. nixos/ or rescue/"
+                  class="input input-bordered input-sm w-full font-mono"
+                />
+              </div>
+
+              <div
+                class="border-2 border-dashed border-base-300 rounded-lg p-4 text-center"
+                phx-drop-target={@uploads.boot_asset.ref}
+              >
+                <.live_file_input upload={@uploads.boot_asset} class="file-input file-input-bordered file-input-sm w-full" />
+                <p class="text-xs text-base-content/50 mt-1">
+                  Max 500 MB per file, up to 5 files
+                </p>
+              </div>
+
+              <%= for entry <- @uploads.boot_asset.entries do %>
+                <div class="flex items-center gap-2 text-sm">
+                  <span class="font-mono flex-1 truncate">{entry.client_name}</span>
+                  <span class="text-base-content/50">{format_size(entry.client_size)}</span>
+                  <progress class="progress progress-primary w-20" value={entry.progress} max="100" />
+                  <button
+                    type="button"
+                    phx-click="cancel_upload"
+                    phx-value-ref={entry.ref}
+                    class="btn btn-ghost btn-xs text-error"
+                    aria-label="Cancel upload"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <%= for err <- upload_errors(@uploads.boot_asset, entry) do %>
+                  <p class="text-xs text-error">{upload_error_to_string(err)}</p>
+                <% end %>
+              <% end %>
+
+              <button
+                type="submit"
+                class={["btn btn-primary btn-sm", @uploads.boot_asset.entries == [] && "btn-disabled"]}
+                disabled={@uploads.boot_asset.entries == []}
+              >
+                Upload Files
+              </button>
+            </.form>
           </.card>
         </div>
+
+        <.card>
+          <h2 class="card-title mb-4">File Browser</h2>
+          <div :if={@file_tree == []} class="text-base-content/50">
+            No files found in TFTP root
+          </div>
+          <div :if={@file_tree != []} class="text-sm">
+            <.file_tree_node :for={node <- @file_tree} node={node} />
+          </div>
+        </.card>
       </div>
     </Layouts.app>
     """
@@ -105,6 +166,72 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       <span class="text-base-content/50">{format_size(@node.size)}</span>
     </div>
     """
+  end
+
+  @impl true
+  def handle_event("validate_upload", %{"upload_path" => path}, socket) do
+    {:noreply, assign(socket, :upload_path, path)}
+  end
+
+  def handle_event("validate_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save_upload", _params, socket) do
+    prefix = String.trim(socket.assigns.upload_path)
+
+    uploaded =
+      consume_uploaded_entries(socket, :boot_asset, fn %{path: tmp_path}, entry ->
+        dest_path =
+          if prefix != "" do
+            Path.join(prefix, entry.client_name)
+          else
+            entry.client_name
+          end
+
+        result =
+          safe_call(
+            YellowDog.Netboot.Asset.Store,
+            fn -> YellowDog.Netboot.Asset.Store.upload_file(dest_path, tmp_path) end,
+            {:error, :service_unavailable}
+          )
+
+        case result do
+          :ok -> {:ok, dest_path}
+          error -> {:ok, {:error, dest_path, error}}
+        end
+      end)
+
+    {ok, errors} =
+      Enum.split_with(uploaded, fn
+        {:error, _, _} -> false
+        _ -> true
+      end)
+
+    socket =
+      socket
+      |> load_data()
+      |> assign(:upload_path, "")
+
+    socket =
+      cond do
+        errors != [] ->
+          put_flash(socket, :error, "Failed to upload #{length(errors)} file(s)")
+
+        ok != [] ->
+          put_flash(socket, :info, "Uploaded #{length(ok)} file(s) successfully")
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :boot_asset, ref)}
   end
 
   @impl true
@@ -147,6 +274,11 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     |> assign(:status, status)
     |> assign(:file_tree, tree)
   end
+
+  defp upload_error_to_string(:too_large), do: "File is too large (max 500 MB)"
+  defp upload_error_to_string(:too_many_files), do: "Too many files (max 5)"
+  defp upload_error_to_string(:external_client_failure), do: "Upload failed"
+  defp upload_error_to_string(err), do: "Error: #{inspect(err)}"
 
   defp format_size(bytes) when bytes < 1024, do: "#{bytes} B"
   defp format_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
