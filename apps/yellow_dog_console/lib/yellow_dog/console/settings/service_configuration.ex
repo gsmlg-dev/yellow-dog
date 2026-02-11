@@ -16,7 +16,7 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
     field(:enabled, :boolean, default: true)
     field(:listen, :string)
     field(:port, :integer)
-    field(:service_type, Ecto.Enum, values: [:dns, :mdns, :dhcpv4, :dhcpv6])
+    field(:service_type, Ecto.Enum, values: [:dns, :mdns, :dhcpv4, :dhcpv6, :netboot])
 
     # Service-specific fields
     # mDNS only
@@ -27,6 +27,9 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
     field(:dns_servers, {:array, :string}, virtual: true, default: [])
     # DHCPv4 only
     field(:gateway, :string, virtual: true)
+    # Netboot only
+    field(:tftp_root, :string, virtual: true)
+    field(:default_profile, :string, virtual: true)
 
     # Pool references (DHCP services only)
     embeds_many(:pools, AddressPool, on_replace: :delete)
@@ -36,11 +39,13 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
           enabled: boolean(),
           listen: String.t() | nil,
           port: integer() | nil,
-          service_type: :dns | :mdns | :dhcpv4 | :dhcpv6 | nil,
+          service_type: :dns | :mdns | :dhcpv4 | :dhcpv6 | :netboot | nil,
           mode: :responder | :hybrid | nil,
           domain: String.t() | nil,
           dns_servers: [String.t()],
           gateway: String.t() | nil,
+          tftp_root: String.t() | nil,
+          default_profile: String.t() | nil,
           pools: [AddressPool.t()]
         }
 
@@ -65,16 +70,30 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
       :mode,
       :domain,
       :dns_servers,
-      :gateway
+      :gateway,
+      :tftp_root,
+      :default_profile
     ])
     |> cast_embed(:pools, with: &AddressPool.changeset/2)
-    |> validate_required([:enabled, :listen, :port, :service_type])
+    |> validate_required([:enabled, :port, :service_type])
     |> validate_number(:port, greater_than: 0, less_than_or_equal_to: 65_535)
-    |> validate_ip_address(:listen)
+    |> validate_listen_if_needed()
     |> validate_service_specific()
   end
 
   # Private Functions
+
+  defp validate_listen_if_needed(changeset) do
+    service_type = get_field(changeset, :service_type)
+
+    if service_type == :netboot do
+      changeset
+    else
+      changeset
+      |> validate_required([:listen])
+      |> validate_ip_address(:listen)
+    end
+  end
 
   defp validate_service_specific(changeset) do
     service_type = get_field(changeset, :service_type)
@@ -88,6 +107,10 @@ defmodule YellowDog.Console.Settings.ServiceConfiguration do
       service when service in [:dhcpv4, :dhcpv6] ->
         changeset
         |> validate_pools()
+
+      :netboot ->
+        changeset
+        |> validate_required([:tftp_root])
 
       _ ->
         changeset

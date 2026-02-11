@@ -84,7 +84,7 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, assign(socket, :active_tab, socket.assigns.live_action)}
   end
 
-  @valid_settings_services ~w(dns mdns dhcpv4 dhcpv6)
+  @valid_settings_services ~w(dns mdns dhcpv4 dhcpv6 netboot)
 
   @impl true
   def handle_event("validate_" <> service, %{"service_configuration" => params}, socket)
@@ -359,6 +359,8 @@ defmodule YellowDog.Console.SettingsLive do
     |> assign(:mdns_changeset, build_changeset(:mdns, config))
     |> assign(:dhcpv4_changeset, build_changeset(:dhcpv4, config))
     |> assign(:dhcpv6_changeset, build_changeset(:dhcpv6, config))
+    |> assign(:netboot_changeset, build_changeset(:netboot, config))
+    |> assign(:netboot_profiles, list_boot_profiles())
   end
 
   defp build_changeset(service, config) do
@@ -371,13 +373,21 @@ defmodule YellowDog.Console.SettingsLive do
 
     attrs =
       defaults
-      |> Map.merge(service_config)
+      |> Map.merge(normalize_config_keys(service, service_config))
       |> Map.put("enabled", enabled)
       |> Map.put("service_type", service)
       |> maybe_add_pools(service, service_config)
 
     ServiceConfiguration.changeset(%ServiceConfiguration{}, attrs)
   end
+
+  # Netboot uses tftp_port in TOML but we map it to generic port field
+  defp normalize_config_keys(:netboot, config) do
+    config
+    |> Map.put("port", Map.get(config, "tftp_port", Map.get(config, "port", 69)))
+  end
+
+  defp normalize_config_keys(_service, config), do: config
 
   defp get_service_defaults(:dns) do
     %{
@@ -410,6 +420,15 @@ defmodule YellowDog.Console.SettingsLive do
       "port" => 547,
       "domain" => "local",
       "dns_servers" => ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+    }
+  end
+
+  defp get_service_defaults(:netboot) do
+    %{
+      "listen" => "0.0.0.0",
+      "port" => 69,
+      "tftp_root" => "/srv/netboot/tftp",
+      "default_profile" => ""
     }
   end
 
@@ -551,6 +570,20 @@ defmodule YellowDog.Console.SettingsLive do
     end
   end
 
+  defp build_toml_updates(:netboot, changes) do
+    base = %{
+      "core.netboot" => changes.enabled,
+      "netboot.tftp_port" => changes.port,
+      "netboot.tftp_root" => changes.tftp_root
+    }
+
+    if changes.default_profile && changes.default_profile != "" do
+      Map.put(base, "netboot.default_profile", changes.default_profile)
+    else
+      base
+    end
+  end
+
   defp build_toml_updates(service, changes) do
     service_key = to_string(service)
 
@@ -597,6 +630,14 @@ defmodule YellowDog.Console.SettingsLive do
     pools = changes.pools || []
     formatted_pools = Enum.map(pools, &format_pool_for_toml/1)
     Map.put(updates, "#{service_key}.pools", formatted_pools)
+  end
+
+  defp list_boot_profiles do
+    try do
+      YellowDog.Netboot.Manifest.Store.list_profiles()
+    catch
+      _, _ -> []
+    end
   end
 
   defp format_pool_for_toml(pool) do

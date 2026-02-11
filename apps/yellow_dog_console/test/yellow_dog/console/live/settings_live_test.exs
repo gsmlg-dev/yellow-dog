@@ -18,6 +18,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
     mdns = true
     dhcpv4 = false
     dhcpv6 = false
+    netboot = false
 
     [dns]
     listen = "0.0.0.0"
@@ -35,6 +36,11 @@ defmodule YellowDog.Console.SettingsLiveTest do
     [dhcpv6]
     listen = "::"
     port = 5667
+
+    [netboot]
+    tftp_root = "/srv/netboot/tftp"
+    tftp_port = 69
+    default_profile = ""
     """
 
     File.write!(config_path, default_config)
@@ -66,6 +72,7 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert has_element?(view, "a[href='/settings/mdns']")
       assert has_element?(view, "a[href='/settings/dhcpv4']")
       assert has_element?(view, "a[href='/settings/dhcpv6']")
+      assert has_element?(view, "a[href='/settings/netboot']")
     end
 
     test "displays current configuration version", %{conn: conn, config_path: config_path} do
@@ -666,10 +673,115 @@ defmodule YellowDog.Console.SettingsLiveTest do
     end
 
     test "valid service tabs all mount correctly", %{conn: conn} do
-      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
+      for service <- ~w(dns mdns dhcpv4 dhcpv6 netboot) do
         {:ok, _view, html} = live(conn, "/settings/#{service}")
         assert html =~ "Settings"
       end
+    end
+  end
+
+  describe "SettingsLive netboot configuration" do
+    test "loads netboot tab with default values", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      assert has_element?(view, "a.tab.tab-active[href='/settings/netboot']")
+      assert has_element?(view, "input[name='service_configuration[tftp_root]']")
+      assert has_element?(view, "input[name='service_configuration[port]']")
+      assert has_element?(view, "select[name='service_configuration[default_profile]']")
+    end
+
+    test "displays netboot configuration title", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings/netboot")
+
+      assert html =~ "Netboot Service Configuration"
+      assert html =~ "TFTP Root Directory"
+      assert html =~ "TFTP Port"
+      assert html =~ "Default Boot Profile"
+    end
+
+    test "validates tftp_root is required", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      html =
+        view
+        |> form("form",
+          service_configuration: %{tftp_root: "", port: 69, enabled: true}
+        )
+        |> render_change()
+
+      assert html =~ "can&#39;t be blank"
+    end
+
+    test "validates port range for netboot", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      html =
+        view
+        |> form("form",
+          service_configuration: %{tftp_root: "/srv/netboot/tftp", port: 0, enabled: true}
+        )
+        |> render_change()
+
+      assert html =~ "must be greater than 0"
+    end
+
+    test "saves netboot configuration to TOML", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      html =
+        view
+        |> form("form",
+          service_configuration: %{
+            tftp_root: "/data/netboot",
+            port: 6969,
+            enabled: true,
+            default_profile: ""
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Configuration saved successfully"
+
+      {:ok, config} = ConfigManager.load_config(config_path)
+      assert config["netboot"]["tftp_root"] == "/data/netboot"
+      assert config["netboot"]["tftp_port"] == 6969
+      assert config["core"]["netboot"] == true
+    end
+
+    test "shows apply button after saving netboot changes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      view
+      |> form("form",
+        service_configuration: %{
+          tftp_root: "/srv/netboot/tftp",
+          port: 69,
+          enabled: true,
+          default_profile: ""
+        }
+      )
+      |> render_submit()
+
+      assert has_element?(view, "button[phx-click='apply_changes_netboot']")
+      assert has_element?(view, ".badge", "Pending Changes")
+    end
+
+    test "toggles netboot enabled status", %{conn: conn, config_path: config_path} do
+      {:ok, view, _html} = live(conn, ~p"/settings/netboot")
+
+      view
+      |> form("form",
+        service_configuration: %{
+          tftp_root: "/srv/netboot/tftp",
+          port: 69,
+          enabled: false,
+          default_profile: ""
+        }
+      )
+      |> render_submit()
+
+      {:ok, config} = ConfigManager.load_config(config_path)
+      assert config["core"]["netboot"] == false
     end
   end
 end

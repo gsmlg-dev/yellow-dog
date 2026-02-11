@@ -50,6 +50,7 @@ defmodule YellowDog.Console.Router do
     live "/settings/mdns", SettingsLive, :mdns
     live "/settings/dhcpv4", SettingsLive, :dhcpv4
     live "/settings/dhcpv6", SettingsLive, :dhcpv6
+    live "/settings/netboot", SettingsLive, :netboot
 
     # mDNS Management Routes
     live "/mdns", MdnsLive.Index
