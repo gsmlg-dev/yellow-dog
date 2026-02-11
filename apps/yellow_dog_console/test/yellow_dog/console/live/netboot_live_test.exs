@@ -858,6 +858,36 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert TftpLive.flatten_tree([]) == []
     end
 
+    test "transfer history has sortable column headers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/tftp")
+
+      # Add transfers to history so headers render
+      meta1 = %{client_addr: {10, 0, 0, 1}, file_path: "a.bin", total_size: 100, bytes_sent: 100, duration: 50, bytes: 100}
+      meta2 = %{client_addr: {10, 0, 0, 2}, file_path: "b.bin", total_size: 200, bytes_sent: 200, duration: 100, bytes: 200}
+
+      send(view.pid, {:tftp_transfer_complete, meta1})
+      send(view.pid, {:tftp_transfer_complete, meta2})
+      _html = render(view)
+
+      assert has_element?(view, "th[phx-click=sort_history][phx-value-field=client]")
+      assert has_element?(view, "th[phx-click=sort_history][phx-value-field=file]")
+      assert has_element?(view, "th[phx-click=sort_history][phx-value-field=size]")
+      assert has_element?(view, "th[phx-click=sort_history][phx-value-field=status]")
+    end
+
+    test "sort_history/3 sorts by size", _context do
+      alias YellowDog.Console.NetbootLive.TftpLive
+
+      history = [
+        %{client_addr: {10, 0, 0, 1}, file_path: "a", bytes: 100, duration: 50},
+        %{client_addr: {10, 0, 0, 2}, file_path: "b", bytes: 500, duration: 80},
+        %{client_addr: {10, 0, 0, 3}, file_path: "c", bytes: 200, duration: 30}
+      ]
+
+      sorted = TftpLive.sort_history(history, "size", "desc")
+      assert Enum.map(sorted, & &1.bytes) == [500, 200, 100]
+    end
+
     test "delete_file event shows error when service unavailable", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/tftp")
 

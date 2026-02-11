@@ -21,7 +21,9 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
        upload_path: "",
        active_transfers_map: %{},
        transfer_history: [],
-       history_filter: ""
+       history_filter: "",
+       history_sort_field: "time",
+       history_sort_dir: "desc"
      )
      |> allow_upload(:boot_asset,
        accept: :any,
@@ -194,28 +196,28 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
             </div>
           </div>
           <div
-            :if={filtered_history(@transfer_history, @history_filter) == []}
+            :if={sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir) == []}
             class="text-base-content/50"
           >
             No transfer history
           </div>
           <div
-            :if={filtered_history(@transfer_history, @history_filter) != []}
+            :if={sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir) != []}
             class="overflow-x-auto"
           >
             <table class="table table-sm table-zebra">
               <thead>
                 <tr>
-                  <th>Client</th>
-                  <th>File</th>
-                  <th>Size</th>
-                  <th>Duration</th>
+                  <.history_sort_header field="client" label="Client" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
+                  <.history_sort_header field="file" label="File" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
+                  <.history_sort_header field="size" label="Size" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
+                  <.history_sort_header field="duration" label="Duration" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
                   <th>Speed</th>
-                  <th>Status</th>
+                  <.history_sort_header field="status" label="Status" sort_field={@history_sort_field} sort_dir={@history_sort_dir} />
                 </tr>
               </thead>
               <tbody>
-                <tr :for={t <- filtered_history(@transfer_history, @history_filter)}>
+                <tr :for={t <- sorted_history(@transfer_history, @history_filter, @history_sort_field, @history_sort_dir)}>
                   <td class="font-mono text-sm">{format_addr(t.client_addr)}</td>
                   <td class="font-mono text-sm">{t.file_path}</td>
                   <td>{format_size(t[:bytes] || t[:total_size] || 0)}</td>
@@ -376,6 +378,15 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {:noreply, assign(socket, :history_filter, query)}
   end
 
+  def handle_event("sort_history", %{"field" => field}, socket) do
+    dir =
+      if socket.assigns.history_sort_field == field,
+        do: toggle_dir(socket.assigns.history_sort_dir),
+        else: "asc"
+
+    {:noreply, assign(socket, history_sort_field: field, history_sort_dir: dir)}
+  end
+
   def handle_event("export_history_csv", _params, socket) do
     entries = filtered_history(socket.assigns.transfer_history, socket.assigns.history_filter)
     csv = build_history_csv(entries)
@@ -480,6 +491,26 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     {Map.get(meta, :client_addr), Map.get(meta, :file_path)}
   end
 
+  defp history_sort_header(assigns) do
+    ~H"""
+    <th
+      phx-click="sort_history"
+      phx-value-field={@field}
+      class="cursor-pointer select-none hover:bg-base-200"
+    >
+      <div class="flex items-center gap-1">
+        {@label}
+        <span :if={@sort_field == @field} class="text-xs">
+          {if @sort_dir == "asc", do: "\u25B2", else: "\u25BC"}
+        </span>
+      </div>
+    </th>
+    """
+  end
+
+  defp toggle_dir("asc"), do: "desc"
+  defp toggle_dir(_), do: "asc"
+
   def filtered_history(history, ""), do: history
 
   def filtered_history(history, query) do
@@ -491,6 +522,25 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
       String.contains?(file, q) || String.contains?(addr, q)
     end)
   end
+
+  def sorted_history(history, filter, sort_field, sort_dir) do
+    history
+    |> filtered_history(filter)
+    |> sort_history(sort_field, sort_dir)
+  end
+
+  def sort_history(entries, field, dir) do
+    sorter = history_sort_key(field)
+    sorted = Enum.sort_by(entries, sorter)
+    if dir == "desc", do: Enum.reverse(sorted), else: sorted
+  end
+
+  defp history_sort_key("client"), do: &format_addr(&1[:client_addr])
+  defp history_sort_key("file"), do: &to_string(&1[:file_path] || "")
+  defp history_sort_key("size"), do: &(&1[:bytes] || &1[:total_size] || 0)
+  defp history_sort_key("duration"), do: &(&1[:duration] || 0)
+  defp history_sort_key("status"), do: &to_string(&1[:status] || "")
+  defp history_sort_key(_), do: &(&1[:bytes] || 0)
 
   defp build_history_csv(entries) do
     header = "Client,File,Size,Duration,Speed,Status\r\n"
