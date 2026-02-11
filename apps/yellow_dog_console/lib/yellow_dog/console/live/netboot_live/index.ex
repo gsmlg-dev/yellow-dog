@@ -25,11 +25,16 @@ defmodule YellowDog.Console.NetbootLive.Index do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
-        <div>
-          <h1 class="text-4xl font-bold">Netboot Dashboard</h1>
-          <p class="mt-2 text-base-content/70">
-            Network boot provisioning overview
-          </p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-4xl font-bold">Netboot Dashboard</h1>
+            <p class="mt-2 text-base-content/70">
+              Network boot provisioning overview
+            </p>
+          </div>
+          <button phx-click="refresh" class="btn btn-outline btn-sm">
+            Refresh
+          </button>
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
@@ -152,6 +157,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
       </div>
     </Layouts.app>
     """
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply, load_data(socket)}
   end
 
   @impl true

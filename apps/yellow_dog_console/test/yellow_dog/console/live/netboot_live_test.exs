@@ -54,6 +54,14 @@ defmodule YellowDog.Console.NetbootLiveTest do
       # "devices" text appears in the badge template
       # (0 devices when no data)
     end
+
+    test "has refresh button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot")
+
+      assert has_element?(view, "button", "Refresh")
+      html = view |> element("button", "Refresh") |> render_click()
+      assert html =~ "Netboot Dashboard"
+    end
   end
 
   describe "Netboot Devices page" do
