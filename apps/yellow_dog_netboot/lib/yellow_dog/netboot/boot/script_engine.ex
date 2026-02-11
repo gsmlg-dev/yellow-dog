@@ -99,6 +99,6 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
       fallback
     end
   rescue
-    _ -> fallback
+    File.Error -> fallback
   end
 end

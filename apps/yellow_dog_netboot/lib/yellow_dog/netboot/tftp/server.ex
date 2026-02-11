@@ -151,7 +151,7 @@ defmodule YellowDog.Netboot.TFTP.Server do
         min(max(size, 8), 65464)
     end
   rescue
-    _ -> Protocol.default_block_size()
+    ArgumentError -> Protocol.default_block_size()
   end
 
   defp build_negotiated_opts(opts, block_size, file_size) do
