@@ -1,6 +1,6 @@
 defmodule YellowDog.Console.ServiceFilterFunctionsTest do
   @moduledoc """
-  Unit tests for public filter functions in mDNS, DHCPv4, and DHCPv6 LiveViews.
+  Unit tests for public filter functions across console LiveViews.
   """
   use ExUnit.Case, async: true
 
@@ -8,6 +8,12 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
   alias YellowDog.Console.Dhcpv6Live.ActivityLive, as: Dhcpv6Activity
   alias YellowDog.Console.MdnsLive.MonitorLive
   alias YellowDog.Console.FormatHelper
+  alias YellowDog.Console.NetbootLive.DevicesLive, as: NetbootDevices
+  alias YellowDog.Console.NetbootLive.ProfilesLive, as: NetbootProfiles
+  alias YellowDog.Console.NetbootLive.TftpLive, as: NetbootTftp
+  alias YellowDog.Console.NetbootLive.LogLive, as: NetbootLog
+  alias YellowDog.Console.FingerprintLive.FingerprintsLive
+  alias YellowDog.Console.FingerprintLive.DevicesLive, as: FingerprintDevices
 
   # ============================================================================
   # MonitorLive.filtered_queries/2
@@ -261,6 +267,399 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "handles empty entries list" do
       assert Dhcpv6Activity.filtered_entries([], "test", "all") == []
+    end
+  end
+
+  # ============================================================================
+  # FormatHelper.filtered_countries/2
+  # ============================================================================
+
+  describe "FormatHelper.filtered_countries/2" do
+    @countries [
+      %{code: "US", name: "United States"},
+      %{code: "GB", name: "United Kingdom"},
+      %{code: "DE", name: "Germany"}
+    ]
+
+    test "returns all with empty search" do
+      assert length(FormatHelper.filtered_countries(@countries, "")) == 3
+    end
+
+    test "filters by country code" do
+      result = FormatHelper.filtered_countries(@countries, "US")
+      assert length(result) == 1
+      assert hd(result).code == "US"
+    end
+
+    test "filters by country name" do
+      result = FormatHelper.filtered_countries(@countries, "kingdom")
+      assert length(result) == 1
+      assert hd(result).code == "GB"
+    end
+
+    test "case-insensitive search" do
+      assert length(FormatHelper.filtered_countries(@countries, "united")) == 2
+    end
+
+    test "returns empty for non-matching search" do
+      assert FormatHelper.filtered_countries(@countries, "zzz") == []
+    end
+  end
+
+  # ============================================================================
+  # FormatHelper.filter_by_state/2
+  # ============================================================================
+
+  describe "FormatHelper.filter_by_state/2" do
+    @stateful_items [
+      %{name: "a", state: :active},
+      %{name: "b", state: :expired},
+      %{name: "c", state: :active}
+    ]
+
+    test "returns all with 'all' filter" do
+      assert length(FormatHelper.filter_by_state(@stateful_items, "all")) == 3
+    end
+
+    test "filters by state string" do
+      result = FormatHelper.filter_by_state(@stateful_items, "active")
+      assert length(result) == 2
+    end
+
+    test "returns empty for non-matching state" do
+      assert FormatHelper.filter_by_state(@stateful_items, "pending") == []
+    end
+  end
+
+  # ============================================================================
+  # FormatHelper.filter_by_pool/2
+  # ============================================================================
+
+  describe "FormatHelper.filter_by_pool/2" do
+    @pooled_items [
+      %{name: "x", pool_name: "office"},
+      %{name: "y", pool_name: "guest"},
+      %{name: "z", pool_name: "office"}
+    ]
+
+    test "returns all with 'all' filter" do
+      assert length(FormatHelper.filter_by_pool(@pooled_items, "all")) == 3
+    end
+
+    test "filters by pool name" do
+      result = FormatHelper.filter_by_pool(@pooled_items, "office")
+      assert length(result) == 2
+    end
+
+    test "returns empty for non-matching pool" do
+      assert FormatHelper.filter_by_pool(@pooled_items, "dmz") == []
+    end
+  end
+
+  # ============================================================================
+  # NetbootDevices filter functions
+  # ============================================================================
+
+  describe "NetbootDevices.filter_by_search/2" do
+    @nb_devices [
+      %{mac: "AA:BB:CC:DD:EE:01", hostname: "server-1", profile_id: "ubuntu-22", tags: ["prod"]},
+      %{mac: "AA:BB:CC:DD:EE:02", hostname: "desktop-2", profile_id: "centos-9", tags: ["dev"]},
+      %{mac: "AA:BB:CC:DD:EE:03", hostname: nil, profile_id: nil, tags: []}
+    ]
+
+    test "returns all with empty search" do
+      assert length(NetbootDevices.filter_by_search(@nb_devices, "")) == 3
+    end
+
+    test "filters by MAC" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "EE:01")
+      assert length(result) == 1
+    end
+
+    test "filters by hostname" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "server")
+      assert length(result) == 1
+    end
+
+    test "filters by profile_id" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "ubuntu")
+      assert length(result) == 1
+    end
+
+    test "filters by tag" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "prod")
+      assert length(result) == 1
+    end
+
+    test "case-insensitive search" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "SERVER")
+      assert length(result) == 1
+    end
+
+    test "handles nil hostname and profile_id" do
+      result = NetbootDevices.filter_by_search(@nb_devices, "nonexistent")
+      assert result == []
+    end
+  end
+
+  describe "NetbootDevices.filter_by_state/2" do
+    @nb_state_devices [
+      %{mac: "a", state: :new},
+      %{mac: "b", state: :provisioned},
+      %{mac: "c", state: :new}
+    ]
+
+    test "returns all with 'all'" do
+      assert length(NetbootDevices.filter_by_state(@nb_state_devices, "all")) == 3
+    end
+
+    test "filters by state" do
+      result = NetbootDevices.filter_by_state(@nb_state_devices, "new")
+      assert length(result) == 2
+    end
+  end
+
+  describe "NetbootDevices.filter_by_profile/2" do
+    @nb_profile_devices [
+      %{mac: "a", profile_id: "ubuntu-22"},
+      %{mac: "b", profile_id: "centos-9"},
+      %{mac: "c", profile_id: nil}
+    ]
+
+    test "returns all with 'all'" do
+      assert length(NetbootDevices.filter_by_profile(@nb_profile_devices, "all")) == 3
+    end
+
+    test "filters unassigned" do
+      result = NetbootDevices.filter_by_profile(@nb_profile_devices, "unassigned")
+      assert length(result) == 1
+      assert hd(result).profile_id == nil
+    end
+
+    test "filters by specific profile" do
+      result = NetbootDevices.filter_by_profile(@nb_profile_devices, "ubuntu-22")
+      assert length(result) == 1
+    end
+  end
+
+  # ============================================================================
+  # NetbootProfiles.filter_by_search/2
+  # ============================================================================
+
+  describe "NetbootProfiles.filter_by_search/2" do
+    @nb_profiles [
+      %{id: "ubuntu-22", description: "Ubuntu 22.04 LTS", kernel: "vmlinuz", initrd: "initrd.gz"},
+      %{id: "centos-9", description: "CentOS Stream 9", kernel: "vmlinuz-centos", initrd: nil}
+    ]
+
+    test "returns all with empty search" do
+      assert length(NetbootProfiles.filter_by_search(@nb_profiles, "")) == 2
+    end
+
+    test "filters by id" do
+      result = NetbootProfiles.filter_by_search(@nb_profiles, "ubuntu")
+      assert length(result) == 1
+    end
+
+    test "filters by description" do
+      result = NetbootProfiles.filter_by_search(@nb_profiles, "Stream")
+      assert length(result) == 1
+    end
+
+    test "filters by kernel" do
+      result = NetbootProfiles.filter_by_search(@nb_profiles, "centos")
+      assert length(result) == 1
+    end
+
+    test "case-insensitive search" do
+      result = NetbootProfiles.filter_by_search(@nb_profiles, "UBUNTU")
+      assert length(result) == 1
+    end
+  end
+
+  # ============================================================================
+  # NetbootTftp.filtered_history/2
+  # ============================================================================
+
+  describe "NetbootTftp.filtered_history/2" do
+    @tftp_history [
+      %{file_path: "/boot/vmlinuz", client_addr: {192, 168, 1, 10}},
+      %{file_path: "/boot/initrd.gz", client_addr: {10, 0, 0, 5}}
+    ]
+
+    test "returns all with empty search" do
+      assert length(NetbootTftp.filtered_history(@tftp_history, "")) == 2
+    end
+
+    test "filters by file path" do
+      result = NetbootTftp.filtered_history(@tftp_history, "vmlinuz")
+      assert length(result) == 1
+    end
+
+    test "filters by client address" do
+      result = NetbootTftp.filtered_history(@tftp_history, "192.168")
+      assert length(result) == 1
+    end
+
+    test "returns empty for non-matching search" do
+      assert NetbootTftp.filtered_history(@tftp_history, "zzz") == []
+    end
+  end
+
+  # ============================================================================
+  # NetbootLog filter functions
+  # ============================================================================
+
+  describe "NetbootLog.filtered_entries/4" do
+    @log_entries [
+      %{type: "device", level: "info", message: "Device registered AA:BB"},
+      %{type: "tftp", level: "error", message: "Transfer failed for /boot/vmlinuz"},
+      %{type: "device", level: "warning", message: "Device timeout"},
+      %{type: "tftp", level: "info", message: "Transfer complete"}
+    ]
+
+    test "returns all with no filters" do
+      assert length(NetbootLog.filtered_entries(@log_entries, "", "all", "all")) == 4
+    end
+
+    test "filters by type" do
+      result = NetbootLog.filtered_entries(@log_entries, "", "device", "all")
+      assert length(result) == 2
+    end
+
+    test "filters by error level" do
+      result = NetbootLog.filtered_entries(@log_entries, "", "all", "error")
+      assert length(result) == 1
+      assert hd(result).level == "error"
+    end
+
+    test "warning level includes errors" do
+      result = NetbootLog.filtered_entries(@log_entries, "", "all", "warning")
+      assert length(result) == 2
+      assert Enum.all?(result, &(&1.level in ["warning", "error"]))
+    end
+
+    test "filters by search text" do
+      result = NetbootLog.filtered_entries(@log_entries, "vmlinuz", "all", "all")
+      assert length(result) == 1
+    end
+
+    test "combines type and search" do
+      result = NetbootLog.filtered_entries(@log_entries, "Transfer", "tftp", "all")
+      assert length(result) == 2
+    end
+
+    test "handles empty entries" do
+      assert NetbootLog.filtered_entries([], "test", "all", "all") == []
+    end
+  end
+
+  # ============================================================================
+  # FingerprintsLive.filter_by_search/2
+  # ============================================================================
+
+  describe "FingerprintsLive.filter_by_search/2" do
+    @fingerprints [
+      %{vendor_class: "MSFT 5.0", profile_id: "windows", parameter_list: [1, 3, 6]},
+      %{vendor_class: "dhcpcd-9.4.1", profile_id: "linux", parameter_list: [1, 28, 121]},
+      %{vendor_class: nil, profile_id: nil, parameter_list: nil}
+    ]
+
+    test "returns all with empty search" do
+      assert length(FingerprintsLive.filter_by_search(@fingerprints, "")) == 3
+    end
+
+    test "filters by vendor_class" do
+      result = FingerprintsLive.filter_by_search(@fingerprints, "MSFT")
+      assert length(result) == 1
+    end
+
+    test "filters by profile_id" do
+      result = FingerprintsLive.filter_by_search(@fingerprints, "linux")
+      assert length(result) == 1
+    end
+
+    test "filters by parameter_list" do
+      result = FingerprintsLive.filter_by_search(@fingerprints, "121")
+      assert length(result) == 1
+    end
+
+    test "handles nil fields" do
+      result = FingerprintsLive.filter_by_search(@fingerprints, "nonexistent")
+      assert result == []
+    end
+  end
+
+  # ============================================================================
+  # FingerprintDevices.filter_by_search/2 and filter_by_type/2
+  # ============================================================================
+
+  describe "FingerprintDevices.filter_by_search/2" do
+    @fp_devices [
+      %{
+        mac: "AA:BB:CC:DD:EE:01",
+        hostname: "office-pc",
+        oui_vendor: "Dell",
+        ipv4_addresses: ["192.168.1.10"],
+        ipv6_addresses: []
+      },
+      %{
+        mac: "AA:BB:CC:DD:EE:02",
+        hostname: nil,
+        oui_vendor: nil,
+        ipv4_addresses: [],
+        ipv6_addresses: ["2001:db8::1"]
+      }
+    ]
+
+    test "returns all with empty search" do
+      assert length(FingerprintDevices.filter_by_search(@fp_devices, "")) == 2
+    end
+
+    test "filters by MAC" do
+      result = FingerprintDevices.filter_by_search(@fp_devices, "EE:01")
+      assert length(result) == 1
+    end
+
+    test "filters by hostname" do
+      result = FingerprintDevices.filter_by_search(@fp_devices, "office")
+      assert length(result) == 1
+    end
+
+    test "filters by vendor" do
+      result = FingerprintDevices.filter_by_search(@fp_devices, "Dell")
+      assert length(result) == 1
+    end
+
+    test "filters by IPv4 address" do
+      result = FingerprintDevices.filter_by_search(@fp_devices, "192.168")
+      assert length(result) == 1
+    end
+
+    test "filters by IPv6 address" do
+      result = FingerprintDevices.filter_by_search(@fp_devices, "2001:db8")
+      assert length(result) == 1
+    end
+  end
+
+  describe "FingerprintDevices.filter_by_type/2" do
+    @typed_devices [
+      %{mac: "a", profile_id: "windows"},
+      %{mac: "b", profile_id: "linux"},
+      %{mac: "c", profile_id: "windows"}
+    ]
+
+    test "returns all with 'all'" do
+      assert length(FingerprintDevices.filter_by_type(@typed_devices, "all")) == 3
+    end
+
+    test "filters by profile type" do
+      result = FingerprintDevices.filter_by_type(@typed_devices, "windows")
+      assert length(result) == 2
+    end
+
+    test "returns empty for non-matching type" do
+      assert FingerprintDevices.filter_by_type(@typed_devices, "macos") == []
     end
   end
 end
