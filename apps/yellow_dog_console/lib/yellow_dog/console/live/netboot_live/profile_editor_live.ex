@@ -239,6 +239,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                   :if={@mode == :edit}
                   type="button"
                   phx-click="delete_profile"
+                  phx-disable-with="Deleting..."
                   data-confirm={"Delete profile \"#{@profile_id}\"?"}
                   class="btn btn-error btn-sm"
                 >
@@ -247,7 +248,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
               </div>
               <div class="flex gap-2">
                 <.link navigate="/netboot/profiles" class="btn btn-ghost">Cancel</.link>
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
                   {if @mode == :new, do: "Create Profile", else: "Save Changes"}
                 </button>
               </div>

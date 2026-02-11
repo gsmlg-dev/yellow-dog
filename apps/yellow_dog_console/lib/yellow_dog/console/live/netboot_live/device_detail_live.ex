@@ -46,6 +46,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
           <div>
             <div class="flex items-center gap-2">
               <h1 id="device-mac" class="text-4xl font-bold font-mono">{@mac}</h1>
+              <.state_badge :if={@device} state={@device.state} />
               <button
                 id="copy-mac"
                 phx-hook="CopyToClipboard"
@@ -168,6 +169,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <button
                 :if={@device.state in [:installed, :failed]}
                 phx-click="request_reinstall"
+                phx-disable-with="Requesting..."
                 class="btn btn-warning btn-sm w-full"
                 data-confirm="Request reinstall for this device?"
               >
@@ -189,6 +191,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
               <button
                 phx-click="delete_device"
+                phx-disable-with="Deleting..."
                 class="btn btn-error btn-sm w-full"
                 data-confirm="Delete this device from the registry?"
               >

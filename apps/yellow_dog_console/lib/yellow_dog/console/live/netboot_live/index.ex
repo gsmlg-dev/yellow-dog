@@ -83,7 +83,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
             <div class="stat-title">Transfers</div>
             <div class="stat-value">{@metrics.tftp_transfers_completed}</div>
             <div class="stat-desc">
-              {@metrics.tftp_transfers_started - @metrics.tftp_transfers_completed} in progress
+              {@metrics.tftp_transfers_started - @metrics.tftp_transfers_completed} in progress, {@metrics.tftp_transfers_failed} failed
             </div>
           </div>
           <div class="stat">

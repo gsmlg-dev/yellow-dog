@@ -173,6 +173,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                         :if={p.id != @default_profile}
                         phx-click="set_default"
                         phx-value-id={p.id}
+                        phx-disable-with="Setting..."
                         class="btn btn-ghost btn-xs"
                       >
                         Set Default
@@ -180,6 +181,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                       <button
                         phx-click="delete_profile"
                         phx-value-id={p.id}
+                        phx-disable-with="Deleting..."
                         data-confirm={"Delete profile \"#{p.id}\"?"}
                         class="btn btn-ghost btn-xs text-error"
                       >

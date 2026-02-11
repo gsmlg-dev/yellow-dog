@@ -157,6 +157,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           <button
             :if={@bulk_profile}
             phx-click="bulk_assign_profile"
+            phx-disable-with="Applying..."
             class="btn btn-primary btn-sm"
           >
             Apply to {MapSet.size(@selected_devices)} device(s)
@@ -174,6 +175,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </form>
           <button
             phx-click="bulk_delete"
+            phx-disable-with="Deleting..."
             class="btn btn-error btn-sm"
             data-confirm={"Delete #{MapSet.size(@selected_devices)} device(s)?"}
           >

@@ -96,7 +96,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
               </div>
             </div>
             <div class="mt-4">
-              <button phx-click="rescan" class="btn btn-outline btn-sm">
+              <button phx-click="rescan" phx-disable-with="Scanning..." class="btn btn-outline btn-sm">
                 Rescan Files
               </button>
             </div>
@@ -155,6 +155,7 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
                 type="submit"
                 class={["btn btn-primary btn-sm", @uploads.boot_asset.entries == [] && "btn-disabled"]}
                 disabled={@uploads.boot_asset.entries == []}
+                phx-disable-with="Uploading..."
               >
                 Upload Files
               </button>
