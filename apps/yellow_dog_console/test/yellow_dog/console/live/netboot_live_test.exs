@@ -303,6 +303,29 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
   end
 
+  describe "Profile Editor — clone profile" do
+    test "mounts clone form in new mode", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+
+      # With no Store running, it falls back to new empty profile
+      assert html =~ "New Boot Profile"
+      assert html =~ "Create a new PXE boot profile"
+    end
+
+    test "ID field is editable in clone mode (new mode)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+
+      # Clone creates a new profile, so ID should NOT be disabled
+      refute has_element?(view, "input[name='profile[id]'][disabled]")
+    end
+
+    test "submit button says Create Profile in clone mode", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new?clone=test-profile")
+
+      assert has_element?(view, "button[type=submit]", "Create Profile")
+    end
+  end
+
   describe "Profile Editor — edit profile" do
     test "mounts edit form with profile ID", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/profiles/test-profile/edit")

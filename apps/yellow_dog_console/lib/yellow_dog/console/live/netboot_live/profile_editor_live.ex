@@ -266,6 +266,20 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
     end
   end
 
+  defp load_profile(%{"clone" => source_id}) do
+    case safe_call(
+           YellowDog.Netboot.Manifest.Store,
+           fn -> YellowDog.Netboot.Manifest.Store.get_profile(source_id) end,
+           {:error, :unavailable}
+         ) do
+      {:ok, profile} ->
+        {:new, %{profile | id: "#{profile.id}-copy"}}
+
+      _ ->
+        {:new, %Profile{id: "", kernel: "", initrd: ""}}
+    end
+  end
+
   defp load_profile(_params) do
     {:new, %Profile{id: "", kernel: "", initrd: ""}}
   end

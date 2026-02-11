@@ -119,6 +119,12 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                       >
                         Edit
                       </.link>
+                      <.link
+                        navigate={"/netboot/profiles/new?clone=#{p.id}"}
+                        class="btn btn-ghost btn-xs"
+                      >
+                        Clone
+                      </.link>
                       <button
                         phx-click="delete_profile"
                         phx-value-id={p.id}
