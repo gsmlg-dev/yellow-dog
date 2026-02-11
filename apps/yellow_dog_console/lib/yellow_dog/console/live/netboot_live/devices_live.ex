@@ -245,7 +245,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   <td>{device.profile_id || "-"}</td>
                   <td><.state_badge state={device.state} /></td>
                   <td>{device.install_attempts}</td>
-                  <td class="text-sm">{format_datetime(device.last_seen)}</td>
+                  <td class="text-sm" title={format_datetime_full(device.last_seen)}>
+                    {format_time_ago(device.last_seen)}
+                  </td>
                   <td>
                     <div class="flex gap-1">
                       <button
@@ -600,7 +602,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           csv_escape(to_string(d.state)),
           csv_escape(to_string(d.install_attempts)),
           csv_escape(Enum.join(d.tags, "; ")),
-          csv_escape(format_datetime(d.last_seen))
+          csv_escape(format_datetime_full(d.last_seen))
         ]
         |> Enum.join(",")
       end)
