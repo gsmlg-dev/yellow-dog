@@ -213,11 +213,12 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     sort_field={@sort_field}
                     sort_dir={@sort_dir}
                   />
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :if={@filtered_devices == []}>
-                  <td colspan="8" class="text-center text-base-content/50 py-8">
+                  <td colspan="9" class="text-center text-base-content/50 py-8">
                     No devices found
                   </td>
                 </tr>
@@ -245,6 +246,31 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                   <td><.state_badge state={device.state} /></td>
                   <td>{device.install_attempts}</td>
                   <td class="text-sm">{format_datetime(device.last_seen)}</td>
+                  <td>
+                    <div class="flex gap-1">
+                      <button
+                        :if={device.state in [:installed, :failed]}
+                        phx-click="quick_reinstall"
+                        phx-value-mac={device.mac}
+                        class="btn btn-ghost btn-xs"
+                        title="Request reinstall"
+                        data-confirm={"Request reinstall for #{device.mac}?"}
+                      >
+                        ↻
+                      </button>
+                      <button
+                        phx-click="quick_rescue"
+                        phx-value-mac={device.mac}
+                        class={[
+                          "btn btn-ghost btn-xs",
+                          if(device.rescue_mode, do: "text-warning", else: "text-base-content/40")
+                        ]}
+                        title={if device.rescue_mode, do: "Disable rescue mode", else: "Enable rescue mode"}
+                      >
+                        ⛑
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -418,6 +444,47 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
      |> assign(:selected_devices, MapSet.new())
      |> put_flash(:info, "Deleted #{length(macs)} device(s)")
      |> load_devices()}
+  end
+
+  def handle_event("quick_reinstall", %{"mac" => mac}, socket) do
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.request_reinstall(mac) end,
+        {:error, :unavailable}
+      )
+
+    socket =
+      case result do
+        {:ok, _} -> put_flash(socket, :info, "Reinstall requested for #{mac}")
+        _ -> put_flash(socket, :error, "Failed to request reinstall")
+      end
+
+    {:noreply, load_devices(socket)}
+  end
+
+  def handle_event("quick_rescue", %{"mac" => mac}, socket) do
+    device = Enum.find(socket.assigns.all_devices, &(&1.mac == mac))
+    enabled = !(device && device.rescue_mode)
+
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.set_rescue_mode(mac, enabled) end,
+        {:error, :unavailable}
+      )
+
+    socket =
+      case result do
+        {:ok, _} ->
+          msg = if enabled, do: "Rescue mode enabled", else: "Rescue mode disabled"
+          put_flash(socket, :info, "#{msg} for #{mac}")
+
+        _ ->
+          put_flash(socket, :error, "Failed to toggle rescue mode")
+      end
+
+    {:noreply, load_devices(socket)}
   end
 
   def handle_event("bulk_clear", _params, socket) do

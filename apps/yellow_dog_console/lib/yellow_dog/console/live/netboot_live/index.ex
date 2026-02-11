@@ -7,11 +7,14 @@ defmodule YellowDog.Console.NetbootLive.Index do
 
   alias YellowDog.Console.Layouts
 
+  @refresh_interval 5_000
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:devices")
       Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:tftp")
+      Process.send_after(self(), :refresh, @refresh_interval)
     end
 
     {:ok,
@@ -161,6 +164,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
             </table>
           </div>
         </.card>
+        <div class="text-xs text-base-content/50 flex justify-end">
+          <span :if={connected?(@socket)} class="flex items-center gap-1">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
+          </span>
+        </div>
       </div>
     </Layouts.app>
     """
@@ -177,6 +185,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
   end
 
   def handle_info({:device_registered, _device}, socket) do
+    {:noreply, load_data(socket)}
+  end
+
+  def handle_info(:refresh, socket) do
+    Process.send_after(self(), :refresh, @refresh_interval)
     {:noreply, load_data(socket)}
   end
 

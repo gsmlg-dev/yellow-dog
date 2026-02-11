@@ -62,6 +62,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = view |> element("button", "Refresh") |> render_click()
       assert html =~ "Netboot Dashboard"
     end
+
+    test "shows live indicator", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot")
+
+      assert html =~ "animate-pulse"
+      assert html =~ "Live"
+    end
   end
 
   describe "Netboot Devices page" do
@@ -104,6 +111,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       html = view |> element("select[name=state]") |> render_change(%{"state" => "all"})
       assert html =~ "Netboot Devices"
+    end
+
+    test "has Actions column header", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/devices")
+
+      assert html =~ "Actions"
     end
   end
 
