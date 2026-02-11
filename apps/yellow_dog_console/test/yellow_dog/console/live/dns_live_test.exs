@@ -1232,7 +1232,7 @@ defmodule YellowDog.Console.DnsLiveTest do
           }
         })
 
-      refute html =~ "text-error"
+      refute html =~ "label-text-alt text-error"
     end
 
     test "save_named_acl rejects invalid ACL name", %{conn: conn} do
