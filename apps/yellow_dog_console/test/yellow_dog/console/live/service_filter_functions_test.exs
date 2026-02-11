@@ -4,6 +4,8 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
   """
   use ExUnit.Case, async: true
 
+  alias YellowDog.Console.Dhcpv4Live.ActivityLive, as: Dhcpv4Activity
+  alias YellowDog.Console.Dhcpv6Live.ActivityLive, as: Dhcpv6Activity
   alias YellowDog.Console.MdnsLive.MonitorLive
   alias YellowDog.Console.FormatHelper
 
@@ -133,6 +135,112 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "handles empty pools list" do
       assert FormatHelper.filtered_pools([], "test") == []
+    end
+  end
+
+  # ============================================================================
+  # Dhcpv4Activity.filtered_entries/3
+  # ============================================================================
+
+  describe "Dhcpv4Activity.filtered_entries/3" do
+    @v4_entries [
+      %{type: :discover, client_mac: "AA:BB:CC:DD:EE:01", client_ip: "192.168.1.10", details: "DISCOVER from office"},
+      %{type: :ack, client_mac: "AA:BB:CC:DD:EE:02", client_ip: "10.0.0.5", details: "ACK for guest"},
+      %{type: :nak, client_mac: "AA:BB:CC:DD:EE:03", client_ip: nil, details: "Pool exhausted"},
+      %{type: :decline, client_mac: nil, client_ip: nil, details: "Client declined"}
+    ]
+
+    test "returns all entries with empty search and 'all' filter" do
+      assert length(Dhcpv4Activity.filtered_entries(@v4_entries, "", "all")) == 4
+    end
+
+    test "filters by type" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "", "discover")
+      assert length(result) == 1
+      assert hd(result).type == :discover
+    end
+
+    test "error filter includes nak, decline, and other error types" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "", "error")
+      assert length(result) == 2
+      assert Enum.all?(result, fn e -> e.type in [:nak, :decline] end)
+    end
+
+    test "search filters by MAC address" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "EE:01", "all")
+      assert length(result) == 1
+      assert hd(result).client_mac == "AA:BB:CC:DD:EE:01"
+    end
+
+    test "search filters by IP address" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "10.0.0", "all")
+      assert length(result) == 1
+      assert hd(result).client_ip == "10.0.0.5"
+    end
+
+    test "search filters by details" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "office", "all")
+      assert length(result) == 1
+    end
+
+    test "search is case-insensitive" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "OFFICE", "all")
+      assert length(result) == 1
+    end
+
+    test "handles nil fields in entries" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "nonexistent", "all")
+      assert result == []
+    end
+
+    test "handles empty entries list" do
+      assert Dhcpv4Activity.filtered_entries([], "test", "all") == []
+    end
+
+    test "invalid type filter falls back to showing all" do
+      result = Dhcpv4Activity.filtered_entries(@v4_entries, "", "invalid_xyz")
+      assert length(result) == 4
+    end
+  end
+
+  # ============================================================================
+  # Dhcpv6Activity.filtered_entries/3
+  # ============================================================================
+
+  describe "Dhcpv6Activity.filtered_entries/3" do
+    @v6_entries [
+      %{type: :solicit, client_duid: "00:01:00:01:AA:BB", client_ip: "2001:db8::1", details: "SOLICIT"},
+      %{type: :reply, client_duid: "00:01:00:01:CC:DD", client_ip: "fd00::5", details: "REPLY granted"},
+      %{type: :decline, client_duid: nil, client_ip: nil, details: "Client declined"}
+    ]
+
+    test "returns all entries with empty search and 'all' filter" do
+      assert length(Dhcpv6Activity.filtered_entries(@v6_entries, "", "all")) == 3
+    end
+
+    test "filters by type" do
+      result = Dhcpv6Activity.filtered_entries(@v6_entries, "", "solicit")
+      assert length(result) == 1
+      assert hd(result).type == :solicit
+    end
+
+    test "search filters by DUID" do
+      result = Dhcpv6Activity.filtered_entries(@v6_entries, "AA:BB", "all")
+      assert length(result) == 1
+    end
+
+    test "search filters by IP" do
+      result = Dhcpv6Activity.filtered_entries(@v6_entries, "2001:db8", "all")
+      assert length(result) == 1
+    end
+
+    test "search is case-insensitive" do
+      result = Dhcpv6Activity.filtered_entries(@v6_entries, "solicit", "all")
+      assert length(result) == 1
+    end
+
+    test "handles empty entries list" do
+      assert Dhcpv6Activity.filtered_entries([], "test", "all") == []
     end
   end
 end
