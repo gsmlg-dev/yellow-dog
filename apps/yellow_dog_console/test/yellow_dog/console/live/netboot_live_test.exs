@@ -342,6 +342,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert html =~ "Actions"
     end
+
+    test "table has devices column", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles")
+
+      assert html =~ "Devices"
+    end
   end
 
   describe "Profile Editor — new profile" do
@@ -561,6 +567,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
         )
 
       assert errors == %{}
+    end
+
+    test "new profile editor initializes file_warnings as empty", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+
+      # No warning labels should appear initially
+      refute html =~ "File not found in TFTP root"
     end
   end
 

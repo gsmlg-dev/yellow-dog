@@ -91,14 +91,16 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                   <th>Kernel</th>
                   <th>Initrd</th>
                   <th>Architectures</th>
+                  <th>Devices</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr :if={@filtered_profiles == []}>
-                  <td colspan="6" class="text-center text-base-content/50 py-8">
+                  <td colspan="7" class="text-center text-base-content/50 py-8">
                     No boot profiles configured
                   </td>
+
                 </tr>
                 <tr :for={p <- @filtered_profiles}>
                   <td class="font-mono font-medium">{p.id}</td>
@@ -110,6 +112,11 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                       {to_string(arch)}
                     </.badge>
                     <span :if={p.arch == []}>Any</span>
+                  </td>
+                  <td>
+                    <.badge color="ghost" size="sm">
+                      {Map.get(@profile_usage, p.id, 0)}
+                    </.badge>
                   </td>
                   <td>
                     <div class="flex gap-1">
@@ -151,7 +158,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
   end
 
   def handle_event("export_csv", _params, socket) do
-    csv = build_csv(socket.assigns.filtered_profiles)
+    csv = build_csv(socket.assigns.filtered_profiles, socket.assigns.profile_usage)
     filename = "boot_profiles_#{Calendar.strftime(DateTime.utc_now(), "%Y%m%d_%H%M%S")}.csv"
     {:noreply, push_event(socket, "download_csv", %{content: csv, filename: filename})}
   end
@@ -191,9 +198,22 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
         nil
       )
 
+    devices =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.list() end,
+        []
+      )
+
+    profile_usage =
+      devices
+      |> Enum.filter(& &1.profile_id)
+      |> Enum.frequencies_by(& &1.profile_id)
+
     socket
     |> assign(:all_profiles, profiles)
     |> assign(:default_profile, default)
+    |> assign(:profile_usage, profile_usage)
     |> apply_filters()
   end
 
@@ -213,8 +233,8 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     end)
   end
 
-  defp build_csv(profiles) do
-    header = "ID,Description,Kernel,Initrd,Kernel Args,Architectures\r\n"
+  defp build_csv(profiles, usage) do
+    header = "ID,Description,Kernel,Initrd,Kernel Args,Architectures,Devices\r\n"
 
     rows =
       Enum.map_join(profiles, "\r\n", fn p ->
@@ -224,7 +244,8 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
           csv_escape(p.kernel),
           csv_escape(p.initrd),
           csv_escape(p.kernel_args || ""),
-          csv_escape(Enum.map_join(p.arch, "; ", &to_string/1))
+          csv_escape(Enum.map_join(p.arch, "; ", &to_string/1)),
+          csv_escape(to_string(Map.get(usage, p.id, 0)))
         ]
         |> Enum.join(",")
       end)

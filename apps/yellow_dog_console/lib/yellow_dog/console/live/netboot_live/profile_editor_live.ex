@@ -24,7 +24,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
        valid_arches: @valid_arches,
        errors: %{}
      )
-     |> assign(:form, to_form(form_data, as: "profile"))}
+     |> assign(:form, to_form(form_data, as: "profile"))
+     |> assign(:file_warnings, %{})
+     |> assign(:indexed_files, load_indexed_files())}
   end
 
   @impl true
@@ -87,6 +89,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 <label :if={@errors[:kernel]} class="label">
                   <span class="label-text-alt text-error">{@errors[:kernel]}</span>
                 </label>
+                <label :if={@file_warnings[:kernel]} class="label">
+                  <span class="label-text-alt text-warning">{@file_warnings[:kernel]}</span>
+                </label>
               </div>
 
               <div class="form-control w-full">
@@ -100,6 +105,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                 />
                 <label :if={@errors[:initrd]} class="label">
                   <span class="label-text-alt text-error">{@errors[:initrd]}</span>
+                </label>
+                <label :if={@file_warnings[:initrd]} class="label">
+                  <span class="label-text-alt text-warning">{@file_warnings[:initrd]}</span>
                 </label>
               </div>
             </div>
@@ -215,9 +223,13 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
   def handle_event("validate", %{"profile" => params}, socket) do
     errors = validate_profile(params, socket.assigns.mode)
     form_data = normalize_params(params)
+    warnings = check_file_warnings(params, socket.assigns.indexed_files)
 
     {:noreply,
-     socket |> assign(:form, to_form(form_data, as: "profile")) |> assign(:errors, errors)}
+     socket
+     |> assign(:form, to_form(form_data, as: "profile"))
+     |> assign(:errors, errors)
+     |> assign(:file_warnings, warnings)}
   end
 
   def handle_event("save", %{"profile" => params}, socket) do
@@ -364,6 +376,38 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp load_indexed_files do
+    case safe_call(
+           YellowDog.Netboot.TFTP.FileIndex,
+           fn -> YellowDog.Netboot.TFTP.FileIndex.list() end,
+           nil
+         ) do
+      nil -> nil
+      entries -> MapSet.new(entries, fn {rel_path, _abs_path, _size} -> rel_path end)
+    end
+  end
+
+  defp check_file_warnings(_params, nil), do: %{}
+
+  defp check_file_warnings(params, file_set) do
+    kernel = Map.get(params, "kernel", "") |> String.trim()
+    initrd = Map.get(params, "initrd", "") |> String.trim()
+
+    warnings = %{}
+
+    warnings =
+      if kernel != "" and kernel not in file_set,
+        do: Map.put(warnings, :kernel, "File not found in TFTP root"),
+        else: warnings
+
+    warnings =
+      if initrd != "" and initrd not in file_set,
+        do: Map.put(warnings, :initrd, "File not found in TFTP root"),
+        else: warnings
+
+    warnings
+  end
 
   def validate_profile(params, mode) do
     errors = %{}
