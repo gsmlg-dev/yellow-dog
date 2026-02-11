@@ -131,6 +131,17 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           >
             Apply to {MapSet.size(@selected_devices)} device(s)
           </button>
+          <div class="divider divider-horizontal"></div>
+          <form phx-submit="bulk_add_tag" class="flex items-center gap-2">
+            <input
+              type="text"
+              name="tag"
+              placeholder="Add tag..."
+              class="input input-bordered input-sm w-32"
+              value=""
+            />
+            <button type="submit" class="btn btn-outline btn-sm">Tag</button>
+          </form>
           <button phx-click="bulk_clear" class="btn btn-ghost btn-sm">
             Clear Selection
           </button>
@@ -344,6 +355,39 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
       end
 
     {:noreply, socket}
+  end
+
+  def handle_event("bulk_add_tag", %{"tag" => tag}, socket) do
+    tag = String.trim(tag)
+
+    if tag == "" do
+      {:noreply, socket}
+    else
+      macs = MapSet.to_list(socket.assigns.selected_devices)
+
+      Enum.each(macs, fn mac ->
+        with {:ok, device} <-
+               safe_call(
+                 YellowDog.Netboot.Device.Registry,
+                 fn -> YellowDog.Netboot.Device.Registry.get(mac) end,
+                 {:error, :unavailable}
+               ) do
+          new_tags = Enum.uniq(device.tags ++ [tag])
+
+          safe_call(
+            YellowDog.Netboot.Device.Registry,
+            fn -> YellowDog.Netboot.Device.Registry.update_tags(mac, new_tags) end,
+            {:error, :unavailable}
+          )
+        end
+      end)
+
+      {:noreply,
+       socket
+       |> assign(:selected_devices, MapSet.new())
+       |> put_flash(:info, "Added tag \"#{tag}\" to #{length(macs)} device(s)")
+       |> load_devices()}
+    end
   end
 
   def handle_event("bulk_clear", _params, socket) do

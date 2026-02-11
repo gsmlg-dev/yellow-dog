@@ -108,7 +108,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
                   {profile.description}
                 </span>
               </div>
-              <.badge color="neutral" size="sm">
+              <.badge color="ghost" size="sm">
                 {Map.get(@profile_usage, profile.id, 0)} devices
               </.badge>
             </div>

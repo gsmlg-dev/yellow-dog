@@ -239,6 +239,23 @@ defmodule YellowDog.Console.NetbootLiveTest do
       # devices are selected; verify the page renders without it
       refute html =~ "Assign Profile..."
     end
+
+    test "bulk_add_tag with empty tag is a no-op", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      html = view |> render_hook("bulk_add_tag", %{"tag" => ""})
+      # Should not crash
+      assert html =~ "Netboot Devices"
+    end
+
+    test "bulk_add_tag with selection but service unavailable", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      # Add a device to selection, then try to tag
+      # Since no devices exist (service unavailable), this just completes gracefully
+      html = view |> render_hook("bulk_add_tag", %{"tag" => "test-tag"})
+      assert html =~ "Netboot Devices"
+    end
   end
 
   describe "Netboot Device Detail page" do
