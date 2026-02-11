@@ -41,6 +41,13 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li>Devices</li>
+          </ul>
+        </div>
+
         <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
 
         <div class="flex items-center justify-between">

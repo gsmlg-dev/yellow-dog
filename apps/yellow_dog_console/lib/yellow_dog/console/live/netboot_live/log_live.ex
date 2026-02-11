@@ -35,6 +35,13 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li>Boot Log</li>
+          </ul>
+        </div>
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Boot Log</h1>

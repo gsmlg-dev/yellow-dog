@@ -92,6 +92,7 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert html =~ "Netboot Devices"
       assert html =~ "Search by MAC"
+      assert html =~ "breadcrumbs"
     end
 
     test "shows stats cards", %{conn: conn} do
@@ -382,11 +383,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
   end
 
   describe "Boot Profiles page" do
-    test "mounts with title", %{conn: conn} do
+    test "mounts with title and breadcrumbs", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/profiles")
 
       assert html =~ "Boot Profiles"
       assert html =~ "Configured netboot profiles"
+      assert html =~ "breadcrumbs"
     end
 
     test "shows stats cards", %{conn: conn} do
@@ -746,11 +748,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
   end
 
   describe "TFTP Server page" do
-    test "mounts with title", %{conn: conn} do
+    test "mounts with title and breadcrumbs", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/tftp")
 
       assert html =~ "TFTP Server"
       assert html =~ "Boot file serving"
+      assert html =~ "breadcrumbs"
     end
 
     test "shows status cards", %{conn: conn} do
@@ -978,11 +981,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
   end
 
   describe "Boot Log page" do
-    test "mounts with title", %{conn: conn} do
+    test "mounts with title and breadcrumbs", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/log")
 
       assert html =~ "Boot Log"
       assert html =~ "Real-time netboot activity"
+      assert html =~ "breadcrumbs"
     end
 
     test "has pause/resume button", %{conn: conn} do

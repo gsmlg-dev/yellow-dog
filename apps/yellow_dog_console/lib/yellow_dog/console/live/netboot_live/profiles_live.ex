@@ -15,7 +15,8 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
        page_title: "Boot Profiles",
        search_query: "",
        sort_field: "id",
-       sort_dir: "asc"
+       sort_dir: "asc",
+       service_running: service_running?(YellowDog.Netboot.Manifest.Store)
      )
      |> load_profiles()}
   end
@@ -25,6 +26,15 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li>Profiles</li>
+          </ul>
+        </div>
+
+        <.service_alert :if={not @service_running} service="Netboot" navigate="/settings" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Boot Profiles</h1>

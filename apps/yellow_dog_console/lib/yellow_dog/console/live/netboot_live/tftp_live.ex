@@ -8,10 +8,13 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
   alias YellowDog.Console.Layouts
 
+  @refresh_interval 10_000
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "netboot:tftp")
+      Process.send_after(self(), :refresh, @refresh_interval)
     end
 
     {:ok,
@@ -39,6 +42,13 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li>TFTP Server</li>
+          </ul>
+        </div>
+
         <.service_alert :if={not @service_running} service="Netboot TFTP" navigate="/settings" />
 
         <div>
@@ -451,6 +461,11 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
     entry = Map.put_new(meta, :completed_at, DateTime.utc_now())
     history = [entry | socket.assigns.transfer_history] |> Enum.take(50)
     {:noreply, socket |> assign(active_transfers_map: active, transfer_history: history)}
+  end
+
+  def handle_info(:refresh, socket) do
+    Process.send_after(self(), :refresh, @refresh_interval)
+    {:noreply, load_data(socket)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, load_data(socket)}
