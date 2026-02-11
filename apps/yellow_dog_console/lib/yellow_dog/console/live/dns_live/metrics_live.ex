@@ -56,16 +56,24 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
 
   @impl true
   def handle_event("reset", _params, socket) do
-    safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, :ok)
+    result = safe_call(YellowDog.Dns, fn -> MetricsCollector.reset() end, {:error, :service_unavailable})
 
-    {:noreply,
-     socket
-     |> assign(:metrics, fetch_metrics())
-     |> assign(:summary, fetch_summary())
-     |> assign(:top_domains, fetch_top_domains())
-     |> assign(:top_clients, fetch_top_clients())
-     |> assign(:response_times, fetch_response_times())
-     |> put_flash(:info, "Metrics reset")}
+    socket =
+      case result do
+        :ok ->
+          socket
+          |> assign(:metrics, fetch_metrics())
+          |> assign(:summary, fetch_summary())
+          |> assign(:top_domains, fetch_top_domains())
+          |> assign(:top_clients, fetch_top_clients())
+          |> assign(:response_times, fetch_response_times())
+          |> put_flash(:info, "Metrics reset successfully")
+
+        {:error, _reason} ->
+          put_flash(socket, :error, "Failed to reset metrics")
+      end
+
+    {:noreply, socket}
   end
 
   @impl true

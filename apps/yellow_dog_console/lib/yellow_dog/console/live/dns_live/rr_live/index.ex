@@ -255,19 +255,26 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
     case find_auth_zone(view_name, zone_type, zone_name) do
       {:ok, pid} ->
-        :ok = remove_existing_record(pid, rr)
+        case remove_existing_record(pid, rr) do
+          :ok ->
+            Phoenix.PubSub.broadcast(
+              YellowDog.Console.PubSub,
+              "dns:records",
+              {:record_updated, zone_name}
+            )
 
-        Phoenix.PubSub.broadcast(
-          YellowDog.Console.PubSub,
-          "dns:records",
-          {:record_updated, zone_name}
-        )
+            {:noreply,
+             socket
+             |> assign(:delete_confirm, nil)
+             |> load_records()
+             |> put_flash(:info, "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted successfully")}
 
-        {:noreply,
-         socket
-         |> assign(:delete_confirm, nil)
-         |> load_records()
-         |> put_flash(:info, "Record '#{rr.name}' (#{String.upcase(to_string(rr.type))}) deleted successfully")}
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> assign(:delete_confirm, nil)
+             |> put_flash(:error, "Failed to delete record: #{inspect(reason)}")}
+        end
 
       {:error, reason} ->
         {:noreply,
