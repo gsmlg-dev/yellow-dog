@@ -76,7 +76,7 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
               <input
                 type="text"
                 class="grow"
-                placeholder="Search profiles..."
+                placeholder="Search by ID, description, kernel, or initrd..."
                 value={@search_query}
                 phx-change="search"
                 phx-debounce="300"
@@ -270,7 +270,9 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
 
     Enum.filter(profiles, fn p ->
       String.contains?(String.downcase(p.id), q) ||
-        (p.description && String.contains?(String.downcase(p.description), q))
+        (p.description && String.contains?(String.downcase(p.description), q)) ||
+        (Map.get(p, :kernel) && String.contains?(String.downcase(p.kernel), q)) ||
+        (Map.get(p, :initrd) && String.contains?(String.downcase(p.initrd), q))
     end)
   end
 

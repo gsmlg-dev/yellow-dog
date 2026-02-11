@@ -633,6 +633,21 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert hd(result).id == "nixos"
     end
 
+    test "filter_by_search matches kernel and initrd paths" do
+      profiles = [
+        %{id: "a", description: "Alpha", kernel: "nixos/bzImage", initrd: "nixos/initrd"},
+        %{id: "b", description: "Beta", kernel: "ubuntu/vmlinuz", initrd: "ubuntu/initrd"}
+      ]
+
+      result = YellowDog.Console.NetbootLive.ProfilesLive.filter_by_search(profiles, "bzImage")
+      assert length(result) == 1
+      assert hd(result).id == "a"
+
+      result = YellowDog.Console.NetbootLive.ProfilesLive.filter_by_search(profiles, "ubuntu")
+      assert length(result) == 1
+      assert hd(result).id == "b"
+    end
+
     test "validate_profile returns errors for empty fields in new mode" do
       errors =
         YellowDog.Console.NetbootLive.ProfileEditorLive.validate_profile(
