@@ -444,9 +444,36 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   describe "NetbootDevices.sort_devices/3" do
     @sortable_devices [
-      %{mac: "CC:CC", hostname: "bravo", state: :new, profile_id: nil, install_attempts: 3, last_seen: ~U[2025-01-02 00:00:00Z], arch: :x86_64, tags: []},
-      %{mac: "AA:AA", hostname: "alpha", state: :provisioned, profile_id: "ubuntu", install_attempts: 1, last_seen: ~U[2025-01-03 00:00:00Z], arch: :aarch64, tags: []},
-      %{mac: "BB:BB", hostname: nil, state: :new, profile_id: nil, install_attempts: 0, last_seen: nil, arch: nil, tags: []}
+      %{
+        mac: "CC:CC",
+        hostname: "bravo",
+        state: :new,
+        profile_id: nil,
+        install_attempts: 3,
+        last_seen: ~U[2025-01-02 00:00:00Z],
+        arch: :x86_64,
+        tags: []
+      },
+      %{
+        mac: "AA:AA",
+        hostname: "alpha",
+        state: :provisioned,
+        profile_id: "ubuntu",
+        install_attempts: 1,
+        last_seen: ~U[2025-01-03 00:00:00Z],
+        arch: :aarch64,
+        tags: []
+      },
+      %{
+        mac: "BB:BB",
+        hostname: nil,
+        state: :new,
+        profile_id: nil,
+        install_attempts: 0,
+        last_seen: nil,
+        arch: nil,
+        tags: []
+      }
     ]
 
     test "sorts by mac ascending" do
@@ -541,8 +568,18 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
   describe "NetbootTftp.sort_history/3" do
     @sortable_history [
-      %{file_path: "/boot/a.img", bytes: 100, status: :ok, completed_at: ~U[2025-01-02 00:00:00Z]},
-      %{file_path: "/boot/c.img", bytes: 300, status: :error, completed_at: ~U[2025-01-01 00:00:00Z]},
+      %{
+        file_path: "/boot/a.img",
+        bytes: 100,
+        status: :ok,
+        completed_at: ~U[2025-01-02 00:00:00Z]
+      },
+      %{
+        file_path: "/boot/c.img",
+        bytes: 300,
+        status: :error,
+        completed_at: ~U[2025-01-01 00:00:00Z]
+      },
       %{file_path: "/boot/b.img", bytes: 200, status: :ok, completed_at: ~U[2025-01-03 00:00:00Z]}
     ]
 
@@ -583,10 +620,14 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "flattens nested directories" do
       tree = [
-        %{type: :directory, path: "boot", children: [
-          %{type: :file, path: "boot/vmlinuz", size: 1000},
-          %{type: :file, path: "boot/initrd", size: 2000}
-        ]},
+        %{
+          type: :directory,
+          path: "boot",
+          children: [
+            %{type: :file, path: "boot/vmlinuz", size: 1000},
+            %{type: :file, path: "boot/initrd", size: 2000}
+          ]
+        },
         %{type: :file, path: "readme.txt", size: 50}
       ]
 
@@ -597,11 +638,19 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "flattens deeply nested directories" do
       tree = [
-        %{type: :directory, path: "a", children: [
-          %{type: :directory, path: "a/b", children: [
-            %{type: :file, path: "a/b/deep.txt", size: 5}
-          ]}
-        ]}
+        %{
+          type: :directory,
+          path: "a",
+          children: [
+            %{
+              type: :directory,
+              path: "a/b",
+              children: [
+                %{type: :file, path: "a/b/deep.txt", size: 5}
+              ]
+            }
+          ]
+        }
       ]
 
       result = NetbootTftp.flatten_tree(tree)

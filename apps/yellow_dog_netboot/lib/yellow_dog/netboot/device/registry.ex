@@ -124,6 +124,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     {:reply, {:ok, device}, schedule_persist(state)}
   end
 
+  @impl true
   def handle_call({:update_state, mac, new_state, metadata}, _from, state) do
     normalized = Device.normalize_mac(mac)
 
@@ -144,6 +145,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
+  @impl true
   def handle_call({:assign_profile, mac, profile_id}, _from, state) do
     normalized = Device.normalize_mac(mac)
 
@@ -159,6 +161,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
+  @impl true
   def handle_call({:set_rescue_mode, mac, enabled}, _from, state) do
     normalized = Device.normalize_mac(mac)
 
@@ -174,6 +177,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
+  @impl true
   def handle_call({:update_tags, mac, tags}, _from, state) do
     normalized = Device.normalize_mac(mac)
 
@@ -189,6 +193,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     end
   end
 
+  @impl true
   def handle_call({:delete, mac}, _from, state) do
     normalized = Device.normalize_mac(mac)
     :ets.delete(@table, normalized)
@@ -202,6 +207,7 @@ defmodule YellowDog.Netboot.Device.Registry do
     {:noreply, %{state | persist_timer: nil}}
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

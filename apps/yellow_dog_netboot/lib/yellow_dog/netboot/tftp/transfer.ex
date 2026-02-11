@@ -103,11 +103,13 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     end
   end
 
+  @impl true
   def handle_info(:timeout, %{retries: retries} = state) when retries >= @max_retries do
     emit_telemetry(:exception, state, %{error_message: "timeout after #{@max_retries} retries"})
     {:stop, :timeout, state}
   end
 
+  @impl true
   def handle_info(:timeout, state) do
     state = %{state | retries: state.retries + 1}
     resend_current_block(state)
@@ -119,6 +121,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     :gen_udp.close(socket)
   end
 
+  @impl true
   def terminate(_reason, _state), do: :ok
 
   # --- Private ---

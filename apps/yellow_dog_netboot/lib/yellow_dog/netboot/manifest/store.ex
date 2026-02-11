@@ -89,16 +89,19 @@ defmodule YellowDog.Netboot.Manifest.Store do
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call({:put_profile, id, profile}, _from, state) do
     :ets.insert(@table, {{:profile, id}, profile})
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call({:delete_profile, id}, _from, state) do
     :ets.delete(@table, {:profile, id})
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call({:set_default_profile, id}, _from, state) do
     :ets.insert(@table, {:default_profile, id})
     {:reply, :ok, state}

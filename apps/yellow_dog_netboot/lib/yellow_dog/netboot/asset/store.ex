@@ -63,11 +63,13 @@ defmodule YellowDog.Netboot.Asset.Store do
     {:reply, files, state}
   end
 
+  @impl true
   def handle_call({:get_file, path}, _from, state) do
     result = safe_file_info(path, state.root)
     {:reply, result, state}
   end
 
+  @impl true
   def handle_call({:delete_file, path}, _from, state) do
     if YellowDog.Netboot.TFTP.FileIndex.path_traversal?(path) do
       {:reply, {:error, :path_traversal}, state}
@@ -81,6 +83,7 @@ defmodule YellowDog.Netboot.Asset.Store do
     end
   end
 
+  @impl true
   def handle_call({:upload_file, path, source}, _from, state) do
     if YellowDog.Netboot.TFTP.FileIndex.path_traversal?(path) do
       {:reply, {:error, :path_traversal}, state}
@@ -97,10 +100,12 @@ defmodule YellowDog.Netboot.Asset.Store do
     end
   end
 
+  @impl true
   def handle_call(:root_dir, _from, state) do
     {:reply, state.root, state}
   end
 
+  @impl true
   def handle_call(:file_tree, _from, state) do
     tree = build_tree(state.root, "")
     {:reply, tree, state}

@@ -65,6 +65,7 @@ defmodule YellowDog.Netboot.TFTP.Server do
     {:reply, status, state}
   end
 
+  @impl true
   def handle_call(:root_dir, _from, state) do
     {:reply, state.root_dir, state}
   end
@@ -86,6 +87,7 @@ defmodule YellowDog.Netboot.TFTP.Server do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

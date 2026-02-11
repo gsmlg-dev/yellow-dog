@@ -68,6 +68,7 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
     {:reply, result, state}
   end
 
+  @impl true
   def handle_call({:render_custom, template, assigns}, _from, state) do
     result = do_render(template, assigns)
     {:reply, result, state}
