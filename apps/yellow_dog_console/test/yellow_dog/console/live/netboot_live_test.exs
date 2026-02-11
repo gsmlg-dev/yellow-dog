@@ -84,6 +84,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "a[href='/netboot/profiles']", "View all")
       assert has_element?(view, "a[href='/netboot/devices']", "View all")
     end
+
+    test "TFTP card has Details link", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot")
+
+      assert has_element?(view, "a[href='/netboot/tftp']", "Details")
+    end
   end
 
   describe "Netboot Devices page" do
@@ -500,6 +506,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       sorted = ProfilesLive.sort_profiles(profiles, "id", "desc", %{})
       assert Enum.map(sorted, & &1.id) == ["charlie", "beta", "alpha"]
+    end
+
+    test "empty table shows create link", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles")
+
+      assert html =~ "create one"
     end
   end
 

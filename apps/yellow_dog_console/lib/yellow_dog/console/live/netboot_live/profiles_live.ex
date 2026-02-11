@@ -168,6 +168,14 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
                         Clone
                       </.link>
                       <button
+                        :if={p.id != @default_profile}
+                        phx-click="set_default"
+                        phx-value-id={p.id}
+                        class="btn btn-ghost btn-xs"
+                      >
+                        Set Default
+                      </button>
+                      <button
                         phx-click="delete_profile"
                         phx-value-id={p.id}
                         data-confirm={"Delete profile \"#{p.id}\"?"}
@@ -205,6 +213,19 @@ defmodule YellowDog.Console.NetbootLive.ProfilesLive do
         else: "asc"
 
     {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
+  end
+
+  def handle_event("set_default", %{"id" => id}, socket) do
+    safe_call(
+      YellowDog.Netboot.Manifest.Store,
+      fn -> YellowDog.Netboot.Manifest.Store.set_default_profile(id) end,
+      :ok
+    )
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Default profile set to \"#{id}\"")
+     |> load_profiles()}
   end
 
   def handle_event("delete_profile", %{"id" => id}, socket) do

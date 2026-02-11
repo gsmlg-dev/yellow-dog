@@ -89,7 +89,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <.card>
-            <h2 class="card-title mb-4">TFTP Server</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="card-title">TFTP Server</h2>
+              <.link navigate="/netboot/tftp" class="link link-primary text-sm">Details</.link>
+            </div>
             <div class="space-y-2">
               <div class="flex justify-between">
                 <span class="text-base-content/70">Status</span>

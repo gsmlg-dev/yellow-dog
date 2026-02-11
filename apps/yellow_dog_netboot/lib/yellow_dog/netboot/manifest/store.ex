@@ -69,6 +69,12 @@ defmodule YellowDog.Netboot.Manifest.Store do
     GenServer.call(__MODULE__, {:delete_profile, id})
   end
 
+  @doc "Set the default profile ID."
+  @spec set_default_profile(String.t()) :: :ok
+  def set_default_profile(id) do
+    GenServer.call(__MODULE__, {:set_default_profile, id})
+  end
+
   @impl true
   def init(opts) do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
@@ -90,6 +96,11 @@ defmodule YellowDog.Netboot.Manifest.Store do
 
   def handle_call({:delete_profile, id}, _from, state) do
     :ets.delete(@table, {:profile, id})
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:set_default_profile, id}, _from, state) do
+    :ets.insert(@table, {:default_profile, id})
     {:reply, :ok, state}
   end
 
