@@ -34,6 +34,10 @@ defmodule YellowDog.Console.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :boot do
+    plug :accepts, ["html", "json", "text"]
+  end
+
   scope "/", YellowDog.Console do
     pipe_through :browser
 
@@ -126,6 +130,17 @@ defmodule YellowDog.Console.Router do
 
     # Process Map
     live "/process-map", ProcessMapLive
+  end
+
+  # HTTP boot endpoints — no CSRF, no session (called by iPXE/installer)
+  scope "/boot", YellowDog.Console do
+    pipe_through :boot
+
+    get "/ipxe", BootController, :ipxe
+    get "/assets/*path", BootController, :asset
+    get "/manifest/:device_id", BootController, :manifest
+    post "/register", BootController, :register_device
+    post "/status", BootController, :status_update
   end
 
   scope "/api", YellowDog.Console do

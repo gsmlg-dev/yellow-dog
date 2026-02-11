@@ -2,6 +2,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
   @moduledoc "Netboot dashboard — overview of device states, TFTP status, recent activity."
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.NetbootComponents
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -127,23 +128,6 @@ defmodule YellowDog.Console.NetbootLive.Index do
     """
   end
 
-  defp state_badge(assigns) do
-    {color, label} = state_display(assigns.state)
-    assigns = assign(assigns, color: color, label: label)
-
-    ~H"""
-    <.badge color={@color} size="sm">{@label}</.badge>
-    """
-  end
-
-  defp state_display(:discovered), do: {"neutral", "Discovered"}
-  defp state_display(:booting), do: {"warning", "Booting"}
-  defp state_display(:installing), do: {"info", "Installing"}
-  defp state_display(:installed), do: {"success", "Installed"}
-  defp state_display(:failed), do: {"error", "Failed"}
-  defp state_display(:reinstall_requested), do: {"warning", "Reinstall"}
-  defp state_display(_), do: {"neutral", "Unknown"}
-
   @impl true
   def handle_info({:device_state_changed, _device}, socket) do
     {:noreply, load_data(socket)}
@@ -204,9 +188,4 @@ defmodule YellowDog.Console.NetbootLive.Index do
     |> assign(:recent_devices, recent)
   end
 
-  defp format_datetime(nil), do: "-"
-
-  defp format_datetime(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  end
 end

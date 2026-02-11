@@ -3,6 +3,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
+  import YellowDog.Console.NetbootComponents
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -145,23 +146,6 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     """
   end
 
-  defp state_badge(assigns) do
-    {color, label} = state_display(assigns.state)
-    assigns = assign(assigns, color: color, label: label)
-
-    ~H"""
-    <.badge color={@color} size="sm">{@label}</.badge>
-    """
-  end
-
-  defp state_display(:discovered), do: {"neutral", "Discovered"}
-  defp state_display(:booting), do: {"warning", "Booting"}
-  defp state_display(:installing), do: {"info", "Installing"}
-  defp state_display(:installed), do: {"success", "Installed"}
-  defp state_display(:failed), do: {"error", "Failed"}
-  defp state_display(:reinstall_requested), do: {"warning", "Reinstall"}
-  defp state_display(_), do: {"neutral", "Unknown"}
-
   @impl true
   def handle_event("search", %{"search" => query}, socket) do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
@@ -230,9 +214,6 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
   def filter_by_state(devices, "all"), do: devices
   def filter_by_state(devices, state), do: Enum.filter(devices, &(to_string(&1.state) == state))
-
-  defp format_datetime(nil), do: "-"
-  defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
 
   defp build_csv(devices) do
     header = "MAC,Hostname,Arch,Profile,State,Install Attempts,Last Seen\r\n"

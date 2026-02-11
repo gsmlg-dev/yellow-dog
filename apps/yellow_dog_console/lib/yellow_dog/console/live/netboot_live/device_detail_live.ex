@@ -2,6 +2,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   @moduledoc "Netboot device detail — full record, profile assignment, state actions."
   use YellowDog.Console, :live_view
 
+  import YellowDog.Console.NetbootComponents
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -59,8 +60,8 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <.info_row label="Profile" value={@device.profile_id || "None"} />
               <.info_row label="Install Attempts" value={to_string(@device.install_attempts)} />
               <.info_row label="Last Error" value={@device.last_error || "-"} />
-              <.info_row label="First Seen" value={format_datetime(@device.first_seen)} />
-              <.info_row label="Last Seen" value={format_datetime(@device.last_seen)} />
+              <.info_row label="First Seen" value={format_datetime_full(@device.first_seen)} />
+              <.info_row label="Last Seen" value={format_datetime_full(@device.last_seen)} />
               <.info_row
                 label="Tags"
                 value={Enum.join(@device.tags, ", ") |> then(&if(&1 == "", do: "-", else: &1))}
@@ -177,6 +178,4 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     end
   end
 
-  defp format_datetime(nil), do: "-"
-  defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
 end
