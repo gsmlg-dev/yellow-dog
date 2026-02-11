@@ -239,7 +239,10 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
 
         <.card>
           <div class="flex items-center justify-between mb-4">
-            <h2 class="card-title">File Browser</h2>
+            <h2 class="card-title">
+              File Browser
+              <.badge :if={@status.file_count > 0} color="ghost" size="sm">{@status.file_count} files</.badge>
+            </h2>
             <button
               phx-click="export_files_csv"
               id="export-files-csv"
@@ -249,8 +252,9 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
               Export CSV
             </button>
           </div>
-          <div :if={@file_tree == []} class="text-base-content/50">
-            No files found in TFTP root
+          <div :if={@file_tree == []} class="text-base-content/50 text-center py-4">
+            <p>No files found in TFTP root</p>
+            <p class="text-sm mt-1">Upload boot assets using the form above or place files in the TFTP root directory</p>
           </div>
           <div :if={@file_tree != []} class="text-sm">
             <.file_tree_node :for={node <- @file_tree} node={node} />

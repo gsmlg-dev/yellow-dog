@@ -105,7 +105,10 @@ defmodule YellowDog.Console.NetbootLive.Index do
 
           <.card>
             <h2 class="card-title mb-4">Boot Profiles</h2>
-            <div :if={@profiles == []} class="text-base-content/50">No profiles configured</div>
+            <div :if={@profiles == []} class="text-base-content/50">
+              No profiles configured —
+              <.link navigate="/netboot/profiles/new" class="link link-primary">create one</.link>
+            </div>
             <div :for={profile <- @profiles} class="flex justify-between items-center py-1">
               <div>
                 <.link navigate={"/netboot/profiles/#{profile.id}/edit"} class="link link-primary font-medium">
