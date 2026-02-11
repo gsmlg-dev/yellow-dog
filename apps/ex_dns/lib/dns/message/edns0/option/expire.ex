@@ -45,6 +45,7 @@ defmodule DNS.Message.EDNS0.Option.Expire do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.Expire do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.Expire{code: code, data: expire_time}) do
       "#{code}: #{expire_time}s"
     end

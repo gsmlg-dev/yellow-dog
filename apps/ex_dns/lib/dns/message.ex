@@ -121,6 +121,7 @@ defmodule DNS.Message do
   end
 
   defimpl String.Chars, for: DNS.Message do
+    @impl true
     def to_string(message) do
       anlist_str =
         if message.anlist != [] do

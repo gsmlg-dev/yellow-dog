@@ -160,6 +160,7 @@ defmodule DNS.Message.Record do
   end
 
   defimpl String.Chars, for: DNS.Message.Record do
+    @impl true
     def to_string(record) do
       "#{record.name} #{record.type} #{record.class} #{record.ttl} #{record.data}"
     end

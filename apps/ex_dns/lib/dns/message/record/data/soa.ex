@@ -56,6 +56,7 @@ defmodule DNS.Message.Record.Data.SOA do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.SOA do
+    @impl true
     def to_string(%DNS.Message.Record.Data.SOA{data: data}) do
       {ns, rp, serial, refresh, retry, expire, negative} = data
       "#{ns} #{rp} #{serial} #{refresh} #{retry} #{expire} #{negative}"

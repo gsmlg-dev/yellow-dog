@@ -35,6 +35,7 @@ defmodule DNS.Message.Record.Data.TXT do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.TXT do
+    @impl true
     def to_string(%DNS.Message.Record.Data.TXT{data: data}) do
       "#{Enum.map_join(data, " ", &inspect/1)}"
     end

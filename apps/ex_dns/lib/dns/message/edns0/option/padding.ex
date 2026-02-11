@@ -53,6 +53,7 @@ defmodule DNS.Message.EDNS0.Option.Padding do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.Padding do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.Padding{code: code, length: length}) do
       "#{code}: #{length} bytes"
     end

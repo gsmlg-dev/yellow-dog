@@ -54,6 +54,7 @@ defmodule DNS.Message.EDNS0.Option.KeyTag do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.KeyTag do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.KeyTag{code: code, data: key_tag_list}) do
       key_tags = Enum.join(key_tag_list, ",")
       "#{code}: [#{key_tags}]"

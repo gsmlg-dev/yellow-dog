@@ -32,6 +32,7 @@ defmodule DNS.Message.Record.Data.NS do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.NS do
+    @impl true
     def to_string(record) do
       "#{record.data}"
     end

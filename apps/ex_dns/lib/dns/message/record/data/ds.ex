@@ -55,6 +55,7 @@ defmodule DNS.Message.Record.Data.DS do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.DS do
+    @impl true
     def to_string(%DNS.Message.Record.Data.DS{data: data}) do
       {key_tag, algorithm, digest_type, digest} = data
       digest_hex = Base.encode16(digest, case: :lower)

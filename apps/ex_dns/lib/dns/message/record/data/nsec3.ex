@@ -100,6 +100,7 @@ defmodule DNS.Message.Record.Data.NSEC3 do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.NSEC3 do
+    @impl true
     def to_string(%DNS.Message.Record.Data.NSEC3{data: data}) do
       {hash_algorithm, flags, iterations, salt, next_hashed_owner_name, _type_bit_maps} = data
       salt_hex = Base.encode16(salt, case: :lower)

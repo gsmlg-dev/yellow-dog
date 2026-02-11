@@ -100,6 +100,7 @@ defmodule DNS.Message.EDNS0.Option.Cookie do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.Cookie do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.Cookie{
           code: code,
           data: {client_cookie, nil}

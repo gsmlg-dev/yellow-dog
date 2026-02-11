@@ -155,6 +155,7 @@ defmodule DNS.Message.Record.Data.NSEC do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.NSEC do
+    @impl true
     def to_string(%DNS.Message.Record.Data.NSEC{data: {domain, types}}) do
       "#{domain} #{types |> Enum.join(" ")}"
     end

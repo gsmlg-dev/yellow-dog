@@ -60,6 +60,7 @@ defmodule DNS.Message.EDNS0.Option.LLQ do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.LLQ do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.LLQ{
           code: code,
           data: {version, opcode, id, lease_life}

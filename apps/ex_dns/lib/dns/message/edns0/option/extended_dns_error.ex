@@ -52,6 +52,7 @@ defmodule DNS.Message.EDNS0.Option.ExtendedDNSError do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.ExtendedDNSError do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.ExtendedDNSError{
           code: code,
           data: {info_code, extra_text}

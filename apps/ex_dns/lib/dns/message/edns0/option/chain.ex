@@ -44,6 +44,7 @@ defmodule DNS.Message.EDNS0.Option.Chain do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.Chain do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.Chain{code: code, data: start_hash}) do
       "#{code}: #{start_hash}"
     end

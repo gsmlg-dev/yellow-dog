@@ -47,6 +47,7 @@ defmodule DNS.Message.EDNS0.Option.NSID do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.NSID do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.NSID{code: code, data: nsid_data}) do
       "#{code}: #{Base.encode16(nsid_data)}"
     end

@@ -59,6 +59,7 @@ defmodule DNS.Message.EDNS0.Option.TcpKeepalive do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.TcpKeepalive do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.TcpKeepalive{code: code, data: nil}) do
       "#{code}: not specified"
     end

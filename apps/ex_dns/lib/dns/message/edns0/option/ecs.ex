@@ -272,6 +272,7 @@ defmodule DNS.Message.EDNS0.Option.ECS do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.ECS do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.ECS{
           code: code,
           data: {client_subnet, source_prefix, scope_prefix}

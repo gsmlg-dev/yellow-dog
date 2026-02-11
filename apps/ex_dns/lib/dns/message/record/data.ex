@@ -154,6 +154,7 @@ defmodule DNS.Message.Record.Data do
         "<<192, 168, 1, 1>>"
     """
     @spec to_string(DNS.Message.Record.Data.t()) :: String.t()
+    @impl true
     def to_string(record) do
       record.raw |> inspect()
     end

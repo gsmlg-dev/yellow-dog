@@ -65,6 +65,7 @@ defmodule DHCPv4.Message.Option do
 
   # Implement String.Chars protocol
   defimpl String.Chars, for: __MODULE__ do
+    @impl true
     def to_string(%DHCPv4.Message.Option{} = option) do
       Formatter.format(option)
     end

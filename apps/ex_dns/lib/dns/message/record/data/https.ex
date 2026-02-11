@@ -79,6 +79,7 @@ defmodule DNS.Message.Record.Data.HTTPS do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.HTTPS do
+    @impl true
     def to_string(%DNS.Message.Record.Data.HTTPS{data: data}) do
       {svc_priority, target_name, svc_params} = data
       parsed_params = parse_svc_params(svc_params)

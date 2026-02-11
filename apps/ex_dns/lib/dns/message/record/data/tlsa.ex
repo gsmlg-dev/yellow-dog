@@ -55,6 +55,7 @@ defmodule DNS.Message.Record.Data.TLSA do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.TLSA do
+    @impl true
     def to_string(%DNS.Message.Record.Data.TLSA{data: data}) do
       {usage, selector, matching_type, cert_data} = data
       cert_hex = Base.encode16(cert_data, case: :lower)

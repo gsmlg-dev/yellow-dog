@@ -56,6 +56,7 @@ defmodule DNS.Message.Record.Data.OPT do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.OPT do
+    @impl true
     def to_string(%DNS.Message.Record.Data.OPT{data: data}) do
       "#{data}"
     end

@@ -212,6 +212,7 @@ defmodule DNS.Message.EDNS0 do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0 do
+    @impl true
     def to_string(%DNS.Message.EDNS0{
           udp_payload: udp_payload,
           # extended_rcode: extended_rcode,

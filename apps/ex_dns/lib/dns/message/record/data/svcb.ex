@@ -79,6 +79,7 @@ defmodule DNS.Message.Record.Data.SVCB do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.SVCB do
+    @impl true
     def to_string(%DNS.Message.Record.Data.SVCB{data: data}) do
       {svc_priority, target_name, svc_params} = data
 

@@ -49,6 +49,7 @@ defmodule DNS.Message.EDNS0.Option.DHU do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.DHU do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.DHU{code: code, data: algorithm_list}) do
       algorithms = Enum.join(algorithm_list, ",")
       "#{code}: [#{algorithms}]"

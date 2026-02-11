@@ -122,6 +122,7 @@ defmodule DNS.Message.Record.Data.RRSIG do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.RRSIG do
+    @impl true
     def to_string(%DNS.Message.Record.Data.RRSIG{data: data}) do
       {type_covered, algorithm, labels, original_ttl, signature_expiration, signature_inception,
        key_tag, signers_name, signature} = data

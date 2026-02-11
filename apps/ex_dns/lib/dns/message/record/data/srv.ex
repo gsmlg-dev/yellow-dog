@@ -40,6 +40,7 @@ defmodule DNS.Message.Record.Data.SRV do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.SRV do
+    @impl true
     def to_string(%DNS.Message.Record.Data.SRV{data: {priority, weight, port, domain}}) do
       "#{priority} #{weight} #{port} #{domain}"
     end

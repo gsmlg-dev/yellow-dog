@@ -64,6 +64,7 @@ defmodule DNS.Message.EDNS0.Option do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option{
           code: code,
           data: data

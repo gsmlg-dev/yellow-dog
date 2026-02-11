@@ -45,6 +45,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLease do
   end
 
   defimpl String.Chars, for: DNS.Message.EDNS0.Option.UpdateLease do
+    @impl true
     def to_string(%DNS.Message.EDNS0.Option.UpdateLease{code: code, data: lease_lifetime}) do
       "#{code}: #{lease_lifetime}s"
     end

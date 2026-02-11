@@ -273,6 +273,7 @@ defmodule DHCPv4.Message do
   end
 
   defimpl String.Chars, for: DHCPv4.Message do
+    @impl true
     def to_string(%DHCPv4.Message{} = message) do
       """
       === DHCP Message ===

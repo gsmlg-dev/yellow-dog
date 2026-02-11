@@ -88,6 +88,7 @@ defmodule DNS.Message.Question do
   end
 
   defimpl String.Chars, for: DNS.Message.Question do
+    @impl true
     def to_string(question) do
       "#{question.name} #{question.type} #{question.class}"
     end

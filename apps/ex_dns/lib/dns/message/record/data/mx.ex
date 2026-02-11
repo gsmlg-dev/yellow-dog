@@ -42,6 +42,7 @@ defmodule DNS.Message.Record.Data.MX do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.MX do
+    @impl true
     def to_string(%DNS.Message.Record.Data.MX{data: {weight, domain}}) do
       "#{weight} #{domain}"
     end

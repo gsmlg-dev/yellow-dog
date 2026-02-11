@@ -55,6 +55,7 @@ defmodule DNS.Message.Record.Data.DNSKEY do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.DNSKEY do
+    @impl true
     def to_string(%DNS.Message.Record.Data.DNSKEY{data: data}) do
       {flags, protocol, algorithm, public_key} = data
       public_key_b64 = Base.encode64(public_key)

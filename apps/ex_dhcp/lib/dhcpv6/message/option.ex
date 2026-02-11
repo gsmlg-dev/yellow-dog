@@ -287,6 +287,7 @@ defmodule DHCPv6.Message.Option do
   end
 
   defimpl String.Chars, for: DHCPv6.Message.Option do
+    @impl true
     def to_string(%DHCPv6.Message.Option{} = option) do
       decoded_value = decode_option_value(option.option_code, option.option_data)
       "Option(#{option.option_code}): #{parse_decoded_value(decoded_value)}\n"

@@ -58,6 +58,7 @@ defmodule DNS.Message.Record.Data.CAA do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.CAA do
+    @impl true
     def to_string(%DNS.Message.Record.Data.CAA{data: data}) do
       {flags, tag, value} = data
       "#{flags} #{tag} \"#{value}\""

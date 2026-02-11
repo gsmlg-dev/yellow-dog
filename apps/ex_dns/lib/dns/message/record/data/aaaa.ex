@@ -29,6 +29,7 @@ defmodule DNS.Message.Record.Data.AAAA do
   end
 
   defimpl String.Chars, for: DNS.Message.Record.Data.AAAA do
+    @impl true
     def to_string(record) do
       case record.data |> :inet.ntoa() do
         ip when is_list(ip) -> "#{ip}"
