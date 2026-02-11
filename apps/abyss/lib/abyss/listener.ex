@@ -272,6 +272,7 @@ defmodule Abyss.Listener do
     end
   end
 
+  @impl true
   def handle_info({:udp, socket, ip, port, data}, %{listener_span: listener_span} = state) do
     # Check packet size
     if byte_size(data) > state.server_config.max_packet_size do
@@ -311,6 +312,7 @@ defmodule Abyss.Listener do
     end
   end
 
+  @impl true
   def handle_info(
         :do_recv,
         %{listener_span: listener_span, listener_socket: listener_socket, transport: transport} =
@@ -430,16 +432,19 @@ defmodule Abyss.Listener do
     end
   end
 
+  @impl true
   def handle_info({:retry_connection, retry_args}, state) do
     Abyss.Connection.retry_start(retry_args)
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:retry_active_connection, retry_args}, state) do
     Abyss.Connection.retry_start_active(retry_args)
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end
@@ -516,6 +521,7 @@ defmodule Abyss.Listener do
     {:reply, state.local_info, state}
   end
 
+  @impl true
   def handle_call(:socket_info, _from, state),
     do: {:reply, {state.listener_socket, state.listener_span}, state}
 
