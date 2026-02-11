@@ -89,4 +89,41 @@ defmodule YellowDog.Netboot.TFTP.FileIndexTest do
       assert FileIndex.count() == 3
     end
   end
+
+  describe "init/0" do
+    test "calling init twice is idempotent" do
+      assert :ok = FileIndex.init()
+      assert FileIndex.count() == 3
+    end
+  end
+
+  describe "scan/1 edge cases" do
+    test "rescans and replaces previous index" do
+      File.write!(Path.join(@tmp_root, "new_file.bin"), "new data")
+      assert {:ok, 4} = FileIndex.scan(@tmp_root)
+      assert FileIndex.count() == 4
+    end
+
+    test "handles empty directory" do
+      empty = Path.join(System.tmp_dir!(), "empty_scan_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(empty)
+      on_exit(fn -> File.rm_rf!(empty) end)
+
+      assert {:ok, 0} = FileIndex.scan(empty)
+    end
+
+    test "skips non-regular files (directories only)" do
+      dir_only = Path.join(System.tmp_dir!(), "dir_only_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(dir_only, "a/b/c"))
+      on_exit(fn -> File.rm_rf!(dir_only) end)
+
+      assert {:ok, 0} = FileIndex.scan(dir_only)
+    end
+  end
+
+  describe "lookup/2 edge cases" do
+    test "lookup with leading slash is path traversal" do
+      assert {:error, :path_traversal} = FileIndex.lookup("/kernel.img", @tmp_root)
+    end
+  end
 end
