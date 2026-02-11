@@ -108,6 +108,29 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
             </div>
           </.card>
         </div>
+
+        <.card :if={@device && @device.state_history != []}>
+          <h2 class="card-title mb-4">State History</h2>
+          <ul class="timeline timeline-vertical timeline-compact">
+            <li :for={{entry, idx} <- Enum.with_index(Enum.reverse(@device.state_history))}>
+              <hr :if={idx > 0} />
+              <div class="timeline-start text-sm text-base-content/70">
+                {format_datetime_full(entry.at)}
+              </div>
+              <div class="timeline-middle">
+                <div class={[
+                  "w-3 h-3 rounded-full",
+                  history_dot_color(entry.state)
+                ]}>
+                </div>
+              </div>
+              <div class="timeline-end timeline-box">
+                <.state_badge state={entry.state} />
+              </div>
+              <hr :if={idx < length(@device.state_history) - 1} />
+            </li>
+          </ul>
+        </.card>
       </div>
     </Layouts.app>
     """
@@ -164,6 +187,14 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp history_dot_color(:discovered), do: "bg-neutral"
+  defp history_dot_color(:booting), do: "bg-warning"
+  defp history_dot_color(:installing), do: "bg-info"
+  defp history_dot_color(:installed), do: "bg-success"
+  defp history_dot_color(:failed), do: "bg-error"
+  defp history_dot_color(:reinstall_requested), do: "bg-warning"
+  defp history_dot_color(_), do: "bg-neutral"
 
   defp load_device(socket, mac) do
     case safe_call(

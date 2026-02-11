@@ -99,6 +99,34 @@ defmodule YellowDog.Netboot.DeviceTest do
     end
   end
 
+  describe "state_history" do
+    test "new device has initial discovered entry" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      assert [%{state: :discovered, at: %DateTime{}}] = device.state_history
+    end
+
+    test "transition appends to history" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      {:ok, device} = Device.transition(device, :booting)
+      {:ok, device} = Device.transition(device, :installing)
+      {:ok, device} = Device.transition(device, :installed)
+
+      # History is prepended (newest first)
+      assert [
+               %{state: :installed},
+               %{state: :installing},
+               %{state: :booting},
+               %{state: :discovered}
+             ] = device.state_history
+    end
+
+    test "failed transition does not modify history" do
+      device = Device.new("AA:BB:CC:DD:EE:FF")
+      assert {:error, :invalid_transition} = Device.transition(device, :installed)
+      assert length(device.state_history) == 1
+    end
+  end
+
   describe "normalize_mac/1" do
     test "normalizes lowercase to uppercase" do
       assert "AA:BB:CC:DD:EE:FF" = Device.normalize_mac("aa:bb:cc:dd:ee:ff")

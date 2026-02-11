@@ -38,8 +38,11 @@ defmodule YellowDog.Netboot.Device do
     last_seen: nil,
     install_attempts: 0,
     tags: [],
+    state_history: [],
     slot: %{active: :a, pending: nil}
   ]
+
+  @type state_entry :: %{state: atom(), at: DateTime.t()}
 
   @type t :: %__MODULE__{
           mac: String.t(),
@@ -55,6 +58,7 @@ defmodule YellowDog.Netboot.Device do
           install_attempts: non_neg_integer(),
           last_error: String.t() | nil,
           tags: [String.t()],
+          state_history: [state_entry()],
           slot: map()
         }
 
@@ -73,7 +77,8 @@ defmodule YellowDog.Netboot.Device do
       state: :discovered,
       first_seen: now,
       last_seen: now,
-      tags: Map.get(attrs, :tags, [])
+      tags: Map.get(attrs, :tags, []),
+      state_history: [%{state: :discovered, at: now}]
     }
   end
 
@@ -83,10 +88,13 @@ defmodule YellowDog.Netboot.Device do
     allowed = Map.get(@transitions, current, [])
 
     if new_state in allowed do
+      now = DateTime.utc_now()
+
       device =
         device
         |> Map.put(:state, new_state)
-        |> Map.put(:last_seen, DateTime.utc_now())
+        |> Map.put(:last_seen, now)
+        |> Map.update!(:state_history, &[%{state: new_state, at: now} | &1])
         |> apply_transition_side_effects(new_state, metadata)
 
       {:ok, device}
