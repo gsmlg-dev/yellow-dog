@@ -33,8 +33,15 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/netboot/devices">Devices</.link></li>
+            <li class="font-mono">{@mac}</li>
+          </ul>
+        </div>
+
         <div class="flex items-center gap-4">
-          <.link navigate="/netboot/devices" class="btn btn-ghost btn-sm">Back</.link>
           <div>
             <div class="flex items-center gap-2">
               <h1 id="device-mac" class="text-4xl font-bold font-mono">{@mac}</h1>

@@ -100,6 +100,11 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
         </.card>
 
         <.card>
+          <div :if={@log_entries != []} class="flex justify-between items-center mb-2">
+            <span class="text-sm text-base-content/70">
+              {length(filtered_entries(@log_entries, @search_query, @filter_type))} of {length(@log_entries)} entries
+            </span>
+          </div>
           <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table class="table table-zebra table-sm">
               <thead class="sticky top-0 bg-base-200 z-10">

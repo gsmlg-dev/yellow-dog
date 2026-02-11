@@ -299,10 +299,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Device not found"
     end
 
-    test "has back link to devices list", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+    test "has breadcrumb navigation", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
 
-      assert has_element?(view, "a[href='/netboot/devices']")
+      assert html =~ "breadcrumbs"
+      assert has_element?(view, "a[href='/netboot']", "Netboot")
+      assert has_element?(view, "a[href='/netboot/devices']", "Devices")
     end
 
     test "has copy MAC button with CopyToClipboard hook", %{conn: conn} do
@@ -469,7 +471,15 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "input[name='profile[flake]']")
     end
 
-    test "has back and submit buttons", %{conn: conn} do
+    test "has breadcrumb navigation", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/netboot/profiles/new")
+
+      assert html =~ "breadcrumbs"
+      assert has_element?(view, "a[href='/netboot']", "Netboot")
+      assert has_element?(view, "a[href='/netboot/profiles']", "Profiles")
+    end
+
+    test "has cancel and submit buttons", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/profiles/new")
 
       assert has_element?(view, "a[href='/netboot/profiles']", "Cancel")

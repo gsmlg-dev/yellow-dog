@@ -15,12 +15,27 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
 
     form_data = profile_to_form(profile)
 
+    device_count =
+      if mode == :edit do
+        safe_call(
+          YellowDog.Netboot.Device.Registry,
+          fn ->
+            YellowDog.Netboot.Device.Registry.list()
+            |> Enum.count(&(&1.profile_id == profile.id))
+          end,
+          0
+        )
+      else
+        0
+      end
+
     {:ok,
      socket
      |> assign(
        page_title: if(mode == :new, do: "New Boot Profile", else: "Edit: #{profile.id}"),
        mode: mode,
        profile_id: profile.id,
+       device_count: device_count,
        valid_arches: @valid_arches,
        errors: %{}
      )
@@ -34,8 +49,15 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <div class="breadcrumbs text-sm">
+          <ul>
+            <li><.link navigate="/netboot">Netboot</.link></li>
+            <li><.link navigate="/netboot/profiles">Profiles</.link></li>
+            <li>{if @mode == :new, do: "New", else: @profile_id}</li>
+          </ul>
+        </div>
+
         <div class="flex items-center gap-4">
-          <.link navigate="/netboot/profiles" class="btn btn-ghost btn-sm">Back</.link>
           <div>
             <h1 class="text-4xl font-bold">
               {if @mode == :new, do: "New Boot Profile", else: "Edit Profile"}
@@ -44,6 +66,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
               {if @mode == :new,
                 do: "Create a new PXE boot profile",
                 else: "Modify boot profile: #{@profile_id}"}
+            </p>
+            <p :if={@mode == :edit && @device_count > 0} class="mt-1 text-sm text-warning">
+              {@device_count} device(s) currently using this profile
             </p>
           </div>
         </div>

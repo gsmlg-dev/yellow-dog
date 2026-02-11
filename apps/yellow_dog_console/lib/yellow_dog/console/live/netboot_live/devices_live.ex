@@ -66,7 +66,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
           </div>
           <div class="stat">
             <div class="stat-title">Showing</div>
-            <div class="stat-value text-sm">{length(@filtered_devices)}</div>
+            <div class="stat-value text-sm">
+              {length(@filtered_devices)}<span class="text-base-content/50 font-normal">/{length(@all_devices)}</span>
+            </div>
           </div>
         </div>
 
