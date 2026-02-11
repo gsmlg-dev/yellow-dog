@@ -77,6 +77,12 @@ defmodule YellowDog.Console.ServicePagesLiveTest do
       {:ok, _view, html} = live(conn, "/mdns")
       assert html =~ "mDNS"
     end
+
+    test "refresh event reloads data", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/mdns")
+      html = render_click(view, "refresh")
+      assert html =~ "mDNS"
+    end
   end
 
   describe "mDNS Services /mdns/services" do

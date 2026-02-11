@@ -10,6 +10,12 @@ defmodule YellowDog.Console.FingerprintLiveTest do
       assert html =~ "Search by MAC"
     end
 
+    test "shows service alert when service is not running", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/fingerprint/devices")
+
+      assert html =~ "Fingerprint service is not running"
+    end
+
     test "shows stats cards", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/fingerprint/devices")
 
@@ -46,6 +52,12 @@ defmodule YellowDog.Console.FingerprintLiveTest do
       assert html =~ "Fingerprints"
       assert html =~ "Unknown"
       assert html =~ "Known"
+    end
+
+    test "shows service alert when service is not running", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/fingerprint/fingerprints")
+
+      assert html =~ "Fingerprint service is not running"
     end
 
     test "shows fingerprint stats", %{conn: conn} do
@@ -89,6 +101,12 @@ defmodule YellowDog.Console.FingerprintLiveTest do
       {:ok, _view, html} = live(conn, "/fingerprint/devices/00:11:22:33:44:55")
 
       assert html =~ "00:11:22:33:44:55"
+    end
+
+    test "shows service alert when service is not running", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/fingerprint/devices/00:11:22:33:44:55")
+
+      assert html =~ "Fingerprint service is not running"
     end
 
     test "shows device not found for unknown MAC", %{conn: conn} do
