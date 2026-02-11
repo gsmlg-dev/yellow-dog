@@ -47,6 +47,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
             <div class="flex items-center gap-2">
               <h1 id="device-mac" class="text-4xl font-bold font-mono">{@mac}</h1>
               <.state_badge :if={@device} state={@device.state} />
+              <.badge :if={@device && @device.rescue_mode} color="warning" size="sm">Rescue</.badge>
               <button
                 id="copy-mac"
                 phx-hook="CopyToClipboard"

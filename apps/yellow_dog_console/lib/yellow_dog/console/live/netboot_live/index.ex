@@ -95,6 +95,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
             <div class="stat-value">{@metrics.boot_scripts_rendered}</div>
             <div class="stat-desc">iPXE scripts served</div>
           </div>
+          <div class="stat">
+            <div class="stat-title">Devices Discovered</div>
+            <div class="stat-value">{@metrics.devices_discovered}</div>
+            <div class="stat-desc">via DHCP/TFTP</div>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">

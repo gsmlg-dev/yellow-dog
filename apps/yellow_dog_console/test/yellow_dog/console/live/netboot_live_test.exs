@@ -46,6 +46,8 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Bytes Transferred"
       assert html =~ "Boot Scripts"
       assert html =~ "iPXE scripts served"
+      assert html =~ "Devices Discovered"
+      assert html =~ "via DHCP/TFTP"
     end
 
     test "shows profile usage stats", %{conn: conn} do

@@ -120,7 +120,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                   <span class="label-text-alt text-error">{@errors[:kernel]}</span>
                 </label>
                 <label :if={@file_warnings[:kernel]} class="label">
-                  <span class="label-text-alt text-warning">{@file_warnings[:kernel]}</span>
+                  <span class="label-text-alt text-warning">
+                    {@file_warnings[:kernel]} — <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
+                  </span>
                 </label>
               </div>
 
@@ -138,7 +140,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
                   <span class="label-text-alt text-error">{@errors[:initrd]}</span>
                 </label>
                 <label :if={@file_warnings[:initrd]} class="label">
-                  <span class="label-text-alt text-warning">{@file_warnings[:initrd]}</span>
+                  <span class="label-text-alt text-warning">
+                    {@file_warnings[:initrd]} — <.link navigate="/netboot/tftp" class="link link-primary">upload</.link>
+                  </span>
                 </label>
               </div>
             </div>
