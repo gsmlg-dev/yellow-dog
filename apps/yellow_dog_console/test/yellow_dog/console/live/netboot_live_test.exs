@@ -90,6 +90,117 @@ defmodule YellowDog.Console.NetbootLiveTest do
     end
   end
 
+  describe "Netboot Devices sorting" do
+    test "clicking column header triggers sort event", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      html = view |> element("th[phx-value-field=mac]") |> render_click()
+      # Should show ascending indicator
+      assert html =~ "\u25B2"
+    end
+
+    test "clicking same column toggles sort direction", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      # First click: asc
+      view |> element("th[phx-value-field=mac]") |> render_click()
+      # Second click: desc
+      html = view |> element("th[phx-value-field=mac]") |> render_click()
+      assert html =~ "\u25BC"
+    end
+
+    test "clicking different column resets to asc", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      # Click mac (asc), then hostname (should reset to asc)
+      view |> element("th[phx-value-field=mac]") |> render_click()
+      html = view |> element("th[phx-value-field=hostname]") |> render_click()
+      assert html =~ "\u25B2"
+    end
+
+    test "all sortable columns have phx-click=sort", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices")
+
+      for field <- ~w(mac hostname arch profile_id state install_attempts last_seen) do
+        assert has_element?(view, "th[phx-value-field=#{field}]")
+      end
+    end
+
+    test "sort_devices/3 sorts by field ascending", _context do
+      alias YellowDog.Console.NetbootLive.DevicesLive
+
+      devices = [
+        %{
+          mac: "CC:CC:CC:CC:CC:CC",
+          hostname: "charlie",
+          arch: nil,
+          profile_id: nil,
+          state: :installed,
+          install_attempts: 3,
+          last_seen: nil
+        },
+        %{
+          mac: "AA:AA:AA:AA:AA:AA",
+          hostname: "alice",
+          arch: :x86_64,
+          profile_id: "p1",
+          state: :discovered,
+          install_attempts: 1,
+          last_seen: nil
+        },
+        %{
+          mac: "BB:BB:BB:BB:BB:BB",
+          hostname: "bob",
+          arch: :aarch64,
+          profile_id: "p2",
+          state: :booting,
+          install_attempts: 2,
+          last_seen: nil
+        }
+      ]
+
+      sorted = DevicesLive.sort_devices(devices, "mac", "asc")
+
+      assert Enum.map(sorted, & &1.mac) == [
+               "AA:AA:AA:AA:AA:AA",
+               "BB:BB:BB:BB:BB:BB",
+               "CC:CC:CC:CC:CC:CC"
+             ]
+
+      sorted_desc = DevicesLive.sort_devices(devices, "hostname", "desc")
+      assert Enum.map(sorted_desc, & &1.hostname) == ["charlie", "bob", "alice"]
+    end
+
+    test "sort_devices/3 handles nil values", _context do
+      alias YellowDog.Console.NetbootLive.DevicesLive
+
+      devices = [
+        %{
+          mac: "BB:BB:BB:BB:BB:BB",
+          hostname: nil,
+          arch: nil,
+          profile_id: nil,
+          state: :discovered,
+          install_attempts: 0,
+          last_seen: nil
+        },
+        %{
+          mac: "AA:AA:AA:AA:AA:AA",
+          hostname: "alice",
+          arch: nil,
+          profile_id: nil,
+          state: :discovered,
+          install_attempts: 0,
+          last_seen: nil
+        }
+      ]
+
+      sorted = DevicesLive.sort_devices(devices, "hostname", "asc")
+      # nil sorts first (empty string)
+      assert Enum.map(sorted, & &1.mac) == ["BB:BB:BB:BB:BB:BB", "AA:AA:AA:AA:AA:AA"]
+    end
+  end
+
   describe "Netboot Devices bulk actions" do
     test "shows select-all checkbox in table header", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/netboot/devices")

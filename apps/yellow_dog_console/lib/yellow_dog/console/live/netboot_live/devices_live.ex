@@ -21,7 +21,9 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
        search_query: "",
        filter_state: "all",
        selected_devices: MapSet.new(),
-       bulk_profile: nil
+       bulk_profile: nil,
+       sort_field: "last_seen",
+       sort_dir: "desc"
      )
      |> load_devices()
      |> load_profiles()}
@@ -149,13 +151,48 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                       }
                     />
                   </th>
-                  <th>MAC Address</th>
-                  <th>Hostname</th>
-                  <th>Arch</th>
-                  <th>Profile</th>
-                  <th>State</th>
-                  <th>Install Attempts</th>
-                  <th>Last Seen</th>
+                  <.sort_header
+                    field="mac"
+                    label="MAC Address"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="hostname"
+                    label="Hostname"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="arch"
+                    label="Arch"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="profile_id"
+                    label="Profile"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="state"
+                    label="State"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="install_attempts"
+                    label="Install Attempts"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
+                  <.sort_header
+                    field="last_seen"
+                    label="Last Seen"
+                    sort_field={@sort_field}
+                    sort_dir={@sort_dir}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -195,6 +232,23 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
     """
   end
 
+  defp sort_header(assigns) do
+    ~H"""
+    <th
+      phx-click="sort"
+      phx-value-field={@field}
+      class="cursor-pointer select-none hover:bg-base-200"
+    >
+      <div class="flex items-center gap-1">
+        {@label}
+        <span :if={@sort_field == @field} class="text-xs">
+          {if @sort_dir == "asc", do: "\u25B2", else: "\u25BC"}
+        </span>
+      </div>
+    </th>
+    """
+  end
+
   @impl true
   def handle_event("search", %{"search" => query}, socket) do
     {:noreply, socket |> assign(:search_query, query) |> apply_filters()}
@@ -202,6 +256,15 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
   def handle_event("filter_state", %{"state" => state}, socket) do
     {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
+  end
+
+  def handle_event("sort", %{"field" => field}, socket) do
+    dir =
+      if socket.assigns.sort_field == field,
+        do: toggle_dir(socket.assigns.sort_dir),
+        else: "asc"
+
+    {:noreply, socket |> assign(sort_field: field, sort_dir: dir) |> apply_filters()}
   end
 
   def handle_event("export_csv", _params, socket) do
@@ -339,6 +402,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
       socket.assigns.all_devices
       |> filter_by_search(socket.assigns.search_query)
       |> filter_by_state(socket.assigns.filter_state)
+      |> sort_devices(socket.assigns.sort_field, socket.assigns.sort_dir)
 
     assign(socket, :filtered_devices, devices)
   end
@@ -357,6 +421,29 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
 
   def filter_by_state(devices, "all"), do: devices
   def filter_by_state(devices, state), do: Enum.filter(devices, &(to_string(&1.state) == state))
+
+  def sort_devices(devices, field, dir) do
+    sorter = sort_key_fn(field)
+    sorted = Enum.sort_by(devices, sorter, &compare_values/2)
+    if dir == "desc", do: Enum.reverse(sorted), else: sorted
+  end
+
+  defp sort_key_fn("mac"), do: & &1.mac
+  defp sort_key_fn("hostname"), do: &(&1.hostname || "")
+  defp sort_key_fn("arch"), do: &if(&1.arch, do: to_string(&1.arch), else: "")
+  defp sort_key_fn("profile_id"), do: &(&1.profile_id || "")
+  defp sort_key_fn("state"), do: &to_string(&1.state)
+  defp sort_key_fn("install_attempts"), do: & &1.install_attempts
+  defp sort_key_fn("last_seen"), do: & &1.last_seen
+  defp sort_key_fn(_), do: & &1.mac
+
+  defp compare_values(nil, _), do: true
+  defp compare_values(_, nil), do: false
+  defp compare_values(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b) != :gt
+  defp compare_values(a, b), do: a <= b
+
+  defp toggle_dir("asc"), do: "desc"
+  defp toggle_dir(_), do: "asc"
 
   defp build_csv(devices) do
     header = "MAC,Hostname,Arch,Profile,State,Install Attempts,Last Seen\r\n"
