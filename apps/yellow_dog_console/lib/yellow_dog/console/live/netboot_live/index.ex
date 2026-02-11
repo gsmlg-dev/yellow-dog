@@ -108,7 +108,9 @@ defmodule YellowDog.Console.NetbootLive.Index do
             <div :if={@profiles == []} class="text-base-content/50">No profiles configured</div>
             <div :for={profile <- @profiles} class="flex justify-between items-center py-1">
               <div>
-                <span class="font-medium">{profile.id}</span>
+                <.link navigate={"/netboot/profiles/#{profile.id}/edit"} class="link link-primary font-medium">
+                  {profile.id}
+                </.link>
                 <span :if={profile.description} class="text-base-content/70 text-sm ml-2">
                   {profile.description}
                 </span>

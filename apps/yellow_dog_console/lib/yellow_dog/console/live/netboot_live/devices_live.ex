@@ -237,7 +237,10 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                     </.link>
                   </td>
                   <td>{device.hostname || "-"}</td>
-                  <td>{if device.arch, do: to_string(device.arch), else: "-"}</td>
+                  <td>
+                    <.badge :if={device.arch} color="info" size="sm">{to_string(device.arch)}</.badge>
+                    <span :if={!device.arch}>-</span>
+                  </td>
                   <td>{device.profile_id || "-"}</td>
                   <td><.state_badge state={device.state} /></td>
                   <td>{device.install_attempts}</td>
