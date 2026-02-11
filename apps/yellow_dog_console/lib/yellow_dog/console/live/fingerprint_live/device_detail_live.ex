@@ -14,7 +14,11 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Device: #{mac}", mac: mac)
+     |> assign(
+       page_title: "Device: #{mac}",
+       mac: mac,
+       service_running: service_running?(YellowDog.Fingerprint)
+     )
      |> load_device(mac)}
   end
 
@@ -23,6 +27,8 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Fingerprint" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold font-mono">{@mac}</h1>

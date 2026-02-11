@@ -17,7 +17,8 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
        search_query: "",
        show_classify: false,
        selected_fp: nil,
-       profiles: []
+       profiles: [],
+       service_running: service_running?(YellowDog.Fingerprint)
      )
      |> load_data()}
   end
@@ -27,6 +28,8 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Fingerprint" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Fingerprints</h1>
@@ -144,6 +147,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
                     <button
                       phx-click="classify"
                       phx-value-hash={fp[:hash]}
+                      phx-disable-with="..."
                       class="btn btn-xs btn-primary"
                     >
                       Classify
@@ -176,7 +180,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
             </div>
             <div class="flex justify-end gap-2 mt-4">
               <button type="button" phx-click="close_classify" class="btn btn-ghost">Cancel</button>
-              <button type="submit" class="btn btn-primary">Save Override</button>
+              <button type="submit" phx-disable-with="Saving..." class="btn btn-primary">Save Override</button>
             </div>
           </form>
         </.modal>

@@ -19,7 +19,8 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
        page_title: "Device Inventory",
        search_query: "",
        filter_type: "all",
-       filter_vendor: "all"
+       filter_vendor: "all",
+       service_running: service_running?(YellowDog.Fingerprint)
      )
      |> load_devices()}
   end
@@ -29,6 +30,8 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
+        <.service_alert :if={not @service_running} service="Fingerprint" />
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Device Inventory</h1>

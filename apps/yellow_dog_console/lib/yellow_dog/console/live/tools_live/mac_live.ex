@@ -33,11 +33,15 @@ defmodule YellowDog.Console.ToolsLive.MacLive do
             class="input input-bordered flex-1"
             autofocus
           />
-          <button type="submit" class="btn btn-primary">Lookup</button>
+          <button type="submit" phx-disable-with="Looking up..." class="btn btn-primary">Lookup</button>
         </form>
 
         <div :if={@error} class="alert alert-error mb-4">
           <span>{@error}</span>
+        </div>
+
+        <div :if={!@result && !@error && @query == ""} class="text-center py-12 text-base-content/50">
+          Enter a MAC address to identify its manufacturer
         </div>
 
         <div :if={@result} class="grid grid-cols-1 md:grid-cols-3 gap-4">
