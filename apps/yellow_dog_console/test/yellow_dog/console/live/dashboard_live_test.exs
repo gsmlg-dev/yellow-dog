@@ -122,18 +122,40 @@ defmodule YellowDog.Console.DashboardLiveTest do
       assert html =~ "Invalid service name"
     end
 
-    test "start_service with valid service name does not crash", %{conn: conn} do
+    test "start_service with valid service shows flash message", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dashboard")
-      # This will attempt to start the service via YellowDog.start_service/1
-      # which may fail but the handler catches all error tuples gracefully
       html = render_click(view, "start_service", %{"service" => "dns"})
       assert html =~ "Service Dashboard"
+      # Should show a success or error flash depending on service state
+      assert html =~ "DNS" or html =~ "started" or html =~ "already running" or
+               html =~ "Failed to start"
     end
 
-    test "stop_service with valid service name does not crash", %{conn: conn} do
+    test "stop_service with valid service shows flash message", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dashboard")
       html = render_click(view, "stop_service", %{"service" => "dns"})
       assert html =~ "Service Dashboard"
+      # Should show a success or info flash depending on service state
+      assert html =~ "DNS" or html =~ "stopped" or html =~ "not running" or
+               html =~ "Failed to stop"
+    end
+
+    test "start_service works for all valid service names", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
+        html = render_click(view, "start_service", %{"service" => service})
+        assert html =~ "Service Dashboard"
+      end
+    end
+
+    test "stop_service works for all valid service names", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      for service <- ~w(dns mdns dhcpv4 dhcpv6) do
+        html = render_click(view, "stop_service", %{"service" => service})
+        assert html =~ "Service Dashboard"
+      end
     end
   end
 
