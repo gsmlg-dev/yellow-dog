@@ -25,14 +25,17 @@ defmodule YellowDog.Console.NetbootComponents do
   defp state_display(_), do: {"neutral", "Unknown"}
 
   @doc "Formats a DateTime for display, returning \"-\" for nil."
+  @spec format_datetime(DateTime.t() | nil) :: String.t()
   def format_datetime(nil), do: "-"
   def format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
 
   @doc "Formats a DateTime with seconds precision."
+  @spec format_datetime_full(DateTime.t() | nil) :: String.t()
   def format_datetime_full(nil), do: "-"
   def format_datetime_full(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
 
   @doc "Formats a DateTime as a relative time string (e.g. \"5m ago\")."
+  @spec format_time_ago(DateTime.t() | nil) :: String.t()
   def format_time_ago(nil), do: "-"
 
   def format_time_ago(%DateTime{} = dt) do
@@ -48,6 +51,7 @@ defmodule YellowDog.Console.NetbootComponents do
   end
 
   @doc "Formats a byte count as a human-readable string with space separator."
+  @spec format_size(non_neg_integer() | any()) :: String.t()
   def format_size(bytes) when is_integer(bytes) and bytes >= 1_073_741_824,
     do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
 

@@ -40,6 +40,7 @@ defmodule YellowDog.Console.LogBroadcaster do
   @doc """
   Starts the LogBroadcaster GenServer.
   """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -47,6 +48,7 @@ defmodule YellowDog.Console.LogBroadcaster do
   @doc """
   Returns the PubSub topic for log streaming.
   """
+  @spec topic() :: String.t()
   def topic, do: @topic
 
   @impl true
