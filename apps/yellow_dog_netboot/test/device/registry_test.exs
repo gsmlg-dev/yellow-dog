@@ -151,6 +151,25 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
     end
   end
 
+  describe "set_rescue_mode/2" do
+    test "enables rescue mode on a device" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      assert {:ok, device} = Registry.set_rescue_mode("AA:BB:CC:DD:EE:FF", true)
+      assert device.rescue_mode == true
+    end
+
+    test "disables rescue mode on a device" do
+      {:ok, _} = Registry.register("AA:BB:CC:DD:EE:FF")
+      {:ok, _} = Registry.set_rescue_mode("AA:BB:CC:DD:EE:FF", true)
+      assert {:ok, device} = Registry.set_rescue_mode("AA:BB:CC:DD:EE:FF", false)
+      assert device.rescue_mode == false
+    end
+
+    test "returns error for unknown MAC" do
+      assert {:error, :not_found} = Registry.set_rescue_mode("FF:FF:FF:FF:FF:FF", true)
+    end
+  end
+
   describe "list/1 filters" do
     test "filters by arch" do
       {:ok, _} = Registry.register("AA:BB:CC:DD:EE:01", %{arch: :x86_64})

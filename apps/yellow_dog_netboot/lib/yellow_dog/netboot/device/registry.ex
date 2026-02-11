@@ -56,6 +56,12 @@ defmodule YellowDog.Netboot.Device.Registry do
     update_state(mac, :reinstall_requested)
   end
 
+  @doc "Set or clear rescue mode on a device."
+  @spec set_rescue_mode(String.t(), boolean()) :: {:ok, Device.t()} | {:error, term()}
+  def set_rescue_mode(mac, enabled) do
+    GenServer.call(__MODULE__, {:set_rescue_mode, mac, enabled})
+  end
+
   @doc "Delete a device from the registry."
   @spec delete(String.t()) :: :ok
   def delete(mac) do
@@ -140,6 +146,21 @@ defmodule YellowDog.Netboot.Device.Registry do
         updated = %{device | profile_id: profile_id, last_seen: DateTime.utc_now()}
         :ets.insert(@table, {normalized, updated})
         broadcast({:device_profile_assigned, updated})
+        {:reply, {:ok, updated}, schedule_persist(state)}
+
+      [] ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:set_rescue_mode, mac, enabled}, _from, state) do
+    normalized = Device.normalize_mac(mac)
+
+    case :ets.lookup(@table, normalized) do
+      [{^normalized, device}] ->
+        updated = %{device | rescue_mode: enabled, last_seen: DateTime.utc_now()}
+        :ets.insert(@table, {normalized, updated})
+        broadcast({:device_state_changed, updated})
         {:reply, {:ok, updated}, schedule_persist(state)}
 
       [] ->

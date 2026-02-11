@@ -39,7 +39,8 @@ defmodule YellowDog.Netboot.Device do
     install_attempts: 0,
     tags: [],
     state_history: [],
-    slot: %{active: :a, pending: nil}
+    slot: %{active: :a, pending: nil},
+    rescue_mode: false
   ]
 
   @type state_entry :: %{state: atom(), at: DateTime.t()}
@@ -59,7 +60,8 @@ defmodule YellowDog.Netboot.Device do
           last_error: String.t() | nil,
           tags: [String.t()],
           state_history: [state_entry()],
-          slot: map()
+          slot: map(),
+          rescue_mode: boolean()
         }
 
   @doc "Create a new device with the given MAC and optional attributes."

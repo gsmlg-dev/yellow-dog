@@ -62,6 +62,10 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 label="IP Address"
                 value={if @device.ip_address, do: format_ip(@device.ip_address), else: "-"}
               />
+              <.info_row
+                label="Rescue Mode"
+                value={if @device.rescue_mode, do: "Enabled", else: "Off"}
+              />
               <.info_row label="Install Attempts" value={to_string(@device.install_attempts)} />
               <.info_row label="Last Error" value={@device.last_error || "-"} />
               <.info_row label="First Seen" value={format_datetime_full(@device.first_seen)} />
@@ -105,12 +109,25 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               <div class="divider"></div>
 
               <button
-                :if={@device.state == :installed}
+                :if={@device.state in [:installed, :failed]}
                 phx-click="request_reinstall"
                 class="btn btn-warning btn-sm w-full"
                 data-confirm="Request reinstall for this device?"
               >
                 Request Reinstall
+              </button>
+
+              <button
+                phx-click="toggle_rescue"
+                class={[
+                  "btn btn-sm w-full",
+                  if(@device.rescue_mode,
+                    do: "btn-active btn-accent",
+                    else: "btn-outline btn-accent"
+                  )
+                ]}
+              >
+                {if @device.rescue_mode, do: "Disable Rescue Mode", else: "Boot to Rescue"}
               </button>
 
               <button
@@ -184,6 +201,26 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to request reinstall")}
+    end
+  end
+
+  def handle_event("toggle_rescue", _params, socket) do
+    enabled = not (socket.assigns.device && socket.assigns.device.rescue_mode)
+
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.set_rescue_mode(socket.assigns.mac, enabled) end,
+        {:error, :unavailable}
+      )
+
+    case result do
+      {:ok, _} ->
+        msg = if enabled, do: "Rescue mode enabled", else: "Rescue mode disabled"
+        {:noreply, socket |> put_flash(:info, msg) |> load_device(socket.assigns.mac)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to toggle rescue mode")}
     end
   end
 
