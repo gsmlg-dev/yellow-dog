@@ -283,7 +283,16 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
   @impl true
   def handle_event("assign_profile", %{"profile_id" => profile_id}, socket) do
-    case YellowDog.Netboot.Device.Registry.assign_profile(socket.assigns.mac, profile_id) do
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn ->
+          YellowDog.Netboot.Device.Registry.assign_profile(socket.assigns.mac, profile_id)
+        end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, _} ->
         {:noreply,
          socket |> put_flash(:info, "Profile assigned") |> load_device(socket.assigns.mac)}
@@ -295,7 +304,14 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
   @impl true
   def handle_event("request_reinstall", _params, socket) do
-    case YellowDog.Netboot.Device.Registry.request_reinstall(socket.assigns.mac) do
+    result =
+      safe_call(
+        YellowDog.Netboot.Device.Registry,
+        fn -> YellowDog.Netboot.Device.Registry.request_reinstall(socket.assigns.mac) end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, _} ->
         {:noreply,
          socket |> put_flash(:info, "Reinstall requested") |> load_device(socket.assigns.mac)}
