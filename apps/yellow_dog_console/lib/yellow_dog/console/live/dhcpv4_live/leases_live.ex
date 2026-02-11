@@ -93,6 +93,8 @@ defmodule YellowDog.Console.Dhcpv4Live.LeasesLive do
     {:noreply, load_leases(socket)}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def terminate(_reason, _socket) do
     :telemetry.detach("dhcpv4-leases-#{inspect(self())}")

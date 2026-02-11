@@ -177,6 +177,8 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
     {:noreply, assign(socket, :services, list_services(filter: socket.assigns.filter))}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @doc false
   def validate_service_params(params) do
     errors = %{}

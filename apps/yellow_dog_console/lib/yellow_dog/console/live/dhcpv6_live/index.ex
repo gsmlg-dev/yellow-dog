@@ -40,6 +40,8 @@ defmodule YellowDog.Console.Dhcpv6Live.Index do
      |> load_dhcp_data()}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def terminate(_reason, _socket) do
     :telemetry.detach("dhcpv6-live-#{inspect(self())}")

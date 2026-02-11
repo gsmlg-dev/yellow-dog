@@ -129,6 +129,8 @@ defmodule YellowDog.Console.ProcessMapLive do
      )}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("select_node", %{"pid" => pid_string}, socket) do
     case ProcessInspector.parse_pid(pid_string) do

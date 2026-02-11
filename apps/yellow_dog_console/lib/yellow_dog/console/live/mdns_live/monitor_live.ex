@@ -93,6 +93,8 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
     end
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @doc "Filters queries by search term against name, type, or source IP. Public for testability."
   def filtered_queries(queries, ""), do: queries
 

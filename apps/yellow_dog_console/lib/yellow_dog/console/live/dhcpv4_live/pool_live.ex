@@ -77,6 +77,8 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolLive do
     end
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def terminate(_reason, socket) do
     :telemetry.detach("dhcpv4-pool-#{socket.assigns.pool_name}-#{inspect(self())}")

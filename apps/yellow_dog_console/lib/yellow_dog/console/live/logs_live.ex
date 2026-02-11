@@ -114,6 +114,8 @@ defmodule YellowDog.Console.LogsLive do
     end
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("toggle_pause", _params, socket) do
     if socket.assigns.paused do

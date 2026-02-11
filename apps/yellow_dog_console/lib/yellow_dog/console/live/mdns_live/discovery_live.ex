@@ -76,6 +76,8 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
      assign(socket, :services, filter_services(socket.assigns.search, socket.assigns.type_filter))}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   defp list_discovered_services do
     safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_discovered_services() end, [])
   end

@@ -34,6 +34,8 @@ defmodule YellowDog.Console.DashboardLive do
      |> assign(:system_health, get_system_health())}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply,

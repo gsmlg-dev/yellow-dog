@@ -345,6 +345,8 @@ defmodule YellowDog.Console.SettingsLive do
     {:noreply, socket}
   end
 
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # Private Functions
 
   defp get_config_path do
