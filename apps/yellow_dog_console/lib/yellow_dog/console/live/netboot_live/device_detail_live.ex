@@ -36,7 +36,20 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
         <div class="flex items-center gap-4">
           <.link navigate="/netboot/devices" class="btn btn-ghost btn-sm">Back</.link>
           <div>
-            <h1 class="text-4xl font-bold font-mono">{@mac}</h1>
+            <div class="flex items-center gap-2">
+              <h1 id="device-mac" class="text-4xl font-bold font-mono">{@mac}</h1>
+              <button
+                id="copy-mac"
+                phx-hook="CopyToClipboard"
+                data-target="device-mac"
+                class="btn btn-ghost btn-sm"
+                aria-label="Copy MAC address"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
             <p class="mt-1 text-base-content/70">Netboot device detail</p>
           </div>
         </div>

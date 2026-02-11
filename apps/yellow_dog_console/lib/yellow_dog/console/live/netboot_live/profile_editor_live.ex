@@ -204,11 +204,24 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
               />
             </div>
 
-            <div class="flex justify-end gap-2 mt-6">
-              <.link navigate="/netboot/profiles" class="btn btn-ghost">Cancel</.link>
-              <button type="submit" class="btn btn-primary">
-                {if @mode == :new, do: "Create Profile", else: "Save Changes"}
-              </button>
+            <div class="flex justify-between mt-6">
+              <div>
+                <button
+                  :if={@mode == :edit}
+                  type="button"
+                  phx-click="delete_profile"
+                  data-confirm={"Delete profile \"#{@profile_id}\"?"}
+                  class="btn btn-error btn-sm"
+                >
+                  Delete Profile
+                </button>
+              </div>
+              <div class="flex gap-2">
+                <.link navigate="/netboot/profiles" class="btn btn-ghost">Cancel</.link>
+                <button type="submit" class="btn btn-primary">
+                  {if @mode == :new, do: "Create Profile", else: "Save Changes"}
+                </button>
+              </div>
             </div>
           </form>
         </.card>
@@ -265,6 +278,19 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
     else
       {:noreply, assign(socket, :errors, errors)}
     end
+  end
+
+  def handle_event("delete_profile", _params, socket) do
+    safe_call(
+      YellowDog.Netboot.Manifest.Store,
+      fn -> YellowDog.Netboot.Manifest.Store.delete_profile(socket.assigns.profile_id) end,
+      :ok
+    )
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Profile #{socket.assigns.profile_id} deleted")
+     |> push_navigate(to: "/netboot/profiles")}
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}

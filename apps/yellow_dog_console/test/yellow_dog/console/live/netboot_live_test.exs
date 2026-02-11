@@ -297,6 +297,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert has_element?(view, "a[href='/netboot/devices']")
     end
 
+    test "has copy MAC button with CopyToClipboard hook", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
+
+      assert has_element?(view, "button#copy-mac[phx-hook=CopyToClipboard]")
+      assert has_element?(view, "#device-mac")
+    end
+
     test "renders device info section when device not found", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/netboot/devices/AA:BB:CC:DD:EE:FF")
 
@@ -531,6 +538,18 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
 
       assert has_element?(view, "button[type=submit]", "Save Changes")
+    end
+
+    test "has delete button in edit mode", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/test-profile/edit")
+
+      assert has_element?(view, "button[phx-click=delete_profile]", "Delete Profile")
+    end
+
+    test "delete button not shown in new mode", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/profiles/new")
+
+      refute has_element?(view, "button[phx-click=delete_profile]")
     end
   end
 
