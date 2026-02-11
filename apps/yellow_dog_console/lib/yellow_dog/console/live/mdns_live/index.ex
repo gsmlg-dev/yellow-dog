@@ -4,7 +4,7 @@ defmodule YellowDog.Console.MdnsLive.Index do
   """
   use YellowDog.Console, :live_view
 
-  import YellowDog.Console.ServiceHelper, only: [safe_call: 3]
+  import YellowDog.Console.ServiceHelper
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,6 +17,7 @@ defmodule YellowDog.Console.MdnsLive.Index do
     {:ok,
      assign(socket,
        page_title: "mDNS Service",
+       service_running: service_running?(YellowDog.Mdns),
        status: get_mdns_status(),
        stats: get_mdns_stats(),
        network_stats: get_network_stats()
@@ -47,6 +48,18 @@ defmodule YellowDog.Console.MdnsLive.Index do
   @impl true
   def handle_info(:network_update, socket) do
     {:noreply, assign(socket, :network_stats, get_network_stats())}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply,
+     assign(socket,
+       status: get_mdns_status(),
+       stats: get_mdns_stats(),
+       network_stats: get_network_stats()
+     )}
   end
 
   defp get_mdns_status do

@@ -376,6 +376,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                           class="btn btn-ghost btn-sm text-error"
                           phx-click="delete_pool"
                           phx-value-pool-name={pool.name}
+                          phx-disable-with="..."
                           data-confirm="Are you sure you want to delete this pool?"
                           title="Delete pool"
                         >
