@@ -31,6 +31,12 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    state = Map.get(params, "state", socket.assigns.filter_state)
+    {:noreply, socket |> assign(:filter_state, state) |> apply_filters()}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_path={@current_path}>

@@ -46,26 +46,26 @@ defmodule YellowDog.Console.NetbootLive.Index do
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
+          <.link navigate="/netboot/devices?state=discovered" class="stat hover:bg-base-200 transition-colors cursor-pointer">
             <div class="stat-title">Discovered</div>
             <div class="stat-value text-base-content">{Map.get(@state_counts, :discovered, 0)}</div>
-          </div>
-          <div class="stat">
+          </.link>
+          <.link navigate="/netboot/devices?state=booting" class="stat hover:bg-base-200 transition-colors cursor-pointer">
             <div class="stat-title">Booting</div>
             <div class="stat-value text-warning">{Map.get(@state_counts, :booting, 0)}</div>
-          </div>
-          <div class="stat">
+          </.link>
+          <.link navigate="/netboot/devices?state=installing" class="stat hover:bg-base-200 transition-colors cursor-pointer">
             <div class="stat-title">Installing</div>
             <div class="stat-value text-info">{Map.get(@state_counts, :installing, 0)}</div>
-          </div>
-          <div class="stat">
+          </.link>
+          <.link navigate="/netboot/devices?state=installed" class="stat hover:bg-base-200 transition-colors cursor-pointer">
             <div class="stat-title">Installed</div>
             <div class="stat-value text-success">{Map.get(@state_counts, :installed, 0)}</div>
-          </div>
-          <div class="stat">
+          </.link>
+          <.link navigate="/netboot/devices?state=failed" class="stat hover:bg-base-200 transition-colors cursor-pointer">
             <div class="stat-title">Failed</div>
             <div class="stat-value text-error">{Map.get(@state_counts, :failed, 0)}</div>
-          </div>
+          </.link>
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">

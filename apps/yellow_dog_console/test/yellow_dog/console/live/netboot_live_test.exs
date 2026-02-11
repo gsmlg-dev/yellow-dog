@@ -70,6 +70,13 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Live"
     end
 
+    test "state stat cards are clickable links to devices page", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot")
+
+      assert has_element?(view, "a[href='/netboot/devices?state=discovered']")
+      assert has_element?(view, "a[href='/netboot/devices?state=failed']")
+      assert has_element?(view, "a[href='/netboot/devices?state=installed']")
+    end
   end
 
   describe "Netboot Devices page" do
@@ -118,6 +125,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
       {:ok, _view, html} = live(conn, "/netboot/devices")
 
       assert html =~ "Actions"
+    end
+
+    test "accepts state filter from URL query params", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/devices?state=failed")
+
+      assert html =~ "Netboot Devices"
     end
   end
 
