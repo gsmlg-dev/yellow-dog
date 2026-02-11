@@ -192,6 +192,39 @@ defmodule YellowDog.Netboot.Asset.StoreTest do
     end
   end
 
+  describe "public API functions (global instance)" do
+    test "root_dir/0 returns configured root" do
+      root = Store.root_dir()
+      assert is_binary(root)
+    end
+
+    test "list_files/0 returns a list" do
+      files = Store.list_files()
+      assert is_list(files)
+    end
+
+    test "file_tree/0 returns a list" do
+      tree = Store.file_tree()
+      assert is_list(tree)
+    end
+
+    test "get_file/1 with path traversal" do
+      assert {:error, :path_traversal} = Store.get_file("../../../etc/passwd")
+    end
+
+    test "get_file/1 with nonexistent file" do
+      assert {:error, :not_found} = Store.get_file("nonexistent_file.bin")
+    end
+
+    test "delete_file/1 with path traversal" do
+      assert {:error, :path_traversal} = Store.delete_file("../../etc/hosts")
+    end
+
+    test "upload_file/2 with path traversal" do
+      assert {:error, :path_traversal} = Store.upload_file("../../../evil", "/tmp/source")
+    end
+  end
+
   describe "list_files with unreadable entries" do
     test "handles empty subdirectories", %{root: root, store: store} do
       File.mkdir_p!(Path.join(root, "empty_dir"))
