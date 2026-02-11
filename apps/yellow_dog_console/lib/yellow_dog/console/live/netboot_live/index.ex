@@ -40,9 +40,14 @@ defmodule YellowDog.Console.NetbootLive.Index do
               Network boot provisioning overview
             </p>
           </div>
-          <button phx-click="refresh" class="btn btn-outline btn-sm">
-            Refresh
-          </button>
+          <div class="flex gap-2">
+            <.link navigate="/netboot/log" class="btn btn-ghost btn-sm">
+              Boot Log
+            </.link>
+            <button phx-click="refresh" class="btn btn-outline btn-sm">
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div class="stats stats-vertical sm:stats-horizontal shadow w-full">

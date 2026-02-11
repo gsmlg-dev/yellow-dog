@@ -90,6 +90,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "a[href='/netboot/tftp']", "Details")
     end
+
+    test "has Boot Log link", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot")
+
+      assert has_element?(view, "a[href='/netboot/log']", "Boot Log")
+    end
   end
 
   describe "Netboot Devices page" do
