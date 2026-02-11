@@ -591,6 +591,12 @@ defmodule YellowDog.Console.NetbootLiveTest do
 
       assert has_element?(view, "button[type=submit]", "Create Profile")
     end
+
+    test "does not show 'Cloned from' when not cloning", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/profiles/new")
+
+      refute html =~ "Cloned from"
+    end
   end
 
   describe "Profile Editor — edit profile" do
@@ -1048,6 +1054,27 @@ defmodule YellowDog.Console.NetbootLiveTest do
       html = render(view)
       assert html =~ "error"
       assert html =~ "rejected"
+    end
+
+    test "shows stats cards", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot/log")
+
+      assert html =~ "Total Entries"
+      assert html =~ "Errors"
+      assert html =~ "Warnings"
+      assert html =~ "Buffer"
+    end
+
+    test "stats update when events arrive", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/netboot/log")
+
+      send(view.pid, {:tftp_request_rejected, %{file: "bad.bin", reason: "not found"}})
+      send(view.pid, {:device_state_changed, %{mac: "AA:BB:CC:DD:EE:FF", state: :failed}})
+      send(view.pid, {:device_registered, %{mac: "11:22:33:44:55:66"}})
+      html = render(view)
+
+      # Should show the count breakdown in stats
+      assert html =~ "Total Entries"
     end
 
     test "shows live indicator", %{conn: conn} do

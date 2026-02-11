@@ -25,7 +25,8 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
        search_query: "",
        filter_type: "all",
        filter_level: "all",
-       paused: false
+       paused: false,
+       max_entries: @max_log_entries
      )}
   end
 
@@ -57,6 +58,27 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
             >
               Export CSV
             </button>
+          </div>
+        </div>
+
+        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
+          <div class="stat">
+            <div class="stat-title">Total Entries</div>
+            <div class="stat-value text-primary">{length(@log_entries)}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Errors</div>
+            <div class="stat-value text-error">{count_by_level(@log_entries, "error")}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Warnings</div>
+            <div class="stat-value text-warning">{count_by_level(@log_entries, "warning")}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Buffer</div>
+            <div class="stat-value text-sm">
+              {length(@log_entries)}<span class="text-base-content/50 font-normal">/{@max_entries}</span>
+            </div>
           </div>
         </div>
 
@@ -291,6 +313,8 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
     do: Enum.filter(entries, &(&1.level in ["warning", "error"]))
 
   def filter_by_level(entries, _), do: entries
+
+  defp count_by_level(entries, level), do: Enum.count(entries, &(&1.level == level))
 
   defp type_color("device"), do: "info"
   defp type_color("tftp"), do: "warning"

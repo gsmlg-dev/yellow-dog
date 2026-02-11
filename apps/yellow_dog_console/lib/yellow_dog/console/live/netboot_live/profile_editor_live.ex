@@ -11,7 +11,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
 
   @impl true
   def mount(params, _session, socket) do
-    {mode, profile} = load_profile(params)
+    {mode, profile, clone_source} = load_profile(params)
 
     form_data = profile_to_form(profile)
 
@@ -35,6 +35,7 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
        page_title: if(mode == :new, do: "New Boot Profile", else: "Edit: #{profile.id}"),
        mode: mode,
        profile_id: profile.id,
+       clone_source: clone_source,
        device_count: device_count,
        valid_arches: @valid_arches,
        errors: %{}
@@ -66,6 +67,9 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
               {if @mode == :new,
                 do: "Create a new PXE boot profile",
                 else: "Modify boot profile: #{@profile_id}"}
+            </p>
+            <p :if={@clone_source} class="mt-1 text-sm text-info">
+              Cloned from <span class="font-mono font-medium">{@clone_source}</span>
             </p>
             <p :if={@mode == :edit && @device_count > 0} class="mt-1 text-sm text-warning">
               {@device_count} device(s) currently using this profile
@@ -331,8 +335,8 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
            fn -> YellowDog.Netboot.Manifest.Store.get_profile(id) end,
            {:error, :unavailable}
          ) do
-      {:ok, profile} -> {:edit, profile}
-      _ -> {:edit, %Profile{id: id, kernel: "", initrd: ""}}
+      {:ok, profile} -> {:edit, profile, nil}
+      _ -> {:edit, %Profile{id: id, kernel: "", initrd: ""}, nil}
     end
   end
 
@@ -343,15 +347,15 @@ defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
            {:error, :unavailable}
          ) do
       {:ok, profile} ->
-        {:new, %{profile | id: "#{profile.id}-copy"}}
+        {:new, %{profile | id: "#{profile.id}-copy"}, source_id}
 
       _ ->
-        {:new, %Profile{id: "", kernel: "", initrd: ""}}
+        {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
     end
   end
 
   defp load_profile(_params) do
-    {:new, %Profile{id: "", kernel: "", initrd: ""}}
+    {:new, %Profile{id: "", kernel: "", initrd: ""}, nil}
   end
 
   defp profile_to_form(%Profile{} = p) do
