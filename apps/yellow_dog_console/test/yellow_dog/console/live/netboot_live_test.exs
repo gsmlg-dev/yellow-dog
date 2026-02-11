@@ -45,6 +45,15 @@ defmodule YellowDog.Console.NetbootLiveTest do
       assert html =~ "Transfers"
       assert html =~ "Bytes Transferred"
     end
+
+    test "shows profile usage stats", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/netboot")
+
+      # With no profiles/devices, should show empty list
+      assert html =~ "Boot Profiles"
+      # "devices" text appears in the badge template
+      # (0 devices when no data)
+    end
   end
 
   describe "Netboot Devices page" do

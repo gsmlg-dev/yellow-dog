@@ -101,9 +101,16 @@ defmodule YellowDog.Console.NetbootLive.Index do
           <.card>
             <h2 class="card-title mb-4">Boot Profiles</h2>
             <div :if={@profiles == []} class="text-base-content/50">No profiles configured</div>
-            <div :for={profile <- @profiles} class="flex justify-between py-1">
-              <span class="font-medium">{profile.id}</span>
-              <span class="text-base-content/70 text-sm">{profile.description}</span>
+            <div :for={profile <- @profiles} class="flex justify-between items-center py-1">
+              <div>
+                <span class="font-medium">{profile.id}</span>
+                <span :if={profile.description} class="text-base-content/70 text-sm ml-2">
+                  {profile.description}
+                </span>
+              </div>
+              <.badge color="neutral" size="sm">
+                {Map.get(@profile_usage, profile.id, 0)} devices
+              </.badge>
             </div>
           </.card>
         </div>
@@ -200,6 +207,11 @@ defmodule YellowDog.Console.NetbootLive.Index do
       |> Enum.sort_by(& &1.last_seen, {:desc, DateTime})
       |> Enum.take(10)
 
+    profile_usage =
+      devices
+      |> Enum.filter(& &1.profile_id)
+      |> Enum.frequencies_by(& &1.profile_id)
+
     metrics = load_metrics()
 
     socket
@@ -207,6 +219,7 @@ defmodule YellowDog.Console.NetbootLive.Index do
     |> assign(:tftp_status, tftp_status)
     |> assign(:profiles, profiles)
     |> assign(:recent_devices, recent)
+    |> assign(:profile_usage, profile_usage)
     |> assign(:metrics, metrics)
   end
 
