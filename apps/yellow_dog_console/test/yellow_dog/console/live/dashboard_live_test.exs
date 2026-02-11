@@ -139,7 +139,6 @@ defmodule YellowDog.Console.DashboardLiveTest do
       assert html =~ "DNS" or html =~ "stopped" or html =~ "not running" or
                html =~ "Failed to stop"
     end
-
   end
 
   # ============================================================================
