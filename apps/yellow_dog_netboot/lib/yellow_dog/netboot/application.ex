@@ -5,6 +5,15 @@ defmodule YellowDog.Netboot.Application do
 
   @impl true
   def start(_type, _args) do
+    # Register netboot boot options callback with DHCPv4 handler.
+    # This injects Option 66/67 (TFTP server/bootfile) during OFFER/ACK
+    # when a device has a netboot profile assigned.
+    Application.put_env(
+      :yellow_dog_dhcpv4,
+      :boot_options_fn,
+      {YellowDog.Netboot.Boot.Profile, :for_device}
+    )
+
     children = [
       {YellowDog.Netboot.Supervisor, []}
     ]

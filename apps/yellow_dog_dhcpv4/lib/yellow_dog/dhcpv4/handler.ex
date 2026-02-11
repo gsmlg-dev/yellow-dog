@@ -695,9 +695,53 @@ defmodule YellowDog.Dhcpv4.Handler do
         options_with_domain
       end
 
+    # Inject netboot options (Option 66/67) if a boot profile is configured
+    options_with_boot = maybe_add_boot_options(options_with_custom, context)
+
     # Add end option
-    options_with_custom ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
+    options_with_boot ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
   end
+
+  defp maybe_add_boot_options(options, context) do
+    case Application.get_env(:yellow_dog_dhcpv4, :boot_options_fn) do
+      {mod, fun} ->
+        mac = format_mac_for_boot(context[:client_mac])
+
+        case apply(mod, fun, [mac]) do
+          {:ok, %{filename: filename, server: server}} ->
+            server_bin = to_string(server)
+            filename_bin = to_string(filename)
+
+            options ++
+              [
+                %DHCPv4.Message.Option{
+                  type: 66,
+                  length: byte_size(server_bin),
+                  value: server_bin
+                },
+                %DHCPv4.Message.Option{
+                  type: 67,
+                  length: byte_size(filename_bin),
+                  value: filename_bin
+                }
+              ]
+
+          _ ->
+            options
+        end
+
+      _ ->
+        options
+    end
+  rescue
+    _ -> options
+  end
+
+  defp format_mac_for_boot(mac) when is_binary(mac) do
+    YellowDog.Dhcpv4.MacFormat.format(mac, case: :upper) || mac
+  end
+
+  defp format_mac_for_boot(_), do: ""
 
   defp get_pool_for_lease(_lease) do
     # For now, use the first pool from LeaseManager state
