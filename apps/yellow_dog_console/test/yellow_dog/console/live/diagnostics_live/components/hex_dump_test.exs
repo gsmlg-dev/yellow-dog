@@ -42,7 +42,8 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.HexDumpTest do
       # In Elixir, strings are binaries, so they get formatted
       result = HexDump.format_binary("test")
       assert result != ""
-      assert String.contains?(result, "74")  # ASCII for 't'
+      # ASCII for 't'
+      assert String.contains?(result, "74")
     end
 
     test "single byte binary" do
