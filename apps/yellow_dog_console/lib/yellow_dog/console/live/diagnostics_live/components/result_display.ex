@@ -180,13 +180,15 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
     """
   end
 
-  # Private functions
+  # Formatting functions (public for testability)
 
-  defp status_text(:success), do: "Success"
-  defp status_text(:timeout), do: "Timeout"
-  defp status_text(:error), do: "Error"
+  @doc false
+  def status_text(:success), do: "Success"
+  def status_text(:timeout), do: "Timeout"
+  def status_text(:error), do: "Error"
 
-  defp format_latency(ms) when is_integer(ms) do
+  @doc false
+  def format_latency(ms) when is_integer(ms) do
     cond do
       ms < 1 -> "<1ms"
       ms < 1000 -> "#{ms}ms"
@@ -194,24 +196,26 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.ResultDisplay do
     end
   end
 
-  defp format_latency(_), do: ""
+  def format_latency(_), do: ""
 
-  defp format_struct(nil), do: "(empty)"
+  @doc false
+  def format_struct(nil), do: "(empty)"
 
   # DNS messages have a nice to_string implementation
-  defp format_struct(%Message{} = message) do
+  def format_struct(%Message{} = message) do
     to_string(message)
   end
 
   # DHCPv4 messages have a nice to_string implementation
-  defp format_struct(%DHCPv4Message{} = message) do
+  def format_struct(%DHCPv4Message{} = message) do
     to_string(message)
   end
 
   # Fallback to inspect for other structs
-  defp format_struct(struct) do
+  def format_struct(struct) do
     inspect(struct, pretty: true, limit: :infinity, width: 80)
   end
 
-  defp format_address(addr), do: format_ip(addr) || inspect(addr)
+  @doc false
+  def format_address(addr), do: format_ip(addr) || inspect(addr)
 end

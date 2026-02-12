@@ -32,8 +32,9 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.HexDump do
     """
   end
 
-  defp format_binary(nil), do: ""
-  defp format_binary(<<>>), do: ""
-  defp format_binary(binary) when is_binary(binary), do: HexFormatter.format(binary)
-  defp format_binary(_), do: ""
+  @doc false
+  def format_binary(nil), do: ""
+  def format_binary(<<>>), do: ""
+  def format_binary(binary) when is_binary(binary), do: HexFormatter.format(binary)
+  def format_binary(_), do: ""
 end

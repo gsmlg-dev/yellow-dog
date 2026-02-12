@@ -74,32 +74,34 @@ defmodule YellowDog.Console.DiagnosticsLive.Components.QueryHistory do
     """
   end
 
-  defp format_entry_summary(entry, :dns) do
+  @doc false
+  def format_entry_summary(entry, :dns) do
     name = entry.params[:query_name] || entry.params["query_name"] || "?"
     type = entry.params[:record_type] || entry.params["record_type"] || "A"
     "#{name} (#{String.upcase(to_string(type))})"
   end
 
-  defp format_entry_summary(entry, :mdns) do
+  def format_entry_summary(entry, :mdns) do
     service = entry.params[:service_type] || entry.params["service_type"] || "?"
     "#{service}"
   end
 
-  defp format_entry_summary(entry, :dhcpv4) do
+  def format_entry_summary(entry, :dhcpv4) do
     type = entry.params[:message_type] || entry.params["message_type"] || "?"
     mac = entry.params[:client_mac] || entry.params["client_mac"] || ""
     mac_short = if mac != "", do: " (#{String.slice(mac, -8, 8)})", else: ""
     "#{String.upcase(to_string(type))}#{mac_short}"
   end
 
-  defp format_entry_summary(entry, :dhcpv6) do
+  def format_entry_summary(entry, :dhcpv6) do
     type = entry.params[:message_type] || entry.params["message_type"] || "?"
     "#{String.upcase(to_string(type))}"
   end
 
-  defp format_entry_summary(_entry, _protocol), do: "Query"
+  def format_entry_summary(_entry, _protocol), do: "Query"
 
-  defp format_latency(ms) when is_integer(ms) and ms < 1000, do: "#{ms}ms"
-  defp format_latency(ms) when is_integer(ms), do: "#{Float.round(ms / 1000, 1)}s"
-  defp format_latency(_), do: ""
+  @doc false
+  def format_latency(ms) when is_integer(ms) and ms < 1000, do: "#{ms}ms"
+  def format_latency(ms) when is_integer(ms), do: "#{Float.round(ms / 1000, 1)}s"
+  def format_latency(_), do: ""
 end
