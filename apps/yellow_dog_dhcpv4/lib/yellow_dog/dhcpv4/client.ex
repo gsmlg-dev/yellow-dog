@@ -219,38 +219,15 @@ defmodule YellowDog.Dhcpv4.Client do
 
     binary = DHCP.to_iodata(message) |> IO.iodata_to_binary()
 
-    # DHCP requires binding to specific client port and using broadcast
-    # We need to use raw gen_udp for proper DHCP protocol handling
-    socket_opts = [:binary, {:active, false}, {:broadcast, true}]
-
-    socket_opts =
+    client_opts =
       case Keyword.get(opts, :source) do
-        nil -> socket_opts
-        source -> [{:ip, source} | socket_opts]
+        nil -> [bind_port: client_port]
+        source -> [bind_port: client_port, source: source]
       end
 
-    case :gen_udp.open(client_port, socket_opts) do
-      {:ok, socket} ->
-        try do
-          case :gen_udp.send(socket, server, server_port, binary) do
-            :ok ->
-              case :gen_udp.recv(socket, 0, timeout) do
-                {:ok, {_ip, _port, response}} ->
-                  parse_response(response)
-
-                {:error, :timeout} ->
-                  {:error, :timeout}
-
-                {:error, reason} ->
-                  {:error, reason}
-              end
-
-            {:error, reason} ->
-              {:error, reason}
-          end
-        after
-          :gen_udp.close(socket)
-        end
+    case Abyss.Client.broadcast_send_recv(server, server_port, binary, timeout, client_opts) do
+      {:ok, response} ->
+        parse_response(response)
 
       {:error, :eaddrinuse} ->
         # Port 68 might be in use, try ephemeral port
@@ -262,36 +239,15 @@ defmodule YellowDog.Dhcpv4.Client do
   end
 
   defp send_and_receive_ephemeral(binary, server, server_port, timeout, opts) do
-    socket_opts = [:binary, {:active, false}, {:broadcast, true}]
-
-    socket_opts =
+    client_opts =
       case Keyword.get(opts, :source) do
-        nil -> socket_opts
-        source -> [{:ip, source} | socket_opts]
+        nil -> []
+        source -> [source: source]
       end
 
-    case :gen_udp.open(0, socket_opts) do
-      {:ok, socket} ->
-        try do
-          case :gen_udp.send(socket, server, server_port, binary) do
-            :ok ->
-              case :gen_udp.recv(socket, 0, timeout) do
-                {:ok, {_ip, _port, response}} ->
-                  parse_response(response)
-
-                {:error, :timeout} ->
-                  {:error, :timeout}
-
-                {:error, reason} ->
-                  {:error, reason}
-              end
-
-            {:error, reason} ->
-              {:error, reason}
-          end
-        after
-          :gen_udp.close(socket)
-        end
+    case Abyss.Client.broadcast_send_recv(server, server_port, binary, timeout, client_opts) do
+      {:ok, response} ->
+        parse_response(response)
 
       {:error, reason} ->
         {:error, reason}

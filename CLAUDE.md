@@ -40,7 +40,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ## Constitution (Architectural Constraints)
 
-- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Known violations: `apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/dhcpv4_client.ex`, `apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/mdns_client.ex` (technical debt)
+- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design
 
 ## Common Commands
 

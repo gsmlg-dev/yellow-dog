@@ -631,7 +631,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Send response to client (port 67 for broadcast, 68 for unicast)
     response_port = if client_port == 67, do: 68, else: client_port
 
-    case :gen_udp.send(state.socket, client_ip, response_port, data) do
+    case Abyss.Transport.UDP.send(state.socket, client_ip, response_port, data) do
       :ok ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :response, :sent],

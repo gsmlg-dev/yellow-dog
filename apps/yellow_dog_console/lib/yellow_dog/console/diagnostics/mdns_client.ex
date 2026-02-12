@@ -113,58 +113,29 @@ defmodule YellowDog.Console.Diagnostics.MdnsClient do
   end
 
   defp execute_multicast_query(params, request_binary) do
-    # We need source address info (IP, port) for diagnostics display,
-    # so we keep the direct socket approach here rather than using
-    # MdnsClient.query_raw which doesn't preserve source info
-    socket_opts = [
-      :binary,
-      active: false,
-      multicast_ttl: 255,
-      multicast_loop: true,
-      reuseaddr: true
-    ]
+    case Abyss.Client.multicast_query(
+           @mdns_multicast_addr,
+           @mdns_port,
+           request_binary,
+           params.timeout
+         ) do
+      {:ok, raw_sources} ->
+        sources =
+          Enum.map(raw_sources, fn {address, port, response_binary} ->
+            %{
+              address: address,
+              port: port,
+              response_binary: response_binary,
+              response_struct: parse_response(response_binary)
+            }
+          end)
 
-    case :gen_udp.open(0, socket_opts) do
-      {:ok, socket} ->
-        try do
-          :gen_udp.send(socket, @mdns_multicast_addr, @mdns_port, request_binary)
-          sources = collect_responses(socket, params.timeout, [])
-          {:ok, sources}
-        after
-          :gen_udp.close(socket)
-        end
+        {:ok, sources}
 
       {:error, reason} ->
         {:error, {:socket_error, reason}}
     end
   end
-
-  defp collect_responses(socket, timeout, acc) when timeout > 0 do
-    start = System.monotonic_time(:millisecond)
-
-    case :gen_udp.recv(socket, 0, timeout) do
-      {:ok, {address, port, response_binary}} ->
-        elapsed = System.monotonic_time(:millisecond) - start
-        remaining = max(0, timeout - elapsed)
-
-        source = %{
-          address: address,
-          port: port,
-          response_binary: response_binary,
-          response_struct: parse_response(response_binary)
-        }
-
-        collect_responses(socket, remaining, [source | acc])
-
-      {:error, :timeout} ->
-        Enum.reverse(acc)
-
-      {:error, _reason} ->
-        Enum.reverse(acc)
-    end
-  end
-
-  defp collect_responses(_socket, _timeout, acc), do: Enum.reverse(acc)
 
   defp parse_response(response_binary) do
     try do

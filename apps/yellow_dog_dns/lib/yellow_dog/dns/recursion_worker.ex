@@ -52,12 +52,12 @@ defmodule YellowDog.Dns.RecursionWorker do
     query_timeout = Map.get(opts, :query_timeout, @default_query_timeout)
 
     # Open ephemeral socket
-    case :gen_udp.open(0, [:binary, active: false]) do
+    case Abyss.Transport.UDP.open(0, active: false) do
       {:ok, socket} ->
         try do
           do_resolve(socket, query, root_servers, query_timeout, 0)
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, reason} ->
@@ -101,7 +101,7 @@ defmodule YellowDog.Dns.RecursionWorker do
   defp query_server(socket, query, {ip, port}, timeout) do
     data = DNS.to_iodata(query)
 
-    case :gen_udp.send(socket, ip, port, data) do
+    case Abyss.Transport.UDP.send(socket, ip, port, data) do
       :ok ->
         receive_response(socket, query.header.id, timeout)
 
@@ -122,7 +122,7 @@ defmodule YellowDog.Dns.RecursionWorker do
     if remaining <= 0 do
       {:error, :timeout}
     else
-      case :gen_udp.recv(socket, 0, remaining) do
+      case Abyss.Transport.UDP.recv(socket, 0, remaining) do
         {:ok, {_ip, _port, data}} ->
           try do
             response = DNS.Message.from_iodata(data)

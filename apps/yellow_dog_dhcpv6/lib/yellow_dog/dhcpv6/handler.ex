@@ -827,7 +827,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   defp send_dhcpv6_response(response, client_ip, client_port, state) do
     data = DHCP.Parameter.to_iodata(response)
 
-    case :gen_udp.send(state.socket, client_ip, client_port, data) do
+    case Abyss.Transport.UDP.send(state.socket, client_ip, client_port, data) do
       :ok ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv6, :response, :sent],

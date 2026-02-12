@@ -161,7 +161,7 @@ defmodule YellowDog.Mdns.Server do
         {:ok, abyss_pid} ->
           # Open a UDP socket for sending multicast responses
           socket_opts = [:binary, {:active, false}, {:reuseaddr, true}]
-          {:ok, socket} = :gen_udp.open(0, socket_opts)
+          {:ok, socket} = Abyss.Transport.UDP.open(0, socket_opts)
 
           :telemetry.execute(
             [:yellow_dog, :mdns, :server, :started],
@@ -201,7 +201,7 @@ defmodule YellowDog.Mdns.Server do
 
         case Abyss.start_link(server_config) do
           {:ok, abyss_pid} ->
-            {:ok, socket} = :gen_udp.open(0, [:binary, {:active, false}, {:reuseaddr, true}])
+            {:ok, socket} = Abyss.Transport.UDP.open(0, active: false)
 
             {:ok,
              %{
@@ -228,7 +228,7 @@ defmodule YellowDog.Mdns.Server do
   @impl true
   def handle_call({:send_multicast, data}, _from, state) do
     result =
-      :gen_udp.send(
+      Abyss.Transport.UDP.send(
         state.socket,
         state.multicast_address,
         state.port,
@@ -259,7 +259,7 @@ defmodule YellowDog.Mdns.Server do
     )
 
     if state[:socket] do
-      :gen_udp.close(state.socket)
+      Abyss.Transport.UDP.close(state.socket)
     end
 
     if state.abyss_pid, do: GenServer.stop(state.abyss_pid, :normal)

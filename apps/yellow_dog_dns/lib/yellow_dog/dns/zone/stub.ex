@@ -46,7 +46,7 @@ defmodule YellowDog.Dns.Zone.Stub do
           view_name: String.t(),
           ns_records: [String.t()],
           glue_records: map(),
-          socket: :gen_udp.socket() | nil,
+          socket: Abyss.Transport.socket() | nil,
           timeout: non_neg_integer(),
           retries: non_neg_integer(),
           current_ns: non_neg_integer(),
@@ -153,7 +153,7 @@ defmodule YellowDog.Dns.Zone.Stub do
     retries = Keyword.get(opts, :retries, @default_retries)
 
     # Open UDP socket for querying NS servers
-    {:ok, socket} = :gen_udp.open(0, [:binary, active: true])
+    {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
 
     state = %__MODULE__{
       name: zone_name,
@@ -384,7 +384,7 @@ defmodule YellowDog.Dns.Zone.Stub do
   @impl true
   def terminate(_reason, state) do
     if state.socket do
-      :gen_udp.close(state.socket)
+      Abyss.Transport.UDP.close(state.socket)
     end
 
     :ok
@@ -421,6 +421,6 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   defp send_query(state, ns_ip, query) do
     data = DNS.to_iodata(query)
-    :gen_udp.send(state.socket, ns_ip, @default_port, data)
+    Abyss.Transport.UDP.send(state.socket, ns_ip, @default_port, data)
   end
 end

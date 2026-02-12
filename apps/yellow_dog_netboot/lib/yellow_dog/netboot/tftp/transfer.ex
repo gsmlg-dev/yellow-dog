@@ -41,7 +41,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
     case File.read(file_path) do
       {:ok, data} ->
-        {:ok, socket} = :gen_udp.open(0, [:binary, active: true])
+        {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
 
         state = %__MODULE__{
           socket: socket,
@@ -118,7 +118,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
   @impl true
   def terminate(_reason, %{socket: socket}) when not is_nil(socket) do
-    :gen_udp.close(socket)
+    Abyss.Transport.UDP.close(socket)
   end
 
   @impl true
@@ -134,7 +134,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     if chunk_size >= 0 do
       chunk = binary_part(state.file_data, offset, max(chunk_size, 0))
       packet = Protocol.encode({:data, state.current_block, chunk})
-      :gen_udp.send(state.socket, state.client_addr, state.client_port, packet)
+      Abyss.Transport.UDP.send(state.socket, state.client_addr, state.client_port, packet)
     end
   end
 
@@ -144,7 +144,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
   defp send_oack(state, opts) do
     packet = Protocol.encode({:oack, opts})
-    :gen_udp.send(state.socket, state.client_addr, state.client_port, packet)
+    Abyss.Transport.UDP.send(state.socket, state.client_addr, state.client_port, packet)
   end
 
   defp transfer_complete?(state) do

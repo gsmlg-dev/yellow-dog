@@ -263,20 +263,14 @@ defmodule YellowDog.Dhcpv6.Client do
 
     binary = DHCPv6.Message.to_iodata(message) |> IO.iodata_to_binary()
 
-    socket_opts = [:binary, {:active, false}, :inet6]
+    socket_opts = build_ipv6_socket_opts(opts, active: false)
 
-    socket_opts =
-      case Keyword.get(opts, :interface) do
-        nil -> socket_opts
-        iface -> [{:multicast_if, iface} | socket_opts]
-      end
-
-    case :gen_udp.open(client_port, socket_opts) do
+    case Abyss.Transport.UDP.open(client_port, socket_opts) do
       {:ok, socket} ->
         try do
-          case :gen_udp.send(socket, server, server_port, binary) do
+          case Abyss.Transport.UDP.send(socket, server, server_port, binary) do
             :ok ->
-              case :gen_udp.recv(socket, 0, timeout) do
+              case Abyss.Transport.UDP.recv(socket, 0, timeout) do
                 {:ok, {_ip, _port, response}} ->
                   parse_response(response)
 
@@ -291,7 +285,7 @@ defmodule YellowDog.Dhcpv6.Client do
               {:error, reason}
           end
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, :eaddrinuse} ->
@@ -304,20 +298,14 @@ defmodule YellowDog.Dhcpv6.Client do
   end
 
   defp send_and_receive_ephemeral(binary, server, server_port, timeout, opts) do
-    socket_opts = [:binary, {:active, false}, :inet6]
+    socket_opts = build_ipv6_socket_opts(opts, active: false)
 
-    socket_opts =
-      case Keyword.get(opts, :interface) do
-        nil -> socket_opts
-        iface -> [{:multicast_if, iface} | socket_opts]
-      end
-
-    case :gen_udp.open(0, socket_opts) do
+    case Abyss.Transport.UDP.open(0, socket_opts) do
       {:ok, socket} ->
         try do
-          case :gen_udp.send(socket, server, server_port, binary) do
+          case Abyss.Transport.UDP.send(socket, server, server_port, binary) do
             :ok ->
-              case :gen_udp.recv(socket, 0, timeout) do
+              case Abyss.Transport.UDP.recv(socket, 0, timeout) do
                 {:ok, {_ip, _port, response}} ->
                   parse_response(response)
 
@@ -332,7 +320,7 @@ defmodule YellowDog.Dhcpv6.Client do
               {:error, reason}
           end
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, reason} ->
@@ -346,22 +334,25 @@ defmodule YellowDog.Dhcpv6.Client do
 
     binary = DHCPv6.Message.to_iodata(message) |> IO.iodata_to_binary()
 
-    socket_opts = [:binary, {:active, false}, :inet6]
+    socket_opts = build_ipv6_socket_opts(opts, active: false)
 
-    socket_opts =
-      case Keyword.get(opts, :interface) do
-        nil -> socket_opts
-        iface -> [{:multicast_if, iface} | socket_opts]
-      end
-
-    case :gen_udp.open(0, socket_opts) do
+    case Abyss.Transport.UDP.open(0, socket_opts) do
       {:ok, socket} ->
-        result = :gen_udp.send(socket, server, server_port, binary)
-        :gen_udp.close(socket)
+        result = Abyss.Transport.UDP.send(socket, server, server_port, binary)
+        Abyss.Transport.UDP.close(socket)
         result
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp build_ipv6_socket_opts(opts, extra) do
+    base = [:inet6 | Keyword.to_list(extra)]
+
+    case Keyword.get(opts, :interface) do
+      nil -> base
+      iface -> [{:multicast_if, iface} | base]
     end
   end
 

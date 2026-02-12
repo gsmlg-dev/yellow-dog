@@ -76,11 +76,13 @@ defmodule Abyss.Client do
   - `:source` - Source IP address to bind the socket to
   - `:interface` - Network interface name (e.g., "eth0") for interface binding
   - `:ttl` - Time-to-live for multicast packets (default: 1 for link-local)
+  - `:bind_port` - Port to bind the socket to (default: 0 for ephemeral)
   """
   @type opts :: [
           source: :inet.ip_address(),
           interface: String.t(),
-          ttl: non_neg_integer()
+          ttl: non_neg_integer(),
+          bind_port: :inet.port_number()
         ]
 
   @typedoc "POSIX error reason"
@@ -373,6 +375,163 @@ defmodule Abyss.Client do
     result
   end
 
+  @doc """
+  Send a broadcast UDP packet and wait for a single response.
+
+  Opens a socket with broadcast enabled, sends the packet, waits for a response
+  up to the timeout, and closes the socket. Useful for protocols like DHCPv4
+  that send to broadcast addresses and expect a single response.
+
+  ## Parameters
+
+  - `broadcast_addr` - Broadcast IP address (e.g., `{255, 255, 255, 255}`)
+  - `dest_port` - Destination port number
+  - `packet` - Binary data to send
+  - `timeout` - Timeout in milliseconds to wait for response
+  - `opts` - Optional keyword list:
+    - `:bind_port` - Port to bind the socket to (default: 0 for ephemeral)
+    - `:source` - Source IP address to bind
+    - `:interface` - Network interface name
+
+  ## Returns
+
+  - `{:ok, response}` - Response binary data received
+  - `{:error, :timeout}` - No response within timeout
+  - `{:error, reason}` - POSIX error
+
+  ## Examples
+
+      # DHCPv4 discover on client port 68
+      iex> Abyss.Client.broadcast_send_recv({255, 255, 255, 255}, 67, dhcp_packet, 5000,
+      ...>   bind_port: 68)
+      {:ok, <<...response...>>}
+
+      # Fallback to ephemeral port
+      iex> Abyss.Client.broadcast_send_recv({255, 255, 255, 255}, 67, dhcp_packet, 5000)
+      {:ok, <<...response...>>}
+  """
+  @spec broadcast_send_recv(
+          broadcast_addr(),
+          port_number(),
+          packet(),
+          timeout :: non_neg_integer(),
+          opts()
+        ) ::
+          {:ok, binary()} | {:error, reason() | :timeout}
+  def broadcast_send_recv(broadcast_addr, dest_port, packet, timeout, opts \\ []) do
+    bind_port = Keyword.get(opts, :bind_port, 0)
+
+    metadata = %{
+      host: broadcast_addr,
+      port: dest_port,
+      size: byte_size(packet),
+      type: :broadcast_send_recv,
+      timeout: timeout
+    }
+
+    start_time = System.monotonic_time()
+    :telemetry.execute([:abyss, :client, :send_recv, :start], %{}, metadata)
+
+    socket_opts = [:binary, active: false, broadcast: true, reuseaddr: true]
+
+    result =
+      case :gen_udp.open(bind_port, socket_opts) do
+        {:ok, socket} ->
+          try do
+            :gen_udp.send(socket, broadcast_addr, dest_port, packet)
+
+            case :gen_udp.recv(socket, 0, timeout) do
+              {:ok, {_ip, _port, response}} -> {:ok, response}
+              {:error, _reason} = error -> error
+            end
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
+      end
+
+    emit_send_recv_telemetry(result, start_time, metadata)
+    result
+  end
+
+  @doc """
+  Send a multicast UDP query and collect responses with source address info.
+
+  Opens an ephemeral socket, sends the packet to a multicast address, and
+  collects responses until timeout. Returns responses with source IP and port
+  for each responder.
+
+  ## Parameters
+
+  - `multicast_addr` - Multicast IP address (e.g., `{224, 0, 0, 251}`)
+  - `port` - Destination port number (e.g., 5353)
+  - `packet` - Binary data to send
+  - `timeout` - Timeout in milliseconds to collect responses
+  - `opts` - Optional keyword list:
+    - `:ttl` - Multicast TTL (default: 255)
+
+  ## Returns
+
+  - `{:ok, [{address, port, binary}]}` - List of responses with source info
+  - `{:error, reason}` - POSIX error
+
+  ## Examples
+
+      # mDNS query
+      iex> Abyss.Client.multicast_query({224, 0, 0, 251}, 5353, mdns_packet, 3000)
+      {:ok, [{{192, 168, 1, 5}, 5353, <<...response...>>}]}
+  """
+  @spec multicast_query(
+          broadcast_addr(),
+          port_number(),
+          packet(),
+          timeout :: non_neg_integer(),
+          opts()
+        ) ::
+          {:ok, [{:inet.ip_address(), :inet.port_number(), binary()}]} | {:error, reason()}
+  def multicast_query(multicast_addr, port, packet, timeout, opts \\ []) do
+    ttl = Keyword.get(opts, :ttl, 255)
+
+    metadata = %{
+      host: multicast_addr,
+      port: port,
+      size: byte_size(packet),
+      type: :multicast_query,
+      timeout: timeout
+    }
+
+    start_time = System.monotonic_time()
+    :telemetry.execute([:abyss, :client, :send_recv, :start], %{}, metadata)
+
+    socket_opts = [
+      :binary,
+      active: false,
+      multicast_ttl: ttl,
+      multicast_loop: true,
+      reuseaddr: true
+    ]
+
+    result =
+      case :gen_udp.open(0, socket_opts) do
+        {:ok, socket} ->
+          try do
+            :gen_udp.send(socket, multicast_addr, port, packet)
+            sources = collect_sources(socket, timeout, [])
+            {:ok, sources}
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
+      end
+
+    emit_multicast_telemetry(result, start_time, metadata)
+    result
+  end
+
   # Build socket options from caller opts
   @spec build_socket_opts(opts(), boolean()) :: [:gen_udp.option()]
   defp build_socket_opts(opts, broadcast) do
@@ -601,6 +760,53 @@ defmodule Abyss.Client do
 
     :telemetry.execute(
       [:abyss, :client, :subscribe, :exception],
+      %{duration: duration},
+      Map.put(metadata, :reason, reason)
+    )
+  end
+
+  # Collect multicast responses with source address info until timeout
+  defp collect_sources(socket, timeout, acc) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_collect_sources(socket, deadline, acc)
+  end
+
+  defp do_collect_sources(socket, deadline, acc) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining <= 0 do
+      Enum.reverse(acc)
+    else
+      case :gen_udp.recv(socket, 0, remaining) do
+        {:ok, {addr, port, data}} ->
+          do_collect_sources(socket, deadline, [{addr, port, data} | acc])
+
+        {:error, :timeout} ->
+          Enum.reverse(acc)
+
+        {:error, _reason} ->
+          Enum.reverse(acc)
+      end
+    end
+  end
+
+  # Emit telemetry for multicast_query operations
+  defp emit_multicast_telemetry({:ok, sources}, start_time, metadata) when is_list(sources) do
+    duration = System.monotonic_time() - start_time
+    total_size = Enum.sum_by(sources, fn {_, _, data} -> byte_size(data) end)
+
+    :telemetry.execute(
+      [:abyss, :client, :send_recv, :stop],
+      %{duration: duration, response_count: length(sources), total_size: total_size},
+      metadata
+    )
+  end
+
+  defp emit_multicast_telemetry({:error, reason}, start_time, metadata) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      [:abyss, :client, :send_recv, :exception],
       %{duration: duration},
       Map.put(metadata, :reason, reason)
     )

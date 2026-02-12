@@ -552,22 +552,7 @@ defmodule YellowDog.Dns.View do
   end
 
   defp send_udp_query(ip, port, data, timeout) do
-    case :gen_udp.open(0, [:binary, active: false]) do
-      {:ok, socket} ->
-        try do
-          :gen_udp.send(socket, ip, port, data)
-
-          case :gen_udp.recv(socket, 0, timeout) do
-            {:ok, {_addr, _port, response}} -> {:ok, response}
-            {:error, reason} -> {:error, reason}
-          end
-        after
-          :gen_udp.close(socket)
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    Abyss.Client.send_recv(ip, port, data, timeout)
   end
 
   defp apply_rpz_and_respond(state, connection_pid, query_id, query, response) do

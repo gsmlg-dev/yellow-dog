@@ -34,7 +34,7 @@ defmodule YellowDog.Dns.Zone.Forward do
           name: String.t() | nil,
           view_name: String.t() | nil,
           upstreams: [{:inet.ip_address(), :inet.port_number()}] | nil,
-          socket: :gen_udp.socket() | nil,
+          socket: Abyss.Transport.socket() | nil,
           timeout: non_neg_integer() | nil,
           retries: non_neg_integer() | nil,
           forwarders: [:inet.ip_address()] | nil,
@@ -128,7 +128,7 @@ defmodule YellowDog.Dns.Zone.Forward do
     retries = Keyword.get(opts, :retries, @default_retries)
 
     # Open UDP socket for forwarding
-    {:ok, socket} = :gen_udp.open(0, [:binary, active: true])
+    {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
 
     state = %__MODULE__{
       name: zone_name,
@@ -321,7 +321,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   @impl true
   def terminate(_reason, state) do
-    :gen_udp.close(state.socket)
+    Abyss.Transport.UDP.close(state.socket)
     :ok
   end
 
@@ -377,7 +377,7 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   defp send_query(state, {ip, port}, query) do
     data = DNS.to_iodata(query)
-    :gen_udp.send(state.socket, ip, port, data)
+    Abyss.Transport.UDP.send(state.socket, ip, port, data)
   end
 
   defp format_upstream({ip, port}) do

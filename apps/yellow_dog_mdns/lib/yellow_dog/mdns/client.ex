@@ -76,7 +76,7 @@ defmodule YellowDog.Mdns.Client do
     case open_multicast_socket(socket_opts, use_ipv6) do
       {:ok, socket} ->
         try do
-          case :gen_udp.send(socket, multicast_addr, @mdns_port, binary) do
+          case Abyss.Transport.UDP.send(socket, multicast_addr, @mdns_port, binary) do
             :ok ->
               responses = collect_responses(socket, timeout, [])
               {:ok, responses}
@@ -85,7 +85,7 @@ defmodule YellowDog.Mdns.Client do
               {:error, reason}
           end
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, reason} ->
@@ -120,7 +120,7 @@ defmodule YellowDog.Mdns.Client do
     case open_multicast_socket(socket_opts, use_ipv6) do
       {:ok, socket} ->
         try do
-          case :gen_udp.send(socket, multicast_addr, @mdns_port, binary) do
+          case Abyss.Transport.UDP.send(socket, multicast_addr, @mdns_port, binary) do
             :ok ->
               responses = collect_raw_responses(socket, timeout, [])
               {:ok, responses}
@@ -129,7 +129,7 @@ defmodule YellowDog.Mdns.Client do
               {:error, reason}
           end
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, reason} ->
@@ -280,7 +280,7 @@ defmodule YellowDog.Mdns.Client do
     case open_multicast_socket(socket_opts, use_ipv6) do
       {:ok, socket} ->
         try do
-          case :gen_udp.send(socket, multicast_addr, @mdns_port, binary) do
+          case Abyss.Transport.UDP.send(socket, multicast_addr, @mdns_port, binary) do
             :ok ->
               responses = collect_responses(socket, timeout, [])
               {:ok, responses}
@@ -289,7 +289,7 @@ defmodule YellowDog.Mdns.Client do
               {:error, reason}
           end
         after
-          :gen_udp.close(socket)
+          Abyss.Transport.UDP.close(socket)
         end
 
       {:error, reason} ->
@@ -400,7 +400,7 @@ defmodule YellowDog.Mdns.Client do
 
     all_opts = opts ++ multicast_opts
 
-    :gen_udp.open(@mdns_port, all_opts)
+    Abyss.Transport.UDP.open(@mdns_port, all_opts)
   end
 
   defp collect_responses(socket, timeout, acc) do
@@ -414,7 +414,7 @@ defmodule YellowDog.Mdns.Client do
     if remaining <= 0 do
       Enum.reverse(acc)
     else
-      case :gen_udp.recv(socket, 0, remaining) do
+      case Abyss.Transport.UDP.recv(socket, 0, remaining) do
         {:ok, {_ip, _port, data}} ->
           case parse_response(data) do
             {:ok, message} ->
@@ -444,7 +444,7 @@ defmodule YellowDog.Mdns.Client do
     if remaining <= 0 do
       Enum.reverse(acc)
     else
-      case :gen_udp.recv(socket, 0, remaining) do
+      case Abyss.Transport.UDP.recv(socket, 0, remaining) do
         {:ok, {_ip, _port, data}} ->
           do_collect_raw_responses(socket, deadline, [data | acc])
 

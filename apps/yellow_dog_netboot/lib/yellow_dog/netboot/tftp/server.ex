@@ -95,7 +95,7 @@ defmodule YellowDog.Netboot.TFTP.Server do
   # --- Private ---
 
   defp start_server(port, root) do
-    case :gen_udp.open(port, [:binary, active: true, reuseaddr: true]) do
+    case Abyss.Transport.UDP.open(port, active: true) do
       {:ok, socket} ->
         {:ok, actual_port} = :inet.port(socket)
 
@@ -173,7 +173,7 @@ defmodule YellowDog.Netboot.TFTP.Server do
 
   defp send_error(socket, addr, port, code) do
     packet = Protocol.error_packet(code)
-    :gen_udp.send(socket, addr, port, packet)
+    Abyss.Transport.UDP.send(socket, addr, port, packet)
   end
 
   defp emit_request_telemetry(status, metadata) do
