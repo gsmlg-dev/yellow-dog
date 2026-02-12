@@ -7,6 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Abyss is a pure Elixir UDP server library for building high-performance UDP-based services (DNS, DHCP, mDNS). Part of the Yellow Dog umbrella project with shared build paths:
 - `build_path: "../../_build"`, `deps_path: "../../deps"`, `lockfile: "../../mix.lock"`
 
+## Constitution
+
+- **`:gen_udp` must not be used outside this package** — Abyss is the sole UDP abstraction layer. All other apps must use `Abyss.Client` or `Abyss.Transport.UDP` instead of calling `:gen_udp` directly.
+
 ## Development Commands
 
 ```bash

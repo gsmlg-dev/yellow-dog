@@ -38,6 +38,10 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - Configuration via TOML files loaded by `YellowDog.Config`
 
+## Constitution (Architectural Constraints)
+
+- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Known violations: `apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/dhcpv4_client.ex`, `apps/yellow_dog_console/lib/yellow_dog/console/diagnostics/mdns_client.ex` (technical debt)
+
 ## Common Commands
 
 ```bash
