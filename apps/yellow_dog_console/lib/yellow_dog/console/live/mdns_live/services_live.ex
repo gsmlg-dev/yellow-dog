@@ -199,6 +199,12 @@ defmodule YellowDog.Console.MdnsLive.ServicesLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:services")
+    :ok
+  end
+
   @doc false
   def validate_service_params(params) do
     errors = %{}

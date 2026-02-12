@@ -259,6 +259,13 @@ defmodule YellowDog.Console.NetbootLive.Index do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:tftp")
+    :ok
+  end
+
   defp load_data(socket) do
     devices =
       safe_call(

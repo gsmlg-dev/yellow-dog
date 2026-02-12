@@ -607,6 +607,12 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
+    :ok
+  end
+
   defp load_profiles(socket) do
     profiles =
       safe_call(

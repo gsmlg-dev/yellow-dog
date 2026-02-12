@@ -556,6 +556,12 @@ defmodule YellowDog.Console.NetbootLive.TftpLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, load_data(socket)}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:tftp")
+    :ok
+  end
+
   defp load_data(socket) do
     status =
       safe_call(

@@ -373,6 +373,13 @@ defmodule YellowDog.Console.DnsLive.AclLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:views")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:acls")
+    :ok
+  end
+
   # Data fetching functions
 
   defp list_views_with_acl do

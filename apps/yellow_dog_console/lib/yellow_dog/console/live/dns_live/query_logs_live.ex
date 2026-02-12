@@ -139,6 +139,12 @@ defmodule YellowDog.Console.DnsLive.QueryLogsLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, QueryLogger.pubsub_topic())
+    :ok
+  end
+
   defp load_entries(socket) do
     entries =
       try do

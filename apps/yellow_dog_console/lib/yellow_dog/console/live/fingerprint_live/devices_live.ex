@@ -189,6 +189,12 @@ defmodule YellowDog.Console.FingerprintLive.DevicesLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "fingerprint:devices")
+    :ok
+  end
+
   # --- Private ---
 
   defp load_devices(socket) do

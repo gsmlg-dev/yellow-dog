@@ -302,6 +302,14 @@ defmodule YellowDog.Console.NetbootLive.LogLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:tftp")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:log")
+    :ok
+  end
+
   defp add_entry(socket, entry) do
     if socket.assigns.paused do
       socket

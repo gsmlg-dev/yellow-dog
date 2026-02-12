@@ -1,0 +1,8 @@
+[devices.AA_BB_CC_DD_EE_01]
+mac = "AA:BB:CC:DD:EE:01"
+state = "discovered"
+install_attempts = 0
+tags = []
+hostname = "host1"
+arch = "x86_64"
+profile_id = "nixos-minimal"

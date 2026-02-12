@@ -54,6 +54,13 @@ defmodule YellowDog.Console.MdnsLive.Index do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:services")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
+    :ok
+  end
+
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply,
      assign(socket,

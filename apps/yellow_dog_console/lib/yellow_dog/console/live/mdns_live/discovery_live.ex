@@ -85,6 +85,12 @@ defmodule YellowDog.Console.MdnsLive.DiscoveryLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
+    :ok
+  end
+
   defp list_discovered_services do
     safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.list_discovered_services() end, [])
   end

@@ -423,6 +423,12 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "netboot:devices")
+    :ok
+  end
+
   defp history_dot_color(:discovered), do: "bg-neutral"
   defp history_dot_color(:booting), do: "bg-warning"
   defp history_dot_color(:installing), do: "bg-info"

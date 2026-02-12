@@ -60,6 +60,14 @@ defmodule YellowDog.Console.DnsLive.Index do
     {:noreply, socket}
   end
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:views")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:zones")
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:cache")
+    :ok
+  end
+
   defp get_dns_status do
     safe_call(YellowDog.Dns, fn -> YellowDog.Dns.status() end, %{
       running: false,

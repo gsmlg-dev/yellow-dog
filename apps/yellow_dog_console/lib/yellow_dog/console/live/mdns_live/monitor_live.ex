@@ -96,6 +96,12 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "mdns:monitor")
+    :ok
+  end
+
   @doc "Filters queries by search term against name, type, or source IP. Public for testability."
   def filtered_queries(queries, ""), do: queries
 
