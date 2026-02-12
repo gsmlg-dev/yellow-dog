@@ -1,5 +1,11 @@
 defmodule YellowDog.Console.NetbootLive.ProfilesLive do
-  @moduledoc "Boot profiles management — list, view, and manage boot profiles."
+  @moduledoc """
+  Boot profile management page for listing and managing all boot profiles.
+
+  Displays all available boot profiles with their architecture support, script
+  preview, and usage counts. Supports creating new profiles, editing existing ones,
+  cloning profiles, deleting profiles, and searching/filtering the profile list.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper

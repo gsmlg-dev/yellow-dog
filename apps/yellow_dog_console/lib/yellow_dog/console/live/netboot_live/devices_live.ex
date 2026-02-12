@@ -1,5 +1,12 @@
 defmodule YellowDog.Console.NetbootLive.DevicesLive do
-  @moduledoc "Netboot device list — tracks discovered PXE devices and their states."
+  @moduledoc """
+  Netboot device management page listing all discovered PXE boot devices.
+
+  Displays device hardware (MAC address, IP, architecture, manufacturer), current
+  state (discovered, booting, installing, installed, failed, etc.), and assigned
+  boot profile. Supports assigning profiles to devices, requesting reinstallation,
+  enabling rescue mode, device filtering and search, and bulk operations.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper

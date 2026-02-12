@@ -1,5 +1,11 @@
 defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
-  @moduledoc "Netboot device detail — full record, profile assignment, state actions."
+  @moduledoc """
+  Detailed device page showing complete device information and boot history.
+
+  Displays full device record including hardware details, DHCP bindings, DHCPv4
+  lease state, current boot profile assignment, state transition history, and
+  available actions (assign profile, request reinstall, enable rescue mode).
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.NetbootComponents

@@ -1,5 +1,12 @@
 defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
-  @moduledoc "Device detail page — shows full fingerprint and profile info for a MAC."
+  @moduledoc """
+  Detailed device page showing complete fingerprint information and metadata.
+
+  Displays full device fingerprint (DHCP options, vendor class, hostname),
+  hardware identifiers, detection timestamps, DHCP history, known device class
+  (if matched), assigned profile information, and association with netboot
+  devices by MAC address.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.ServiceHelper

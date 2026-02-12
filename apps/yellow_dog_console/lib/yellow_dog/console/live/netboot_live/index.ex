@@ -1,5 +1,12 @@
 defmodule YellowDog.Console.NetbootLive.Index do
-  @moduledoc "Netboot dashboard — overview of device states, TFTP status, recent activity."
+  @moduledoc """
+  Netboot service dashboard showing overall system status and recent activity.
+
+  Displays discovered device counts by state (booting, installing, failed, etc.),
+  TFTP server status and file transfer metrics, real-time device discovery feed,
+  and device state distribution. Provides quick access to key netboot operations
+  and service health indicators.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.NetbootComponents

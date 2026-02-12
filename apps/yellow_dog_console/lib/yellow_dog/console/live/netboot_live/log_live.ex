@@ -1,5 +1,11 @@
 defmodule YellowDog.Console.NetbootLive.LogLive do
-  @moduledoc "Netboot activity log — chronological stream of all netboot events."
+  @moduledoc """
+  Real-time activity log showing chronological stream of all netboot events.
+
+  Displays device discovery, state transitions, profile assignments, TFTP requests,
+  and system events in real-time. Supports pause/resume, filtering by event type
+  and device, clearing log buffer, and CSV export of logged events.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper

@@ -1,5 +1,12 @@
 defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
-  @moduledoc "Fingerprint management — browse known and classify unknown fingerprints."
+  @moduledoc """
+  Fingerprint management and classification page for device type identification.
+
+  Displays known device fingerprints (with vendor/OS classification), unknown
+  fingerprints needing classification, and fingerprint patterns. Supports creating
+  new device classes, assigning fingerprints to classes, bulk classification,
+  search/filtering, and CSV export of fingerprint data.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper

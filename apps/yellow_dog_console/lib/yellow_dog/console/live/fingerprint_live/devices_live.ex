@@ -1,5 +1,12 @@
 defmodule YellowDog.Console.FingerprintLive.DevicesLive do
-  @moduledoc "Device inventory page — lists all observed network devices."
+  @moduledoc """
+  Device inventory page listing all observed network devices on the LAN.
+
+  Displays passive fingerprints collected from DHCP requests, showing device
+  MAC addresses, IP addresses, hostnames, device types (inferred from fingerprints),
+  and assigned profiles. Supports filtering, search, and drill-down to detailed
+  device profiles and fingerprint information.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper

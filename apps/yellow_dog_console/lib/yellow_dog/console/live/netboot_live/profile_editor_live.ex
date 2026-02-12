@@ -1,5 +1,11 @@
 defmodule YellowDog.Console.NetbootLive.ProfileEditorLive do
-  @moduledoc "Boot profile editor — create and edit boot profiles."
+  @moduledoc """
+  Boot profile editor for creating and managing boot profiles.
+
+  Supports creating new profiles, editing existing ones, and cloning profiles
+  with pre-filled settings. Profiles define iPXE boot scripts with custom arguments,
+  architecture selection, and script preview functionality.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.ServiceHelper

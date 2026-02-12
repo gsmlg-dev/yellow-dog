@@ -1,5 +1,11 @@
 defmodule YellowDog.Console.NetbootLive.TftpLive do
-  @moduledoc "TFTP server status — server config, file browser, active transfers."
+  @moduledoc """
+  TFTP server status and management page for boot file operations.
+
+  Displays TFTP server configuration, active transfer queue, transfer statistics
+  (request count, byte transfers), file browser for exploring boot files, and
+  file upload functionality for adding custom iPXE scripts and boot images.
+  """
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
