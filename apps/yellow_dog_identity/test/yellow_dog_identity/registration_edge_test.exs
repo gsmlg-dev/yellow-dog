@@ -168,6 +168,27 @@ defmodule YellowDogIdentity.RegistrationEdgeTest do
   # Multiple registrations and defaults
   # ──────────────────────────────────────────────
 
+  describe "same key, different hostname" do
+    test "same key with different hostname returns fingerprint_conflict (key uniqueness enforced globally)" do
+      params_a = %{
+        "hostname" => "node-alpha",
+        "ssh_pubkey" => @key_a,
+        "age_recipient" => @age
+      }
+
+      params_b = %{
+        "hostname" => "node-beta",
+        "ssh_pubkey" => @key_a,
+        "age_recipient" => @age
+      }
+
+      assert {:ok, _host_a} = YellowDogIdentity.register(params_a, @context)
+      # Same SSH key, different hostname: check_duplicate passes (different hostname) but
+      # put_host_checked enforces global fingerprint uniqueness → :fingerprint_conflict
+      assert {:error, :fingerprint_conflict} = YellowDogIdentity.register(params_b, @context)
+    end
+  end
+
   describe "multiple registrations" do
     test "different hostnames with different keys succeed" do
       params_a = %{
