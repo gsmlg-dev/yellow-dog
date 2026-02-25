@@ -352,6 +352,190 @@ defmodule YellowDogIdentity.Approval.EngineTest do
     end
   end
 
+  describe "policy ordering — first match wins" do
+    test "first matching policy wins even if later policy also matches" do
+      policies = [
+        %Policy{name: "first", action: :approve, match: %{"trust_level" => "cloud_verified"}},
+        %Policy{name: "second", action: :reject, match: %{"trust_level" => "cloud_verified"}}
+      ]
+
+      host = make_host(%{trust_level: :cloud_verified})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :approve
+      assert result.policy_name == "first"
+    end
+
+    test "skips non-matching policies to find the first match" do
+      policies = [
+        %Policy{
+          name: "cloud-only",
+          action: :approve,
+          match: %{"trust_level" => "cloud_verified"}
+        },
+        %Policy{
+          name: "network-verified",
+          action: :approve,
+          match: %{"trust_level" => "network_verified"}
+        },
+        %Policy{name: "catch-all", action: :reject, match: %{"trust_level" => "unverified"}}
+      ]
+
+      host = make_host(%{trust_level: :network_verified})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :approve
+      assert result.policy_name == "network-verified"
+    end
+  end
+
+  describe "list match — value in list" do
+    test "matches when trust_level is in a list of allowed values" do
+      policies = [
+        %Policy{
+          name: "multi-trust",
+          action: :approve,
+          match: %{
+            "trust_level" => ["cloud_verified", "network_verified", "netboot_verified"]
+          }
+        }
+      ]
+
+      host = make_host(%{trust_level: :network_verified})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :approve
+    end
+
+    test "does not match when value is not in list" do
+      policies = [
+        %Policy{
+          name: "trusted-only",
+          action: :approve,
+          match: %{"trust_level" => ["cloud_verified", "network_verified"]}
+        }
+      ]
+
+      host = make_host(%{trust_level: :unverified})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :pending
+    end
+
+    test "matches role in a list" do
+      policies = [
+        %Policy{
+          name: "allowed-roles",
+          action: :approve,
+          match: %{"role" => ["worker", "storage", "compute"]}
+        }
+      ]
+
+      host = make_host(%{role: "storage"})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :approve
+    end
+  end
+
+  describe "multi-condition AND logic" do
+    test "all conditions must match for policy to apply" do
+      policies = [
+        %Policy{
+          name: "strict-cloud",
+          action: :approve,
+          match: %{
+            "trust_level" => "cloud_verified",
+            "cloud_account" => "123456789012",
+            "cloud_region" => "us-east-1"
+          }
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{
+            "account_id" => "123456789012",
+            "region" => "us-east-1"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "fails if one condition doesn't match" do
+      policies = [
+        %Policy{
+          name: "strict-cloud",
+          action: :approve,
+          match: %{
+            "trust_level" => "cloud_verified",
+            "cloud_account" => "123456789012",
+            "cloud_region" => "us-east-1"
+          }
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{
+            "account_id" => "123456789012",
+            "region" => "eu-west-1"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :pending
+    end
+
+    test "datacenter + hostname_pattern combined" do
+      policies = [
+        %Policy{
+          name: "dc1-workers",
+          action: :approve,
+          match: %{"datacenter" => "dc1", "hostname_pattern" => "ws-*"}
+        }
+      ]
+
+      host = make_host(%{hostname: "ws-42", datacenter: "dc1"})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :approve
+    end
+
+    test "datacenter + hostname_pattern fails if hostname doesn't match" do
+      policies = [
+        %Policy{
+          name: "dc1-workers",
+          action: :approve,
+          match: %{"datacenter" => "dc1", "hostname_pattern" => "ws-*"}
+        }
+      ]
+
+      host = make_host(%{hostname: "db-01", datacenter: "dc1"})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+
+      assert result.action == :pending
+    end
+  end
+
+  describe "empty match — matches everything" do
+    test "policy with empty match map matches any host" do
+      policies = [
+        %Policy{name: "accept-all", action: :approve, match: %{}}
+      ]
+
+      host = make_host(%{trust_level: :unverified})
+      result = Engine.evaluate_with_policies(host, policies, :reject)
+
+      assert result.action == :approve
+      assert result.policy_name == "accept-all"
+    end
+  end
+
   describe "build_context — Azure cloud_account (subscription_id)" do
     test "matches Azure subscription_id from trust_evidence" do
       policies = [
