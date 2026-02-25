@@ -4,6 +4,7 @@ defmodule YellowDog.DhcpClient.DhcpSocketTest do
   alias YellowDog.DhcpClient.DhcpSocket
 
   defmodule NoOpSocketImpl do
+    @moduledoc false
     @behaviour YellowDog.DhcpClient.DhcpSocket
     @impl true
     def open(_interface, _owner), do: {:ok, make_ref()}

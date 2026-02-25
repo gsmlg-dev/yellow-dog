@@ -1,4 +1,5 @@
 defmodule YellowDog.DhcpClient.TelemetryTest.MockDadSocket do
+  @moduledoc false
   @behaviour YellowDog.DhcpClient.DhcpSocket
   @impl true
   def open(_interface, _owner), do: {:ok, make_ref()}

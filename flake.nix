@@ -12,6 +12,10 @@
     flake-docker-utils,
     ...
   }:
+    {
+      nixosModules.dhcpClient = import ./nix/dhcp-client-module.nix;
+      nixosModules.default = self.nixosModules.dhcpClient;
+    } //
     flake-utils.lib.eachDefaultSystem (system: let
       yellowdogdns_default_config =
         pkgs.writeText "yellowdog.toml"
