@@ -446,16 +446,6 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
     send(fsm_pid, {:dhcp_rx, packet})
   end
 
-  defp build_vendor_option_125(sub_options_binary) do
-    pen = VendorOptions.pen()
-    data_len = byte_size(sub_options_binary)
-    <<pen::32, data_len::8, sub_options_binary::binary>>
-  end
-
-  defp encode_sub_option(code, value) when is_binary(value) do
-    <<code::8, byte_size(value)::8, value::binary>>
-  end
-
   # ── Tests: Standard DORA (no vendor options) ───────────────────────────
 
   describe "standard DORA handshake (non-YD server)" do
@@ -517,11 +507,8 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       control_url = "https://yd.example.com/api"
       auth_token = "secret-token-abc123"
 
-      vendor_sub_opts =
-        encode_sub_option(1, control_url) <>
-          encode_sub_option(4, auth_token)
-
-      vendor_bin = build_vendor_option_125(vendor_sub_opts)
+      vendor_bin =
+        VendorOptions.encode_vendor_info(%{control_url: control_url, auth_token: auth_token})
 
       mock_pid = start_mock_server(vendor_opts: vendor_bin)
       fsm_pid = start_fsm_with_vendor(mock_pid, vendor_bin, %{selection_window_ms: 50})
@@ -538,11 +525,8 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       server_id = "yd-server-01"
       cluster_id = "cluster-east"
 
-      vendor_sub_opts =
-        encode_sub_option(2, server_id) <>
-          encode_sub_option(3, cluster_id)
-
-      vendor_bin = build_vendor_option_125(vendor_sub_opts)
+      vendor_bin =
+        VendorOptions.encode_vendor_info(%{server_id: server_id, cluster_id: cluster_id})
 
       mock_pid = start_mock_server(vendor_opts: vendor_bin)
       fsm_pid = start_fsm_with_vendor(mock_pid, vendor_bin, %{selection_window_ms: 50})
@@ -559,11 +543,11 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       control_url = "https://primary.yd.example.com/api"
       fallback_url = "https://fallback.yd.example.com/api"
 
-      vendor_sub_opts =
-        encode_sub_option(1, control_url) <>
-          encode_sub_option(5, fallback_url)
-
-      vendor_bin = build_vendor_option_125(vendor_sub_opts)
+      vendor_bin =
+        VendorOptions.encode_vendor_info(%{
+          control_url: control_url,
+          control_url_fallback: fallback_url
+        })
 
       mock_pid = start_mock_server(vendor_opts: vendor_bin)
       fsm_pid = start_fsm_with_vendor(mock_pid, vendor_bin, %{selection_window_ms: 50})
@@ -583,14 +567,14 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       auth_token = "token-xyz-789"
       fallback_url = "https://backup.yd.example.com/api"
 
-      vendor_sub_opts =
-        encode_sub_option(1, control_url) <>
-          encode_sub_option(2, server_id) <>
-          encode_sub_option(3, cluster_id) <>
-          encode_sub_option(4, auth_token) <>
-          encode_sub_option(5, fallback_url)
-
-      vendor_bin = build_vendor_option_125(vendor_sub_opts)
+      vendor_bin =
+        VendorOptions.encode_vendor_info(%{
+          control_url: control_url,
+          server_id: server_id,
+          cluster_id: cluster_id,
+          auth_token: auth_token,
+          control_url_fallback: fallback_url
+        })
 
       mock_pid = start_mock_server(vendor_opts: vendor_bin)
       fsm_pid = start_fsm_with_vendor(mock_pid, vendor_bin, %{selection_window_ms: 50})
