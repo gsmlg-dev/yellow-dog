@@ -45,30 +45,44 @@ defmodule YellowDog.DhcpClient.InterfaceSupervisor do
     socket_name = socket_name(interface)
     fsm_name = fsm_name(interface)
     store_name = store_name(interface)
+    os_module = resolve_os_module(config)
 
     socket_opts =
       [interface: interface, owner: fsm_name, name: socket_name] ++
         if(socket_impl, do: [impl: socket_impl], else: [])
 
+    # Order: Socket → LeaseStore → StateMachine
+    # rest_for_one: Socket crash restarts all; LeaseStore crash restarts FSM;
+    # FSM crash leaves LeaseStore alive for rebind on restart.
     children = [
       {DhcpSocket, socket_opts},
-      {StateMachine,
-       [
-         interface: interface,
-         mac: mac,
-         socket_pid: socket_name,
-         config: config,
-         name: fsm_name
-       ]},
       {LeaseStore,
        [
          interface: interface,
          lease_dir: Map.get(config, :lease_dir),
          name: store_name
+       ]},
+      {StateMachine,
+       [
+         interface: interface,
+         mac: mac,
+         socket_pid: socket_name,
+         store_pid: store_name,
+         os_module: os_module,
+         config: config,
+         name: fsm_name
        ]}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  defp resolve_os_module(config) do
+    case Map.get(config, :mode) do
+      :hook -> YellowDog.DhcpClient.OSIntegration.HookNM
+      :standalone -> YellowDog.DhcpClient.OSIntegration.Standalone
+      _ -> nil
+    end
   end
 
   # --- Name generation ---

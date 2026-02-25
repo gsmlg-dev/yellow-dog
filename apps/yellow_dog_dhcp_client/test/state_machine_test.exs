@@ -91,16 +91,24 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
         config_overrides
       )
 
-    {:ok, pid} =
-      StateMachine.start_link(
-        interface: "test0",
-        mac: @test_mac,
-        socket_pid: ctx.socket_pid,
-        config: config
-      )
+    opts = [
+      interface: "test0",
+      mac: @test_mac,
+      socket_pid: ctx.socket_pid,
+      config: config
+    ]
 
+    opts =
+      opts
+      |> maybe_add_opt(:store_pid, ctx[:store_pid])
+      |> maybe_add_opt(:os_module, ctx[:os_module])
+
+    {:ok, pid} = StateMachine.start_link(opts)
     pid
   end
+
+  defp maybe_add_opt(opts, _key, nil), do: opts
+  defp maybe_add_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp build_reply(opts) do
     yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
@@ -420,5 +428,220 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     Process.sleep(50)
 
     assert get_state(pid) == :selecting
+  end
+
+  # ── LeaseStore integration ──
+
+  describe "lease store integration" do
+    setup ctx do
+      lease_dir =
+        Path.join(System.tmp_dir!(), "yd_fsm_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(lease_dir)
+      on_exit(fn -> File.rm_rf!(lease_dir) end)
+
+      {:ok, store_pid} =
+        YellowDog.DhcpClient.LeaseStore.start_link(
+          interface: "test0",
+          lease_dir: lease_dir
+        )
+
+      Map.merge(ctx, %{store_pid: store_pid, lease_dir: lease_dir})
+    end
+
+    test "persists lease to store on bound", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Lease should be persisted in the store
+      assert {:ok, lease} = YellowDog.DhcpClient.LeaseStore.lookup(ctx.store_pid, "test0")
+      assert lease.ip == {192, 168, 1, 100}
+    end
+  end
+
+  # ── OS integration ──
+
+  defmodule MockOSIntegration do
+    @moduledoc false
+    @behaviour YellowDog.DhcpClient.OSIntegration
+
+    @impl true
+    def apply_lease(interface, lease) do
+      send(Process.whereis(:os_integration_test), {:apply_lease, interface, lease})
+      :ok
+    end
+
+    @impl true
+    def deconfigure(interface) do
+      send(Process.whereis(:os_integration_test), {:deconfigure, interface})
+      :ok
+    end
+
+    @impl true
+    def apply_routes(_interface, _lease), do: :ok
+
+    @impl true
+    def apply_dns(_lease), do: :ok
+  end
+
+  describe "OS integration" do
+    setup ctx do
+      Process.register(self(), :os_integration_test)
+
+      on_exit(fn ->
+        try do
+          Process.unregister(:os_integration_test)
+        rescue
+          _ -> :ok
+        end
+      end)
+
+      Map.put(ctx, :os_module, MockOSIntegration)
+    end
+
+    test "calls apply_lease on bound", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      assert_receive {:apply_lease, "test0", lease}, 1000
+      assert lease.ip == {192, 168, 1, 100}
+    end
+
+    test "calls deconfigure on release", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Drain apply_lease message
+      assert_receive {:apply_lease, "test0", _}, 1000
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert_receive {:deconfigure, "test0"}, 1000
+    end
+
+    test "calls deconfigure on interface_down", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Drain apply_lease message
+      assert_receive {:apply_lease, "test0", _}, 1000
+
+      send(pid, :interface_down)
+      wait_for_state(pid, :init, 2000)
+
+      assert_receive {:deconfigure, "test0"}, 1000
+    end
+  end
+
+  # ── Telemetry events ──
+
+  describe "telemetry events" do
+    test "emits lease:bound on initial bind", ctx do
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-lease-bound-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :lease, :bound],
+        fn _event, measurements, metadata, _config ->
+          send(self_pid, {:telemetry_bound, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-lease-bound-#{inspect(ref)}") end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      assert_receive {:telemetry_bound, measurements, metadata}, 2000
+      assert is_integer(measurements.handshake_duration_ms)
+      assert metadata.interface == "test0"
+    end
+
+    test "emits lease:renewed on renewal (RENEWING -> BOUND)", ctx do
+      ref = make_ref()
+      self_pid = self()
+      renewed_events = :counters.new(1, [])
+
+      :telemetry.attach(
+        "test-lease-renewed-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :lease, :renewed],
+        fn _event, measurements, metadata, _config ->
+          :counters.add(renewed_events, 1, 1)
+          send(self_pid, {:telemetry_renewed, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-lease-renewed-#{inspect(ref)}") end)
+
+      # Get to bound first with very short T1
+      pid =
+        start_fsm(ctx, %{
+          selection_window_ms: 30
+        })
+
+      send_offer(pid,
+        yiaddr: {192, 168, 1, 100},
+        server_ip: {192, 168, 1, 1}
+      )
+
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Manually trigger T1 to enter RENEWING
+      send(pid, {:"$gen_cast", {:timeout, :t1, :renew}})
+      # The above won't work with gen_statem; instead force via internal
+      # We need to wait for T1 or manually transition. T1 is lease_time/2 = 1800s.
+      # Instead, let's simulate by directly pushing a renew timeout event.
+      # Actually gen_statem timeouts can't be faked externally. Let's use status
+      # to get the process and force-transition by injecting the event.
+
+      # More practical: create a short-lease scenario and check the telemetry on
+      # renewing->bound. We can't fake the T1 timer easily, so let's test
+      # by sending an ACK in the renewing state manually.
+
+      # Move to renewing state by casting a direct state change via a
+      # well-formed ACK after we manually send the renew event
+      # The simplest way: use :sys.replace_state
+      :sys.replace_state(pid, fn {state, data} ->
+        if state == :bound do
+          {:renewing, data}
+        else
+          {state, data}
+        end
+      end)
+
+      # Now in :renewing, send an ACK to trigger RENEWING -> BOUND
+      send_ack(pid)
+      wait_for_state(pid, :bound, 2000)
+
+      assert_receive {:telemetry_renewed, measurements, metadata}, 2000
+      assert is_integer(measurements.lease_time_s)
+      assert metadata.interface == "test0"
+    end
   end
 end

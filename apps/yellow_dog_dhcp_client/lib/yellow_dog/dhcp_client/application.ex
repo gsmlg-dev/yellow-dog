@@ -23,7 +23,7 @@ defmodule YellowDog.DhcpClient.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      {Registry, keys: :unique, name: YellowDog.DhcpClient.registry_name()},
+      {Registry, keys: :unique, name: YellowDog.DhcpClient.Registry},
       {DynamicSupervisor, name: @dynamic_supervisor, strategy: :one_for_one},
       {YellowDog.DhcpClient.ConfigWatcher, []}
     ]

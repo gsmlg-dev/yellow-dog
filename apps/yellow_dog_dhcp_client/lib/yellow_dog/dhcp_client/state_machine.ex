@@ -18,7 +18,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   @behaviour :gen_statem
 
-  alias YellowDog.DhcpClient.{DAD, DhcpSocket}
+  alias YellowDog.DhcpClient.{DAD, DhcpSocket, LeaseStore}
 
   require Logger
 
@@ -32,6 +32,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
     :interface,
     :mac,
     :socket_pid,
+    :store_pid,
+    :os_module,
     :xid,
     :lease,
     :start_time,
@@ -43,7 +45,9 @@ defmodule YellowDog.DhcpClient.StateMachine do
   @type t :: %__MODULE__{
           interface: String.t(),
           mac: binary(),
-          socket_pid: pid(),
+          socket_pid: pid() | GenServer.server(),
+          store_pid: GenServer.server() | nil,
+          os_module: module() | nil,
           xid: non_neg_integer(),
           offers: [map()],
           lease: map() | nil,
@@ -61,12 +65,16 @@ defmodule YellowDog.DhcpClient.StateMachine do
     mac = Keyword.fetch!(opts, :mac)
     socket_pid = Keyword.fetch!(opts, :socket_pid)
     config = Keyword.get(opts, :config, %{})
+    store_pid = Keyword.get(opts, :store_pid)
+    os_module = Keyword.get(opts, :os_module)
     name = Keyword.get(opts, :name)
 
     data = %__MODULE__{
       interface: interface,
       mac: mac,
       socket_pid: socket_pid,
+      store_pid: store_pid,
+      os_module: os_module,
       config: config,
       start_time: System.monotonic_time(:millisecond)
     }
@@ -206,20 +214,33 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # ---- BOUND ----
 
-  def handle_event(:enter, _old_state, :bound, data) do
+  def handle_event(:enter, old_state, :bound, data) do
     emit_state_change(data, :bound)
 
-    handshake_ms = System.monotonic_time(:millisecond) - data.start_time
+    is_renewal = old_state in [:renewing, :rebinding]
 
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :lease, :bound],
-      %{lease_time_s: data.lease.lease_time, handshake_duration_ms: handshake_ms},
-      %{
-        interface: data.interface,
-        ip: format_ip(data.lease.ip),
-        server: format_ip(data.lease.server_ip)
-      }
-    )
+    if is_renewal do
+      :telemetry.execute(
+        [:yellow_dog, :dhcp_client, :lease, :renewed],
+        %{lease_time_s: data.lease.lease_time},
+        %{interface: data.interface, ip: format_ip(data.lease.ip)}
+      )
+    else
+      handshake_ms = System.monotonic_time(:millisecond) - data.start_time
+
+      :telemetry.execute(
+        [:yellow_dog, :dhcp_client, :lease, :bound],
+        %{lease_time_s: data.lease.lease_time, handshake_duration_ms: handshake_ms},
+        %{
+          interface: data.interface,
+          ip: format_ip(data.lease.ip),
+          server: format_ip(data.lease.server_ip)
+        }
+      )
+    end
+
+    persist_lease(data)
+    apply_os_lease(data)
 
     t1_ms = (data.lease.t1 || div(data.lease.lease_time, 2)) * 1_000
     t2_ms = (data.lease.t2 || div(data.lease.lease_time * 7, 8)) * 1_000
@@ -242,10 +263,12 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:cast, :release, :bound, data) do
     send_release(data)
+    deconfigure_os(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
   def handle_event(:info, :interface_down, :bound, data) do
+    deconfigure_os(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -270,6 +293,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
       {:nak, _reason} ->
         emit_packet_rx(data, :nak, nil)
+        deconfigure_os(data)
         {:next_state, :init, %{data | lease: nil}}
 
       _other ->
@@ -315,6 +339,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
       {:nak, _reason} ->
         emit_packet_rx(data, :nak, nil)
+        deconfigure_os(data)
         {:next_state, :init, %{data | lease: nil}}
 
       _other ->
@@ -329,6 +354,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
       %{interface: data.interface, ip: format_ip(data.lease.ip)}
     )
 
+    deconfigure_os(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -345,12 +371,14 @@ defmodule YellowDog.DhcpClient.StateMachine do
   def handle_event(:cast, :release, _state, data) do
     if data.lease do
       send_release(data)
+      deconfigure_os(data)
     end
 
     {:next_state, :init, %{data | lease: nil}}
   end
 
   def handle_event(:info, :interface_down, _state, data) do
+    if data.lease, do: deconfigure_os(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -502,6 +530,53 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp packet_mod do
     Application.get_env(:yellow_dog_dhcp_client, :packet_module, YellowDog.DhcpClient.Packet)
+  end
+
+  # --- Lease persistence and OS integration ---
+
+  defp persist_lease(%{store_pid: nil}), do: :ok
+
+  defp persist_lease(%{store_pid: store_pid, interface: interface, lease: lease}) do
+    LeaseStore.store(store_pid, interface, lease)
+  rescue
+    e ->
+      Logger.warning("Failed to persist lease for #{interface}: #{Exception.message(e)}")
+      :ok
+  end
+
+  defp apply_os_lease(%{os_module: nil}), do: :ok
+
+  defp apply_os_lease(%{os_module: mod, interface: interface, lease: lease}) do
+    case mod.apply_lease(interface, lease) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("OS integration apply_lease failed for #{interface}: #{inspect(reason)}")
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning("OS integration crashed for #{interface}: #{Exception.message(e)}")
+      :ok
+  end
+
+  defp deconfigure_os(%{os_module: nil}), do: :ok
+
+  defp deconfigure_os(%{os_module: mod, interface: interface}) do
+    case mod.deconfigure(interface) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("OS integration deconfigure failed for #{interface}: #{inspect(reason)}")
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning("OS deconfigure crashed for #{interface}: #{Exception.message(e)}")
+      :ok
   end
 
   # --- Timer helpers ---

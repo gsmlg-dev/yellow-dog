@@ -9,9 +9,9 @@ defmodule YellowDog.DhcpClient do
   public API for starting, stopping, and querying DHCP client instances.
   """
 
-  alias YellowDog.DhcpClient.Application
+  alias YellowDog.DhcpClient.{Application, LeaseStore, StateMachine}
 
-  @registry :dhcp_client_registry
+  @registry YellowDog.DhcpClient.Registry
 
   @doc """
   Starts a DHCP client for the given network interface.
@@ -70,7 +70,12 @@ defmodule YellowDog.DhcpClient do
   def lease(interface) when is_binary(interface) do
     case lookup(interface) do
       {:ok, _pid} ->
-        GenServer.call(via(interface, :lease_store), :get_lease)
+        store = {:via, Registry, {@registry, {:store, interface}}}
+
+        case LeaseStore.lookup(store, interface) do
+          {:ok, lease} -> lease
+          :not_found -> nil
+        end
 
       :error ->
         nil
@@ -90,7 +95,8 @@ defmodule YellowDog.DhcpClient do
   def release(interface) when is_binary(interface) do
     case lookup(interface) do
       {:ok, _pid} ->
-        GenServer.call(via(interface, :state_machine), :release)
+        fsm = {:via, Registry, {@registry, {:fsm, interface}}}
+        StateMachine.release(fsm)
 
       :error ->
         {:error, :not_found}
@@ -112,7 +118,9 @@ defmodule YellowDog.DhcpClient do
   def status(interface) when is_binary(interface) do
     case lookup(interface) do
       {:ok, _pid} ->
-        GenServer.call(via(interface, :state_machine), :status)
+        fsm = {:via, Registry, {@registry, {:fsm, interface}}}
+        {state, _data} = StateMachine.status(fsm)
+        state
 
       :error ->
         {:error, :not_found}
@@ -123,13 +131,9 @@ defmodule YellowDog.DhcpClient do
   def registry_name, do: @registry
 
   defp lookup(interface) do
-    case Registry.lookup(@registry, {interface, :supervisor}) do
+    case Registry.lookup(@registry, {:interface_sup, interface}) do
       [{pid, _}] -> {:ok, pid}
       [] -> :error
     end
-  end
-
-  defp via(interface, role) do
-    {:via, Registry, {@registry, {interface, role}}}
   end
 end
