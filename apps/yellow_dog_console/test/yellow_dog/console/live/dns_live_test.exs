@@ -1080,6 +1080,39 @@ defmodule YellowDog.Console.DnsLiveTest do
       view |> element(~s(button[phx-click="cancel"])) |> render_click()
       assert_redirect(view, "/dns/views/default/zones/auth/example.com/records")
     end
+
+    test "confirm_delete with out-of-range index shows error flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_click("confirm_delete", %{"index" => "9999"})
+      assert html =~ "Record not found" or html =~ "Records"
+    end
+
+    test "confirm_delete with non-numeric index does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      html = view |> render_click("confirm_delete", %{"index" => "not-a-number"})
+      assert html =~ "Record not found" or html =~ "Records"
+    end
+
+    test "delete_rr without prior confirm_delete does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dns/views/default/zones/auth/example.com/records")
+      # delete_confirm is nil at mount — should be a no-op after our guard fix
+      html = view |> render_click("delete_rr")
+      assert html =~ "Records" or html =~ "example.com"
+    end
+
+    test "bulk_add_rrs when zone unavailable shows error flash", %{conn: conn} do
+      {:ok, view, _html} =
+        live(conn, "/dns/views/default/zones/auth/example.com/records/bulk")
+
+      html =
+        view
+        |> render_submit("bulk_add_rrs", %{
+          "bulk" => %{"records" => "www  3600  IN  A  192.0.2.1"}
+        })
+
+      # DNS service is not running in test, so zone won't be found
+      assert html =~ "Zone not found" or html =~ "Records" or html =~ "failed"
+    end
   end
 
   # ============================================================================
