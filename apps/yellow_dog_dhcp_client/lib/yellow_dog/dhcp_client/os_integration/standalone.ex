@@ -89,10 +89,10 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
 
   def apply_dns(interface, %Lease{dns_servers: servers} = lease) do
     content = build_resolv_conf(servers, lease.domain_name)
-    File.mkdir_p!(@resolv_dir)
     resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
 
-    with :ok <- File.write(resolv_path, content) do
+    with :ok <- File.mkdir_p(@resolv_dir),
+         :ok <- File.write(resolv_path, content) do
       timed_cmd(interface, :add_dns, "resolvconf", ["-a", interface])
     end
   end
