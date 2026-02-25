@@ -197,6 +197,44 @@ defmodule YellowDog.Resolved.ManagementTest do
     end
   end
 
+  describe "handle_command cache_flush with whitespace pattern" do
+    test "whitespace-only pattern treated as exact match (flushes nothing)" do
+      Cache.store("test.com", :a, "data", 300)
+      Process.sleep(10)
+
+      response =
+        Handler.handle_command(%{
+          "type" => "cache_flush",
+          "id" => "req-ws",
+          "data" => %{"pattern" => "   "}
+        })
+
+      # Whitespace pattern goes through flush_pattern("   ") → exact match
+      # after String.downcase + trim_trailing(".") → "   "
+      # No cached domain is "   ", so count should be 0
+      assert response["data"]["flushed"] == 0
+      # Original entry should still be present
+      assert {:hit, "data"} = Cache.lookup("test.com", :a)
+    end
+  end
+
+  describe "handle_command ping counter accuracy" do
+    test "query counters are non-negative integers" do
+      response =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-counters",
+          "data" => %{}
+        })
+
+      data = response["data"]
+      assert is_integer(data["queries_total"]) and data["queries_total"] >= 0
+      assert is_integer(data["queries_intercepted"]) and data["queries_intercepted"] >= 0
+      assert is_integer(data["queries_cached"]) and data["queries_cached"] >= 0
+      assert is_integer(data["queries_forwarded"]) and data["queries_forwarded"] >= 0
+    end
+  end
+
   describe "build_connected_event/1 fallback when Config unavailable" do
     test "returns default values when Config GenServer not running" do
       # Stop Config so fetch_config_summary hits the rescue path

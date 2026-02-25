@@ -272,6 +272,95 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "multiple intercept rules for same domain with different types" do
+    setup do
+      # Override Config with rules that have both A and AAAA for the same suffix
+      multi_config = %{
+        @config
+        | intercept_rules: [
+            %{match: {:suffix, "multi.dev"}, type: :a, value: "10.0.0.1", ttl: 60},
+            %{match: {:suffix, "multi.dev"}, type: :aaaa, value: "::1", ttl: 120}
+          ]
+      }
+
+      stop_supervised!(Config)
+      start_supervised!({Config, multi_config})
+      :ok
+    end
+
+    test "A query matches the A rule" do
+      query = build_query("app.multi.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert length(response.anlist) == 1
+      assert response.header.rcode == DNS.Message.RCode.new(0)
+    end
+
+    test "AAAA query still matches first rule (first-match-wins) with empty answer" do
+      # The first rule is :a, so AAAA query hits type mismatch → empty answer
+      query = build_query("app.multi.dev", 28)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      # First rule matches domain but type differs → empty answer
+      assert response.anlist == []
+      assert response.header.rcode == DNS.Message.RCode.new(0)
+    end
+  end
+
+  describe "NXDOMAIN caching through full pipeline" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:nxdomain)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "NXDOMAIN is cached as negative entry" do
+      query = build_query("nxdomain-cache.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :forward} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+
+      Process.sleep(10)
+
+      # Second query should come from cache
+      query2 = build_query("nxdomain-cache.test", 1)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+
+      assert {:ok, _response_binary2, :cache} = Router.resolve(query2, raw2)
+    end
+
+    test "NXDOMAIN cached response preserves rcode" do
+      query = build_query("nxdomain-rcode.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Router.resolve(query, raw)
+      Process.sleep(10)
+
+      query2 = build_query("nxdomain-rcode.test", 1)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :cache} = Router.resolve(query2, raw2)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+    end
+  end
+
   describe "safe query type handling" do
     test "standard types resolve correctly through intercept" do
       query = build_query("app.local.dev", 1)

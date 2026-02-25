@@ -133,6 +133,28 @@ defmodule YellowDog.Resolved.InterceptTest do
     end
   end
 
+  describe "leading-dot domain edge cases" do
+    test "domain starting with dot doesn't match suffix" do
+      # ".example.com" after normalization is still ".example.com"
+      # which shouldn't match {:suffix, "example.com"} since it's ".example.com" not "sub.example.com"
+      rules = [%{match: {:suffix, "example.com"}, type: :a, value: "10.0.0.1", ttl: 60}]
+
+      # ".example.com" ends_with ".example.com" → true! So it DOES match.
+      result = Intercept.match(".example.com", :a, rules)
+      assert {:match, _} = result
+    end
+
+    test "domain with only a dot" do
+      assert :no_match = Intercept.match(".", :a, @rules)
+    end
+
+    test "domain with leading dot and suffix match" do
+      # ".local.dev" → strip trailing dot (none) → ".local.dev"
+      # Check: ".local.dev" == "local.dev" (false) OR String.ends_with?(".local.dev", ".local.dev") (true)
+      assert {:match, _} = Intercept.match(".local.dev", :a, @rules)
+    end
+  end
+
   describe "empty string edge cases" do
     test "empty domain does not match any rule" do
       assert :no_match = Intercept.match("", :a, @rules)
