@@ -66,11 +66,13 @@ defmodule YellowDog.Resolved.Discovery do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(:reconnect, state) do
     state = probe_upstreams(state)
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{management_pid: pid} = state) do
     Logger.info("Management connection lost: #{inspect(reason)}")
 
@@ -88,6 +90,7 @@ defmodule YellowDog.Resolved.Discovery do
     {:noreply, %{state | management_pid: nil, ws_endpoint: nil, backoff: new_backoff}}
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end
@@ -189,6 +192,8 @@ defmodule YellowDog.Resolved.Discovery do
       end
     rescue
       _ -> :not_found
+    catch
+      _, _ -> :not_found
     end
   end
 

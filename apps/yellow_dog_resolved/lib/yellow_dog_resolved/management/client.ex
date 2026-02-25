@@ -61,6 +61,7 @@ defmodule YellowDog.Resolved.Management.Client do
     {:noreply, state}
   end
 
+  @impl true
   def handle_cast({:send, _message}, state) do
     # In a real implementation, this would encode and send over WebSocket
     {:noreply, state}
@@ -73,10 +74,12 @@ defmodule YellowDog.Resolved.Management.Client do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(:heartbeat, state) do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:ws_message, json_text}, state) do
     case Jason.decode(json_text) do
       {:ok, message} ->
@@ -94,6 +97,7 @@ defmodule YellowDog.Resolved.Management.Client do
     end
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

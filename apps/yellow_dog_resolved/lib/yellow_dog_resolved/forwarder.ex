@@ -76,6 +76,7 @@ defmodule YellowDog.Resolved.Forwarder do
     {:noreply, %{state | failure_counts: failure_counts}}
   end
 
+  @impl true
   def handle_cast({:upstream_failure, upstream}, state) do
     count = Map.get(state.failure_counts, upstream, 0) + 1
     failure_counts = Map.put(state.failure_counts, upstream, count)

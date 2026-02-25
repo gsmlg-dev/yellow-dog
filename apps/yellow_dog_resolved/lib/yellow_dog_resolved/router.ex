@@ -61,6 +61,18 @@ defmodule YellowDog.Resolved.Router do
 
       response = ResponseBuilder.build_servfail(query)
       {:ok, encode(response)}
+  catch
+    kind, reason ->
+      Logger.error("Query resolution crashed (#{kind}): #{inspect(reason)}")
+
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :exception],
+        %{duration: 0},
+        %{domain: "unknown", type: :unknown, reason: reason}
+      )
+
+      response = ResponseBuilder.build_servfail(query)
+      {:ok, encode(response)}
   end
 
   # Private functions

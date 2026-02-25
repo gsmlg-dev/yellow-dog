@@ -181,6 +181,7 @@ defmodule YellowDog.Resolved.Cache do
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call({:flush_domain, domain}, _from, state) do
     normalized = String.downcase(domain) |> String.trim_trailing(".")
     # Delete all type variants for this domain
@@ -195,6 +196,7 @@ defmodule YellowDog.Resolved.Cache do
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call({:flush_pattern, pattern}, _from, state) do
     count =
       case pattern do
@@ -232,6 +234,7 @@ defmodule YellowDog.Resolved.Cache do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

@@ -69,6 +69,53 @@ defmodule YellowDog.Resolved.RouterTest do
       assert response.header.qr == 1
       assert response.anlist == []
     end
+
+    test "intercept preserves query transaction ID" do
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+
+      assert response.header.id == query.header.id
+    end
+
+    test "intercept for exact match" do
+      query = build_query("myapp.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+
+      assert length(response.anlist) == 1
+      [record] = response.anlist
+      assert record.ttl == 600
+    end
+  end
+
+  describe "resolve with cache" do
+    test "cache hit returns cached response" do
+      # Pre-populate cache with a fake response
+      query = build_query("cached.example.com", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      # Build a fake response binary
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 9999)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+      response = DNS.Message.update_header_attr(response, :rd, 1)
+      response_binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      Cache.store("cached.example.com", :a, response_binary, 300)
+      Process.sleep(10)
+
+      assert {:ok, result_binary, :cache} = Router.resolve(query, raw)
+      assert is_binary(result_binary)
+
+      # Transaction ID should be rewritten to match query
+      <<txn_id::16, _rest::binary>> = result_binary
+      assert txn_id == query.header.id
+    end
   end
 
   describe "resolve with empty query" do
@@ -79,6 +126,22 @@ defmodule YellowDog.Resolved.RouterTest do
 
       assert {:ok, response_binary} = Router.resolve(query, raw)
       assert is_binary(response_binary)
+    end
+  end
+
+  describe "resolve non-intercepted domain (forward path)" do
+    test "returns SERVFAIL when forwarder not started" do
+      # No forwarder is started in this test setup — GenServer.call exit
+      # Router should catch the exit and return SERVFAIL
+      query = build_query("external.com", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary} = Router.resolve(query, raw)
+      assert is_binary(response_binary)
+
+      # Verify it's a valid DNS response
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
     end
   end
 end

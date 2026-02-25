@@ -98,6 +98,51 @@ defmodule YellowDog.Resolved.ManagementTest do
     end
   end
 
+  describe "handle_command cache_flush on empty cache" do
+    test "flushes zero entries from empty cache" do
+      response =
+        Handler.handle_command(%{
+          "type" => "cache_flush",
+          "id" => "req-010",
+          "data" => %{"pattern" => nil}
+        })
+
+      assert response["type"] == "cache_flush_result"
+      assert response["data"]["flushed"] == 0
+    end
+  end
+
+  describe "handle_command cache_stats on empty cache" do
+    test "returns zero stats" do
+      response =
+        Handler.handle_command(%{
+          "type" => "cache_stats",
+          "id" => "req-011"
+        })
+
+      assert response["data"]["entries"] == 0
+      assert response["data"]["hit_rate"] == 0.0
+    end
+  end
+
+  describe "handle_command ping response fields" do
+    test "includes all expected counter fields" do
+      response =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-012",
+          "data" => %{}
+        })
+
+      data = response["data"]
+      assert Map.has_key?(data, "uptime_s")
+      assert Map.has_key?(data, "queries_total")
+      assert Map.has_key?(data, "queries_intercepted")
+      assert Map.has_key?(data, "queries_cached")
+      assert Map.has_key?(data, "queries_forwarded")
+    end
+  end
+
   describe "build_connected_event/1" do
     test "builds connected event" do
       instance_id = :crypto.strong_rand_bytes(16)
@@ -108,6 +153,25 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert event["data"]["version"] == "0.1.0"
       assert is_binary(event["data"]["hostname"])
       assert is_binary(event["data"]["instance_id"])
+    end
+
+    test "instance_id is hex-encoded" do
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.build_connected_event(instance_id)
+
+      hex_id = event["data"]["instance_id"]
+      assert String.length(hex_id) == 32
+      assert hex_id == Base.encode16(instance_id, case: :lower)
+    end
+
+    test "unique event IDs across calls" do
+      id1 = :crypto.strong_rand_bytes(16)
+      id2 = :crypto.strong_rand_bytes(16)
+
+      event1 = Handler.build_connected_event(id1)
+      event2 = Handler.build_connected_event(id2)
+
+      assert event1["id"] != event2["id"]
     end
   end
 end

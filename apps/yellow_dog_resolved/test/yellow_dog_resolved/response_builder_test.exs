@@ -120,5 +120,84 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       <<new_id::16, _rest::binary>> = rewritten
       assert new_id == 0x5678
     end
+
+    test "preserves rest of response after rewrite" do
+      payload = :crypto.strong_rand_bytes(20)
+      original = <<0xAB, 0xCD, payload::binary>>
+
+      rewritten = ResponseBuilder.rewrite_txn_id(original, 0x1234)
+      <<_id::16, rest::binary>> = rewritten
+
+      assert rest == payload
+    end
+  end
+
+  describe "encoding roundtrip" do
+    test "intercept response encodes to valid DNS binary" do
+      query = build_query("roundtrip.test", 1)
+      rule = %{type: :a, value: "10.0.0.1", ttl: 60}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      # Should decode back without error
+      decoded = DNS.Message.from_iodata(binary)
+      assert decoded.header.qr == 1
+      assert decoded.header.id == query.header.id
+      assert length(decoded.anlist) == 1
+    end
+
+    test "SERVFAIL response encodes to valid DNS binary" do
+      query = build_query("servfail.test", 1)
+
+      response = ResponseBuilder.build_servfail(query)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert decoded.header.qr == 1
+      assert decoded.header.id == query.header.id
+    end
+
+    test "FORMERR response encodes to valid DNS binary" do
+      response = ResponseBuilder.build_formerr(42)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert decoded.header.qr == 1
+      assert decoded.header.id == 42
+    end
+
+    test "NXDOMAIN response encodes to valid DNS binary" do
+      query = build_query("nxdomain.test", 1)
+
+      response = ResponseBuilder.build_nxdomain(query)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert decoded.header.qr == 1
+      assert decoded.anlist == []
+    end
+
+    test "AAAA intercept response roundtrips" do
+      query = build_query("v6.test", 28)
+      rule = %{type: :aaaa, value: "::1", ttl: 120}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert length(decoded.anlist) == 1
+    end
+
+    test "CNAME intercept response roundtrips" do
+      query = build_query("alias.test", 5)
+      rule = %{type: :cname, value: "target.example.com", ttl: 300}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert length(decoded.anlist) == 1
+    end
   end
 end

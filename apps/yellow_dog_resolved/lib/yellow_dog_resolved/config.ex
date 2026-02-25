@@ -101,10 +101,12 @@ defmodule YellowDog.Resolved.Config do
     {:reply, state.config, state}
   end
 
+  @impl true
   def handle_call(:get_intercept_rules, _from, state) do
     {:reply, state.config.intercept_rules, state}
   end
 
+  @impl true
   def handle_call(:get_upstreams, _from, state) do
     {:reply, state.config.upstreams, state}
   end
@@ -133,6 +135,7 @@ defmodule YellowDog.Resolved.Config do
     end
   end
 
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

@@ -1,5 +1,5 @@
 defmodule YellowDog.Resolved.ConfigTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDog.Resolved.Config
 
@@ -65,6 +65,86 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert {192, 168, 1, 1} in config.upstreams
       assert {1, 1, 1, 1} in config.upstreams
       assert {8, 8, 8, 8} in config.upstreams
+    end
+
+    test "raises on invalid config path" do
+      assert_raise RuntimeError, ~r/Failed to load config/, fn ->
+        Config.load("/nonexistent/path/config.toml")
+      end
+    end
+
+    test "config_path is stored in result" do
+      config = Config.load(@test_config_path)
+      assert config.config_path == @test_config_path
+    end
+  end
+
+  describe "GenServer client API" do
+    setup do
+      config = Config.load(@test_config_path)
+      start_supervised!({Config, config})
+      {:ok, config: config}
+    end
+
+    test "get/0 returns the full config", %{config: config} do
+      result = Config.get()
+      assert result.listen == config.listen
+      assert result.port == config.port
+      assert result.upstreams == config.upstreams
+    end
+
+    test "get_intercept_rules/0 returns only rules", %{config: config} do
+      rules = Config.get_intercept_rules()
+      assert rules == config.intercept_rules
+      assert length(rules) == 4
+    end
+
+    test "get_upstreams/0 returns only upstreams", %{config: config} do
+      upstreams = Config.get_upstreams()
+      assert upstreams == config.upstreams
+      assert length(upstreams) == 3
+    end
+  end
+
+  describe "config defaults" do
+    test "uses defaults when TOML sections are missing" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "minimal_resolved_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+
+      assert config.listen == {127, 0, 0, 1}
+      assert config.port == 5353
+      assert config.upstreams == [{8, 8, 8, 8}]
+      # Defaults
+      assert config.upstream_timeout_ms == 3000
+      assert config.upstream_failure_threshold == 3
+      assert config.intercept_rules == []
+      assert config.cache.enabled == true
+      assert config.cache.max_entries == 10_000
+      assert config.discovery.enabled == true
+    end
+
+    test "uses defaults when config is completely empty" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "empty_resolved_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, "")
+
+      config = Config.load(path)
+
+      assert config.listen == {127, 0, 0, 1}
+      assert config.port == 53
+      assert config.upstreams == [{1, 1, 1, 1}, {8, 8, 8, 8}]
     end
   end
 end

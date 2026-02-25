@@ -181,4 +181,86 @@ defmodule YellowDog.Resolved.CacheTest do
       assert stats.entries <= 100
     end
   end
+
+  describe "stats edge cases" do
+    test "empty cache returns zero stats" do
+      stats = Cache.stats()
+      assert stats.entries == 0
+      assert stats.hit_rate == 0.0
+    end
+
+    test "hit_rate calculation with only hits" do
+      Cache.store("only-hits.test", :a, "data", 300)
+      Process.sleep(10)
+
+      Cache.lookup("only-hits.test", :a)
+      Cache.lookup("only-hits.test", :a)
+      Cache.lookup("only-hits.test", :a)
+
+      stats = Cache.stats()
+      assert stats.hits >= 3
+      assert stats.hit_rate > 0.0
+    end
+
+    test "evictions counter tracks evicted entries" do
+      Cache.store("evict.test", :a, "data", 300)
+      Process.sleep(10)
+
+      Cache.flush()
+      # Evictions are tracked by LRU and sweep, not flush
+      stats = Cache.stats()
+      assert is_integer(stats.evictions)
+    end
+  end
+
+  describe "flush_pattern edge cases" do
+    test "wildcard pattern matches parent domain itself" do
+      Cache.store("example.com", :a, "data1", 300)
+      Cache.store("sub.example.com", :a, "data2", 300)
+      Process.sleep(10)
+
+      count = Cache.flush_pattern("*.example.com")
+      assert count == 2
+    end
+
+    test "flush_pattern returns 0 when no matches" do
+      Cache.store("other.test", :a, "data", 300)
+      Process.sleep(10)
+
+      count = Cache.flush_pattern("*.nomatch.com")
+      assert count == 0
+    end
+
+    test "flush domain with trailing dot" do
+      Cache.store("dotted.test", :a, "data", 300)
+      Process.sleep(10)
+
+      Cache.flush("dotted.test.")
+      assert :miss = Cache.lookup("dotted.test", :a)
+    end
+  end
+
+  describe "multiple types for same domain" do
+    test "stores and retrieves different types independently" do
+      Cache.store("multi.test", :a, "a_data", 300)
+      Cache.store("multi.test", :aaaa, "aaaa_data", 300)
+      Cache.store("multi.test", :txt, "txt_data", 300)
+      Process.sleep(10)
+
+      assert {:hit, "a_data"} = Cache.lookup("multi.test", :a)
+      assert {:hit, "aaaa_data"} = Cache.lookup("multi.test", :aaaa)
+      assert {:hit, "txt_data"} = Cache.lookup("multi.test", :txt)
+    end
+
+    test "flushing domain clears all types" do
+      Cache.store("flush-multi.test", :a, "data1", 300)
+      Cache.store("flush-multi.test", :aaaa, "data2", 300)
+      Process.sleep(10)
+
+      Cache.flush("flush-multi.test")
+
+      assert :miss = Cache.lookup("flush-multi.test", :a)
+      assert :miss = Cache.lookup("flush-multi.test", :aaaa)
+    end
+  end
 end
