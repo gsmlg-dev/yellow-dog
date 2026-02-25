@@ -11,9 +11,9 @@ apps/<app_name>/CLAUDE.md
 
 ## Project Overview
 
-Yellow Dog is a distributed DNS/DHCP/mDNS server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
+Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
 
-### Applications (10 total)
+### Applications (13 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -23,12 +23,15 @@ Yellow Dog is a distributed DNS/DHCP/mDNS server written in Elixir using an umbr
 | **YellowDog.Dhcpv4** | `apps/yellow_dog_dhcpv4/` | DHCPv4 server: lease management, address pools |
 | **YellowDog.Dhcpv6** | `apps/yellow_dog_dhcpv6/` | DHCPv6 server: DUID-based leases, IA_NA support |
 | **YellowDog.Mdns** | `apps/yellow_dog_mdns/` | mDNS responder: service discovery and registration |
+| **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
+| **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DaisyUI, Bun) |
-| **abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
-| **ex_dns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
-| **ex_dhcp** | `apps/ex_dhcp/` | DHCP protocol library (DHCPv4/v6 messages) |
+| **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
+| **Abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
+| **ExDns** | `apps/ex_dns/` | DNS protocol library (messages, zones, records) |
+| **ExDhcp** | `apps/ex_dhcp/` | DHCP protocol library (DHCPv4/v6 messages) |
 
-Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own namespaces: `Abyss.*`, `DNS.*`, `DHCP.*`.
+Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own namespaces: `Abyss.*`, `DNS.*`, `DHCP.*`, `GeoIpDb.*`.
 
 ### Key Architecture Decisions
 
@@ -81,11 +84,13 @@ direnv allow                # or: devenv shell
 
 ```
 YellowDog (core: config, orchestration)
-├── YellowDog.Dns     → ex_dns + abyss + yellow_dog_telemetry
-├── YellowDog.Dhcpv4  → ex_dhcp + abyss + yellow_dog_telemetry
-├── YellowDog.Dhcpv6  → ex_dhcp + abyss + yellow_dog_telemetry
-├── YellowDog.Mdns    → ex_dns + abyss + yellow_dog_telemetry
-└── YellowDogConsole  → phoenix + all protocol apps (read-only status/stats)
+├── YellowDog.Dns         → ex_dns + abyss + yellow_dog_telemetry
+├── YellowDog.Dhcpv4      → ex_dhcp + abyss + yellow_dog_telemetry
+├── YellowDog.Dhcpv6      → ex_dhcp + abyss + yellow_dog_telemetry
+├── YellowDog.Mdns        → ex_dns + abyss + yellow_dog_telemetry
+├── YellowDog.Netboot     → abyss + yellow_dog_telemetry
+├── YellowDog.Fingerprint → ex_dhcp + yellow_dog_telemetry
+└── YellowDogConsole      → phoenix + all service apps + geo_ip_db (read-only status/stats)
 ```
 
 ### Console Page Structure
