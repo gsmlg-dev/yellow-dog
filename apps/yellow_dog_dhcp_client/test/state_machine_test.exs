@@ -514,6 +514,19 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert get_state(pid) == :selecting
   end
 
+  test "garbage binary {:dhcp_rx} does not crash the FSM", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 500})
+
+    # Inject malformed binary data — parse_reply will return {:error, _}
+    # and the FSM should stay alive in :init
+    send(pid, {:dhcp_rx, <<0xFF, 0xFE, 0xFD>>})
+    send(pid, {:dhcp_rx, <<>>})
+    Process.sleep(50)
+
+    assert Process.alive?(pid)
+    assert get_state(pid) == :init
+  end
+
   test "DAD conflict causes DECLINE and returns to :init after backoff", ctx do
     pid =
       start_fsm(ctx, %{
