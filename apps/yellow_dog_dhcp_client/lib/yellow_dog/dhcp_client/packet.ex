@@ -96,7 +96,8 @@ defmodule YellowDog.DhcpClient.Packet do
         requested_ip_option(offered_ip),
         server_id_option(server_ip),
         vendor_class_option(version, capabilities),
-        vendor_class_id_option()
+        vendor_class_id_option(),
+        client_id_option(mac)
       ]
       |> maybe_add_hostname(hostname)
 

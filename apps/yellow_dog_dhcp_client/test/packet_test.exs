@@ -270,6 +270,17 @@ defmodule YellowDog.DhcpClient.PacketTest do
       msg = parse_built_packet(binary)
       assert find_option(msg, 12) == nil
     end
+
+    test "includes client ID (Option 61) matching the MAC — consistent with DHCPDISCOVER" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil
+      assert opt.value == <<1>> <> @test_mac
+    end
   end
 
   # ── build_decline/4 ──
