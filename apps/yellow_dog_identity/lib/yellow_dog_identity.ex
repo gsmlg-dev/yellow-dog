@@ -371,7 +371,8 @@ defmodule YellowDogIdentity do
           {:error, {:idempotent, existing}}
         else
           if force do
-            # Archive old key and proceed
+            # Archive old key and proceed — reuse existing.id so put_host_checked
+            # atomically overwrites the old record (same file path)
             previous_key = %{
               "ssh_pubkey" => existing.ssh_pubkey,
               "key_fingerprint" => existing.key_fingerprint,
@@ -384,8 +385,6 @@ defmodule YellowDogIdentity do
                 id: existing.id
             }
 
-            # Delete old host record (will be replaced)
-            Registry.delete_host(existing.id)
             {:ok, updated_host}
           else
             {:error, :conflict}

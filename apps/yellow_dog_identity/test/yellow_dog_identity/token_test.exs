@@ -19,6 +19,35 @@ defmodule YellowDogIdentity.TokenTest do
     test "creates single-use token by default" do
       assert {:ok, %Token{max_uses: 1}, _} = Token.create(%{})
     end
+
+    test "rejects negative max_uses" do
+      assert {:error, :invalid_max_uses} = Token.create(%{max_uses: -1})
+    end
+
+    test "rejects zero max_uses" do
+      assert {:error, :invalid_max_uses} = Token.create(%{max_uses: 0})
+    end
+
+    test "rejects max_uses exceeding limit" do
+      assert {:error, :invalid_max_uses} = Token.create(%{max_uses: 100_001})
+    end
+
+    test "rejects negative ttl_seconds" do
+      assert {:error, :invalid_ttl} = Token.create(%{ttl_seconds: -1})
+    end
+
+    test "rejects ttl exceeding one year" do
+      assert {:error, :invalid_ttl} = Token.create(%{ttl_seconds: 86_400 * 366})
+    end
+
+    test "rejects hostname_pattern exceeding max length" do
+      long_pattern = String.duplicate("a", 257)
+      assert {:error, :pattern_too_long} = Token.create(%{hostname_pattern: long_pattern})
+    end
+
+    test "allows zero ttl_seconds for immediately expiring token" do
+      assert {:ok, %Token{}, _} = Token.create(%{ttl_seconds: 0})
+    end
   end
 
   describe "verify/3" do
