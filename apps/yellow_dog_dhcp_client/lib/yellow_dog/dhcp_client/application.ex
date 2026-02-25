@@ -43,19 +43,39 @@ defmodule YellowDog.DhcpClient.Application do
   """
   @spec start_interface(String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start_interface(interface, opts \\ []) do
-    spec = {YellowDog.DhcpClient.InterfaceSupervisor, [interface: interface] ++ opts}
+    with {:ok, opts} <- resolve_mac(interface, opts) do
+      spec = {YellowDog.DhcpClient.InterfaceSupervisor, [interface: interface] ++ opts}
 
-    case DynamicSupervisor.start_child(@dynamic_supervisor, spec) do
-      {:ok, pid} ->
-        Logger.info("DHCP client interface supervisor started for #{interface}")
-        {:ok, pid}
+      case DynamicSupervisor.start_child(@dynamic_supervisor, spec) do
+        {:ok, pid} ->
+          Logger.info("DHCP client interface supervisor started for #{interface}")
+          {:ok, pid}
 
-      {:error, {:already_started, pid}} ->
-        {:error, {:already_started, pid}}
+        {:error, {:already_started, pid}} ->
+          {:error, {:already_started, pid}}
 
-      {:error, reason} = error ->
-        Logger.warning("Failed to start DHCP client for #{interface}: #{inspect(reason)}")
-        error
+        {:error, reason} = error ->
+          Logger.warning("Failed to start DHCP client for #{interface}: #{inspect(reason)}")
+          error
+      end
+    end
+  end
+
+  defp resolve_mac(interface, opts) when is_list(opts) do
+    if Keyword.has_key?(opts, :mac) do
+      {:ok, opts}
+    else
+      case YellowDog.DhcpClient.read_mac(interface) do
+        {:ok, mac} ->
+          {:ok, Keyword.put(opts, :mac, mac)}
+
+        {:error, reason} ->
+          Logger.warning(
+            "DHCP client: could not auto-detect MAC for #{interface}: #{inspect(reason)}"
+          )
+
+          {:error, {:mac_detection_failed, reason}}
+      end
     end
   end
 
