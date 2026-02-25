@@ -570,6 +570,158 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "LRU eviction boundary with tiny max_entries" do
+    setup do
+      stop_supervised!(Cache)
+      start_supervised!({Cache, %{@cache_config | max_entries: 5}})
+      :ok
+    end
+
+    test "exactly max_entries survive after eviction" do
+      # Insert 8 entries (3 over the limit of 5)
+      for i <- 1..8 do
+        Cache.store("tiny-#{i}.test", :a, "data-#{i}", 300)
+        # Sleep between stores so last_accessed timestamps differ
+        Process.sleep(5)
+      end
+
+      Process.sleep(20)
+
+      stats = Cache.stats()
+      assert stats.entries == 5
+    end
+
+    test "newest entries survive, oldest evicted" do
+      # Insert 3 entries in "old" bucket
+      for i <- 1..3 do
+        Cache.store("order-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(10)
+
+      # Wait >1 second so last_accessed (in seconds) differs
+      Process.sleep(1100)
+
+      # Insert 5 entries in "new" bucket — fills to max_entries=5
+      # This triggers eviction of the 3 oldest entries
+      for i <- 4..8 do
+        Cache.store("order-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(20)
+
+      # The 5 newest entries (4-8) should survive
+      for i <- 4..8 do
+        expected = "data-#{i}"
+        assert {:hit, ^expected} = Cache.lookup("order-#{i}.test", :a)
+      end
+
+      # The 3 oldest entries (1-3) should be evicted
+      for i <- 1..3 do
+        assert :miss = Cache.lookup("order-#{i}.test", :a)
+      end
+    end
+
+    test "evictions counter increments by exact overflow amount" do
+      initial_evictions = Cache.stats().evictions
+
+      for i <- 1..8 do
+        Cache.store("evict-count-#{i}.test", :a, "data-#{i}", 300)
+        Process.sleep(5)
+      end
+
+      Process.sleep(20)
+
+      stats = Cache.stats()
+      # 8 inserted - 5 max = 3 evictions
+      assert stats.evictions - initial_evictions == 3
+    end
+
+    test "rapid same-domain stores don't trigger false evictions" do
+      # Overwriting the same key 10 times shouldn't increase entry count
+      for _ <- 1..10 do
+        Cache.store("same.test", :a, "data", 300)
+      end
+
+      Process.sleep(20)
+
+      stats = Cache.stats()
+      assert stats.entries == 1
+    end
+  end
+
+  describe "negative caching details" do
+    setup do
+      stop_supervised!(Cache)
+      start_supervised!({Cache, %{@cache_config | negative_ttl_s: 10, min_ttl_s: 60}})
+      :ok
+    end
+
+    test "negative entry uses negative_ttl_s, not clamped by min_ttl_s" do
+      # min_ttl_s is 60, negative_ttl_s is 10
+      # Negative entries should use 10s, not 60s
+      Cache.store_negative("neg-ttl.test", :a, "nxdomain")
+      Process.sleep(10)
+
+      assert {:hit, "nxdomain"} = Cache.lookup("neg-ttl.test", :a)
+
+      # Inspect the ETS entry directly to verify TTL
+      [{_key, _resp, expires_at, _last, negative}] =
+        :ets.lookup(YellowDog.Resolved.Cache, {"neg-ttl.test", :a})
+
+      assert negative == true
+
+      now = System.monotonic_time(:second)
+      remaining_ttl = expires_at - now
+      # Should be close to 10s (negative_ttl_s), not 60s (min_ttl_s)
+      assert remaining_ttl <= 10
+      assert remaining_ttl > 0
+    end
+
+    test "negative flag is stored correctly in ETS" do
+      Cache.store("normal.test", :a, "normal-data", 300)
+      Cache.store_negative("negative.test", :a, "nxdomain-data")
+      Process.sleep(10)
+
+      [{_, _, _, _, normal_neg}] =
+        :ets.lookup(YellowDog.Resolved.Cache, {"normal.test", :a})
+
+      [{_, _, _, _, neg_flag}] =
+        :ets.lookup(YellowDog.Resolved.Cache, {"negative.test", :a})
+
+      assert normal_neg == false
+      assert neg_flag == true
+    end
+  end
+
+  describe "flush_pattern deep subdomain matching" do
+    test "wildcard matches arbitrarily deep subdomains" do
+      Cache.store("a.b.c.deep.test", :a, "d1", 300)
+      Cache.store("x.y.deep.test", :a, "d2", 300)
+      Cache.store("deep.test", :a, "d3", 300)
+      Cache.store("unrelated.test", :a, "d4", 300)
+      Process.sleep(10)
+
+      count = Cache.flush_pattern("*.deep.test")
+      # Should match: deep.test (parent), a.b.c.deep.test, x.y.deep.test
+      assert count == 3
+
+      assert :miss = Cache.lookup("a.b.c.deep.test", :a)
+      assert :miss = Cache.lookup("x.y.deep.test", :a)
+      assert :miss = Cache.lookup("deep.test", :a)
+      assert {:hit, "d4"} = Cache.lookup("unrelated.test", :a)
+    end
+
+    test "flush_pattern is case insensitive" do
+      Cache.store("case.test", :a, "data", 300)
+      Process.sleep(10)
+
+      count = Cache.flush_pattern("CASE.TEST")
+      assert count == 1
+      assert :miss = Cache.lookup("case.test", :a)
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       pid = Process.whereis(Cache)

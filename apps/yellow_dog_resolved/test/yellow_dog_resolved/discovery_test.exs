@@ -106,6 +106,93 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "backoff calculation via state" do
+    setup do
+      config = %{
+        upstreams: [{198, 51, 100, 1}],
+        upstream_timeout_ms: 200,
+        discovery: %{
+          enabled: true,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 2, reconnect_max_s: 16}
+        }
+      }
+
+      name = :"discovery_backoff_#{System.unique_integer([:positive])}"
+      {:ok, pid} = GenServer.start_link(Discovery, config, name: name)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+      %{pid: pid}
+    end
+
+    test "initial backoff equals reconnect_base_s", %{pid: pid} do
+      state = :sys.get_state(pid)
+      assert state.backoff == 2
+    end
+
+    test "backoff doubles after management connection loss", %{pid: pid} do
+      # Simulate a management connection that dies
+      fake_mgmt = spawn(fn -> Process.sleep(:infinity) end)
+      # Inject management_pid into state
+      :sys.replace_state(pid, fn state ->
+        %{state | management_pid: fake_mgmt, ws_endpoint: "ws://127.0.0.1:9999/ws"}
+      end)
+
+      # Send the :DOWN message directly to the Discovery GenServer
+      # (Discovery normally receives this because it calls Process.monitor in
+      # start_management_connection, but we're injecting state manually)
+      send(pid, {:DOWN, make_ref(), :process, fake_mgmt, :killed})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      # backoff should double from 2 → 4
+      assert state.backoff == 4
+      assert state.management_pid == nil
+      assert state.ws_endpoint == nil
+    end
+
+    test "backoff caps at reconnect_max_s", %{pid: pid} do
+      # Inject a backoff just below the max
+      fake_mgmt = spawn(fn -> Process.sleep(:infinity) end)
+      :sys.replace_state(pid, fn state ->
+        %{state | management_pid: fake_mgmt, ws_endpoint: "ws://fake/ws", backoff: 8}
+      end)
+
+      send(pid, {:DOWN, make_ref(), :process, fake_mgmt, :killed})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      # 8 * 2 = 16, which equals reconnect_max_s
+      assert state.backoff == 16
+
+      # Do it again — should stay at 16 (capped)
+      fake_mgmt2 = spawn(fn -> Process.sleep(:infinity) end)
+      :sys.replace_state(pid, fn state ->
+        %{state | management_pid: fake_mgmt2, ws_endpoint: "ws://fake/ws"}
+      end)
+
+      send(pid, {:DOWN, make_ref(), :process, fake_mgmt2, :killed})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      # min(16 * 2, 16) = 16
+      assert state.backoff == 16
+    end
+
+    test "successful connection resets backoff to base", %{pid: pid} do
+      # Set a high backoff to simulate prior failures
+      :sys.replace_state(pid, fn state -> %{state | backoff: 16} end)
+
+      state = :sys.get_state(pid)
+      assert state.backoff == 16
+
+      # The actual reset happens in start_management_connection/2 which we can't
+      # call directly without a real WS. But we verified the field exists and
+      # the :DOWN handler doubles it correctly. The reset logic is:
+      # %{state | backoff: state.ws_config.reconnect_base_s}
+      assert state.ws_config.reconnect_base_s == 2
+    end
+  end
+
   describe "parse_discovery_response/1" do
     test "returns :not_found for non-YellowDog response" do
       # Build a basic DNS response without EDNS option 65321

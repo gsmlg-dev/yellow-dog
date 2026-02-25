@@ -194,6 +194,102 @@ defmodule YellowDog.Resolved.ListenerTest do
     end
   end
 
+  describe "handle_data/2 with non-A query types" do
+    setup do
+      config = %{
+        listen: {127, 0, 0, 1},
+        port: 0,
+        upstreams: [{198, 51, 100, 1}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3,
+        intercept_rules: [
+          %{match: {:suffix, "local.dev"}, type: :a, value: "127.0.0.1", ttl: 300}
+        ],
+        cache: @cache_config,
+        discovery: %{
+          enabled: false,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        },
+        config_path: ""
+      }
+
+      start_supervised!({Config, config})
+      start_supervised!({Cache, @cache_config})
+
+      {:ok, recv_socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(recv_socket) end)
+
+      {:ok, send_socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(send_socket) end)
+
+      {:ok, recv_port} = :inet.port(recv_socket)
+      state = %{socket: send_socket}
+
+      {:ok, state: state, recv_socket: recv_socket, recv_port: recv_port}
+    end
+
+    test "AAAA query for intercepted domain returns empty answer (type mismatch)", ctx do
+      # The intercept rule is type :a — an AAAA (28) query should return empty answer
+      query = build_query("app.local.dev", 28)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.anlist == []
+    end
+
+    test "MX query (type 15) doesn't crash the listener", ctx do
+      query = build_query("app.local.dev", 15)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      result = Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+      assert {:continue, _} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+    end
+
+    test "large but valid DNS query is handled correctly", ctx do
+      # Query with a very long subdomain (but under 253 chars total)
+      long_domain = String.duplicate("a", 60) <> ".local.dev"
+      query = build_query(long_domain, 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      result = Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+      assert {:continue, _} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.id == query.header.id
+    end
+
+    test "exactly 12-byte packet (minimal DNS header, no questions) → FORMERR", ctx do
+      # A valid DNS header is 12 bytes, but with qdcount=0 and garbage fields
+      # This should parse as a DNS message with no questions
+      header = <<0xAB, 0xCD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
+
+      result = Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, header}, ctx.state)
+      assert {:continue, _} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+    end
+  end
+
   defp build_query(domain, type_num) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))

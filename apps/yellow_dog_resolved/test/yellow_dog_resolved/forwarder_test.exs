@@ -259,6 +259,97 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "failover chain with 3 upstreams (2 dead, 1 live)" do
+    setup do
+      {:ok, dead1_pid, dead1_port} = YellowDog.Resolved.Test.FakeUpstream.start(:timeout)
+      {:ok, dead2_pid, dead2_port} = YellowDog.Resolved.Test.FakeUpstream.start(:timeout)
+      {:ok, live_pid, live_port} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn ->
+        YellowDog.Resolved.Test.FakeUpstream.stop(dead1_pid)
+        YellowDog.Resolved.Test.FakeUpstream.stop(dead2_pid)
+        YellowDog.Resolved.Test.FakeUpstream.stop(live_pid)
+      end)
+
+      config = %{
+        upstreams: [
+          {{127, 0, 0, 1}, dead1_port},
+          {{127, 0, 0, 1}, dead2_port},
+          {{127, 0, 0, 1}, live_port}
+        ],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({Forwarder, config})
+      {:ok, live_port: live_port}
+    end
+
+    test "eventually reaches live upstream after 2 dead ones" do
+      query = build_query("chain.test")
+      assert {:ok, response} = Forwarder.forward(query)
+
+      # Should get a valid DNS response from the live upstream
+      decoded = DNS.Message.from_iodata(response)
+      assert decoded.header.qr == 1
+    end
+
+    test "all 3 upstreams are tried (2 exceptions + 1 success)" do
+      test_pid = self()
+      ref = make_ref()
+      attempts = :counters.new(1, [:atomics])
+
+      :telemetry.attach(
+        "chain-start-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :forward, :start],
+        fn _event, _measurements, _metadata, _ ->
+          :counters.add(attempts, 1, 1)
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        "chain-stop-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :forward, :stop],
+        fn _event, _measurements, _metadata, _ ->
+          send(test_pid, :forward_succeeded)
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach("chain-start-#{inspect(ref)}")
+        :telemetry.detach("chain-stop-#{inspect(ref)}")
+      end)
+
+      query = build_query("chain-count.test")
+      assert {:ok, _} = Forwarder.forward(query)
+
+      assert_receive :forward_succeeded, 5000
+      # All 3 upstreams should have been tried
+      assert :counters.get(attempts, 1) == 3
+    end
+  end
+
+  describe "upstream_success resets failure count to 0 via cast" do
+    test "direct upstream_success cast resets count" do
+      config = %{@config | upstreams: [{198, 51, 100, 1}], upstream_timeout_ms: 200}
+      start_supervised!({Forwarder, config})
+      pid = Process.whereis(Forwarder)
+
+      # Inject failures
+      GenServer.cast(pid, {:upstream_failure, {198, 51, 100, 1}})
+      GenServer.cast(pid, {:upstream_failure, {198, 51, 100, 1}})
+      Process.sleep(10)
+      assert :sys.get_state(pid).failure_counts[{198, 51, 100, 1}] == 2
+
+      # Success resets
+      GenServer.cast(pid, {:upstream_success, {198, 51, 100, 1}})
+      Process.sleep(10)
+      assert :sys.get_state(pid).failure_counts[{198, 51, 100, 1}] == 0
+    end
+  end
+
   describe "start_link/1 with {ip, port} upstreams" do
     test "starts with mixed upstream formats" do
       config = %{@config | upstreams: [{1, 1, 1, 1}, {{8, 8, 8, 8}, 5353}]}
