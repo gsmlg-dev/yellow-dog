@@ -263,5 +263,99 @@ defmodule YellowDogIdentity.RegistryTest do
       assert content =~ "hostname"
       assert content =~ host.hostname
     end
+
+    test "cloud-attested host with DateTime in trust_evidence survives restart", %{tmp_dir: tmp_dir} do
+      name1 = :"persist_cloud_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
+
+      {:ok, host} =
+        Host.new(%{
+          hostname: "aws-node-01",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      # Simulate what trust router sets: cloud evidence with DateTime fields
+      host_with_evidence = %{
+        host
+        | trust_level: :cloud_verified,
+          trust_provider: :aws,
+          trust_evidence: %{
+            provider: :aws,
+            account_id: "123456789012",
+            instance_id: "i-0abcdef1234567890",
+            region: "us-east-1",
+            image_id: "ami-0abc12345",
+            instance_type: "t3.medium",
+            verified_at: DateTime.utc_now(),
+            document_time: "2026-01-01T12:00:00Z"
+          },
+          status: :approved,
+          approved_at: DateTime.utc_now(),
+          approved_by: "auto:aws-prod-auto"
+      }
+
+      :ok = GenServer.call(pid1, {:put_host, host_with_evidence})
+      GenServer.stop(pid1)
+
+      # Restart and verify the host is loadable
+      name2 = :"persist_cloud_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid2} = Registry.start_link(data_dir: tmp_dir, name: name2)
+
+      assert {:ok, restored} = GenServer.call(pid2, {:get_host, host.id})
+      assert restored.hostname == "aws-node-01"
+      assert restored.trust_level == :cloud_verified
+      assert restored.trust_provider == :aws
+      assert restored.status == :approved
+      # trust_evidence is restored as a string-keyed map (TOML round-trip)
+      assert is_map(restored.trust_evidence)
+      assert Map.get(restored.trust_evidence, "account_id") == "123456789012"
+      assert Map.get(restored.trust_evidence, "region") == "us-east-1"
+      # verified_at is stored as ISO8601 string after TOML round-trip
+      assert is_binary(Map.get(restored.trust_evidence, "verified_at"))
+
+      GenServer.stop(pid2)
+    end
+
+    test "GCP-attested host with DateTime in trust_evidence survives restart", %{tmp_dir: tmp_dir} do
+      name1 = :"persist_gcp_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
+
+      {:ok, host} =
+        Host.new(%{
+          hostname: "gcp-node-01",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      host_with_evidence = %{
+        host
+        | trust_level: :cloud_verified,
+          trust_provider: :gcp,
+          trust_evidence: %{
+            provider: :gcp,
+            project_id: "my-gcp-project",
+            instance_id: "1234567890",
+            instance_name: "gcp-node-01",
+            zone: "us-central1-a",
+            verified_at: DateTime.utc_now()
+          }
+      }
+
+      :ok = GenServer.call(pid1, {:put_host, host_with_evidence})
+      GenServer.stop(pid1)
+
+      name2 = :"persist_gcp_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid2} = Registry.start_link(data_dir: tmp_dir, name: name2)
+
+      assert {:ok, restored} = GenServer.call(pid2, {:get_host, host.id})
+      assert restored.trust_level == :cloud_verified
+      assert restored.trust_provider == :gcp
+      assert Map.get(restored.trust_evidence, "project_id") == "my-gcp-project"
+      assert Map.get(restored.trust_evidence, "zone") == "us-central1-a"
+      assert is_binary(Map.get(restored.trust_evidence, "verified_at"))
+
+      GenServer.stop(pid2)
+    end
   end
 end
