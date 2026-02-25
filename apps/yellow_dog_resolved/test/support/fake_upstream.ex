@@ -38,6 +38,11 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
   end
 
   @impl true
+  def handle_info({:udp, _socket, _client_ip, _client_port, _data}, %{mode: :timeout} = state) do
+    # Silently drop the packet — simulates an unreachable upstream
+    {:noreply, state}
+  end
+
   def handle_info({:udp, _socket, client_ip, client_port, data}, state) do
     response = build_response(data, state.mode)
     :gen_udp.send(state.socket, client_ip, client_port, response)
