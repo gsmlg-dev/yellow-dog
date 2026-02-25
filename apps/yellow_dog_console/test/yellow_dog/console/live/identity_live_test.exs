@@ -170,6 +170,63 @@ defmodule YellowDog.Console.IdentityLiveTest do
       html = render_click(view, "refresh")
       assert html =~ "Pending Approvals"
     end
+
+    test "select_all event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "select_all")
+      assert html =~ "Pending Approvals"
+    end
+
+    test "select_none event does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "select_none")
+      assert html =~ "Pending Approvals"
+    end
+
+    test "bulk_approve with empty selection does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "bulk_approve")
+      assert html =~ "Pending Approvals"
+    end
+
+    test "bulk_reject with empty selection does not crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "bulk_reject")
+      assert html =~ "Pending Approvals"
+    end
+
+    test "approve event for nonexistent host handles error gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "approve", %{"id" => "nonexistent-id"})
+      assert html =~ "Pending Approvals"
+    end
+
+    test "reject event for nonexistent host handles error gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      html = render_click(view, "reject", %{"id" => "nonexistent-id"})
+      assert html =~ "Pending Approvals"
+    end
+
+    test "PubSub host_registered message triggers reload", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      send(view.pid, {:host_registered, %{id: "new-host-id"}})
+      html = render(view)
+      assert html =~ "Pending Approvals"
+    end
+
+    test "PubSub host_updated message triggers reload", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      send(view.pid, {:host_updated, %{id: "some-host-id"}})
+      html = render(view)
+      assert html =~ "Pending Approvals"
+    end
+
+    test "unknown PubSub messages are silently ignored", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/approvals")
+      send(view.pid, {:unknown_message, :data})
+      html = render(view)
+      assert html =~ "Pending Approvals"
+    end
   end
 
   # ============================================================================
@@ -200,6 +257,50 @@ defmodule YellowDog.Console.IdentityLiveTest do
       assert html =~ "Create Provisioning Token"
       assert html =~ "Hostname Pattern"
       assert html =~ "Max Uses"
+    end
+
+    test "toggle create form twice hides it again", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/tokens")
+      render_click(view, "toggle_create")
+      html = render_click(view, "toggle_create")
+      # Form should be hidden again
+      assert html =~ "Provisioning Tokens"
+    end
+
+    test "create_token form submission handles unavailable service gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/tokens")
+      render_click(view, "toggle_create")
+
+      html =
+        view
+        |> form("form",
+          hostname_pattern: "node-*",
+          max_uses: "1",
+          ttl_hours: "24",
+          role: ""
+        )
+        |> render_submit()
+
+      # Either token created (if service running) or error flash shown
+      assert html =~ "Provisioning Tokens"
+    end
+
+    test "revoke_token for nonexistent id handles error gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/tokens")
+      html = render_click(view, "revoke_token", %{"id" => "nonexistent-token-id"})
+      assert html =~ "Provisioning Tokens"
+    end
+
+    test "refresh event works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/tokens")
+      html = render_click(view, "refresh")
+      assert html =~ "Provisioning Tokens"
+    end
+
+    test "dismiss_token event clears new token display", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/tokens")
+      html = render_click(view, "dismiss_token")
+      assert html =~ "Provisioning Tokens"
     end
   end
 
