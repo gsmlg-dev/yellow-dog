@@ -4,13 +4,12 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
   alias YellowDog.Fingerprint.DeviceRegistry
   alias YellowDog.Fingerprint.Types.Fingerprint
 
-  # Use unique MACs per test via unique_integer to avoid inter-test interference.
+  # Use cryptographically random MACs to avoid collision with persisted device data.
   # DeviceRegistry normalizes MACs to lowercase, so we generate lowercase here too.
+  # Bit 1 of first octet = 1 marks locally administered (avoids real OUI prefixes).
   defp unique_mac do
-    n = System.unique_integer([:positive]) |> rem(0xFFFFFF)
-    <<a, b, c>> = <<n::24>>
-
-    [0x02, 0x00, 0x00, a, b, c]
+    :crypto.strong_rand_bytes(5)
+    |> then(fn <<a, b, c, d, e>> -> [0x02, a, b, c, d, e] end)
     |> Enum.map_join(":", &String.pad_leading(Integer.to_string(&1, 16), 2, "0"))
     |> String.downcase()
   end
@@ -59,7 +58,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       assert :not_found = DeviceRegistry.get(mac)
 
       DeviceRegistry.update_device(mac, sample_attrs(mac))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       assert {:ok, device} = DeviceRegistry.get(mac)
       assert device.mac == mac
@@ -70,7 +69,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       hostname = "myhost-#{mac}"
 
       DeviceRegistry.update_device(mac, sample_attrs(mac, hostname: hostname))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       {:ok, device} = DeviceRegistry.get(mac)
       assert device.hostname == hostname
@@ -80,12 +79,13 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       mac = unique_mac()
 
       DeviceRegistry.update_device(mac, sample_attrs(mac))
-      Process.sleep(10)
+      # flush/0 is a GenServer.call — guarantees all prior casts are processed
+      DeviceRegistry.flush()
       {:ok, device1} = DeviceRegistry.get(mac)
       assert device1.observation_count == 1
 
       DeviceRegistry.update_device(mac, sample_attrs(mac))
-      Process.sleep(10)
+      DeviceRegistry.flush()
       {:ok, device2} = DeviceRegistry.get(mac)
       assert device2.observation_count == 2
     end
@@ -94,10 +94,10 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       mac = unique_mac()
 
       DeviceRegistry.update_device(mac, sample_attrs(mac, profile_id: nil))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       DeviceRegistry.update_device(mac, sample_attrs(mac, profile_id: "windows-10", profile_confidence: 85))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       {:ok, device} = DeviceRegistry.get(mac)
       assert device.profile_id == "windows-10"
@@ -121,7 +121,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       before_count = length(DeviceRegistry.list())
 
       DeviceRegistry.update_device(mac, sample_attrs(mac))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       after_count = length(DeviceRegistry.list())
       assert after_count == before_count + 1
@@ -132,9 +132,10 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       mac_b = unique_mac()
 
       DeviceRegistry.update_device(mac_a, sample_attrs(mac_a))
+      DeviceRegistry.flush()
       Process.sleep(5)
       DeviceRegistry.update_device(mac_b, sample_attrs(mac_b))
-      Process.sleep(10)
+      DeviceRegistry.flush()
 
       devices = DeviceRegistry.list()
       macs = Enum.map(devices, & &1.mac)
@@ -168,7 +169,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       before = DeviceRegistry.stats().total_devices
 
       DeviceRegistry.update_device(mac, sample_attrs(mac))
-      Process.sleep(50)
+      DeviceRegistry.flush()
 
       after_stats = DeviceRegistry.stats()
       assert after_stats.total_devices == before + 1
@@ -179,7 +180,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
       before = DeviceRegistry.stats().identified_devices
 
       DeviceRegistry.update_device(mac, sample_attrs(mac, profile_id: "ios-15", profile_confidence: 90))
-      Process.sleep(50)
+      DeviceRegistry.flush()
 
       after_stats = DeviceRegistry.stats()
       assert after_stats.identified_devices == before + 1
