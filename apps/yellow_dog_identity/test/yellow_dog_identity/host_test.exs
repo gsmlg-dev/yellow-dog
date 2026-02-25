@@ -217,6 +217,24 @@ defmodule YellowDogIdentity.HostTest do
       assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
     end
 
+    test "from_toml_map returns nil for invalid created_at datetime string" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "node-01",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      # Corrupt created_at to an invalid ISO8601 string
+      corrupted =
+        put_in(toml_map, ["host", "created_at"], "not-a-valid-datetime")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      # parse_datetime returns nil for unparseable strings (not an error)
+      assert is_nil(restored.created_at)
+    end
+
     test "from_toml_map returns invalid_toml_data when required key is missing" do
       # Missing "id" key triggers Map.fetch! KeyError → rescue → {:error, {:invalid_toml_data, _}}
       incomplete = %{

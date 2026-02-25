@@ -355,6 +355,32 @@ defmodule YellowDogIdentity.RegistryTest do
       assert content =~ host.hostname
     end
 
+    test "corrupt TOML file is skipped on load but valid files are still loaded", %{tmp_dir: tmp_dir} do
+      hosts_dir = Path.join(tmp_dir, "hosts")
+      File.mkdir_p!(hosts_dir)
+
+      # Start registry, persist a valid host, then stop
+      name1 = :"corrupt_skip_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
+      host = make_host()
+      :ok = GenServer.call(pid1, {:put_host, host})
+      GenServer.stop(pid1)
+
+      # Drop a corrupt TOML file alongside the valid one
+      File.write!(Path.join(hosts_dir, "corrupt-id.toml"), "[[[not valid toml")
+
+      # Restart — corrupt file is skipped, valid host is still loaded
+      name2 = :"corrupt_skip_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid2} = Registry.start_link(data_dir: tmp_dir, name: name2)
+
+      assert {:ok, _} = GenServer.call(pid2, {:get_host, host.id})
+      # The corrupt file produced no host
+      all = GenServer.call(pid2, :list_hosts)
+      assert length(all) == 1
+
+      GenServer.stop(pid2)
+    end
+
     test "cloud-attested host with DateTime in trust_evidence survives restart", %{tmp_dir: tmp_dir} do
       name1 = :"persist_cloud_#{:erlang.unique_integer([:positive])}"
       {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
