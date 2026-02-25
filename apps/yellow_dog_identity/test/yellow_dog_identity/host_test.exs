@@ -1,0 +1,111 @@
+defmodule YellowDogIdentity.HostTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDogIdentity.Host
+
+  @valid_ssh_pubkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHUzjC6gKCLjRoHMvMXBx3cCe49wjm69r9B7YBcFcAv1 test@host"
+  @valid_age_recipient "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
+
+  describe "compute_fingerprint/1" do
+    test "computes SHA256 fingerprint from valid ed25519 pubkey" do
+      assert {:ok, "SHA256:" <> _} = Host.compute_fingerprint(@valid_ssh_pubkey)
+    end
+
+    test "returns error for invalid pubkey" do
+      assert {:error, :invalid_pubkey} = Host.compute_fingerprint("not a key")
+    end
+  end
+
+  describe "validate_pubkey/1" do
+    test "accepts valid ed25519 pubkey" do
+      assert :ok = Host.validate_pubkey(@valid_ssh_pubkey)
+    end
+
+    test "rejects invalid key" do
+      assert {:error, :invalid_pubkey} = Host.validate_pubkey("bad-key")
+    end
+  end
+
+  describe "validate_age_recipient/1" do
+    test "accepts valid age recipient" do
+      assert :ok = Host.validate_age_recipient(@valid_age_recipient)
+    end
+
+    test "rejects invalid age recipient" do
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("not-age")
+    end
+  end
+
+  describe "new/1" do
+    test "creates host with valid params" do
+      params = %{
+        hostname: "node-01",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient,
+        metadata: %{"role" => "worker"}
+      }
+
+      assert {:ok, %Host{} = host} = Host.new(params)
+      assert host.hostname == "node-01"
+      assert host.status == :pending
+      assert host.trust_level == :unverified
+      assert host.role == "worker"
+      assert String.starts_with?(host.key_fingerprint, "SHA256:")
+      assert host.id =~ ~r/^[0-9a-f]{8}-/
+    end
+
+    test "creates host with string-key params" do
+      params = %{
+        "hostname" => "node-02",
+        "ssh_pubkey" => @valid_ssh_pubkey,
+        "age_recipient" => @valid_age_recipient
+      }
+
+      assert {:ok, %Host{hostname: "node-02"}} = Host.new(params)
+    end
+
+    test "rejects missing hostname" do
+      params = %{ssh_pubkey: @valid_ssh_pubkey, age_recipient: @valid_age_recipient}
+      assert {:error, :hostname_required} = Host.new(params)
+    end
+
+    test "rejects missing ssh_pubkey" do
+      params = %{hostname: "node-01", age_recipient: @valid_age_recipient}
+      assert {:error, :ssh_pubkey_required} = Host.new(params)
+    end
+
+    test "rejects invalid pubkey format" do
+      params = %{
+        hostname: "node-01",
+        ssh_pubkey: "bad-key",
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :invalid_pubkey} = Host.new(params)
+    end
+  end
+
+  describe "to_toml_map/1 and from_toml_map/1" do
+    test "round-trips host through TOML map" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "node-01",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient,
+          metadata: %{"role" => "worker"}
+        })
+
+      toml_map = Host.to_toml_map(host)
+      assert %{"host" => %{"hostname" => "node-01"}} = toml_map
+
+      {:ok, restored} = Host.from_toml_map(toml_map)
+      assert restored.hostname == host.hostname
+      assert restored.key_fingerprint == host.key_fingerprint
+      assert restored.id == host.id
+    end
+
+    test "from_toml_map rejects missing host section" do
+      assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
+    end
+  end
+end

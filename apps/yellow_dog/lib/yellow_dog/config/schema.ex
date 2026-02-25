@@ -62,6 +62,16 @@ defmodule YellowDog.Config.Schema do
             "dns_servers" => ["2001:4860:4860::8888"]
           }
         ]
+      },
+      "identity" => %{
+        "enabled" => false,
+        "approval" => %{
+          "default_action" => "pending"
+        },
+        "cloud" => %{
+          "enabled" => false,
+          "replay_window_seconds" => 300
+        }
       }
     }
   end
@@ -147,7 +157,8 @@ defmodule YellowDog.Config.Schema do
       "dns" => "# DNS server configuration",
       "mdns" => "# mDNS responder configuration",
       "dhcpv4" => "# DHCPv4 server configuration",
-      "dhcpv6" => "# DHCPv6 server configuration"
+      "dhcpv6" => "# DHCPv6 server configuration",
+      "identity" => "# Host Identity Registry configuration"
     }
   end
 

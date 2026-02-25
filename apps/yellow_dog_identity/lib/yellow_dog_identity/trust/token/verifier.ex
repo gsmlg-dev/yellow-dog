@@ -1,0 +1,82 @@
+defmodule YellowDogIdentity.Trust.Token.Verifier do
+  @moduledoc """
+  Provisioning token trust provider.
+
+  Verifies registration requests that include an Authorization header
+  containing a provisioning token.
+  """
+
+  @behaviour YellowDogIdentity.Trust.Provider
+
+  alias YellowDogIdentity.Token
+
+  @impl true
+  def verify(%{authorization: nil}), do: {:skip, :not_applicable}
+  def verify(%{authorization: ""}), do: {:skip, :not_applicable}
+
+  def verify(%{authorization: auth_header, hostname: hostname} = _context) do
+    raw_token = extract_bearer_token(auth_header)
+
+    if raw_token do
+      verify_against_stored_tokens(raw_token, hostname)
+    else
+      {:skip, :not_applicable}
+    end
+  end
+
+  def verify(_), do: {:skip, :not_applicable}
+
+  defp extract_bearer_token("Bearer " <> token), do: String.trim(token)
+  defp extract_bearer_token(token) when is_binary(token), do: String.trim(token)
+  defp extract_bearer_token(_), do: nil
+
+  defp verify_against_stored_tokens(raw_token, hostname) do
+    # Load tokens from registry
+    case load_tokens() do
+      {:ok, tokens} ->
+        find_matching_token(tokens, raw_token, hostname)
+
+      {:error, _} ->
+        {:untrusted, :token_store_unavailable}
+    end
+  end
+
+  defp find_matching_token(tokens, raw_token, hostname) do
+    Enum.reduce_while(tokens, {:untrusted, :invalid_token}, fn token, _acc ->
+      case Token.verify(token, raw_token, hostname) do
+        :ok ->
+          evidence = %{
+            provider: :token,
+            token_id: token.id,
+            hostname_pattern: token.hostname_pattern,
+            role: token.role,
+            verified_at: DateTime.utc_now()
+          }
+
+          {:halt, {:trusted, :token_verified, evidence}}
+
+        {:error, :hostname_mismatch} ->
+          {:cont, {:untrusted, :hostname_mismatch}}
+
+        {:error, _reason} ->
+          {:cont, {:untrusted, :invalid_token}}
+      end
+    end)
+  end
+
+  defp load_tokens do
+    case Code.ensure_loaded(YellowDogIdentity.Registry) do
+      {:module, _} ->
+        try do
+          {:ok, YellowDogIdentity.Registry.list_tokens()}
+        rescue
+          _ -> {:ok, []}
+        catch
+          :exit, _ -> {:ok, []}
+        end
+
+      _ ->
+        {:ok, []}
+    end
+  end
+end

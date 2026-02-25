@@ -210,6 +210,7 @@ defmodule YellowDog.Application do
   defp service_app_module(:mdns), do: YellowDog.Mdns
   defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
   defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
+  defp service_app_module(:identity), do: YellowDogIdentity
 
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
@@ -343,7 +344,8 @@ defmodule YellowDog.Application do
       {YellowDog.Dns, :dns},
       {YellowDog.Mdns, :mdns},
       {YellowDog.Dhcpv4, :dhcpv4},
-      {YellowDog.Dhcpv6, :dhcpv6}
+      {YellowDog.Dhcpv6, :dhcpv6},
+      {YellowDogIdentity, :identity}
     ]
 
     # Filter services based on configuration and pass server options
@@ -475,6 +477,14 @@ defmodule YellowDog.Application do
           static_reservations: static_reservations,
           data_dir: dhcpv6_data_dir
         ]
+
+      :identity ->
+        data_dir = get_data_dir(config)
+        identity_data_dir = Path.join(data_dir, "identity")
+
+        [
+          data_dir: identity_data_dir
+        ]
     end
   end
 
@@ -534,6 +544,7 @@ defmodule YellowDog.Application do
           :mdns -> mdns
           :dhcpv4 -> dhcpv4
           :dhcpv6 -> dhcpv6
+          _ -> false
         end
 
       core_config when is_map(core_config) ->
