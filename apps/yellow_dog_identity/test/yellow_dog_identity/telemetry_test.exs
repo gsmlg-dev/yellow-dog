@@ -129,6 +129,24 @@ defmodule YellowDogIdentity.TelemetryTest do
     end
   end
 
+  describe "host_deleted/2" do
+    test "emits delete event with host_id and hostname" do
+      ref = make_ref()
+      handler_id = "test-deleted-#{inspect(ref)}"
+      attach(handler_id, [:yellow_dog, :identity, :delete])
+
+      Telemetry.host_deleted("del-host-id", "node-to-delete")
+
+      assert_receive {:telemetry, [:yellow_dog, :identity, :delete], measurements, metadata}
+
+      assert measurements.count == 1
+      assert metadata.host_id == "del-host-id"
+      assert metadata.hostname == "node-to-delete"
+
+      :telemetry.detach(handler_id)
+    end
+  end
+
   describe "correlation_match/4" do
     test "emits correlation match event with formatted IP tuple" do
       ref = make_ref()
