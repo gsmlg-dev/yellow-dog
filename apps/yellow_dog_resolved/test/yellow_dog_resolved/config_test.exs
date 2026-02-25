@@ -200,6 +200,78 @@ defmodule YellowDog.Resolved.ConfigTest do
         Config.load(path)
       end
     end
+
+    test "accepts lowercase record types in intercept rules" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "lowercase_type_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "*.local.dev"
+      type = "a"
+      value = "127.0.0.1"
+      ttl = 300
+
+      [[resolved.intercept]]
+      match = "*.local.dev"
+      type = "aaaa"
+      value = "::1"
+      ttl = 300
+      """)
+
+      config = Config.load(path)
+      assert length(config.intercept_rules) == 2
+      assert Enum.at(config.intercept_rules, 0).type == :a
+      assert Enum.at(config.intercept_rules, 1).type == :aaaa
+    end
+
+    test "accepts mixed-case record types" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "mixedcase_type_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "test.local"
+      type = "Cname"
+      value = "other.local"
+      ttl = 60
+      """)
+
+      config = Config.load(path)
+      assert Enum.at(config.intercept_rules, 0).type == :cname
+    end
+
+    test "raises on unsupported record type" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_type_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "test.local"
+      type = "PTR"
+      value = "1.0.0.127.in-addr.arpa"
+      ttl = 300
+      """)
+
+      assert_raise ArgumentError, ~r/unsupported record type/, fn ->
+        Config.load(path)
+      end
+    end
   end
 
   describe "hot reload via file event" do

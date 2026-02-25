@@ -259,9 +259,15 @@ defmodule YellowDog.Resolved.Config do
     end
   end
 
-  @valid_types ~w(A AAAA CNAME TXT MX SRV)
-  defp parse_record_type(type) when type in @valid_types do
-    type |> String.downcase() |> String.to_atom()
+  @valid_types ~w(a aaaa cname txt mx srv)
+  defp parse_record_type(type) when is_binary(type) do
+    normalized = String.downcase(type)
+
+    if normalized in @valid_types do
+      String.to_atom(normalized)
+    else
+      raise ArgumentError, "unsupported record type: #{inspect(type)}, expected one of: A, AAAA, CNAME, TXT, MX, SRV"
+    end
   end
 
   defp parse_cache_config(cache) do
