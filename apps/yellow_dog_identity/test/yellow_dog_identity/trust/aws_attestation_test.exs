@@ -351,6 +351,36 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
     end
   end
 
+  describe "signature verification — cert configured but no signature provided" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      # Inject a dummy certificate_pem so get_aws_cert_pem() returns non-nil.
+      # The certificate does not need to be real — we only want to test the
+      # missing_signature branch before any cryptographic verification occurs.
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "aws" => %{"certificate_pem" => "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"}
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "returns {:untrusted, :missing_signature} when cert configured but signature is absent" do
+      document_b64 = valid_aws_document(%{})
+      # No "signature" key in the attestation context
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :missing_signature} = AWS.verify(ctx)
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields" do
       document_b64 =
