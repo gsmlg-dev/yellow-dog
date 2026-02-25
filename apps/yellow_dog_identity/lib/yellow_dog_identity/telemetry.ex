@@ -61,6 +61,17 @@ defmodule YellowDogIdentity.Telemetry do
   end
 
   @doc """
+  Emits a host deleted event.
+  """
+  def host_deleted(host_id, hostname) do
+    :telemetry.execute(
+      [:yellow_dog, :identity, :delete],
+      %{count: 1},
+      %{host_id: host_id, hostname: hostname}
+    )
+  end
+
+  @doc """
   Emits a DHCP correlation match event.
   """
   def correlation_match(source_ip, mac, fingerprint_class, trust_level) do

@@ -149,6 +149,7 @@ defmodule YellowDogIdentity do
         case Registry.delete_host(id) do
           :ok ->
             Registry.append_audit("host.deleted", id, %{hostname: host.hostname})
+            YellowDogIdentity.Telemetry.host_deleted(id, host.hostname)
             broadcast("identity:hosts", {:host_updated, host})
             :ok
 
