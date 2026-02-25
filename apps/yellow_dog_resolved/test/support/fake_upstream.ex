@@ -56,12 +56,14 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:udp, _socket, client_ip, client_port, _data}, %{mode: :garbage} = state) do
     # Respond with invalid binary data that isn't a valid DNS message
     :gen_udp.send(state.socket, client_ip, client_port, :crypto.strong_rand_bytes(32))
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:udp, _socket, client_ip, client_port, data}, state) do
     response = build_response(data, state.mode)
     :gen_udp.send(state.socket, client_ip, client_port, response)

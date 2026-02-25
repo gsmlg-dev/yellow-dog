@@ -426,6 +426,59 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "actual TTL expiry" do
+    setup do
+      # Restart cache with very short min_ttl_s for expiry testing
+      stop_supervised!(Cache)
+      start_supervised!({Cache, %{@cache_config | min_ttl_s: 1, negative_ttl_s: 1}})
+      :ok
+    end
+
+    test "entry expires and lazy eviction removes it on lookup" do
+      Cache.store("lazy-expire.test", :a, "data", 1)
+      Process.sleep(10)
+
+      assert {:hit, "data"} = Cache.lookup("lazy-expire.test", :a)
+
+      # Wait for TTL to expire (min_ttl_s = 1)
+      Process.sleep(1100)
+
+      # Lazy eviction: expired entry is removed on lookup
+      assert :miss = Cache.lookup("lazy-expire.test", :a)
+    end
+
+    test "sweep removes expired entries" do
+      Cache.store("sweep-expire.test", :a, "data", 1)
+      Process.sleep(10)
+
+      assert {:hit, "data"} = Cache.lookup("sweep-expire.test", :a)
+
+      # Wait for expiry
+      Process.sleep(1100)
+
+      # Trigger manual sweep
+      pid = Process.whereis(Cache)
+      send(pid, :sweep)
+      Process.sleep(10)
+
+      # Swept entry is gone
+      stats = Cache.stats()
+      assert stats.entries == 0
+    end
+
+    test "negative entry expires after negative_ttl_s" do
+      Cache.store_negative("neg-expire.test", :a, "nxdomain_data")
+      Process.sleep(10)
+
+      assert {:hit, "nxdomain_data"} = Cache.lookup("neg-expire.test", :a)
+
+      # Wait for negative_ttl_s (1s) to expire
+      Process.sleep(1100)
+
+      assert :miss = Cache.lookup("neg-expire.test", :a)
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       pid = Process.whereis(Cache)

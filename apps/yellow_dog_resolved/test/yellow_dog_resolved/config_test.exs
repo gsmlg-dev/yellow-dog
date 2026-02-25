@@ -337,6 +337,57 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "IPv6 config parsing" do
+    test "accepts IPv6 listen address" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "ipv6_listen_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "::1"
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+      assert config.listen == {0, 0, 0, 0, 0, 0, 0, 1}
+    end
+
+    test "accepts IPv6 upstream addresses" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "ipv6_upstream_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+      """)
+
+      config = Config.load(path)
+      assert length(config.upstreams) == 2
+      assert {8193, 18528, 18528, 0, 0, 0, 0, 34952} in config.upstreams
+      assert {8193, 18528, 18528, 0, 0, 0, 0, 34884} in config.upstreams
+    end
+
+    test "accepts mixed IPv4 and IPv6 upstreams" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "mixed_ip_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8", "2001:4860:4860::8888"]
+      """)
+
+      config = Config.load(path)
+      assert length(config.upstreams) == 2
+      assert {8, 8, 8, 8} in config.upstreams
+      assert {8193, 18528, 18528, 0, 0, 0, 0, 34952} in config.upstreams
+    end
+  end
+
   describe "hot reload via file event" do
     test "reloads config when toml file changes" do
       tmp_dir = System.tmp_dir!()
