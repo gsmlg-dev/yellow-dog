@@ -253,7 +253,9 @@ defmodule YellowDogIdentity do
   def audit_log(opts \\ []) do
     Registry.read_audit_log(opts)
   rescue
-    _ -> []
+    e ->
+      Logger.debug("audit_log unavailable: #{Exception.message(e)}")
+      []
   end
 
   @doc """
@@ -263,7 +265,9 @@ defmodule YellowDogIdentity do
   def list_policies do
     ApprovalEngine.list_policies()
   rescue
-    _ -> %{policies: [], default_action: :pending}
+    e ->
+      Logger.debug("list_policies unavailable: #{Exception.message(e)}")
+      %{policies: [], default_action: :pending}
   end
 
   @doc """
