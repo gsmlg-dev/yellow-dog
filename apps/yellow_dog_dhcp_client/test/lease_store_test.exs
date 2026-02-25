@@ -136,6 +136,7 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
 
     assert {:ok, loaded} = LeaseStore.lookup(pid, iface)
+    assert is_struct(loaded, YellowDog.DhcpClient.Lease)
     assert loaded.ip == {192, 168, 1, 50}
     assert loaded.subnet_mask == {255, 255, 255, 0}
     assert loaded.server_ip == {192, 168, 1, 1}
