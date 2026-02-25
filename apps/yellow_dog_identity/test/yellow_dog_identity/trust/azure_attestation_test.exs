@@ -261,6 +261,29 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
       # Valid base64 sig, invalid PEM → :invalid_certificate
       assert {:untrusted, :invalid_certificate} = Azure.verify(ctx)
     end
+
+    test "returns untrusted when signature does not match document (valid cert, wrong signature)" do
+      document_b64 = valid_azure_document()
+
+      # Generate a real RSA key + self-signed cert so extract_signing_key succeeds
+      private_key = X509.PrivateKey.new_rsa(1024)
+      cert = X509.Certificate.self_signed(private_key, "/CN=Test")
+      cert_pem = X509.Certificate.to_pem(cert)
+
+      # Signature is valid base64 but does not match the document
+      wrong_signature = Base.encode64(:crypto.strong_rand_bytes(128))
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => wrong_signature,
+          "certificate" => cert_pem
+        })
+
+      # Valid cert + valid base64 sig bytes, but sig doesn't verify → :invalid_signature
+      assert {:untrusted, :invalid_signature} = Azure.verify(ctx)
+    end
   end
 
   describe "timestamp edge cases" do
