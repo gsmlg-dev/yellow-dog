@@ -215,12 +215,27 @@ defmodule YellowDogIdentity.Host do
 
   # Private helpers
 
+  @max_hostname_length 253
+
   defp validate_required(hostname, ssh_pubkey, age_recipient) do
     cond do
-      is_nil(hostname) or hostname == "" -> {:error, :hostname_required}
-      is_nil(ssh_pubkey) or ssh_pubkey == "" -> {:error, :ssh_pubkey_required}
-      is_nil(age_recipient) or age_recipient == "" -> {:error, :age_recipient_required}
-      true -> :ok
+      is_nil(hostname) or hostname == "" ->
+        {:error, :hostname_required}
+
+      byte_size(hostname) > @max_hostname_length ->
+        {:error, :hostname_too_long}
+
+      not Regex.match?(~r/^[\w\-\.]+$/, hostname) ->
+        {:error, :hostname_invalid_chars}
+
+      is_nil(ssh_pubkey) or ssh_pubkey == "" ->
+        {:error, :ssh_pubkey_required}
+
+      is_nil(age_recipient) or age_recipient == "" ->
+        {:error, :age_recipient_required}
+
+      true ->
+        :ok
     end
   end
 

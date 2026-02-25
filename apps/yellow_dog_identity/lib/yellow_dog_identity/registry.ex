@@ -433,7 +433,12 @@ defmodule YellowDogIdentity.Registry do
     timestamp = DateTime.to_iso8601(DateTime.utc_now())
     details_str = if details == %{}, do: "", else: " " <> inspect(details)
 
-    entry = "#{timestamp} #{event} host=#{host_id}#{details_str}\n"
+    # Sanitize to prevent log injection via embedded newlines
+    safe_event = sanitize_log_field(event)
+    safe_host_id = sanitize_log_field(host_id)
+    safe_details = sanitize_log_field(details_str)
+
+    entry = "#{timestamp} #{safe_event} host=#{safe_host_id}#{safe_details}\n"
 
     case File.write(audit_path, entry, [:append]) do
       :ok -> :ok
@@ -442,6 +447,12 @@ defmodule YellowDogIdentity.Registry do
   rescue
     e -> Logger.warning("Unexpected error writing audit log: #{Exception.message(e)}")
   end
+
+  defp sanitize_log_field(value) when is_binary(value) do
+    String.replace(value, ~r/[\r\n]/, " ")
+  end
+
+  defp sanitize_log_field(value), do: sanitize_log_field(to_string(value))
 
   defp read_audit_entries(data_dir, opts) do
     audit_path = Path.join(data_dir, "audit.log")

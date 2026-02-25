@@ -49,7 +49,7 @@ defmodule YellowDog.Console.IdentityController do
       {:error, reason} ->
         conn
         |> put_status(422)
-        |> json(%{error: to_string(reason)})
+        |> json(%{error: sanitize_error(reason)})
     end
   end
 
@@ -184,4 +184,23 @@ defmodule YellowDog.Console.IdentityController do
         |> json(%{error: "not_found"})
     end
   end
+
+  # Map known error atoms to safe user-facing messages; fall back to generic message
+  @known_errors %{
+    hostname_required: "hostname is required",
+    hostname_too_long: "hostname exceeds maximum length",
+    hostname_invalid_chars: "hostname contains invalid characters",
+    ssh_pubkey_required: "ssh_pubkey is required",
+    age_recipient_required: "age_recipient is required",
+    invalid_pubkey: "invalid SSH public key format",
+    invalid_age_recipient: "invalid age recipient format",
+    instance_id_conflict: "instance ID already registered",
+    conflict: "hostname registered with different key"
+  }
+
+  defp sanitize_error(reason) when is_atom(reason) do
+    Map.get(@known_errors, reason, "registration_failed")
+  end
+
+  defp sanitize_error(_), do: "registration_failed"
 end

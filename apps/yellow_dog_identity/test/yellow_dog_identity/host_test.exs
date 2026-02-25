@@ -83,6 +83,60 @@ defmodule YellowDogIdentity.HostTest do
 
       assert {:error, :invalid_pubkey} = Host.new(params)
     end
+
+    test "rejects hostname exceeding max length" do
+      long_hostname = String.duplicate("a", 254)
+
+      params = %{
+        hostname: long_hostname,
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_too_long} = Host.new(params)
+    end
+
+    test "rejects hostname with newlines" do
+      params = %{
+        hostname: "node\n-injected",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_invalid_chars} = Host.new(params)
+    end
+
+    test "rejects hostname with spaces" do
+      params = %{
+        hostname: "node 01",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_invalid_chars} = Host.new(params)
+    end
+
+    test "accepts hostname with dots, hyphens, and underscores" do
+      params = %{
+        hostname: "node-01.dc1.example_corp",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:ok, %Host{hostname: "node-01.dc1.example_corp"}} = Host.new(params)
+    end
+
+    test "accepts hostname at max length boundary" do
+      hostname = String.duplicate("a", 253)
+
+      params = %{
+        hostname: hostname,
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:ok, %Host{}} = Host.new(params)
+    end
   end
 
   describe "to_toml_map/1 and from_toml_map/1" do
