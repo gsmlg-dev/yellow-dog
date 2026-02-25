@@ -278,14 +278,22 @@ defmodule YellowDogIdentity.Registry do
       _token ->
         path = token_path(state.data_dir, id)
 
-        case File.rm(path) do
-          :ok -> :ok
-          {:error, :enoent} -> :ok
-          {:error, reason} -> Logger.warning("Failed to delete token file #{path}: #{reason}")
-        end
+        delete_result =
+          case File.rm(path) do
+            :ok -> :ok
+            {:error, :enoent} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
 
-        tokens = Map.delete(state.tokens, id)
-        {:reply, :ok, %{state | tokens: tokens}}
+        case delete_result do
+          :ok ->
+            tokens = Map.delete(state.tokens, id)
+            {:reply, :ok, %{state | tokens: tokens}}
+
+          {:error, reason} ->
+            Logger.warning("Failed to delete token file #{path}: #{reason}")
+            {:reply, {:error, :delete_failed}, state}
+        end
     end
   end
 
@@ -522,7 +530,10 @@ defmodule YellowDogIdentity.Registry do
     simple_lines <> nested_lines
   end
 
-  defp encode_toml_value(v) when is_binary(v), do: ~s("#{String.replace(v, "\"", "\\\"")}")
+  defp encode_toml_value(v) when is_binary(v) do
+    escaped = v |> String.replace("\\", "\\\\") |> String.replace("\"", "\\\"")
+    ~s("#{escaped}")
+  end
   defp encode_toml_value(v) when is_integer(v), do: Integer.to_string(v)
   defp encode_toml_value(v) when is_float(v), do: Float.to_string(v)
   defp encode_toml_value(true), do: "true"
@@ -618,7 +629,7 @@ defmodule YellowDogIdentity.Registry do
 
   defp read_audit_entries(data_dir, opts) do
     audit_path = Path.join(data_dir, "audit.log")
-    limit = Keyword.get(opts, :limit, 100)
+    limit = opts |> Keyword.get(:limit, 100) |> min(1000)
     host_filter = Keyword.get(opts, :host_id)
     event_filter = Keyword.get(opts, :event)
 

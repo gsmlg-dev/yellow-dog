@@ -62,15 +62,21 @@ defmodule YellowDog.Console.IdentityController do
   def recipients(conn, params) do
     format = Map.get(params, "format", "yaml")
 
-    content =
-      case format do
-        "sops" -> YellowDogIdentity.export_recipients(format: :sops)
-        _ -> YellowDogIdentity.export_recipients(format: :yaml)
-      end
+    try do
+      content =
+        case format do
+          "sops" -> YellowDogIdentity.export_recipients(format: :sops)
+          _ -> YellowDogIdentity.export_recipients(format: :yaml)
+        end
 
-    conn
-    |> put_resp_content_type("text/yaml")
-    |> send_resp(200, content)
+      conn
+      |> put_resp_content_type("text/yaml")
+      |> send_resp(200, content)
+    rescue
+      _ -> json(conn |> put_status(503), %{error: "Identity service unavailable"})
+    catch
+      :exit, _ -> json(conn |> put_status(503), %{error: "Identity service unavailable"})
+    end
   end
 
   @doc """

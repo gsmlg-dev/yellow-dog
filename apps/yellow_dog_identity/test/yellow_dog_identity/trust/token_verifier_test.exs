@@ -110,7 +110,8 @@ defmodule YellowDogIdentity.Trust.Token.VerifierTest do
     end
 
     test "returns untrusted with expired token" do
-      {:ok, token, raw_token} = Token.create(%{hostname_pattern: "*", ttl_seconds: -1})
+      {:ok, token, raw_token} = Token.create(%{hostname_pattern: "*", ttl_seconds: 0})
+      token = %{token | expires_at: DateTime.add(DateTime.utc_now(), -60, :second)}
       :ok = Registry.put_token(token)
 
       context = %{authorization: "Bearer #{raw_token}", hostname: "node-01"}

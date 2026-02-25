@@ -101,9 +101,15 @@ defmodule YellowDogIdentity.Host do
   @doc """
   Validates an age recipient format (age1...).
   """
+  # Bech32 charset enforced to prevent YAML/TOML injection via special chars
+  @age_max_len 90
+  @age_bech32_re ~r/^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/
+
   @spec validate_age_recipient(String.t()) :: :ok | {:error, :invalid_age_recipient}
   def validate_age_recipient(age_recipient) when is_binary(age_recipient) do
-    if String.starts_with?(age_recipient, "age1") and byte_size(age_recipient) > 10 do
+    len = byte_size(age_recipient)
+
+    if len > 10 and len <= @age_max_len and Regex.match?(@age_bech32_re, age_recipient) do
       :ok
     else
       {:error, :invalid_age_recipient}

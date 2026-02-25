@@ -33,7 +33,8 @@ defmodule YellowDogIdentity.TokenTest do
     end
 
     test "rejects expired token" do
-      {:ok, token, raw_token} = Token.create(%{ttl_seconds: -1})
+      {:ok, token, raw_token} = Token.create(%{ttl_seconds: 0})
+      token = %{token | expires_at: DateTime.add(DateTime.utc_now(), -60, :second)}
       assert {:error, :token_expired} = Token.verify(token, raw_token, "host")
     end
 
@@ -56,7 +57,8 @@ defmodule YellowDogIdentity.TokenTest do
     end
 
     test "returns false for expired token" do
-      {:ok, token, _} = Token.create(%{ttl_seconds: -1})
+      {:ok, token, _} = Token.create(%{ttl_seconds: 0})
+      token = %{token | expires_at: DateTime.add(DateTime.utc_now(), -60, :second)}
       refute Token.valid?(token)
     end
 

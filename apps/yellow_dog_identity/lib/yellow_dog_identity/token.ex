@@ -41,6 +41,10 @@ defmodule YellowDogIdentity.Token do
 
   The raw token is returned only once — it is not stored. Only the bcrypt hash is persisted.
   """
+  @max_ttl_seconds 86_400 * 365
+  @max_max_uses 100_000
+  @max_pattern_len 256
+
   @spec create(map()) :: {:ok, t(), raw_token :: String.t()} | {:error, term()}
   def create(params) when is_map(params) do
     hostname_pattern = Map.get(params, :hostname_pattern, "*")
@@ -49,6 +53,22 @@ defmodule YellowDogIdentity.Token do
     created_by = Map.get(params, :created_by, "system")
     ttl_seconds = Map.get(params, :ttl_seconds, 3600)
 
+    cond do
+      not is_integer(max_uses) or max_uses < 1 or max_uses > @max_max_uses ->
+        {:error, :invalid_max_uses}
+
+      not is_integer(ttl_seconds) or ttl_seconds < 0 or ttl_seconds > @max_ttl_seconds ->
+        {:error, :invalid_ttl}
+
+      byte_size(hostname_pattern) > @max_pattern_len ->
+        {:error, :pattern_too_long}
+
+      true ->
+        do_create(hostname_pattern, max_uses, role, created_by, ttl_seconds)
+    end
+  end
+
+  defp do_create(hostname_pattern, max_uses, role, created_by, ttl_seconds) do
     expires_at = DateTime.add(DateTime.utc_now(), ttl_seconds, :second)
 
     # Generate raw token
