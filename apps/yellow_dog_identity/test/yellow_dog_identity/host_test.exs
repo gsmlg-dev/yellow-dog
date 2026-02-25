@@ -92,6 +92,11 @@ defmodule YellowDogIdentity.HostTest do
       assert {:error, :ssh_pubkey_required} = Host.new(params)
     end
 
+    test "rejects missing age_recipient" do
+      params = %{hostname: "node-01", ssh_pubkey: @valid_ssh_pubkey}
+      assert {:error, :age_recipient_required} = Host.new(params)
+    end
+
     test "rejects invalid pubkey format" do
       params = %{
         hostname: "node-01",
@@ -210,6 +215,24 @@ defmodule YellowDogIdentity.HostTest do
 
     test "from_toml_map rejects missing host section" do
       assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
+    end
+
+    test "from_toml_map returns invalid_toml_data when required key is missing" do
+      # Missing "id" key triggers Map.fetch! KeyError → rescue → {:error, {:invalid_toml_data, _}}
+      incomplete = %{
+        "host" => %{
+          "hostname" => "node-01",
+          "ssh_pubkey" => @valid_ssh_pubkey,
+          "key_fingerprint" => "SHA256:abc",
+          "age_recipient" => @valid_age_recipient,
+          "status" => "pending",
+          "trust_level" => "unverified",
+          "trust_provider" => "unverified"
+          # "id" intentionally omitted
+        }
+      }
+
+      assert {:error, {:invalid_toml_data, _message}} = Host.from_toml_map(incomplete)
     end
 
     test "round-trips netboot trust_provider correctly" do
