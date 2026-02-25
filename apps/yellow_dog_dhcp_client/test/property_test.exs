@@ -11,6 +11,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   - Packet build content verification (XID, chaddr, flags)
   - parse_reply robustness against arbitrary binary input
   - select_best_offer selection invariants
+  - Lease.expired? temporal invariants
   """
 
   use ExUnit.Case, async: true
@@ -509,6 +510,61 @@ defmodule YellowDog.DhcpClient.PropertyTest do
       check all(offers <- list_of(offer_gen(), min_length: 1)) do
         refute is_nil(StateMachine.select_best_offer(offers))
         assert is_nil(StateMachine.select_best_offer([]))
+      end
+    end
+  end
+
+  # -- Lease.expired? temporal invariants --
+
+  describe "Lease.expired? temporal invariants" do
+    property "non-expired lease with future expiry is not expired" do
+      check all(
+              lease_time <- integer(1..86_400),
+              # obtained_at is between 0 and lease_time - 1 seconds ago (still valid)
+              past_seconds <- integer(0..(lease_time - 1))
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        refute Lease.expired?(lease)
+      end
+    end
+
+    property "lease with obtained_at exactly lease_time seconds ago is expired" do
+      check all(lease_time <- integer(1..86_400)) do
+        # obtained_at is exactly lease_time seconds ago, so lease expires at exactly now
+        obtained_at = DateTime.add(DateTime.utc_now(), -lease_time, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        # expires_at == now, so compare == :eq, which is NOT :lt → expired
+        assert Lease.expired?(lease)
+      end
+    end
+
+    property "lease well past expiry is always expired" do
+      check all(
+              lease_time <- integer(1..3600),
+              extra_past <- integer(1..3600)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -(lease_time + extra_past), :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        assert Lease.expired?(lease)
       end
     end
   end
