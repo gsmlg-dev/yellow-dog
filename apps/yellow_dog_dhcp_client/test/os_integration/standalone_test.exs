@@ -111,6 +111,79 @@ defmodule YellowDog.DhcpClient.OSIntegration.StandaloneTest do
     end
   end
 
+  describe "MTU validation" do
+    test "skips MTU when nil" do
+      lease = test_lease(%{mtu: nil})
+      # apply_lease will fail at add_addr (no CAP_NET_ADMIN), so test via reflection:
+      # nil MTU should not cause any MTU-related telemetry
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-mtu-nil-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :os, :apply],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.action == :set_mtu do
+            send(self_pid, :mtu_set_called)
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-mtu-nil-#{inspect(ref)}") end)
+
+      _result = Standalone.apply_lease("test_mtu_nil", lease)
+
+      refute_receive :mtu_set_called, 200
+    end
+
+    test "rejects MTU below minimum (68)" do
+      lease = test_lease(%{mtu: 10})
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-mtu-low-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :os, :apply],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.action == :set_mtu do
+            send(self_pid, :mtu_set_called)
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-mtu-low-#{inspect(ref)}") end)
+
+      _result = Standalone.apply_lease("test_mtu_low", lease)
+
+      refute_receive :mtu_set_called, 200
+    end
+
+    test "rejects MTU above maximum (65535)" do
+      lease = test_lease(%{mtu: 100_000})
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-mtu-high-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :os, :apply],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.action == :set_mtu do
+            send(self_pid, :mtu_set_called)
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-mtu-high-#{inspect(ref)}") end)
+
+      _result = Standalone.apply_lease("test_mtu_high", lease)
+
+      refute_receive :mtu_set_called, 200
+    end
+  end
+
   describe "apply_lease/2 telemetry" do
     test "emits telemetry even when ip command fails" do
       ref = make_ref()

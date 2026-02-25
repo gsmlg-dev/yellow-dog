@@ -251,6 +251,53 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert :not_found = LeaseStore.lookup(pid, iface)
   end
 
+  # ── missing obtained_at uses epoch (lease treated as expired) ──
+
+  test "lease with missing obtained_at is treated as expired", ctx do
+    iface = "eth0"
+
+    toml_content = """
+    ip = "192.168.1.50"
+    subnet_mask = "255.255.255.0"
+    server_ip = "192.168.1.1"
+    lease_time = 3600
+    t1 = 1800
+    t2 = 3150
+    xid = 999
+    yellowdog_server = false
+    """
+
+    lease_path = Path.join(ctx.lease_dir, "#{iface}.lease")
+    File.write!(lease_path, toml_content)
+
+    {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+
+    # Without obtained_at, the lease should be treated as expired (epoch fallback)
+    assert :not_found = LeaseStore.lookup(pid, iface)
+  end
+
+  test "lease with unparseable obtained_at is treated as expired", ctx do
+    iface = "eth0"
+
+    toml_content = """
+    ip = "192.168.1.50"
+    subnet_mask = "255.255.255.0"
+    server_ip = "192.168.1.1"
+    lease_time = 3600
+    t1 = 1800
+    t2 = 3150
+    obtained_at = "not-a-date"
+    xid = 999
+    yellowdog_server = false
+    """
+
+    lease_path = Path.join(ctx.lease_dir, "#{iface}.lease")
+    File.write!(lease_path, toml_content)
+
+    {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    assert :not_found = LeaseStore.lookup(pid, iface)
+  end
+
   # ── nil lease_dir falls back to default ──
 
   test "start_link with lease_dir: nil uses default path without crashing" do

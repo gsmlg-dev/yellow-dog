@@ -307,12 +307,16 @@ defmodule YellowDog.DhcpClient.LeaseStore do
   defp parse_ip_list(list) when is_list(list), do: Enum.map(list, &parse_ip/1)
   defp parse_ip_list(_), do: []
 
-  defp parse_datetime(nil), do: DateTime.utc_now()
+  # Use Unix epoch for missing/unparseable timestamps so that lease_valid?/1
+  # correctly detects the lease as expired rather than treating it as fresh.
+  @epoch DateTime.from_unix!(0)
+
+  defp parse_datetime(nil), do: @epoch
 
   defp parse_datetime(str) when is_binary(str) do
     case DateTime.from_iso8601(str) do
       {:ok, dt, _offset} -> dt
-      {:error, _} -> DateTime.utc_now()
+      {:error, _} -> @epoch
     end
   end
 

@@ -85,6 +85,7 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
   def apply_dns(_interface, %Lease{dns_servers: []}), do: :ok
 
   def apply_dns(interface, %Lease{dns_servers: servers} = lease) do
+    servers = Enum.filter(servers, &is_tuple/1)
     content = build_resolv_conf(servers, lease.domain_name)
     resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
 
@@ -104,13 +105,23 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
 
   # -- Private helpers -------------------------------------------------------
 
+  @min_mtu 68
+  @max_mtu 65_535
+
   defp maybe_set_mtu(_interface, %Lease{mtu: nil}), do: :ok
 
-  defp maybe_set_mtu(interface, %Lease{mtu: mtu}) when is_integer(mtu) and mtu > 0 do
+  defp maybe_set_mtu(interface, %Lease{mtu: mtu})
+       when is_integer(mtu) and mtu >= @min_mtu and mtu <= @max_mtu do
     timed_cmd(interface, :set_mtu, "ip", ["link", "set", interface, "mtu", Integer.to_string(mtu)])
   end
 
-  defp maybe_set_mtu(_interface, _lease), do: :ok
+  defp maybe_set_mtu(interface, %Lease{mtu: mtu}) do
+    Logger.warning(
+      "DHCP client ignoring invalid MTU #{inspect(mtu)} for #{interface} (valid: #{@min_mtu}..#{@max_mtu})"
+    )
+
+    :ok
+  end
 
   defp build_resolv_conf(servers, domain_name) do
     lines =
