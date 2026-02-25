@@ -26,6 +26,7 @@ defmodule YellowDog.DhcpClient.DAD do
 
     * `:probes` - Number of ARP probes to send (default: 3)
     * `:wait_ms` - Total wait time in milliseconds (default: 2000)
+    * `:interface` - Interface name for telemetry metadata (default: nil)
 
   ## Returns
 
@@ -36,12 +37,13 @@ defmodule YellowDog.DhcpClient.DAD do
   def check(socket_pid, ip, opts \\ []) do
     probes = Keyword.get(opts, :probes, @default_probes)
     wait_ms = Keyword.get(opts, :wait_ms, @default_wait_ms)
+    interface = Keyword.get(opts, :interface)
 
-    emit_dad_start(ip)
+    emit_dad_start(interface, ip)
 
     result = send_probes_and_listen(socket_pid, ip, probes, wait_ms)
 
-    emit_dad_result(ip, result)
+    emit_dad_result(interface, ip, result)
 
     result
   end
@@ -79,21 +81,26 @@ defmodule YellowDog.DhcpClient.DAD do
     end
   end
 
-  defp emit_dad_start(ip) do
+  defp emit_dad_start(interface, ip) do
+    meta = %{ip: format_ip(ip)}
+    meta = if interface, do: Map.put(meta, :interface, interface), else: meta
+
     :telemetry.execute(
       [:yellow_dog, :dhcp_client, :dad, :start],
       %{},
-      %{ip: format_ip(ip)}
+      meta
     )
   end
 
-  defp emit_dad_result(ip, result) do
+  defp emit_dad_result(interface, ip, result) do
     conflict = match?({:conflict, _}, result)
+    meta = %{ip: format_ip(ip), conflict: conflict}
+    meta = if interface, do: Map.put(meta, :interface, interface), else: meta
 
     :telemetry.execute(
       [:yellow_dog, :dhcp_client, :dad, :result],
       %{},
-      %{ip: format_ip(ip), conflict: conflict}
+      meta
     )
   end
 

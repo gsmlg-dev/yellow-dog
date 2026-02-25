@@ -1,3 +1,17 @@
+defmodule YellowDog.DhcpClient.TelemetryTest.MockDadSocket do
+  @behaviour YellowDog.DhcpClient.DhcpSocket
+  @impl true
+  def open(_interface, _owner), do: {:ok, make_ref()}
+  @impl true
+  def send_broadcast(_ref, _packet), do: :ok
+  @impl true
+  def send_unicast(_ref, _dest, _packet), do: :ok
+  @impl true
+  def send_arp_probe(_ref, _ip), do: :ok
+  @impl true
+  def close(_ref), do: :ok
+end
+
 defmodule YellowDog.DhcpClient.TelemetryTest do
   use ExUnit.Case, async: true
 
@@ -152,40 +166,57 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
     end
   end
 
-  # -- dad_start/2 --
+  # -- DAD telemetry (emitted by DAD.check/3) --
 
-  describe "dad_start/2" do
-    test "emits [:yellow_dog, :dhcp_client, :dad, :start] event" do
+  describe "DAD telemetry" do
+    setup do
+      alias YellowDog.DhcpClient.DhcpSocket
+
+      {:ok, socket_pid} =
+        DhcpSocket.start_link(
+          interface: "eth0",
+          owner: self(),
+          impl: YellowDog.DhcpClient.TelemetryTest.MockDadSocket
+        )
+
+      on_exit(fn -> if Process.alive?(socket_pid), do: GenServer.stop(socket_pid) end)
+      %{socket_pid: socket_pid}
+    end
+
+    test "includes interface in :dad, :start metadata when provided", ctx do
       handler_id = attach([:yellow_dog, :dhcp_client, :dad, :start])
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
-      Telemetry.dad_start("eth0", "192.168.1.50")
+      YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
+        probes: 1, wait_ms: 10, interface: "eth0"
+      )
 
       assert_receive {:telemetry, [:yellow_dog, :dhcp_client, :dad, :start], %{},
                       %{interface: "eth0", ip: "192.168.1.50"}}
     end
-  end
 
-  # -- dad_result/3 --
+    test "omits interface from :dad, :start metadata when not provided", ctx do
+      handler_id = attach([:yellow_dog, :dhcp_client, :dad, :start])
+      on_exit(fn -> :telemetry.detach(handler_id) end)
 
-  describe "dad_result/3" do
-    test "emits [:yellow_dog, :dhcp_client, :dad, :result] event with conflict false" do
+      YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
+        probes: 1, wait_ms: 10
+      )
+
+      assert_receive {:telemetry, _, _, meta}
+      refute Map.has_key?(meta, :interface)
+    end
+
+    test "includes conflict: false in :dad, :result metadata on no conflict", ctx do
       handler_id = attach([:yellow_dog, :dhcp_client, :dad, :result])
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
-      Telemetry.dad_result("eth0", "192.168.1.50", false)
+      YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
+        probes: 1, wait_ms: 10, interface: "eth0"
+      )
 
       assert_receive {:telemetry, [:yellow_dog, :dhcp_client, :dad, :result], %{},
                       %{interface: "eth0", ip: "192.168.1.50", conflict: false}}
-    end
-
-    test "emits [:yellow_dog, :dhcp_client, :dad, :result] event with conflict true" do
-      handler_id = attach([:yellow_dog, :dhcp_client, :dad, :result])
-      on_exit(fn -> :telemetry.detach(handler_id) end)
-
-      Telemetry.dad_result("eth0", "192.168.1.50", true)
-
-      assert_receive {:telemetry, _, _, %{conflict: true}}
     end
   end
 

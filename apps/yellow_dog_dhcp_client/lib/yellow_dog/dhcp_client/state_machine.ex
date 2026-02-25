@@ -488,7 +488,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
     if dad_enabled do
       dad_opts = [
         probes: Map.get(data.config, :dad_probes, 3),
-        wait_ms: Map.get(data.config, :dad_wait_ms, 2_000)
+        wait_ms: Map.get(data.config, :dad_wait_ms, 2_000),
+        interface: data.interface
       ]
 
       case DAD.check(data.socket_pid, lease.ip, dad_opts) do

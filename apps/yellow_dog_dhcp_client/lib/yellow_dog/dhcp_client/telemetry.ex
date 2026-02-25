@@ -106,34 +106,6 @@ defmodule YellowDog.DhcpClient.Telemetry do
   end
 
   @doc """
-  Emits a DAD start event.
-
-  Event: `[:yellow_dog, :dhcp_client, :dad, :start]`
-  """
-  @spec dad_start(String.t(), String.t()) :: :ok
-  def dad_start(interface, ip) do
-    :telemetry.execute(
-      @prefix ++ [:dad, :start],
-      %{},
-      %{interface: interface, ip: ip}
-    )
-  end
-
-  @doc """
-  Emits a DAD result event.
-
-  Event: `[:yellow_dog, :dhcp_client, :dad, :result]`
-  """
-  @spec dad_result(String.t(), String.t(), boolean()) :: :ok
-  def dad_result(interface, ip, conflict) do
-    :telemetry.execute(
-      @prefix ++ [:dad, :result],
-      %{},
-      %{interface: interface, ip: ip, conflict: conflict}
-    )
-  end
-
-  @doc """
   Returns the list of all telemetry event names emitted by this module.
   """
   @spec event_names() :: [list()]
