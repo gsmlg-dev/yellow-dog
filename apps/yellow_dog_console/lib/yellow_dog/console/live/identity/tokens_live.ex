@@ -34,8 +34,8 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
       ) do
     params = %{
       hostname_pattern: pattern,
-      max_uses: String.to_integer(max_uses),
-      ttl_seconds: String.to_integer(ttl_hours) * 3600,
+      max_uses: safe_to_integer(max_uses, 1),
+      ttl_seconds: safe_to_integer(ttl_hours, 24) * 3600,
       role: if(role == "", do: nil, else: role),
       created_by: "console-operator"
     }
@@ -236,6 +236,15 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     </Layouts.app>
     """
   end
+
+  defp safe_to_integer(str, default) when is_binary(str) do
+    case Integer.parse(str) do
+      {n, _} when n > 0 -> n
+      _ -> default
+    end
+  end
+
+  defp safe_to_integer(_, default), do: default
 
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
