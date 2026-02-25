@@ -457,4 +457,19 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert length(decoded.anlist) == 1
     end
   end
+
+  describe "rewrite_txn_id/2 short binary defense" do
+    test "returns empty binary unchanged" do
+      assert ResponseBuilder.rewrite_txn_id(<<>>, 42) == <<>>
+    end
+
+    test "returns 1-byte binary unchanged" do
+      assert ResponseBuilder.rewrite_txn_id(<<0xAB>>, 42) == <<0xAB>>
+    end
+
+    test "2-byte binary gets rewritten normally" do
+      result = ResponseBuilder.rewrite_txn_id(<<0, 0>>, 0x1234)
+      assert result == <<0x12, 0x34>>
+    end
+  end
 end

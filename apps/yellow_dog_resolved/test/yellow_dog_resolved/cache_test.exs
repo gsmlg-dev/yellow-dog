@@ -722,6 +722,79 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "concurrent cache operations" do
+    test "parallel stores don't crash the cache" do
+      tasks =
+        for i <- 1..50 do
+          Task.async(fn ->
+            Cache.store("concurrent-#{i}.test", :a, "data-#{i}", 300)
+          end)
+        end
+
+      Task.await_many(tasks, 5000)
+      Process.sleep(50)
+
+      stats = Cache.stats()
+      assert stats.entries == 50
+    end
+
+    test "parallel lookups during store don't crash" do
+      # Pre-populate some entries
+      for i <- 1..20 do
+        Cache.store("preload-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(20)
+
+      # Launch concurrent reads and writes simultaneously
+      writers =
+        for i <- 21..40 do
+          Task.async(fn ->
+            Cache.store("preload-#{i}.test", :a, "data-#{i}", 300)
+          end)
+        end
+
+      readers =
+        for i <- 1..20 do
+          Task.async(fn ->
+            Cache.lookup("preload-#{i}.test", :a)
+          end)
+        end
+
+      results = Task.await_many(readers, 5000)
+      Task.await_many(writers, 5000)
+      Process.sleep(20)
+
+      # All reads should have succeeded (hit or miss, but no crash)
+      assert Enum.all?(results, fn r -> match?({:hit, _}, r) or r == :miss end)
+
+      stats = Cache.stats()
+      assert stats.entries == 40
+    end
+
+    test "flush during concurrent stores doesn't crash" do
+      # Start stores
+      writers =
+        for i <- 1..30 do
+          Task.async(fn ->
+            Cache.store("flush-race-#{i}.test", :a, "data-#{i}", 300)
+            Process.sleep(5)
+          end)
+        end
+
+      # Flush mid-flight
+      Process.sleep(10)
+      Cache.flush()
+
+      Task.await_many(writers, 5000)
+      Process.sleep(20)
+
+      # Cache should be functional — some entries may have been stored after flush
+      pid = Process.whereis(Cache)
+      assert Process.alive?(pid)
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       pid = Process.whereis(Cache)

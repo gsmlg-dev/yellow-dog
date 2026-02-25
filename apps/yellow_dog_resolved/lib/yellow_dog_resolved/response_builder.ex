@@ -71,6 +71,10 @@ defmodule YellowDog.Resolved.ResponseBuilder do
     <<new_id::16, rest::binary>>
   end
 
+  def rewrite_txn_id(short_binary, _new_id) when is_binary(short_binary) do
+    short_binary
+  end
+
   # Private functions
 
   defp set_response_flags(message) do

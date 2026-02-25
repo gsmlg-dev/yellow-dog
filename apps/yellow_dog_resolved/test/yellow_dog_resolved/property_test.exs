@@ -228,4 +228,50 @@ defmodule YellowDog.Resolved.PropertyTest do
       end
     end
   end
+
+  describe "property: cache key normalization invariants" do
+    setup do
+      start_supervised!({Config, @config})
+      start_supervised!({Cache, @cache_config})
+      :ok
+    end
+
+    property "case variation in domain produces identical cache key" do
+      check all(
+              domain <- dns_domain(),
+              max_runs: 50
+            ) do
+        upper = String.upcase(domain)
+        lower = String.downcase(domain)
+        mixed = domain |> String.graphemes() |> Enum.map_every(2, &String.upcase/1) |> Enum.join()
+
+        Cache.store(lower, :a, "canonical", 300)
+        Process.sleep(5)
+
+        assert {:hit, "canonical"} = Cache.lookup(upper, :a)
+        assert {:hit, "canonical"} = Cache.lookup(mixed, :a)
+      end
+    end
+
+    property "trailing dot does not affect cache key" do
+      check all(
+              domain <- dns_domain(),
+              max_runs: 50
+            ) do
+        with_dot = domain <> "."
+        without_dot = domain
+
+        Cache.store(with_dot, :a, "dotted", 300)
+        Process.sleep(5)
+
+        assert {:hit, "dotted"} = Cache.lookup(without_dot, :a)
+
+        # Overwrite via no-dot variant
+        Cache.store(without_dot, :a, "undotted", 300)
+        Process.sleep(5)
+
+        assert {:hit, "undotted"} = Cache.lookup(with_dot, :a)
+      end
+    end
+  end
 end

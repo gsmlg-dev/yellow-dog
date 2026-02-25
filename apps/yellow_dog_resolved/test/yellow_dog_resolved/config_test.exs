@@ -679,6 +679,89 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "intercept rule missing required fields" do
+    test "raises on missing 'match' field" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "no_match_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      type = "a"
+      value = "10.0.0.1"
+      """)
+
+      assert_raise KeyError, ~r/"match"/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on missing 'type' field" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "no_type_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "test.local"
+      value = "10.0.0.1"
+      """)
+
+      assert_raise KeyError, ~r/"type"/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on missing 'value' field" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "no_value_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "test.local"
+      type = "a"
+      """)
+
+      assert_raise KeyError, ~r/"value"/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "uses default TTL when 'ttl' field is omitted" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "no_ttl_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "test.local"
+      type = "a"
+      value = "10.0.0.1"
+      """)
+
+      config = Config.load(path)
+      [rule] = config.intercept_rules
+      assert rule.ttl == 300
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       config = Config.load(@test_config_path)
