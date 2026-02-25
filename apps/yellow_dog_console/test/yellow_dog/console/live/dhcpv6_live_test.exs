@@ -86,13 +86,19 @@ defmodule YellowDog.Console.Dhcpv6LiveTest do
 
     test "release_lease with invalid IAID shows error", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dhcpv6/leases")
-      html = render_click(view, "release_lease", %{"duid" => "00:01:00:01", "iaid" => "not_a_number"})
+
+      html =
+        render_click(view, "release_lease", %{"duid" => "00:01:00:01", "iaid" => "not_a_number"})
+
       assert html =~ "Invalid" or is_binary(html)
     end
 
     test "release_lease with valid params does not crash when service down", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dhcpv6/leases")
-      html = render_click(view, "release_lease", %{"duid" => "00:01:00:01:AA:BB:CC:DD", "iaid" => "1"})
+
+      html =
+        render_click(view, "release_lease", %{"duid" => "00:01:00:01:AA:BB:CC:DD", "iaid" => "1"})
+
       assert html =~ "Failed" or html =~ "error" or html =~ "Lease" or is_binary(html)
     end
 
@@ -282,7 +288,12 @@ defmodule YellowDog.Console.Dhcpv6LiveTest do
   # ============================================================================
 
   describe "ActivityLive.filtered_entries/3 (DHCPv6)" do
-    defp make_entry(type, duid \\ "00:03:00:01:aa:bb:cc:dd", ip \\ "2001:db8::1", details \\ "test") do
+    defp make_entry(
+           type,
+           duid \\ "00:03:00:01:aa:bb:cc:dd",
+           ip \\ "2001:db8::1",
+           details \\ "test"
+         ) do
       %{
         timestamp: DateTime.utc_now(),
         type: type,
@@ -356,14 +367,16 @@ defmodule YellowDog.Console.Dhcpv6LiveTest do
     end
 
     test "nil fields do not crash search" do
-      entries = [%{
-        timestamp: DateTime.utc_now(),
-        type: :solicit,
-        client_duid: nil,
-        client_ip: nil,
-        details: nil,
-        duration_us: nil
-      }]
+      entries = [
+        %{
+          timestamp: DateTime.utc_now(),
+          type: :solicit,
+          client_duid: nil,
+          client_ip: nil,
+          details: nil,
+          duration_us: nil
+        }
+      ]
 
       result = ActivityLive.filtered_entries(entries, "anything", "all")
       assert result == []

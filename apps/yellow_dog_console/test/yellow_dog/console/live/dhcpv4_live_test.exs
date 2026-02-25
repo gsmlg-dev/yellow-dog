@@ -421,14 +421,16 @@ defmodule YellowDog.Console.Dhcpv4LiveTest do
     end
 
     test "nil client fields do not crash search" do
-      entries = [%{
-        timestamp: DateTime.utc_now(),
-        type: :discover,
-        client_mac: nil,
-        client_ip: nil,
-        details: nil,
-        duration_us: nil
-      }]
+      entries = [
+        %{
+          timestamp: DateTime.utc_now(),
+          type: :discover,
+          client_mac: nil,
+          client_ip: nil,
+          details: nil,
+          duration_us: nil
+        }
+      ]
 
       result = ActivityLive.filtered_entries(entries, "anything", "all")
       assert result == []
