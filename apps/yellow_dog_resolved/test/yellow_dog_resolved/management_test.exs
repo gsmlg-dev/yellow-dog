@@ -170,6 +170,33 @@ defmodule YellowDog.Resolved.ManagementTest do
     end
   end
 
+  describe "build_connected_event/1 with live Config" do
+    test "includes real upstream addresses" do
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.build_connected_event(instance_id)
+
+      upstreams = event["data"]["upstreams"]
+      assert is_list(upstreams)
+      assert length(upstreams) == 1
+      # @config has [{198, 51, 100, 1}] — Upstream.format/1 turns it into a string
+      assert hd(upstreams) =~ "198.51.100.1"
+    end
+
+    test "includes real intercept rule count" do
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.build_connected_event(instance_id)
+
+      assert event["data"]["intercept_rule_count"] == 1
+    end
+
+    test "includes real cache max_entries" do
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.build_connected_event(instance_id)
+
+      assert event["data"]["cache_max_entries"] == 1000
+    end
+  end
+
   describe "build_connected_event/1 fallback when Config unavailable" do
     test "returns default values when Config GenServer not running" do
       # Stop Config so fetch_config_summary hits the rescue path

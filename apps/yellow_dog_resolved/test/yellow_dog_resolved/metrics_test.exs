@@ -125,6 +125,69 @@ defmodule YellowDog.Resolved.MetricsTest do
     end
   end
 
+  describe "concurrent counter updates" do
+    test "counters are accurate under concurrent load" do
+      # Verify handler is attached before concurrent burst
+      handlers = :telemetry.list_handlers([:yellow_dog, :resolved, :query, :stop])
+      assert Enum.any?(handlers, &(&1.id == "resolved-metrics-query-stop"))
+
+      # Warm up — ensure ETS table and telemetry pipeline are fully ready
+      warmup = build_query("warmup.local.dev", 1)
+      warmup_raw = DNS.to_iodata(warmup) |> IO.iodata_to_binary()
+      Router.resolve(warmup, warmup_raw)
+
+      before = Metrics.get_query_counts()
+      n = 50
+
+      tasks =
+        for i <- 1..n do
+          Task.async(fn ->
+            query = build_query("concurrent-#{i}.local.dev", 1)
+            raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+            Router.resolve(query, raw)
+          end)
+        end
+
+      Enum.each(tasks, &Task.await/1)
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + n
+      assert counts.intercepted == before.intercepted + n
+    end
+
+    test "forwarded counters accurate under concurrent load" do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+
+      before = Metrics.get_query_counts()
+      n = 20
+
+      tasks =
+        for i <- 1..n do
+          Task.async(fn ->
+            query = build_query("concurrent-fwd-#{i}.test", 1)
+            raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+            Router.resolve(query, raw)
+          end)
+        end
+
+      Enum.each(tasks, &Task.await/1)
+
+      counts = Metrics.get_query_counts()
+      assert counts.forwarded >= before.forwarded + n
+    end
+  end
+
   describe "catch-all handle_info" do
     test "ignores unexpected messages" do
       pid = Process.whereis(Metrics)

@@ -223,6 +223,55 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "NODATA (NOERROR with empty answer) caching" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:noerror_empty)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "NODATA response is cached (NOERROR rcode)" do
+      query = build_query("nodata.test", 28)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :forward} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.rcode == DNS.Message.RCode.new(0)
+      assert response.anlist == []
+
+      Process.sleep(10)
+
+      # NOERROR is cached even with empty answer (NODATA scenario)
+      assert {:hit, _} = Cache.lookup("nodata.test", :aaaa)
+    end
+
+    test "NODATA cached response preserves empty answer on second query" do
+      query = build_query("nodata-preserve.test", 28)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Router.resolve(query, raw)
+      Process.sleep(10)
+
+      # Second query should hit cache
+      query2 = build_query("nodata-preserve.test", 28)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :cache} = Router.resolve(query2, raw2)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.anlist == []
+    end
+  end
+
   describe "safe query type handling" do
     test "standard types resolve correctly through intercept" do
       query = build_query("app.local.dev", 1)

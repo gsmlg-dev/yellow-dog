@@ -22,6 +22,7 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
   - `:echo` — valid DNS response with A record for any query
   - `:nxdomain` — NXDOMAIN response for any query
   - `:servfail` — SERVFAIL response for any query
+  - `:noerror_empty` — NODATA response (NOERROR rcode, empty answer list)
   - `:timeout` — silently drops packets (simulates unreachable upstream)
   - `:garbage` — responds with invalid (non-DNS) binary data
   - `{:edns_yellowdog, ws_port, ws_path}` — EDNS 65321 + SRV for discovery
@@ -102,6 +103,24 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
       else
         response
       end
+
+    DNS.to_iodata(response) |> IO.iodata_to_binary()
+  end
+
+  defp build_response(query_binary, :noerror_empty) do
+    # NODATA: name exists but no records of the requested type
+    # NOERROR rcode with empty answer list (distinct from NXDOMAIN)
+    query = DNS.Message.from_iodata(query_binary)
+
+    response =
+      query
+      |> DNS.Message.update_header_attr(:qr, 1)
+      |> DNS.Message.update_header_attr(:aa, 0)
+      |> DNS.Message.update_header_attr(:rd, 1)
+      |> DNS.Message.update_header_attr(:ra, 1)
+      |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.new(0))
+      |> Map.put(:anlist, [])
+      |> DNS.Message.update_header_attr(:ancount, 0)
 
     DNS.to_iodata(response) |> IO.iodata_to_binary()
   end
