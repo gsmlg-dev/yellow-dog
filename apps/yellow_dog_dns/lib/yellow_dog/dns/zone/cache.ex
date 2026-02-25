@@ -289,6 +289,8 @@ defmodule YellowDog.Dns.Zone.Cache do
     {:noreply, state}
   end
 
+  def handle_info(_msg, state), do: {:noreply, state}
+
   @impl true
   def terminate(_reason, state) do
     :ets.delete(state.table)

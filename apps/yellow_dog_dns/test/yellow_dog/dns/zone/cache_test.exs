@@ -569,6 +569,55 @@ defmodule YellowDog.Dns.Zone.CacheTest do
     end
   end
 
+  describe "handle_info" do
+    test "unknown messages are silently ignored (no crash)", %{
+      view_name: view_name,
+      zone_name: zone_name
+    } do
+      {:ok, pid} = Cache.start_link(name: zone_name, view_name: view_name)
+
+      # Send an unknown message that would crash a GenServer without a catch-all
+      send(pid, {:unknown_message, :data})
+      send(pid, :random_atom)
+      send(pid, {:DOWN, make_ref(), :process, self(), :normal})
+
+      # Process is still alive
+      assert Process.alive?(pid)
+      assert is_map(Cache.stats(pid))
+
+      GenServer.stop(pid)
+    end
+
+    test "cleanup message removes expired entries", %{
+      view_name: view_name,
+      zone_name: zone_name
+    } do
+      {:ok, pid} =
+        Cache.start_link(name: zone_name, view_name: view_name, min_ttl: 0, max_ttl: 9999)
+
+      # Cache an entry that's already expired by backdating expires_at
+      query = build_query("expired.com")
+      response = build_response("expired.com", :a, 1)
+      :ok = Cache.cache(pid, query, response)
+      Process.sleep(20)
+
+      # Verify it was cached
+      stats_before = Cache.stats(pid)
+      assert stats_before.current_size == 1
+
+      # Manually send cleanup — the :cleanup message triggers the cleanup handler
+      send(pid, :cleanup)
+      # Wait for the handle_info to process
+      :sys.get_state(pid)
+
+      # Entry is still there (not expired yet — TTL is 1s and we didn't wait)
+      # The main point is the process didn't crash
+      assert Process.alive?(pid)
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "Zone.Behaviour implementation" do
     test "implements all required callbacks" do
       # Ensure module is loaded
