@@ -10,8 +10,8 @@ defmodule YellowDog.Resolved.Listener do
 
   require Logger
 
-  @doc false
-  def child_spec(config) do
+  @doc "Returns the Abyss supervisor child spec for starting the UDP listener."
+  def listener_spec(config) do
     listen_ip = config.listen
     port = config.port
 
@@ -23,11 +23,11 @@ defmodule YellowDog.Resolved.Listener do
            [
              handler_module: __MODULE__,
              port: port,
-             ip: listen_ip,
+             transport_module: Abyss.Transport.UDP.Broadcast,
+             transport_options: [ip: listen_ip],
              num_listeners: 1,
              num_connections: 1024,
-             read_timeout: 30_000,
-             broadcast: true
+             read_timeout: 30_000
            ]
          ]},
       type: :supervisor

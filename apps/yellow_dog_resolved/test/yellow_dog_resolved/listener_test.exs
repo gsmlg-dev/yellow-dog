@@ -29,32 +29,32 @@ defmodule YellowDog.Resolved.ListenerTest do
     config_path: ""
   }
 
-  describe "child_spec/1" do
+  describe "listener_spec/1" do
     test "returns a valid child spec map" do
-      spec = Listener.child_spec(@config)
+      spec = Listener.listener_spec(@config)
 
       assert spec.id == Listener
       assert spec.type == :supervisor
       assert {Abyss, :start_link, [opts]} = spec.start
       assert Keyword.get(opts, :handler_module) == Listener
       assert Keyword.get(opts, :port) == 0
-      assert Keyword.get(opts, :ip) == {127, 0, 0, 1}
+      assert Keyword.get(opts, :transport_options) == [ip: {127, 0, 0, 1}]
     end
 
-    test "passes num_listeners and broadcast opts" do
-      spec = Listener.child_spec(@config)
+    test "uses Broadcast transport module" do
+      spec = Listener.listener_spec(@config)
       {_, _, [opts]} = spec.start
 
       assert Keyword.get(opts, :num_listeners) == 1
-      assert Keyword.get(opts, :broadcast) == true
+      assert Keyword.get(opts, :transport_module) == Abyss.Transport.UDP.Broadcast
     end
 
     test "uses configured listen IP and port" do
       config = %{@config | listen: {0, 0, 0, 0}, port: 5353}
-      spec = Listener.child_spec(config)
+      spec = Listener.listener_spec(config)
       {_, _, [opts]} = spec.start
 
-      assert Keyword.get(opts, :ip) == {0, 0, 0, 0}
+      assert Keyword.get(opts, :transport_options) == [ip: {0, 0, 0, 0}]
       assert Keyword.get(opts, :port) == 5353
     end
   end
