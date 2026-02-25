@@ -1,6 +1,8 @@
 defmodule YellowDog.Resolved.TelemetryTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.{Cache, Config, Metrics, Router}
 
   @cache_config %{
@@ -123,7 +125,9 @@ defmodule YellowDog.Resolved.TelemetryTest do
       raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
       # No forwarder started — will trigger catch clause
-      Router.resolve(query, raw)
+      capture_log(fn ->
+        Router.resolve(query, raw)
+      end)
 
       assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :exception],
                       %{duration: _}, %{reason: _}}

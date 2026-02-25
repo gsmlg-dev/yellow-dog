@@ -1,6 +1,8 @@
 defmodule YellowDog.Resolved.Management.ClientTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.Management.Client
 
   @ws_config %{
@@ -59,8 +61,12 @@ defmodule YellowDog.Resolved.Management.ClientTest do
 
     test "handles invalid JSON gracefully" do
       pid = Process.whereis(Client)
-      send(pid, {:ws_message, "not valid json{{"})
-      Process.sleep(10)
+
+      capture_log(fn ->
+        send(pid, {:ws_message, "not valid json{{"})
+        Process.sleep(10)
+      end)
+
       assert Process.alive?(pid)
     end
   end

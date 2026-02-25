@@ -1,6 +1,8 @@
 defmodule YellowDog.Resolved.ConfigTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.Config
 
   @test_config_path Path.join([__DIR__, "..", "..", "config", "resolved.toml"])
@@ -254,8 +256,14 @@ defmodule YellowDog.Resolved.ConfigTest do
       File.write!(path, "invalid toml {{{{")
 
       pid = Process.whereis(Config)
-      send(pid, {:file_event, nil, {path, [:modified]}})
-      Process.sleep(50)
+
+      log =
+        capture_log(fn ->
+          send(pid, {:file_event, nil, {path, [:modified]}})
+          Process.sleep(50)
+        end)
+
+      assert log =~ "Failed to reload config"
 
       # Should still be alive with old config
       assert Process.alive?(pid)

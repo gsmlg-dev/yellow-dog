@@ -1,6 +1,8 @@
 defmodule YellowDog.Resolved.RouterTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.{Cache, Config, Router}
 
   @cache_config %{
@@ -138,7 +140,13 @@ defmodule YellowDog.Resolved.RouterTest do
       query = build_query("external.com", 1)
       raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
-      assert {:ok, response_binary} = Router.resolve(query, raw)
+      {result, log} =
+        with_log(fn ->
+          Router.resolve(query, raw)
+        end)
+
+      assert {:ok, response_binary} = result
+      assert log =~ "Query resolution crashed"
 
       response = DNS.Message.from_iodata(response_binary)
       assert response.header.qr == 1

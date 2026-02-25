@@ -1,6 +1,8 @@
 defmodule YellowDog.Resolved.ManagementTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.{Cache, Config, Metrics}
   alias YellowDog.Resolved.Management.Handler
 
@@ -113,7 +115,12 @@ defmodule YellowDog.Resolved.ManagementTest do
 
   describe "handle_command unknown" do
     test "returns nil for unknown command" do
-      assert nil == Handler.handle_command(%{"type" => "unknown"})
+      log =
+        capture_log(fn ->
+          assert nil == Handler.handle_command(%{"type" => "unknown"})
+        end)
+
+      assert log =~ "Unknown management command"
     end
   end
 
