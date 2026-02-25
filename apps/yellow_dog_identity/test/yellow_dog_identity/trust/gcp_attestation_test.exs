@@ -504,6 +504,16 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
 
       assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
     end
+
+    test "rejects JWT when aud claim is an unexpected type (integer, not string or list)", %{jwk: jwk} do
+      # aud is an integer — neither matches expected string nor is a list
+      # cond: actual == expected_audience → false; is_list(actual) → false; true → false
+      claims = valid_gcp_claims(%{"aud" => 12345})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
   end
 
   describe "missing kid in JWT header" do

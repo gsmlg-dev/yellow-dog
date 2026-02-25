@@ -201,4 +201,27 @@ defmodule YellowDogIdentity.Approval.EngineWithConfigTest do
       assert result.default_action == :approve
     end
   end
+
+  describe "get_default_action with unrecognized config value" do
+    test "falls back to :pending when default_action is not a recognized string" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "approval" => %{
+              "policies" => [],
+              "default_action" => "unknown_action"
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      # "unknown_action" doesn't match "approve" or "reject" → falls to _ -> :pending
+      result = Engine.list_policies()
+      assert result.default_action == :pending
+    end
+  end
 end
