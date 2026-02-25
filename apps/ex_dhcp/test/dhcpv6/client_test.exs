@@ -26,30 +26,37 @@ defmodule DHCPv6.ClientTest do
     end
 
     test "exports solicit/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :solicit, 1)
     end
 
     test "exports request/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :request, 1)
     end
 
     test "exports renew/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :renew, 1)
     end
 
     test "exports release/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :release, 1)
     end
 
     test "exports information_request/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :information_request, 1)
     end
 
     test "exports send_message/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :send_message, 1)
     end
 
     test "exports test_lease_cycle/1" do
+      Code.ensure_loaded!(Client)
       assert Kernel.function_exported?(Client, :test_lease_cycle, 1)
     end
   end
