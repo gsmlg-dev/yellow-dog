@@ -136,6 +136,17 @@ defmodule YellowDogIdentity.RegistrationEdgeTest do
       assert {:error, :not_found} = YellowDogIdentity.delete_host("nonexistent-id")
     end
 
+    test "propagates {:error, :delete_failed} when hosts dir is not writable", %{tmp_dir: tmp_dir} do
+      params = %{"hostname" => "perm-fail-node", "ssh_pubkey" => @key_a, "age_recipient" => @age}
+      {:ok, host} = YellowDogIdentity.register(params, @context)
+
+      hosts_dir = Path.join(tmp_dir, "hosts")
+      File.chmod!(hosts_dir, 0o555)
+      on_exit(fn -> File.chmod!(hosts_dir, 0o755) end)
+
+      assert {:error, :delete_failed} = YellowDogIdentity.delete_host(host.id)
+    end
+
     test "after delete, get_host returns :not_found" do
       params = %{
         "hostname" => "vanish-node",
