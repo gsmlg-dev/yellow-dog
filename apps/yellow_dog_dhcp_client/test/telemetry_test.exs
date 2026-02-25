@@ -188,7 +188,9 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
       YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
-        probes: 1, wait_ms: 10, interface: "eth0"
+        probes: 1,
+        wait_ms: 10,
+        interface: "eth0"
       )
 
       assert_receive {:telemetry, [:yellow_dog, :dhcp_client, :dad, :start], %{},
@@ -199,9 +201,7 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
       handler_id = attach([:yellow_dog, :dhcp_client, :dad, :start])
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
-      YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
-        probes: 1, wait_ms: 10
-      )
+      YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50}, probes: 1, wait_ms: 10)
 
       assert_receive {:telemetry, _, _, meta}
       refute Map.has_key?(meta, :interface)
@@ -212,7 +212,9 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
       YellowDog.DhcpClient.DAD.check(ctx.socket_pid, {192, 168, 1, 50},
-        probes: 1, wait_ms: 10, interface: "eth0"
+        probes: 1,
+        wait_ms: 10,
+        interface: "eth0"
       )
 
       assert_receive {:telemetry, [:yellow_dog, :dhcp_client, :dad, :result], %{},

@@ -112,7 +112,10 @@ defmodule YellowDog.DhcpClient.StateMachine do
   def init(data) do
     case try_recover_from_store(data) do
       {:ok, lease} ->
-        Logger.debug("DHCP client #{data.interface}: found valid persisted lease, entering rebinding")
+        Logger.debug(
+          "DHCP client #{data.interface}: found valid persisted lease, entering rebinding"
+        )
+
         # Generate a fresh xid — data.xid is nil at this point (never set in start_link).
         # Without this, send_request_broadcast in the :rebinding enter handler would call
         # build_request with xid=nil, crashing the real Packet encoder.

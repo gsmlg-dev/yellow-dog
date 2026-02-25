@@ -235,6 +235,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
 
     ~s("#{escaped}")
   end
+
   defp encode_toml_value(value) when is_integer(value), do: Integer.to_string(value)
   defp encode_toml_value(value) when is_boolean(value), do: Atom.to_string(value)
 
