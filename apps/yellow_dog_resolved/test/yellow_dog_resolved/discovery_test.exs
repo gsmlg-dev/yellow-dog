@@ -88,5 +88,24 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     test "returns :not_found for random garbage" do
       assert :not_found = Discovery.parse_discovery_response(:crypto.strong_rand_bytes(50))
     end
+
+    test "returns :not_found when EDNS option present but no SRV record" do
+      # Build a response with OPT record containing EDNS 65321 but no SRV answer
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 100)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      # Add OPT record with yellowdog EDNS option (version 1 + ws path)
+      ws_path = "/ws/manage"
+      edns_data = <<1::8, ws_path::binary>>
+
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+
+      response = Map.update(response, :arlist, [opt_record], &[opt_record | &1])
+      response = DNS.Message.update_header_attr(response, :arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
   end
 end

@@ -170,6 +170,20 @@ defmodule YellowDog.Resolved.ManagementTest do
     end
   end
 
+  describe "build_connected_event/1 fallback when Config unavailable" do
+    test "returns default values when Config GenServer not running" do
+      # Stop Config so fetch_config_summary hits the rescue path
+      stop_supervised!(Config)
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.build_connected_event(instance_id)
+
+      assert event["type"] == "connected"
+      assert event["data"]["upstreams"] == []
+      assert event["data"]["intercept_rule_count"] == 0
+      assert event["data"]["cache_max_entries"] == 10_000
+    end
+  end
+
   describe "build_connected_event/1" do
     test "builds connected event" do
       instance_id = :crypto.strong_rand_bytes(16)
