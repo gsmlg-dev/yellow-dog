@@ -981,6 +981,51 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     end
   end
 
+  # ── Renewing ──
+
+  describe "renewing" do
+    test "ACK in :renewing returns to :bound", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Force into :renewing
+      :sys.replace_state(pid, fn {_state, data} ->
+        {:renewing, data}
+      end)
+
+      wait_for_state(pid, :renewing, 500)
+
+      send_ack(pid)
+      wait_for_state(pid, :bound, 2000)
+
+      assert is_struct(StateMachine.lease(pid), YellowDog.DhcpClient.Lease)
+    end
+
+    test "NAK in :renewing returns to :init and clears lease", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} ->
+        {:renewing, data}
+      end)
+
+      wait_for_state(pid, :renewing, 500)
+
+      send_nak(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
+    end
+  end
+
   # ── Lease expired telemetry ──
 
   describe "lease expired telemetry" do
