@@ -326,6 +326,22 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert {:ok, ^lease_wlan0} = LeaseStore.lookup(pid, "wlan0")
   end
 
+  test "terminate flushes all interfaces to disk, not just the primary one", ctx do
+    {pid, _} = start_store(ctx, interface: "eth0")
+
+    lease_eth0 = make_lease(%{ip: {10, 0, 0, 1}})
+    lease_wlan0 = make_lease(%{ip: {10, 0, 0, 2}})
+
+    :ok = LeaseStore.store(pid, "eth0", lease_eth0)
+    :ok = LeaseStore.store(pid, "wlan0", lease_wlan0)
+
+    # terminate/2 flushes all ETS entries synchronously
+    GenServer.stop(pid)
+
+    assert File.exists?(Path.join(ctx.lease_dir, "eth0.lease"))
+    assert File.exists?(Path.join(ctx.lease_dir, "wlan0.lease"))
+  end
+
   # ── synchronous flush via terminate ──
   #
   # GenServer.stop/1 triggers terminate/2 which flushes synchronously.

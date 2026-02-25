@@ -107,10 +107,9 @@ defmodule YellowDog.DhcpClient.LeaseStore do
 
   @impl true
   def terminate(_reason, state) do
-    case :ets.lookup(state.table, state.interface) do
-      [{interface, _lease}] -> flush_to_disk(state, interface)
-      [] -> :ok
-    end
+    state.table
+    |> :ets.tab2list()
+    |> Enum.each(fn {interface, _lease} -> flush_to_disk(state, interface) end)
 
     :ok
   end
