@@ -182,6 +182,11 @@ defmodule YellowDog.Console.IdentityController do
         conn
         |> put_status(404)
         |> json(%{error: "not_found"})
+
+      {:error, _reason} ->
+        conn
+        |> put_status(500)
+        |> json(%{error: "delete_failed"})
     end
   end
 
