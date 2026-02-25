@@ -24,7 +24,7 @@ Discovery (EDNS 65321) → Management WS Client
 | `Cache` | ETS DNS cache: TTL, negative caching (NXDOMAIN), LRU eviction, sweep |
 | `ResponseBuilder` | DNS response construction for A/AAAA/CNAME/TXT/MX/SRV |
 | `Router` | Query pipeline: intercept → cache → forward |
-| `Forwarder` | Upstream query + txn_id correlation + failover + deprioritization |
+| `Forwarder` | Upstream query + txn_id correlation + failover + deprioritization; supports `{ip, port}` tuples |
 | `Listener` | Abyss.Handler for UDP DNS packets |
 | `Discovery` | EDNS option 65321 probe + SRV extraction |
 | `Management.Client` | WebSocket client for management commands (stub) |
@@ -54,6 +54,9 @@ mix credo --strict
 - Tests start components individually via `start_supervised!`
 - Config path resolution: `File.cwd!()` is already the app dir in umbrella
 - WebSocket management client is a stub — production needs `websock_client` or `mint_web_socket`
+- Upstreams support `{ip, port}` tuples in addition to bare IP tuples (port 53 default)
+- DNS.Domain trailing dot: `to_string(question.name)` returns `"domain."` — use `String.starts_with?` in tests
+- FakeUpstream test helper: `test/support/fake_upstream.ex` — UDP server for integration tests
 
 ## Configuration
 

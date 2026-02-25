@@ -117,11 +117,17 @@ defmodule YellowDog.Resolved.Management.Handler do
 
   defp fetch_config_summary do
     config = YellowDog.Resolved.Config.get()
-    upstreams = Enum.map(config.upstreams, &to_string(:inet.ntoa(&1)))
+    upstreams = Enum.map(config.upstreams, &format_upstream/1)
     {upstreams, length(config.intercept_rules), config.cache.max_entries}
   rescue
     _ -> {[], 0, 10_000}
   catch
     _, _ -> {[], 0, 10_000}
   end
+
+  defp format_upstream({ip, port}) when is_tuple(ip) and is_integer(port),
+    do: "#{:inet.ntoa(ip)}:#{port}"
+
+  defp format_upstream(ip) when is_tuple(ip),
+    do: to_string(:inet.ntoa(ip))
 end

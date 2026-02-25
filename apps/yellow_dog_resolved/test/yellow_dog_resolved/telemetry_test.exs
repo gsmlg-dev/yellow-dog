@@ -179,6 +179,72 @@ defmodule YellowDog.Resolved.TelemetryTest do
     end
   end
 
+  describe "forward telemetry events (with FakeUpstream)" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "emits query stop with source :forward" do
+      attach_telemetry([:yellow_dog, :resolved, :query, :stop], self())
+
+      query = build_query("forward-telemetry.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Router.resolve(query, raw)
+
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop],
+                      %{duration: _}, %{source: :forward}}
+    end
+
+    test "emits forward start and stop events" do
+      attach_telemetry([:yellow_dog, :resolved, :forward, :start], self())
+      attach_telemetry([:yellow_dog, :resolved, :forward, :stop], self())
+
+      query = build_query("fwd-events.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Router.resolve(query, raw)
+
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :forward, :start], _, _}
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :forward, :stop], %{duration: _},
+                      _}
+    end
+
+    test "emits query stop with source :cache after cache population" do
+      attach_telemetry([:yellow_dog, :resolved, :query, :stop], self())
+
+      query = build_query("cache-telemetry.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      # First — forward
+      Router.resolve(query, raw)
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop], _,
+                      %{source: :forward}}
+
+      Process.sleep(50)
+
+      # Second — cache hit
+      query2 = build_query("cache-telemetry.test", 1)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+
+      Router.resolve(query2, raw2)
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop], _,
+                      %{source: :cache}}
+    end
+  end
+
   defp build_query(domain, type_num) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))
