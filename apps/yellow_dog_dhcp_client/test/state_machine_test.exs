@@ -1,0 +1,422 @@
+defmodule YellowDog.DhcpClient.StateMachineTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDog.DhcpClient.StateMachine
+  alias DHCPv4.Message
+  alias DHCPv4.Message.Option
+
+  @test_mac <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+
+  # ── Mock packet module ──
+
+  # Instead of hitting the real network, we configure a mock packet module
+  # that records calls and returns deterministic data. The state machine
+  # reads the packet module from application env.
+
+  defmodule MockPacket do
+    @moduledoc false
+
+    # This module implements the same API as YellowDog.DhcpClient.Packet
+    # but does not touch the network. build_* return empty binaries (the
+    # mock socket won't actually send them). parse_reply delegates to the
+    # real parser so we can inject well-formed replies.
+
+    def build_discover(_mac, _xid, _opts \\ []), do: <<>>
+    def build_request(_mac, _xid, _server_ip, _offered_ip, _opts \\ []), do: <<>>
+    def build_decline(_mac, _xid, _server_ip, _declined_ip), do: <<>>
+    def build_release(_mac, _xid, _server_ip, _client_ip), do: <<>>
+
+    def parse_reply(data) do
+      YellowDog.DhcpClient.Packet.parse_reply(data)
+    end
+  end
+
+  # ── Mock socket ──
+
+  defmodule MockSocketImpl do
+    @moduledoc false
+    @behaviour YellowDog.DhcpClient.DhcpSocket
+
+    @impl true
+    def open(_interface, _owner) do
+      {:ok, make_ref()}
+    end
+
+    @impl true
+    def send_broadcast(_ref, _packet), do: :ok
+
+    @impl true
+    def send_unicast(_ref, _dest, _packet), do: :ok
+
+    @impl true
+    def send_arp_probe(_ref, _ip), do: {:error, :not_supported}
+
+    @impl true
+    def close(_ref), do: :ok
+  end
+
+  # ── Setup ──
+
+  setup do
+    # Configure mock packet module for the state machine
+    prev = Application.get_env(:yellow_dog_dhcp_client, :packet_module)
+    Application.put_env(:yellow_dog_dhcp_client, :packet_module, MockPacket)
+
+    on_exit(fn ->
+      if prev do
+        Application.put_env(:yellow_dog_dhcp_client, :packet_module, prev)
+      else
+        Application.delete_env(:yellow_dog_dhcp_client, :packet_module)
+      end
+    end)
+
+    # Start a mock socket process
+    {:ok, socket_pid} =
+      YellowDog.DhcpClient.DhcpSocket.start_link(
+        interface: "test0",
+        owner: self(),
+        impl: MockSocketImpl
+      )
+
+    %{socket_pid: socket_pid}
+  end
+
+  defp start_fsm(ctx, config_overrides \\ %{}) do
+    config =
+      Map.merge(
+        %{
+          dad_enabled: false,
+          selection_window_ms: 50
+        },
+        config_overrides
+      )
+
+    {:ok, pid} =
+      StateMachine.start_link(
+        interface: "test0",
+        mac: @test_mac,
+        socket_pid: ctx.socket_pid,
+        config: config
+      )
+
+    pid
+  end
+
+  defp build_reply(opts) do
+    yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
+    siaddr = Keyword.get(opts, :siaddr, {192, 168, 1, 1})
+    xid = Keyword.get(opts, :xid, 1)
+    options = Keyword.get(opts, :options, [])
+
+    msg = %Message{
+      op: 2,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: xid,
+      secs: 0,
+      flags: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: yiaddr,
+      siaddr: siaddr,
+      giaddr: {0, 0, 0, 0},
+      chaddr: @test_mac <> <<0::80>>,
+      sname: <<0::512>>,
+      file: <<0::1024>>,
+      options: options
+    }
+
+    IO.iodata_to_binary(DHCP.Parameter.to_iodata(msg))
+  end
+
+  defp offer_options(server_ip) do
+    {a, b, c, d} = server_ip
+
+    [
+      %Option{type: 53, length: 1, value: <<2>>},
+      %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+      %Option{type: 3, length: 4, value: <<a, b, c, d>>},
+      %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+      %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+      %Option{type: 54, length: 4, value: <<a, b, c, d>>},
+      %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+      %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+    ]
+  end
+
+  defp ack_options(server_ip) do
+    offer_options(server_ip)
+    |> Enum.map(fn
+      %Option{type: 53} -> %Option{type: 53, length: 1, value: <<5>>}
+      other -> other
+    end)
+  end
+
+  defp nak_options do
+    [%Option{type: 53, length: 1, value: <<6>>}]
+  end
+
+  defp send_offer(fsm_pid, opts \\ []) do
+    server_ip = Keyword.get(opts, :server_ip, {192, 168, 1, 1})
+    yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
+    extra_options = Keyword.get(opts, :extra_options, [])
+
+    packet = build_reply(
+      yiaddr: yiaddr,
+      siaddr: server_ip,
+      options: offer_options(server_ip) ++ extra_options
+    )
+
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
+  defp send_ack(fsm_pid, opts \\ []) do
+    server_ip = Keyword.get(opts, :server_ip, {192, 168, 1, 1})
+    yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
+
+    packet = build_reply(
+      yiaddr: yiaddr,
+      siaddr: server_ip,
+      options: ack_options(server_ip)
+    )
+
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
+  defp send_nak(fsm_pid) do
+    packet = build_reply(options: nak_options())
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
+  defp get_state(pid) do
+    {state, _data} = StateMachine.status(pid)
+    state
+  end
+
+  defp wait_for_state(pid, expected_state, timeout \\ 2000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    do_wait_for_state(pid, expected_state, deadline)
+  end
+
+  defp do_wait_for_state(pid, expected_state, deadline) do
+    if System.monotonic_time(:millisecond) > deadline do
+      current = get_state(pid)
+      flunk("Timed out waiting for state #{expected_state}, current: #{current}")
+    end
+
+    case get_state(pid) do
+      ^expected_state ->
+        :ok
+
+      _ ->
+        Process.sleep(10)
+        do_wait_for_state(pid, expected_state, deadline)
+    end
+  end
+
+  # ── Tests ──
+
+  test "starts in :init state", ctx do
+    pid = start_fsm(ctx)
+    assert get_state(pid) == :init
+  end
+
+  test "transitions to :selecting on offer", ctx do
+    pid = start_fsm(ctx)
+    assert get_state(pid) == :init
+
+    send_offer(pid)
+
+    wait_for_state(pid, :selecting)
+  end
+
+  test "transitions to :requesting after selection timeout", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 50})
+    assert get_state(pid) == :init
+
+    send_offer(pid)
+    wait_for_state(pid, :selecting)
+
+    # Wait for the selection window to expire (50ms + margin)
+    wait_for_state(pid, :requesting, 1000)
+  end
+
+  test "transitions to :bound on ack", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 50})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+  end
+
+  test "transitions to :init on nak", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 50})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+
+    send_nak(pid)
+
+    # NAK causes a backoff, then transitions back to :init
+    wait_for_state(pid, :init, 3000)
+  end
+
+  test "full DORA cycle reaches :bound", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    # DISCOVER already sent on enter
+
+    # OFFER arrives
+    send_offer(pid)
+    wait_for_state(pid, :selecting)
+
+    # Selection window expires -> REQUESTING
+    wait_for_state(pid, :requesting, 1000)
+
+    # ACK arrives
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    # Verify lease is populated
+    lease = StateMachine.lease(pid)
+    assert lease != nil
+    assert lease.ip == {192, 168, 1, 100}
+    assert lease.server_ip == {192, 168, 1, 1}
+  end
+
+  test "release from :bound returns to :init", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    StateMachine.release(pid)
+    wait_for_state(pid, :init, 2000)
+
+    assert StateMachine.lease(pid) == nil
+  end
+
+  test "interface_down from :bound returns to :init", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    send(pid, :interface_down)
+    wait_for_state(pid, :init, 2000)
+
+    assert StateMachine.lease(pid) == nil
+  end
+
+  test "status/1 returns state and data", ctx do
+    pid = start_fsm(ctx)
+    {state, data} = StateMachine.status(pid)
+
+    assert state == :init
+    assert data.interface == "test0"
+    assert data.mac == @test_mac
+  end
+
+  test "lease/1 returns nil before binding", ctx do
+    pid = start_fsm(ctx)
+    assert StateMachine.lease(pid) == nil
+  end
+
+  # ── select_best_offer/1 ──
+
+  describe "select_best_offer/1" do
+    test "returns only offer when list has one element" do
+      offer = %{ip: {192, 168, 1, 100}, yellowdog_server: false}
+      assert StateMachine.select_best_offer([offer]) == offer
+    end
+
+    test "prefers yellowdog_server offer" do
+      regular = %{ip: {192, 168, 1, 100}, yellowdog_server: false}
+      yellowdog = %{ip: {192, 168, 1, 200}, yellowdog_server: true}
+
+      # Offers are in reverse order (most recent first), so put yellowdog last
+      result = StateMachine.select_best_offer([yellowdog, regular])
+      assert result.ip == {192, 168, 1, 200}
+    end
+
+    test "prefers yellowdog_server even when received last" do
+      regular = %{ip: {192, 168, 1, 100}, yellowdog_server: false}
+      yellowdog = %{ip: {192, 168, 1, 200}, yellowdog_server: true}
+
+      # yellowdog received first (at end of reversed list)
+      result = StateMachine.select_best_offer([regular, yellowdog])
+      assert result.ip == {192, 168, 1, 200}
+    end
+
+    test "falls back to known_server when no yellowdog" do
+      regular = %{ip: {192, 168, 1, 100}, yellowdog_server: false, known_server: false}
+      known = %{ip: {192, 168, 1, 150}, yellowdog_server: false, known_server: true}
+
+      result = StateMachine.select_best_offer([known, regular])
+      assert result.ip == {192, 168, 1, 150}
+    end
+
+    test "falls back to FIFO when no yellowdog or known_server" do
+      first = %{ip: {192, 168, 1, 100}, yellowdog_server: false}
+      second = %{ip: {192, 168, 1, 200}, yellowdog_server: false}
+
+      # Offers are stored in reverse order; reversed = chronological
+      # [second, first] reversed => [first, second]; List.first => first
+      result = StateMachine.select_best_offer([second, first])
+      assert result.ip == {192, 168, 1, 100}
+    end
+
+    test "handles offers without yellowdog_server key" do
+      offer1 = %{ip: {192, 168, 1, 100}}
+      offer2 = %{ip: {192, 168, 1, 200}}
+
+      result = StateMachine.select_best_offer([offer2, offer1])
+      assert result != nil
+    end
+  end
+
+  # ── multiple offers in selecting state ──
+
+  test "accumulates multiple offers in selecting state", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 200})
+
+    send_offer(pid, yiaddr: {192, 168, 1, 100})
+    wait_for_state(pid, :selecting)
+
+    send_offer(pid, yiaddr: {192, 168, 1, 200}, server_ip: {192, 168, 2, 1})
+
+    # Both offers should be accumulated
+    {_state, data} = StateMachine.status(pid)
+    assert length(data.offers) == 2
+  end
+
+  test "ignores non-offer packets in init state", ctx do
+    pid = start_fsm(ctx)
+
+    # Send an ACK while in init - should be ignored
+    send_ack(pid)
+    Process.sleep(50)
+
+    assert get_state(pid) == :init
+  end
+
+  test "ignores non-offer packets in selecting state", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 500})
+
+    send_offer(pid)
+    wait_for_state(pid, :selecting)
+
+    # Send ACK while selecting - should be ignored (only offers are collected)
+    send_ack(pid)
+    Process.sleep(50)
+
+    assert get_state(pid) == :selecting
+  end
+end

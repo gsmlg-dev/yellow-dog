@@ -1,0 +1,15 @@
+[package]
+name = "dhcp_socket"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dhcp_socket"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.34"
+socket2 = "0.5"
+nix = { version = "0.29", features = ["net", "socket", "poll"] }
+libc = "0.2"
