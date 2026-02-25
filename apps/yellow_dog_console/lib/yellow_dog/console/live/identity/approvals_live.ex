@@ -27,14 +27,28 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
 
   @impl true
   def handle_event("approve", %{"id" => id}, socket) do
-    case YellowDogIdentity.approve(id, "console-operator") do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.approve(id, "console-operator") end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, _} -> {:noreply, load_pending(socket) |> put_flash(:info, "Host approved")}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to approve")}
     end
   end
 
   def handle_event("reject", %{"id" => id}, socket) do
-    case YellowDogIdentity.revoke(id, "console-operator", "rejected via console") do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.revoke(id, "console-operator", "rejected via console") end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, _} -> {:noreply, load_pending(socket) |> put_flash(:info, "Host rejected")}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to reject")}
     end
@@ -65,7 +79,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     count = MapSet.size(selected)
 
     Enum.each(selected, fn id ->
-      YellowDogIdentity.approve(id, "console-operator")
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.approve(id, "console-operator") end,
+        {:error, :unavailable}
+      )
     end)
 
     {:noreply,
@@ -80,7 +98,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     count = MapSet.size(selected)
 
     Enum.each(selected, fn id ->
-      YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console")
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
+        {:error, :unavailable}
+      )
     end)
 
     {:noreply,

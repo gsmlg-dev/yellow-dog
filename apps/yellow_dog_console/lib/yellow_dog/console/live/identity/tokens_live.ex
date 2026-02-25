@@ -40,7 +40,14 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
       created_by: "console-operator"
     }
 
-    case YellowDogIdentity.create_token(params) do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.create_token(params) end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, _token, raw_token} ->
         {:noreply,
          socket
@@ -54,7 +61,14 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
   end
 
   def handle_event("revoke_token", %{"id" => id}, socket) do
-    case YellowDogIdentity.revoke_token(id) do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.revoke_token(id) end,
+        {:error, :unavailable}
+      )
+
+    case result do
       :ok -> {:noreply, load_tokens(socket) |> put_flash(:info, "Token revoked")}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to revoke token")}
     end
