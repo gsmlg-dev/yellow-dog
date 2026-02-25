@@ -1,0 +1,103 @@
+defmodule YellowDog.Console.IdentityController do
+  use YellowDog.Console, :controller
+
+  action_fallback :fallback
+
+  @doc """
+  POST /api/hosts/register
+
+  Registers a new host identity.
+  """
+  def register(conn, params) do
+    context = %{
+      source_ip: conn.remote_ip,
+      authorization: get_req_header(conn, "authorization") |> List.first(),
+      attestation: Map.get(params, "attestation")
+    }
+
+    case YellowDogIdentity.register(params, context) do
+      {:ok, host} ->
+        conn
+        |> put_status(if(host.status == :approved, do: 200, else: 201))
+        |> json(%{
+          id: host.id,
+          status: to_string(host.status),
+          trust_level: to_string(host.trust_level),
+          trust_provider: to_string(host.trust_provider),
+          message: "Registration accepted"
+        })
+
+      {:error, {:idempotent, existing}} ->
+        conn
+        |> put_status(200)
+        |> json(%{
+          id: existing.id,
+          status: to_string(existing.status),
+          trust_level: to_string(existing.trust_level),
+          trust_provider: to_string(existing.trust_provider),
+          message: "Already registered"
+        })
+
+      {:error, :conflict} ->
+        conn
+        |> put_status(409)
+        |> json(%{
+          error: "conflict",
+          message: "Hostname registered with different key. Use force: true to replace."
+        })
+
+      {:error, reason} ->
+        conn
+        |> put_status(422)
+        |> json(%{error: to_string(reason)})
+    end
+  end
+
+  @doc """
+  GET /api/hosts/recipients
+
+  Exports approved host recipients.
+  Query param: format=sops for .sops.yaml format.
+  """
+  def recipients(conn, params) do
+    format = Map.get(params, "format", "yaml")
+
+    content =
+      case format do
+        "sops" -> YellowDogIdentity.export_recipients(format: :sops)
+        _ -> YellowDogIdentity.export_recipients(format: :yaml)
+      end
+
+    conn
+    |> put_resp_content_type("text/yaml")
+    |> send_resp(200, content)
+  end
+
+  @doc """
+  GET /api/hosts/:id/status
+
+  Returns the current status of a host (for revocation checking).
+  """
+  def status(conn, %{"id" => id}) do
+    case YellowDogIdentity.host_status(id) do
+      {:ok, status_map} ->
+        json(conn, %{
+          id: status_map.id,
+          hostname: status_map.hostname,
+          status: to_string(status_map.status),
+          trust_level: to_string(status_map.trust_level)
+        })
+
+      :not_found ->
+        conn
+        |> put_status(404)
+        |> json(%{error: "not_found"})
+    end
+  end
+
+  defp fallback(conn, {:error, reason}) do
+    conn
+    |> put_status(500)
+    |> json(%{error: inspect(reason)})
+  end
+end

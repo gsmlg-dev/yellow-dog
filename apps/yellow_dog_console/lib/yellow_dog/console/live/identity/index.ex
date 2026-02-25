@@ -1,0 +1,128 @@
+defmodule YellowDog.Console.IdentityLive.Index do
+  use YellowDog.Console, :live_view
+
+  alias YellowDog.Console.ServiceHelper
+
+  @impl true
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(YellowDog.Console.PubSub, "identity:hosts")
+    end
+
+    {:ok, socket |> assign(:page_title, "Identity Registry") |> load_data()}
+  end
+
+  @impl true
+  def handle_info({:host_registered, _host}, socket), do: {:noreply, load_data(socket)}
+  def handle_info({:host_updated, _host}, socket), do: {:noreply, load_data(socket)}
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("refresh", _params, socket) do
+    {:noreply, load_data(socket)}
+  end
+
+  defp load_data(socket) do
+    stats =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.stats() end,
+        default_stats()
+      )
+
+    socket
+    |> assign(:stats, stats)
+    |> assign(:service_running, service_running?())
+  end
+
+  defp default_stats do
+    %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{}}
+  end
+
+  defp service_running? do
+    Process.whereis(YellowDogIdentity.Registry) != nil
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash}>
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <h1 class="text-2xl font-bold">Host Identity Registry</h1>
+          <div class="flex items-center gap-2">
+            <span class={[
+              "badge",
+              if(@service_running, do: "badge-success", else: "badge-error")
+            ]}>
+              {if @service_running, do: "Running", else: "Stopped"}
+            </span>
+            <button class="btn btn-sm btn-ghost" phx-click="refresh">
+              ↻
+            </button>
+          </div>
+        </div>
+
+        <div class="stats stats-vertical lg:stats-horizontal shadow w-full">
+          <div class="stat">
+            <div class="stat-title">Total Hosts</div>
+            <div class="stat-value">{@stats.total}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Pending</div>
+            <div class="stat-value text-warning">{@stats.pending}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Approved</div>
+            <div class="stat-value text-success">{@stats.approved}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Revoked</div>
+            <div class="stat-value text-error">{@stats.revoked}</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="card bg-base-100 shadow">
+            <div class="card-body">
+              <h2 class="card-title">Trust Level Distribution</h2>
+              <div class="space-y-2">
+                <div
+                  :for={{level, count} <- @stats.trust_levels}
+                  class="flex justify-between items-center"
+                >
+                  <span class="badge badge-outline">{level}</span>
+                  <span class="font-mono">{count}</span>
+                </div>
+                <p :if={@stats.trust_levels == %{}} class="text-base-content/50">
+                  No hosts registered
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-base-100 shadow">
+            <div class="card-body">
+              <h2 class="card-title">Quick Actions</h2>
+              <div class="space-y-2">
+                <.link navigate={~p"/identity/hosts"} class="btn btn-sm btn-outline btn-block">
+                  View All Hosts
+                </.link>
+                <.link
+                  navigate={~p"/identity/approvals"}
+                  class="btn btn-sm btn-warning btn-outline btn-block"
+                >
+                  Pending Approvals ({@stats.pending})
+                </.link>
+                <.link navigate={~p"/identity/tokens"} class="btn btn-sm btn-outline btn-block">
+                  Provisioning Tokens
+                </.link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Layouts.app>
+    """
+  end
+end

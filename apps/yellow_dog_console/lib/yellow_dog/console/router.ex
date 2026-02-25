@@ -115,6 +115,13 @@ defmodule YellowDog.Console.Router do
     live "/netboot/tftp", NetbootLive.TftpLive
     live "/netboot/log", NetbootLive.LogLive
 
+    # Identity (Host Registry)
+    live "/identity", IdentityLive.Index
+    live "/identity/hosts", IdentityLive.HostsLive
+    live "/identity/hosts/:id", IdentityLive.HostDetailLive
+    live "/identity/approvals", IdentityLive.ApprovalsLive
+    live "/identity/tokens", IdentityLive.TokensLive
+
     # Fingerprint
     live "/fingerprint/devices", FingerprintLive.DevicesLive
     live "/fingerprint/devices/:mac", FingerprintLive.DeviceDetailLive
@@ -148,6 +155,11 @@ defmodule YellowDog.Console.Router do
 
   scope "/api", YellowDog.Console do
     pipe_through :api
+
+    # Host Identity API
+    post "/hosts/register", IdentityController, :register
+    get "/hosts/recipients", IdentityController, :recipients
+    get "/hosts/:id/status", IdentityController, :status
   end
 
   # Enable LiveDashboard in development
