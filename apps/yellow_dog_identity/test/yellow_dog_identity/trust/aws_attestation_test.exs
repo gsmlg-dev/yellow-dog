@@ -295,6 +295,24 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
       assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
       assert evidence.region == "us-east-1"
     end
+
+    test "rejects when accountId is nil and allowlist is configured" do
+      # nil not in ["allowed-account-1", "allowed-account-2"] → :account_not_allowed
+      document_b64 = valid_aws_document(%{"accountId" => nil})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :account_not_allowed} = AWS.verify(ctx)
+    end
+
+    test "rejects when region is nil and allowlist is configured" do
+      # Document has valid accountId but nil region → :region_not_allowed
+      document_b64 =
+        valid_aws_document(%{"accountId" => "allowed-account-1", "region" => nil})
+
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :region_not_allowed} = AWS.verify(ctx)
+    end
   end
 
   describe "AMI allowlist (allowed_amis)" do

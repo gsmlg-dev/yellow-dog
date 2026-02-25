@@ -93,6 +93,23 @@ defmodule YellowDogIdentity.Trust.Token.VerifierTest do
       assert {:trusted, :token_verified, _} = Verifier.verify(context)
     end
 
+    test "trims trailing whitespace from Bearer token" do
+      {:ok, token, raw_token} = Token.create(%{hostname_pattern: "*"})
+      :ok = Registry.put_token(token)
+
+      # Token with trailing whitespace in Bearer header
+      context = %{authorization: "Bearer #{raw_token}   ", hostname: "host-01"}
+      assert {:trusted, :token_verified, _} = Verifier.verify(context)
+    end
+
+    test "trims leading and trailing whitespace from raw token (non-Bearer)" do
+      {:ok, token, raw_token} = Token.create(%{hostname_pattern: "*"})
+      :ok = Registry.put_token(token)
+
+      context = %{authorization: "  #{raw_token}  ", hostname: "host-01"}
+      assert {:trusted, :token_verified, _} = Verifier.verify(context)
+    end
+
     test "returns untrusted with hostname mismatch" do
       {:ok, token, raw_token} = Token.create(%{hostname_pattern: "web-*"})
       :ok = Registry.put_token(token)
