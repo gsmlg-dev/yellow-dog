@@ -369,6 +369,27 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert StateMachine.lease(pid) == nil
   end
 
+  test "interface_down from :selecting returns to :init", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 500})
+
+    # Send an offer to get into selecting state
+    send_offer(pid)
+    wait_for_state(pid, :selecting, 500)
+
+    send(pid, :interface_down)
+    wait_for_state(pid, :init, 2000)
+  end
+
+  test "interface_down from :requesting returns to :init", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+
+    send(pid, :interface_down)
+    wait_for_state(pid, :init, 2000)
+  end
+
   test "status/1 returns state and data", ctx do
     pid = start_fsm(ctx)
     {state, data} = StateMachine.status(pid)

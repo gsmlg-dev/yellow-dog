@@ -45,6 +45,16 @@ defmodule YellowDog.DhcpClient.OSIntegration.HookNMTest do
     test "returns :ok even when no lease file exists" do
       assert :ok = HookNM.deconfigure("nonexistent_hook_test_iface")
     end
+
+    test "removes the lease JSON file if it exists" do
+      iface = "test_deconfig_#{System.unique_integer([:positive])}"
+      path = Path.join("/tmp", "yd-dhcp-#{iface}.json")
+      File.write!(path, "{}")
+      on_exit(fn -> File.rm(path) end)
+
+      assert :ok = HookNM.deconfigure(iface)
+      refute File.exists?(path)
+    end
   end
 
   describe "apply_lease/2" do
@@ -101,6 +111,25 @@ defmodule YellowDog.DhcpClient.OSIntegration.HookNMTest do
       {:ok, content} = File.read(lease_path)
       {:ok, data} = Jason.decode(content)
       assert data["router"] == nil
+    end
+
+    test "includes NTP servers and MTU in JSON output" do
+      lease =
+        test_lease(%{
+          ntp_servers: [{129, 6, 15, 28}, {129, 6, 15, 29}],
+          mtu: 9000
+        })
+
+      iface = "test_hook_ntp_mtu_#{System.unique_integer([:positive])}"
+      lease_path = Path.join("/tmp", "yd-dhcp-#{iface}.json")
+      on_exit(fn -> File.rm(lease_path) end)
+
+      assert :ok = HookNM.apply_lease(iface, lease)
+
+      {:ok, content} = File.read(lease_path)
+      {:ok, data} = Jason.decode(content)
+      assert data["ntp_servers"] == ["129.6.15.28", "129.6.15.29"]
+      assert data["mtu"] == 9000
     end
   end
 end

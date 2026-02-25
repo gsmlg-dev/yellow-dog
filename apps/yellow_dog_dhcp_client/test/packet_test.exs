@@ -559,5 +559,24 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
       assert lease.xid == custom_xid
     end
+
+    test "extracts NTP servers from Option 42" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 42, length: 8, value: <<129, 6, 15, 28, 129, 6, 15, 29>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.ntp_servers == [{129, 6, 15, 28}, {129, 6, 15, 29}]
+    end
+
+    test "ntp_servers is empty list when Option 42 absent" do
+      data = build_reply(options: standard_ack_options())
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.ntp_servers == []
+    end
   end
 end
