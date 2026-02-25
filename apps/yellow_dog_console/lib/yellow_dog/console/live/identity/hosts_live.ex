@@ -13,6 +13,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
      socket
      |> assign(:page_title, "All Hosts")
      |> assign(:filter, "all")
+     |> assign(:search, "")
      |> load_hosts()}
   end
 
@@ -26,12 +27,17 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
     {:noreply, socket |> assign(:filter, status) |> load_hosts()}
   end
 
+  def handle_event("search", %{"q" => query}, socket) do
+    {:noreply, socket |> assign(:search, query) |> load_hosts()}
+  end
+
   def handle_event("refresh", _params, socket) do
     {:noreply, load_hosts(socket)}
   end
 
   defp load_hosts(socket) do
     filter = socket.assigns.filter
+    search = socket.assigns.search
 
     hosts =
       ServiceHelper.safe_call(
@@ -46,6 +52,14 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
         end,
         []
       )
+
+    hosts =
+      if search != "" do
+        q = String.downcase(search)
+        Enum.filter(hosts, fn h -> String.contains?(String.downcase(h.hostname), q) end)
+      else
+        hosts
+      end
 
     assign(socket, :hosts, hosts)
   end
@@ -62,15 +76,27 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
           </button>
         </div>
 
-        <div class="flex gap-2">
-          <button
-            :for={s <- ["all", "pending", "approved", "revoked"]}
-            class={["btn btn-sm", if(@filter == s, do: "btn-primary", else: "btn-ghost")]}
-            phx-click="filter"
-            phx-value-status={s}
-          >
-            {String.capitalize(s)}
-          </button>
+        <div class="flex items-center gap-4">
+          <div class="flex gap-2">
+            <button
+              :for={s <- ["all", "pending", "approved", "revoked"]}
+              class={["btn btn-sm", if(@filter == s, do: "btn-primary", else: "btn-ghost")]}
+              phx-click="filter"
+              phx-value-status={s}
+            >
+              {String.capitalize(s)}
+            </button>
+          </div>
+          <form phx-change="search" class="flex-1 max-w-xs">
+            <input
+              type="text"
+              name="q"
+              value={@search}
+              placeholder="Search hostname..."
+              class="input input-sm input-bordered w-full"
+              phx-debounce="300"
+            />
+          </form>
         </div>
 
         <div class="overflow-x-auto">
