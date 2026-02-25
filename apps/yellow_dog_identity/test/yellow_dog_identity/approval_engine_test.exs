@@ -304,6 +304,16 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.action == :pending
     end
 
+    test "extracts mac_prefix from atom-keyed :mac field in evidence" do
+      policies = [
+        %Policy{name: "apple-atom", action: :approve, match: %{"mac_prefix" => "aa:bb:cc"}}
+      ]
+
+      host = make_host(%{trust_evidence: %{mac: "aa:bb:cc:dd:ee:ff"}})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
     test "returns nil mac_prefix when evidence is nil" do
       policies = [
         %Policy{name: "mac-match", action: :approve, match: %{"mac_prefix" => "aa:bb:cc"}}
@@ -557,6 +567,26 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.policy_name == "azure-sub"
     end
 
+    test "matches Azure subscription_id from atom-keyed trust_evidence" do
+      policies = [
+        %Policy{
+          name: "azure-sub-atom",
+          action: :approve,
+          match: %{"cloud_account" => "atom-sub-99"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{subscription_id: "atom-sub-99"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "azure-sub-atom"
+    end
+
     test "prefers account_id over subscription_id when both present" do
       policies = [
         %Policy{
@@ -599,6 +629,26 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       result = Engine.evaluate_with_policies(host, policies, :pending)
       assert result.action == :approve
       assert result.policy_name == "azure-region"
+    end
+
+    test "matches Azure location from atom-keyed trust_evidence" do
+      policies = [
+        %Policy{
+          name: "azure-location-atom",
+          action: :approve,
+          match: %{"cloud_region" => "northeurope"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{location: "northeurope"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "azure-location-atom"
     end
 
     test "prefers region over location when both present" do
