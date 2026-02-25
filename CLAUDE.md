@@ -13,7 +13,7 @@ apps/<app_name>/CLAUDE.md
 
 Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
 
-### Applications (13 total)
+### Applications (14 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -25,6 +25,7 @@ Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using
 | **YellowDog.Mdns** | `apps/yellow_dog_mdns/` | mDNS responder: service discovery and registration |
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
+| **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DaisyUI, Bun) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
 | **Abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
