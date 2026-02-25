@@ -45,6 +45,7 @@ defmodule YellowDog.DhcpClient.Config do
   @type t :: %{
           interface: String.t(),
           mode: mode(),
+          hostname: String.t() | nil,
           vendor_class: String.t(),
           selection_window_ms: pos_integer(),
           dad_enabled: boolean(),
@@ -62,6 +63,7 @@ defmodule YellowDog.DhcpClient.Config do
 
   @defaults %{
     mode: :standalone,
+    hostname: nil,
     vendor_class: "YellowDog",
     selection_window_ms: 1000,
     dad_enabled: true,
@@ -95,6 +97,7 @@ defmodule YellowDog.DhcpClient.Config do
     %{
       interface: interface,
       mode: parse_mode(get_in_any(raw, [:mode, "mode"], @defaults.mode)),
+      hostname: get_in_any(raw, [:hostname, "hostname"], @defaults.hostname),
       vendor_class: get_in_any(raw, [:vendor_class, "vendor_class"], @defaults.vendor_class),
       selection_window_ms:
         get_in_any(

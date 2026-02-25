@@ -66,9 +66,9 @@ defmodule YellowDog.DhcpClient.OSIntegration.HookNM do
   end
 
   @impl true
-  @spec apply_dns(Lease.t()) :: :ok | {:error, term()}
-  def apply_dns(_lease) do
-    Logger.debug("DHCP client hook: apply_dns no-op (NM handles DNS)")
+  @spec apply_dns(String.t(), Lease.t()) :: :ok | {:error, term()}
+  def apply_dns(interface, _lease) do
+    Logger.debug("DHCP client hook: apply_dns no-op for #{interface} (NM handles DNS)")
     :ok
   end
 

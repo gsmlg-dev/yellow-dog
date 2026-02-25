@@ -47,5 +47,5 @@ defmodule YellowDog.DhcpClient.OSIntegration do
   Writes resolver configuration and notifies the system resolver (e.g. resolvconf,
   systemd-resolved) of the new nameservers and search domain.
   """
-  @callback apply_dns(lease :: Lease.t()) :: :ok | {:error, term()}
+  @callback apply_dns(interface :: String.t(), lease :: Lease.t()) :: :ok | {:error, term()}
 end

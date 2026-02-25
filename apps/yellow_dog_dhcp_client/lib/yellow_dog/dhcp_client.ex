@@ -127,6 +127,30 @@ defmodule YellowDog.DhcpClient do
     end
   end
 
+  @doc """
+  Reads the MAC address of the given network interface.
+
+  Returns a 6-byte binary on success.
+
+  ## Examples
+
+      iex> {:ok, mac} = YellowDog.DhcpClient.read_mac("eth0")
+      iex> byte_size(mac)
+      6
+  """
+  @spec read_mac(String.t()) :: {:ok, binary()} | {:error, term()}
+  def read_mac(interface) when is_binary(interface) do
+    path = "/sys/class/net/#{interface}/address"
+
+    case File.read(path) do
+      {:ok, content} ->
+        parse_mac_string(String.trim(content))
+
+      {:error, reason} ->
+        {:error, {:read_mac, interface, reason}}
+    end
+  end
+
   @doc false
   def registry_name, do: @registry
 
@@ -135,5 +159,23 @@ defmodule YellowDog.DhcpClient do
       [{pid, _}] -> {:ok, pid}
       [] -> :error
     end
+  end
+
+  defp parse_mac_string(mac_str) do
+    parts = String.split(mac_str, ":")
+
+    if length(parts) == 6 do
+      bytes =
+        Enum.map(parts, fn hex ->
+          {byte, ""} = Integer.parse(hex, 16)
+          byte
+        end)
+
+      {:ok, :binary.list_to_bin(bytes)}
+    else
+      {:error, {:invalid_mac, mac_str}}
+    end
+  rescue
+    _ -> {:error, {:invalid_mac, mac_str}}
   end
 end

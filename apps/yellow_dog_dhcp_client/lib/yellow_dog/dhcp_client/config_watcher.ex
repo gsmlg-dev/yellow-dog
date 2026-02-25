@@ -254,14 +254,7 @@ defmodule YellowDog.DhcpClient.ConfigWatcher do
   end
 
   defp start_interface(interface, config) do
-    opts = [
-      mode: config.mode,
-      vendor_class: config.vendor_class,
-      selection_window_ms: config.selection_window_ms,
-      dad_enabled: config.dad_enabled,
-      dad_probes: config.dad_probes,
-      dad_wait_ms: config.dad_wait_ms
-    ]
+    opts = [config: config]
 
     case YellowDog.DhcpClient.start_interface(interface, opts) do
       {:ok, _pid} ->

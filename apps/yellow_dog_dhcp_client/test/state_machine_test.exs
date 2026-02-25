@@ -485,7 +485,7 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     def apply_routes(_interface, _lease), do: :ok
 
     @impl true
-    def apply_dns(_lease), do: :ok
+    def apply_dns(_interface, _lease), do: :ok
   end
 
   describe "OS integration" do

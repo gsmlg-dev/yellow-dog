@@ -199,6 +199,10 @@ defmodule YellowDog.DhcpClient.StateMachine do
     {:next_state, :init, data}
   end
 
+  def handle_event({:timeout, :dad_backoff}, :go_init, :requesting, data) do
+    {:next_state, :init, data}
+  end
+
   def handle_event({:timeout, :retransmit}, :retransmit, :requesting, data) do
     count = data.retransmit_count + 1
 

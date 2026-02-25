@@ -37,7 +37,7 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
          :ok <- timed_cmd(interface, :link_up, "ip", ["link", "set", interface, "up"]),
          :ok <- maybe_set_mtu(interface, lease),
          :ok <- apply_routes(interface, lease),
-         :ok <- apply_dns(lease) do
+         :ok <- apply_dns(interface, lease) do
       :ok
     end
   end
@@ -84,24 +84,16 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
   end
 
   @impl true
-  @spec apply_dns(Lease.t()) :: :ok | {:error, term()}
-  def apply_dns(%Lease{dns_servers: []}), do: :ok
+  @spec apply_dns(String.t(), Lease.t()) :: :ok | {:error, term()}
+  def apply_dns(_interface, %Lease{dns_servers: []}), do: :ok
 
-  def apply_dns(%Lease{dns_servers: servers} = lease) do
-    # Build resolv.conf content
+  def apply_dns(interface, %Lease{dns_servers: servers} = lease) do
     content = build_resolv_conf(servers, lease.domain_name)
-
-    # Ensure the run directory exists
     File.mkdir_p!(@resolv_dir)
-
-    # Derive interface name from the lease (use a stable identifier)
-    # The interface is not directly on the lease, so we write a generic fragment
-    # and let the caller's apply_lease pass the interface for resolvconf
-    iface = Map.get(lease.raw_options, :_interface, "dhcp")
-    resolv_path = Path.join(@resolv_dir, "resolv.conf.#{iface}")
+    resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
 
     with :ok <- File.write(resolv_path, content) do
-      timed_cmd(iface, :add_dns, "resolvconf", ["-a", iface])
+      timed_cmd(interface, :add_dns, "resolvconf", ["-a", interface])
     end
   end
 
