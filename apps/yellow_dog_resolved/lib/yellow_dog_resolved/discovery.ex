@@ -105,6 +105,7 @@ defmodule YellowDog.Resolved.Discovery do
     :ok
   end
 
+  @impl true
   def terminate(_reason, _state), do: :ok
 
   # Private functions

@@ -8,6 +8,8 @@ defmodule YellowDog.Resolved.E2ETest do
   """
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias YellowDog.Resolved.{Cache, Config, Forwarder, Metrics}
   alias YellowDog.Resolved.Test.FakeUpstream
 
@@ -336,6 +338,63 @@ defmodule YellowDog.Resolved.E2ETest do
       assert response.header.qr == 1
       assert response.header.id == 10_010
       assert length(response.anlist) == 1
+    end
+  end
+
+  describe "garbage upstream response" do
+    setup do
+      {:ok, upstream_pid, upstream_port} = FakeUpstream.start(:garbage)
+      on_exit(fn -> FakeUpstream.stop(upstream_pid) end)
+
+      config = %{
+        listen: {127, 0, 0, 1},
+        port: 0,
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3,
+        intercept_rules: [],
+        cache: @cache_config,
+        discovery: %{
+          enabled: false,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        },
+        config_path: ""
+      }
+
+      start_supervised!({Config, config})
+      start_supervised!({Cache, @cache_config})
+      start_supervised!(Metrics)
+
+      forwarder_config = %{
+        upstreams: config.upstreams,
+        upstream_timeout_ms: config.upstream_timeout_ms,
+        upstream_failure_threshold: config.upstream_failure_threshold
+      }
+
+      start_supervised!({Forwarder, forwarder_config})
+      sup_pid = start_supervised!(YellowDog.Resolved.Listener.listener_spec(config))
+      listener_port = find_abyss_listener_port(sup_pid)
+
+      {:ok, client} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(client) end)
+
+      {:ok, port: listener_port, client: client}
+    end
+
+    test "returns SERVFAIL when upstream sends invalid data", ctx do
+      capture_log(fn ->
+        query = build_query("garbage-e2e.test", 1, 11_011)
+        raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+        :ok = :gen_udp.send(ctx.client, {127, 0, 0, 1}, ctx.port, raw)
+
+        assert {:ok, {_ip, _port, response_binary}} =
+                 :gen_udp.recv(ctx.client, 0, 5000)
+
+        response = DNS.Message.from_iodata(response_binary)
+        assert response.header.qr == 1
+        assert response.header.rcode == DNS.Message.RCode.serv_fail()
+      end)
     end
   end
 

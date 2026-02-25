@@ -143,6 +143,21 @@ defmodule YellowDog.Resolved.MetricsTest do
 
       refute Process.alive?(pid)
     end
+
+    test "detaches telemetry handler on shutdown" do
+      pid = Process.whereis(Metrics)
+
+      # Verify the handler exists before stopping
+      handlers = :telemetry.list_handlers([:yellow_dog, :resolved, :query, :stop])
+      assert Enum.any?(handlers, &(&1.id == "resolved-metrics-query-stop"))
+
+      # GenServer.stop guarantees terminate/2 is called
+      GenServer.stop(pid, :normal)
+
+      # Handler should be detached after terminate
+      handlers_after = :telemetry.list_handlers([:yellow_dog, :resolved, :query, :stop])
+      refute Enum.any?(handlers_after, &(&1.id == "resolved-metrics-query-stop"))
+    end
   end
 
   defp build_query(domain, type_num) do

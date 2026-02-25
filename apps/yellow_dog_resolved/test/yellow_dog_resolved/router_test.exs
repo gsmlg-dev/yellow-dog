@@ -154,6 +154,42 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "resolve with garbage upstream response" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:garbage)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "returns SERVFAIL when upstream responds with invalid data" do
+      query = build_query("garbage.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      {result, log} =
+        with_log(fn ->
+          Router.resolve(query, raw)
+        end)
+
+      assert {:ok, response_binary} = result
+      # DNS.Message.from_iodata throws (Erlang :throw), hitting the catch clause
+      assert log =~ "Query resolution crashed"
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+    end
+  end
+
   describe "safe query type handling" do
     test "standard types resolve correctly through intercept" do
       query = build_query("app.local.dev", 1)

@@ -15,7 +15,17 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
 
   defstruct [:socket, :port, :mode]
 
-  @doc "Start a fake upstream on an ephemeral port. Returns `{:ok, pid, port}`."
+  @doc """
+  Start a fake upstream on an ephemeral port. Returns `{:ok, pid, port}`.
+
+  Supported modes:
+  - `:echo` — valid DNS response with A record for any query
+  - `:nxdomain` — NXDOMAIN response for any query
+  - `:servfail` — SERVFAIL response for any query
+  - `:timeout` — silently drops packets (simulates unreachable upstream)
+  - `:garbage` — responds with invalid (non-DNS) binary data
+  - `{:edns_yellowdog, ws_port, ws_path}` — EDNS 65321 + SRV for discovery
+  """
   def start(mode \\ :echo) do
     {:ok, pid} = GenServer.start(__MODULE__, mode)
     port = GenServer.call(pid, :get_port)
@@ -42,6 +52,12 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
   @impl true
   def handle_info({:udp, _socket, _client_ip, _client_port, _data}, %{mode: :timeout} = state) do
     # Silently drop the packet — simulates an unreachable upstream
+    {:noreply, state}
+  end
+
+  def handle_info({:udp, _socket, client_ip, client_port, _data}, %{mode: :garbage} = state) do
+    # Respond with invalid binary data that isn't a valid DNS message
+    :gen_udp.send(state.socket, client_ip, client_port, :crypto.strong_rand_bytes(32))
     {:noreply, state}
   end
 
