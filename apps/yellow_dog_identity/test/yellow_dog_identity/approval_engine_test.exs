@@ -696,6 +696,31 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.policy_name == "nixos-workstations"
     end
 
+    test "matches fingerprint_class from atom-keyed evidence (get_in_evidence atom fallback)" do
+      # Atom key :fingerprint_class instead of string "fingerprint_class"
+      # get_in_evidence tries string key first, then String.to_existing_atom fallback
+      policies = [
+        %Policy{
+          name: "nixos-atom-key",
+          action: :approve,
+          match: %{"fingerprint_class" => "nixos-workstation"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_evidence: %{
+            provider: :netboot,
+            fingerprint_class: "nixos-workstation"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "nixos-atom-key"
+    end
+
     test "matches mac_prefix from netboot evidence" do
       policies = [
         %Policy{

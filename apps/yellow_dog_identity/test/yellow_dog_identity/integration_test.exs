@@ -346,6 +346,22 @@ defmodule YellowDogIdentity.IntegrationTest do
       assert stats.approved == 0
       assert stats.revoked == 0
     end
+
+    test "counts active_tokens and total_tokens correctly" do
+      # Create one valid and one expired token
+      {:ok, _valid, _} = YellowDogIdentity.create_token(%{hostname_pattern: "*", ttl_seconds: 3600})
+
+      {:ok, expired_token, _} =
+        YellowDogIdentity.create_token(%{hostname_pattern: "expired-*", ttl_seconds: 1})
+
+      # Manually expire it by updating to a past expiry
+      expired = %{expired_token | expires_at: DateTime.add(DateTime.utc_now(), -60, :second)}
+      :ok = YellowDogIdentity.Registry.put_token(expired)
+
+      stats = YellowDogIdentity.stats()
+      assert stats.total_tokens == 2
+      assert stats.active_tokens == 1
+    end
   end
 
   # ──────────────────────────────────────────────
