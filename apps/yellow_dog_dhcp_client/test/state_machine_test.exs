@@ -619,6 +619,69 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert is_integer(data.xid) and data.xid > 0
     end
 
+    test "marks offer as known_server when it matches the stored server_ip", ctx do
+      # Use an expired lease so the FSM starts in :init (not :rebinding) but the
+      # server_ip is still present in the store for maybe_mark_known_server to match.
+      prior_lease = %YellowDog.DhcpClient.Lease{
+        ip: {192, 168, 1, 50},
+        subnet_mask: {255, 255, 255, 0},
+        server_ip: {192, 168, 1, 1},
+        router: {192, 168, 1, 1},
+        dns_servers: [],
+        ntp_servers: [],
+        lease_time: 1,
+        t1: 1,
+        t2: 1,
+        obtained_at: ~U[2000-01-01 00:00:00Z],
+        xid: 0xABCD1234,
+        yellowdog_server: false,
+        vendor_options: %{},
+        raw_options: %{}
+      }
+
+      YellowDog.DhcpClient.LeaseStore.store(ctx.store_pid, "test0", prior_lease)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 200})
+
+      send_offer(pid, server_ip: {192, 168, 1, 1})
+      wait_for_state(pid, :selecting)
+
+      {_state, data} = StateMachine.status(pid)
+      offer = List.first(data.offers)
+      assert offer.known_server == true
+    end
+
+    test "does not mark offer as known_server when server_ip differs from stored lease", ctx do
+      prior_lease = %YellowDog.DhcpClient.Lease{
+        ip: {192, 168, 1, 50},
+        subnet_mask: {255, 255, 255, 0},
+        server_ip: {192, 168, 1, 1},
+        router: nil,
+        dns_servers: [],
+        ntp_servers: [],
+        lease_time: 1,
+        t1: 1,
+        t2: 1,
+        obtained_at: ~U[2000-01-01 00:00:00Z],
+        xid: 0xABCD1234,
+        yellowdog_server: false,
+        vendor_options: %{},
+        raw_options: %{}
+      }
+
+      YellowDog.DhcpClient.LeaseStore.store(ctx.store_pid, "test0", prior_lease)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 200})
+
+      # Different server than the stored lease
+      send_offer(pid, server_ip: {10, 0, 0, 1})
+      wait_for_state(pid, :selecting)
+
+      {_state, data} = StateMachine.status(pid)
+      offer = List.first(data.offers)
+      assert offer.known_server == false
+    end
+
     test "starts in :init when store has an expired persisted lease", ctx do
       # Pre-populate the store with an expired lease
       expired_lease = %YellowDog.DhcpClient.Lease{

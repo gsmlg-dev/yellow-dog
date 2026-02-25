@@ -152,6 +152,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     case parse_reply(packet) do
       {:offer, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :offer, lease)
+        lease = maybe_mark_known_server(lease, data)
         {:next_state, :selecting, %{data | offers: [lease]}}
 
       _other ->
@@ -180,6 +181,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     case parse_reply(packet) do
       {:offer, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :offer, lease)
+        lease = maybe_mark_known_server(lease, data)
         {:keep_state, %{data | offers: [lease | data.offers]}}
 
       _other ->
@@ -610,6 +612,25 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp packet_mod do
     Application.get_env(:yellow_dog_dhcp_client, :packet_module, YellowDog.DhcpClient.Packet)
+  end
+
+  # --- Offer enrichment ---
+
+  # Marks a received offer as coming from a previously-known server when the
+  # offer's server_ip matches the server_ip of the currently stored lease.
+  # This enables the offer selection priority: YellowDog > known_server > FIFO.
+  defp maybe_mark_known_server(lease, %__MODULE__{store_pid: nil}), do: lease
+
+  defp maybe_mark_known_server(lease, %__MODULE__{store_pid: store_pid, interface: interface}) do
+    case LeaseStore.lookup(store_pid, interface) do
+      {:ok, %Lease{server_ip: stored_server}} when stored_server == lease.server_ip ->
+        %{lease | known_server: true}
+
+      _ ->
+        lease
+    end
+  rescue
+    _ -> lease
   end
 
   # --- Lease persistence and OS integration ---

@@ -27,6 +27,7 @@ defmodule YellowDog.DhcpClient.Lease do
           server_id: String.t() | nil,
           cluster_id: String.t() | nil,
           yellowdog_server: boolean(),
+          known_server: boolean(),
           obtained_at: DateTime.t(),
           xid: non_neg_integer(),
           raw_options: map()
@@ -54,6 +55,7 @@ defmodule YellowDog.DhcpClient.Lease do
     ntp_servers: [],
     vendor_options: %{},
     yellowdog_server: false,
+    known_server: false,
     raw_options: %{}
   ]
 
