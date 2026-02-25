@@ -1,7 +1,7 @@
 defmodule YellowDog.Resolved.TelemetryTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.{Cache, Config, Router}
+  alias YellowDog.Resolved.{Cache, Config, Metrics, Router}
 
   @cache_config %{
     enabled: true,
@@ -32,6 +32,7 @@ defmodule YellowDog.Resolved.TelemetryTest do
   setup do
     start_supervised!({Config, @config})
     start_supervised!({Cache, @cache_config})
+    start_supervised!(Metrics)
 
     {:ok, test_pid: self()}
   end

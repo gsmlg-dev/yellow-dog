@@ -5,6 +5,7 @@ defmodule YellowDog.Resolved.Supervisor do
   Supervision tree:
   - Config (TOML config loader + watcher)
   - Cache (ETS-based DNS cache)
+  - Metrics (query counter accumulator)
   - Forwarder (upstream query correlation)
   - Listener (Abyss UDP listener on 127.0.0.1:53)
   - Discovery (EDNS probe + WS management, optional)
@@ -26,6 +27,7 @@ defmodule YellowDog.Resolved.Supervisor do
       [
         {YellowDog.Resolved.Config, config},
         {YellowDog.Resolved.Cache, config.cache},
+        YellowDog.Resolved.Metrics,
         {YellowDog.Resolved.Forwarder, config},
         listener_child_spec(config)
       ] ++ discovery_children(config)

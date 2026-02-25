@@ -1,7 +1,7 @@
 defmodule YellowDog.Resolved.ManagementTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.Cache
+  alias YellowDog.Resolved.{Cache, Config, Metrics}
   alias YellowDog.Resolved.Management.Handler
 
   @cache_config %{
@@ -13,8 +13,27 @@ defmodule YellowDog.Resolved.ManagementTest do
     sweep_interval_s: 3600
   }
 
+  @config %{
+    listen: {127, 0, 0, 1},
+    port: 0,
+    upstreams: [{198, 51, 100, 1}],
+    upstream_timeout_ms: 200,
+    upstream_failure_threshold: 3,
+    intercept_rules: [
+      %{match: {:suffix, "local.dev"}, type: :a, value: "127.0.0.1", ttl: 300}
+    ],
+    cache: @cache_config,
+    discovery: %{
+      enabled: false,
+      websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+    },
+    config_path: ""
+  }
+
   setup do
+    start_supervised!({Config, @config})
     start_supervised!({Cache, @cache_config})
+    start_supervised!(Metrics)
     :ok
   end
 

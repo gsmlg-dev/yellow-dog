@@ -66,6 +66,7 @@ defmodule YellowDog.Resolved.Management.Handler do
 
   def handle_command(%{"type" => "ping", "id" => id, "data" => _data}) do
     uptime_s = div(System.monotonic_time(:millisecond), 1000)
+    counts = YellowDog.Resolved.Metrics.get_query_counts()
 
     :telemetry.execute(
       [:yellow_dog, :resolved, :management, :command],
@@ -78,10 +79,10 @@ defmodule YellowDog.Resolved.Management.Handler do
       "id" => id,
       "data" => %{
         "uptime_s" => uptime_s,
-        "queries_total" => 0,
-        "queries_intercepted" => 0,
-        "queries_cached" => 0,
-        "queries_forwarded" => 0
+        "queries_total" => counts.total,
+        "queries_intercepted" => counts.intercepted,
+        "queries_cached" => counts.cached,
+        "queries_forwarded" => counts.forwarded
       }
     }
   end
@@ -96,6 +97,9 @@ defmodule YellowDog.Resolved.Management.Handler do
   def build_connected_event(instance_id) do
     {:ok, hostname} = :inet.gethostname()
 
+    # Try to fetch real config values, fall back to defaults
+    {upstreams, rule_count, cache_max} = fetch_config_summary()
+
     %{
       "type" => "connected",
       "id" => "evt-#{System.unique_integer([:positive])}",
@@ -103,10 +107,20 @@ defmodule YellowDog.Resolved.Management.Handler do
         "instance_id" => Base.encode16(instance_id, case: :lower),
         "version" => "0.1.0",
         "hostname" => to_string(hostname),
-        "upstreams" => [],
-        "intercept_rule_count" => 0,
-        "cache_max_entries" => 10_000
+        "upstreams" => upstreams,
+        "intercept_rule_count" => rule_count,
+        "cache_max_entries" => cache_max
       }
     }
+  end
+
+  defp fetch_config_summary do
+    config = YellowDog.Resolved.Config.get()
+    upstreams = Enum.map(config.upstreams, &to_string(:inet.ntoa(&1)))
+    {upstreams, length(config.intercept_rules), config.cache.max_entries}
+  rescue
+    _ -> {[], 0, 10_000}
+  catch
+    _, _ -> {[], 0, 10_000}
   end
 end
