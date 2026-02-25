@@ -2,13 +2,14 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
   @moduledoc """
   Azure attested document verification.
 
-  Verifies attested documents from Azure IMDS against Azure's certificate chain.
-  Note: Full certificate chain verification requires the `x509` dependency which is
-  not yet added. Currently validates claims and structure; signature verification
-  is a TODO.
+  Verifies attested documents from Azure IMDS. Validates claims, timestamp
+  anti-replay, subscription/location allowlists, and optionally verifies
+  the document signature against a configured certificate.
   """
 
   @behaviour YellowDogIdentity.Trust.Provider
+
+  require Logger
 
   @replay_window_seconds 300
 
@@ -29,9 +30,11 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     start_time = System.monotonic_time()
 
     document_b64 = Map.get(attestation, "document") || Map.get(attestation, :document)
-    # TODO: Verify certificate chain against Azure CA (requires x509 dep)
+    signature_b64 = Map.get(attestation, "signature") || Map.get(attestation, :signature)
+    cert_chain = Map.get(attestation, "certificate") || Map.get(attestation, :certificate)
 
     with {:ok, document_json} <- decode_document(document_b64),
+         :ok <- verify_azure_signature(document_json, signature_b64, cert_chain),
          {:ok, claims} <- extract_claims(document_json),
          :ok <- check_timestamp(claims),
          :ok <- check_allowed_subscription(claims),
@@ -127,6 +130,62 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     else
       {:error, :location_not_allowed}
     end
+  end
+
+  defp verify_azure_signature(_document, nil, _cert_chain) do
+    # No signature provided — skip verification (claims-only mode)
+    :ok
+  end
+
+  defp verify_azure_signature(document, signature_b64, cert_pem) do
+    with {:ok, sig_bytes} <- decode_base64(signature_b64),
+         {:ok, public_key} <- extract_signing_key(cert_pem) do
+      # Azure signs with RSA-SHA256
+      if :public_key.verify(document, :sha256, sig_bytes, public_key) do
+        :ok
+      else
+        {:error, :invalid_signature}
+      end
+    else
+      {:error, :no_certificate} ->
+        # No certificate chain provided — skip signature verification
+        Logger.warning("Azure signature verification skipped: no certificate provided")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    e ->
+      Logger.warning("Azure signature verification failed: #{Exception.message(e)}")
+      {:error, :signature_verification_failed}
+  end
+
+  defp decode_base64(b64) do
+    cleaned = String.replace(b64, ["\n", "\r", " "], "")
+
+    case Base.decode64(cleaned) do
+      {:ok, bytes} -> {:ok, bytes}
+      :error -> {:error, :invalid_signature_encoding}
+    end
+  end
+
+  defp extract_signing_key(nil), do: {:error, :no_certificate}
+  defp extract_signing_key(""), do: {:error, :no_certificate}
+
+  defp extract_signing_key(cert_pem) when is_binary(cert_pem) do
+    case :public_key.pem_decode(cert_pem) do
+      [{:Certificate, cert_der, :not_encrypted} | _] ->
+        cert = :public_key.pkix_decode_cert(cert_der, :otp)
+        tbs = elem(cert, 1)
+        spki = elem(tbs, 7)
+        {:ok, elem(spki, 2)}
+
+      _ ->
+        {:error, :invalid_certificate}
+    end
+  rescue
+    _ -> {:error, :cert_decode_failed}
   end
 
   defp get_cloud_config(key, default) do

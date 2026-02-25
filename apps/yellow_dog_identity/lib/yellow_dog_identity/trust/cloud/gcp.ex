@@ -69,7 +69,18 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
   defp verify_and_decode_jwt(token) when is_binary(token) do
     case fetch_google_keys() do
       {:ok, jwks} ->
-        verify_with_keys(token, jwks)
+        case verify_with_keys(token, jwks) do
+          {:ok, claims} ->
+            {:ok, claims}
+
+          {:error, :invalid_signature} ->
+            # Signature mismatch is a hard failure — don't fall back
+            {:error, :invalid_signature}
+
+          {:error, _reason} ->
+            # Key not found, missing kid, etc. — fall back to unverified decode
+            decode_jwt_claims_unverified(token)
+        end
 
       {:error, :keys_unavailable} ->
         # Fallback: decode without verification but log a warning

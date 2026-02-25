@@ -38,6 +38,9 @@ defmodule YellowDogIdentity.MixProject do
       # JWT verification (GCP OIDC tokens)
       {:jose, "~> 1.11"},
 
+      # X.509 certificate handling (AWS PKCS7, Azure cert chain)
+      {:x509, "~> 0.9"},
+
       # Development and test dependencies
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
