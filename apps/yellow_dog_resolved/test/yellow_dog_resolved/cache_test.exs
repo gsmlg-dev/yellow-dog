@@ -385,6 +385,47 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "store overwrites" do
+    test "overwrite same domain+type updates the response" do
+      Cache.store("overwrite.test", :a, "old_data", 300)
+      Process.sleep(10)
+      assert {:hit, "old_data"} = Cache.lookup("overwrite.test", :a)
+
+      Cache.store("overwrite.test", :a, "new_data", 300)
+      Process.sleep(10)
+      assert {:hit, "new_data"} = Cache.lookup("overwrite.test", :a)
+    end
+
+    test "overwrite does not increase entry count" do
+      Cache.store("count.test", :a, "data1", 300)
+      Process.sleep(10)
+      stats1 = Cache.stats()
+
+      Cache.store("count.test", :a, "data2", 300)
+      Process.sleep(10)
+      stats2 = Cache.stats()
+
+      assert stats2.entries == stats1.entries
+    end
+  end
+
+  describe "stats hit_rate precision" do
+    test "hit_rate is a float rounded to 2 decimals" do
+      Cache.store("rate.test", :a, "data", 300)
+      Process.sleep(10)
+
+      # 2 hits, 1 miss = 2/3 ≈ 0.67
+      Cache.lookup("rate.test", :a)
+      Cache.lookup("rate.test", :a)
+      Cache.lookup("rate-miss.test", :a)
+
+      stats = Cache.stats()
+      assert is_float(stats.hit_rate)
+      # Float should be rounded to at most 2 decimal places
+      assert stats.hit_rate == Float.round(stats.hit_rate, 2)
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       pid = Process.whereis(Cache)

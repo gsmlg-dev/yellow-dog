@@ -101,6 +101,35 @@ defmodule YellowDog.Resolved.ForwarderTest do
       pid = Process.whereis(Forwarder)
       assert Process.alive?(pid)
     end
+
+    test "logs warning when failure threshold reached" do
+      pid = Process.whereis(Forwarder)
+      upstream = {198, 51, 100, 1}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # threshold is 2 — second failure triggers the warning
+          GenServer.cast(pid, {:upstream_failure, upstream})
+          GenServer.cast(pid, {:upstream_failure, upstream})
+          Process.sleep(20)
+        end)
+
+      assert log =~ "deprioritized after 2 failures"
+    end
+
+    test "failure count increments correctly via :sys.get_state" do
+      pid = Process.whereis(Forwarder)
+      upstream = {198, 51, 100, 1}
+
+      state_before = :sys.get_state(pid)
+      assert Map.get(state_before.failure_counts, upstream) == 0
+
+      GenServer.cast(pid, {:upstream_failure, upstream})
+      Process.sleep(10)
+
+      state_after = :sys.get_state(pid)
+      assert Map.get(state_after.failure_counts, upstream) == 1
+    end
   end
 
   describe "deprioritization with mixed upstreams" do

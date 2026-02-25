@@ -251,6 +251,69 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert Enum.at(config.intercept_rules, 0).type == :cname
     end
 
+    test "raises on wildcard-only match pattern" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "wildcard_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "*"
+      type = "a"
+      value = "0.0.0.0"
+      """)
+
+      assert_raise ArgumentError, ~r/invalid match pattern/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on empty match pattern" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "empty_match_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = ""
+      type = "a"
+      value = "0.0.0.0"
+      """)
+
+      assert_raise ArgumentError, ~r/invalid match pattern/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on bare suffix wildcard pattern" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bare_suffix_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "*."
+      type = "a"
+      value = "0.0.0.0"
+      """)
+
+      assert_raise ArgumentError, ~r/invalid match pattern/, fn ->
+        Config.load(path)
+      end
+    end
+
     test "raises on unsupported record type" do
       tmp_dir = System.tmp_dir!()
       path = Path.join(tmp_dir, "bad_type_#{System.unique_integer([:positive])}.toml")

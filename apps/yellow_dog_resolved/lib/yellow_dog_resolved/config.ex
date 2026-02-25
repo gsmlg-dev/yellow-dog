@@ -250,13 +250,36 @@ defmodule YellowDog.Resolved.Config do
   end
 
   @spec parse_match_pattern(String.t()) :: {:exact | :suffix | :prefix, String.t()}
-  defp parse_match_pattern("*." <> rest), do: {:suffix, String.downcase(rest)}
+  defp parse_match_pattern("*." <> rest) do
+    suffix = String.downcase(rest)
+
+    if suffix == "" do
+      raise ArgumentError, "invalid match pattern: \"*.\", suffix cannot be empty"
+    end
+
+    {:suffix, suffix}
+  end
 
   defp parse_match_pattern(pattern) when is_binary(pattern) do
-    if String.ends_with?(pattern, "*") do
-      {:prefix, String.downcase(String.trim_trailing(pattern, "*"))}
-    else
-      {:exact, String.downcase(pattern)}
+    cond do
+      pattern == "" ->
+        raise ArgumentError, "invalid match pattern: empty string"
+
+      pattern == "*" ->
+        raise ArgumentError,
+              "invalid match pattern: \"*\", use \"*.domain\" for suffix or \"prefix*\" for prefix"
+
+      String.ends_with?(pattern, "*") ->
+        prefix = String.downcase(String.trim_trailing(pattern, "*"))
+
+        if prefix == "" do
+          raise ArgumentError, "invalid match pattern: prefix cannot be empty"
+        end
+
+        {:prefix, prefix}
+
+      true ->
+        {:exact, String.downcase(pattern)}
     end
   end
 
