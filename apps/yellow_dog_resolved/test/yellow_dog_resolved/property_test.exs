@@ -17,10 +17,10 @@ defmodule YellowDog.Resolved.PropertyTest do
   @cache_config %{
     enabled: true,
     max_entries: 1000,
-    min_ttl_s: 1,
-    max_ttl_s: 5,
-    negative_ttl_s: 2,
-    sweep_interval_s: 1
+    min_ttl_s: 3,
+    max_ttl_s: 10,
+    negative_ttl_s: 3,
+    sweep_interval_s: 5
   }
 
   @config %{
@@ -192,7 +192,7 @@ defmodule YellowDog.Resolved.PropertyTest do
   describe "property: cache TTL bounds" do
     setup do
       start_supervised!({Config, @config})
-      # Use short TTLs for property testing: min=1s, max=5s, sweep=1s
+      # Use short TTLs for property testing: min=3s, max=10s, sweep=5s
       start_supervised!({Cache, @cache_config})
       :ok
     end
@@ -217,7 +217,7 @@ defmodule YellowDog.Resolved.PropertyTest do
               ttl <- integer(100..999_999),
               max_runs: 20
             ) do
-        # Even with huge TTL, the cache clamps to max_ttl_s (5s in test config)
+        # Even with huge TTL, the cache clamps to max_ttl_s (10s in test config)
         Cache.store(domain, :a, "data-#{domain}", ttl)
         Process.sleep(10)
 

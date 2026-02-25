@@ -521,7 +521,7 @@ defmodule YellowDog.Resolved.CacheTest do
     setup do
       # Restart cache with very short min_ttl_s for expiry testing
       stop_supervised!(Cache)
-      start_supervised!({Cache, %{@cache_config | min_ttl_s: 1, negative_ttl_s: 1}})
+      start_supervised!({Cache, %{@cache_config | min_ttl_s: 1, negative_ttl_s: 2}})
       :ok
     end
 
@@ -563,8 +563,8 @@ defmodule YellowDog.Resolved.CacheTest do
 
       assert {:hit, "nxdomain_data"} = Cache.lookup("neg-expire.test", :a)
 
-      # Wait for negative_ttl_s (1s) to expire
-      Process.sleep(1100)
+      # Wait for negative_ttl_s (2s) to expire
+      Process.sleep(2200)
 
       assert :miss = Cache.lookup("neg-expire.test", :a)
     end
