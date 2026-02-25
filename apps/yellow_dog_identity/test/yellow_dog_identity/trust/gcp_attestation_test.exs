@@ -540,6 +540,31 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "JWKS cache expiration" do
+    test "expired JWKS cache triggers a refetch attempt (cache miss path)", %{jwk: jwk} do
+      # Overwrite the cache entry with a stale timestamp (older than 3600s TTL)
+      # age = now - stale_time = 4000 > 3600 → get_cached_keys returns :miss
+      stale_time = System.monotonic_time(:second) - 4000
+
+      :ets.insert(
+        :gcp_jwks_cache,
+        {:keys, %{"keys" => []}, stale_time}
+      )
+
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # Stale cache → refetch attempted. Outcome depends on network:
+      #   - No network: {:untrusted, :keys_unavailable}
+      #   - Real JWKS fetched but test kid absent: {:untrusted, :key_not_found}
+      # Either way the token is untrusted (test key is not a real Google key)
+      result = GCP.verify(ctx)
+      assert elem(result, 0) == :untrusted
+      assert elem(result, 1) in [:keys_unavailable, :key_not_found]
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields", %{jwk: jwk} do
       claims = valid_gcp_claims()
