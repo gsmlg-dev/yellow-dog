@@ -137,6 +137,7 @@ defmodule YellowDog.Resolved.Router do
   defp extract_ttl_from_message(msg) do
     msg.anlist
     |> Enum.map(& &1.ttl)
+    |> Enum.filter(&is_integer/1)
     |> Enum.min(fn -> 300 end)
   rescue
     _ -> 300

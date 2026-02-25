@@ -85,7 +85,7 @@ defmodule YellowDog.Resolved.Management.Client do
   def handle_info({:ws_message, json_text}, state) do
     case Jason.decode(json_text) do
       {:ok, message} ->
-        response = Handler.handle_command(message)
+        response = safe_handle_command(message)
 
         if response do
           GenServer.cast(self(), {:send, response})
@@ -111,6 +111,18 @@ defmodule YellowDog.Resolved.Management.Client do
   end
 
   # Private functions
+
+  defp safe_handle_command(message) do
+    Handler.handle_command(message)
+  rescue
+    e ->
+      Logger.warning("Command handler crashed: #{inspect(e)}")
+      nil
+  catch
+    kind, reason ->
+      Logger.warning("Command handler crashed (#{kind}): #{inspect(reason)}")
+      nil
+  end
 
   defp schedule_heartbeat(interval_s) do
     Process.send_after(self(), :heartbeat, interval_s * 1000)

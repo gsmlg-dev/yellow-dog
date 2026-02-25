@@ -71,6 +71,53 @@ defmodule YellowDog.Resolved.Management.ClientTest do
     end
   end
 
+  describe "handle_info ws_message with crashing handler" do
+    setup do
+      start_supervised!({Client, @opts})
+      :ok
+    end
+
+    test "survives handler crash on malformed command data" do
+      pid = Process.whereis(Client)
+
+      # Valid JSON but will cause handler issues (missing required "id" field for cache_stats)
+      # This tests the safe_handle_command wrapper
+      capture_log(fn ->
+        send(
+          pid,
+          {:ws_message, Jason.encode!(%{"type" => "cache_stats"})}
+        )
+
+        Process.sleep(20)
+      end)
+
+      # Process should survive even if handler crashes
+      assert Process.alive?(pid)
+    end
+
+    test "survives command that would crash without safe wrapper" do
+      pid = Process.whereis(Client)
+
+      # Send a command that requires Cache/Config/Metrics to be running
+      # These aren't started in this test context, so handler will crash
+      # The safe_handle_command wrapper should catch it
+      log =
+        capture_log(fn ->
+          send(
+            pid,
+            {:ws_message,
+             Jason.encode!(%{"type" => "cache_flush", "id" => "crash-test", "data" => %{"pattern" => nil}})}
+          )
+
+          Process.sleep(20)
+        end)
+
+      assert Process.alive?(pid)
+      # Should have logged the crash
+      assert log =~ "Command handler crashed"
+    end
+  end
+
   describe "heartbeat" do
     test "heartbeat message does not crash the process" do
       # Use very long heartbeat interval so it doesn't fire during test
