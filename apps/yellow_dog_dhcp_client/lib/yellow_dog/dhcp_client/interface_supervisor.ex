@@ -6,12 +6,13 @@ defmodule YellowDog.DhcpClient.InterfaceSupervisor do
   started in order:
 
   1. `DhcpSocket` - raw socket owner, forwards packets to the state machine
-  2. `StateMachine` - `:gen_statem` FSM implementing the DORA lifecycle
-  3. `LeaseStore` - ETS-backed lease persistence with periodic disk flush
+  2. `LeaseStore` - ETS-backed lease persistence with periodic disk flush
+  3. `StateMachine` - `:gen_statem` FSM implementing the DORA lifecycle
 
-  The `rest_for_one` strategy ensures that if the socket crashes, the state
-  machine and lease store are restarted (FSM re-enters INIT). If the state
-  machine crashes, the lease store restarts to re-sync.
+  The `rest_for_one` strategy ensures that if the socket crashes, the lease
+  store and state machine are restarted (FSM re-enters INIT). If the state
+  machine crashes, the lease store stays alive so the FSM can rebind from
+  the persisted lease on restart.
   """
 
   use Supervisor

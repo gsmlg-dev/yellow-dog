@@ -604,6 +604,9 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
       {_state, data} = StateMachine.status(pid2)
       assert data.lease.ip == {192, 168, 1, 50}
+      # xid must be a freshly generated integer — nil xid crashes the real
+      # Packet encoder when build_request is called from the :rebinding enter handler
+      assert is_integer(data.xid) and data.xid > 0
     end
 
     test "starts in :init when store has an expired persisted lease", ctx do

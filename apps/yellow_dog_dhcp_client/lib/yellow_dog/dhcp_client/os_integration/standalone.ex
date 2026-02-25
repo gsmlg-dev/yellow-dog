@@ -93,7 +93,15 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
 
     with :ok <- File.mkdir_p(@resolv_dir),
          :ok <- File.write(resolv_path, content) do
-      timed_cmd(interface, :add_dns, "resolvconf", ["-a", interface])
+      # resolvconf reads from stdin; use sh -c with positional args to pipe the
+      # file safely without shell injection ($1=interface, $2=resolv_path).
+      timed_cmd(interface, :add_dns, "sh", [
+        "-c",
+        "resolvconf -a \"$1\" < \"$2\"",
+        "sh",
+        interface,
+        resolv_path
+      ])
     end
   end
 
