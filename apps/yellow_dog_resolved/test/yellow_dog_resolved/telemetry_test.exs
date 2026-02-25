@@ -252,6 +252,39 @@ defmodule YellowDog.Resolved.TelemetryTest do
     end
   end
 
+  describe "forward exception telemetry (upstream timeout)" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:timeout)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "emits forward exception when upstream times out" do
+      attach_telemetry([:yellow_dog, :resolved, :forward, :exception], self())
+
+      query = build_query("timeout-telemetry.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      capture_log(fn ->
+        Router.resolve(query, raw)
+
+        assert_receive {:telemetry_event, [:yellow_dog, :resolved, :forward, :exception],
+                        %{duration: _}, %{upstream: _, reason: _}},
+                       5000
+      end)
+    end
+  end
+
   defp build_query(domain, type_num) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))
