@@ -80,6 +80,7 @@ defmodule YellowDogIdentity do
 
         case Registry.put_host(updated) do
           :ok ->
+            Registry.append_audit("host.approved", host_id, %{approved_by: approved_by})
             YellowDogIdentity.Telemetry.host_approved(host_id, approved_by, host.trust_level)
             Webhook.notify("host.approved", updated)
             broadcast("identity:hosts", {:host_updated, updated})
@@ -116,6 +117,11 @@ defmodule YellowDogIdentity do
 
         case Registry.put_host(updated) do
           :ok ->
+            Registry.append_audit("host.revoked", host_id, %{
+              revoked_by: revoked_by,
+              reason: reason
+            })
+
             YellowDogIdentity.Telemetry.host_revoked(host_id, revoked_by, reason)
             Webhook.notify("host.revoked", updated)
             broadcast("identity:hosts", {:host_updated, updated})
@@ -211,6 +217,16 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
+  Returns the configured approval policies and default action.
+  """
+  @spec list_policies() :: map()
+  def list_policies do
+    ApprovalEngine.list_policies()
+  rescue
+    _ -> %{policies: [], default_action: :pending}
+  end
+
+  @doc """
   Returns summary statistics.
   """
   @spec stats() :: map()
@@ -242,6 +258,12 @@ defmodule YellowDogIdentity do
          host <- apply_trust(host, trust_level, trust_provider, evidence),
          host <- apply_approval(host),
          :ok <- Registry.put_host(host) do
+      Registry.append_audit("host.registered", host.id, %{
+        hostname: host.hostname,
+        status: host.status,
+        trust_level: host.trust_level
+      })
+
       if host.status == :approved do
         Webhook.notify("host.approved", host)
       end

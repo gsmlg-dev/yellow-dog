@@ -39,6 +39,10 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
     Enum.reduce_while(tokens, {:untrusted, :invalid_token}, fn token, _acc ->
       case Token.verify(token, raw_token, hostname) do
         :ok ->
+          # Increment use count and persist
+          updated_token = Token.increment_use(token)
+          persist_token_update(updated_token)
+
           evidence = %{
             provider: :token,
             token_id: token.id,
@@ -56,6 +60,16 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
           {:cont, {:untrusted, :invalid_token}}
       end
     end)
+  end
+
+  defp persist_token_update(token) do
+    try do
+      YellowDogIdentity.Registry.put_token(token)
+    rescue
+      _ -> :ok
+    catch
+      :exit, _ -> :ok
+    end
   end
 
   defp load_tokens do

@@ -553,6 +553,14 @@ defmodule YellowDog.Console.Layouts do
                     Tokens
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    navigate="/identity/policies"
+                    class={active?(@current_path, "/identity/policies")}
+                  >
+                    Policies
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>

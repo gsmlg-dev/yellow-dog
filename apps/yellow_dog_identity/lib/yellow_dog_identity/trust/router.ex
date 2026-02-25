@@ -42,7 +42,9 @@ defmodule YellowDogIdentity.Trust.Router do
               %{provider: provider_name, reason: reason, hostname: context.hostname}
             )
 
-            {:cont, acc}
+            # Halt on untrusted — a provider that explicitly rejects should
+            # not allow fallthrough to weaker providers (per PRD §5.1)
+            {:halt, {:unverified, :none, %{rejected_by: provider_name, reason: reason}}}
 
           {:skip, :not_applicable} ->
             {:cont, acc}

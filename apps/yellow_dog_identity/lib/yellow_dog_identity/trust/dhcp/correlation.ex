@@ -21,6 +21,7 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
       :not_found ->
         # Check if DHCP is configured at all
         if dhcp_configured?() do
+          YellowDogIdentity.Telemetry.correlation_miss(source_ip, :no_lease)
           {:untrusted, :no_lease}
         else
           {:skip, :not_applicable}
@@ -35,6 +36,7 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
     cond do
       # Lease expired
       lease_age > lease_entry.lease_duration ->
+        YellowDogIdentity.Telemetry.correlation_miss(context.source_ip, :expired)
         {:untrusted, :expired}
 
       # Has fingerprint and it matches expected class

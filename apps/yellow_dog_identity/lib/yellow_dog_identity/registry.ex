@@ -83,6 +83,12 @@ defmodule YellowDogIdentity.Registry do
   @spec delete_token(String.t()) :: :ok | {:error, term()}
   def delete_token(id), do: GenServer.call(__MODULE__, {:delete_token, id})
 
+  @doc "Appends an entry to the append-only audit log."
+  @spec append_audit(String.t(), String.t(), map()) :: :ok
+  def append_audit(event, host_id, details \\ %{}) do
+    GenServer.cast(__MODULE__, {:append_audit, event, host_id, details})
+  end
+
   # Server callbacks
 
   @impl true
@@ -194,6 +200,12 @@ defmodule YellowDogIdentity.Registry do
     {:reply, :ok, %{state | tokens: tokens}}
   end
 
+  @impl true
+  def handle_cast({:append_audit, event, host_id, details}, state) do
+    write_audit_entry(state.data_dir, event, host_id, details)
+    {:noreply, state}
+  end
+
   # Persistence helpers
 
   defp persist_host(data_dir, host) do
@@ -270,6 +282,15 @@ defmodule YellowDogIdentity.Registry do
     "[#{items}]"
   end
 
+  defp encode_toml_value(v) when is_map(v) do
+    items =
+      Enum.map_join(v, ", ", fn {k, val} ->
+        "#{k} = #{encode_toml_value(val)}"
+      end)
+
+    "{#{items}}"
+  end
+
   defp encode_toml_value(v), do: ~s("#{inspect(v)}")
 
   # Loading helpers
@@ -315,6 +336,18 @@ defmodule YellowDogIdentity.Registry do
          {:ok, token} <- Token.from_toml_map(data) do
       {:ok, token}
     end
+  end
+
+  defp write_audit_entry(data_dir, event, host_id, details) do
+    audit_path = Path.join(data_dir, "audit.log")
+    timestamp = DateTime.to_iso8601(DateTime.utc_now())
+    details_str = if details == %{}, do: "", else: " " <> inspect(details)
+
+    entry = "#{timestamp} #{event} host=#{host_id}#{details_str}\n"
+
+    File.write(audit_path, entry, [:append])
+  rescue
+    _ -> :ok
   end
 
   defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", "#{id}.toml"])

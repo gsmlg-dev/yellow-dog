@@ -52,6 +52,14 @@ defmodule YellowDogIdentity.Approval.Engine do
     end
   end
 
+  @doc """
+  Returns the loaded policies and default action for display in the UI.
+  """
+  @spec list_policies() :: %{policies: [Policy.t()], default_action: Policy.action()}
+  def list_policies do
+    %{policies: load_policies(), default_action: get_default_action()}
+  end
+
   defp find_matching_policy(policies, context) do
     Enum.find(policies, fn policy -> Policy.matches?(policy, context) end)
   end

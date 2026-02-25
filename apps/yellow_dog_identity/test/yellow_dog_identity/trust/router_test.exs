@@ -59,22 +59,32 @@ defmodule YellowDogIdentity.Trust.RouterTest do
       assert {:unverified, :none, %{}} = result
     end
 
-    test "continues past untrusted providers" do
+    test "halts on untrusted provider (does not fall through to weaker providers)" do
       result =
         Router.verify(@base_context,
           providers: [MockUntrustedProvider, MockTrustedProvider]
         )
 
-      assert {:network_verified, _, _} = result
+      # Untrusted halts — does NOT continue to the trusted provider
+      assert {:unverified, :none, %{rejected_by: _, reason: :test_reason}} = result
     end
 
-    test "returns unverified when all fail or skip" do
+    test "returns unverified with rejection info when provider rejects" do
       result =
         Router.verify(@base_context,
           providers: [MockUntrustedProvider, MockSkipProvider]
         )
 
-      assert {:unverified, :none, %{}} = result
+      assert {:unverified, :none, %{rejected_by: _, reason: :test_reason}} = result
+    end
+
+    test "skips provider that skips, then uses next trusted provider" do
+      result =
+        Router.verify(@base_context,
+          providers: [MockSkipProvider, MockTrustedProvider]
+        )
+
+      assert {:network_verified, _, _} = result
     end
   end
 end

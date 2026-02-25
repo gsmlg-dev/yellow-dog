@@ -1,7 +1,7 @@
 defmodule YellowDog.Console.IdentityController do
   use YellowDog.Console, :controller
 
-  action_fallback :fallback
+  # No action_fallback — errors handled inline per action
 
   @doc """
   POST /api/hosts/register
@@ -95,9 +95,4 @@ defmodule YellowDog.Console.IdentityController do
     end
   end
 
-  defp fallback(conn, {:error, reason}) do
-    conn
-    |> put_status(500)
-    |> json(%{error: inspect(reason)})
-  end
 end
