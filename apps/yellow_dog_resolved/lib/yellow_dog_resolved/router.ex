@@ -108,9 +108,8 @@ defmodule YellowDog.Resolved.Router do
         # Extract TTL from response for caching
         ttl = extract_ttl(response_binary)
         response_msg = DNS.Message.from_iodata(response_binary)
-        rcode = response_msg.header.rcode
 
-        if to_string(rcode) == "3" do
+        if response_msg.header.rcode == DNS.Message.RCode.nx_domain() do
           # NXDOMAIN — cache as negative
           Cache.store_negative(domain, query_type, response_binary)
         else

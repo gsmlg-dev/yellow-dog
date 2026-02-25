@@ -51,20 +51,25 @@ defmodule YellowDog.Resolved.Config do
 
   # Client API
 
+  @doc "Start the config GenServer with an already-parsed config map."
+  @spec start_link(t()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
 
+  @doc "Get the full configuration map."
   @spec get() :: t()
   def get do
     GenServer.call(__MODULE__, :get)
   end
 
+  @doc "Get the list of intercept rules."
   @spec get_intercept_rules() :: [intercept_rule()]
   def get_intercept_rules do
     GenServer.call(__MODULE__, :get_intercept_rules)
   end
 
+  @doc "Get the list of upstream DNS server IPs."
   @spec get_upstreams() :: [:inet.ip_address()]
   def get_upstreams do
     GenServer.call(__MODULE__, :get_upstreams)

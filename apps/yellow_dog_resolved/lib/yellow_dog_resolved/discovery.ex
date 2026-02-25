@@ -18,6 +18,8 @@ defmodule YellowDog.Resolved.Discovery do
 
   # Client API
 
+  @doc "Start the discovery GenServer with the given config."
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
@@ -62,13 +64,13 @@ defmodule YellowDog.Resolved.Discovery do
 
   @impl true
   def handle_info(:probe, state) do
-    state = probe_upstreams(state)
+    state = safe_probe(state)
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:reconnect, state) do
-    state = probe_upstreams(state)
+    state = safe_probe(state)
     {:noreply, state}
   end
 
@@ -96,6 +98,18 @@ defmodule YellowDog.Resolved.Discovery do
   end
 
   # Private functions
+
+  defp safe_probe(state) do
+    probe_upstreams(state)
+  rescue
+    e ->
+      Logger.warning("Discovery probe failed: #{inspect(e)}")
+      state
+  catch
+    kind, reason ->
+      Logger.warning("Discovery probe crashed (#{kind}): #{inspect(reason)}")
+      state
+  end
 
   defp probe_upstreams(state) do
     Enum.reduce_while(state.upstreams, state, fn upstream, acc ->
@@ -156,13 +170,14 @@ defmodule YellowDog.Resolved.Discovery do
     # Add EDNS OPT record with discovery option
     edns_data = <<@edns_version::8, instance_id::binary>>
 
+    # Record.new/5 expects raw data — it wraps via RData.new internally
     opt_record =
       DNS.Message.Record.new(
         ".",
         41,
         4096,
         0,
-        DNS.Message.Record.Data.new(DNS.ResourceRecordType.new(41), edns_data)
+        edns_data
       )
 
     Map.update(query, :arlist, [opt_record], &[opt_record | &1])

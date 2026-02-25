@@ -23,6 +23,8 @@ defmodule YellowDog.Resolved.Forwarder do
 
   # Client API
 
+  @doc "Start the forwarder GenServer with the given config."
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end

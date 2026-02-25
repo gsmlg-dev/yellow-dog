@@ -40,7 +40,7 @@ defmodule YellowDog.Resolved.Listener do
       {:ok, query} ->
         # Router.resolve always returns {:ok, ...} — errors produce SERVFAIL internally
         {_ok, response} = extract_response(YellowDog.Resolved.Router.resolve(query, data))
-        Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response)
+        send_response(state.socket, client_ip, client_port, response)
 
       {:error, txn_id} ->
         # Malformed query — send FORMERR
@@ -48,7 +48,7 @@ defmodule YellowDog.Resolved.Listener do
           YellowDog.Resolved.ResponseBuilder.build_formerr(txn_id)
           |> encode()
 
-        Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response)
+        send_response(state.socket, client_ip, client_port, response)
     end
 
     {:continue, state}
@@ -73,6 +73,16 @@ defmodule YellowDog.Resolved.Listener do
 
   defp parse_query(<<txn_id::16, _rest::binary>>), do: {:error, txn_id}
   defp parse_query(_), do: {:error, 0}
+
+  defp send_response(socket, client_ip, client_port, response) do
+    case Abyss.Transport.UDP.send(socket, client_ip, client_port, response) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("UDP send failed to #{:inet.ntoa(client_ip)}: #{inspect(reason)}")
+    end
+  end
 
   defp encode(message) do
     DNS.to_iodata(message) |> IO.iodata_to_binary()

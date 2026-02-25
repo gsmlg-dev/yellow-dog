@@ -24,6 +24,8 @@ defmodule YellowDog.Resolved.Cache do
 
   # Client API
 
+  @doc "Start the cache GenServer with the given cache config."
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(cache_config) do
     GenServer.start_link(__MODULE__, cache_config, name: __MODULE__)
   end

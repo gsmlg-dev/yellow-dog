@@ -32,6 +32,7 @@ defmodule YellowDog.Resolved.MixProject do
       {:abyss, in_umbrella: true},
       {:ex_dns, in_umbrella: true},
       {:toml, "~> 0.7"},
+      {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
