@@ -249,6 +249,27 @@ defmodule YellowDog.DhcpClient.PacketTest do
       msg = parse_built_packet(binary)
       assert msg.flags == 0x8000
     end
+
+    test "includes hostname (Option 12) when provided" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100},
+          hostname: "yd-node-1"
+        )
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt != nil
+      assert opt.value == "yd-node-1"
+    end
+
+    test "omits hostname option when not provided" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      assert find_option(msg, 12) == nil
+    end
   end
 
   # ── build_decline/4 ──
@@ -485,6 +506,21 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert {:ack, lease} = Packet.parse_reply(data)
 
       assert lease.yellowdog_server == false
+    end
+
+    test "sets yellowdog_server to true when YD PEN matches with zero sub-options" do
+      pen = VendorOptions.pen()
+      # Valid YD PEN but empty sub-options payload
+      vendor_data = <<pen::32, 0::8>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == true
     end
 
     test "preserves xid from reply" do
