@@ -190,6 +190,39 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "SERVFAIL upstream response is not cached" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:servfail)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "SERVFAIL from upstream is forwarded but not cached" do
+      query = build_query("servfail.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      # First query — should forward and get SERVFAIL
+      assert {:ok, response_binary, :forward} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+
+      Process.sleep(10)
+
+      # Second query — should NOT come from cache (SERVFAIL is transient)
+      assert :miss = Cache.lookup("servfail.test", :a)
+    end
+  end
+
   describe "safe query type handling" do
     test "standard types resolve correctly through intercept" do
       query = build_query("app.local.dev", 1)

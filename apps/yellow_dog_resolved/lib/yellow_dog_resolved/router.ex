@@ -105,15 +105,22 @@ defmodule YellowDog.Resolved.Router do
   defp forward_and_cache(query, _raw_query, domain, query_type) do
     case Forwarder.forward(query) do
       {:ok, response_binary} ->
-        # Extract TTL from response for caching
-        ttl = extract_ttl(response_binary)
         response_msg = DNS.Message.from_iodata(response_binary)
+        rcode = response_msg.header.rcode
 
-        if response_msg.header.rcode == DNS.Message.RCode.nx_domain() do
-          # NXDOMAIN — cache as negative
-          Cache.store_negative(domain, query_type, response_binary)
-        else
-          Cache.store(domain, query_type, response_binary, ttl)
+        cond do
+          rcode == DNS.Message.RCode.nx_domain() ->
+            # NXDOMAIN — cache as negative (RFC 2308)
+            Cache.store_negative(domain, query_type, response_binary)
+
+          rcode == DNS.Message.RCode.new(0) ->
+            # NOERROR — cache as positive with extracted TTL
+            ttl = extract_ttl(response_binary)
+            Cache.store(domain, query_type, response_binary, ttl)
+
+          true ->
+            # SERVFAIL, REFUSED, NOTIMPL, etc. — don't cache transient errors
+            :ok
         end
 
         # Rewrite txn_id back to client's original
