@@ -61,11 +61,14 @@ defmodule YellowDog.DhcpClient.Lease do
   Returns `true` if the lease has expired based on `obtained_at` and `lease_time`.
   """
   @spec expired?(t()) :: boolean()
-  def expired?(%__MODULE__{obtained_at: obtained_at, lease_time: lease_time}) do
+  def expired?(%__MODULE__{obtained_at: %DateTime{} = obtained_at, lease_time: lease_time})
+      when is_integer(lease_time) and lease_time > 0 do
     now = DateTime.utc_now()
     expires_at = DateTime.add(obtained_at, lease_time, :second)
     DateTime.compare(now, expires_at) != :lt
   end
+
+  def expired?(%__MODULE__{}), do: true
 
   @doc """
   Returns `true` if the T1 renewal timer has elapsed.
@@ -73,11 +76,14 @@ defmodule YellowDog.DhcpClient.Lease do
   T1 defaults to 50% of lease time per RFC 2131.
   """
   @spec t1_elapsed?(t()) :: boolean()
-  def t1_elapsed?(%__MODULE__{obtained_at: obtained_at, t1: t1}) do
+  def t1_elapsed?(%__MODULE__{obtained_at: %DateTime{} = obtained_at, t1: t1})
+      when is_integer(t1) and t1 > 0 do
     now = DateTime.utc_now()
     t1_at = DateTime.add(obtained_at, t1, :second)
     DateTime.compare(now, t1_at) != :lt
   end
+
+  def t1_elapsed?(%__MODULE__{}), do: true
 
   @doc """
   Returns `true` if the T2 rebind timer has elapsed.
@@ -85,11 +91,14 @@ defmodule YellowDog.DhcpClient.Lease do
   T2 defaults to 87.5% of lease time per RFC 2131.
   """
   @spec t2_elapsed?(t()) :: boolean()
-  def t2_elapsed?(%__MODULE__{obtained_at: obtained_at, t2: t2}) do
+  def t2_elapsed?(%__MODULE__{obtained_at: %DateTime{} = obtained_at, t2: t2})
+      when is_integer(t2) and t2 > 0 do
     now = DateTime.utc_now()
     t2_at = DateTime.add(obtained_at, t2, :second)
     DateTime.compare(now, t2_at) != :lt
   end
+
+  def t2_elapsed?(%__MODULE__{}), do: true
 
   @doc """
   Converts the subnet mask to a CIDR prefix length.

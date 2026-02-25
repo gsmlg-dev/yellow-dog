@@ -63,6 +63,21 @@ defmodule YellowDog.DhcpClient.LeaseTest do
       lease = make_lease(%{lease_time: 1, obtained_at: past})
       assert Lease.expired?(lease)
     end
+
+    test "returns true for lease with nil obtained_at (defensive)" do
+      lease = %Lease{obtained_at: nil, lease_time: 3600}
+      assert Lease.expired?(lease)
+    end
+
+    test "returns true for lease with nil lease_time (defensive)" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), lease_time: nil}
+      assert Lease.expired?(lease)
+    end
+
+    test "returns true for lease with zero lease_time (defensive)" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), lease_time: 0}
+      assert Lease.expired?(lease)
+    end
   end
 
   # ── t1_elapsed?/1 ──
