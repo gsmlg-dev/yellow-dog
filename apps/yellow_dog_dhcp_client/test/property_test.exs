@@ -10,6 +10,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   - Lease prefix_length for valid subnet masks
   - Packet build content verification (XID, chaddr, flags)
   - parse_reply robustness against arbitrary binary input
+  - select_best_offer selection invariants
   """
 
   use ExUnit.Case, async: true
@@ -428,6 +429,82 @@ defmodule YellowDog.DhcpClient.PropertyTest do
                  match?({:ack, _}, result) or
                  match?({:nak, _}, result) or
                  match?({:error, _}, result)
+      end
+    end
+  end
+
+  # -- select_best_offer invariants --
+
+  defp offer_gen do
+    gen all(
+          yellowdog_server <- boolean(),
+          known_server <- boolean(),
+          a <- integer(1..254),
+          b <- integer(0..255),
+          c <- integer(0..255),
+          d <- integer(1..254)
+        ) do
+      %{
+        yellowdog_server: yellowdog_server,
+        known_server: known_server,
+        ip: {a, b, c, d}
+      }
+    end
+  end
+
+  describe "select_best_offer invariants" do
+    alias YellowDog.DhcpClient.StateMachine
+
+    property "result is always one of the input offers" do
+      check all(offers <- list_of(offer_gen(), min_length: 1)) do
+        result = StateMachine.select_best_offer(offers)
+        assert result in offers
+      end
+    end
+
+    property "result is non-nil for any non-empty list" do
+      check all(offers <- list_of(offer_gen(), min_length: 1)) do
+        assert StateMachine.select_best_offer(offers) != nil
+      end
+    end
+
+    property "yellowdog_server offer always wins when present" do
+      check all(
+              yd_offers <- list_of(offer_gen(), min_length: 1)
+                           |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, true)) end),
+              non_yd_offers <- list_of(offer_gen())
+                               |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, false)) end)
+            ) do
+        # Mix in any order (most-recent first in the accumulated list)
+        offers = non_yd_offers ++ yd_offers
+
+        result = StateMachine.select_best_offer(offers)
+        assert result.yellowdog_server == true
+      end
+    end
+
+    property "known_server offer wins over plain offers when no yellowdog present" do
+      check all(
+              known_offers <- list_of(offer_gen(), min_length: 1)
+                              |> map(fn offers ->
+                                Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: true})
+                              end),
+              plain_offers <- list_of(offer_gen())
+                              |> map(fn offers ->
+                                Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: false})
+                              end)
+            ) do
+        offers = plain_offers ++ known_offers
+
+        result = StateMachine.select_best_offer(offers)
+        assert result.known_server == true
+      end
+    end
+
+    property "returns nil only for empty list" do
+      check all(offers <- list_of(offer_gen(), min_length: 1)) do
+        refute is_nil(StateMachine.select_best_offer(offers))
+        assert is_nil(StateMachine.select_best_offer([]))
       end
     end
   end
