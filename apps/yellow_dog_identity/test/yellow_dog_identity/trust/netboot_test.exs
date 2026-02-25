@@ -34,6 +34,8 @@ defmodule YellowDogIdentity.Trust.NetbootTest do
 
   describe "provider chain integration" do
     test "netboot provider implements the trust provider behaviour" do
+      # Ensure module is loaded before checking (avoids race in async umbrella tests)
+      {:module, _} = Code.ensure_loaded(Netboot)
       assert function_exported?(Netboot, :verify, 1)
     end
 
