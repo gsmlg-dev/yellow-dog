@@ -99,6 +99,11 @@ defmodule YellowDog.DhcpClient.LeaseTest do
       lease = make_lease(%{t1: 1800, obtained_at: past})
       assert Lease.t1_elapsed?(lease)
     end
+
+    test "returns true for lease with nil t1 (defensive)" do
+      lease = make_lease(%{t1: nil})
+      assert Lease.t1_elapsed?(lease)
+    end
   end
 
   # ── t2_elapsed?/1 ──
