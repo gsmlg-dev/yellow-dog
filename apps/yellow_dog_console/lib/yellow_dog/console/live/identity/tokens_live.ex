@@ -92,7 +92,18 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
         []
       )
 
-    assign(socket, :tokens, tokens)
+    assign(socket, :tokens, Enum.map(tokens, &annotate_token_status/1))
+  end
+
+  defp annotate_token_status(token) do
+    valid =
+      try do
+        YellowDogIdentity.Token.valid?(token)
+      rescue
+        _ -> false
+      end
+
+    Map.put(token, :_valid, valid)
   end
 
   @impl true
@@ -195,12 +206,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 <td class="text-sm">{format_time(token.created_at)}</td>
                 <td>
                   <span class={
-                    if(YellowDogIdentity.Token.valid?(token),
+                    if(token._valid,
                       do: "badge badge-success",
                       else: "badge badge-error"
                     )
                   }>
-                    {if YellowDogIdentity.Token.valid?(token), do: "Active", else: "Expired"}
+                    {if token._valid, do: "Active", else: "Expired"}
                   </span>
                 </td>
                 <td>
