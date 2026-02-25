@@ -432,6 +432,44 @@ defmodule YellowDogIdentity.IntegrationTest do
   end
 
   # ──────────────────────────────────────────────
+  # 11. delete_host/1
+  # ──────────────────────────────────────────────
+
+  describe "delete_host/1" do
+    test "deletes an existing host and it is no longer retrievable" do
+      {:ok, host} =
+        YellowDogIdentity.register(%{
+          hostname: "delete-me",
+          ssh_pubkey: @key_a,
+          age_recipient: @age_a
+        })
+
+      assert :ok = YellowDogIdentity.delete_host(host.id)
+      assert :not_found = YellowDogIdentity.get_host(host.id)
+    end
+
+    test "returns {:error, :not_found} for nonexistent host" do
+      assert {:error, :not_found} = YellowDogIdentity.delete_host("does-not-exist")
+    end
+  end
+
+  # ──────────────────────────────────────────────
+  # 12. create_token/1 — validation error path
+  # ──────────────────────────────────────────────
+
+  describe "create_token/1 — validation" do
+    test "returns error for invalid max_uses (zero)" do
+      assert {:error, :invalid_max_uses} =
+               YellowDogIdentity.create_token(%{hostname_pattern: "*", max_uses: 0})
+    end
+
+    test "returns error for invalid ttl_seconds (negative)" do
+      assert {:error, :invalid_ttl} =
+               YellowDogIdentity.create_token(%{hostname_pattern: "*", ttl_seconds: -1})
+    end
+  end
+
+  # ──────────────────────────────────────────────
   # host_status/1 convenience check
   # ──────────────────────────────────────────────
 

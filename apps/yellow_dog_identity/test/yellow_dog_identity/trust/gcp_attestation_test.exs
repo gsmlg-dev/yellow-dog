@@ -514,6 +514,15 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
 
       assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
     end
+
+    test "rejects JWT when aud claim is absent (nil)", %{jwk: jwk} do
+      # aud missing → Map.get returns nil → cond true -> false → :invalid_audience
+      claims = valid_gcp_claims() |> Map.delete("aud")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
   end
 
   describe "missing kid in JWT header" do

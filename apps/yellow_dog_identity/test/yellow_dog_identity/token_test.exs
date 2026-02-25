@@ -177,5 +177,14 @@ defmodule YellowDogIdentity.TokenTest do
       {:ok, restored} = Token.from_toml_map(toml_map)
       assert restored.use_count == 1
     end
+
+    test "succeeds when created_at is absent (defaults to current time)" do
+      {:ok, token, _} = Token.create(%{hostname_pattern: "*"})
+      toml_map = Token.to_toml_map(token)
+      data_without = Map.delete(toml_map["token"], "created_at")
+
+      assert {:ok, restored} = Token.from_toml_map(%{"token" => data_without})
+      assert %DateTime{} = restored.created_at
+    end
   end
 end
