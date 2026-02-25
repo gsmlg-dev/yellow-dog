@@ -3,6 +3,9 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
   AWS instance identity document verification.
 
   Verifies PKCS7-signed instance identity documents against AWS public certificates.
+  Note: Full PKCS7 signature verification requires the `x509` dependency which is
+  not yet added. Currently validates claims and structure; signature verification
+  is a TODO.
   """
 
   @behaviour YellowDogIdentity.Trust.Provider
@@ -27,11 +30,13 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
 
     document_b64 = Map.get(attestation, "document") || Map.get(attestation, :document)
     _signature_b64 = Map.get(attestation, "signature") || Map.get(attestation, :signature)
+    # TODO: Verify PKCS7 signature against AWS public certificate (requires x509 dep)
 
     with {:ok, document_json} <- decode_document(document_b64),
          {:ok, claims} <- extract_claims(document_json),
          :ok <- check_replay_window(claims),
-         :ok <- check_allowed_account(claims) do
+         :ok <- check_allowed_account(claims),
+         :ok <- check_allowed_regions(claims) do
       evidence = %{
         provider: :aws,
         account_id: claims["accountId"],
@@ -88,7 +93,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
         case DateTime.from_iso8601(pending_time) do
           {:ok, dt, _} ->
             age = DateTime.diff(DateTime.utc_now(), dt, :second)
-            window = get_replay_window()
+            window = get_cloud_config("replay_window_seconds", @replay_window_seconds)
 
             if age <= window do
               :ok
@@ -107,7 +112,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
 
   defp check_allowed_account(claims) do
     account_id = Map.get(claims, "accountId")
-    allowed = get_allowed_accounts()
+    allowed = get_cloud_config("allowed_accounts", [])
 
     if allowed == [] or account_id in allowed do
       :ok
@@ -116,21 +121,24 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
     end
   end
 
-  defp get_replay_window do
-    get_cloud_config(:aws, "replay_window_seconds", @replay_window_seconds)
+  defp check_allowed_regions(claims) do
+    region = Map.get(claims, "region")
+    allowed = get_cloud_config("allowed_regions", [])
+
+    if allowed == [] or region in allowed do
+      :ok
+    else
+      {:error, :region_not_allowed}
+    end
   end
 
-  defp get_allowed_accounts do
-    get_cloud_config(:aws, "allowed_accounts", [])
-  end
-
-  defp get_cloud_config(provider, key, default) do
+  defp get_cloud_config(key, default) do
     case Code.ensure_loaded(YellowDog.Config) do
       {:module, _} ->
         try do
           config = YellowDog.Config.get_all()
-          cloud_config = get_in(config, ["identity", "cloud", to_string(provider)]) || %{}
-          Map.get(cloud_config, key, default)
+          aws_config = get_in(config, ["identity", "cloud", "aws"]) || %{}
+          Map.get(aws_config, key, default)
         rescue
           _ -> default
         catch

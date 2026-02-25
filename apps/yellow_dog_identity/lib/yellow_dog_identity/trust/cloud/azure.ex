@@ -3,9 +3,14 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
   Azure attested document verification.
 
   Verifies attested documents from Azure IMDS against Azure's certificate chain.
+  Note: Full certificate chain verification requires the `x509` dependency which is
+  not yet added. Currently validates claims and structure; signature verification
+  is a TODO.
   """
 
   @behaviour YellowDogIdentity.Trust.Provider
+
+  @replay_window_seconds 300
 
   @impl true
   def verify(%{attestation: attestation} = context) do
@@ -24,10 +29,13 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     start_time = System.monotonic_time()
 
     document_b64 = Map.get(attestation, "document") || Map.get(attestation, :document)
+    # TODO: Verify certificate chain against Azure CA (requires x509 dep)
 
     with {:ok, document_json} <- decode_document(document_b64),
          {:ok, claims} <- extract_claims(document_json),
-         :ok <- check_allowed_subscription(claims) do
+         :ok <- check_timestamp(claims),
+         :ok <- check_allowed_subscription(claims),
+         :ok <- check_allowed_locations(claims) do
       evidence = %{
         provider: :azure,
         subscription_id: Map.get(claims, "subscriptionId"),
@@ -73,9 +81,35 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     _ -> {:error, :json_decode_failed}
   end
 
+  defp check_timestamp(claims) do
+    case Map.get(claims, "timestamp") do
+      nil ->
+        :ok
+
+      timestamp when is_binary(timestamp) ->
+        case DateTime.from_iso8601(timestamp) do
+          {:ok, dt, _} ->
+            age = DateTime.diff(DateTime.utc_now(), dt, :second)
+            window = get_cloud_config("replay_window_seconds", @replay_window_seconds)
+
+            if age <= window do
+              :ok
+            else
+              {:error, :document_too_old}
+            end
+
+          _ ->
+            :ok
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
   defp check_allowed_subscription(claims) do
     subscription_id = Map.get(claims, "subscriptionId")
-    allowed = get_allowed_subscriptions()
+    allowed = get_cloud_config("allowed_subscriptions", [])
 
     if allowed == [] or subscription_id in allowed do
       :ok
@@ -84,21 +118,32 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     end
   end
 
-  defp get_allowed_subscriptions do
+  defp check_allowed_locations(claims) do
+    location = Map.get(claims, "location")
+    allowed = get_cloud_config("allowed_locations", [])
+
+    if allowed == [] or location in allowed do
+      :ok
+    else
+      {:error, :location_not_allowed}
+    end
+  end
+
+  defp get_cloud_config(key, default) do
     case Code.ensure_loaded(YellowDog.Config) do
       {:module, _} ->
         try do
           config = YellowDog.Config.get_all()
           azure_config = get_in(config, ["identity", "cloud", "azure"]) || %{}
-          Map.get(azure_config, "allowed_subscriptions", [])
+          Map.get(azure_config, key, default)
         rescue
-          _ -> []
+          _ -> default
         catch
-          :exit, _ -> []
+          :exit, _ -> default
         end
 
       _ ->
-        []
+        default
     end
   end
 end
