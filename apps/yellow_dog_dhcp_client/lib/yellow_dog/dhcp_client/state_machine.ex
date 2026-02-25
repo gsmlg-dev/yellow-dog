@@ -424,50 +424,26 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp send_discover(data) do
     packet = build_discover(data)
-
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :packet, :tx],
-      %{},
-      %{interface: data.interface, type: :discover}
-    )
-
-    DhcpSocket.send_broadcast(data.socket_pid, packet)
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :discover})
+    broadcast_packet(data, packet, :discover)
   end
 
   defp send_request_broadcast(data) do
     packet = build_request(data)
-
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :packet, :tx],
-      %{},
-      %{interface: data.interface, type: :request}
-    )
-
-    DhcpSocket.send_broadcast(data.socket_pid, packet)
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :request})
+    broadcast_packet(data, packet, :request)
   end
 
   defp send_request_unicast(data) do
     packet = build_request(data)
-
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :packet, :tx],
-      %{},
-      %{interface: data.interface, type: :request}
-    )
-
-    DhcpSocket.send_unicast(data.socket_pid, data.lease.server_ip, packet)
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :request})
+    unicast_packet(data, data.lease.server_ip, packet, :request)
   end
 
   defp send_release(data) do
     packet = build_release(data)
-
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :packet, :tx],
-      %{},
-      %{interface: data.interface, type: :release}
-    )
-
-    DhcpSocket.send_unicast(data.socket_pid, data.lease.server_ip, packet)
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :release})
+    unicast_packet(data, data.lease.server_ip, packet, :release)
   end
 
   defp maybe_dad_then_bound(data, lease) do
@@ -496,14 +472,32 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp send_decline(data, lease) do
     packet = build_decline(data, lease)
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :decline})
+    broadcast_packet(data, packet, :decline)
+  end
 
-    :telemetry.execute(
-      [:yellow_dog, :dhcp_client, :packet, :tx],
-      %{},
-      %{interface: data.interface, type: :decline}
-    )
+  defp broadcast_packet(data, packet, type) do
+    case DhcpSocket.send_broadcast(data.socket_pid, packet) do
+      :ok ->
+        :ok
 
-    DhcpSocket.send_broadcast(data.socket_pid, packet)
+      {:error, reason} ->
+        Logger.warning(
+          "DHCP client #{data.interface}: failed to broadcast #{type}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp unicast_packet(data, dest_ip, packet, type) do
+    case DhcpSocket.send_unicast(data.socket_pid, dest_ip, packet) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "DHCP client #{data.interface}: failed to unicast #{type} to #{format_ip(dest_ip)}: #{inspect(reason)}"
+        )
+    end
   end
 
   # --- Packet building (delegates to Packet module if available, inline fallback) ---
