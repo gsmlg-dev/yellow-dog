@@ -69,7 +69,7 @@ defmodule YellowDogIdentity.Host do
 
   @valid_statuses ~w(pending approved revoked)a
   @valid_trust_levels ~w(cloud_verified netboot_verified network_verified network_partial token_verified unverified)a
-  @valid_trust_providers ~w(dhcp aws gcp azure token none)a
+  @valid_trust_providers ~w(dhcp netboot aws gcp azure token none)a
 
   @doc """
   Computes the SHA256 fingerprint of an SSH public key.

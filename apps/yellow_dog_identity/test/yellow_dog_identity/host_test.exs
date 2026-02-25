@@ -107,5 +107,42 @@ defmodule YellowDogIdentity.HostTest do
     test "from_toml_map rejects missing host section" do
       assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
     end
+
+    test "round-trips netboot trust_provider correctly" do
+      # Regression: netboot was missing from @valid_trust_providers, causing
+      # netboot-verified hosts to load back with trust_provider: :dhcp
+      {:ok, host} =
+        Host.new(%{
+          hostname: "netboot-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      netboot_host = %{host | trust_provider: :netboot, trust_level: :netboot_verified}
+
+      toml_map = Host.to_toml_map(netboot_host)
+      {:ok, restored} = Host.from_toml_map(toml_map)
+
+      assert restored.trust_provider == :netboot
+      assert restored.trust_level == :netboot_verified
+    end
+
+    test "round-trips all valid trust_providers without corruption" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "trust-round-trip",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      providers = [:dhcp, :netboot, :aws, :gcp, :azure, :token, :none]
+
+      for provider <- providers do
+        modified = %{host | trust_provider: provider}
+        toml_map = Host.to_toml_map(modified)
+        {:ok, restored} = Host.from_toml_map(toml_map)
+        assert restored.trust_provider == provider, "Expected #{provider} but got #{restored.trust_provider}"
+      end
+    end
   end
 end
