@@ -90,15 +90,12 @@ defmodule YellowDog.Resolved.ResponseBuilder do
   end
 
   defp build_record(name, :a, value, ttl) do
-    {:ok, ip} = :inet.parse_address(String.to_charlist(value))
-
-    # Record.new/5 expects raw data — it wraps via RData.new internally
+    ip = parse_ip!(value)
     DNS.Message.Record.new(to_string(name), 1, 1, ttl, ip)
   end
 
   defp build_record(name, :aaaa, value, ttl) do
-    {:ok, ip} = :inet.parse_address(String.to_charlist(value))
-
+    ip = parse_ip!(value)
     DNS.Message.Record.new(to_string(name), 28, 1, ttl, ip)
   end
 
@@ -114,7 +111,7 @@ defmodule YellowDog.Resolved.ResponseBuilder do
     # Value format: "10 mail.example.com"
     case String.split(value, " ", parts: 2) do
       [priority_str, target] ->
-        priority = String.to_integer(priority_str)
+        priority = parse_integer!(priority_str, "MX priority")
         DNS.Message.Record.new(to_string(name), 15, 1, ttl, {priority, target})
 
       _ ->
@@ -128,15 +125,29 @@ defmodule YellowDog.Resolved.ResponseBuilder do
     case String.split(value, " ", parts: 4) do
       [pri_str, weight_str, port_str, target] ->
         DNS.Message.Record.new(to_string(name), 33, 1, ttl, {
-          String.to_integer(pri_str),
-          String.to_integer(weight_str),
-          String.to_integer(port_str),
+          parse_integer!(pri_str, "SRV priority"),
+          parse_integer!(weight_str, "SRV weight"),
+          parse_integer!(port_str, "SRV port"),
           target
         })
 
       _ ->
         raise ArgumentError,
               "invalid SRV value format: #{inspect(value)}, expected \"priority weight port target\""
+    end
+  end
+
+  defp parse_ip!(value) do
+    case :inet.parse_address(String.to_charlist(value)) do
+      {:ok, ip} -> ip
+      {:error, :einval} -> raise ArgumentError, "invalid IP address: #{inspect(value)}"
+    end
+  end
+
+  defp parse_integer!(str, label) do
+    case Integer.parse(str) do
+      {n, ""} -> n
+      _ -> raise ArgumentError, "invalid #{label}: #{inspect(str)}, expected integer"
     end
   end
 

@@ -211,7 +211,7 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       query = build_query("bad-mx.test", 15)
       rule = %{type: :mx, value: "abc mail.example.com", ttl: 300}
 
-      assert_raise ArgumentError, fn ->
+      assert_raise ArgumentError, ~r/invalid MX priority/, fn ->
         ResponseBuilder.build_intercept_response(query, rule)
       end
     end
@@ -221,6 +221,51 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       rule = %{type: :srv, value: "10 20 8080", ttl: 300}
 
       assert_raise ArgumentError, ~r/invalid SRV value format/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on A record with invalid IPv4" do
+      query = build_query("bad-a.test", 1)
+      rule = %{type: :a, value: "999.999.999.999", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid IP address/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on A record with non-IP string" do
+      query = build_query("bad-a.test", 1)
+      rule = %{type: :a, value: "not-an-ip", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid IP address/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on AAAA record with invalid IPv6" do
+      query = build_query("bad-aaaa.test", 28)
+      rule = %{type: :aaaa, value: "gggg::1", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid IP address/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on SRV value with non-integer priority" do
+      query = build_query("bad-srv.test", 33)
+      rule = %{type: :srv, value: "abc 20 8080 target.com", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid SRV priority/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on SRV value with non-integer port" do
+      query = build_query("bad-srv.test", 33)
+      rule = %{type: :srv, value: "10 20 notaport target.com", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid SRV port/, fn ->
         ResponseBuilder.build_intercept_response(query, rule)
       end
     end
