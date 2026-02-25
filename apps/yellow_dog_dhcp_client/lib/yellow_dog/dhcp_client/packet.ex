@@ -129,26 +129,25 @@ defmodule YellowDog.DhcpClient.Packet do
       server_id_option(server_ip)
     ]
 
-    msg =
-      %Message{
-        op: 1,
-        htype: 1,
-        hlen: 6,
-        hops: 0,
-        xid: xid,
-        secs: 0,
-        flags: 0,
-        ciaddr: client_ip,
-        yiaddr: @zero_ip,
-        siaddr: @zero_ip,
-        giaddr: @zero_ip,
-        chaddr: pad_mac(mac),
-        sname: <<0::8*64>>,
-        file: <<0::8*128>>,
-        options: options
-      }
+    msg = %Message{
+      op: 1,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: xid,
+      secs: 0,
+      flags: 0,
+      ciaddr: client_ip,
+      yiaddr: @zero_ip,
+      siaddr: @zero_ip,
+      giaddr: @zero_ip,
+      chaddr: pad_mac(mac),
+      sname: <<0::8*64>>,
+      file: <<0::8*128>>,
+      options: options
+    }
 
-    DHCP.Parameter.to_iodata(msg)
+    IO.iodata_to_binary(DHCP.Parameter.to_iodata(msg))
   end
 
   @doc """
