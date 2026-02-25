@@ -549,6 +549,96 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert {:ok, lease} = YellowDog.DhcpClient.LeaseStore.lookup(ctx.store_pid, "test0")
       assert lease.ip == {192, 168, 1, 100}
     end
+
+    test "deletes lease from store on release", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Lease is in the store
+      assert {:ok, _} = YellowDog.DhcpClient.LeaseStore.lookup(ctx.store_pid, "test0")
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      # After release, lease should be deleted from store
+      assert :not_found = YellowDog.DhcpClient.LeaseStore.lookup(ctx.store_pid, "test0")
+    end
+
+    test "starts in :rebinding when store has a valid persisted lease", ctx do
+      # Pre-populate the store with a valid non-expired lease
+      valid_lease = %YellowDog.DhcpClient.Lease{
+        ip: {192, 168, 1, 50},
+        subnet_mask: {255, 255, 255, 0},
+        server_ip: {192, 168, 1, 1},
+        router: {192, 168, 1, 1},
+        dns_servers: [],
+        ntp_servers: [],
+        lease_time: 3600,
+        t1: 1800,
+        t2: 3150,
+        obtained_at: DateTime.utc_now(),
+        xid: 0xDEADBEEF,
+        yellowdog_server: false,
+        vendor_options: %{},
+        raw_options: %{}
+      }
+
+      YellowDog.DhcpClient.LeaseStore.store(ctx.store_pid, "test0", valid_lease)
+
+      # Start a new FSM that shares the same store — it should recover the lease
+      {:ok, pid2} =
+        YellowDog.DhcpClient.StateMachine.start_link(
+          interface: "test0",
+          mac: @test_mac,
+          socket_pid: ctx.socket_pid,
+          store_pid: ctx.store_pid,
+          config: %{dad_enabled: false, selection_window_ms: 50}
+        )
+
+      # The FSM should enter :rebinding immediately (skipping DISCOVER)
+      wait_for_state(pid2, :rebinding, 1000)
+
+      {_state, data} = StateMachine.status(pid2)
+      assert data.lease.ip == {192, 168, 1, 50}
+    end
+
+    test "starts in :init when store has an expired persisted lease", ctx do
+      # Pre-populate the store with an expired lease
+      expired_lease = %YellowDog.DhcpClient.Lease{
+        ip: {192, 168, 1, 50},
+        subnet_mask: {255, 255, 255, 0},
+        server_ip: {192, 168, 1, 1},
+        router: nil,
+        dns_servers: [],
+        ntp_servers: [],
+        lease_time: 1,
+        t1: 1,
+        t2: 1,
+        obtained_at: ~U[2000-01-01 00:00:00Z],
+        xid: 0xDEADBEEF,
+        yellowdog_server: false,
+        vendor_options: %{},
+        raw_options: %{}
+      }
+
+      YellowDog.DhcpClient.LeaseStore.store(ctx.store_pid, "test0", expired_lease)
+
+      {:ok, pid2} =
+        YellowDog.DhcpClient.StateMachine.start_link(
+          interface: "test0",
+          mac: @test_mac,
+          socket_pid: ctx.socket_pid,
+          store_pid: ctx.store_pid,
+          config: %{dad_enabled: false, selection_window_ms: 50}
+        )
+
+      # Expired lease → should start from :init (send DISCOVER)
+      assert get_state(pid2) == :init
+    end
   end
 
   # ── OS integration ──

@@ -15,6 +15,8 @@ defmodule YellowDog.DhcpClient.LeaseStore do
 
   require Logger
 
+  alias YellowDog.DhcpClient.Lease
+
   @default_lease_dir "/var/lib/yellowdog/leases"
   @flush_delay_ms 1_000
 
@@ -242,7 +244,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
   end
 
   defp deserialize_lease(map) do
-    %{
+    struct(Lease, %{
       ip: parse_ip(Map.get(map, "ip")),
       subnet_mask: parse_ip(Map.get(map, "subnet_mask")),
       router: parse_ip_optional(Map.get(map, "router")),
@@ -264,7 +266,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
       cluster_id: Map.get(map, "cluster_id"),
       vendor_options: %{},
       raw_options: %{}
-    }
+    })
   end
 
   defp lease_valid?(%{ip: {0, 0, 0, 0}}), do: false

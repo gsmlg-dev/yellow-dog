@@ -18,7 +18,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   @behaviour :gen_statem
 
-  alias YellowDog.DhcpClient.{DAD, DhcpSocket, LeaseStore}
+  alias YellowDog.DhcpClient.{DAD, DhcpSocket, Lease, LeaseStore}
 
   require Logger
 
@@ -110,7 +110,14 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   @impl true
   def init(data) do
-    {:ok, :init, data}
+    case try_recover_from_store(data) do
+      {:ok, lease} ->
+        Logger.debug("DHCP client #{data.interface}: found valid persisted lease, entering rebinding")
+        {:ok, :rebinding, %{data | lease: lease}}
+
+      :not_found ->
+        {:ok, :init, data}
+    end
   end
 
   # ---- INIT ----
@@ -284,6 +291,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
   def handle_event(:cast, :release, :bound, data) do
     send_release(data)
     deconfigure_os(data)
+    delete_lease(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -314,6 +322,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
       {:nak, _reason} ->
         emit_packet_rx(data, :nak, nil)
         deconfigure_os(data)
+        delete_lease(data)
         {:next_state, :init, %{data | lease: nil}}
 
       _other ->
@@ -360,6 +369,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
       {:nak, _reason} ->
         emit_packet_rx(data, :nak, nil)
         deconfigure_os(data)
+        delete_lease(data)
         {:next_state, :init, %{data | lease: nil}}
 
       _other ->
@@ -375,6 +385,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     )
 
     deconfigure_os(data)
+    delete_lease(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -392,6 +403,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     if data.lease do
       send_release(data)
       deconfigure_os(data)
+      delete_lease(data)
     end
 
     {:next_state, :init, %{data | lease: nil}}
@@ -584,6 +596,30 @@ defmodule YellowDog.DhcpClient.StateMachine do
     e ->
       Logger.warning("Failed to persist lease for #{interface}: #{Exception.message(e)}")
       :ok
+  end
+
+  defp delete_lease(%{store_pid: nil}), do: :ok
+
+  defp delete_lease(%{store_pid: store_pid, interface: interface}) do
+    LeaseStore.delete(store_pid, interface)
+  rescue
+    e ->
+      Logger.warning("Failed to delete persisted lease for #{interface}: #{Exception.message(e)}")
+      :ok
+  end
+
+  defp try_recover_from_store(%{store_pid: nil}), do: :not_found
+
+  defp try_recover_from_store(%{store_pid: store_pid, interface: interface}) do
+    case LeaseStore.lookup(store_pid, interface) do
+      {:ok, %Lease{} = lease} ->
+        if Lease.expired?(lease), do: :not_found, else: {:ok, lease}
+
+      _ ->
+        :not_found
+    end
+  rescue
+    _ -> :not_found
   end
 
   defp apply_os_lease(%{os_module: nil}), do: :ok
