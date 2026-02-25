@@ -109,5 +109,17 @@ defmodule YellowDogIdentity.RegistryConsumeTokenTest do
     test "returns error when no tokens exist", %{registry: pid} do
       assert {:error, :invalid_token} = GenServer.call(pid, {:consume_token, "any", "any"})
     end
+
+    test "returns error when persist_token fails (tokens dir not writable)", %{registry: pid, tmp_dir: tmp_dir} do
+      {:ok, token, raw} = Token.create(%{hostname_pattern: "*", max_uses: 5})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      # Remove write permission on tokens dir so File.write of updated token fails
+      tokens_dir = Path.join(tmp_dir, "tokens")
+      File.chmod!(tokens_dir, 0o555)
+      on_exit(fn -> File.chmod!(tokens_dir, 0o755) end)
+
+      assert {:error, _reason} = GenServer.call(pid, {:consume_token, raw, "host-1"})
+    end
   end
 end
