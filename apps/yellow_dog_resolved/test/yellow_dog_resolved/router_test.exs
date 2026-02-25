@@ -125,7 +125,9 @@ defmodule YellowDog.Resolved.RouterTest do
       raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
       assert {:ok, response_binary} = Router.resolve(query, raw)
-      assert is_binary(response_binary)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.form_err()
     end
   end
 
@@ -137,11 +139,10 @@ defmodule YellowDog.Resolved.RouterTest do
       raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
       assert {:ok, response_binary} = Router.resolve(query, raw)
-      assert is_binary(response_binary)
 
-      # Verify it's a valid DNS response
       response = DNS.Message.from_iodata(response_binary)
       assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
     end
   end
 
@@ -171,6 +172,7 @@ defmodule YellowDog.Resolved.RouterTest do
       assert {:ok, response_binary} = Router.resolve(query, raw)
       response = DNS.Message.from_iodata(response_binary)
       assert response.header.id == 42_000
+      assert response.header.rcode == DNS.Message.RCode.form_err()
     end
   end
 end
