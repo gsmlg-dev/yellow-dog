@@ -94,19 +94,14 @@ defmodule YellowDog.DhcpClient.ConfigTest do
       assert config.dad_wait_ms == 3000
     end
 
-    test "note: get_in_any uses find_value, so false values fall through to default" do
-      # This documents a known behavior: Enum.find_value treats `false` as
-      # non-truthy, so `dad_enabled: false` falls through to the default (true).
-      # See CLAUDE.md gotcha: "|| treats false and 0 as falsy".
+    test "respects false values in config (dad_enabled: false)" do
       Application.put_env(:yellow_dog_dhcp_client, :config, %{
         dad_enabled: false
       })
 
       config = Config.load("eth0")
 
-      # Due to find_value behavior, false is treated as "not found" and
-      # the default (true) is used instead.
-      assert config.dad_enabled == true
+      assert config.dad_enabled == false
     end
 
     test "reads config from Application env with string keys" do

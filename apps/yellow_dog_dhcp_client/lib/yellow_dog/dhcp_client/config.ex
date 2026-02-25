@@ -262,9 +262,14 @@ defmodule YellowDog.DhcpClient.Config do
 
   defp parse_hook_backend(_), do: @defaults.hook.backend
 
-  # Look up a value by trying multiple keys (atom and string variants)
+  # Look up a value by trying multiple keys (atom and string variants).
+  # Uses Map.has_key? so falsy values (false, 0, nil) are returned as-is
+  # rather than being treated as "not found" like Enum.find_value would do.
   defp get_in_any(map, keys, default) when is_map(map) do
-    Enum.find_value(keys, default, fn key -> Map.get(map, key) end)
+    case Enum.find(keys, fn key -> Map.has_key?(map, key) end) do
+      nil -> default
+      key -> Map.get(map, key)
+    end
   end
 
   defp get_in_any(_, _, default), do: default
