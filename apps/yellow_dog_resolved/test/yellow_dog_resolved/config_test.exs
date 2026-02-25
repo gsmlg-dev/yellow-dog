@@ -147,4 +147,98 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert config.upstreams == [{1, 1, 1, 1}, {8, 8, 8, 8}]
     end
   end
+
+  describe "GenServer handle_info catch-all" do
+    setup do
+      config = Config.load(@test_config_path)
+      start_supervised!({Config, config})
+      :ok
+    end
+
+    test "ignores unexpected messages" do
+      pid = Process.whereis(Config)
+      send(pid, :unexpected_message)
+      Process.sleep(10)
+
+      assert Process.alive?(pid)
+      # Can still serve requests after unknown message
+      assert is_list(Config.get_upstreams())
+    end
+  end
+
+  describe "hot reload via file event" do
+    test "reloads config when toml file changes" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "reload_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      # Write initial config
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+      start_supervised!({Config, config})
+
+      assert Config.get().port == 5353
+
+      # Simulate a file change event (as if the watcher detected it)
+      pid = Process.whereis(Config)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 5454
+      upstreams = ["1.1.1.1"]
+      """)
+
+      send(pid, {:file_event, nil, {path, [:modified]}})
+      Process.sleep(50)
+
+      assert Config.get().port == 5454
+      assert Config.get().upstreams == [{1, 1, 1, 1}]
+    end
+
+    test "survives reload of invalid config file" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_reload_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+      start_supervised!({Config, config})
+
+      # Make the file invalid
+      File.write!(path, "invalid toml {{{{")
+
+      pid = Process.whereis(Config)
+      send(pid, {:file_event, nil, {path, [:modified]}})
+      Process.sleep(50)
+
+      # Should still be alive with old config
+      assert Process.alive?(pid)
+      assert Config.get().port == 5353
+    end
+
+    test "ignores non-toml file events" do
+      config = Config.load(@test_config_path)
+      start_supervised!({Config, config})
+
+      pid = Process.whereis(Config)
+      original = Config.get()
+
+      send(pid, {:file_event, nil, {"/some/file.json", [:modified]}})
+      Process.sleep(10)
+
+      assert Config.get() == original
+    end
+  end
 end
