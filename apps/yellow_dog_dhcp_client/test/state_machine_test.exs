@@ -335,6 +335,40 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert StateMachine.lease(pid) == nil
   end
 
+  test "interface_down from :renewing returns to :init and clears lease", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    :sys.replace_state(pid, fn {_state, data} -> {:renewing, data} end)
+    wait_for_state(pid, :renewing, 500)
+
+    send(pid, :interface_down)
+    wait_for_state(pid, :init, 2000)
+
+    assert StateMachine.lease(pid) == nil
+  end
+
+  test "interface_down from :rebinding returns to :init and clears lease", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    :sys.replace_state(pid, fn {_state, data} -> {:rebinding, data} end)
+    wait_for_state(pid, :rebinding, 500)
+
+    send(pid, :interface_down)
+    wait_for_state(pid, :init, 2000)
+
+    assert StateMachine.lease(pid) == nil
+  end
+
   test "status/1 returns state and data", ctx do
     pid = start_fsm(ctx)
     {state, data} = StateMachine.status(pid)
