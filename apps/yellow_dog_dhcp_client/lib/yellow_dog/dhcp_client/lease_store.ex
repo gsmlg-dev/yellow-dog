@@ -54,7 +54,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
   @impl true
   def init(opts) do
     interface = Keyword.fetch!(opts, :interface)
-    lease_dir = Keyword.get(opts, :lease_dir, @default_lease_dir)
+    lease_dir = Keyword.get(opts, :lease_dir) || @default_lease_dir
 
     table = :ets.new(:dhcp_client_leases, [:set, :protected])
 

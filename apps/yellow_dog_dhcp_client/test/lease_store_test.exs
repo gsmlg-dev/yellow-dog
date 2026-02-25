@@ -250,6 +250,19 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert :not_found = LeaseStore.lookup(pid, iface)
   end
 
+  # ── nil lease_dir falls back to default ──
+
+  test "start_link with lease_dir: nil uses default path without crashing" do
+    # Regression: InterfaceSupervisor passes lease_dir: nil when not configured.
+    # Keyword.get(opts, :lease_dir, default) returns nil when key is present,
+    # which caused Path.join(nil, ...) to crash. Fixed with ||.
+    {:ok, pid} = LeaseStore.start_link(interface: "eth_nil_test", lease_dir: nil)
+    # Should start without crashing; lookup finds nothing in the (possibly absent) dir
+    result = LeaseStore.lookup(pid, "eth_nil_test")
+    assert result == :not_found or match?({:ok, _}, result)
+    GenServer.stop(pid)
+  end
+
   # ── multiple interfaces ──
 
   test "stores leases independently per interface", ctx do
