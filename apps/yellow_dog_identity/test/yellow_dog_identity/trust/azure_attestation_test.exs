@@ -202,6 +202,90 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
     end
   end
 
+  describe "signature verification paths" do
+    test "returns trusted when signature present but cert is nil (claims-only mode)" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("some-raw-sig-bytes"),
+          "certificate" => nil
+        })
+
+      # cert nil → extract_signing_key(nil) → :no_certificate → skip verification → :ok
+      assert {:trusted, :cloud_verified, _evidence} = Azure.verify(ctx)
+    end
+
+    test "returns trusted when signature present but cert is empty string (claims-only mode)" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("some-raw-sig-bytes"),
+          "certificate" => ""
+        })
+
+      # empty cert → extract_signing_key("") → :no_certificate → skip verification → :ok
+      assert {:trusted, :cloud_verified, _evidence} = Azure.verify(ctx)
+    end
+
+    test "returns untrusted when signature is not valid base64" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => "!!!not!valid!base64!!!",
+          "certificate" => "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAJ\n-----END CERTIFICATE-----"
+        })
+
+      assert {:untrusted, :invalid_signature_encoding} = Azure.verify(ctx)
+    end
+
+    test "returns untrusted when certificate PEM is invalid" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("fake-signature-bytes"),
+          "certificate" => "this-is-not-pem-at-all"
+        })
+
+      # Valid base64 sig, invalid PEM → :invalid_certificate
+      assert {:untrusted, :invalid_certificate} = Azure.verify(ctx)
+    end
+  end
+
+  describe "timestamp edge cases" do
+    test "returns trusted when timestamp is exactly 300s old (at boundary)" do
+      boundary_time =
+        DateTime.utc_now()
+        |> DateTime.add(-300, :second)
+        |> DateTime.to_iso8601()
+
+      document_b64 = valid_azure_document(%{"timestamp" => boundary_time})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      # age == window (300 <= 300) → :ok
+      assert {:trusted, :cloud_verified, _} = Azure.verify(ctx)
+    end
+
+    test "returns trusted when timestamp is non-ISO8601 string (permissive fallback)" do
+      document_b64 = valid_azure_document(%{"timestamp" => "not-a-valid-date"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      # parse failure → :ok (permissive: can't verify what we can't parse)
+      assert {:trusted, :cloud_verified, _} = Azure.verify(ctx)
+    end
+  end
+
   describe "subscription allowlist" do
     # With no YellowDog.Config available in test, allowed_subscriptions defaults to []
     # which means all subscriptions are allowed.

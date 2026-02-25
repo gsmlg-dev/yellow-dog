@@ -176,6 +176,27 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
 
       assert {:untrusted, :document_too_old} = AWS.verify(ctx)
     end
+
+    test "returns trusted when pendingTime is exactly 300s old (at boundary)" do
+      boundary_time =
+        DateTime.utc_now()
+        |> DateTime.add(-300, :second)
+        |> DateTime.to_iso8601()
+
+      document_b64 = valid_aws_document(%{"pendingTime" => boundary_time})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      # age == window (300 <= 300) → :ok
+      assert {:trusted, :cloud_verified, _} = AWS.verify(ctx)
+    end
+
+    test "returns trusted when pendingTime is non-ISO8601 string (permissive fallback)" do
+      document_b64 = valid_aws_document(%{"pendingTime" => "not-a-date"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      # parse failure → :ok (can't verify what we can't parse)
+      assert {:trusted, :cloud_verified, _} = AWS.verify(ctx)
+    end
   end
 
   describe "account allowlist" do
