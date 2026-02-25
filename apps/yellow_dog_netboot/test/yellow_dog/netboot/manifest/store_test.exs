@@ -4,10 +4,12 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
   alias YellowDog.Netboot.Manifest.Store
   alias YellowDog.Netboot.Boot.Profile
 
+  @table :netboot_profiles
+
   setup do
-    # Store is already started by Application.
-    # Clear ETS table and reload with test config.
-    :ets.delete_all_objects(Store)
+    # Clear ETS table and persistent_term default
+    :ets.delete_all_objects(@table)
+    :persistent_term.put({Store, :default_profile}, nil)
 
     # Set up test config
     test_config = %{
@@ -36,25 +38,25 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       }
     }
 
-    # Load test profiles
+    # Load test profiles via public API
     load_test_config(test_config)
 
     {:ok, config: test_config}
   end
 
-  # Helper to load config directly into ETS
+  # Helper to load config using the public API
   defp load_test_config(config) do
     default_profile = config["default_profile"]
 
     if default_profile do
-      :ets.insert(Store, {:default_profile, default_profile})
+      :persistent_term.put({Store, :default_profile}, default_profile)
     end
 
     profiles = config["profiles"] || %{}
 
     Enum.each(profiles, fn {id, profile_config} ->
       profile = Profile.from_config(id, profile_config)
-      :ets.insert(Store, {{:profile, id}, profile})
+      Store.put_profile(profile)
     end)
   end
 
@@ -82,7 +84,7 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     end
 
     test "returns empty list when no profiles configured" do
-      :ets.delete_all_objects(Store)
+      :ets.delete_all_objects(@table)
       profiles = Store.list_profiles()
       assert profiles == []
     end
@@ -111,7 +113,7 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     end
 
     test "returns nil when no default configured" do
-      :ets.delete_all_objects(Store)
+      :persistent_term.put({Store, :default_profile}, nil)
       assert Store.default_profile_id() == nil
     end
   end
@@ -170,7 +172,8 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       Store.reload()
 
       # Manually restore for test verification
-      :ets.delete_all_objects(Store)
+      :ets.delete_all_objects(@table)
+      :persistent_term.put({Store, :default_profile}, nil)
 
       load_test_config(%{
         "default_profile" => "nixos-minimal",
@@ -210,7 +213,8 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
 
   describe "config with nil and missing keys" do
     test "handles config with no default_profile" do
-      :ets.delete_all_objects(Store)
+      :ets.delete_all_objects(@table)
+      :persistent_term.put({Store, :default_profile}, nil)
 
       load_test_config(%{
         "profiles" => %{
@@ -229,7 +233,8 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     end
 
     test "handles config with no profiles key" do
-      :ets.delete_all_objects(Store)
+      :ets.delete_all_objects(@table)
+      :persistent_term.put({Store, :default_profile}, nil)
       load_test_config(%{"default_profile" => "none"})
 
       assert Store.default_profile_id() == "none"
@@ -237,7 +242,8 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
     end
 
     test "handles completely empty config" do
-      :ets.delete_all_objects(Store)
+      :ets.delete_all_objects(@table)
+      :persistent_term.put({Store, :default_profile}, nil)
       load_test_config(%{})
 
       assert Store.default_profile_id() == nil
@@ -262,11 +268,10 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       }
 
       :sys.replace_state(Store, fn state -> %{state | config: config} end)
-      :ets.delete_all_objects(Store)
 
       assert :ok = Store.reload()
 
-      # Verify profiles were loaded via load_config (L102, L108-109)
+      # Verify profiles were loaded via load_config
       assert Store.default_profile_id() == "arch-linux"
       assert {:ok, profile} = Store.get_profile("arch-linux")
       assert profile.description == "Arch Linux"
@@ -294,7 +299,6 @@ defmodule YellowDog.Netboot.Manifest.StoreTest do
       }
 
       :sys.replace_state(Store, fn state -> %{state | config: config} end)
-      :ets.delete_all_objects(Store)
 
       assert :ok = Store.reload()
       profiles = Store.list_profiles()

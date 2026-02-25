@@ -30,7 +30,15 @@ defmodule YellowDog.Dns.AclStore do
       geo_countries = ["US", "CA", "MX"]
   """
 
+  use YellowDog.Data.Collection
+
   require Logger
+
+  defcollection(:dns_acl_files,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets,
+    persistence: [strategy: :toml, path: "data/dns/acls.toml"]
+  )
 
   @type acl_rule :: %{
           action: String.t(),

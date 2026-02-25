@@ -1,6 +1,6 @@
 defmodule YellowDog.Fingerprint.DeviceRegistry do
   @moduledoc """
-  Device state management with ETS storage and periodic TOML persistence.
+  Device state management with Store.Ets storage and periodic TOML persistence.
 
   Tracks observed devices keyed by MAC address. Correlates DHCPv4 and
   DHCPv6 observations into a unified device record. Periodically flushes
@@ -8,12 +8,17 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
   """
 
   use GenServer
+  use YellowDog.Data.Collection
 
+  alias YellowDog.Data.Store
   alias YellowDog.Fingerprint.Types.Device
 
   require Logger
 
-  @table :fp_devices
+  defcollection :fp_devices,
+    key_field: :mac,
+    adapter: YellowDog.Data.Store.Ets
+
   @default_flush_interval 60_000
 
   # --- Public API ---
@@ -25,18 +30,17 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
   @doc "Returns a device by MAC address."
   @spec get(String.t()) :: {:ok, Device.t()} | :not_found
   def get(mac) do
-    case :ets.lookup(@table, normalize_mac(mac)) do
-      [{_mac, device}] -> {:ok, device}
-      [] -> :not_found
+    case Store.get(store_state(), normalize_mac(mac)) do
+      {:ok, device} -> {:ok, device}
+      {:error, :not_found} -> :not_found
     end
   end
 
   @doc "Lists all observed devices."
   @spec list() :: [Device.t()]
   def list do
-    :ets.tab2list(@table)
-    |> Enum.map(fn {_mac, device} -> device end)
-    |> Enum.sort_by(& &1.last_seen, {:desc, DateTime})
+    {:ok, devices} = Store.list(store_state())
+    Enum.sort_by(devices, & &1.last_seen, {:desc, DateTime})
   end
 
   @doc "Returns device registry statistics."
@@ -86,14 +90,19 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
   @impl true
   def init(opts) do
     data_dir = Keyword.get(opts, :data_dir, "data/fingerprint")
-    flush_interval = Application.get_env(:yellow_dog_fingerprint, :device_flush_interval_ms, @default_flush_interval)
 
-    :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+    flush_interval =
+      Application.get_env(:yellow_dog_fingerprint, :device_flush_interval_ms, @default_flush_interval)
 
-    load_devices(data_dir)
+    {:ok, store} = Store.init(collection(), [])
+
+    # Persist store state for direct reads in public API
+    :persistent_term.put({__MODULE__, :store}, store)
+
+    load_devices(store, data_dir)
     schedule_flush(flush_interval)
 
-    {:ok, %{data_dir: data_dir, flush_interval: flush_interval}}
+    {:ok, %{store: store, data_dir: data_dir, flush_interval: flush_interval}}
   end
 
   @impl true
@@ -101,30 +110,30 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
     now = DateTime.utc_now()
     fingerprint = attrs[:fingerprint]
 
-    case :ets.lookup(@table, mac) do
-      [{^mac, existing}] ->
+    case Store.get(state.store, mac) do
+      {:ok, existing} ->
         updated = merge_device(existing, attrs, fingerprint, now)
-        :ets.insert(@table, {mac, updated})
+        {:ok, store} = Store.put(state.store, mac, updated)
         maybe_broadcast_update(updated)
+        {:noreply, update_store(state, store)}
 
-      [] ->
+      {:error, :not_found} ->
         device = new_device(mac, attrs, fingerprint, now)
-        :ets.insert(@table, {mac, device})
+        {:ok, store} = Store.put(state.store, mac, device)
         maybe_broadcast_update(device)
+        {:noreply, update_store(state, store)}
     end
-
-    {:noreply, state}
   end
 
   @impl true
   def handle_call(:flush, _from, state) do
-    save_devices(state.data_dir)
+    save_devices(state.store, state.data_dir)
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_info(:flush, state) do
-    save_devices(state.data_dir)
+    save_devices(state.store, state.data_dir)
     schedule_flush(state.flush_interval)
     {:noreply, state}
   end
@@ -133,11 +142,20 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
 
   @impl true
   def terminate(_reason, state) do
-    save_devices(state.data_dir)
+    save_devices(state.store, state.data_dir)
     :ok
   end
 
   # --- Private ---
+
+  defp store_state do
+    :persistent_term.get({__MODULE__, :store})
+  end
+
+  defp update_store(state, store) do
+    :persistent_term.put({__MODULE__, :store}, store)
+    %{state | store: store}
+  end
 
   defp new_device(mac, attrs, fingerprint, now) do
     {v4_id, v6_id} = fingerprint_ids(fingerprint)
@@ -231,7 +249,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
     Process.send_after(self(), :flush, interval)
   end
 
-  defp load_devices(data_dir) do
+  defp load_devices(store, data_dir) do
     path = Path.join(data_dir, "devices.toml")
 
     case read_toml(path) do
@@ -256,7 +274,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
             metadata: d["metadata"] || %{}
           }
 
-          :ets.insert(@table, {mac, device})
+          Store.put(store, mac, device)
         end)
 
       _ ->
@@ -264,11 +282,12 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
     end
   end
 
-  defp save_devices(data_dir) do
+  defp save_devices(store, data_dir) do
     path = Path.join(data_dir, "devices.toml")
     File.mkdir_p!(data_dir)
 
-    devices = list()
+    {:ok, devices} = Store.list(store)
+    devices = Enum.sort_by(devices, & &1.last_seen, {:desc, DateTime})
 
     content =
       devices

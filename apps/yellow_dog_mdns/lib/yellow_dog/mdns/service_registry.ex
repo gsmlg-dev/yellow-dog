@@ -7,11 +7,15 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   """
 
   use GenServer
+  use YellowDog.Data.Collection
 
+  alias YellowDog.Data.Store
   alias YellowDog.Mdns.ServiceStore
 
-  @table_name :mdns_service_registry
-  @ets_options [:named_table, :public, :set, read_concurrency: true, write_concurrency: true]
+  defcollection(:mdns_services,
+    key_field: :id,
+    adapter: YellowDog.Data.Store.Ets
+  )
 
   @type service_id :: String.t()
   @type service_state :: :probing | :announcing | :registered | :disabled
@@ -117,9 +121,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   """
   @spec get_service(service_id()) :: service() | nil
   def get_service(service_id) do
-    case :ets.lookup(@table_name, service_id) do
-      [{^service_id, service}] -> service
-      [] -> nil
+    case Store.get(store_state(), service_id) do
+      {:ok, service} -> service
+      {:error, :not_found} -> nil
     end
   end
 
@@ -135,9 +139,9 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     filter = Keyword.get(opts, :filter, :all)
     source_filter = Keyword.get(opts, :source, :all)
 
-    @table_name
-    |> :ets.tab2list()
-    |> Enum.map(&elem(&1, 1))
+    {:ok, services} = Store.list(store_state())
+
+    services
     |> apply_filters(filter, source_filter)
     |> Enum.sort_by(& &1.name)
   end
@@ -216,8 +220,10 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   @impl true
   def init(opts) do
-    # Initialize ETS table
-    init_table()
+    # Initialize Store.Ets collection
+    ets_opts = [:named_table, :set, :public, read_concurrency: true, write_concurrency: true]
+    {:ok, store} = Store.init(collection(), ets_opts: ets_opts)
+    :persistent_term.put({__MODULE__, :store}, store)
 
     # Get configuration
     storage_file = Keyword.get(opts, :storage_file, "data/mdns/services.toml")
@@ -225,6 +231,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     load_on_start = Keyword.get(opts, :load_on_start, true)
 
     state = %{
+      store: store,
       storage_file: storage_file,
       auto_save: auto_save,
       hostname: get_hostname()
@@ -284,7 +291,8 @@ defmodule YellowDog.Mdns.ServiceRegistry do
         {:reply, {:error, :not_found}, state}
 
       _service ->
-        :ets.delete(@table_name, service_id)
+        {:ok, store} = Store.delete(state.store, service_id)
+        state = update_store(state, store)
 
         if persist and state.auto_save do
           save_services_to_file(state)
@@ -305,7 +313,8 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
       service ->
         updated_service = Map.merge(service, updates)
-        :ets.insert(@table_name, {service_id, updated_service})
+        {:ok, store} = Store.put(state.store, service_id, updated_service)
+        state = update_store(state, store)
 
         if persist and state.auto_save do
           save_services_to_file(state)
@@ -324,7 +333,8 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
       service ->
         updated_service = %{service | enabled: not service.enabled}
-        :ets.insert(@table_name, {service_id, updated_service})
+        {:ok, store} = Store.put(state.store, service_id, updated_service)
+        state = update_store(state, store)
 
         if state.auto_save do
           save_services_to_file(state)
@@ -379,17 +389,18 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   # Private functions
 
-  defp init_table do
-    if :ets.whereis(@table_name) == :undefined do
-      :ets.new(@table_name, @ets_options)
-    end
+  defp store_state do
+    :persistent_term.get({__MODULE__, :store})
+  end
 
-    :ok
+  defp update_store(state, store) do
+    :persistent_term.put({__MODULE__, :store}, store)
+    %{state | store: store}
   end
 
   defp clear_file_services do
     for service <- list_services(source: :file) do
-      :ets.delete(@table_name, service.id)
+      Store.delete(store_state(), service.id)
     end
 
     :ok
@@ -400,7 +411,8 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
     with :ok <- ServiceStore.validate_service(service_def) do
       service = build_service(service_def, state, source)
-      :ets.insert(@table_name, {service.id, service})
+      {:ok, store} = Store.put(store_state(), service.id, service)
+      :persistent_term.put({__MODULE__, :store}, store)
 
       :telemetry.execute(
         [:yellow_dog, :mdns, :service_registered],

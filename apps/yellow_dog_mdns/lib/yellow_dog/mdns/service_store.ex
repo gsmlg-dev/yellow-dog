@@ -6,6 +6,14 @@ defmodule YellowDog.Mdns.ServiceStore do
   Supports file watching for hot-reload and atomic writes with backup.
   """
 
+  use YellowDog.Data.Collection
+
+  defcollection(:mdns_service_files,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets,
+    persistence: [strategy: :toml, path: "data/mdns/services.toml"]
+  )
+
   import YellowDog.Config.TomlHelpers,
     only: [
       parse_toml: 1,

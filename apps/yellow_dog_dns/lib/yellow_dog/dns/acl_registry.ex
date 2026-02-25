@@ -28,10 +28,17 @@ defmodule YellowDog.Dns.AclRegistry do
   """
 
   use GenServer
+  use YellowDog.Data.Collection
 
   require Logger
 
   alias YellowDog.Dns.AclStore
+  alias YellowDog.Data.Store
+
+  defcollection(:dns_acls,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets
+  )
 
   # Client API
 
@@ -97,9 +104,12 @@ defmodule YellowDog.Dns.AclRegistry do
   def init(opts) do
     acl_file = Keyword.get(opts, :acl_file)
 
+    {:ok, store} =
+      Store.init(collection(), table_name: :"dns_acls_#{:erlang.unique_integer([:positive])}")
+
     state = %{
       acl_file: acl_file,
-      acls: %{}
+      store: store
     }
 
     {:ok, load_acls(state)}
@@ -107,20 +117,13 @@ defmodule YellowDog.Dns.AclRegistry do
 
   @impl true
   def handle_call(:list_acls, _from, state) do
-    acls =
-      state.acls
-      |> Map.values()
-      |> Enum.sort_by(& &1.name)
-
-    {:reply, acls, state}
+    {:ok, acls} = Store.list(state.store)
+    {:reply, Enum.sort_by(acls, & &1.name), state}
   end
 
   @impl true
   def handle_call({:get_acl, name}, _from, state) do
-    case Map.get(state.acls, name) do
-      nil -> {:reply, {:error, :not_found}, state}
-      acl -> {:reply, {:ok, acl}, state}
-    end
+    {:reply, Store.get(state.store, name), state}
   end
 
   @impl true
@@ -130,11 +133,12 @@ defmodule YellowDog.Dns.AclRegistry do
     if is_nil(name) or name == "" do
       {:reply, {:error, :invalid_name}, state}
     else
-      if Map.has_key?(state.acls, name) do
+      if Store.exists?(state.store, name) do
         {:reply, {:error, :already_exists}, state}
       else
         normalized = normalize_acl(acl)
-        new_state = put_in(state.acls[name], normalized)
+        {:ok, store} = Store.put(state.store, name, normalized)
+        new_state = %{state | store: store}
         save_acls_async(new_state)
         {:reply, :ok, new_state}
       end
@@ -143,9 +147,10 @@ defmodule YellowDog.Dns.AclRegistry do
 
   @impl true
   def handle_call({:update_acl, name, acl}, _from, state) do
-    if Map.has_key?(state.acls, name) do
+    if Store.exists?(state.store, name) do
       normalized = normalize_acl(Map.put(acl, :name, name))
-      new_state = put_in(state.acls[name], normalized)
+      {:ok, store} = Store.put(state.store, name, normalized)
+      new_state = %{state | store: store}
       save_acls_async(new_state)
       {:reply, :ok, new_state}
     else
@@ -155,8 +160,9 @@ defmodule YellowDog.Dns.AclRegistry do
 
   @impl true
   def handle_call({:delete_acl, name}, _from, state) do
-    if Map.has_key?(state.acls, name) do
-      new_state = %{state | acls: Map.delete(state.acls, name)}
+    if Store.exists?(state.store, name) do
+      {:ok, store} = Store.delete(state.store, name)
+      new_state = %{state | store: store}
       save_acls_async(new_state)
       {:reply, :ok, new_state}
     else
@@ -165,8 +171,13 @@ defmodule YellowDog.Dns.AclRegistry do
   end
 
   @impl true
+  def handle_call(:reload, _from, %{acl_file: nil} = state) do
+    {:reply, :ok, state}
+  end
+
   def handle_call(:reload, _from, state) do
-    {:reply, :ok, load_acls(state)}
+    {:ok, store} = Store.clear(state.store)
+    {:reply, :ok, load_acls(%{state | store: store})}
   end
 
   # Private functions
@@ -176,8 +187,13 @@ defmodule YellowDog.Dns.AclRegistry do
   defp load_acls(state) do
     case AclStore.load_acls(state.acl_file) do
       {:ok, acls} ->
-        acls_map = Map.new(acls, fn acl -> {acl.name, acl} end)
-        %{state | acls: acls_map}
+        store =
+          Enum.reduce(acls, state.store, fn acl, acc ->
+            {:ok, acc} = Store.put(acc, acl.name, acl)
+            acc
+          end)
+
+        %{state | store: store}
 
       {:error, _reason} ->
         state
@@ -187,7 +203,7 @@ defmodule YellowDog.Dns.AclRegistry do
   defp save_acls_async(%{acl_file: nil}), do: :ok
 
   defp save_acls_async(state) do
-    acls = Map.values(state.acls)
+    {:ok, acls} = Store.list(state.store)
     acl_file = state.acl_file
 
     Task.start(fn ->

@@ -1,8 +1,8 @@
 defmodule YellowDog.Fingerprint.Database do
   @moduledoc """
-  ETS-backed fingerprint database with TOML persistence.
+  Store.Ets-backed fingerprint database with TOML persistence.
 
-  Manages four ETS tables:
+  Manages four Store.Ets collections:
   - `:fp_profiles` — device profiles (id → DeviceProfile)
   - `:fp_fingerprints_v4` — DHCPv4 fingerprint→profile mappings
   - `:fp_fingerprints_v6` — DHCPv6 fingerprint→profile mappings
@@ -13,12 +13,13 @@ defmodule YellowDog.Fingerprint.Database do
 
   use GenServer
 
+  alias YellowDog.Data.{Collection, Store}
   alias YellowDog.Fingerprint.Types.{DeviceProfile, Fingerprint}
 
-  @profiles_table :fp_profiles
-  @fingerprints_v4_table :fp_fingerprints_v4
-  @fingerprints_v6_table :fp_fingerprints_v6
-  @overrides_table :fp_overrides
+  @profiles_collection %Collection{name: :fp_profiles, key_field: :id, adapter: Store.Ets}
+  @fingerprints_v4_collection %Collection{name: :fp_fingerprints_v4, key_field: :hash, adapter: Store.Ets}
+  @fingerprints_v6_collection %Collection{name: :fp_fingerprints_v6, key_field: :hash, adapter: Store.Ets}
+  @overrides_collection %Collection{name: :fp_overrides, key_field: :hash, adapter: Store.Ets}
 
   # --- Public API ---
 
@@ -30,43 +31,43 @@ defmodule YellowDog.Fingerprint.Database do
   @doc "Returns a profile by ID."
   @spec get_profile(String.t()) :: {:ok, DeviceProfile.t()} | :not_found
   def get_profile(profile_id) do
-    case :ets.lookup(@profiles_table, profile_id) do
-      [{^profile_id, profile}] -> {:ok, profile}
-      [] -> :not_found
+    case Store.get(store(:profiles), profile_id) do
+      {:ok, profile} -> {:ok, profile}
+      {:error, :not_found} -> :not_found
     end
   end
 
   @doc "Lists all device profiles."
   @spec list_profiles() :: [DeviceProfile.t()]
   def list_profiles do
-    :ets.tab2list(@profiles_table)
-    |> Enum.map(fn {_id, profile} -> profile end)
+    {:ok, profiles} = Store.list(store(:profiles))
+    profiles
   end
 
   @doc "Looks up a v4 fingerprint mapping by hash."
   @spec lookup_v4(binary()) :: {:ok, %{profile_id: String.t(), confidence: non_neg_integer()}} | :not_found
   def lookup_v4(hash) do
-    case :ets.lookup(@fingerprints_v4_table, hash) do
-      [{^hash, mapping}] -> {:ok, mapping}
-      [] -> :not_found
+    case Store.get(store(:v4), hash) do
+      {:ok, mapping} -> {:ok, mapping}
+      {:error, :not_found} -> :not_found
     end
   end
 
   @doc "Looks up a v6 fingerprint mapping by hash."
   @spec lookup_v6(binary()) :: {:ok, %{profile_id: String.t(), confidence: non_neg_integer()}} | :not_found
   def lookup_v6(hash) do
-    case :ets.lookup(@fingerprints_v6_table, hash) do
-      [{^hash, mapping}] -> {:ok, mapping}
-      [] -> :not_found
+    case Store.get(store(:v6), hash) do
+      {:ok, mapping} -> {:ok, mapping}
+      {:error, :not_found} -> :not_found
     end
   end
 
   @doc "Looks up a user override by fingerprint hash."
   @spec lookup_override(binary()) :: {:ok, %{profile_id: String.t(), note: String.t() | nil}} | :not_found
   def lookup_override(hash) do
-    case :ets.lookup(@overrides_table, hash) do
-      [{^hash, override}] -> {:ok, override}
-      [] -> :not_found
+    case Store.get(store(:overrides), hash) do
+      {:ok, override} -> {:ok, override}
+      {:error, :not_found} -> :not_found
     end
   end
 
@@ -79,8 +80,8 @@ defmodule YellowDog.Fingerprint.Database do
   @doc "Lists all known fingerprints (v4 + v6 combined)."
   @spec list_fingerprints() :: [Fingerprint.t()]
   def list_fingerprints do
-    v4 = :ets.tab2list(@fingerprints_v4_table) |> Enum.map(fn {_h, m} -> m end)
-    v6 = :ets.tab2list(@fingerprints_v6_table) |> Enum.map(fn {_h, m} -> m end)
+    {:ok, v4} = Store.list(store(:v4))
+    {:ok, v6} = Store.list(store(:v6))
     v4 ++ v6
   end
 
@@ -104,25 +105,30 @@ defmodule YellowDog.Fingerprint.Database do
   @doc "Returns all v4 fingerprint entries for fuzzy matching."
   @spec all_v4_entries() :: [map()]
   def all_v4_entries do
-    :ets.tab2list(@fingerprints_v4_table)
-    |> Enum.map(fn {hash, entry} -> Map.put(entry, :hash, hash) end)
+    {:ok, entries} = Store.list(store(:v4))
+    entries
   end
 
   @doc "Returns all v6 fingerprint entries for fuzzy matching."
   @spec all_v6_entries() :: [map()]
   def all_v6_entries do
-    :ets.tab2list(@fingerprints_v6_table)
-    |> Enum.map(fn {hash, entry} -> Map.put(entry, :hash, hash) end)
+    {:ok, entries} = Store.list(store(:v6))
+    entries
   end
 
   @doc "Returns database statistics."
   @spec stats() :: map()
   def stats do
+    {:ok, profiles_count} = Store.count(store(:profiles))
+    {:ok, v4_count} = Store.count(store(:v4))
+    {:ok, v6_count} = Store.count(store(:v6))
+    {:ok, overrides_count} = Store.count(store(:overrides))
+
     %{
-      profiles: :ets.info(@profiles_table, :size),
-      fingerprints_v4: :ets.info(@fingerprints_v4_table, :size),
-      fingerprints_v6: :ets.info(@fingerprints_v6_table, :size),
-      overrides: :ets.info(@overrides_table, :size)
+      profiles: profiles_count,
+      fingerprints_v4: v4_count,
+      fingerprints_v6: v6_count,
+      overrides: overrides_count
     }
   end
 
@@ -130,49 +136,62 @@ defmodule YellowDog.Fingerprint.Database do
 
   @impl true
   def init(data_dir) do
-    :ets.new(@profiles_table, [:named_table, :set, :public, read_concurrency: true])
-    :ets.new(@fingerprints_v4_table, [:named_table, :set, :public, read_concurrency: true])
-    :ets.new(@fingerprints_v6_table, [:named_table, :set, :public, read_concurrency: true])
-    :ets.new(@overrides_table, [:named_table, :set, :public, read_concurrency: true])
+    {:ok, profiles_store} = Store.init(@profiles_collection, [])
+    {:ok, v4_store} = Store.init(@fingerprints_v4_collection, [])
+    {:ok, v6_store} = Store.init(@fingerprints_v6_collection, [])
+    {:ok, overrides_store} = Store.init(@overrides_collection, [])
 
-    load_profiles(data_dir)
-    load_fingerprints(data_dir, :dhcpv4)
-    load_fingerprints(data_dir, :dhcpv6)
-    load_overrides(data_dir)
+    stores = %{profiles: profiles_store, v4: v4_store, v6: v6_store, overrides: overrides_store}
+    :persistent_term.put({__MODULE__, :stores}, stores)
 
-    {:ok, %{data_dir: data_dir}}
+    load_profiles(stores, data_dir)
+    load_fingerprints(stores, data_dir, :dhcpv4)
+    load_fingerprints(stores, data_dir, :dhcpv6)
+    load_overrides(stores, data_dir)
+
+    {:ok, %{stores: stores, data_dir: data_dir}}
   end
 
   @impl true
   def handle_call({:add_override, hash, profile_id, note}, _from, state) do
     override = %{profile_id: profile_id, note: note, created_at: DateTime.utc_now()}
-    :ets.insert(@overrides_table, {hash, override})
-    save_overrides(state.data_dir)
-    {:reply, :ok, state}
+    {:ok, overrides_store} = Store.put(state.stores.overrides, hash, override)
+    stores = %{state.stores | overrides: overrides_store}
+    :persistent_term.put({__MODULE__, :stores}, stores)
+    save_overrides(stores, state.data_dir)
+    {:reply, :ok, %{state | stores: stores}}
   end
 
   @impl true
   def handle_cast({:record_fingerprint, %Fingerprint{protocol: :dhcpv4} = fp}, state) do
-    table = @fingerprints_v4_table
-    update_fingerprint_entry(table, fp)
-    {:noreply, state}
+    stores = update_fingerprint_entry(state.stores, :v4, fp)
+    {:noreply, %{state | stores: stores}}
   end
 
   def handle_cast({:record_fingerprint, %Fingerprint{protocol: :dhcpv6} = fp}, state) do
-    table = @fingerprints_v6_table
-    update_fingerprint_entry(table, fp)
-    {:noreply, state}
+    stores = update_fingerprint_entry(state.stores, :v6, fp)
+    {:noreply, %{state | stores: stores}}
   end
 
   # --- Private ---
 
-  defp update_fingerprint_entry(table, %Fingerprint{id: id} = fp) do
-    case :ets.lookup(table, id) do
-      [{^id, existing}] ->
-        updated = %{existing | last_seen: fp.last_seen, hit_count: existing.hit_count + 1}
-        :ets.insert(table, {id, updated})
+  defp store(key) do
+    stores = :persistent_term.get({__MODULE__, :stores})
+    Map.fetch!(stores, key)
+  end
 
-      [] ->
+  defp update_fingerprint_entry(stores, table_key, %Fingerprint{id: id} = fp) do
+    store_state = Map.fetch!(stores, table_key)
+
+    case Store.get(store_state, id) do
+      {:ok, existing} ->
+        updated = %{existing | last_seen: fp.last_seen, hit_count: existing.hit_count + 1}
+        {:ok, new_store} = Store.put(store_state, id, updated)
+        updated_stores = Map.put(stores, table_key, new_store)
+        :persistent_term.put({__MODULE__, :stores}, updated_stores)
+        updated_stores
+
+      {:error, :not_found} ->
         entry = %{
           parameter_list: fp.parameter_list,
           vendor_class: fp.vendor_class,
@@ -184,11 +203,14 @@ defmodule YellowDog.Fingerprint.Database do
           last_seen: fp.last_seen
         }
 
-        :ets.insert(table, {id, entry})
+        {:ok, new_store} = Store.put(store_state, id, entry)
+        updated_stores = Map.put(stores, table_key, new_store)
+        :persistent_term.put({__MODULE__, :stores}, updated_stores)
+        updated_stores
     end
   end
 
-  defp load_profiles(data_dir) do
+  defp load_profiles(stores, data_dir) do
     path = Path.join(data_dir, "profiles.toml")
 
     case read_toml(path) do
@@ -205,7 +227,7 @@ defmodule YellowDog.Fingerprint.Database do
             source: :local
           }
 
-          :ets.insert(@profiles_table, {profile.id, profile})
+          Store.put(stores.profiles, profile.id, profile)
         end)
 
       _ ->
@@ -213,19 +235,17 @@ defmodule YellowDog.Fingerprint.Database do
     end
   end
 
-  defp load_fingerprints(data_dir, :dhcpv4) do
+  defp load_fingerprints(stores, data_dir, :dhcpv4) do
     path = Path.join(data_dir, "fingerprints_v4.toml")
-    table = @fingerprints_v4_table
-    load_fingerprint_file(path, table, :dhcpv4)
+    load_fingerprint_file(stores.v4, path, :dhcpv4)
   end
 
-  defp load_fingerprints(data_dir, :dhcpv6) do
+  defp load_fingerprints(stores, data_dir, :dhcpv6) do
     path = Path.join(data_dir, "fingerprints_v6.toml")
-    table = @fingerprints_v6_table
-    load_fingerprint_file(path, table, :dhcpv6)
+    load_fingerprint_file(stores.v6, path, :dhcpv6)
   end
 
-  defp load_fingerprint_file(path, table, protocol) do
+  defp load_fingerprint_file(store_state, path, protocol) do
     case read_toml(path) do
       {:ok, %{"fingerprints" => fingerprints}} ->
         Enum.each(fingerprints, fn f ->
@@ -244,7 +264,7 @@ defmodule YellowDog.Fingerprint.Database do
             last_seen: nil
           }
 
-          :ets.insert(table, {hash, entry})
+          Store.put(store_state, hash, entry)
         end)
 
       _ ->
@@ -252,7 +272,7 @@ defmodule YellowDog.Fingerprint.Database do
     end
   end
 
-  defp load_overrides(data_dir) do
+  defp load_overrides(stores, data_dir) do
     path = Path.join(data_dir, "overrides.toml")
 
     case read_toml(path) do
@@ -270,7 +290,7 @@ defmodule YellowDog.Fingerprint.Database do
             source: :user_override
           }
 
-          :ets.insert(@profiles_table, {profile.id, profile})
+          Store.put(stores.profiles, profile.id, profile)
         end
 
         # Load overrides
@@ -281,7 +301,7 @@ defmodule YellowDog.Fingerprint.Database do
             created_at: parse_datetime(o["created_at"])
           }
 
-          :ets.insert(@overrides_table, {o["fingerprint_hash"], override})
+          Store.put(stores.overrides, o["fingerprint_hash"], override)
         end
 
       _ ->
@@ -289,19 +309,22 @@ defmodule YellowDog.Fingerprint.Database do
     end
   end
 
-  defp save_overrides(data_dir) do
+  defp save_overrides(stores, data_dir) do
     path = Path.join(data_dir, "overrides.toml")
     File.mkdir_p!(data_dir)
 
+    # We need the keys too — get from ETS directly since Store.list only returns values
     overrides =
-      :ets.tab2list(@overrides_table)
+      :ets.tab2list(stores.overrides.table)
       |> Enum.map(fn {hash, o} ->
         "[[overrides]]\nfingerprint_hash = #{inspect(hash)}\nprofile_id = #{inspect(o.profile_id)}\nnote = #{inspect(o.note || "")}\ncreated_at = #{DateTime.to_iso8601(o.created_at)}"
       end)
       |> Enum.join("\n\n")
 
+    {:ok, profiles} = Store.list(stores.profiles)
+
     custom_profiles =
-      list_profiles()
+      profiles
       |> Enum.filter(&(&1.source == :user_override))
       |> Enum.map(fn p ->
         "[[custom_profiles]]\nid = #{inspect(p.id)}\nname = #{inspect(p.name)}\ndevice_type = #{inspect(to_string(p.device_type))}\nvendor = #{inspect(p.vendor || "")}"

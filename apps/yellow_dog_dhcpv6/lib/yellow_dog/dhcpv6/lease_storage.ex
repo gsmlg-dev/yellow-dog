@@ -29,6 +29,15 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
 
   alias YellowDog.Dhcpv6.AddressPool
 
+  # Collection metadata for future Store.Mnesia migration.
+  # Currently unused — all operations go through direct Mnesia calls below.
+  # %YellowDog.Data.Collection{
+  #   name: :dhcpv6_leases,
+  #   key_field: :lease_key,
+  #   adapter: YellowDog.Data.Store.Mnesia,
+  #   indexes: [:ip_address, :duid, :state, :pool_name, :ia_type]
+  # }
+
   @type ipv6_address :: AddressPool.ipv6_address()
   @type duid :: AddressPool.duid()
   @type iaid :: non_neg_integer()

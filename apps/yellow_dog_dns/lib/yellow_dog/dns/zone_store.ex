@@ -22,6 +22,14 @@ defmodule YellowDog.Dns.ZoneStore do
       upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
   """
 
+  use YellowDog.Data.Collection
+
+  defcollection(:dns_zones,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets,
+    persistence: [strategy: :toml, path: "data/dns/zones.toml"]
+  )
+
   import YellowDog.Config.TomlHelpers,
     only: [
       parse_toml: 1,

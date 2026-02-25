@@ -6,7 +6,7 @@ defmodule YellowDog.Netboot.Device.RegistryTest do
   setup do
     # The Registry is already started by Application.
     # Clear ETS table between tests.
-    :ets.delete_all_objects(YellowDog.Netboot.Device.Registry)
+    :ets.delete_all_objects(:netboot_devices)
     :ok
   end
 

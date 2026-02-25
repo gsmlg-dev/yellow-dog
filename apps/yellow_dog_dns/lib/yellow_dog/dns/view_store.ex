@@ -28,6 +28,14 @@ defmodule YellowDog.Dns.ViewStore do
       geo_countries = ["US", "CA", "MX"]
   """
 
+  use YellowDog.Data.Collection
+
+  defcollection(:dns_views,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets,
+    persistence: [strategy: :toml, path: "data/dns/views.toml"]
+  )
+
   import YellowDog.Config.TomlHelpers,
     only: [
       parse_toml: 1,

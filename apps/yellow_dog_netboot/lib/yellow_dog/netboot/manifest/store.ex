@@ -2,15 +2,20 @@ defmodule YellowDog.Netboot.Manifest.Store do
   @moduledoc """
   Boot profile and install manifest configuration store.
 
-  Loads profiles from TOML configuration and provides lookup APIs.
-  Supports hot-reload without restart.
+  Uses Store.Ets for profile storage. Loads profiles from TOML configuration
+  and provides lookup APIs. Supports hot-reload without restart.
   """
 
   use GenServer
+  use YellowDog.Data.Collection
 
+  alias YellowDog.Data.Store
   alias YellowDog.Netboot.Boot.Profile
 
-  @table __MODULE__
+  defcollection(:netboot_profiles,
+    key_field: :id,
+    adapter: YellowDog.Data.Store.Ets
+  )
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -19,17 +24,14 @@ defmodule YellowDog.Netboot.Manifest.Store do
   @doc "Get a boot profile by ID."
   @spec get_profile(String.t()) :: {:ok, Profile.t()} | {:error, :not_found}
   def get_profile(id) do
-    case :ets.lookup(@table, {:profile, id}) do
-      [{_, profile}] -> {:ok, profile}
-      [] -> {:error, :not_found}
-    end
+    Store.get(store_state(), id)
   end
 
   @doc "List all boot profiles."
   @spec list_profiles() :: [Profile.t()]
   def list_profiles do
-    :ets.match_object(@table, {{:profile, :_}, :_})
-    |> Enum.map(fn {_, profile} -> profile end)
+    {:ok, profiles} = Store.list(store_state())
+    profiles
   end
 
   @doc "Get install manifest for a profile."
@@ -45,10 +47,7 @@ defmodule YellowDog.Netboot.Manifest.Store do
   @doc "Get the default profile ID."
   @spec default_profile_id() :: String.t() | nil
   def default_profile_id do
-    case :ets.lookup(@table, :default_profile) do
-      [{_, id}] -> id
-      [] -> nil
-    end
+    :persistent_term.get({__MODULE__, :default_profile}, nil)
   end
 
   @doc "Hot-reload profiles from config."
@@ -77,50 +76,60 @@ defmodule YellowDog.Netboot.Manifest.Store do
 
   @impl true
   def init(opts) do
-    :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+    {:ok, store} = Store.init(collection(), [])
+    :persistent_term.put({__MODULE__, :store}, store)
+
     config = Keyword.get(opts, :config, %{})
-    load_config(config)
-    {:ok, %{config: config}}
+    load_config(store, config)
+    {:ok, %{store: store, config: config}}
   end
 
   @impl true
   def handle_call(:reload, _from, state) do
-    load_config(state.config)
-    {:reply, :ok, state}
+    {:ok, store} = Store.clear(state.store)
+    :persistent_term.put({__MODULE__, :store}, store)
+    load_config(store, state.config)
+    {:reply, :ok, %{state | store: store}}
   end
 
   @impl true
   def handle_call({:put_profile, id, profile}, _from, state) do
-    :ets.insert(@table, {{:profile, id}, profile})
-    {:reply, :ok, state}
+    {:ok, store} = Store.put(state.store, id, profile)
+    :persistent_term.put({__MODULE__, :store}, store)
+    {:reply, :ok, %{state | store: store}}
   end
 
   @impl true
   def handle_call({:delete_profile, id}, _from, state) do
-    :ets.delete(@table, {:profile, id})
-    {:reply, :ok, state}
+    {:ok, store} = Store.delete(state.store, id)
+    :persistent_term.put({__MODULE__, :store}, store)
+    {:reply, :ok, %{state | store: store}}
   end
 
   @impl true
   def handle_call({:set_default_profile, id}, _from, state) do
-    :ets.insert(@table, {:default_profile, id})
+    :persistent_term.put({__MODULE__, :default_profile}, id)
     {:reply, :ok, state}
   end
 
   # --- Private ---
 
-  defp load_config(config) do
+  defp store_state do
+    :persistent_term.get({__MODULE__, :store})
+  end
+
+  defp load_config(store, config) do
     default_profile = get_nested(config, ["default_profile"])
 
     if default_profile do
-      :ets.insert(@table, {:default_profile, default_profile})
+      :persistent_term.put({__MODULE__, :default_profile}, default_profile)
     end
 
     profiles = get_nested(config, ["profiles"]) || %{}
 
     Enum.each(profiles, fn {id, profile_config} ->
       profile = Profile.from_config(id, profile_config)
-      :ets.insert(@table, {{:profile, id}, profile})
+      Store.put(store, id, profile)
     end)
   end
 

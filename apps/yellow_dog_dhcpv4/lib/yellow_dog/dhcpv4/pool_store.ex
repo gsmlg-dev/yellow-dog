@@ -12,8 +12,16 @@ defmodule YellowDog.Dhcpv4.PoolStore do
   - Atomic updates to individual pools without affecting others
   """
 
+  use YellowDog.Data.Collection
+
   alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
   import YellowDog.Config.TomlHelpers
+
+  defcollection(:dhcpv4_pools,
+    key_field: :name,
+    adapter: YellowDog.Data.Store.Ets,
+    persistence: [strategy: :toml, path: "data/dhcpv4/pools.toml"]
+  )
 
   @type pool_config :: %{
           name: String.t(),
