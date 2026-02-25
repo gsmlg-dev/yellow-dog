@@ -72,6 +72,10 @@ defmodule YellowDog.Console.Router do
     live "/dhcpv6/pools/:pool_name", Dhcpv6Live.PoolLive
     live "/dhcpv6/activity", Dhcpv6Live.ActivityLive
 
+    # DHCP Client Management Routes
+    live "/dhcp-client", DhcpClientLive.Index
+    live "/dhcp-client/interfaces", DhcpClientLive.InterfacesLive
+
     # DNS Management Routes (sidebar: Overview, Data, ACL)
     live "/dns", DnsLive.Index
 
