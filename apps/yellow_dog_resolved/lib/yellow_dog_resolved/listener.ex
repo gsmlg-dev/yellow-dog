@@ -1,0 +1,80 @@
+defmodule YellowDog.Resolved.Listener do
+  @moduledoc """
+  Abyss UDP handler for incoming DNS queries.
+
+  Receives raw DNS packets, parses them, routes through the resolution
+  pipeline, and sends responses back to clients.
+  """
+
+  use Abyss.Handler
+
+  require Logger
+
+  @doc false
+  def child_spec(config) do
+    listen_ip = config.listen
+    port = config.port
+
+    %{
+      id: __MODULE__,
+      start:
+        {Abyss, :start_link,
+         [
+           [
+             handler_module: __MODULE__,
+             port: port,
+             ip: listen_ip,
+             num_listeners: 1,
+             num_connections: 1024,
+             read_timeout: 30_000,
+             broadcast: true
+           ]
+         ]},
+      type: :supervisor
+    }
+  end
+
+  @impl Abyss.Handler
+  def handle_data({client_ip, client_port, data}, state) do
+    case parse_query(data) do
+      {:ok, query} ->
+        # Router.resolve always returns {:ok, ...} — errors produce SERVFAIL internally
+        {_ok, response} = extract_response(YellowDog.Resolved.Router.resolve(query, data))
+        Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response)
+
+      {:error, txn_id} ->
+        # Malformed query — send FORMERR
+        response =
+          YellowDog.Resolved.ResponseBuilder.build_formerr(txn_id)
+          |> encode()
+
+        Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response)
+    end
+
+    {:continue, state}
+  end
+
+  # Private functions
+
+  defp extract_response({:ok, response, _source}), do: {:ok, response}
+  defp extract_response({:ok, response}), do: {:ok, response}
+
+  defp parse_query(data) when byte_size(data) >= 12 do
+    <<txn_id::16, _rest::binary>> = data
+
+    try do
+      {:ok, DNS.Message.from_iodata(data)}
+    rescue
+      _ -> {:error, txn_id}
+    catch
+      _ -> {:error, txn_id}
+    end
+  end
+
+  defp parse_query(<<txn_id::16, _rest::binary>>), do: {:error, txn_id}
+  defp parse_query(_), do: {:error, 0}
+
+  defp encode(message) do
+    DNS.to_iodata(message) |> IO.iodata_to_binary()
+  end
+end

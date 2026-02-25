@@ -57,3 +57,6 @@ config :yellow_dog_console, :swoosh_api_client, false
 
 # Disable basic authentication during tests by default
 config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth, enabled: false
+
+# YellowDog Resolved: don't auto-start services in test — tests start components individually
+config :yellow_dog_resolved, start_services: false

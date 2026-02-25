@@ -1,0 +1,70 @@
+defmodule YellowDog.Resolved.ConfigTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDog.Resolved.Config
+
+  @test_config_path Path.join([__DIR__, "..", "..", "config", "resolved.toml"])
+                    |> Path.expand()
+
+  describe "load/1" do
+    test "loads the default config file" do
+      config = Config.load(@test_config_path)
+
+      assert config.listen == {127, 0, 0, 1}
+      assert config.port == 53
+      assert length(config.upstreams) == 3
+      assert config.upstream_timeout_ms == 3000
+      assert config.upstream_failure_threshold == 3
+    end
+
+    test "parses intercept rules" do
+      config = Config.load(@test_config_path)
+
+      assert length(config.intercept_rules) == 4
+      [rule1, rule2, rule3, rule4] = config.intercept_rules
+
+      assert rule1.match == {:suffix, "local.dev"}
+      assert rule1.type == :a
+      assert rule1.value == "127.0.0.1"
+      assert rule1.ttl == 300
+
+      assert rule2.match == {:suffix, "local.dev"}
+      assert rule2.type == :aaaa
+
+      assert rule3.match == {:exact, "myapp.test"}
+      assert rule3.type == :a
+      assert rule3.value == "192.168.1.100"
+
+      assert rule4.match == {:exact, "db.internal"}
+      assert rule4.type == :cname
+    end
+
+    test "parses cache config" do
+      config = Config.load(@test_config_path)
+
+      assert config.cache.enabled == true
+      assert config.cache.max_entries == 10_000
+      assert config.cache.min_ttl_s == 30
+      assert config.cache.max_ttl_s == 86_400
+      assert config.cache.negative_ttl_s == 60
+      assert config.cache.sweep_interval_s == 60
+    end
+
+    test "parses discovery config" do
+      config = Config.load(@test_config_path)
+
+      assert config.discovery.enabled == true
+      assert config.discovery.websocket.heartbeat_interval_s == 30
+      assert config.discovery.websocket.reconnect_base_s == 5
+      assert config.discovery.websocket.reconnect_max_s == 60
+    end
+
+    test "parses upstream IPs" do
+      config = Config.load(@test_config_path)
+
+      assert {192, 168, 1, 1} in config.upstreams
+      assert {1, 1, 1, 1} in config.upstreams
+      assert {8, 8, 8, 8} in config.upstreams
+    end
+  end
+end
