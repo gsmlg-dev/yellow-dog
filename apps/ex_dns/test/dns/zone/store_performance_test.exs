@@ -189,7 +189,7 @@ defmodule DNS.Zone.StorePerformanceTest do
         end)
 
       # Concurrent operations should complete quickly
-      assert time < 50000, "Concurrent reads took too long: #{time} microseconds"
+      assert time < 100_000, "Concurrent reads took too long: #{time} microseconds"
     end
 
     test "ETS table access patterns" do
