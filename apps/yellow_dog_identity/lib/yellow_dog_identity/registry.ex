@@ -457,7 +457,8 @@ defmodule YellowDogIdentity.Registry do
         []
     end
   rescue
-    _ -> []
+    e -> Logger.debug("Failed to read audit entries: #{inspect(e)}")
+    []
   end
 
   defp parse_audit_line(line) do
