@@ -57,23 +57,25 @@ defmodule YellowDog.DhcpClient.DAD do
       DhcpSocket.send_arp_probe(socket_pid, ip)
     end)
 
-    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
-    await_conflict(ip, remaining)
+    await_conflict(ip, deadline)
   end
 
-  defp await_conflict(_ip, remaining) when remaining <= 0, do: :ok
+  defp await_conflict(ip, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
 
-  defp await_conflict(ip, remaining) do
-    receive do
-      {:arp_rx, sender_ip, sender_mac} when sender_ip == ip ->
-        {:conflict, sender_mac}
+    if remaining <= 0 do
+      :ok
+    else
+      receive do
+        {:arp_rx, sender_ip, sender_mac} when sender_ip == ip ->
+          {:conflict, sender_mac}
 
-      {:arp_rx, _other_ip, _mac} ->
-        new_remaining = max(remaining - 1, 0)
-        await_conflict(ip, new_remaining)
-    after
-      remaining ->
-        :ok
+        {:arp_rx, _other_ip, _mac} ->
+          await_conflict(ip, deadline)
+      after
+        remaining ->
+          :ok
+      end
     end
   end
 
