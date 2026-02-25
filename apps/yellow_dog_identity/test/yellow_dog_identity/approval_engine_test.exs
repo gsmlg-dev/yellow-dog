@@ -7,7 +7,7 @@ defmodule YellowDogIdentity.Approval.EngineTest do
   @valid_ssh_pubkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHUzjC6gKCLjRoHMvMXBx3cCe49wjm69r9B7YBcFcAv1 test@host"
   @valid_age_recipient "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
 
-  defp make_host(attrs \\ %{}) do
+  defp make_host(attrs) do
     {:ok, host} =
       Host.new(%{
         hostname: Map.get(attrs, :hostname, "node-01"),
