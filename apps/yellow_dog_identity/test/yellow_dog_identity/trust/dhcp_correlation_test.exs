@@ -161,6 +161,56 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
 
       assert {:untrusted, :expired} = Correlation.verify(%{source_ip: @test_ip})
     end
+
+    test "lease within grace window is still trusted" do
+      # Default grace window is 30s. Lease ended 15s ago (within grace window).
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      # Lease age = lease_duration + 15, which is within grace window (30s)
+      lease_start = now - lease_duration - 15
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: nil
+      )
+
+      assert {:trusted, :network_partial, _evidence} =
+               Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "lease just past grace window is expired" do
+      # Default grace window is 30s. Lease ended 31s ago (just past grace window).
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      # Lease age = lease_duration + 31, which exceeds grace window (30s)
+      lease_start = now - lease_duration - 31
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: "Linux"
+      )
+
+      assert {:untrusted, :expired} = Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "lease at exact grace window boundary is still trusted" do
+      # Lease age exactly = lease_duration + grace_window (30s)
+      # The condition is `>` (strictly greater), so exact boundary is trusted.
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      lease_start = now - lease_duration - 30
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: nil
+      )
+
+      assert {:trusted, :network_partial, _evidence} =
+               Correlation.verify(%{source_ip: @test_ip})
+    end
   end
 
   # ---------------------------------------------------------------------------
