@@ -2,7 +2,8 @@
 echo YellowDog Netboot - ${mac} (<%= @arch %>)
 dhcp
 set base-url http://<%= @server %>:<%= @port %>/boot/assets
+set registration-url http://<%= @server %>:<%= @port %>/api/hosts/register
 
-kernel ${base-url}/<%= @kernel %> <%= @kernel_args %> yellowdog.mac=<%= @mac %> yellowdog.api=http://<%= @server %>:<%= @port %>
+kernel ${base-url}/<%= @kernel %> <%= @kernel_args %> yellowdog.mac=<%= @mac %> yellowdog.api=http://<%= @server %>:<%= @port %> yellowdog.registration_url=${registration-url}
 initrd ${base-url}/<%= @initrd %>
 boot

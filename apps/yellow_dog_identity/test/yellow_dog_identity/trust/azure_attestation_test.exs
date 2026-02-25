@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Cloud.Azure
 
@@ -245,6 +245,58 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
         assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
         assert evidence.location == location
       end
+    end
+  end
+
+  describe "subscription allowlist rejection" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "azure" => %{
+                "allowed_subscriptions" => ["sub-allowed-1", "sub-allowed-2"],
+                "allowed_locations" => ["eastus", "westeurope"]
+              }
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects subscription not in allowed_subscriptions list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-unauthorized"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:untrusted, :subscription_not_allowed} = Azure.verify(ctx)
+    end
+
+    test "allows subscription in allowed_subscriptions list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
+      assert evidence.subscription_id == "sub-allowed-1"
+    end
+
+    test "rejects location not in allowed_locations list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1", "location" => "japaneast"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:untrusted, :location_not_allowed} = Azure.verify(ctx)
+    end
+
+    test "allows location in allowed_locations list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1", "location" => "eastus"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
+      assert evidence.location == "eastus"
     end
   end
 

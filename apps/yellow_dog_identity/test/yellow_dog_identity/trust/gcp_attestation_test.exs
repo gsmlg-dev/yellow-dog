@@ -293,6 +293,106 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "project allowlist rejection" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "gcp" => %{
+                "allowed_projects" => ["allowed-project-1", "allowed-project-2"],
+                "allowed_zones" => ["us-central1-a", "europe-west1-b"]
+              }
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects project not in allowed_projects list" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "unauthorized-project",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "us-central1-a"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :project_not_allowed} = GCP.verify(ctx)
+    end
+
+    test "allows project in allowed_projects list" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "us-central1-a"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.project_id == "allowed-project-1"
+    end
+
+    test "rejects zone not in allowed_zones list" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "asia-east1-b"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :zone_not_allowed} = GCP.verify(ctx)
+    end
+
+    test "allows zone in allowed_zones list" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "europe-west1-b"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.zone == "europe-west1-b"
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields" do
       claims = valid_gcp_claims()

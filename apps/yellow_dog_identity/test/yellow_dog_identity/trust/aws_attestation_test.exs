@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Cloud.AWS
 
@@ -221,6 +221,58 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
         assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
         assert evidence.region == region
       end
+    end
+  end
+
+  describe "account allowlist rejection" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "aws" => %{
+                "allowed_accounts" => ["allowed-account-1", "allowed-account-2"],
+                "allowed_regions" => ["us-east-1", "eu-west-1"]
+              }
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects account not in allowed_accounts list" do
+      document_b64 = valid_aws_document(%{"accountId" => "unauthorized-account"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :account_not_allowed} = AWS.verify(ctx)
+    end
+
+    test "allows account in allowed_accounts list" do
+      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
+      assert evidence.account_id == "allowed-account-1"
+    end
+
+    test "rejects region not in allowed_regions list" do
+      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1", "region" => "ap-southeast-1"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :region_not_allowed} = AWS.verify(ctx)
+    end
+
+    test "allows region in allowed_regions list" do
+      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1", "region" => "us-east-1"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
+      assert evidence.region == "us-east-1"
     end
   end
 
