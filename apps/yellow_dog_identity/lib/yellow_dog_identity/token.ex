@@ -170,13 +170,43 @@ defmodule YellowDogIdentity.Token do
   def hostname_matches?(_hostname, "*"), do: true
 
   def hostname_matches?(hostname, pattern) do
-    regex_pattern =
-      pattern
-      |> Regex.escape()
-      |> String.replace("\\*", ".*")
-      |> then(&("^" <> &1 <> "$"))
+    glob_match?(hostname, pattern)
+  end
 
-    Regex.match?(~r/#{regex_pattern}/, hostname)
+  # Safe glob matching without regex to prevent ReDoS.
+  # Splits pattern on "*" and verifies segments appear in order.
+  defp glob_match?(string, pattern) do
+    parts = String.split(pattern, "*", parts: :infinity)
+
+    case parts do
+      [exact] ->
+        # No wildcards — exact match
+        string == exact
+
+      [prefix | rest] ->
+        String.starts_with?(string, prefix) &&
+          glob_match_rest(String.slice(string, String.length(prefix)..-1//1), rest)
+    end
+  end
+
+  defp glob_match_rest(_string, []), do: true
+
+  # Skip empty segments from consecutive wildcards (**)
+  defp glob_match_rest(string, ["" | rest]), do: glob_match_rest(string, rest)
+
+  defp glob_match_rest(string, [last]) do
+    # Last segment must be a suffix
+    String.ends_with?(string, last)
+  end
+
+  defp glob_match_rest(string, [segment | rest]) do
+    case :binary.match(string, segment) do
+      {pos, len} ->
+        glob_match_rest(String.slice(string, (pos + len)..-1//1), rest)
+
+      :nomatch ->
+        false
+    end
   end
 
   defp generate_uuid do
