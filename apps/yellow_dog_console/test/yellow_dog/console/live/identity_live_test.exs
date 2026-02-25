@@ -59,6 +59,25 @@ defmodule YellowDog.Console.IdentityLiveTest do
       {:ok, _view, html} = live(conn, "/identity")
       assert html =~ "Trust Providers"
     end
+
+    test "preview_export yaml event shows export preview", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity")
+      html = render_click(view, "preview_export", %{"format" => "yaml"})
+      assert html =~ "Export Preview" or html =~ "YAML"
+    end
+
+    test "preview_export sops event shows sops preview", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity")
+      html = render_click(view, "preview_export", %{"format" => "sops"})
+      assert html =~ "Export Preview" or html =~ "SOPS"
+    end
+
+    test "close_export hides the preview", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity")
+      render_click(view, "preview_export", %{"format" => "yaml"})
+      html = render_click(view, "close_export")
+      assert html =~ "Host Identity Registry"
+    end
   end
 
   # ============================================================================
