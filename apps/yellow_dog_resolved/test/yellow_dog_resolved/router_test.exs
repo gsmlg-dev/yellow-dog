@@ -144,4 +144,33 @@ defmodule YellowDog.Resolved.RouterTest do
       assert response.header.qr == 1
     end
   end
+
+  describe "safe query type handling" do
+    test "standard types resolve correctly through intercept" do
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, _, :intercept} = Router.resolve(query, raw)
+    end
+
+    test "unknown query type doesn't crash router" do
+      # Type 99 (SPF) is not in the known types map — should map to :unknown
+      query = build_query("app.local.dev", 99)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+    end
+
+    test "FORMERR for query without questions preserves txn_id" do
+      query = DNS.Message.new()
+      query = DNS.Message.update_header_attr(query, :id, 42_000)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.id == 42_000
+    end
+  end
 end

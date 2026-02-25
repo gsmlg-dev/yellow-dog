@@ -25,7 +25,7 @@ defmodule YellowDog.Resolved.Router do
       {:ok, encode(response)}
     else
       domain = to_string(question.name)
-      query_type = to_string(question.type) |> String.downcase() |> String.to_atom()
+      query_type = safe_query_type(question.type)
 
       metadata = %{domain: domain, type: query_type}
       start_time = System.monotonic_time()
@@ -141,6 +141,24 @@ defmodule YellowDog.Resolved.Router do
 
   defp encode(message) do
     DNS.to_iodata(message) |> IO.iodata_to_binary()
+  end
+
+  @known_query_types %{
+    "a" => :a,
+    "aaaa" => :aaaa,
+    "cname" => :cname,
+    "txt" => :txt,
+    "mx" => :mx,
+    "srv" => :srv,
+    "ns" => :ns,
+    "soa" => :soa,
+    "ptr" => :ptr,
+    "any" => :any
+  }
+
+  defp safe_query_type(type) do
+    type_str = to_string(type) |> String.downcase()
+    Map.get(@known_query_types, type_str, :unknown)
   end
 
   defp result_source({:ok, _response, source}), do: source
