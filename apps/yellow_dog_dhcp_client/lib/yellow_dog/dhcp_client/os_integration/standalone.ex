@@ -122,23 +122,6 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
     Enum.join(lines ++ nameserver_lines, "\n") <> "\n"
   end
 
-  @doc false
-  @spec mask_to_prefix(:inet.ip4_address()) :: 0..32
-  def mask_to_prefix({a, b, c, d}) do
-    <<mask::32>> = <<a, b, c, d>>
-    count_leading_ones(mask, 0)
-  end
-
-  defp count_leading_ones(0, acc), do: acc
-
-  defp count_leading_ones(mask, acc) when mask > 0 do
-    if Bitwise.band(mask, 0x80000000) != 0 do
-      count_leading_ones(Bitwise.bsl(Bitwise.band(mask, 0x7FFFFFFF), 1), acc + 1)
-    else
-      acc
-    end
-  end
-
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
 
   defp timed_cmd(interface, action, cmd, args) do
