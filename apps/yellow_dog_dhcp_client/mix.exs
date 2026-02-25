@@ -31,6 +31,7 @@ defmodule YellowDog.DhcpClient.MixProject do
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},
       {:toml, "~> 0.7"},
+      {:stream_data, "~> 1.0", only: [:test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
