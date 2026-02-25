@@ -801,4 +801,87 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert Engine.evaluate_with_policies(host_admin, policies, :pending).action == :pending
     end
   end
+
+  describe "trust_provider matching in policies" do
+    test "approves only AWS hosts when policy matches trust_provider: aws" do
+      policies = [
+        %Policy{
+          name: "aws-only",
+          action: :approve,
+          match: %{"trust_level" => "cloud_verified", "trust_provider" => "aws"}
+        }
+      ]
+
+      aws_host = make_host(%{trust_level: :cloud_verified, trust_provider: :aws})
+      gcp_host = make_host(%{trust_level: :cloud_verified, trust_provider: :gcp})
+      azure_host = make_host(%{trust_level: :cloud_verified, trust_provider: :azure})
+
+      assert Engine.evaluate_with_policies(aws_host, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(gcp_host, policies, :pending).action == :pending
+      assert Engine.evaluate_with_policies(azure_host, policies, :pending).action == :pending
+    end
+
+    test "approves only GCP hosts when policy matches trust_provider: gcp" do
+      policies = [
+        %Policy{
+          name: "gcp-only",
+          action: :approve,
+          match: %{"trust_provider" => "gcp"}
+        }
+      ]
+
+      gcp_host = make_host(%{trust_level: :cloud_verified, trust_provider: :gcp})
+      aws_host = make_host(%{trust_level: :cloud_verified, trust_provider: :aws})
+      token_host = make_host(%{trust_level: :token_verified, trust_provider: :token})
+
+      assert Engine.evaluate_with_policies(gcp_host, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(aws_host, policies, :pending).action == :pending
+      assert Engine.evaluate_with_policies(token_host, policies, :pending).action == :pending
+    end
+
+    test "approves AWS or Azure via list match on trust_provider" do
+      policies = [
+        %Policy{
+          name: "aws-or-azure",
+          action: :approve,
+          match: %{"trust_provider" => ["aws", "azure"]}
+        }
+      ]
+
+      aws_host = make_host(%{trust_level: :cloud_verified, trust_provider: :aws})
+      azure_host = make_host(%{trust_level: :cloud_verified, trust_provider: :azure})
+      gcp_host = make_host(%{trust_level: :cloud_verified, trust_provider: :gcp})
+
+      assert Engine.evaluate_with_policies(aws_host, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(azure_host, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(gcp_host, policies, :pending).action == :pending
+    end
+
+    test "cloud_image policy field matches AWS AMI ID" do
+      policies = [
+        %Policy{
+          name: "golden-ami-auto",
+          action: :approve,
+          match: %{"cloud_image" => "ami-golden-1234"}
+        }
+      ]
+
+      golden_host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_provider: :aws,
+          trust_evidence: %{image_id: "ami-golden-1234"}
+        })
+
+      other_host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_provider: :aws,
+          trust_evidence: %{image_id: "ami-unknown-9999"}
+        })
+
+      assert Engine.evaluate_with_policies(golden_host, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(other_host, policies, :pending).action == :pending
+    end
+  end
 end

@@ -41,7 +41,8 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
          {:ok, claims} <- extract_claims(document_json),
          :ok <- check_replay_window(claims),
          :ok <- check_allowed_account(claims),
-         :ok <- check_allowed_regions(claims) do
+         :ok <- check_allowed_regions(claims),
+         :ok <- check_allowed_amis(claims) do
       evidence = %{
         provider: :aws,
         account_id: claims["accountId"],
@@ -135,6 +136,17 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
       :ok
     else
       {:error, :region_not_allowed}
+    end
+  end
+
+  defp check_allowed_amis(claims) do
+    image_id = Map.get(claims, "imageId")
+    allowed = get_cloud_config("allowed_amis", [])
+
+    if allowed == [] or image_id in allowed do
+      :ok
+    else
+      {:error, :ami_not_allowed}
     end
   end
 

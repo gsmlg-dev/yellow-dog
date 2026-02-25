@@ -276,6 +276,60 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
     end
   end
 
+  describe "AMI allowlist (allowed_amis)" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "aws" => %{"allowed_amis" => ["ami-golden-001", "ami-golden-002"]}
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "allows instance with AMI in allowed_amis list" do
+      document_b64 = valid_aws_document(%{"imageId" => "ami-golden-001"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
+      assert evidence.image_id == "ami-golden-001"
+    end
+
+    test "rejects instance with AMI not in allowed_amis list" do
+      document_b64 = valid_aws_document(%{"imageId" => "ami-unauthorized-999"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :ami_not_allowed} = AWS.verify(ctx)
+    end
+
+    test "allows instance with no imageId when allowed_amis set (nil image passes through)" do
+      # When instance has no imageId, we skip the check (nil is not in any list)
+      # This matches the behavior: nil in ["ami-1", "ami-2"] => false => rejected
+      document_b64 = valid_aws_document(%{"imageId" => nil})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      # nil is not in the allowlist — rejected
+      assert {:untrusted, :ami_not_allowed} = AWS.verify(ctx)
+    end
+  end
+
+  describe "AMI allowlist (empty = any)" do
+    test "allows any AMI when allowed_amis is empty (default)" do
+      document_b64 = valid_aws_document(%{"imageId" => "ami-anything-goes"})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
+      assert evidence.image_id == "ami-anything-goes"
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields" do
       document_b64 =
