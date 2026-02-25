@@ -98,6 +98,54 @@ defmodule YellowDog.DhcpClient.VendorOptions do
   end
 
   @doc """
+  Encodes a map of vendor-specific sub-options into TLV binary.
+
+  Produces output suitable for wrapping in an Option 125 envelope via
+  `encode_vendor_info/1`. Known keys are encoded with their sub-option codes;
+  unknown keys are ignored.
+
+  ## Examples
+
+      iex> VendorOptions.encode_sub_options(%{control_url: "wss://srv:443", server_id: "s1"})
+      <<1, 14, "wss://srv:443", 2, 2, "s1">>
+  """
+  @spec encode_sub_options(map()) :: binary()
+  def encode_sub_options(opts) when is_map(opts) do
+    parts =
+      [
+        encode_tlv(@sub_control_url, opts[:control_url]),
+        encode_tlv(@sub_server_id, opts[:server_id]),
+        encode_tlv(@sub_cluster_id, opts[:cluster_id]),
+        encode_tlv(@sub_auth_token, opts[:auth_token]),
+        encode_tlv(@sub_control_url_fallback, opts[:control_url_fallback]),
+        encode_flags_tlv(opts[:flags])
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    IO.iodata_to_binary(parts)
+  end
+
+  @doc """
+  Encodes a sub-option map into a full Option 125 binary with Yellow Dog PEN header.
+
+  RFC 3925 format: `<<PEN::32, data_length::8, sub_options::binary>>`
+  """
+  @spec encode_vendor_info(map()) :: binary()
+  def encode_vendor_info(opts) when is_map(opts) do
+    sub_binary = encode_sub_options(opts)
+    <<@yellowdog_pen::32, byte_size(sub_binary)::8, sub_binary::binary>>
+  end
+
+  defp encode_tlv(_code, nil), do: nil
+
+  defp encode_tlv(code, value) when is_binary(value) do
+    <<code::8, byte_size(value)::8, value::binary>>
+  end
+
+  defp encode_flags_tlv(nil), do: nil
+  defp encode_flags_tlv(flags) when is_integer(flags), do: <<@sub_flags::8, 2::8, flags::16>>
+
+  @doc """
   Parses TLV-encoded sub-options into a named map.
 
   Known sub-option codes are resolved to descriptive keys. Unknown codes are

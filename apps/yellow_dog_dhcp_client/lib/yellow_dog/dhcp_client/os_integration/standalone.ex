@@ -51,13 +51,30 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
     # Remove default route through this interface
     _ = timed_cmd(interface, :del_route, "ip", ["route", "del", "default", "dev", interface])
 
-    # Remove DNS configuration
-    _ = timed_cmd(interface, :del_dns, "resolvconf", ["-d", interface])
+    # Remove DNS configuration based on method
+    dns_method = get_dns_method(interface)
+    deconfigure_dns(dns_method, interface)
 
     # Clean up resolv.conf fragment (ignore errors — file may already be gone)
     resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
     _ = File.rm(resolv_path)
 
+    :ok
+  end
+
+  defp deconfigure_dns(:resolvconf, interface) do
+    _ = timed_cmd(interface, :del_dns, "resolvconf", ["-d", interface])
+    :ok
+  end
+
+  defp deconfigure_dns(:direct, _interface) do
+    # With direct mode, we don't remove /etc/resolv.conf as other interfaces
+    # may depend on it. The fragment file is cleaned up by the caller.
+    :ok
+  end
+
+  defp deconfigure_dns(:systemd_resolved, interface) do
+    _ = timed_cmd(interface, :del_dns, "resolvectl", ["revert", interface])
     :ok
   end
 
@@ -86,13 +103,21 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
 
   def apply_dns(interface, %Lease{dns_servers: servers} = lease) do
     servers = Enum.filter(servers, &is_tuple/1)
-    content = build_resolv_conf(servers, lease.domain_name)
+
+    if servers == [] do
+      :ok
+    else
+      dns_method = get_dns_method(interface)
+      apply_dns_method(dns_method, interface, servers, lease.domain_name)
+    end
+  end
+
+  defp apply_dns_method(:resolvconf, interface, servers, domain_name) do
+    content = build_resolv_conf(servers, domain_name)
     resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
 
     with :ok <- File.mkdir_p(@resolv_dir),
          :ok <- File.write(resolv_path, content) do
-      # resolvconf reads from stdin; use sh -c with positional args to pipe the
-      # file safely without shell injection ($1=interface, $2=resolv_path).
       timed_cmd(interface, :add_dns, "sh", [
         "-c",
         "resolvconf -a \"$1\" < \"$2\"",
@@ -103,7 +128,65 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
     end
   end
 
+  defp apply_dns_method(:direct, interface, servers, domain_name) do
+    content = build_resolv_conf(servers, domain_name)
+
+    with :ok <- File.mkdir_p(@resolv_dir) do
+      # Write interface-specific fragment for reference
+      resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
+      _ = File.write(resolv_path, content)
+
+      # Write directly to /etc/resolv.conf
+      case File.write("/etc/resolv.conf", content) do
+        :ok ->
+          emit_telemetry(interface, :add_dns, :ok, 0)
+          :ok
+
+        {:error, reason} = error ->
+          Logger.warning(
+            "DHCP client OS integration failed: interface=#{interface} action=add_dns reason=#{inspect(reason)}"
+          )
+
+          emit_telemetry(interface, :add_dns, error, 0)
+          error
+      end
+    end
+  end
+
+  defp apply_dns_method(:systemd_resolved, interface, servers, domain_name) do
+    server_strs = Enum.map(servers, &format_ip/1)
+
+    # Set DNS servers for the interface
+    dns_result =
+      timed_cmd(interface, :add_dns, "resolvectl", ["dns", interface | server_strs])
+
+    # Optionally set search domain
+    domain_result =
+      case domain_name do
+        nil ->
+          :ok
+
+        domain ->
+          timed_cmd(interface, :add_dns_domain, "resolvectl", ["domain", interface, domain])
+      end
+
+    case {dns_result, domain_result} do
+      {:ok, :ok} -> :ok
+      {{:error, _} = err, _} -> err
+      {_, {:error, _} = err} -> err
+    end
+  end
+
   # -- Private helpers -------------------------------------------------------
+
+  defp get_dns_method(interface) do
+    try do
+      config = YellowDog.DhcpClient.Config.load(interface)
+      config.standalone.dns_method
+    rescue
+      _ -> :resolvconf
+    end
+  end
 
   @min_mtu 68
   @max_mtu 65_535

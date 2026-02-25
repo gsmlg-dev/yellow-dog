@@ -186,7 +186,83 @@ defmodule YellowDog.DhcpClient.VendorOptionsTest do
     assert is_map(result)
   end
 
-  # ── Roundtrip ──
+  # ── encode_sub_options/1 ──
+
+  test "encodes a single sub-option" do
+    result = VendorOptions.encode_sub_options(%{control_url: "http://test"})
+    assert result == <<1, 11, "http://test">>
+  end
+
+  test "encodes multiple sub-options in code order" do
+    result =
+      VendorOptions.encode_sub_options(%{
+        control_url: "url",
+        server_id: "sid",
+        cluster_id: "cid",
+        auth_token: "tok"
+      })
+
+    assert <<1, 3, "url", 2, 3, "sid", 3, 3, "cid", 4, 3, "tok">> = result
+  end
+
+  test "encodes flags as uint16" do
+    result = VendorOptions.encode_sub_options(%{flags: 256})
+    assert result == <<6, 2, 1, 0>>
+  end
+
+  test "ignores nil values in encode" do
+    result = VendorOptions.encode_sub_options(%{control_url: nil, server_id: "test"})
+    assert result == <<2, 4, "test">>
+  end
+
+  test "encodes empty map to empty binary" do
+    assert VendorOptions.encode_sub_options(%{}) == <<>>
+  end
+
+  # ── encode_vendor_info/1 ──
+
+  test "encodes vendor info with PEN header" do
+    result = VendorOptions.encode_vendor_info(%{server_id: "s1"})
+    <<pen::32, data_len::8, rest::binary>> = result
+    assert pen == @yellowdog_pen
+    assert data_len == byte_size(rest)
+    assert rest == <<2, 2, "s1">>
+  end
+
+  # ── Encode/Decode Roundtrip ──
+
+  test "encode_vendor_info then decode_vendor_info roundtrips all fields" do
+    original = %{
+      control_url: "wss://server:4443/ctrl",
+      server_id: "yd-srv-01",
+      cluster_id: "us-east-1",
+      auth_token: "tok-abc123",
+      control_url_fallback: "wss://fallback:4443/ctrl",
+      flags: 7
+    }
+
+    encoded = VendorOptions.encode_vendor_info(original)
+    assert {:ok, decoded} = VendorOptions.decode_vendor_info(encoded)
+
+    assert decoded.control_url == original.control_url
+    assert decoded.server_id == original.server_id
+    assert decoded.cluster_id == original.cluster_id
+    assert decoded.auth_token == original.auth_token
+    assert decoded.control_url_fallback == original.control_url_fallback
+    assert decoded.flags == original.flags
+    assert decoded.unknown == []
+  end
+
+  test "encode_sub_options then decode_sub_options roundtrips" do
+    original = %{control_url: "http://a", auth_token: "t1"}
+    encoded = VendorOptions.encode_sub_options(original)
+    decoded = VendorOptions.decode_sub_options(encoded)
+
+    assert decoded.control_url == "http://a"
+    assert decoded.auth_token == "t1"
+  end
+
+  # ── Legacy Roundtrip ──
 
   test "encode/decode roundtrip for Option 124 vendor class" do
     encoded = VendorOptions.encode_vendor_class()
