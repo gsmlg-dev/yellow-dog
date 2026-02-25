@@ -217,6 +217,9 @@ defmodule YellowDogIdentity.Registry do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # Persistence helpers
 
   defp persist_host(data_dir, host) do

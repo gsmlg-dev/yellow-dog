@@ -61,9 +61,13 @@ defmodule YellowDogIdentity.Webhook do
       {:ok, _} ->
         :ok
 
-      {:error, _reason} when attempt < @max_retries ->
+      {:error, reason} when attempt < @max_retries ->
         delay = @base_delay_ms * Integer.pow(2, attempt)
-        Logger.debug("Webhook retry #{attempt + 1}/#{@max_retries} to #{url} in #{delay}ms")
+
+        Logger.debug(
+          "Webhook retry #{attempt + 1}/#{@max_retries} to #{url} in #{delay}ms: #{inspect(reason)}"
+        )
+
         Process.sleep(delay)
         deliver_with_retry(url, body, attempt + 1)
 
@@ -81,8 +85,9 @@ defmodule YellowDogIdentity.Webhook do
     ]
 
     request = {String.to_charlist(url), headers, ~c"application/json", body}
+    http_opts = [{:timeout, 10_000}, {:connect_timeout, 5_000}]
 
-    case :httpc.request(:post, request, [{:timeout, 10_000}], []) do
+    case :httpc.request(:post, request, http_opts, []) do
       {:ok, {{_, status, _}, _, _}} when status in 200..299 ->
         {:ok, status}
 
