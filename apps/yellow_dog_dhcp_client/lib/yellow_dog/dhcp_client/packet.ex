@@ -86,16 +86,19 @@ defmodule YellowDog.DhcpClient.Packet do
         ) ::
           binary()
   def build_request(mac, xid, server_ip, offered_ip, opts \\ []) do
+    hostname = Keyword.get(opts, :hostname)
     version = Keyword.get(opts, :version, "1.0")
     capabilities = Keyword.get(opts, :capabilities, [])
 
-    options = [
-      msg_type_option(@request),
-      requested_ip_option(offered_ip),
-      server_id_option(server_ip),
-      vendor_class_option(version, capabilities),
-      vendor_class_id_option()
-    ]
+    options =
+      [
+        msg_type_option(@request),
+        requested_ip_option(offered_ip),
+        server_id_option(server_ip),
+        vendor_class_option(version, capabilities),
+        vendor_class_id_option()
+      ]
+      |> maybe_add_hostname(hostname)
 
     build_message(mac, xid, @zero_ip, options)
   end
@@ -264,7 +267,7 @@ defmodule YellowDog.DhcpClient.Packet do
     t1 = extract_u32(opts_map, @opt_t1, div(lease_time, 2))
     t2 = extract_u32(opts_map, @opt_t2, div(lease_time * 7, 8))
 
-    vendor = extract_vendor_options(opts_map)
+    {yellowdog_server, vendor} = extract_vendor_options(opts_map)
 
     %Lease{
       ip: msg.yiaddr,
@@ -285,23 +288,24 @@ defmodule YellowDog.DhcpClient.Packet do
       auth_token: vendor[:auth_token],
       server_id: vendor[:server_id],
       cluster_id: vendor[:cluster_id],
-      yellowdog_server: map_size(vendor) > 1 or not Map.has_key?(vendor, :unknown),
+      yellowdog_server: yellowdog_server,
       obtained_at: DateTime.utc_now(),
       xid: msg.xid,
       raw_options: opts_map
     }
   end
 
+  # Returns {yellowdog_pen_matched :: boolean(), vendor_info :: map()}
   defp extract_vendor_options(opts_map) do
     case Map.get(opts_map, @opt_vendor_specific) do
       %Option{value: data} ->
         case VendorOptions.decode_vendor_info(data) do
-          {:ok, info} -> info
-          {:error, _} -> %{unknown: []}
+          {:ok, info} -> {true, info}
+          {:error, _} -> {false, %{unknown: []}}
         end
 
       nil ->
-        %{unknown: []}
+        {false, %{unknown: []}}
     end
   end
 
