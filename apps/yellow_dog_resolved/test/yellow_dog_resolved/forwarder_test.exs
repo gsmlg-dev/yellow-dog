@@ -439,6 +439,33 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "safe_try_upstreams exception path" do
+    test "replies with error when upstream raises during send_recv" do
+      # Use a FakeUpstream that we immediately kill to create a race condition,
+      # or inject a deliberately broken upstream spec that causes an exception.
+      # The key invariant: the client always gets a reply, never hangs.
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 500,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({Forwarder, config})
+
+      # Kill the upstream's socket to trigger potential exception in send_recv
+      YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid)
+      Process.sleep(50)
+
+      query = build_query("exception-path.test")
+      # Should return {:error, ...}, not hang or crash
+      result = Forwarder.forward(query)
+      assert {:error, :all_upstreams_failed} = result
+    end
+  end
+
   defp build_query(domain) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))

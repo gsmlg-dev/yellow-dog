@@ -515,5 +515,61 @@ defmodule YellowDog.Resolved.RouterTest do
       raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
       assert {:ok, _, :cache} = Router.resolve(query2, raw2)
     end
+
+    test "SERVFAIL response from upstream is NOT cached" do
+      stop_supervised!(YellowDog.Resolved.Forwarder)
+
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:servfail)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+
+      query = build_query("servfail-no-cache.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :forward} = Router.resolve(query, raw)
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.rcode == DNS.Message.RCode.new(2)
+
+      Process.sleep(10)
+
+      # SERVFAIL should NOT be cached — next lookup should miss
+      assert :miss = Cache.lookup("servfail-no-cache.test", :a)
+    end
+
+    test "NOERROR with empty answer caches with default TTL" do
+      stop_supervised!(YellowDog.Resolved.Forwarder)
+
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:noerror_empty)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+
+      query = build_query("noerror-empty-ttl.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, _, :forward} = Router.resolve(query, raw)
+      Process.sleep(10)
+
+      # NOERROR with empty answer → extract_ttl_from_message returns default (300)
+      # Entry should still be cached
+      assert {:hit, _} = Cache.lookup("noerror-empty-ttl.test", :a)
+    end
   end
 end

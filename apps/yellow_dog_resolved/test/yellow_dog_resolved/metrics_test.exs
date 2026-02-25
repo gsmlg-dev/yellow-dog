@@ -188,6 +188,92 @@ defmodule YellowDog.Resolved.MetricsTest do
     end
   end
 
+  describe "unknown source in query:stop telemetry" do
+    test "unknown source only increments total (not intercept/cache/forward)" do
+      before = Metrics.get_query_counts()
+
+      # Emit telemetry directly with an unknown source
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: 1000},
+        %{domain: "test.example", type: :a, source: :unknown_source}
+      )
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + 1
+      assert counts.intercepted == before.intercepted
+      assert counts.cached == before.cached
+      assert counts.forwarded == before.forwarded
+    end
+
+    test "nil source only increments total" do
+      before = Metrics.get_query_counts()
+
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: 0},
+        %{domain: "nil-source.test", type: :a, source: nil}
+      )
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + 1
+      assert counts.intercepted == before.intercepted
+    end
+
+    test "error source only increments total" do
+      before = Metrics.get_query_counts()
+
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: 0},
+        %{domain: "error.test", type: :a, source: :error}
+      )
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + 1
+      assert counts.forwarded == before.forwarded
+    end
+  end
+
+  describe "ETS table resilience (catch :badarg paths)" do
+    test "get_query_counts returns zeros when ETS table is deleted" do
+      # Bump some counters first
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: 0},
+        %{domain: "ets.test", type: :a, source: :intercept}
+      )
+
+      counts_before = Metrics.get_query_counts()
+      assert counts_before.total >= 1
+
+      # Delete the ETS table
+      :ets.delete(:resolved_metrics)
+
+      # Should return zeros (catch :badarg), not crash
+      counts = Metrics.get_query_counts()
+      assert counts.total == 0
+      assert counts.intercepted == 0
+      assert counts.cached == 0
+      assert counts.forwarded == 0
+    end
+
+    test "telemetry handler survives ETS table deletion" do
+      :ets.delete(:resolved_metrics)
+
+      # Emitting telemetry should not crash — bump/1 catches :badarg
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: 0},
+        %{domain: "resilient.test", type: :a, source: :intercept}
+      )
+
+      # Handler should still be attached
+      handlers = :telemetry.list_handlers([:yellow_dog, :resolved, :query, :stop])
+      assert Enum.any?(handlers, &(&1.id == "resolved-metrics-query-stop"))
+    end
+  end
+
   describe "catch-all handle_info" do
     test "ignores unexpected messages" do
       pid = Process.whereis(Metrics)

@@ -273,6 +273,98 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "parse_discovery_response/1 malformed structures" do
+    test "returns :not_found for response with OPT but empty data" do
+      # OPT record with empty data field — extract_yellowdog_option returns :not_found
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 200)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, <<>>)
+      response = Map.update(response, :arlist, [opt_record], &[opt_record | &1])
+      response = DNS.Message.update_header_attr(response, :arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
+
+    test "returns :not_found for response with OPT wrong version" do
+      # OPT record with version 99 instead of 1 — version mismatch
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 201)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      edns_data = <<99::8, "/ws/manage"::binary>>
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+      response = Map.update(response, :arlist, [opt_record], &[opt_record | &1])
+      response = DNS.Message.update_header_attr(response, :arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
+
+    test "returns :not_found for response with OPT version=1 but empty ws_path" do
+      # Version 1 but no ws_path bytes — guard `byte_size(ws_path) > 0` fails
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 202)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      edns_data = <<1::8>>
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+      response = Map.update(response, :arlist, [opt_record], &[opt_record | &1])
+      response = DNS.Message.update_header_attr(response, :arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
+
+    test "returns :not_found for A record disguised as SRV type" do
+      # Answer has A record (type 1) not SRV (type 33) — find_srv_record skips it
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 203)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      # Valid EDNS option
+      edns_data = <<1::8, "/ws/manage"::binary>>
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+
+      # A record instead of SRV — find_srv_record checks `to_string(record.type) == "SRV"`
+      a_record = DNS.Message.Record.new("_yellowdog._tcp.local", 1, 1, 60, {10, 0, 0, 1})
+
+      response =
+        response
+        |> Map.put(:anlist, [a_record])
+        |> DNS.Message.update_header_attr(:ancount, 1)
+        |> Map.update(:arlist, [opt_record], &[opt_record | &1])
+        |> DNS.Message.update_header_attr(:arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
+
+    test "returns :not_found for non-SRV answer records with valid EDNS" do
+      # Only A record in answer (no SRV) but valid EDNS option
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 204)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+
+      edns_data = <<1::8, "/ws/manage"::binary>>
+      opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+
+      a_record = DNS.Message.Record.new("example.com", 1, 1, 60, {10, 0, 0, 1})
+
+      response =
+        response
+        |> Map.put(:anlist, [a_record])
+        |> DNS.Message.update_header_attr(:ancount, 1)
+        |> Map.update(:arlist, [opt_record], &[opt_record | &1])
+        |> DNS.Message.update_header_attr(:arcount, 1)
+
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert :not_found = Discovery.parse_discovery_response(binary)
+    end
+  end
+
   describe "probe and reconnect messages" do
     setup do
       config = %{
