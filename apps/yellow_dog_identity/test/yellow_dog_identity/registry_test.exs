@@ -248,6 +248,52 @@ defmodule YellowDogIdentity.RegistryTest do
     test "delete token returns not_found for unknown id", %{registry: pid} do
       assert {:error, :not_found} = GenServer.call(pid, {:delete_token, "does-not-exist"})
     end
+
+    test "delete token succeeds when file was already deleted from disk (enoent)", %{
+      registry: pid,
+      tmp_dir: tmp_dir
+    } do
+      {:ok, token, _raw} = Token.create(%{})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      # Pre-delete the file from disk
+      token_file = Path.join([tmp_dir, "tokens", "#{token.id}.toml"])
+      File.rm!(token_file)
+
+      # delete_token must still succeed — {:error, :enoent} -> :ok branch
+      assert :ok = GenServer.call(pid, {:delete_token, token.id})
+      assert :not_found = GenServer.call(pid, {:get_token, token.id})
+    end
+  end
+
+  describe "cleanup_expired_tokens" do
+    test "expired tokens are removed from memory on cleanup", %{registry: pid} do
+      # Create a token that expires immediately
+      {:ok, token, _raw} = Token.create(%{ttl_seconds: 1})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      # Verify it's present
+      assert {:ok, _} = GenServer.call(pid, {:get_token, token.id})
+
+      # Wait for expiry, then trigger cleanup manually
+      Process.sleep(1100)
+      send(pid, :cleanup_expired_tokens)
+
+      # Sync: wait for the GenServer to process the info message
+      _ = GenServer.call(pid, :list_tokens)
+
+      assert :not_found = GenServer.call(pid, {:get_token, token.id})
+    end
+
+    test "non-expired tokens are retained after cleanup", %{registry: pid} do
+      {:ok, token, _raw} = Token.create(%{ttl_seconds: 3600})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      send(pid, :cleanup_expired_tokens)
+      _ = GenServer.call(pid, :list_tokens)
+
+      assert {:ok, _} = GenServer.call(pid, {:get_token, token.id})
+    end
   end
 
   describe "TOML persistence" do
