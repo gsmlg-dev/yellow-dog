@@ -100,7 +100,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
             age = DateTime.diff(DateTime.utc_now(), dt, :second)
             window = get_cloud_config("replay_window_seconds", @replay_window_seconds)
 
-            if age <= window do
+            if age >= 0 and age <= window do
               :ok
             else
               {:error, :document_too_old}

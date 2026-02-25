@@ -64,6 +64,7 @@ defmodule YellowDogIdentity.Export do
   def get_approved_recipients do
     Registry.list_hosts_by_status(:approved)
     |> Enum.map(& &1.age_recipient)
+    |> Enum.reject(&is_nil/1)
     |> Enum.sort()
   end
 

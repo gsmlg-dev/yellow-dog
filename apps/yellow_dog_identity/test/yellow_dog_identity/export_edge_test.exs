@@ -159,7 +159,7 @@ defmodule YellowDogIdentity.ExportEdgeTest do
       assert recipients == Enum.sort([@age_recipient_a, @age_recipient_b, @age_recipient_c])
     end
 
-    test "approved host with nil age_recipient is included as nil in list" do
+    test "approved host with nil age_recipient is excluded from export" do
       # Construct a host that bypasses validation by directly setting the struct.
       # In practice, Host.new/1 requires a valid age_recipient, but a host loaded
       # from corrupted TOML could theoretically have nil.
@@ -181,12 +181,10 @@ defmodule YellowDogIdentity.ExportEdgeTest do
 
       :ok = Registry.put_host(corrupted)
 
-      # The export maps age_recipient from each host. A nil value will appear in the list.
-      # This verifies the behavior rather than asserting a specific outcome — the export
-      # does not filter nil recipients, which is worth knowing about.
+      # nil recipients are filtered out to prevent invalid YAML/SOPS export
       recipients = Export.get_approved_recipients()
-      assert length(recipients) == 1
-      assert nil in recipients
+      assert recipients == []
+      refute nil in recipients
     end
   end
 end

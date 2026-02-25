@@ -164,6 +164,18 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
 
       assert {:trusted, :cloud_verified, _evidence} = AWS.verify(ctx)
     end
+
+    test "returns untrusted when pendingTime is in the future (prevents clock skew attacks)" do
+      future_time =
+        DateTime.utc_now()
+        |> DateTime.add(60, :second)
+        |> DateTime.to_iso8601()
+
+      document_b64 = valid_aws_document(%{"pendingTime" => future_time})
+      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
+
+      assert {:untrusted, :document_too_old} = AWS.verify(ctx)
+    end
   end
 
   describe "account allowlist" do

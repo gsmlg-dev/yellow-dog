@@ -176,6 +176,18 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
 
       assert {:trusted, :cloud_verified, _evidence} = Azure.verify(ctx)
     end
+
+    test "returns untrusted when timestamp is in the future (prevents clock skew attacks)" do
+      future_time =
+        DateTime.utc_now()
+        |> DateTime.add(60, :second)
+        |> DateTime.to_iso8601()
+
+      document_b64 = valid_azure_document(%{"timestamp" => future_time})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:untrusted, :document_too_old} = Azure.verify(ctx)
+    end
   end
 
   describe "subscription allowlist" do
