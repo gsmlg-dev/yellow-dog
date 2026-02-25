@@ -82,7 +82,7 @@ defmodule YellowDogIdentity do
           :ok ->
             YellowDogIdentity.Telemetry.host_approved(host_id, approved_by, host.trust_level)
             Webhook.notify("host.approved", updated)
-            Phoenix.PubSub.broadcast(YellowDog.Console.PubSub, "identity:hosts", {:host_updated, updated})
+            broadcast("identity:hosts", {:host_updated, updated})
             {:ok, updated}
 
           error ->
@@ -95,9 +95,6 @@ defmodule YellowDogIdentity do
       :not_found ->
         {:error, :not_found}
     end
-  rescue
-    # PubSub may not be available in all contexts
-    UndefinedFunctionError -> {:error, :pubsub_unavailable}
   end
 
   @doc """
@@ -121,11 +118,7 @@ defmodule YellowDogIdentity do
           :ok ->
             YellowDogIdentity.Telemetry.host_revoked(host_id, revoked_by, reason)
             Webhook.notify("host.revoked", updated)
-            try do
-              Phoenix.PubSub.broadcast(YellowDog.Console.PubSub, "identity:hosts", {:host_updated, updated})
-            rescue
-              _ -> :ok
-            end
+            broadcast("identity:hosts", {:host_updated, updated})
             {:ok, updated}
 
           error ->
@@ -253,16 +246,7 @@ defmodule YellowDogIdentity do
         Webhook.notify("host.approved", host)
       end
 
-      try do
-        Phoenix.PubSub.broadcast(
-          YellowDog.Console.PubSub,
-          "identity:hosts",
-          {:host_registered, host}
-        )
-      rescue
-        _ -> :ok
-      end
-
+      broadcast("identity:hosts", {:host_registered, host})
       {:ok, host}
     end
   end
@@ -338,6 +322,12 @@ defmodule YellowDogIdentity do
 
   defp apply_trust(host, trust_level, trust_provider, evidence) do
     %{host | trust_level: trust_level, trust_provider: trust_provider, trust_evidence: evidence}
+  end
+
+  defp broadcast(topic, message) do
+    Phoenix.PubSub.broadcast(YellowDog.Console.PubSub, topic, message)
+  rescue
+    _ -> :ok
   end
 
   defp apply_approval(host) do

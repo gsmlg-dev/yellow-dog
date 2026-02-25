@@ -35,6 +35,9 @@ defmodule YellowDogIdentity.MixProject do
       # YAML export
       {:yaml_elixir, "~> 2.9"},
 
+      # PubSub broadcasting to Console LiveViews
+      {:phoenix_pubsub, "~> 2.1"},
+
       # JWT verification (GCP OIDC tokens)
       {:jose, "~> 1.11"},
 
