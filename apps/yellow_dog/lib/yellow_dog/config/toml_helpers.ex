@@ -93,6 +93,29 @@ defmodule YellowDog.Config.TomlHelpers do
   # TOML Serialization Helpers
   # ──────────────────────────────────────────────────────────────────
 
+  @doc """
+  Encodes an Elixir value to a TOML-compatible value string.
+
+  Handles strings, booleans, integers, floats, lists, and maps.
+  Delegates to `YellowDog.Config.TomlEncoder.encode_value/1`.
+
+  ## Examples
+
+      iex> encode_toml_value("hello")
+      ~S("hello")
+
+      iex> encode_toml_value(53)
+      "53"
+
+      iex> encode_toml_value(true)
+      "true"
+
+      iex> encode_toml_value(["a", "b"])
+      ~S(["a", "b"])
+  """
+  @spec encode_toml_value(term()) :: String.t()
+  defdelegate encode_toml_value(value), to: YellowDog.Config.TomlEncoder, as: :encode_value
+
   @doc "Wraps a binary in TOML double-quotes, escaping inner quotes."
   @spec encode_toml_string(term()) :: String.t()
   def encode_toml_string(value) when is_binary(value) do

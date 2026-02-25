@@ -60,7 +60,7 @@ defmodule YellowDog.Console.ConfigManagerTest do
   end
 
   describe "save_config/3" do
-    test "updates configuration values while preserving structure", %{config_path: path} do
+    test "updates configuration values", %{config_path: path} do
       updates = %{
         "dns.port" => 5353,
         "dns.listen" => "127.0.0.1"
@@ -73,10 +73,22 @@ defmodule YellowDog.Console.ConfigManagerTest do
       assert config["dns"]["port"] == 5353
       assert config["dns"]["listen"] == "127.0.0.1"
 
-      # Verify comments and structure preserved
+      # Verify valid TOML with section structure
       content = File.read!(path)
-      assert content =~ "# Test Configuration"
       assert content =~ "[core]"
+      assert content =~ "[dns]"
+    end
+
+    test "can add new sections via updates", %{config_path: path} do
+      updates = %{"netboot.enabled" => true, "netboot.tftp_port" => 69}
+
+      assert :ok = ConfigManager.save_config(path, updates, backup: false)
+
+      {:ok, config} = ConfigManager.load_config(path)
+      assert config["netboot"]["enabled"] == true
+      assert config["netboot"]["tftp_port"] == 69
+      # Original sections preserved
+      assert config["core"]["dns"] == true
     end
 
     test "creates backup before saving by default", %{config_path: path} do

@@ -214,123 +214,78 @@ defmodule YellowDog.Application do
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
 
-  # Loads TOML configuration from the file path specified in runtime.exs
+  # Loads TOML configuration from the file path specified in runtime.exs.
+  # Uses Schema.merge_defaults/1 to fill missing sections from loaded config,
+  # so new service sections added in Schema appear automatically.
   defp load_toml_config do
-    # Get config file path from application config (set in runtime.exs)
     config_file_path = Application.get_env(:yellow_dog, :config_file_path)
 
-    if config_file_path do
-      # Load and parse TOML configuration
-      case File.read(config_file_path) do
-        {:ok, content} ->
-          case Toml.decode(content) do
-            {:ok, config} ->
-              # Adjust configuration for test environment
-              if @compile_env == :test do
-                config
-                |> put_in(["core", "dns"], false)
-                |> put_in(["core", "mdns"], false)
-                |> put_in(["core", "dhcpv6"], false)
-                |> put_in(["dns", "port"], 53)
-                |> put_in(["dhcpv4", "port"], 67)
-                |> put_in(["dhcpv6", "port"], 547)
-              else
-                config
-              end
+    config =
+      if config_file_path do
+        case File.read(config_file_path) do
+          {:ok, content} ->
+            case Toml.decode(content) do
+              {:ok, parsed} ->
+                YellowDog.Config.Schema.merge_defaults(parsed)
 
-            {:error, reason} ->
-              :telemetry.execute(
-                [:yellow_dog, :config, :error],
-                %{count: 1},
-                %{
-                  source: __MODULE__,
-                  reason: :parse_error,
-                  config_file: config_file_path,
-                  error: inspect(reason),
-                  severity: :warning
-                }
-              )
+              {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :config, :error],
+                  %{count: 1},
+                  %{
+                    source: __MODULE__,
+                    reason: :parse_error,
+                    config_file: config_file_path,
+                    error: inspect(reason),
+                    severity: :warning
+                  }
+                )
 
-              get_default_config()
-          end
+                YellowDog.Config.Schema.defaults()
+            end
 
-        {:error, reason} ->
-          :telemetry.execute(
-            [:yellow_dog, :config, :error],
-            %{count: 1},
-            %{
-              source: __MODULE__,
-              reason: :read_error,
-              config_file: config_file_path,
-              error: inspect(reason),
-              severity: :warning
-            }
-          )
+          {:error, reason} ->
+            :telemetry.execute(
+              [:yellow_dog, :config, :error],
+              %{count: 1},
+              %{
+                source: __MODULE__,
+                reason: :read_error,
+                config_file: config_file_path,
+                error: inspect(reason),
+                severity: :warning
+              }
+            )
 
-          get_default_config()
+            YellowDog.Config.Schema.defaults()
+        end
+      else
+        :telemetry.execute(
+          [:yellow_dog, :config, :error],
+          %{count: 1},
+          %{source: __MODULE__, reason: :no_config_path, severity: :warning}
+        )
+
+        YellowDog.Config.Schema.defaults()
       end
-    else
-      :telemetry.execute(
-        [:yellow_dog, :config, :error],
-        %{count: 1},
-        %{source: __MODULE__, reason: :no_config_path, severity: :warning}
-      )
 
-      get_default_config()
-    end
+    maybe_adjust_for_test(config)
   end
 
-  # Gets the default configuration
-  defp get_default_config do
-    %{
-      "data_dir" => "data",
-      "core" => %{
-        "dns" => @compile_env != :test,
-        "mdns" => true,
-        "dhcpv4" => true,
-        "dhcpv6" => true
-      },
-      "dns" => %{
-        "listen" => "0.0.0.0",
-        "port" => 53,
-        "zones" => %{}
-      },
-      "mdns" => %{
-        "listen" => "0.0.0.0",
-        "port" => 5353,
-        "mode" => "hybrid",
-        "services" => %{
-          "format" => "toml",
-          "auto_save" => true,
-          "watch_file" => true,
-          "load_on_start" => true
-        },
-        "responder" => %{
-          "enabled" => true,
-          "service_ttl" => 4500,
-          "host_ttl" => 120,
-          "enable_probing" => true,
-          "enable_announcements" => true,
-          "announcement_interval" => 3600
-        },
-        "monitor" => %{
-          "enabled" => true,
-          "cache_responses" => true,
-          "log_queries" => true,
-          "max_cache_size" => 10000,
-          "cleanup_interval" => 300,
-          "cache_ttl" => 120
-        }
-      },
-      "dhcpv4" => %{
-        "listen" => "0.0.0.0",
-        "port" => 67
-      },
-      "dhcpv6" => %{
-        "listen" => "::",
-        "port" => 547
-      }
-    }
+  # In test environment, disable most services and use default ports
+  # to avoid privileged port conflicts and service interference.
+  if @compile_env == :test do
+    defp maybe_adjust_for_test(config) do
+      config
+      |> put_in(["core", "dns"], false)
+      |> put_in(["core", "mdns"], false)
+      |> put_in(["core", "dhcpv6"], false)
+      |> put_in(["dns", "port"], 53)
+      |> put_in(["dhcpv4", "port"], 67)
+      |> put_in(["dhcpv6", "port"], 547)
+    end
+  else
+    defp maybe_adjust_for_test(config), do: config
   end
 
   # Logs configuration information

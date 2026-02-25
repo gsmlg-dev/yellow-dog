@@ -1,16 +1,19 @@
 defmodule YellowDog.Console.ConfigManager do
   @moduledoc """
-  Handles TOML configuration file I/O with structure preservation.
+  Handles TOML configuration file I/O for the YellowDog Console.
 
-  This module implements line-based partial updates to preserve comments,
-  whitespace, and formatting in TOML files while updating configuration values.
+  Uses a parse → modify → encode → write pipeline via `YellowDog.Config.Writer`
+  and `YellowDog.Config.TomlEncoder`. Unlike the previous line-based regex
+  patcher, this approach can create new sections and keys freely.
 
-  Based on research findings from research.md:
-  - Line-based partial update with token parsing
+  Features:
   - Atomic writes using temp file + rename
   - Backup before every save with 10-rotation
   - TOML verification after save
+  - Pre-write validation via `YellowDog.Config.Schema`
   """
+
+  alias YellowDog.Config.{Schema, Writer}
 
   @doc """
   Loads configuration from a TOML file.
@@ -36,12 +39,15 @@ defmodule YellowDog.Console.ConfigManager do
         {:error, _} -> {:error, :invalid_toml}
       end
     else
-      {:ok, default_config_map()}
+      {:ok, Schema.defaults()}
     end
   end
 
   @doc """
-  Saves configuration updates to TOML file with structure preservation.
+  Saves configuration updates to TOML file.
+
+  Loads the current config, applies dot-notation updates, validates,
+  encodes to TOML, and writes atomically.
 
   ## Options
     - `:backup` - Create backup before save (default: true)
@@ -64,10 +70,10 @@ defmodule YellowDog.Console.ConfigManager do
   """
   @spec save_config(String.t(), map(), keyword()) :: :ok | {:error, term()}
   def save_config(file_path, updates, opts \\ []) do
-    with {:ok, content} <- File.read(file_path),
+    with {:ok, config} <- load_config(file_path),
          :ok <- maybe_backup(file_path, opts),
-         {:ok, updated_content} <- apply_updates(content, updates),
-         :ok <- atomic_write(file_path, updated_content),
+         updated = Writer.apply_updates(config, updates),
+         :ok <- Writer.write_config(file_path, updated, validate: false),
          :ok <- maybe_verify(file_path, opts) do
       :ok
     end
@@ -164,50 +170,7 @@ defmodule YellowDog.Console.ConfigManager do
   """
   @spec create_default_config(String.t()) :: :ok | {:error, term()}
   def create_default_config(file_path) do
-    default_config = """
-    # Yellow Dog DNS Configuration
-
-    [core]
-    dns = true
-    mdns = true
-    dhcpv4 = true
-    dhcpv6 = true
-
-    [dns]
-    listen = "0.0.0.0"
-    port = 53
-
-    [mdns]
-    listen = "0.0.0.0"
-    port = 5353
-    mode = "responder"
-
-    [dhcpv4]
-    listen = "0.0.0.0"
-    port = 67
-
-    [[dhcpv4.pools]]
-    name = "default"
-    range_start = "192.168.1.100"
-    range_end = "192.168.1.200"
-    lease_time = 3600
-    gateway = "192.168.1.1"
-    dns_servers = ["8.8.8.8", "8.8.4.4"]
-
-    [dhcpv6]
-    listen = "::"
-    port = 547
-
-    [[dhcpv6.pools]]
-    name = "default"
-    range_start = "2001:db8::100"
-    range_end = "2001:db8::200"
-    preferred_lifetime = 3600
-    valid_lifetime = 7200
-    dns_servers = ["2001:4860:4860::8888"]
-    """
-
-    File.write(file_path, default_config)
+    Writer.write_defaults(file_path)
   end
 
   @doc """
@@ -217,31 +180,7 @@ defmodule YellowDog.Console.ConfigManager do
   """
   @spec create_minimal_config(String.t()) :: :ok | {:error, term()}
   def create_minimal_config(file_path) do
-    minimal_config = """
-    [core]
-    dns = false
-    mdns = false
-    dhcpv4 = false
-    dhcpv6 = false
-
-    [dns]
-    listen = "0.0.0.0"
-    port = 53
-
-    [mdns]
-    listen = "0.0.0.0"
-    port = 5353
-
-    [dhcpv4]
-    listen = "0.0.0.0"
-    port = 67
-
-    [dhcpv6]
-    listen = "::"
-    port = 547
-    """
-
-    File.write(file_path, minimal_config)
+    Writer.write_minimal(file_path)
   end
 
   # Private Functions
@@ -257,189 +196,6 @@ defmodule YellowDog.Console.ConfigManager do
     end
   end
 
-  defp apply_updates(content, updates) do
-    lines = String.split(content, "\n")
-    tokens = parse_tokens(lines)
-
-    # Separate array table updates from regular updates
-    {array_updates, regular_updates} =
-      Enum.split_with(updates, fn {key, value} ->
-        String.ends_with?(key, ".pools") && is_list(value)
-      end)
-
-    # Apply regular key=value updates
-    updated_lines =
-      lines
-      |> Enum.with_index()
-      |> Enum.map(fn {line, idx} ->
-        # Check if this line needs updating
-        update_key =
-          Enum.find(regular_updates, fn {key_path, _value} ->
-            Map.get(tokens, key_path) == idx
-          end)
-
-        case update_key do
-          {key_path, new_value} -> update_line_value(line, key_path, new_value)
-          nil -> line
-        end
-      end)
-
-    # Handle array table updates (like pools)
-    final_lines =
-      Enum.reduce(array_updates, updated_lines, fn {key, pools}, lines ->
-        apply_array_table_update(lines, key, pools)
-      end)
-
-    {:ok, Enum.join(final_lines, "\n")}
-  end
-
-  defp apply_array_table_update(lines, key, items) do
-    # Parse key: "dhcpv4.pools" -> section header prefix
-    parts = String.split(key, ".")
-    section = parts |> Enum.drop(-1) |> Enum.join(".")
-    array_table_header = "[[#{key}]]"
-
-    # Find section boundaries and remove existing array tables
-    {cleaned_lines, section_end_idx} = remove_array_tables(lines, section, array_table_header)
-
-    # Generate new array table entries
-    new_pool_lines = generate_array_table_entries(array_table_header, items)
-
-    # Insert new array tables at the end of the section
-    insert_at = section_end_idx || length(cleaned_lines)
-    result = List.insert_at(cleaned_lines, insert_at, new_pool_lines) |> List.flatten()
-
-    result
-  end
-
-  defp remove_array_tables(lines, section, array_table_header) do
-    section_header = "[#{section}]"
-
-    {reversed_result, _, _, last_section_idx} =
-      lines
-      |> Enum.with_index()
-      |> Enum.reduce({[], false, false, nil}, fn
-        {line, idx}, {acc, in_sect, in_arr, sect_end} ->
-          trimmed = String.trim(line)
-
-          cond do
-            # Entering target section
-            trimmed == section_header ->
-              {[line | acc], true, false, idx}
-
-            # Leaving section (entering another section)
-            in_sect && trimmed =~ ~r/^\[/ && trimmed != array_table_header ->
-              {[line | acc], false, false, sect_end}
-
-            # Entering array table in our section
-            in_sect && trimmed == array_table_header ->
-              {acc, in_sect, true, sect_end}
-
-            # Inside array table - skip these lines
-            in_arr && trimmed == "" ->
-              # Empty line might end array table
-              {acc, in_sect, false, idx}
-
-            in_arr && trimmed =~ ~r/^\[/ ->
-              # Next section/array table starts
-              {[line | acc], trimmed =~ ~r/^\[#{section}\]/, trimmed == array_table_header, idx}
-
-            in_arr ->
-              # Skip array table content
-              {acc, in_sect, in_arr, idx}
-
-            # Regular line in our section
-            in_sect ->
-              {[line | acc], in_sect, in_arr, idx}
-
-            # Regular line outside our section
-            true ->
-              {[line | acc], in_sect, in_arr, sect_end}
-          end
-      end)
-
-    {Enum.reverse(reversed_result), last_section_idx}
-  end
-
-  defp generate_array_table_entries(header, items) when is_list(items) do
-    Enum.flat_map(items, fn item ->
-      ["", header] ++ format_table_entries(item)
-    end)
-  end
-
-  defp format_table_entries(map) when is_map(map) do
-    map
-    |> Map.reject(fn {_k, v} -> is_nil(v) or v == "" end)
-    |> Enum.sort()
-    |> Enum.map(fn {key, value} ->
-      encoded = encode_toml_value(value)
-      "#{key} = #{encoded}"
-    end)
-  end
-
-  defp parse_tokens(lines) do
-    lines
-    |> Enum.with_index()
-    |> Enum.reduce({[], nil}, fn {line, idx}, {tokens, section} ->
-      cond do
-        line =~ ~r/^\[(.+)\]$/ ->
-          section_name = Regex.run(~r/^\[(.+)\]$/, line) |> List.last()
-          {tokens, section_name}
-
-        line =~ ~r/^(\w+)\s*=/ ->
-          [key | _] = String.split(line, "=")
-          key = String.trim(key)
-          full_key = if section, do: "#{section}.#{key}", else: key
-          {[{full_key, idx} | tokens], section}
-
-        true ->
-          {tokens, section}
-      end
-    end)
-    |> elem(0)
-    |> Map.new()
-  end
-
-  defp update_line_value(line, key, value) do
-    key_name = key |> String.split(".") |> List.last()
-    encoded_value = encode_toml_value(value)
-
-    pattern_str = "^(\\s*#{Regex.escape(key_name)}\\s*=\\s*).*$"
-    pattern = Regex.compile!(pattern_str)
-
-    Regex.replace(pattern, line, fn _, prefix ->
-      "#{prefix}#{encoded_value}"
-    end)
-  end
-
-  defp encode_toml_value(value) when is_binary(value), do: "\"#{value}\""
-  defp encode_toml_value(value) when is_boolean(value), do: to_string(value)
-  defp encode_toml_value(value) when is_integer(value), do: to_string(value)
-
-  defp encode_toml_value(value) when is_list(value) do
-    "[" <> Enum.map_join(value, ", ", &encode_toml_value/1) <> "]"
-  end
-
-  defp encode_toml_value(value) when is_map(value) do
-    "{" <>
-      Enum.map_join(value, ", ", fn {k, v} ->
-        "#{k} = #{encode_toml_value(v)}"
-      end) <> "}"
-  end
-
-  defp atomic_write(file_path, content) do
-    temp_path = "#{file_path}.tmp"
-
-    with :ok <- File.write(temp_path, content),
-         :ok <- File.rename(temp_path, file_path) do
-      :ok
-    else
-      error ->
-        File.rm(temp_path)
-        error
-    end
-  end
-
   defp maybe_verify(file_path, opts) do
     if Keyword.get(opts, :verify, true) do
       case Toml.decode_file(file_path) do
@@ -449,42 +205,6 @@ defmodule YellowDog.Console.ConfigManager do
     else
       :ok
     end
-  end
-
-  defp default_config_map do
-    %{
-      "core" => %{"dns" => true, "mdns" => true, "dhcpv4" => true, "dhcpv6" => true},
-      "dns" => %{"listen" => "0.0.0.0", "port" => 53},
-      "mdns" => %{"listen" => "0.0.0.0", "port" => 5353, "mode" => "responder"},
-      "dhcpv4" => %{
-        "listen" => "0.0.0.0",
-        "port" => 67,
-        "pools" => [
-          %{
-            "name" => "default",
-            "range_start" => "192.168.1.100",
-            "range_end" => "192.168.1.200",
-            "lease_time" => 3600,
-            "gateway" => "192.168.1.1",
-            "dns_servers" => ["8.8.8.8", "8.8.4.4"]
-          }
-        ]
-      },
-      "dhcpv6" => %{
-        "listen" => "::",
-        "port" => 547,
-        "pools" => [
-          %{
-            "name" => "default",
-            "range_start" => "2001:db8::100",
-            "range_end" => "2001:db8::200",
-            "preferred_lifetime" => 3600,
-            "valid_lifetime" => 7200,
-            "dns_servers" => ["2001:4860:4860::8888"]
-          }
-        ]
-      }
-    }
   end
 
   defp rotate_backups(file_path, opts) do
