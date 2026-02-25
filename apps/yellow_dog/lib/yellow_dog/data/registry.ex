@@ -26,6 +26,8 @@ defmodule YellowDog.Data.Registry do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Data.Store
 
   @type state :: %{collections: %{atom() => Store.state()}}
@@ -105,7 +107,8 @@ defmodule YellowDog.Data.Registry do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

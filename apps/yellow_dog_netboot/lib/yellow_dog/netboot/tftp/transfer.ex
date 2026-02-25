@@ -7,6 +7,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   """
 
   use GenServer, restart: :temporary
+  require Logger
 
   alias YellowDog.Netboot.TFTP.Protocol
 
@@ -185,6 +186,6 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
       metadata
     )
   rescue
-    _ -> :ok
+    e -> Logger.debug("TFTP telemetry emit failed: #{inspect(e)}")
   end
 end

@@ -20,6 +20,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   use GenServer
 
+  require Logger
+
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
   alias YellowDog.Dhcpv6.{AddressPool, DuidFormat, Ipv6Util, LeaseStorage, PoolStore}
@@ -655,7 +657,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

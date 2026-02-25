@@ -37,6 +37,8 @@ defmodule YellowDog.Dns.View do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Telemetry
   alias YellowDog.Dns.View.ACL
   alias YellowDog.Dns.ZoneController
@@ -355,7 +357,8 @@ defmodule YellowDog.Dns.View do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

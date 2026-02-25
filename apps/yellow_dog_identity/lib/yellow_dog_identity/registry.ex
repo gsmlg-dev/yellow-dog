@@ -262,7 +262,10 @@ defmodule YellowDogIdentity.Registry do
   end
 
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
 
   # Token consumption helper (used by consume_token handle_call)
 

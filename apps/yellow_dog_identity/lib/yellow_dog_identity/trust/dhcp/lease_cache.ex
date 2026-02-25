@@ -9,6 +9,8 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
 
   use GenServer
 
+  require Logger
+
   @table __MODULE__
   @cleanup_interval :timer.minutes(5)
 
@@ -82,7 +84,10 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
     {:noreply, state}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
 
   # Telemetry handlers
 

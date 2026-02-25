@@ -9,6 +9,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
   use GenServer
 
+  require Logger
+
   @response_table :mdns_responses
   @query_table :mdns_queries
   @services_table :mdns_discovered_services
@@ -327,7 +329,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

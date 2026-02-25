@@ -46,6 +46,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
   # DNS module used for to_iodata/1
   require DNS
+  require Logger
 
   @default_query_timeout 5_000
 
@@ -321,7 +322,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

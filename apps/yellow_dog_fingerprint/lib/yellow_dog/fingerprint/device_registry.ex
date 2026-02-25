@@ -138,7 +138,10 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
     {:noreply, state}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
 
   @impl true
   def terminate(_reason, state) do
