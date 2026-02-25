@@ -325,4 +325,86 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert {:ok, ^lease_eth0} = LeaseStore.lookup(pid, "eth0")
     assert {:ok, ^lease_wlan0} = LeaseStore.lookup(pid, "wlan0")
   end
+
+  # ── synchronous flush via terminate ──
+  #
+  # GenServer.stop/1 triggers terminate/2 which flushes synchronously.
+  # This avoids the 1.5s Process.sleep used in the async flush tests.
+
+  test "TOML roundtrip preserves all optional vendor fields via terminate flush", ctx do
+    {pid, iface} = start_store(ctx)
+
+    lease =
+      make_lease(%{
+        cluster_id: "cluster-prod-east",
+        control_url_fallback: "wss://backup.yd.example.com/ctrl",
+        yellowdog_server: true
+      })
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    # terminate/2 flushes synchronously
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.cluster_id == lease.cluster_id
+    assert loaded.control_url_fallback == lease.control_url_fallback
+    assert loaded.yellowdog_server == true
+    assert loaded.control_url == lease.control_url
+    assert loaded.auth_token == lease.auth_token
+    assert loaded.server_id == lease.server_id
+  end
+
+  test "TOML roundtrip preserves MTU via terminate flush", ctx do
+    {pid, iface} = start_store(ctx)
+    lease = make_lease(%{mtu: 9000})
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.mtu == 9000
+  end
+
+  test "TOML roundtrip preserves nil MTU as nil", ctx do
+    {pid, iface} = start_store(ctx)
+    lease = make_lease(%{mtu: nil})
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.mtu == nil
+  end
+
+  test "TOML roundtrip preserves NTP servers via terminate flush", ctx do
+    {pid, iface} = start_store(ctx)
+    lease = make_lease(%{ntp_servers: [{129, 6, 15, 28}, {129, 6, 15, 29}]})
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.ntp_servers == [{129, 6, 15, 28}, {129, 6, 15, 29}]
+  end
+
+  test "TOML roundtrip preserves empty NTP servers as empty list", ctx do
+    {pid, iface} = start_store(ctx)
+    lease = make_lease(%{ntp_servers: []})
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.ntp_servers == []
+  end
 end
