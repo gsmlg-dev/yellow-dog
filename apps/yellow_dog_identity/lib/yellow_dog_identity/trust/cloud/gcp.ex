@@ -223,11 +223,15 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
     if expected_audience do
       actual = Map.get(claims, "aud")
 
-      if actual == expected_audience do
-        :ok
-      else
-        {:error, :invalid_audience}
-      end
+      # JWT RFC 7519: aud can be a string or array of strings
+      matches =
+        cond do
+          actual == expected_audience -> true
+          is_list(actual) -> expected_audience in actual
+          true -> false
+        end
+
+      if matches, do: :ok, else: {:error, :invalid_audience}
     else
       # No audience configured — skip check
       :ok
