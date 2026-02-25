@@ -18,6 +18,7 @@ defmodule YellowDogIdentity.Supervisor do
     data_dir = Keyword.get(opts, :data_dir, "data/identity")
 
     validate_config()
+    ensure_ets_caches()
 
     children = [
       {YellowDogIdentity.Registry, [data_dir: data_dir]},
@@ -25,6 +26,16 @@ defmodule YellowDogIdentity.Supervisor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp ensure_ets_caches do
+    # Create GCP JWKS cache table owned by the supervisor process,
+    # preventing garbage collection when short-lived Tasks create it
+    try do
+      :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
+    rescue
+      ArgumentError -> :ok
+    end
   end
 
   defp validate_config do
