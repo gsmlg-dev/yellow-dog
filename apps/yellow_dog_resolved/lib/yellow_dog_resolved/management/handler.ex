@@ -120,8 +120,12 @@ defmodule YellowDog.Resolved.Management.Handler do
     upstreams = Enum.map(config.upstreams, &Upstream.format/1)
     {upstreams, length(config.intercept_rules), config.cache.max_entries}
   rescue
-    _ -> {[], 0, 10_000}
+    e ->
+      Logger.warning("Config unavailable for connected event: #{inspect(e)}")
+      {[], 0, 10_000}
   catch
-    _, _ -> {[], 0, 10_000}
+    kind, reason ->
+      Logger.warning("Config unavailable for connected event (#{kind}): #{inspect(reason)}")
+      {[], 0, 10_000}
   end
 end

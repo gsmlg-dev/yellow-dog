@@ -480,6 +480,39 @@ defmodule YellowDog.Resolved.ListenerTest do
       refute_receive :unexpected_parse_error, 100
     end
 
+    test "emits listener:send_error telemetry when UDP send fails", ctx do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "listener-send-err-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :listener, :send_error],
+        fn _event, _measurements, metadata, _ ->
+          send(test_pid, {:send_error_event, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("listener-send-err-#{inspect(ref)}") end)
+
+      # Close the send socket so UDP send fails
+      :gen_udp.close(ctx.state.socket)
+
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      import ExUnit.CaptureLog
+
+      capture_log(fn ->
+        result = Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+        assert {:continue, _} = result
+      end)
+
+      assert_receive {:send_error_event, metadata}
+      assert metadata.client_ip == {127, 0, 0, 1}
+      assert is_atom(metadata.reason)
+    end
+
     test "emits request telemetry even for malformed packets", ctx do
       test_pid = self()
       ref = make_ref()

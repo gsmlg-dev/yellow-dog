@@ -93,6 +93,12 @@ defmodule YellowDog.Resolved.Listener do
         :ok
 
       {:error, reason} ->
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :listener, :send_error],
+          %{},
+          %{client_ip: client_ip, reason: reason}
+        )
+
         Logger.warning("UDP send failed to #{:inet.ntoa(client_ip)}: #{inspect(reason)}")
     end
   end
