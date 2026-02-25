@@ -18,26 +18,32 @@ defmodule YellowDog.Dns.ClientTest do
     end
 
     test "exports query/4" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :query, 4)
     end
 
     test "exports query/3 (default opts)" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :query, 3)
     end
 
     test "exports query_raw/4" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :query_raw, 4)
     end
 
     test "exports query_raw/3 (default opts)" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :query_raw, 3)
     end
 
     test "exports send_message/3" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :send_message, 3)
     end
 
     test "exports send_message/2 (default opts)" do
+      Code.ensure_loaded!(Client)
       assert function_exported?(Client, :send_message, 2)
     end
   end
