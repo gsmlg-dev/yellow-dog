@@ -157,7 +157,7 @@ defmodule YellowDog.Dns.QueryLoggerTest do
     test "returns entries in reverse chronological order", %{pid: pid} do
       Enum.each(1..5, fn i ->
         QueryLogger.log_query(pid, %{qname: "test#{i}.com", qtype: :a})
-        Process.sleep(1)
+        Process.sleep(5)
       end)
 
       Process.sleep(10)
