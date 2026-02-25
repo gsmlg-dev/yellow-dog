@@ -1,1178 +1,894 @@
-# PRD: Host Identity Registry for Yellowdog
+# Yellow Dog DHCP Client PRD
 
-## 1. Overview
+## Overview
 
-The Host Identity Registry provides a secure, identity-first mechanism for registering, approving, and managing machine identities for NixOS hosts within the Yellowdog infrastructure.
+A sovereign, protocol-aware DHCP client written entirely in Elixir/BEAM. Manages the full DHCPv4 lifecycle — from raw socket DORA handshake through OS-level address/route/DNS configuration — as a supervised OTP application.
 
-Hosts generate their own SSH host keys locally and register their public keys with Yellowdog. The registry becomes the authoritative source of machine identity and authorization for encrypted secret access (e.g., sops-nix recipients).
+**Umbrella App:** `yellow_dog_dhcp_client`
+**Dependencies:** `ex_dhcp` (packet codec), OTP `:gen_statem`
+**Not used:** `abyss` (DHCP client requires broadcast from `0.0.0.0` via platform-specific socket options)
 
-A key differentiator is the **pluggable trust provider** architecture. Registration trust is established through interchangeable providers — DHCP lease correlation for on-prem hosts, cloud instance identity attestation for cloud VMs, and provisioning tokens as a universal fallback. All providers feed into a unified approval policy engine.
+### Core Motivations
 
-**Umbrella App:** `yellow_dog_identity`
-
----
-
-## 2. Goals
-
-- Allow hosts to self-generate cryptographic identity
-- Register host public keys securely
-- Provide an approval workflow for machine authorization
-- **Establish trust via pluggable providers: DHCP correlation, cloud attestation, tokens**
-- **Support cloud VMs (AWS, GCP, Azure) via instance identity documents**
-- Integrate with GitOps workflows
-- Automatically update sops recipients
-- Enable revocation of machine access
-- Avoid distributing private keys
-- Support stateless and netboot installations
+- **Protocol Extensibility** — Handle non-standard Yellow Dog DHCP options (Vendor-Specific Information, Option 43/60) using Elixir binary pattern matching.
+- **Operational Transparency** — Real-time telemetry and state monitoring of the network handshake via BEAM Telemetry and Phoenix LiveView integration.
+- **NixOS Native Integration** — Replace imperative shell-scripted `dhcpcd` with a declarative, supervised GenStateMachine that fits into the NixOS systemd hierarchy.
+- **Dual-Mode Flexibility** — Act as primary network owner in headless/server environments (Standalone) or as a specialized logic provider for NetworkManager-managed desktops (Hook).
+- **Control Plane Bootstrap** — Use DHCP vendor options to exchange identity and discover a WebSocket control channel URL. The URL is extracted into the lease for future use by a control channel client (DNS updates, forced renewals, bandwidth reporting).
 
 ---
 
-## 3. Non-Goals
+## Design Principles
 
-- Not a secret storage system (not a replacement for Vault)
-- Does not store private keys
-- Does not manage runtime credentials
-- Does not transmit key material over DHCP (size/security constraints)
+- **Supervised** — Every component lives in a supervision tree with defined restart semantics.
+- **Minimal Native Code** — The Rust NIF handles only socket operations and platform differences. All state, logic, and scheduling stays in Elixir.
+- **No `:gen_udp` outside Abyss** — Per project constitution, all UDP socket operations go through the Rust NIF. `:gen_udp` is restricted to the Abyss app.
+- **Declarative Configuration** — TOML config maps 1:1 to runtime behavior. No imperative setup scripts.
+- **Telemetry First** — Every state transition, packet, and OS integration action emits telemetry events.
+- **Crash-Friendly** — Interface flaps, socket crashes, and unexpected NAKs all resolve via supervisor restarts re-entering INIT.
 
 ---
 
-## 4. Architecture
-
-### High-Level Flow
+## Supervision Tree
 
 ```
-  On-Prem Host                          Cloud VM (AWS/GCP/Azure)
- ┌──────────┐    DHCP     ┌─────────┐  ┌──────────┐
- │   Host   │────────────▶│ yd_dhcp │  │ Cloud VM │
- │  (boot)  │◀────────────│ (lease) │  │  (boot)  │
- └────┬─────┘  IP + URL   └────┬────┘  └────┬─────┘
-      │                        │             │
-      │ Generate key           │ Lease       │ Generate key
-      │ POST /register         │ event       │ Fetch instance identity doc
-      │                        │             │ POST /register + attestation
-      │                        ▼             │
-      │              ┌───────────────────────────────────┐
-      └─────────────▶│       yellow_dog_identity          │
-                     │                                   │
-                     │  ┌─────────────────────────────┐  │
-                     │  │    Trust Provider Router     │  │
-                     │  │                             │  │
-                     │  │  ┌─────────┐ ┌───────────┐ │  │
-                     │  │  │  DHCP   │ │   Cloud   │ │  │
-                     │  │  │ Correl. │ │  Attest.  │ │  │
-                     │  │  └────┬────┘ └─────┬─────┘ │  │
-                     │  │       │             │       │  │
-                     │  │  ┌────┴─────────────┴────┐ │  │
-                     │  │  │   Token Verification  │ │  │
-                     │  │  └───────────┬───────────┘ │  │
-                     │  └──────────────┼─────────────┘  │
-                     │                 ▼                 │
-                     │        Approval Policy Engine     │
-                     │         → auto-approve            │
-                     │         → pending review          │
-                     │         → reject                  │
-                     └──────────────────┬────────────────┘
-                                       ▼
-                            ┌──────────────────────┐
-                            │  GitOps / CI          │
-                            │  Export recipients    │
-                            │  Update .sops.yaml   │
-                            │  Re-encrypt secrets  │
-                            └──────────────────────┘
+YellowDog.DHCPClient.Application
+├── Registry (named: :dhcp_client_registry)
+├── DynamicSupervisor (per-interface clients)
+│   └── InterfaceSupervisor (one per interface, rest_for_one)
+│       ├── DhcpSocket         — NIF resource owner, rx message router
+│       ├── StateMachine       — :gen_statem FSM
+│       ├── LeaseStore         — ETS-backed lease persistence
+│       └── OSIntegration      — address/route/resolver management
+└── ConfigWatcher              — watches TOML config, starts/stops interfaces
 ```
 
-### Components
-
-| Component | App | Responsibility |
-|-----------|-----|----------------|
-| Identity API | `yellow_dog_identity` | Registration, approval, export |
-| Trust Provider Router | `yellow_dog_identity` | Dispatches to appropriate trust provider |
-| DHCP Correlation | `yellow_dog_identity` | Lease↔registration matching (on-prem) |
-| Cloud Attestation | `yellow_dog_identity` | Instance identity verification (cloud) |
-| Host Registry | `yellow_dog_identity` | TOML-based identity storage |
-| Approval Engine | `yellow_dog_identity` | Policy-driven trust decisions |
-| Console UI | `yellow_dog_console` | Approval workflow, audit view |
-| DHCP Events | `yellow_dog_dhcp` | Lease event telemetry |
-| GitOps Export | `yellow_dog_identity` | Recipient list generation |
+**Strategy: `rest_for_one`** — If DhcpSocket dies (NIF resource released on process death), StateMachine must restart (re-enters INIT). If StateMachine dies, LeaseStore survives for rebind on restart. If LeaseStore dies, OSIntegration restarts to re-sync state.
 
 ---
 
-## 5. Pluggable Trust Provider Framework
+## Socket Strategy
 
-### 5.1 Design
+### Problem
 
-Trust verification is abstracted behind a behaviour that all providers implement. The registration endpoint doesn't know or care which provider establishes trust — it receives a uniform trust result.
+The BEAM has no native way to open a UDP broadcast socket with `SO_BINDTODEVICE` (Linux) or `IP_BOUND_IF` (FreeBSD) and send from `0.0.0.0:68` before IP assignment. Additionally, DAD requires sending raw ARP probes at L2, which no BEAM primitive supports.
 
-**Behaviour:**
+### Insight: AF_PACKET Is Not Required
+
+DHCP operates at L3 — the kernel special-cases UDP broadcast from `0.0.0.0:68 → 255.255.255.255:67` even before the interface has an IP. Standard UDP sockets with `SO_BROADCAST` work on both Linux and FreeBSD. AF_PACKET is Linux-only L2 access and is the wrong abstraction here.
+
+The only exception is DAD (ARP probes), which genuinely requires raw socket / BPF access at L2.
+
+### Solution: Rust NIF via Rustler
+
+A small Rust NIF (~300 lines) that provides three capabilities:
+
+1. **DHCP socket** — UDP broadcast socket bound to interface, `0.0.0.0:68`
+2. **ARP socket** — Raw socket (Linux) or BPF (FreeBSD) for DAD probes
+3. **Poll thread** — Background thread using epoll/kqueue that calls `enif_send()` to deliver received packets to the owning Elixir process
 
 ```
-@callback verify(registration_context) :: trust_result
+Elixir (BEAM schedulers)
+┌─────────────────────────────────────────────────────┐
+│  StateMachine ◄──── {:dhcp_rx, packet}              │
+│       │                    ▲                        │
+│       │ send/recv          │ enif_send()            │
+│       ▼                    │                        │
+│  DhcpSocket (GenServer)    │                        │
+│       │                    │                        │
+└───────┼────────────────────┼────────────────────────┘
+        │ NIF calls          │
+        ▼                    │
+┌─────────────────────────────────────────────────────┐
+│  Rust NIF (Dirty IO scheduler)                      │
+│  ├── UDP socket (SO_BROADCAST + interface-bound)    │
+│  ├── ARP socket (raw/BPF, for DAD only)             │
+│  └── Poll thread → enif_send() on rx               │
+└─────────────────────────────────────────────────────┘
+        │
+        ▼
+    Linux / FreeBSD kernel
+```
 
-registration_context :: %{
-  source_ip: ip_address,
-  hostname: string,
-  attestation: attestation_document | nil,
-  metadata: map
+### Why Rust NIF Over Port Program
+
+| Concern | Port Program | Rust NIF |
+|---------|-------------|----------|
+| Cross-platform | C + #ifdef or two binaries | `#[cfg(target_os)]` compile-time switch |
+| Latency | stdin/stdout framing overhead | Direct binary passing, minimal overhead |
+| Crash risk | Port crash is isolated | NIF crash kills BEAM |
+| Mitigation | — | Well-tested, ~300 lines, Dirty IO only |
+| Boot timing | Process spawn overhead | Already loaded |
+| FreeBSD support | Needs separate BPF implementation | `socket2` + `nix` crates abstract this |
+
+The NIF is small enough to audit and fuzz exhaustively. All NIF functions run on the Dirty IO scheduler — never on normal schedulers.
+
+### NIF API
+
+```rust
+/// Open DHCP socket bound to interface, returns resource handle
+#[rustler::nif(schedule = "DirtyIo")]
+fn open(interface: String, owner_pid: LocalPid) -> Result<ResourceArc<DhcpSocket>, Error>
+
+/// Send DHCP packet (UDP payload only, NIF wraps addressing)
+#[rustler::nif(schedule = "DirtyIo")]  
+fn send_broadcast(socket: ResourceArc<DhcpSocket>, packet: Binary) -> Result<Atom, Error>
+
+/// Send unicast DHCP packet to specific server IP
+#[rustler::nif(schedule = "DirtyIo")]
+fn send_unicast(socket: ResourceArc<DhcpSocket>, dest_ip: (u8,u8,u8,u8), packet: Binary) -> Result<Atom, Error>
+
+/// Send ARP probe for DAD (raw socket / BPF)
+#[rustler::nif(schedule = "DirtyIo")]
+fn send_arp_probe(socket: ResourceArc<DhcpSocket>, target_ip: (u8,u8,u8,u8)) -> Result<Atom, Error>
+
+/// Close socket and stop poll thread
+#[rustler::nif(schedule = "DirtyIo")]
+fn close(socket: ResourceArc<DhcpSocket>) -> Atom
+```
+
+Received packets are delivered asynchronously via `enif_send()`:
+
+```elixir
+# DHCP packet received
+{:dhcp_rx, packet_binary}
+
+# ARP reply received (during DAD)
+{:arp_rx, sender_ip, sender_mac}
+```
+
+### Cross-Platform Socket Implementation
+
+```rust
+#[cfg(target_os = "linux")]
+mod linux {
+    // UDP: AF_INET + SOCK_DGRAM + SO_BROADCAST + SO_BINDTODEVICE + IP_PKTINFO
+    // ARP: AF_PACKET + SOCK_DGRAM + ETH_P_ARP
+    // Poll: epoll
 }
 
-trust_result ::
-  | {:trusted, trust_level, provider_evidence}
-  | {:untrusted, reason}
-  | {:skip, :not_applicable}
-```
-
-**Provider dispatch:** On registration, the router tries each configured provider in priority order. First `{:trusted, ...}` wins. If all return `{:skip, ...}`, the result is `unverified`.
-
-```
-Provider priority (configurable):
-  1. Cloud Attestation  — if attestation document present
-  2. DHCP Correlation   — if source IP matches active lease
-  3. Token Verification — if Authorization header present
-  4. → unverified       — fallback
-```
-
-### 5.2 Trust Levels (Unified)
-
-| Trust Level | Provider | Evidence | Strength |
-|-------------|----------|----------|----------|
-| `cloud_verified` | Cloud Attestation | Cryptographically signed instance identity | Strongest (cloud) |
-| `netboot_verified` | DHCP + TFTP | DHCP lease + boot profile + registration | Strongest (on-prem) |
-| `network_verified` | DHCP Correlation | Active lease + fingerprint match | Strong |
-| `network_partial` | DHCP Correlation | Active lease, no fingerprint | Medium |
-| `token_verified` | Token | Valid provisioning token | Medium |
-| `unverified` | None | No trust signal | Manual approval |
-
-### 5.3 Provider Evidence
-
-Each provider attaches evidence to the trust result for audit and policy evaluation. Evidence is stored on the host record as `trust_evidence`.
-
----
-
-## 6. Trust Provider: DHCP Correlation
-
-### 6.1 Problem
-
-The registration endpoint accepts identity submissions from the network. Without authentication, any device could register a key and potentially gain access to encrypted secrets.
-
-DHCP does **not** carry key material — options are limited to 255 bytes per option (~1232 bytes practical payload), and DHCP is unauthenticated plaintext. SSH ed25519 pubkeys exceed this, and the channel is untrusted.
-
-### 6.2 Solution: Network-Based Trust
-
-Yellowdog already manages the DHCP lifecycle. The correlation chain provides implicit authentication:
-
-```
-MAC address → DHCP lease → IP assignment → registration source IP → host identity
-```
-
-When a host registers, the DHCP provider checks:
-
-1. **Active lease exists** for the source IP of the registration request
-2. **Lease is current** (not expired)
-3. **Device fingerprint** matches an expected class (optional, from DHCP fingerprinting)
-4. **No conflicting registration** exists for this lease
-
-This eliminates pre-shared tokens for hosts on managed networks.
-
-### 6.3 DHCP Registration URL Delivery
-
-DHCP responses include the registration endpoint URL via:
-
-- **Option 114 (Default URL)** — standard DHCP option for URL delivery
-- **iPXE `registration-url` setting** — for netboot scenarios, embedded in the boot script
-
-The host's boot/provisioning script reads this URL and performs identity registration as part of first-boot.
-
-### 6.4 Correlation Module
-
-The correlation module subscribes to DHCP lease events and maintains a time-windowed view of active leases for identity verification.
-
-**Telemetry subscription (from `yellow_dog_dhcp`):**
-
-```
-[:yellow_dog, :dhcp, :lease, :commit]
-  metadata: %{
-    mac: mac_address,
-    ip: assigned_ip,
-    hostname: client_hostname,
-    fingerprint_class: device_class,
-    lease_duration: seconds,
-    interface: network_interface
-  }
-
-[:yellow_dog, :dhcp, :lease, :release]
-  metadata: %{mac: mac_address, ip: released_ip}
-
-[:yellow_dog, :dhcp, :lease, :expire]
-  metadata: %{mac: mac_address, ip: expired_ip}
-```
-
-**Correlation lookup on registration:**
-
-```
-verify(context) →
-  | {:trusted, :network_verified, lease_evidence}
-  | {:trusted, :network_partial, lease_evidence}
-  | {:untrusted, :no_lease}
-  | {:untrusted, :expired}
-  | {:untrusted, :fingerprint_mismatch}
-  | {:skip, :not_applicable}           — no DHCP configured
-```
-
-**Evidence:**
-
-```
-%{
-  provider: :dhcp,
-  mac: "aa:bb:cc:dd:ee:ff",
-  assigned_ip: {192, 168, 1, 50},
-  fingerprint_class: "nixos-workstation",
-  lease_start: ~U[2025-01-01 12:00:00Z],
-  lease_duration: 3600,
-  dhcp_interface: "eth0"
+#[cfg(target_os = "freebsd")]
+mod freebsd {
+    // UDP: AF_INET + SOCK_DGRAM + SO_BROADCAST + IP_BOUND_IF + IP_RECVIF
+    // ARP: BPF device (/dev/bpf)
+    // Poll: kqueue
 }
 ```
 
-### 6.5 Netboot Integration
+Critical socket options:
 
-For netboot/iPXE hosts, the trust chain is even stronger:
+| Option | Linux | FreeBSD | Purpose |
+|--------|-------|---------|---------|
+| `SO_REUSEADDR` | ✅ | ✅ | Allow bind to port 68 |
+| `SO_BROADCAST` | ✅ | ✅ | Enable broadcast send |
+| Interface bind | `SO_BINDTODEVICE` | `IP_BOUND_IF` | Scope to interface |
+| Packet info | `IP_PKTINFO` | `IP_RECVIF` | Identify receiving interface |
+| Broadcast from 0.0.0.0 | `IP_FREEBIND` (if needed) | — | Kernel allows by default for DHCP |
 
-1. Device PXE boots → DHCP lease assigned
-2. iPXE script loaded from TFTP (managed by `yellow_dog_tftp`)
-3. Boot script includes registration step:
-   ```
-   #!ipxe
-   # ... kernel/initrd loading ...
-   set registration-url ${yellow_dog_registration_url}
-   ```
-4. First-boot script runs: generate key → register → continue boot
-5. Yellowdog correlates: DHCP lease + TFTP boot profile + registration = high trust
-
----
-
-## 7. Trust Provider: Cloud Instance Attestation
-
-### 7.1 Problem
-
-Cloud VMs receive IP addresses from the cloud provider's infrastructure, not from Yellowdog's DHCP. There is no lease to correlate. However, cloud providers offer something stronger: cryptographically signed instance identity documents.
-
-### 7.2 Solution: Instance Identity Verification
-
-Each major cloud provider exposes a metadata service at `169.254.169.254` that returns a signed identity document proving the VM's account, instance ID, region, and other properties. The signature is verifiable against the provider's published public keys — no pre-shared secrets needed.
-
-**Trust analogy:**
-
-| On-Prem (DHCP) | Cloud (Attestation) |
-|-----------------|---------------------|
-| DHCP lease proves "I'm on this network" | Identity document proves "I'm in this account" |
-| MAC + IP + fingerprint | Instance ID + account ID + signature |
-| Implicitly signed by Yellowdog | Cryptographically signed by cloud provider |
-
-### 7.3 Attestation Flow
-
-```
-Cloud VM                          Yellowdog
-   │                                 │
-   │ 1. Fetch identity doc           │
-   │    from 169.254.169.254         │
-   │                                 │
-   │ 2. POST /api/hosts/register     │
-   │    + attestation field           │
-   │    ──────────────────────────▶   │
-   │                                 │
-   │               3. Verify signature│
-   │                  against cloud   │
-   │                  provider pubkey │
-   │                                 │
-   │               4. Extract claims: │
-   │                  account_id      │
-   │                  instance_id     │
-   │                  region          │
-   │                  image_id        │
-   │                                 │
-   │               5. Match against   │
-   │                  allowed accounts│
-   │                  and policies    │
-   │                                 │
-   │  {:ok, cloud_verified}          │
-   │    ◀──────────────────────────  │
-```
-
-### 7.4 Provider-Specific Details
-
-#### AWS
-
-**Identity source:** Instance Identity Document + PKCS7 signature
-
-```
-# Host fetches:
-GET http://169.254.169.254/latest/dynamic/instance-identity/document
-GET http://169.254.169.254/latest/dynamic/instance-identity/pkcs7
-```
-
-**Attestation payload:**
-
-```json
-{
-  "provider": "aws",
-  "document": "<base64 instance identity document>",
-  "signature": "<base64 PKCS7 signature>"
-}
-```
-
-**Verification:**
-1. Decode PKCS7 signature
-2. Verify against AWS public certificate (published per-region)
-3. Extract: `accountId`, `instanceId`, `region`, `imageId`, `instanceType`
-4. Check `accountId` ∈ allowed accounts
-5. Check document `pendingTime` is recent (prevent replay)
-
-**Claims extracted:**
-
-| Claim | Policy Use |
-|-------|-----------|
-| `accountId` | Must match allowed AWS accounts |
-| `region` | Geographic policy |
-| `instanceId` | Uniqueness constraint |
-| `imageId` | AMI allowlist (optional) |
-| `instanceType` | Role inference (optional) |
-
-#### GCP
-
-**Identity source:** OIDC identity token (signed JWT)
-
-```
-# Host fetches:
-GET http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=yellowdog&format=full
-Header: Metadata-Flavor: Google
-```
-
-**Attestation payload:**
-
-```json
-{
-  "provider": "gcp",
-  "token": "<JWT identity token>"
-}
-```
-
-**Verification:**
-1. Decode JWT, extract header `kid`
-2. Fetch Google public keys from `https://www.googleapis.com/oauth2/v3/certs`
-3. Verify RS256 signature
-4. Validate `aud` = configured audience (e.g., `yellowdog`)
-5. Extract: `google.compute_engine.project_id`, `google.compute_engine.instance_id`, `google.compute_engine.zone`
-6. Check `project_id` ∈ allowed projects
-
-**Claims extracted:**
-
-| Claim | Policy Use |
-|-------|-----------|
-| `project_id` | Must match allowed GCP projects |
-| `zone` | Geographic policy |
-| `instance_id` | Uniqueness constraint |
-| `instance_name` | Hostname correlation |
-
-#### Azure
-
-**Identity source:** Attested data from IMDS
-
-```
-# Host fetches:
-GET http://169.254.169.254/metadata/attested/document?api-version=2021-02-01
-Header: Metadata: true
-```
-
-**Attestation payload:**
-
-```json
-{
-  "provider": "azure",
-  "document": "<base64 attested document>",
-  "signature": "<base64 signature>"
-}
-```
-
-**Verification:**
-1. Verify signature against Azure's intermediate certificate chain
-2. Validate certificate chain roots to known Azure CA
-3. Extract: `subscriptionId`, `vmId`, `resourceGroupName`, `location`
-4. Check `subscriptionId` ∈ allowed subscriptions
-
-**Claims extracted:**
-
-| Claim | Policy Use |
-|-------|-----------|
-| `subscriptionId` | Must match allowed Azure subscriptions |
-| `location` | Geographic policy |
-| `vmId` | Uniqueness constraint |
-| `resourceGroupName` | Role/environment inference |
-
-### 7.5 Anti-Replay Protection
-
-Instance identity documents could be captured and replayed. Mitigations:
-
-| Attack | Mitigation |
-|--------|-----------|
-| Document replay | Check timestamp/`pendingTime` — reject if older than configurable window (default: 5 minutes) |
-| Cross-instance replay | Bind `instance_id` to registration — one identity doc per host record |
-| Stolen document | Instance ID uniqueness constraint — second registration with same instance ID is conflict |
-| Provider key rotation | Cache provider public keys with TTL, refresh on verification failure |
-
-### 7.6 Cloud Provider Configuration
+### Rust Crate Dependencies
 
 ```toml
-[identity.cloud]
-enabled = true
-replay_window_seconds = 300  # 5 minute max age for attestation docs
-
-[identity.cloud.aws]
-enabled = true
-allowed_accounts = ["123456789012", "987654321098"]
-allowed_regions = ["us-east-1", "us-west-2"]  # optional
-allowed_amis = []  # optional, empty = any
-
-[identity.cloud.gcp]
-enabled = true
-allowed_projects = ["my-project-123", "infra-prod"]
-audience = "yellowdog"  # must match token request
-allowed_zones = []  # optional
-
-[identity.cloud.azure]
-enabled = true
-allowed_subscriptions = ["sub-uuid-1", "sub-uuid-2"]
-allowed_locations = []  # optional
+[dependencies]
+rustler = "0.34"
+socket2 = "0.5"
+nix = { version = "0.29", features = ["net", "socket", "poll"] }
+libc = "0.2"
 ```
 
-### 7.7 Cloud Attestation Evidence
+No async runtime. No tokio. BEAM is the scheduler.
 
-Stored on host record for audit:
+### Capabilities
+
+On Linux, the BEAM process needs `CAP_NET_RAW` (for ARP socket) and `CAP_NET_ADMIN` (for Standalone mode address/route assignment). Set via systemd `AmbientCapabilities`.
+
+On FreeBSD, the process needs access to `/dev/bpf` (typically via `devfs` rules or group membership) and appropriate privileges for interface configuration.
+
+### Renewal Optimization
+
+Once BOUND with a valid IP, RENEWING can use the NIF's `send_unicast()` to the DHCP server. The NIF socket remains open for REBINDING fallback (broadcast).
+
+---
+
+## Packet Layer
+
+### Codec
+
+Leverage `ex_dhcp` for standard DHCP message encode/decode. Thin wrapper module for Yellow Dog-specific concerns:
+
+```elixir
+defmodule YellowDog.DHCPClient.Packet do
+  @moduledoc """
+  DHCP packet construction and parsing with Yellow Dog vendor option support.
+  Injects Option 60 (vendor class with version + capabilities) and Option 124 (PEN)
+  in outbound packets. Decodes Option 125 (PEN-scoped vendor info) from replies.
+  """
+
+  @yellowdog_vendor_class "YellowDog"
+
+  @doc "Build DHCPDISCOVER with Option 60 (vendor class), Option 124 (PEN), and Option 55 (parameter request list)."
+  @spec build_discover(mac :: binary(), xid :: non_neg_integer(), keyword()) :: binary()
+
+  @doc "Build DHCPREQUEST with Option 50 (requested IP), Option 54 (server ID), Option 60, and Option 124."
+  @spec build_request(mac :: binary(), xid :: non_neg_integer(),
+    server_ip :: :inet.ip4_address(), offered_ip :: :inet.ip4_address(), keyword()) :: binary()
+
+  @doc "Build DHCPDECLINE for duplicate address detection failure."
+  @spec build_decline(mac :: binary(), xid :: non_neg_integer(),
+    server_ip :: :inet.ip4_address(), declined_ip :: :inet.ip4_address()) :: binary()
+
+  @doc "Build DHCPRELEASE."
+  @spec build_release(mac :: binary(), xid :: non_neg_integer(),
+    server_ip :: :inet.ip4_address(), client_ip :: :inet.ip4_address()) :: binary()
+
+  @doc """
+  Parse reply packet into structured result.
+  Extracts Option 125 sub-options when PEN matches Yellow Dog, populating
+  control_url, auth_token, server_id, and cluster_id in the Lease struct.
+  """
+  @spec parse_reply(binary()) ::
+    {:offer, Lease.t()} | {:ack, Lease.t()} | {:nak, String.t()} | {:error, term()}
+end
+```
+
+### Vendor Identification Protocol
+
+Yellow Dog uses IANA Private Enterprise Number (PEN) based vendor identification for mutual recognition between client and server. This follows RFC 3925 (Option 124/125) for clean namespacing alongside the simpler Option 60/43 fallback.
+
+**PEN Registration:** Yellow Dog registers a PEN with IANA (free, takes ~2 weeks). The PEN is used as the enterprise number in Option 124/125.
 
 ```
-%{
-  provider: :aws,
-  account_id: "123456789012",
-  instance_id: "i-0abcdef1234567890",
-  region: "us-east-1",
-  image_id: "ami-0123456789abcdef0",
-  instance_type: "t3.medium",
-  verified_at: ~U[2025-01-01 12:00:00Z],
-  document_time: ~U[2025-01-01 11:59:58Z]
+PEN: {pending_registration}    # e.g., 99999 (placeholder)
+Vendor Class: "YellowDog"
+```
+
+#### Client → Server Identification
+
+The client announces itself in DHCPDISCOVER and DHCPREQUEST:
+
+| Option | Name | Value | Purpose |
+|--------|------|-------|---------|
+| 60 | Vendor Class Identifier | `"YellowDog:1.0:{capabilities}"` | Simple identification + version |
+| 124 | Vendor-Identifying Vendor Class | PEN + `"YellowDog"` | Formal PEN-scoped identification |
+| 61 | Client Identifier | MAC or custom client ID | Unique client identity |
+| 12 | Hostname | System hostname | Human-readable name |
+
+**Option 60 format:** `YellowDog:{protocol_version}:{capability_flags}`
+
+Capability flags (comma-separated):
+- `dns` — Client runs Yellow Dog DNS service
+- `dhcp-relay` — Client acts as DHCP relay
+- `netboot` — Client provides netboot services
+- `telemetry` — Client can report telemetry
+
+Example: `"YellowDog:1.0:dns,telemetry"`
+
+#### Server → Client Data (Option 125)
+
+When the server recognizes a Yellow Dog client (via Option 60 or 124), it includes Option 125 (Vendor-Identifying Vendor-Specific Information) in DHCPOFFER and DHCPACK with the Yellow Dog PEN.
+
+Option 125 encodes enterprise-scoped TLV sub-options:
+
+```
+Option 125 structure:
+  Enterprise Number (4 bytes): {YellowDog PEN}
+  Data Length (1 byte)
+  Sub-options (TLV encoded):
+    Sub-option code (1 byte)
+    Length (1 byte)
+    Value (variable)
+```
+
+#### Sub-Option Schema (v1)
+
+| Code | Name | Type | Description |
+|------|------|------|-------------|
+| 1 | `control_url` | UTF-8 string | WebSocket control channel URL |
+| 2 | `server_id` | UTF-8 string | Yellow Dog server identity |
+| 3 | `cluster_id` | UTF-8 string | Cluster/site identifier |
+| 4 | `auth_token` | UTF-8 string | One-time token for WebSocket auth |
+| 5 | `control_url_fallback` | UTF-8 string | Fallback WebSocket URL |
+| 6 | `flags` | uint16 | Server feature flags |
+| 200-254 | Reserved | — | Future use |
+| 255 | Padding | — | End marker |
+
+**Critical sub-option:** `control_url` (code 1) contains the WebSocket endpoint that the client connects to after entering BOUND state. Example: `"wss://yd-server.local:4443/control/v1"`
+
+The `auth_token` (code 4) is a short-lived nonce generated per-ACK. The client presents it during WebSocket handshake to prove it received a valid lease.
+
+#### Vendor Options Module
+
+```elixir
+defmodule YellowDog.DHCPClient.VendorOptions do
+  @moduledoc """
+  Encode/decode Yellow Dog vendor options using PEN-scoped Option 124/125.
+  Falls back to Option 60/43 for compatibility.
+  """
+
+  @yellowdog_pen 99999  # Placeholder — replace with registered PEN
+
+  @spec encode_client_id(String.t(), [atom()]) :: binary()
+  @doc "Encode Option 60 vendor class: YellowDog:{version}:{capabilities}"
+
+  @spec encode_vendor_class(non_neg_integer()) :: binary()
+  @doc "Encode Option 124 with Yellow Dog PEN."
+
+  @spec decode_vendor_info(binary()) :: {:ok, map()} | {:error, term()}
+  @doc "Decode Option 125 sub-options scoped to Yellow Dog PEN."
+
+  @spec decode_sub_options(binary()) :: map()
+  @doc "Parse TLV sub-options into named map with known codes resolved."
+end
+```
+
+Application-specific sub-option codes are defined by the Yellow Dog DHCP server. Unknown codes are preserved as `{code, binary()}` tuples for forward compatibility.
+
+---
+
+## State Machine
+
+`:gen_statem` with `handle_event_function` callback mode.
+
+### States
+
+```
+INIT → SELECTING → REQUESTING → BOUND → RENEWING → REBINDING
+  ↑                               ↑        │           │
+  │                               │        T1          T2
+  │                               └────────┘           │
+  └────────────────────────────────────────────────────┘
+```
+
+### State Transitions
+
+| From | Event | To | Action |
+|------|-------|----|--------|
+| INIT | entry | — | Send DHCPDISCOVER, start retransmit timer (exponential backoff: 2,4,8,16,32,64s + random jitter ±1s) |
+| INIT | `{:rx, :offer, lease}` | SELECTING | Accumulate offer, start selection window timer |
+| INIT | `:retransmit_timeout` | INIT | Resend DISCOVER with new XID |
+| SELECTING | entry | — | Start selection window timer (default 1s) |
+| SELECTING | `{:rx, :offer, lease}` | SELECTING | Accumulate offer |
+| SELECTING | `:selection_timeout` | REQUESTING | Pick best offer per selection criteria |
+| REQUESTING | entry | — | Send DHCPREQUEST (broadcast), start retransmit timer |
+| REQUESTING | `{:rx, :ack, lease}` | BOUND | (via DAD check) |
+| REQUESTING | `{:rx, :nak, _}` | INIT | Delay 1s before re-entering |
+| REQUESTING | `:retransmit_timeout` | REQUESTING | Resend REQUEST (max 4 attempts, then → INIT) |
+| BOUND | entry | — | Store lease, notify OSIntegration, schedule T1/T2 timers, emit telemetry |
+| BOUND | `:t1_timeout` | RENEWING | — |
+| BOUND | `:t2_timeout` | REBINDING | — |
+| BOUND | `:release` | INIT | Send DHCPRELEASE, deconfigure |
+| BOUND | `:interface_down` | INIT | Deconfigure |
+| RENEWING | entry | — | Send unicast DHCPREQUEST to server (via NIF `send_unicast()`) |
+| RENEWING | `{:rx, :ack, lease}` | BOUND | New lease |
+| RENEWING | `{:rx, :nak, _}` | INIT | Deconfigure |
+| RENEWING | `:t2_timeout` | REBINDING | — |
+| RENEWING | `:retransmit_timeout` | RENEWING | Resend unicast REQUEST |
+| REBINDING | entry | — | Send broadcast DHCPREQUEST (via raw socket) |
+| REBINDING | `{:rx, :ack, lease}` | BOUND | New lease |
+| REBINDING | `{:rx, :nak, _}` | INIT | Deconfigure |
+| REBINDING | `:lease_expired` | INIT | Deconfigure |
+| REBINDING | `:retransmit_timeout` | REBINDING | Resend broadcast REQUEST |
+
+### Offer Selection Criteria
+
+Priority order when multiple offers received during selection window:
+
+1. Offer contains Yellow Dog PEN in Option 125 (confirmed YellowDog server with control channel)
+2. Offer contains Yellow Dog vendor class match in Option 60 (YellowDog server, possibly older)
+3. Offer from previously-known server (lease store has prior lease from this server)
+4. First offer received (FIFO)
+
+### Retransmission Timing
+
+Per RFC 2131 §4.1:
+
+- INIT/SELECTING: Exponential backoff starting at 2s, doubling to max 64s, with random jitter ±1s
+- REQUESTING: 2s, 4s, 8s, 16s then back to INIT
+- RENEWING/REBINDING: Half remaining time until next deadline (T2 or lease expiry)
+
+### Duplicate Address Detection
+
+After receiving ACK but before entering BOUND and configuring the interface:
+
+1. Send 3 ARP probes via NIF `send_arp_probe()` for the offered IP (per RFC 5227)
+2. Wait 2s total (probes at 0ms, 700ms, 1400ms)
+3. No reply (no `{:arp_rx, _, _}` received) → proceed to BOUND
+4. `{:arp_rx, _, _}` received → send DHCPDECLINE to server, wait 10s, re-enter INIT
+
+---
+
+## Lease Data
+
+```elixir
+defmodule YellowDog.DHCPClient.Lease do
+  @type t :: %__MODULE__{
+    ip: :inet.ip4_address(),
+    subnet_mask: :inet.ip4_address(),
+    router: :inet.ip4_address() | nil,
+    dns_servers: [:inet.ip4_address()],
+    server_ip: :inet.ip4_address(),
+    server_mac: binary() | nil,
+    lease_time: pos_integer(),
+    t1: pos_integer(),
+    t2: pos_integer(),
+    domain_name: String.t() | nil,
+    ntp_servers: [:inet.ip4_address()],
+    mtu: pos_integer() | nil,
+    vendor_options: map(),
+    control_url: String.t() | nil,
+    control_url_fallback: String.t() | nil,
+    auth_token: String.t() | nil,
+    server_id: String.t() | nil,
+    cluster_id: String.t() | nil,
+    yellowdog_server: boolean(),
+    obtained_at: DateTime.t(),
+    xid: non_neg_integer(),
+    raw_options: map()
+  }
+
+  defstruct [
+    :ip, :subnet_mask, :router, :server_ip, :server_mac,
+    :lease_time, :t1, :t2, :domain_name, :mtu, :obtained_at, :xid,
+    :control_url, :control_url_fallback, :auth_token, :server_id, :cluster_id,
+    dns_servers: [],
+    ntp_servers: [],
+    vendor_options: %{},
+    yellowdog_server: false,
+    raw_options: %{}
+  ]
+end
+```
+
+### Lease Persistence
+
+LeaseStore is a GenServer backed by ETS for fast reads and periodic flush to disk.
+
+**Path:** `/var/lib/yellowdog/leases/{interface}.lease`
+
+**Format:** TOML, using the same copy-validate-replace transactional write pattern used across YellowDog.
+
+**Startup behavior:** If a valid, non-expired lease exists on disk, skip INIT and enter REBINDING to attempt reuse per RFC 2131 §3.2. If the lease is expired, discard and enter INIT.
+
+---
+
+## OS Integration
+
+### Behaviour
+
+```elixir
+defmodule YellowDog.DHCPClient.OSIntegration do
+  @callback apply_lease(interface :: String.t(), lease :: Lease.t()) :: :ok | {:error, term()}
+  @callback deconfigure(interface :: String.t()) :: :ok | {:error, term()}
+  @callback apply_routes(interface :: String.t(), lease :: Lease.t()) :: :ok | {:error, term()}
+  @callback apply_dns(lease :: Lease.t()) :: :ok | {:error, term()}
+end
+```
+
+### Mode A: Standalone
+
+**Module:** `YellowDog.DHCPClient.OSIntegration.Standalone`
+
+For headless/server NixOS environments where the DHCP client is the primary network owner.
+
+**Initial implementation:** `System.cmd/3` with `ip` commands.
+
+| Action | Command |
+|--------|---------|
+| Assign IP | `ip addr add {ip}/{prefix_len} dev {iface}` |
+| Set link up | `ip link set {iface} up` |
+| Add default route | `ip route add default via {router} dev {iface}` |
+| Configure DNS | Write `/run/yellowdog/resolv.conf.{iface}`, invoke `resolvconf -a {iface}` |
+| Set MTU | `ip link set {iface} mtu {mtu}` (if lease provides MTU) |
+| Deconfigure | `ip addr del`, `ip route del`, `resolvconf -d {iface}` |
+
+**Production target:** Netlink via port program or `gen_netlink` NIF. Deferred to a follow-up iteration.
+
+**Requires:** `CAP_NET_ADMIN` on the BEAM process (or a privileged helper binary).
+
+### Mode B: Hook
+
+**Module:** `YellowDog.DHCPClient.OSIntegration.Hook`
+
+For desktop environments where NetworkManager manages the interface.
+
+| Action | Method |
+|--------|--------|
+| Report lease | D-Bus API (`org.freedesktop.NetworkManager`) or `nmcli` |
+| Report lease (alt) | Write lease data to dispatcher script output |
+| Deconfigure | Not performed — NM handles teardown |
+
+The client performs the DHCP handshake but defers all IP/route/DNS assignment to the OS. It sends the final lease data back to NetworkManager, allowing the OS to maintain a unified view of the network.
+
+### Mode Selection
+
+Configured via TOML. No runtime auto-detection.
+
+---
+
+## Yellow Dog Control Channel (Future Feature — Design Reference)
+
+> **Note:** This section documents the intended control channel design for reference by both client and server implementations. The WebSocket client, message handling, and bandwidth monitoring are **not implemented in this task**. Only the DHCP-level vendor option exchange (Option 124/125) is implemented — the `control_url` and `auth_token` are extracted into the Lease struct and made available for future use.
+
+### Concept
+
+When the DHCP server is a Yellow Dog server, it includes a WebSocket control channel URL in the lease (Option 125, sub-option 1). A future ControlChannel process will establish a persistent WebSocket connection to this URL after entering BOUND, enabling bi-directional management: DNS updates, forced renewals, bandwidth reporting, health checks.
+
+The control channel is **optional** — if the lease comes from a non-YellowDog server (no Option 125 with matching PEN), the DHCP lifecycle is fully functional without it.
+
+### Connection Lifecycle (Future)
+
+```
+BOUND (lease has control_url)
+  │
+  ▼
+Connect WebSocket (wss://server:4443/control/v1)
+  ├── Upgrade with auth_token in header: Authorization: Bearer {auth_token}
+  ├── Include client identity: X-YD-Client-ID: {mac}, X-YD-Interface: {iface}
+  │
+  ▼
+CONNECTED
+  ├── Send: client_hello (capabilities, version, current config)
+  ├── Receive: server_hello (accepted capabilities, server version)
+  │
+  ▼
+ACTIVE (bidirectional message exchange)
+  │
+  ▼
+LEASE EXPIRED / RELEASE / INTERFACE DOWN
+  ├── Send: disconnect (reason)
+  └── Close WebSocket
+```
+
+### Authentication (Future)
+
+The `auth_token` from Option 125 sub-option 4 is a one-time nonce valid for a short window (~60s) after DHCPACK. The client presents it as a Bearer token during the WebSocket upgrade. After connection, the server may issue a long-lived `session_token` for reconnection.
+
+### Message Protocol (Future)
+
+JSON over WebSocket. Common envelope:
+
+```json
+{
+  "type": "message_type",
+  "id": "unique-message-id",
+  "timestamp": "2025-01-01T00:00:00Z",
+  "payload": {}
 }
 ```
 
-### 7.8 Host-Side Registration Script (NixOS)
+### Client → Server Messages (Future)
 
-A minimal NixOS module/script for cloud hosts:
+| Type | Payload | Description |
+|------|---------|-------------|
+| `client_hello` | `{version, capabilities, hostname, mac, interface, lease_xid}` | Initial handshake after connect |
+| `bandwidth_report` | `{rx_bytes, tx_bytes, rx_rate, tx_rate, measured_at}` | Periodic bandwidth measurement |
+| `health_report` | `{uptime, memory, services: [{name, status}]}` | Client health status |
+| `dns_report` | `{queries_total, cache_hit_ratio, upstream_latency_ms}` | DNS service metrics (if capability) |
+| `ack` | `{reply_to, status}` | Acknowledge server command |
+| `error` | `{reply_to, code, message}` | Error response to server command |
+| `disconnect` | `{reason}` | Graceful disconnect notification |
 
-```bash
-#!/usr/bin/env bash
-# yellowdog-register.sh — runs on first boot
+### Server → Client Messages (Future)
 
-REGISTRATION_URL="${YELLOWDOG_REGISTRATION_URL}"
-HOSTNAME=$(hostname)
+| Type | Payload | Description |
+|------|---------|-------------|
+| `server_hello` | `{version, accepted_capabilities, session_token}` | Handshake response |
+| `update_nameservers` | `{servers: [ip], search_domains: [string]}` | Push DNS configuration change |
+| `force_renew` | `{reason}` | Trigger immediate DHCP RENEWING |
+| `update_config` | `{key, value}` | Push configuration parameter |
+| `request_report` | `{report_type}` | Request immediate health/bandwidth/dns report |
+| `set_report_interval` | `{report_type, interval_s}` | Change reporting frequency |
+| `notify` | `{level, message, action?}` | Informational notification |
+| `session_token` | `{token, expires_at}` | Long-lived reconnection token |
+| `ping` | `{}` | Keepalive |
 
-# Generate key if not present
-if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
-  ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N ""
-fi
+---
 
-SSH_PUBKEY=$(cat /etc/ssh/ssh_host_ed25519_key.pub)
-AGE_RECIPIENT=$(ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub)
+## Configuration
 
-# Detect cloud provider and fetch attestation
-ATTESTATION="{}"
-if curl -sf -m 1 http://169.254.169.254/latest/meta-data/ >/dev/null 2>&1; then
-  # AWS
-  DOC=$(curl -sf http://169.254.169.254/latest/dynamic/instance-identity/document | base64 -w0)
-  SIG=$(curl -sf http://169.254.169.254/latest/dynamic/instance-identity/pkcs7 | base64 -w0)
-  ATTESTATION=$(jq -n --arg d "$DOC" --arg s "$SIG" \
-    '{"provider":"aws","document":$d,"signature":$s}')
-elif curl -sf -m 1 -H "Metadata-Flavor: Google" \
-     http://metadata.google.internal/computeMetadata/v1/ >/dev/null 2>&1; then
-  # GCP
-  TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=yellowdog&format=full")
-  ATTESTATION=$(jq -n --arg t "$TOKEN" '{"provider":"gcp","token":$t}')
-fi
+```toml
+[dhcp_client]
+interface = "eth0"
+mode = "standalone"           # "standalone" | "hook"
+vendor_class = "YellowDog"
+selection_window_ms = 1000
+dad_enabled = true
+dad_probes = 3
+dad_wait_ms = 2000
 
-# Register
-curl -sf -X POST "$REGISTRATION_URL/api/hosts/register" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n \
-    --arg h "$HOSTNAME" \
-    --arg k "$SSH_PUBKEY" \
-    --arg a "$AGE_RECIPIENT" \
-    --argjson att "$ATTESTATION" \
-    '{hostname:$h, ssh_pubkey:$k, age_recipient:$a, attestation:$att}')"
+[dhcp_client.standalone]
+manage_routes = true
+manage_dns = true
+dns_method = "resolvconf"     # "resolvconf" | "direct" | "systemd-resolved"
+
+[dhcp_client.hook]
+backend = "networkmanager"    # "networkmanager" | "systemd-networkd"
+```
+
+**Multiple interfaces:** Each interface gets its own `[dhcp_client.{name}]` section and its own InterfaceSupervisor instance.
+
+---
+
+## Telemetry Events
+
+### State Transitions
+
+```elixir
+[:yellow_dog, :dhcp_client, :state, :change]
+measurements: %{duration_in_state_ms: integer()}
+metadata: %{interface: String.t(), from: atom(), to: atom()}
+```
+
+### Packet TX/RX
+
+```elixir
+[:yellow_dog, :dhcp_client, :packet, :tx]
+metadata: %{interface: String.t(), type: :discover | :request | :release | :decline}
+
+[:yellow_dog, :dhcp_client, :packet, :rx]
+metadata: %{interface: String.t(), type: :offer | :ack | :nak, server: :inet.ip4_address()}
+```
+
+### Lease Lifecycle
+
+```elixir
+[:yellow_dog, :dhcp_client, :lease, :bound]
+measurements: %{lease_time_s: integer(), handshake_duration_ms: integer()}
+metadata: %{interface: String.t(), ip: String.t(), server: String.t()}
+
+[:yellow_dog, :dhcp_client, :lease, :renewed]
+measurements: %{lease_time_s: integer()}
+metadata: %{interface: String.t(), ip: String.t()}
+
+[:yellow_dog, :dhcp_client, :lease, :expired]
+metadata: %{interface: String.t(), ip: String.t()}
+```
+
+### OS Integration
+
+```elixir
+[:yellow_dog, :dhcp_client, :os, :apply]
+measurements: %{duration_ms: integer()}
+metadata: %{interface: String.t(), action: :configure | :deconfigure, result: :ok | :error}
+```
+
+### DAD
+
+```elixir
+[:yellow_dog, :dhcp_client, :dad, :start]
+metadata: %{interface: String.t(), ip: String.t()}
+
+[:yellow_dog, :dhcp_client, :dad, :result]
+metadata: %{interface: String.t(), ip: String.t(), conflict: boolean()}
 ```
 
 ---
 
-## 8. Functional Requirements
+## NixOS Integration
 
-### 8.1 Host Registration
+### Systemd Unit
 
-**Endpoint:** `POST /api/hosts/register`
+```nix
+systemd.services.yellowdog-dhcp-client = {
+  description = "YellowDog DHCP Client";
+  after = [ "network-pre.target" ];
+  before = [ "network.target" ];
+  wants = [ "network.target" ];
 
-**Payload:**
-
-```json
-{
-  "hostname": "node-01",
-  "ssh_pubkey": "ssh-ed25519 AAAA...",
-  "age_recipient": "age1xxxx",
-  "machine_id": "optional-dbus-machine-id",
-  "attestation": {
-    "provider": "aws",
-    "document": "<base64>",
-    "signature": "<base64>"
-  },
-  "metadata": {
-    "role": "worker",
-    "datacenter": "dc1"
-  }
-}
+  serviceConfig = {
+    Type = "notify";
+    ExecStart = "${yellowdog}/bin/yellowdog_dhcp_client start";
+    AmbientCapabilities = "CAP_NET_RAW CAP_NET_ADMIN";
+    CapabilityBoundingSet = "CAP_NET_RAW CAP_NET_ADMIN";
+    NoNewPrivileges = true;
+    ProtectSystem = "strict";
+    ReadWritePaths = [ "/var/lib/yellowdog" "/run/yellowdog" ];
+    PrivateTmp = true;
+    Restart = "on-failure";
+    RestartSec = "2s";
+  };
+};
 ```
 
-The `attestation` field is optional. When present, the cloud attestation provider processes it. When absent, DHCP correlation and token verification are tried.
+### Rust NIF Compilation
 
-**Behavior:**
+The Rust NIF is compiled via Rustler during `mix compile`. The Nix derivation includes `rustc` and `cargo` as build inputs. The compiled `.so` / `.dylib` is bundled in `priv/native/`. Capabilities (`CAP_NET_RAW`, `CAP_NET_ADMIN`) are granted to the BEAM process via systemd `AmbientCapabilities`, not via `setcap` on the NIF.
 
-1. Validate key format (ed25519 pubkey, age recipient format)
-2. Compute `key_fingerprint` from pubkey
-3. Check uniqueness on `(key_fingerprint)` — reject duplicates
-4. Check for conflicting hostname with different key:
-   - If same hostname + different key → require explicit `force: true` or reject
-   - Store previous key in `previous_keys` audit trail
-5. **Route through trust provider chain** (cloud attestation → DHCP → token → unverified)
-6. Apply approval policy with trust result
-7. Store identity record with provider evidence
-8. Emit telemetry event
+### NixOS Module Options
 
-**Response:**
-
-```json
-{
-  "id": "uuid",
-  "status": "approved | pending",
-  "trust_level": "cloud_verified | network_verified | unverified",
-  "trust_provider": "aws | gcp | azure | dhcp | token | none",
-  "message": "Registration accepted"
-}
+```nix
+networking.dhcpcd.enable = false;   # Disable system dhcpcd
+services.yellowdog-dhcp-client = {
+  enable = true;
+  interfaces = {
+    eth0 = {
+      mode = "standalone";
+      vendorClass = "YellowDog";
+      manageDns = true;
+      dnsMethod = "resolvconf";
+    };
+  };
+};
 ```
 
-### 8.2 Approval Workflow
+---
 
-**States:**
-
-```
-                ┌──────────┐
-    register    │          │   approve
-   ────────────▶│ pending  │──────────────┐
-                │          │              │
-                └────┬─────┘              ▼
-                     │            ┌──────────────┐
-                     │            │   approved   │
-                     │            └──────┬───────┘
-                     │                   │
-                     │    revoke         │  revoke
-                     ▼                   ▼
-              ┌──────────────────────────────┐
-              │           revoked            │
-              └──────────────────────────────┘
-```
-
-**Approval methods (ordered by trust):**
-
-1. **Auto-approve via cloud attestation** — `cloud_verified` trust level
-2. **Auto-approve via DHCP correlation** — `network_verified` trust level
-3. **Provisioning token** — pre-generated, single-use, time-limited
-4. **Auto-approve policy** — rules based on metadata (role, datacenter, hostname pattern)
-5. **Manual UI approval** — operator action in console
-
-### 8.3 Re-registration Policy
-
-When a host registers with the **same hostname but different key**:
+## Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
-| Same key, same hostname | Idempotent — return existing record |
-| Different key, `force: true` | Archive old key in `previous_keys`, update, set pending |
-| Different key, no `force` | Reject with `409 Conflict` |
-| Same key, different hostname | Allow — hostname is a label, key is identity |
-
-### 8.4 Recipient Export
-
-**Endpoint:** `GET /api/hosts/recipients`
-
-**Output (YAML):**
-
-```yaml
-age:
-  - age1hostA
-  - age1hostB
-```
-
-**Endpoint:** `GET /api/hosts/recipients?format=sops`
-
-**Output (.sops.yaml fragment):**
-
-```yaml
-creation_rules:
-  - age: >-
-      age1hostA,
-      age1hostB
-```
-
-### 8.5 Revocation
-
-1. Mark host as `revoked` (with reason, operator, timestamp)
-2. Remove from recipient export immediately
-3. Emit telemetry event
-4. Trigger CI webhook for secret re-encryption (if configured)
-5. Expose revocation check endpoint:
-
-**Endpoint:** `GET /api/hosts/:id/status`
-
-This provides real-time revocation verification without waiting for CI pipeline propagation.
+| DhcpSocket process dies | NIF resource released on process death → supervisor restarts InterfaceSupervisor (rest_for_one) → FSM re-enters INIT |
+| Interface removed (hotplug) | Netlink/polling detects removal → FSM transitions to INIT → OSIntegration deconfigures |
+| Interface returns | ConfigWatcher detects link → starts new InterfaceSupervisor |
+| All offers rejected | Stay in SELECTING until timeout → fall back to any offer, or re-enter INIT with backoff |
+| NAK during RENEWING | Deconfigure → INIT |
+| Lease expires during app downtime | On startup detect expired lease → enter INIT (not REBINDING) |
+| Duplicate address detected | Send DHCPDECLINE → wait 10s → re-enter INIT |
+| BEAM OOM / crash | systemd `Restart=on-failure` restarts the service → LeaseStore loads persisted lease → attempt REBINDING |
+| Config change (TOML) | ConfigWatcher detects change → gracefully stop affected InterfaceSupervisor → start new one with updated config |
 
 ---
 
-## 9. Data Model
-
-### Host Identity
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID | Primary key |
-| `hostname` | string | Display name (not authoritative identifier) |
-| `machine_id` | string | dbus machine-id (optional, stable across reboots) |
-| `ssh_pubkey` | string | SSH ed25519 public key |
-| `key_fingerprint` | string | SHA256 fingerprint of pubkey (indexed, unique) |
-| `age_recipient` | string | Derived age identity |
-| `status` | enum | `pending` / `approved` / `revoked` |
-| `trust_level` | enum | See §5.2 unified trust levels |
-| `trust_provider` | enum | `dhcp` / `aws` / `gcp` / `azure` / `token` / `none` |
-| `trust_evidence` | map | Provider-specific evidence (see below) |
-| `role` | string | Host role (promoted from metadata) |
-| `datacenter` | string | Datacenter/region (promoted from metadata) |
-| `metadata` | map | Additional arbitrary info |
-| `previous_keys` | list | Audit trail of replaced keys |
-| `created_at` | timestamp | |
-| `approved_at` | timestamp | |
-| `approved_by` | string | Operator or `auto:policy_name` |
-| `revoked_at` | timestamp | |
-| `revoked_by` | string | |
-| `revoke_reason` | string | |
-
-### Trust Evidence (by provider)
-
-**DHCP:**
+## File Structure
 
 ```
-%{
-  provider: :dhcp,
-  mac: "aa:bb:cc:dd:ee:ff",
-  assigned_ip: {192, 168, 1, 50},
-  fingerprint_class: "nixos-workstation",
-  lease_start: ~U[2025-01-01 12:00:00Z],
-  lease_duration: 3600,
-  dhcp_interface: "eth0"
-}
-```
-
-**AWS:**
-
-```
-%{
-  provider: :aws,
-  account_id: "123456789012",
-  instance_id: "i-0abcdef1234567890",
-  region: "us-east-1",
-  image_id: "ami-0123456789abcdef0",
-  instance_type: "t3.medium",
-  verified_at: ~U[2025-01-01 12:00:00Z],
-  document_time: ~U[2025-01-01 11:59:58Z]
-}
-```
-
-**GCP:**
-
-```
-%{
-  provider: :gcp,
-  project_id: "my-project-123",
-  instance_id: "1234567890123456789",
-  instance_name: "node-01",
-  zone: "us-central1-a",
-  verified_at: ~U[2025-01-01 12:00:00Z]
-}
-```
-
-**Azure:**
-
-```
-%{
-  provider: :azure,
-  subscription_id: "sub-uuid-1",
-  vm_id: "vm-uuid",
-  resource_group: "infra-prod",
-  location: "eastus",
-  verified_at: ~U[2025-01-01 12:00:00Z]
-}
-```
-
-### Provisioning Token
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID | Primary key |
-| `token_hash` | string | bcrypt hash of token value |
-| `hostname_pattern` | string | Glob pattern for allowed hostnames |
-| `role` | string | Assigned role on use |
-| `max_uses` | integer | Usage limit (1 = single-use) |
-| `use_count` | integer | Current usage |
-| `expires_at` | timestamp | Expiry |
-| `created_by` | string | Operator |
-
----
-
-## 10. Approval Policy Engine
-
-Policies are evaluated in order; first match wins.
-
-### Policy Configuration (TOML)
-
-```toml
-[identity.approval]
-default_action = "pending"  # pending | reject
-
-# On-prem: auto-approve DHCP-verified hosts
-[[identity.approval.policies]]
-name = "trusted-network-auto"
-description = "Auto-approve hosts with verified DHCP correlation"
-match.trust_level = "network_verified"
-match.role = ["worker", "storage"]
-action = "approve"
-
-# Cloud: auto-approve verified AWS instances in allowed accounts
-[[identity.approval.policies]]
-name = "aws-prod-auto"
-description = "Auto-approve AWS instances from prod account"
-match.trust_level = "cloud_verified"
-match.trust_provider = "aws"
-match.cloud_account = "123456789012"
-match.cloud_region = ["us-east-1", "us-west-2"]
-action = "approve"
-
-# Cloud: auto-approve verified GCP instances
-[[identity.approval.policies]]
-name = "gcp-infra-auto"
-description = "Auto-approve GCP instances from infra project"
-match.trust_level = "cloud_verified"
-match.trust_provider = "gcp"
-match.cloud_account = "my-project-123"
-action = "approve"
-
-# On-prem: dc1 workstations
-[[identity.approval.policies]]
-name = "dc1-workstations"
-description = "Auto-approve workstations in dc1"
-match.trust_level = ["network_verified", "network_partial"]
-match.datacenter = "dc1"
-match.hostname_pattern = "ws-*"
-action = "approve"
-
-# Token-verified
-[[identity.approval.policies]]
-name = "token-approved"
-description = "Auto-approve token-verified registrations"
-match.trust_level = "token_verified"
-action = "approve"
-
-# Reject unverified
-[[identity.approval.policies]]
-name = "reject-unverified"
-description = "Reject registrations with no trust signal"
-match.trust_level = "unverified"
-action = "reject"
-```
-
-### Policy Matching Fields
-
-| Field | Operators | Description |
-|-------|-----------|-------------|
-| `trust_level` | exact, list | Trust level from provider |
-| `trust_provider` | exact, list | Which provider verified (`aws`, `gcp`, `azure`, `dhcp`, `token`) |
-| `cloud_account` | exact, list | AWS account ID, GCP project ID, or Azure subscription ID |
-| `cloud_region` | exact, list | Provider region/zone |
-| `cloud_image` | exact, list | AMI ID, GCP image, etc. |
-| `role` | exact, list | Host role |
-| `datacenter` | exact, list | Datacenter |
-| `hostname_pattern` | glob | Hostname pattern |
-| `fingerprint_class` | exact, list | DHCP device fingerprint class |
-| `mac_prefix` | prefix | OUI-based vendor matching |
-
----
-
-## 11. Persistence
-
-Consistent with Yellowdog's TOML-based file persistence pattern.
-
-### File Layout
-
-```
-/var/lib/yellowdog/identity/
-├── config.toml              # Approval policies, correlation settings
-├── hosts/
-│   ├── <uuid>.toml          # One file per registered host
-│   └── ...
-├── tokens/
-│   ├── <uuid>.toml          # Provisioning tokens
-│   └── ...
-└── audit.log                # Append-only audit trail
-```
-
-### Host File Format
-
-```toml
-[host]
-id = "550e8400-e29b-41d4-a716-446655440000"
-hostname = "node-01"
-machine_id = "a1b2c3d4"
-ssh_pubkey = "ssh-ed25519 AAAA..."
-key_fingerprint = "SHA256:xyzabc..."
-age_recipient = "age1xxxx"
-status = "approved"
-trust_level = "cloud_verified"
-trust_provider = "aws"
-role = "worker"
-datacenter = "us-east-1"
-created_at = 2025-01-01T12:00:00Z
-approved_at = 2025-01-01T12:00:01Z
-approved_by = "auto:aws-prod-auto"
-
-[host.trust_evidence]
-provider = "aws"
-account_id = "123456789012"
-instance_id = "i-0abcdef1234567890"
-region = "us-east-1"
-image_id = "ami-0123456789abcdef0"
-instance_type = "t3.medium"
-verified_at = 2025-01-01T12:00:00Z
-document_time = 2025-01-01T11:59:58Z
-
-[host.metadata]
-kernel = "6.1.0"
-```
-
-### Write Safety
-
-File operations use the copy-validate-replace pattern consistent with other Yellowdog TOML stores:
-
-1. Write to `<uuid>.toml.tmp`
-2. Validate written content
-3. Rename atomically to `<uuid>.toml`
-
----
-
-## 12. Telemetry Events
-
-```
-[:yellow_dog, :identity, :register, :start]
-  metadata: %{hostname, source_ip, trust_level}
-
-[:yellow_dog, :identity, :register, :stop]
-  measurements: %{duration: native_time}
-  metadata: %{hostname, status, trust_level, trust_provider, policy_applied}
-
-[:yellow_dog, :identity, :register, :exception]
-  measurements: %{duration: native_time}
-  metadata: %{hostname, reason}
-
-[:yellow_dog, :identity, :approve]
-  metadata: %{host_id, approved_by, trust_level}
-
-[:yellow_dog, :identity, :revoke]
-  metadata: %{host_id, revoked_by, reason}
-
-[:yellow_dog, :identity, :correlation, :match]
-  metadata: %{source_ip, mac, fingerprint_class, trust_level}
-
-[:yellow_dog, :identity, :correlation, :miss]
-  metadata: %{source_ip, reason}
-
-[:yellow_dog, :identity, :attestation, :verify]
-  measurements: %{duration: native_time}
-  metadata: %{provider, account_id, instance_id, result}
-
-[:yellow_dog, :identity, :attestation, :reject]
-  metadata: %{provider, reason, source_ip}
-
-[:yellow_dog, :identity, :export, :recipients]
-  measurements: %{count: integer, duration: native_time}
-```
-
----
-
-## 13. Console UI
-
-### Pages
-
-- **Host Registry List** — table of all hosts with status, trust level, filters
-- **Host Detail** — full identity record, lease correlation, audit history
-- **Pending Approvals** — filtered view with approve/reject actions
-- **Provisioning Tokens** — create, view, revoke tokens
-- **Approval Policies** — view/edit policy rules (read from config.toml)
-
-### LiveView Events
-
-Registration and approval state changes pushed to console via PubSub for real-time updates.
-
----
-
-## 14. Security Model
-
-**Principles:**
-
-- Private keys never leave the host
-- Registry stores only public identity material
-- Authorization is separate from identity creation
-- Trust is layered and provider-agnostic
-- Cloud attestation is cryptographically verified, not IP-based
-- Revocation propagates immediately to export endpoint
-
-**Trust hierarchy:**
-
-```
-Strongest ──▶ Cloud attestation (cryptographic proof from provider)
-              Netboot chain (DHCP + TFTP + registration)
-              DHCP correlation + fingerprint match
-              DHCP correlation only
-              Provisioning token
-Weakest ────▶ Unverified (manual approval required)
-```
-
-**Threat mitigations:**
-
-| Threat | Mitigation |
-|--------|-----------|
-| Rogue device on network | DHCP fingerprint filtering, approval policy |
-| IP spoofing registration | Lease correlation checks MAC↔IP binding |
-| Stolen cloud identity doc | Anti-replay (timestamp window), instance ID uniqueness |
-| Cross-account cloud VM | Account/project/subscription allowlist |
-| Key replacement attack | Conflict detection, `force` flag, audit trail |
-| Stale approved host | Lease expiry correlation, periodic re-verification |
-| Auto-approve misconfiguration | Policy audit log, default-deny posture |
-
----
-
-## 15. GitOps Integration
-
-### CI Pipeline
-
-1. Webhook or cron triggers pipeline
-2. Fetch recipients: `GET /api/hosts/recipients?format=sops`
-3. Generate/update `.sops.yaml`
-4. Run `sops updatekeys -r secrets/`
-5. Commit and push changes
-6. Emit telemetry on completion
-
-### Webhook
-
-`POST` webhook on approval/revocation state changes:
-
-```json
-{
-  "event": "host.approved",
-  "host_id": "uuid",
-  "hostname": "node-01",
-  "age_recipient": "age1xxxx",
-  "timestamp": "2025-01-01T12:00:01Z"
-}
-```
-
----
-
-## 16. Operational Workflows
-
-### Provisioning (Managed Network — On-Prem)
-
-1. Host boots on managed network
-2. DHCP assigns IP, delivers registration URL (option 114)
-3. Host generates SSH key, derives age recipient
-4. Host POSTs to registration endpoint
-5. Yellowdog correlates source IP ↔ DHCP lease → `network_verified`
-6. Policy auto-approves
-7. CI updates sops recipients
-8. Host can decrypt secrets on next config deploy
-
-### Provisioning (Cloud VM)
-
-1. Cloud VM boots, receives IP from provider
-2. First-boot script runs `yellowdog-register.sh` (or NixOS module)
-3. Script fetches instance identity document from metadata service (`169.254.169.254`)
-4. Script generates SSH key, derives age recipient
-5. Script POSTs to registration endpoint with attestation document
-6. Yellowdog verifies signature against provider public keys
-7. Yellowdog extracts claims, checks account ∈ allowed accounts → `cloud_verified`
-8. Policy auto-approves
-9. CI updates sops recipients
-
-### Provisioning (Unmanaged Network — Token)
-
-1. Operator creates provisioning token with hostname pattern
-2. Token delivered out-of-band (e.g., in NixOS config)
-3. Host boots, registers with token in header
-4. Yellowdog validates token → `token_verified`
-5. Policy auto-approves
-
-### Netboot Provisioning (On-Prem)
-
-1. Device PXE boots → DHCP lease + boot profile assigned
-2. iPXE loads from TFTP, includes registration step
-3. First-boot registers identity
-4. Full trust chain: DHCP + TFTP profile + registration IP correlation
-5. Highest on-prem trust level, auto-approve
-
-### Reinstall
-
-1. Host preserves SSH host key across reinstall (persist in /etc)
-2. Re-registration is idempotent (same key → same record)
-3. If key regenerated: re-register with `force: true`, enters pending
-
-### Decommission
-
-1. Operator revokes host in console or API
-2. Recipient removed from export immediately
-3. CI re-encrypts secrets
-4. Revocation queryable via status endpoint
-
----
-
-## 17. Future Enhancements
-
-- SSH CA integration for short-lived certificates
-- TPM-based enrollment and measured boot validation
-- Periodic re-attestation (host proves it still holds private key)
-- Geographic policy (auto-approve only from known datacenter subnets)
-- Integration with NixOS `system.stateVersion` for drift detection
-- **Additional cloud providers** (Hetzner, DigitalOcean, Oracle Cloud)
-- **Kubernetes pod identity** via service account tokens (for containerized hosts)
-
----
-
-## 18. Acceptance Criteria
-
-- [ ] Host can register identity without pre-shared secrets
-- [ ] **Trust provider router dispatches to correct provider based on registration context**
-- [ ] DHCP correlation correctly matches registration to active lease
-- [ ] **AWS instance identity documents verified against AWS public certificates**
-- [ ] **GCP OIDC identity tokens verified against Google public keys**
-- [ ] **Azure attested documents verified against Azure certificate chain**
-- [ ] **Anti-replay protection rejects stale attestation documents**
-- [ ] **Cloud account/project/subscription allowlists enforced**
-- [ ] Trust levels correctly derived from provider result
-- [ ] Approval policies evaluate and auto-approve/reject as configured
-- [ ] **Cloud-specific policy fields (cloud_account, cloud_region) match correctly**
-- [ ] Re-registration with same key is idempotent
-- [ ] Re-registration with different key requires `force` flag
-- [ ] Approved hosts appear in recipient export
-- [ ] Revoked hosts removed from recipient export immediately
-- [ ] Provisioning tokens work for out-of-band registration
-- [ ] Console UI shows pending approvals with approve/reject actions
-- [ ] Telemetry events emitted for all state transitions (including attestation)
-- [ ] TOML persistence uses safe write patterns
-- [ ] Netboot integration delivers registration URL via iPXE
-- [ ] CI webhook fires on approval/revocation
-- [ ] **Host-side registration script works on AWS, GCP, Azure, and bare metal**
-
----
-
-## 19. File Structure
-
-```
-apps/yellow_dog_identity/
+apps/yellow_dog_dhcp_client/
 ├── lib/
-│   └── yellow_dog_identity/
-│       ├── identity.ex              # Public API
-│       ├── host.ex                  # Host identity struct
-│       ├── registry.ex              # TOML-based host storage
-│       ├── trust/
-│       │   ├── provider.ex          # Trust provider behaviour
-│       │   ├── router.ex            # Provider dispatch chain
-│       │   ├── dhcp/
-│       │   │   ├── correlation.ex   # DHCP↔registration correlation
-│       │   │   ├── lease_cache.ex   # Active lease state (from telemetry)
-│       │   │   └── matcher.ex       # IP↔lease matching logic
-│       │   ├── cloud/
-│       │   │   ├── attestation.ex   # Cloud attestation dispatch
-│       │   │   ├── aws.ex           # AWS instance identity verification
-│       │   │   ├── gcp.ex           # GCP OIDC token verification
-│       │   │   └── azure.ex         # Azure attested document verification
-│       │   └── token/
-│       │       └── verifier.ex      # Provisioning token verification
-│       ├── approval/
-│       │   ├── engine.ex            # Policy evaluation
-│       │   └── policy.ex            # Policy struct and parsing
-│       ├── token.ex                 # Provisioning token management
-│       ├── export.ex                # Recipient export (YAML, sops)
-│       ├── webhook.ex               # Outbound webhook notifications
-│       └── telemetry.ex             # Telemetry event helpers
+│   ├── yellow_dog_dhcp_client.ex
+│   └── yellow_dog_dhcp_client/
+│       ├── application.ex
+│       ├── config.ex
+│       ├── config_watcher.ex
+│       ├── interface_supervisor.ex
+│       ├── state_machine.ex
+│       ├── dhcp_socket.ex
+│       ├── lease.ex
+│       ├── lease_store.ex
+│       ├── packet.ex
+│       ├── vendor_options.ex
+│       ├── dad.ex
+│       ├── os_integration/
+│       │   ├── behaviour.ex
+│       │   ├── standalone.ex
+│       │   └── hook_nm.ex
+│       └── telemetry.ex
+├── native/
+│   └── dhcp_socket/
+│       ├── Cargo.toml
+│       └── src/
+│           ├── lib.rs          # NIF entry points
+│           ├── socket.rs       # DhcpSocket resource
+│           ├── poll.rs         # Poll thread (epoll/kqueue → enif_send)
+│           ├── arp.rs          # ARP probe send/receive
+│           ├── linux.rs        # Linux socket options
+│           └── freebsd.rs      # FreeBSD socket options
 ├── test/
-│   └── yellow_dog_identity/
-│       ├── registry_test.exs
-│       ├── trust/
-│       │   ├── router_test.exs
-│       │   ├── dhcp_correlation_test.exs
-│       │   ├── aws_attestation_test.exs
-│       │   ├── gcp_attestation_test.exs
-│       │   └── azure_attestation_test.exs
-│       ├── approval_engine_test.exs
-│       ├── token_test.exs
-│       └── export_test.exs
+│   ├── state_machine_test.exs
+│   ├── packet_test.exs
+│   ├── vendor_options_test.exs
+│   ├── lease_store_test.exs
+│   └── integration/
+│       └── handshake_test.exs
 └── mix.exs
 ```
 
 ---
 
-## 20. Dependencies
+## Testing Strategy
 
-| Dependency | Source | Purpose |
-|-----------|--------|---------|
-| `yellow_dog` | umbrella | Core config, telemetry |
-| `yellow_dog_dhcp` | umbrella | Lease events (telemetry subscription only) |
-| `yellow_dog_console` | umbrella | LiveView UI (optional) |
-| `toml` | hex | TOML parsing |
-| `yaml_elixir` | hex | Recipient YAML export |
-| `jose` | hex | JWT verification for GCP OIDC tokens |
-| `x509` | hex | Certificate chain verification for AWS/Azure |
+### Unit Tests
 
-No dependency on `yellow_dog_dhcp` at the module level — correlation subscribes to telemetry events only, maintaining clean app boundaries. Cloud provider public keys are fetched and cached at startup; no runtime dependency on external services for verification after initial key fetch.
+- **State machine transitions** — Mock DhcpSocket (in-process, no actual socket). Inject packets as messages, assert state transitions and outbound packets.
+- **Packet encode/decode** — Roundtrip via `ex_dhcp`. Verify Yellow Dog vendor option injection/extraction.
+- **Vendor options** — Option 124/125 encode/decode with PEN scoping. Unknown sub-option preservation. Malformed TLV handling. Verify `control_url` and `auth_token` extraction into Lease struct.
+- **Lease store** — Write/read/expiry logic. Transactional file safety.
+- **Offer selection** — Multiple offers with varying vendor class, server history. Prioritize YellowDog-identified servers.
+- **DAD** — Mock ARP responses, verify DECLINE sent on conflict.
+
+### NIF Tests (Rust)
+
+- Socket open/close lifecycle — no resource leaks.
+- `send_broadcast()` on loopback interface.
+- `send_arp_probe()` sends valid ARP packet (capture and verify).
+- Poll thread delivers `{:dhcp_rx, _}` to owner process.
+- NIF handles invalid interface name gracefully (returns error, no crash).
+- NIF handles double-close gracefully.
+- Fuzz: arbitrary binaries passed to `send_broadcast()` — must not crash BEAM.
+
+### Property Tests
+
+- Packet encode/decode roundtrip via StreamData.
+- Vendor sub-option TLV encode/decode roundtrip with arbitrary payloads.
+- Fuzz vendor option parsing with arbitrary binary payloads.
+- Retransmission timer jitter stays within bounds.
+
+### Integration Tests
+
+- Mock DHCP server using `ex_dhcp` server-side code from YellowDog umbrella with Option 125 responses.
+- Full DORA handshake on loopback with vendor identification exchange.
+- Verify `control_url` and `auth_token` present in lease after ACK from YellowDog server.
+- Verify lease from non-YellowDog server has `yellowdog_server: false` and nil control fields.
+- Requires `CAP_NET_RAW` in CI or runs in a network namespace (`ip netns`).
+- Run on both Linux and FreeBSD CI targets.
 
 ---
 
-## 21. Risks
+## Implementation Decisions
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|-----------|
-| Auto-approve misconfiguration | Medium | High | Default-deny, policy audit log |
-| DHCP correlation race (register before lease propagates) | Medium | Low | Configurable grace window, retry |
-| Registry file corruption | Low | High | Atomic writes, backup on change |
-| IP reuse after lease expiry | Low | Medium | Strict lease expiry checking |
-| Spoofed MAC in registration correlation | Low | Medium | Layered trust, not MAC-only |
-| Cloud provider key rotation | Low | Low | Cached keys with TTL, refresh on verify failure |
-| Attestation document replay | Low | Medium | Timestamp window, instance ID uniqueness |
-| Cloud metadata service spoofing | Very Low | High | Only relevant if attacker controls hypervisor — out of threat model |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Socket layer | Rust NIF via Rustler (Dirty IO) | Cross-platform Linux + FreeBSD, low latency, ~300 lines auditable |
+| Socket type | UDP broadcast (`0.0.0.0:68`), not AF_PACKET | Kernel handles IP/UDP framing, portable — AF_PACKET is Linux-only L2 |
+| ARP for DAD | Raw socket (Linux) / BPF (FreeBSD) in same NIF | Only L2 requirement, compile-time platform switch |
+| OS integration (initial) | `ip` commands via `System.cmd` | Fast to implement, production Netlink is follow-up |
+| State machine | `:gen_statem` `handle_event_function` | Maximum flexibility for complex transition logic |
+| Lease persistence format | TOML | Consistent with rest of YellowDog config |
+| Packet codec | `ex_dhcp` | Already a project dependency, standards-compliant |
+| Renewal socket | NIF `send_unicast()` | All UDP goes through NIF per project constitution (no `:gen_udp` outside Abyss) |
+| Vendor identification | PEN + Option 124/125 | Clean namespacing, forward-compatible, fallback to 60/43 |
 
 ---
 
-## 22. Open Questions
+## Out of Scope
 
-- Should the correlation grace window be configurable per-policy or global?
-- What metadata schema beyond `role` and `datacenter` should be first-class?
-- Should re-attestation be periodic or event-driven (e.g., on config deploy)?
-- Integration with NixOS activation scripts — should Yellowdog provide a NixOS module?
-- Should cloud provider public key caching use ETS or a dedicated GenServer?
-- Should the registration script be distributed as a Nix flake package?
-- Support for multi-cloud hosts (e.g., VM migrated between providers)?
+- DHCPv6 / SLAAC (future `yellow_dog_netd`)
+- WiFi management
+- Static IP configuration
+- VPN / tunnel management
+- General interface lifecycle management
+- Netlink-based OS integration (follow-up iteration)
+- WebSocket control channel client implementation (future — design documented for reference)
+- Control channel server-side implementation (belongs in `yellow_dog_dhcp` server app)
+- Bandwidth monitoring and reporting (future, requires control channel)
+- Firmware/software update delivery over control channel (future)
+
+---
+
+## Dependencies
+
+| Dependency | Purpose |
+|------------|---------|
+| `ex_dhcp` | DHCP packet encode/decode |
+| `rustler` | Rust NIF bindings for Elixir |
+| OTP `:gen_statem` | State machine |
+| Rust: `socket2` | Cross-platform socket abstraction |
+| Rust: `nix` | Linux/FreeBSD syscall bindings |
+| Rust: `libc` | Low-level OS types |
+| Rust toolchain (Nix) | NIF compilation |
+
+No new Hex dependencies beyond `ex_dhcp` and `rustler`.
+
+---
+
+## Acceptance Criteria
+
+- [ ] Full DORA handshake completes on a real interface
+- [ ] Lease persistence survives process restart (REBINDING on reboot)
+- [ ] Standalone mode configures IP, routes, and DNS via `ip` commands
+- [ ] Hook mode reports lease to NetworkManager via `nmcli` or D-Bus
+- [ ] Client sends Option 60 (`YellowDog:{version}:{capabilities}`) and Option 124 (PEN) in DISCOVER/REQUEST
+- [ ] Client decodes Option 125 sub-options scoped to Yellow Dog PEN from OFFER/ACK
+- [ ] `control_url`, `auth_token`, `server_id`, `cluster_id` extracted from Option 125 into Lease struct
+- [ ] Lease `yellowdog_server` flag set to `true` when PEN matches, `false` otherwise
+- [ ] Offer selection prioritizes offers containing Yellow Dog PEN (Option 125), then Option 60 match
+- [ ] Lease from non-YellowDog server works normally with nil vendor fields
+- [ ] DAD prevents duplicate address assignment, sends DECLINE on conflict
+- [ ] T1/T2 renewal timers fire correctly, RENEWING uses NIF unicast
+- [ ] No `:gen_udp` usage — all UDP operations go through Rust NIF (project constitution)
+- [ ] Retransmission backoff follows RFC 2131 §4.1 timing with jitter
+- [ ] Telemetry events emitted for all state transitions, packets, and OS actions
+- [ ] Supervision tree recovers from socket crash, interface flap, and unexpected NAK
+- [ ] NixOS module configures and starts the service declaratively
+- [ ] Rust NIF compiles and loads on Linux and FreeBSD
+- [ ] NIF UDP broadcast socket works before interface has IP
+- [ ] NIF ARP probes work for DAD on both platforms
+- [ ] NIF fuzz tests pass — arbitrary binary input does not crash BEAM
+- [ ] Multiple interfaces supported via per-interface config sections
+- [ ] Unit tests cover state machine, packet layer, vendor options, lease store, and offer selection
+- [ ] Integration test completes full handshake with vendor option exchange against mock DHCP server
+- [ ] IANA PEN registration submitted
+
+---
+
+*Version: 1.1.0*
+*Elixir: >= 1.18*
+*OTP: >= 27*

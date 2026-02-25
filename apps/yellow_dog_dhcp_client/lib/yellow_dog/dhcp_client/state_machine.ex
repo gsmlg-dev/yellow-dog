@@ -118,7 +118,16 @@ defmodule YellowDog.DhcpClient.StateMachine do
   @impl true
   def handle_event(:enter, old_state, :init, data) do
     now = System.monotonic_time(:millisecond)
-    data = %{data | xid: generate_xid(), retransmit_count: 0, offers: [], lease: nil, start_time: now}
+
+    data = %{
+      data
+      | xid: generate_xid(),
+        retransmit_count: 0,
+        offers: [],
+        lease: nil,
+        start_time: now
+    }
+
     data = track_state_entry(data, old_state, :init)
     send_discover(data)
 
@@ -425,25 +434,45 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp send_discover(data) do
     packet = build_discover(data)
-    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :discover})
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :discover
+    })
+
     broadcast_packet(data, packet, :discover)
   end
 
   defp send_request_broadcast(data) do
     packet = build_request(data)
-    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :request})
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :request
+    })
+
     broadcast_packet(data, packet, :request)
   end
 
   defp send_request_unicast(data) do
     packet = build_request(data)
-    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :request})
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :request
+    })
+
     unicast_packet(data, data.lease.server_ip, packet, :request)
   end
 
   defp send_release(data) do
     packet = build_release(data)
-    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :release})
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :release
+    })
+
     unicast_packet(data, data.lease.server_ip, packet, :release)
   end
 
@@ -473,7 +502,12 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   defp send_decline(data, lease) do
     packet = build_decline(data, lease)
-    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{interface: data.interface, type: :decline})
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :decline
+    })
+
     broadcast_packet(data, packet, :decline)
   end
 
