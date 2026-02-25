@@ -392,6 +392,46 @@ defmodule YellowDogIdentity.IntegrationTest do
   end
 
   # ──────────────────────────────────────────────
+  # 10. apply_approval — rejection policy during register
+  # ──────────────────────────────────────────────
+
+  describe "apply_approval — rejection policy" do
+    test "register stores host with revoke_reason when approval policy rejects it" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "approval" => %{
+              "policies" => [
+                %{
+                  "name" => "block-unverified",
+                  "action" => "reject",
+                  "match" => %{"trust_level" => "unverified"}
+                }
+              ],
+              "default_action" => "pending"
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      {:ok, host} =
+        YellowDogIdentity.register(%{
+          hostname: "reject-policy-host",
+          ssh_pubkey: @key_a,
+          age_recipient: @age_a
+        })
+
+      # Rejection via named policy keeps status :pending but sets revoke_reason
+      assert host.status == :pending
+      assert host.revoke_reason == "rejected by policy: block-unverified"
+    end
+  end
+
+  # ──────────────────────────────────────────────
   # host_status/1 convenience check
   # ──────────────────────────────────────────────
 
