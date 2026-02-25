@@ -98,6 +98,43 @@ defmodule YellowDogIdentity.RegistryTest do
     test "delete host returns not_found for unknown id", %{registry: pid} do
       assert {:error, :not_found} = GenServer.call(pid, {:delete_host, "does-not-exist"})
     end
+
+    test "put_host cleans stale fingerprint index on key change", %{registry: pid} do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+      old_fingerprint = host.key_fingerprint
+
+      # Simulate key rotation: same host ID, different fingerprint
+      updated = %{host | key_fingerprint: "SHA256:new-fingerprint-value", ssh_pubkey: "rotated"}
+      :ok = GenServer.call(pid, {:put_host, updated})
+
+      # Old fingerprint should no longer resolve
+      assert :not_found = GenServer.call(pid, {:get_host_by_fingerprint, old_fingerprint})
+
+      # New fingerprint should resolve
+      assert {:ok, ^updated} = GenServer.call(pid, {:get_host_by_fingerprint, "SHA256:new-fingerprint-value"})
+    end
+
+    test "put_host preserves fingerprint index when key unchanged", %{registry: pid} do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      # Update host without changing key
+      updated = %{host | status: :approved}
+      :ok = GenServer.call(pid, {:put_host, updated})
+
+      # Fingerprint should still resolve
+      assert {:ok, ^updated} = GenServer.call(pid, {:get_host_by_fingerprint, host.key_fingerprint})
+    end
+
+    test "delete host removes fingerprint index entry", %{registry: pid} do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+      fingerprint = host.key_fingerprint
+
+      :ok = GenServer.call(pid, {:delete_host, host.id})
+      assert :not_found = GenServer.call(pid, {:get_host_by_fingerprint, fingerprint})
+    end
   end
 
   describe "token CRUD" do

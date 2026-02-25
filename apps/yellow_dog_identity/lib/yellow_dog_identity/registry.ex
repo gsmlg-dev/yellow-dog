@@ -141,8 +141,18 @@ defmodule YellowDogIdentity.Registry do
   def handle_call({:put_host, host}, _from, state) do
     case persist_host(state.data_dir, host) do
       :ok ->
+        # Remove stale fingerprint index entry if host existed with a different key
+        fingerprint_index =
+          case Map.get(state.hosts, host.id) do
+            %{key_fingerprint: old_fp} when old_fp != host.key_fingerprint ->
+              Map.delete(state.fingerprint_index, old_fp)
+
+            _ ->
+              state.fingerprint_index
+          end
+
         hosts = Map.put(state.hosts, host.id, host)
-        fingerprint_index = Map.put(state.fingerprint_index, host.key_fingerprint, host.id)
+        fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
         {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
 
       {:error, _} = error ->
@@ -195,14 +205,21 @@ defmodule YellowDogIdentity.Registry do
         path = host_path(state.data_dir, id)
 
         case File.rm(path) do
-          :ok -> :ok
-          {:error, :enoent} -> :ok
-          {:error, reason} -> Logger.warning("Failed to delete host file #{path}: #{reason}")
-        end
+          :ok ->
+            hosts = Map.delete(state.hosts, id)
+            fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+            {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
 
-        hosts = Map.delete(state.hosts, id)
-        fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
-        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+          {:error, :enoent} ->
+            # File already gone — clean up state anyway
+            hosts = Map.delete(state.hosts, id)
+            fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+            {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+
+          {:error, reason} ->
+            Logger.warning("Failed to delete host file #{path}: #{reason}")
+            {:reply, {:error, :delete_failed}, state}
+        end
     end
   end
 
