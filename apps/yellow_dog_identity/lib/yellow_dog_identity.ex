@@ -295,7 +295,9 @@ defmodule YellowDogIdentity do
       total_tokens: length(tokens)
     }
   rescue
-    _ ->
+    e ->
+      Logger.warning("stats unavailable: #{Exception.message(e)}")
+
       %{
         total: 0,
         pending: 0,

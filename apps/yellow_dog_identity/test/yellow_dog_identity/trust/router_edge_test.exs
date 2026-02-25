@@ -158,12 +158,12 @@ defmodule YellowDogIdentity.Trust.RouterEdgeTest do
       assert {:token_verified, _, %{token: true}} = result
     end
 
-    test "provider_atom mapping for unknown module uses last module segment" do
-      # The SourceIpEchoProvider module name should be mapped via the catch-all
-      # clause in provider_atom/1 which uses Module.split |> List.last |> downcase
+    test "provider_atom mapping for unknown module returns :unknown" do
+      # The catch-all clause returns :unknown for unregistered providers to avoid
+      # creating unbounded atoms in the atom table.
       result = Router.verify(@empty_context, providers: [SourceIpEchoProvider])
       {_level, provider_name, _evidence} = result
-      assert is_atom(provider_name)
+      assert provider_name == :unknown
     end
 
     test "context with both attestation and authorization stops at first trusted" do

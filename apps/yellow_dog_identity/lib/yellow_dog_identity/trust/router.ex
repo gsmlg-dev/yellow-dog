@@ -51,7 +51,12 @@ defmodule YellowDogIdentity.Trust.Router do
 
     {trust_level, provider_name, _evidence} = result
 
-    YellowDogIdentity.Telemetry.trust_resolved(duration, trust_level, provider_name, context.hostname)
+    YellowDogIdentity.Telemetry.trust_resolved(
+      duration,
+      trust_level,
+      provider_name,
+      context.hostname
+    )
 
     result
   end
@@ -63,5 +68,5 @@ defmodule YellowDogIdentity.Trust.Router do
   defp provider_atom(YellowDogIdentity.Trust.Netboot), do: :netboot
   defp provider_atom(YellowDogIdentity.Trust.DHCP.Correlation), do: :dhcp
   defp provider_atom(YellowDogIdentity.Trust.Token.Verifier), do: :token
-  defp provider_atom(module), do: module |> Module.split() |> List.last() |> String.downcase() |> String.to_atom()
+  defp provider_atom(_module), do: :unknown
 end
