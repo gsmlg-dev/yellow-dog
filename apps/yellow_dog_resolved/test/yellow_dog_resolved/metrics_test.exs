@@ -95,6 +95,36 @@ defmodule YellowDog.Resolved.MetricsTest do
     end
   end
 
+  describe "forward counter" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "increments forwarded counter on upstream query" do
+      before = Metrics.get_query_counts()
+
+      query = build_query("forward-metrics.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+      Router.resolve(query, raw)
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + 1
+      assert counts.forwarded == before.forwarded + 1
+    end
+  end
+
   describe "catch-all handle_info" do
     test "ignores unexpected messages" do
       pid = Process.whereis(Metrics)
