@@ -390,6 +390,10 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       result = StateMachine.select_best_offer([offer2, offer1])
       assert result != nil
     end
+
+    test "returns nil for empty list" do
+      assert StateMachine.select_best_offer([]) == nil
+    end
   end
 
   # ── multiple offers in selecting state ──
@@ -454,6 +458,46 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
     # FSM sends DECLINE, schedules dad_backoff (100ms), then transitions to :init
     wait_for_state(pid, :init, 2000)
+  end
+
+  test "emits state:change telemetry with non-negative duration_in_state_ms", ctx do
+    ref = make_ref()
+    self_pid = self()
+
+    :telemetry.attach(
+      "test-state-change-#{inspect(ref)}",
+      [:yellow_dog, :dhcp_client, :state, :change],
+      fn _event, measurements, metadata, _config ->
+        send(self_pid, {:state_change, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach("test-state-change-#{inspect(ref)}") end)
+
+    pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    wait_for_state(pid, :bound)
+
+    # Collect all state:change events
+    events =
+      Enum.reduce_while(1..10, [], fn _, acc ->
+        receive do
+          {:state_change, meas, meta} -> {:cont, [{meas, meta} | acc]}
+        after
+          100 -> {:halt, acc}
+        end
+      end)
+
+    assert length(events) >= 3, "Expected at least 3 state changes (init, selecting, requesting, bound)"
+
+    for {meas, _meta} <- events do
+      assert is_integer(meas.duration_in_state_ms)
+      assert meas.duration_in_state_ms >= 0
+    end
   end
 
   # ── LeaseStore integration ──

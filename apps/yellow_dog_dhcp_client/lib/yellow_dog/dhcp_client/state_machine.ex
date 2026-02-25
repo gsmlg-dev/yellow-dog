@@ -409,7 +409,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
   2. Offers from known servers
   3. First offer received (FIFO)
   """
-  @spec select_best_offer([map()]) :: map()
+  @spec select_best_offer([map()]) :: map() | nil
+  def select_best_offer([]), do: nil
   def select_best_offer([single]), do: single
 
   def select_best_offer(offers) when is_list(offers) do
