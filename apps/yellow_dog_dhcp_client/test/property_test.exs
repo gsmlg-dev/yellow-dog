@@ -514,6 +514,46 @@ defmodule YellowDog.DhcpClient.PropertyTest do
     end
   end
 
+  # -- Lease.t1_elapsed? temporal invariants --
+
+  describe "Lease.t1_elapsed? temporal invariants" do
+    property "t1 not elapsed when obtained_at is less than t1 seconds ago" do
+      check all(
+              t1 <- integer(2..3600),
+              past_seconds <- integer(0..(t1 - 1))
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: t1 * 2,
+          t1: t1
+        }
+
+        refute Lease.t1_elapsed?(lease)
+      end
+    end
+
+    property "t1 elapsed when obtained_at is at least t1 seconds ago" do
+      check all(
+              t1 <- integer(1..3600),
+              extra <- integer(0..3600)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -(t1 + extra), :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: t1 * 2,
+          t1: t1
+        }
+
+        assert Lease.t1_elapsed?(lease)
+      end
+    end
+  end
+
   # -- Lease.expired? temporal invariants --
 
   describe "Lease.expired? temporal invariants" do
