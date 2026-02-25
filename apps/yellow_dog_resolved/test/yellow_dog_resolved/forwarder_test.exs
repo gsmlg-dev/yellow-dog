@@ -103,6 +103,55 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "deprioritization with mixed upstreams" do
+    setup do
+      # Dead upstream (timeout) first, live upstream second
+      {:ok, dead_pid, dead_port} = YellowDog.Resolved.Test.FakeUpstream.start(:timeout)
+      {:ok, live_pid, live_port} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn ->
+        YellowDog.Resolved.Test.FakeUpstream.stop(dead_pid)
+        YellowDog.Resolved.Test.FakeUpstream.stop(live_pid)
+      end)
+
+      config = %{
+        upstreams: [{{127, 0, 0, 1}, dead_port}, {{127, 0, 0, 1}, live_port}],
+        upstream_timeout_ms: 300,
+        upstream_failure_threshold: 2
+      }
+
+      start_supervised!({Forwarder, config})
+      {:ok, dead_port: dead_port, live_port: live_port}
+    end
+
+    test "first query is slow (hits dead upstream first)" do
+      query = build_query("slow.test")
+
+      {time_us, {:ok, _}} = :timer.tc(fn -> Forwarder.forward(query) end)
+
+      # First query must wait for timeout on dead upstream (~300ms)
+      assert time_us > 200_000
+    end
+
+    test "queries get faster after dead upstream is deprioritized" do
+      # First two queries: trigger failure_threshold (2) on dead upstream
+      for _ <- 1..2 do
+        query = build_query("warmup-#{System.unique_integer([:positive])}.test")
+        Forwarder.forward(query)
+      end
+
+      Process.sleep(50)
+
+      # Now dead upstream should be deprioritized (sorted last).
+      # Next query should go to live upstream first — no timeout delay.
+      query = build_query("fast.test")
+      {time_us, {:ok, _}} = :timer.tc(fn -> Forwarder.forward(query) end)
+
+      # Should be much faster since live upstream is tried first
+      assert time_us < 200_000
+    end
+  end
+
   describe "start_link/1 with {ip, port} upstreams" do
     test "starts with mixed upstream formats" do
       config = %{@config | upstreams: [{1, 1, 1, 1}, {{8, 8, 8, 8}, 5353}]}
