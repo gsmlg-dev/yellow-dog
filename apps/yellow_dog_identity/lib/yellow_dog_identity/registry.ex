@@ -304,9 +304,9 @@ defmodule YellowDogIdentity.Registry do
     content = encode_toml(map)
     tmp_path = path <> ".tmp"
     dir = Path.dirname(path)
-    File.mkdir_p!(dir)
 
-    with :ok <- File.write(tmp_path, content),
+    with :ok <- File.mkdir_p(dir),
+         :ok <- File.write(tmp_path, content),
          # Validate round-trip
          {:ok, _} <- read_and_parse_toml(tmp_path),
          :ok <- File.rename(tmp_path, path) do
