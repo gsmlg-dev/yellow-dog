@@ -141,8 +141,8 @@
           </svg>
           <div class="flex-1">
             <strong>Lease Allocated:</strong>
-            DUID {format_duid(@last_event.metadata.duid)} → IPv6 {format_ipv6(
-              @last_event.metadata.ip
+            DUID {format_duid(@last_event.metadata[:duid])} → IPv6 {format_ipv6(
+              @last_event.metadata[:ip]
             )}
           </div>
           <span class="text-xs opacity-70">
