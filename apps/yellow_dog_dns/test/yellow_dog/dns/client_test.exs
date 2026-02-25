@@ -186,16 +186,40 @@ defmodule YellowDog.Dns.ClientTest do
   # ── parse_response error paths (via malformed UDP response) ───────
 
   describe "parse_response error paths" do
-    # We can indirectly verify parse_response by having a "server" that returns
-    # a garbage binary response. We need a real UDP listener for this.
-    # These are integration-style tests (tagged :integration and skipped by default).
+    test "returns {:error, {:parse_error, _}} for garbage response" do
+      # Fake DNS server that replies with garbage bytes
+      {:ok, server} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      {:ok, server_port} = :inet.port(server)
 
-    @tag :skip
-    @tag :integration
-    test "returns {:error, {:parse_error, _}} for malformed response" do
-      # Requires a test UDP server that returns garbage bytes
-      # Setup: start a UDP server that always responds with <<0, 0, 0>>
-      # Verification: Client.query returns {:error, {:parse_error, _}}
+      task =
+        Task.async(fn ->
+          {:ok, {client_ip, client_port, _data}} = :gen_udp.recv(server, 0, 2000)
+          :gen_udp.send(server, client_ip, client_port, <<0, 0, 0>>)
+        end)
+
+      result = Client.query("example.com", :a, {127, 0, 0, 1}, port: server_port, timeout: 2000)
+      Task.await(task, 3000)
+      :gen_udp.close(server)
+
+      assert {:error, {:parse_error, _reason}} = result
+    end
+
+    test "returns {:error, {:parse_error, _}} for truncated DNS header" do
+      {:ok, server} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      {:ok, server_port} = :inet.port(server)
+
+      # Reply with a truncated DNS header (6 bytes instead of required 12)
+      task =
+        Task.async(fn ->
+          {:ok, {client_ip, client_port, _data}} = :gen_udp.recv(server, 0, 2000)
+          :gen_udp.send(server, client_ip, client_port, <<0xAB, 0xCD, 0x81, 0x80, 0x00, 0x01>>)
+        end)
+
+      result = Client.query("example.com", :a, {127, 0, 0, 1}, port: server_port, timeout: 2000)
+      Task.await(task, 3000)
+      :gen_udp.close(server)
+
+      assert {:error, {:parse_error, _reason}} = result
     end
   end
 
