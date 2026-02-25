@@ -560,6 +560,18 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert lease.xid == custom_xid
     end
 
+    test "falls back to siaddr for server_ip when Option 54 absent" do
+      # Build ACK without Option 54 (server identifier) — server_ip should
+      # fall back to the siaddr field in the DHCP message header
+      options =
+        Enum.reject(standard_ack_options(), fn %Option{type: t} -> t == 54 end)
+
+      data = build_reply(siaddr: {10, 0, 0, 254}, options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.server_ip == {10, 0, 0, 254}
+    end
+
     test "extracts NTP servers from Option 42" do
       options = [
         %Option{type: 53, length: 1, value: <<5>>},
