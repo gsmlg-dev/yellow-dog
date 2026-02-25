@@ -231,6 +231,149 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCacheTest do
   end
 
   # ---------------------------------------------------------------------------
+  # DHCPv4-specific events (allocated / renewed)
+  # ---------------------------------------------------------------------------
+
+  describe "DHCPv4 event types" do
+    test "dhcpv4 allocated event inserts lease", %{table: table} do
+      ip = {192, 168, 2, 100}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcpv4, :lease, :allocated],
+        %{},
+        %{ip: ip, mac: "de:ad:be:ef:00:01", lease_duration: 7200},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.mac == "de:ad:be:ef:00:01"
+      assert entry.lease_duration == 7200
+    end
+
+    test "dhcpv4 renewed event updates existing lease", %{table: table} do
+      ip = {192, 168, 2, 101}
+      old = lease_entry(ip: ip, mac: "aa:aa:aa:aa:aa:aa", lease_duration: 3600)
+      LeaseCache.put(table, ip, old)
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcpv4, :lease, :renewed],
+        %{},
+        %{ip: ip, mac: "aa:aa:aa:aa:aa:aa", lease_duration: 7200},
+        %{table: table}
+      )
+
+      assert {:ok, renewed} = LeaseCache.lookup(ip, table)
+      assert renewed.lease_duration == 7200
+    end
+
+    test "unknown telemetry event is silently ignored", %{table: table} do
+      ip = {192, 168, 2, 200}
+      entry = lease_entry(ip: ip)
+      LeaseCache.put(table, ip, entry)
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :unknown_event],
+        %{},
+        %{ip: ip},
+        %{table: table}
+      )
+
+      # Lease should still exist — unknown events are no-ops
+      assert {:ok, _} = LeaseCache.lookup(ip, table)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Fallback metadata key variants
+  # ---------------------------------------------------------------------------
+
+  describe "metadata fallback keys" do
+    test "release with :released_ip key removes lease", %{table: table} do
+      ip = {10, 0, 0, 10}
+      LeaseCache.put(table, ip, lease_entry(ip: ip))
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :release],
+        %{},
+        %{released_ip: ip},
+        %{table: table}
+      )
+
+      assert :not_found = LeaseCache.lookup(ip, table)
+    end
+
+    test "expire with :expired_ip key removes lease", %{table: table} do
+      ip = {10, 0, 0, 11}
+      LeaseCache.put(table, ip, lease_entry(ip: ip))
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :expire],
+        %{},
+        %{expired_ip: ip},
+        %{table: table}
+      )
+
+      assert :not_found = LeaseCache.lookup(ip, table)
+    end
+
+    test "commit with :client_ip inserts lease", %{table: table} do
+      ip = {10, 0, 0, 20}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :commit],
+        %{},
+        %{client_ip: ip, mac: "cc:dd:ee:ff:00:11", lease_duration: 3600},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.ip == ip
+    end
+
+    test "commit with :mac_address fallback stores mac", %{table: table} do
+      ip = {10, 0, 0, 21}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :commit],
+        %{},
+        %{ip: ip, mac_address: "11:22:33:44:55:66", lease_duration: 3600},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.mac == "11:22:33:44:55:66"
+    end
+
+    test "commit with :client_hostname fallback stores hostname", %{table: table} do
+      ip = {10, 0, 0, 22}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :commit],
+        %{},
+        %{ip: ip, mac: "aa:bb:cc:dd:ee:ff", client_hostname: "fallback-host", lease_duration: 3600},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.hostname == "fallback-host"
+    end
+
+    test "commit with :lease_time fallback when lease_duration absent", %{table: table} do
+      ip = {10, 0, 0, 23}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :commit],
+        %{},
+        %{ip: ip, mac: "ff:ee:dd:cc:bb:aa", lease_time: 1800},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.lease_duration == 1800
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 

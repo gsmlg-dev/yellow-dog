@@ -117,6 +117,22 @@ defmodule YellowDogIdentity.RegistryTest do
       assert :not_found = GenServer.call(pid, {:get_host, host.id})
     end
 
+    test "delete_host returns {:error, :delete_failed} when file cannot be removed (permission denied)",
+         %{registry: pid, tmp_dir: tmp_dir} do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      hosts_dir = Path.join(tmp_dir, "hosts")
+      # Make directory read-only so File.rm fails with :eacces
+      File.chmod!(hosts_dir, 0o555)
+
+      on_exit(fn -> File.chmod!(hosts_dir, 0o755) end)
+
+      assert {:error, :delete_failed} = GenServer.call(pid, {:delete_host, host.id})
+      # Host remains in memory since delete failed
+      assert {:ok, _} = GenServer.call(pid, {:get_host, host.id})
+    end
+
     test "put_host cleans stale fingerprint index on key change", %{registry: pid} do
       host = make_host()
       :ok = GenServer.call(pid, {:put_host, host})
@@ -290,6 +306,20 @@ defmodule YellowDogIdentity.RegistryTest do
       # delete_token must still succeed — {:error, :enoent} -> :ok branch
       assert :ok = GenServer.call(pid, {:delete_token, token.id})
       assert :not_found = GenServer.call(pid, {:get_token, token.id})
+    end
+
+    test "delete_token returns {:error, :delete_failed} when file cannot be removed (permission denied)",
+         %{registry: pid, tmp_dir: tmp_dir} do
+      {:ok, token, _raw} = Token.create(%{})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      tokens_dir = Path.join(tmp_dir, "tokens")
+      File.chmod!(tokens_dir, 0o555)
+      on_exit(fn -> File.chmod!(tokens_dir, 0o755) end)
+
+      assert {:error, :delete_failed} = GenServer.call(pid, {:delete_token, token.id})
+      # Token remains in memory since delete failed
+      assert {:ok, _} = GenServer.call(pid, {:get_token, token.id})
     end
   end
 
