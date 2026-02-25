@@ -69,7 +69,7 @@ defmodule YellowDog.Resolved.Forwarder do
       state_pid: self()
     }
 
-    Task.start(fn -> try_upstreams(task_state) end)
+    Task.start(fn -> safe_try_upstreams(task_state) end)
 
     {:noreply, state}
   end
@@ -110,6 +110,18 @@ defmodule YellowDog.Resolved.Forwarder do
     Enum.sort_by(upstreams, fn upstream ->
       Map.get(failure_counts, upstream, 0)
     end)
+  end
+
+  defp safe_try_upstreams(task_state) do
+    try_upstreams(task_state)
+  rescue
+    e ->
+      Logger.error("Forwarder task crashed: #{inspect(e)}")
+      GenServer.reply(task_state.from, {:error, :all_upstreams_failed})
+  catch
+    kind, reason ->
+      Logger.error("Forwarder task crashed (#{kind}): #{inspect(reason)}")
+      GenServer.reply(task_state.from, {:error, :all_upstreams_failed})
   end
 
   defp try_upstreams(%{upstreams: [], from: from}) do
