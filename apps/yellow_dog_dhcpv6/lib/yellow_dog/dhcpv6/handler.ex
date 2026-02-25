@@ -261,8 +261,10 @@ defmodule YellowDog.Dhcpv6.Handler do
         # Handle IA_PD if present
         leases =
           if ia_pd do
-            {:ok, pd_lease} = allocate_prefix_delegation(duid, ia_pd.iaid)
-            [pd_lease | leases]
+            case allocate_prefix_delegation(duid, ia_pd.iaid) do
+              {:ok, pd_lease} -> [pd_lease | leases]
+              {:error, _} -> leases
+            end
           else
             leases
           end

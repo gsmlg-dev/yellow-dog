@@ -11,6 +11,8 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   use Abyss.Handler
 
+  require Logger
+
   alias YellowDog.Dhcpv4.{
     ACL,
     ConflictResolver,
@@ -734,7 +736,9 @@ defmodule YellowDog.Dhcpv4.Handler do
         options
     end
   rescue
-    _ -> options
+    e ->
+      Logger.warning("boot_options_fn failed: #{Exception.message(e)}")
+      options
   end
 
   defp format_mac_for_boot(mac) when is_binary(mac) do
