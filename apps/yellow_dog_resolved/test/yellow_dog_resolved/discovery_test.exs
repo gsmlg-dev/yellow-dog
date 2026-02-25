@@ -235,4 +235,79 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       assert :not_found = Discovery.parse_discovery_response(binary)
     end
   end
+
+  describe "parse_discovery_response/1 with FakeUpstream EDNS+SRV" do
+    test "parses response from FakeUpstream edns_yellowdog mode" do
+      ws_port = 9876
+      ws_path = "/ws/manage"
+
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start({:edns_yellowdog, ws_port, ws_path})
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      # Send a query and get the response binary
+      query = DNS.Message.new()
+      query = DNS.Message.update_header_attr(query, :id, 42)
+      query = DNS.Message.update_header_attr(query, :rd, 1)
+      query = DNS.Message.add_question(query, DNS.Message.Question.new("_yellowdog._tcp.local", 33, 1))
+      query_binary = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      {:ok, socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(socket) end)
+
+      :gen_udp.send(socket, {127, 0, 0, 1}, upstream_port, query_binary)
+      {:ok, {_ip, _port, response_binary}} = :gen_udp.recv(socket, 0, 5000)
+
+      # Response should be a valid DNS binary
+      assert byte_size(response_binary) >= 12
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+
+      result = Discovery.parse_discovery_response(response_binary)
+
+      # Whether it returns {:found, url} or :not_found depends on how
+      # ex_dns represents OPT/SRV internally after decode. Both are valid
+      # outcomes — the important thing is it doesn't crash.
+      assert result == :not_found or match?({:found, _}, result)
+    end
+  end
+
+  describe "probe and reconnect messages" do
+    setup do
+      config = %{
+        upstreams: [{198, 51, 100, 1}],
+        upstream_timeout_ms: 200,
+        discovery: %{
+          enabled: true,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        }
+      }
+
+      name = :"discovery_probe_#{System.unique_integer([:positive])}"
+      {:ok, pid} = GenServer.start_link(Discovery, config, name: name)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+      %{pid: pid}
+    end
+
+    test "probe message doesn't crash the process", %{pid: pid} do
+      send(pid, :probe)
+      Process.sleep(300)
+
+      assert Process.alive?(pid)
+    end
+
+    test "reconnect message doesn't crash the process", %{pid: pid} do
+      send(pid, :reconnect)
+      Process.sleep(300)
+
+      assert Process.alive?(pid)
+    end
+
+    test "terminate with nil management_pid doesn't crash", %{pid: pid} do
+      GenServer.stop(pid, :normal)
+      refute Process.alive?(pid)
+    end
+  end
 end

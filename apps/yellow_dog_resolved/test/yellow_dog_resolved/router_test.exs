@@ -390,4 +390,130 @@ defmodule YellowDog.Resolved.RouterTest do
       assert response.header.rcode == DNS.Message.RCode.form_err()
     end
   end
+
+  describe "telemetry exception event" do
+    test "emits query exception telemetry when forwarder crashes" do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "router-exception-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :query, :exception],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:query_exception, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("router-exception-#{inspect(ref)}") end)
+
+      # Query a non-intercepted domain with no Forwarder running → crash → exception telemetry
+      query = build_query("exception-telemetry.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      capture_log(fn ->
+        Router.resolve(query, raw)
+      end)
+
+      assert_receive {:query_exception, measurements, metadata}
+      assert is_integer(measurements.duration)
+      assert metadata.domain == "unknown"
+      assert metadata.type == :unknown
+    end
+  end
+
+  describe "config hot-reload affects resolution" do
+    test "new intercept rules take effect after reload" do
+      # Initially, "new-domain.test" is NOT intercepted
+      query = build_query("new-domain.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      result =
+        capture_log(fn ->
+          send(self(), {:result, Router.resolve(query, raw)})
+        end)
+
+      assert_received {:result, resolved}
+      _ = result
+
+      # Should NOT be intercepted (no matching rule)
+      case resolved do
+        {:ok, _, :intercept} -> flunk("Should not be intercepted yet")
+        _ -> :ok
+      end
+
+      # Hot-reload config with new intercept rule
+      new_config = %{
+        @config
+        | intercept_rules: [
+            %{match: {:exact, "new-domain.test"}, type: :a, value: "10.10.10.10", ttl: 120}
+          ]
+      }
+
+      pid = Process.whereis(Config)
+      :sys.replace_state(pid, fn state -> %{state | config: new_config} end)
+
+      # Now query should be intercepted
+      query2 = build_query("new-domain.test", 1)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+
+      assert {:ok, response_binary, :intercept} = Router.resolve(query2, raw2)
+      response = DNS.Message.from_iodata(response_binary)
+      assert length(response.anlist) == 1
+    end
+  end
+
+  describe "forward-and-cache TTL extraction" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+      :ok
+    end
+
+    test "forwarded NOERROR response is cached with TTL from answer records" do
+      query = build_query("ttl-extract.test", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      assert {:ok, _response_binary, :forward} = Router.resolve(query, raw)
+      Process.sleep(10)
+
+      # FakeUpstream :echo returns A record with TTL=60
+      # Cache should have the entry
+      assert {:hit, _} = Cache.lookup("ttl-extract.test", :a)
+
+      # Inspect ETS to verify expires_at is reasonable
+      [{_key, _resp, expires_at, _last, _neg}] =
+        :ets.lookup(YellowDog.Resolved.Cache, {"ttl-extract.test", :a})
+
+      now = System.monotonic_time(:second)
+      remaining = expires_at - now
+
+      # FakeUpstream TTL=60, but clamped by min_ttl_s=5, max_ttl_s=3600
+      # So remaining should be close to 60 (between 50 and 65 accounting for test timing)
+      assert remaining >= 50
+      assert remaining <= 65
+    end
+
+    test "second query for same domain comes from cache" do
+      query1 = build_query("cache-forward.test", 1)
+      raw1 = DNS.to_iodata(query1) |> IO.iodata_to_binary()
+      assert {:ok, _, :forward} = Router.resolve(query1, raw1)
+
+      Process.sleep(10)
+
+      query2 = build_query("cache-forward.test", 1)
+      raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
+      assert {:ok, _, :cache} = Router.resolve(query2, raw2)
+    end
+  end
 end
