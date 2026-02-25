@@ -380,9 +380,8 @@ defmodule YellowDogIdentity.IdentityControllerTest do
       assert YellowDogIdentity.list_tokens() == []
     end
 
-    test "revoke_token on nonexistent id returns :ok" do
-      # Registry.delete_token does not error on missing IDs
-      assert :ok = YellowDogIdentity.revoke_token("nonexistent-token-id")
+    test "revoke_token on nonexistent id returns not_found error" do
+      assert {:error, :not_found} = YellowDogIdentity.revoke_token("nonexistent-token-id")
     end
 
     test "revoking one token does not affect others" do

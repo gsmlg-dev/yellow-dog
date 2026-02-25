@@ -82,7 +82,12 @@ defmodule YellowDogIdentity.Approval.Engine do
   end
 
   defp get_in_evidence(evidence, key) when is_map(evidence) do
-    Map.get(evidence, key) || Map.get(evidence, String.to_atom(key))
+    Map.get(evidence, key) ||
+      try do
+        Map.get(evidence, String.to_existing_atom(key))
+      rescue
+        ArgumentError -> nil
+      end
   end
 
   defp get_in_evidence(_, _), do: nil

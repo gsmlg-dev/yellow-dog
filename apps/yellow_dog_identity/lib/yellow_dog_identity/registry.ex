@@ -19,6 +19,8 @@ defmodule YellowDogIdentity.Registry do
 
   use GenServer
 
+  require Logger
+
   alias YellowDogIdentity.Host
   alias YellowDogIdentity.Token
 
@@ -170,7 +172,13 @@ defmodule YellowDogIdentity.Registry do
 
       host ->
         path = host_path(state.data_dir, id)
-        File.rm(path)
+
+        case File.rm(path) do
+          :ok -> :ok
+          {:error, :enoent} -> :ok
+          {:error, reason} -> Logger.warning("Failed to delete host file #{path}: #{reason}")
+        end
+
         hosts = Map.delete(state.hosts, id)
         fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
         {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
@@ -200,10 +208,22 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:delete_token, id}, _from, state) do
-    path = token_path(state.data_dir, id)
-    File.rm(path)
-    tokens = Map.delete(state.tokens, id)
-    {:reply, :ok, %{state | tokens: tokens}}
+    case Map.get(state.tokens, id) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
+
+      _token ->
+        path = token_path(state.data_dir, id)
+
+        case File.rm(path) do
+          :ok -> :ok
+          {:error, :enoent} -> :ok
+          {:error, reason} -> Logger.warning("Failed to delete token file #{path}: #{reason}")
+        end
+
+        tokens = Map.delete(state.tokens, id)
+        {:reply, :ok, %{state | tokens: tokens}}
+    end
   end
 
   def handle_call({:read_audit_log, opts}, _from, state) do
@@ -359,9 +379,12 @@ defmodule YellowDogIdentity.Registry do
 
     entry = "#{timestamp} #{event} host=#{host_id}#{details_str}\n"
 
-    File.write(audit_path, entry, [:append])
+    case File.write(audit_path, entry, [:append]) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("Failed to write audit log entry: #{reason}")
+    end
   rescue
-    _ -> :ok
+    e -> Logger.warning("Unexpected error writing audit log: #{Exception.message(e)}")
   end
 
   defp read_audit_entries(data_dir, opts) do

@@ -77,6 +77,10 @@ defmodule YellowDogIdentity.RegistryTest do
     test "not_found for missing host", %{registry: pid} do
       assert :not_found = GenServer.call(pid, {:get_host, "nonexistent"})
     end
+
+    test "delete host returns not_found for unknown id", %{registry: pid} do
+      assert {:error, :not_found} = GenServer.call(pid, {:delete_host, "does-not-exist"})
+    end
   end
 
   describe "token CRUD" do
@@ -98,6 +102,10 @@ defmodule YellowDogIdentity.RegistryTest do
       :ok = GenServer.call(pid, {:put_token, token})
       assert :ok = GenServer.call(pid, {:delete_token, token.id})
       assert :not_found = GenServer.call(pid, {:get_token, token.id})
+    end
+
+    test "delete token returns not_found for unknown id", %{registry: pid} do
+      assert {:error, :not_found} = GenServer.call(pid, {:delete_token, "does-not-exist"})
     end
   end
 
