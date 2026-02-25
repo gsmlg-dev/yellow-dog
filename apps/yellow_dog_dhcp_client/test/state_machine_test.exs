@@ -161,11 +161,12 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
     extra_options = Keyword.get(opts, :extra_options, [])
 
-    packet = build_reply(
-      yiaddr: yiaddr,
-      siaddr: server_ip,
-      options: offer_options(server_ip) ++ extra_options
-    )
+    packet =
+      build_reply(
+        yiaddr: yiaddr,
+        siaddr: server_ip,
+        options: offer_options(server_ip) ++ extra_options
+      )
 
     send(fsm_pid, {:dhcp_rx, packet})
   end
@@ -174,11 +175,12 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     server_ip = Keyword.get(opts, :server_ip, {192, 168, 1, 1})
     yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
 
-    packet = build_reply(
-      yiaddr: yiaddr,
-      siaddr: server_ip,
-      options: ack_options(server_ip)
-    )
+    packet =
+      build_reply(
+        yiaddr: yiaddr,
+        siaddr: server_ip,
+        options: ack_options(server_ip)
+      )
 
     send(fsm_pid, {:dhcp_rx, packet})
   end

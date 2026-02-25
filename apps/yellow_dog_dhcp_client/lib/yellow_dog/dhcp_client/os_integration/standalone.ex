@@ -84,7 +84,7 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
   end
 
   @impl true
-  @spec apply_dns(%Lease{}) :: :ok | {:error, term()}
+  @spec apply_dns(Lease.t()) :: :ok | {:error, term()}
   def apply_dns(%Lease{dns_servers: []}), do: :ok
 
   def apply_dns(%Lease{dns_servers: servers} = lease) do
