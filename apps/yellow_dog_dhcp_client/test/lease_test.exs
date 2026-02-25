@@ -114,6 +114,17 @@ defmodule YellowDog.DhcpClient.LeaseTest do
       lease = make_lease(%{t2: 3150, obtained_at: past})
       assert Lease.t2_elapsed?(lease)
     end
+
+    test "returns true when T2 is exactly now" do
+      past = DateTime.add(DateTime.utc_now(), -3150, :second)
+      lease = make_lease(%{t2: 3150, obtained_at: past})
+      assert Lease.t2_elapsed?(lease)
+    end
+
+    test "returns true for lease with nil t2 (defensive)" do
+      lease = make_lease(%{t2: nil})
+      assert Lease.t2_elapsed?(lease)
+    end
   end
 
   # ── prefix_length/1 ──

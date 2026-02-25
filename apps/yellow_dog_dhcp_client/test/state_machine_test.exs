@@ -1403,5 +1403,36 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
       assert_receive {:packet_rx, %{type: :nak, interface: "test0"}}, 500
     end
+
+    test "emits packet:tx :decline on DAD conflict", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid =
+        start_fsm(ctx, %{
+          selection_window_ms: 30,
+          dad_enabled: true,
+          dad_probes: 1,
+          dad_wait_ms: 2000,
+          dad_backoff_ms: 100
+        })
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+
+      # Give FSM time to enter DAD.check's await_conflict receive loop
+      Process.sleep(50)
+
+      # Inject ARP conflict — FSM sends DECLINE and emits packet:tx :decline
+      send(pid, {:arp_rx, {192, 168, 1, 100}, <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01>>})
+
+      assert_receive {:packet_tx, %{type: :decline, interface: "test0"}}, 2000
+    end
   end
 end
