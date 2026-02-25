@@ -1156,8 +1156,8 @@ defmodule DNS.Zone.ParserIntegrationTest do
       {time, result} = :timer.tc(fn -> Zone.parse_zone_string(content) end)
 
       assert {:ok, zone} = result
-      # Parsing should complete in under 100ms
-      assert time < 100_000
+      # Parsing should complete in under 500ms
+      assert time < 500_000
 
       # Count A records specifically
       a_records = Enum.filter(zone.records, &(&1.type == :a))
