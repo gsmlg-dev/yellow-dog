@@ -31,11 +31,11 @@ defmodule YellowDogIdentity.Trust.Router do
       Enum.reduce_while(providers, {:unverified, :none, %{}}, fn provider, acc ->
         case provider.verify(context) do
           {:trusted, trust_level, evidence} ->
-            provider_name = provider_atom(provider)
+            provider_name = provider_atom(provider, evidence)
             {:halt, {trust_level, provider_name, evidence}}
 
           {:untrusted, reason} ->
-            provider_name = provider_atom(provider)
+            provider_name = provider_atom(provider, %{})
             YellowDogIdentity.Telemetry.trust_untrusted(provider_name, reason, context.hostname)
 
             # Halt on untrusted — a provider that explicitly rejects should
@@ -61,7 +61,19 @@ defmodule YellowDogIdentity.Trust.Router do
     result
   end
 
-  defp provider_atom(YellowDogIdentity.Trust.Cloud.Attestation), do: :cloud
+  # Cloud.Attestation dispatches to AWS/GCP/Azure — extract the specific provider
+  # from evidence so trust_provider reflects the actual cloud (`:aws`, `:gcp`, `:azure`).
+  defp provider_atom(YellowDogIdentity.Trust.Cloud.Attestation, evidence) do
+    case Map.get(evidence, :provider) || Map.get(evidence, "provider") do
+      :aws -> :aws
+      :gcp -> :gcp
+      :azure -> :azure
+      _ -> :cloud
+    end
+  end
+
+  defp provider_atom(module, _evidence), do: provider_atom(module)
+
   defp provider_atom(YellowDogIdentity.Trust.Cloud.AWS), do: :aws
   defp provider_atom(YellowDogIdentity.Trust.Cloud.GCP), do: :gcp
   defp provider_atom(YellowDogIdentity.Trust.Cloud.Azure), do: :azure

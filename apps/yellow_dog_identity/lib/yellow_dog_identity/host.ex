@@ -301,12 +301,15 @@ defmodule YellowDogIdentity.Host do
   defp put_if_nonempty(map, _key, []), do: map
   defp put_if_nonempty(map, key, list), do: Map.put(map, key, list)
 
-  defp stringify_map(map) when is_map(map) do
+  # Exclude structs — DateTime and other structs are not regular enumerable maps
+  defp stringify_map(map) when is_map(map) and not is_struct(map) do
     Map.new(map, fn {k, v} -> {to_string(k), stringify_value(v)} end)
   end
 
   defp stringify_map(other), do: other
 
+  # DateTime must come before the generic is_map/1 guard (structs pass is_map)
+  defp stringify_value(%DateTime{} = dt), do: format_datetime(dt)
   defp stringify_value(v) when is_atom(v), do: to_string(v)
   defp stringify_value(v) when is_map(v), do: stringify_map(v)
   defp stringify_value(v), do: v

@@ -645,4 +645,160 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.action == :approve
     end
   end
+
+  describe "netboot trust evidence matching" do
+    test "approves netboot_verified host based on trust_level" do
+      policies = [
+        %Policy{
+          name: "netboot-auto",
+          action: :approve,
+          match: %{"trust_level" => "netboot_verified"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_provider: :netboot,
+          trust_evidence: %{
+            "provider" => "netboot",
+            "mac" => "aa:bb:cc:dd:ee:ff",
+            "boot_profile" => "prod-nixos",
+            "boot_state" => "booted"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "netboot-auto"
+    end
+
+    test "matches on fingerprint_class from netboot evidence" do
+      policies = [
+        %Policy{
+          name: "nixos-workstations",
+          action: :approve,
+          match: %{"fingerprint_class" => "nixos-workstation"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_evidence: %{
+            "provider" => "netboot",
+            "fingerprint_class" => "nixos-workstation"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "nixos-workstations"
+    end
+
+    test "matches mac_prefix from netboot evidence" do
+      policies = [
+        %Policy{
+          name: "vendor-policy",
+          action: :approve,
+          match: %{"mac_prefix" => "aa:bb:cc"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_evidence: %{
+            "provider" => "netboot",
+            "mac" => "aa:bb:cc:dd:ee:ff"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "multi-condition: trust_level + fingerprint_class for netboot" do
+      policies = [
+        %Policy{
+          name: "netboot-nixos-prod",
+          action: :approve,
+          match: %{
+            "trust_level" => "netboot_verified",
+            "fingerprint_class" => "nixos-server"
+          }
+        }
+      ]
+
+      host_match =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_evidence: %{"fingerprint_class" => "nixos-server"}
+        })
+
+      host_no_match =
+        make_host(%{
+          trust_level: :netboot_verified,
+          trust_evidence: %{"fingerprint_class" => "ubuntu-server"}
+        })
+
+      assert Engine.evaluate_with_policies(host_match, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(host_no_match, policies, :pending).action == :pending
+    end
+  end
+
+  describe "token trust evidence matching" do
+    test "approves token_verified host based on trust_level" do
+      policies = [
+        %Policy{
+          name: "token-auto",
+          action: :approve,
+          match: %{"trust_level" => "token_verified"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :token_verified,
+          trust_provider: :token,
+          trust_evidence: %{
+            "provider" => "token",
+            "token_id" => "abc-123",
+            "role" => "worker"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "token-auto"
+    end
+
+    test "multi-condition: token_verified + role for provisioning" do
+      policies = [
+        %Policy{
+          name: "worker-token-auto",
+          action: :approve,
+          match: %{
+            "trust_level" => "token_verified",
+            "role" => "worker"
+          }
+        }
+      ]
+
+      host_worker =
+        make_host(%{
+          trust_level: :token_verified,
+          role: "worker"
+        })
+
+      host_admin =
+        make_host(%{
+          trust_level: :token_verified,
+          role: "admin"
+        })
+
+      assert Engine.evaluate_with_policies(host_worker, policies, :pending).action == :approve
+      assert Engine.evaluate_with_policies(host_admin, policies, :pending).action == :pending
+    end
+  end
 end
