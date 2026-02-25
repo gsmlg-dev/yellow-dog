@@ -241,6 +241,51 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
   end
 
   # ---------------------------------------------------------------------------
+  # fingerprint_mismatch — configured allowlist rejects non-matching fingerprints
+  # ---------------------------------------------------------------------------
+
+  describe "verify/1 with fingerprint allowlist configured" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "dhcp" => %{
+              "allowed_fingerprint_classes" => ["Linux", "NixOS"]
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects lease when fingerprint_class is not in allowlist" do
+      # Windows fingerprint is NOT in ["Linux", "NixOS"]
+      insert_lease(@test_ip, fingerprint_class: "Windows", mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:untrusted, :fingerprint_mismatch} = Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "trusts lease when fingerprint_class is in allowlist" do
+      # Linux fingerprint IS in ["Linux", "NixOS"]
+      insert_lease(@test_ip, fingerprint_class: "Linux", mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:trusted, :network_verified, evidence} = Correlation.verify(%{source_ip: @test_ip})
+      assert evidence.fingerprint_class == "Linux"
+    end
+
+    test "returns network_partial when fingerprint_class is nil (no fingerprint data)" do
+      # nil fingerprint → no match possible → partial trust
+      insert_lease(@test_ip, fingerprint_class: nil, mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:trusted, :network_partial, _evidence} = Correlation.verify(%{source_ip: @test_ip})
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Multiple IPs
   # ---------------------------------------------------------------------------
 
