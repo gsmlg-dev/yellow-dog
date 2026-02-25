@@ -114,8 +114,8 @@ defmodule YellowDog.Resolved.Router do
             Cache.store_negative(domain, query_type, response_binary)
 
           rcode == DNS.Message.RCode.new(0) ->
-            # NOERROR — cache as positive with extracted TTL
-            ttl = extract_ttl(response_binary)
+            # NOERROR — cache as positive with min TTL from answer records
+            ttl = extract_ttl_from_message(response_msg)
             Cache.store(domain, query_type, response_binary, ttl)
 
           true ->
@@ -134,16 +134,12 @@ defmodule YellowDog.Resolved.Router do
     end
   end
 
-  defp extract_ttl(response_binary) do
-    try do
-      msg = DNS.Message.from_iodata(response_binary)
-
-      msg.anlist
-      |> Enum.map(& &1.ttl)
-      |> Enum.min(fn -> 300 end)
-    rescue
-      _ -> 300
-    end
+  defp extract_ttl_from_message(msg) do
+    msg.anlist
+    |> Enum.map(& &1.ttl)
+    |> Enum.min(fn -> 300 end)
+  rescue
+    _ -> 300
   end
 
   defp encode(message) do

@@ -202,7 +202,8 @@ defmodule YellowDog.Resolved.Config do
         FileSystem.subscribe(pid)
         %{state | watcher_pid: pid}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.info("Config file watcher not started: #{inspect(reason)}")
         state
     end
   end
