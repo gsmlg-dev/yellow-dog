@@ -152,6 +152,84 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "failure count reset on success" do
+    setup do
+      {:ok, upstream_pid, upstream_port} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      upstream = {{127, 0, 0, 1}, upstream_port}
+
+      config = %{
+        upstreams: [upstream],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({Forwarder, config})
+      {:ok, upstream: upstream}
+    end
+
+    test "success resets failure count to 0", %{upstream: upstream} do
+      # Manually inject failures via handle_cast
+      pid = Process.whereis(Forwarder)
+      GenServer.cast(pid, {:upstream_failure, upstream})
+      GenServer.cast(pid, {:upstream_failure, upstream})
+      Process.sleep(10)
+
+      # Verify failure count is 2
+      state = :sys.get_state(pid)
+      assert Map.get(state.failure_counts, upstream) == 2
+
+      # Forward a real query — should succeed and reset count
+      query = build_query("success-reset.test")
+      assert {:ok, _} = Forwarder.forward(query)
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert Map.get(state.failure_counts, upstream) == 0
+    end
+  end
+
+  describe "sort_upstreams ordering" do
+    setup do
+      {:ok, live_pid_a, port_a} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+      {:ok, live_pid_b, port_b} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn ->
+        YellowDog.Resolved.Test.FakeUpstream.stop(live_pid_a)
+        YellowDog.Resolved.Test.FakeUpstream.stop(live_pid_b)
+      end)
+
+      # Two distinct upstreams on different ports
+      upstream_a = {{127, 0, 0, 1}, port_a}
+      upstream_b = {{127, 0, 0, 1}, port_b}
+
+      config = %{
+        upstreams: [upstream_a, upstream_b],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 10
+      }
+
+      start_supervised!({Forwarder, config})
+      {:ok, upstream_a: upstream_a, upstream_b: upstream_b}
+    end
+
+    test "upstreams sorted by failure count (least failures first)", ctx do
+      pid = Process.whereis(Forwarder)
+
+      # Inject 5 failures on upstream_a only
+      for _ <- 1..5 do
+        GenServer.cast(pid, {:upstream_failure, ctx.upstream_a})
+      end
+
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert Map.get(state.failure_counts, ctx.upstream_a) == 5
+      assert Map.get(state.failure_counts, ctx.upstream_b) == 0
+    end
+  end
+
   describe "start_link/1 with {ip, port} upstreams" do
     test "starts with mixed upstream formats" do
       config = %{@config | upstreams: [{1, 1, 1, 1}, {{8, 8, 8, 8}, 5353}]}

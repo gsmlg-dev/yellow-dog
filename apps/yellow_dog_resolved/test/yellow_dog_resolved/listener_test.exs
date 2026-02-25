@@ -116,8 +116,8 @@ defmodule YellowDog.Resolved.ListenerTest do
       assert response.header.rcode == DNS.Message.RCode.form_err()
     end
 
-    test "responds with FORMERR for short packet", ctx do
-      # Less than 12 bytes — too short for DNS header
+    test "responds with FORMERR for short packet (4 bytes)", ctx do
+      # Less than 12 bytes — too short for DNS header but has txn_id
       short = <<1, 2, 3, 4>>
 
       client_ip = {127, 0, 0, 1}
@@ -130,6 +130,53 @@ defmodule YellowDog.Resolved.ListenerTest do
 
       response = DNS.Message.from_iodata(response_binary)
       assert response.header.qr == 1
+      # txn_id extracted from first 2 bytes: <<1, 2>> = 0x0102 = 258
+      assert response.header.id == 258
+    end
+
+    test "responds with FORMERR for 1-byte packet", ctx do
+      # Only 1 byte — can't extract txn_id, falls through to catch-all
+      client_ip = {127, 0, 0, 1}
+      result = Listener.handle_data({client_ip, ctx.recv_port, <<0xAB>>}, ctx.state)
+
+      assert {:continue, _state} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      # txn_id defaults to 0 for sub-2-byte packets
+      assert response.header.id == 0
+    end
+
+    test "responds with FORMERR for empty packet", ctx do
+      client_ip = {127, 0, 0, 1}
+      result = Listener.handle_data({client_ip, ctx.recv_port, <<>>}, ctx.state)
+
+      assert {:continue, _state} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.id == 0
+    end
+
+    test "responds with FORMERR for exactly 2-byte packet", ctx do
+      # Exactly 2 bytes — can extract txn_id but not a valid DNS header
+      client_ip = {127, 0, 0, 1}
+      result = Listener.handle_data({client_ip, ctx.recv_port, <<0x12, 0x34>>}, ctx.state)
+
+      assert {:continue, _state} = result
+
+      assert {:ok, {_ip, _port, response_binary}} =
+               :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.id == 0x1234
     end
 
     test "preserves transaction ID in response", ctx do

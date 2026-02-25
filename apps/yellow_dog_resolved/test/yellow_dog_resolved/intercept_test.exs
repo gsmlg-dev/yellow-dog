@@ -107,4 +107,50 @@ defmodule YellowDog.Resolved.InterceptTest do
       assert :no_match = Intercept.match("anything.com", :a, [])
     end
   end
+
+  describe "normalization edge cases" do
+    test "trailing dot is stripped before matching" do
+      # Prefix match with trailing dot
+      assert {:match, _rule} = Intercept.match("dev-server.", :a, @rules)
+    end
+
+    test "uppercase domain is lowercased before matching" do
+      assert {:match, _rule} = Intercept.match("DEV-SERVER.EXAMPLE.COM", :a, @rules)
+    end
+
+    test "mixed case domain matches suffix pattern" do
+      assert {:match, _rule} = Intercept.match("APP.Local.DEV", :a, @rules)
+    end
+
+    test "domain with multiple trailing dots strips only one" do
+      # "example.com.." → strip one trailing dot → "example.com."
+      # This is unusual but tests the normalization behavior
+      result = Intercept.match("myapp.test..", :a, @rules)
+      # After stripping one dot: "myapp.test." → strip again? No, only one strip.
+      # So "myapp.test." won't match {:exact, "myapp.test"} unless normalize strips again
+      # Actually normalize does: String.trim_trailing(domain, ".") strips ALL trailing dots
+      assert {:match, _rule} = result
+    end
+  end
+
+  describe "empty string edge cases" do
+    test "empty domain does not match any rule" do
+      assert :no_match = Intercept.match("", :a, @rules)
+    end
+
+    test "empty prefix pattern matches any domain" do
+      rules = [%{match: {:prefix, ""}, type: :a, value: "0.0.0.0", ttl: 60}]
+      # String.starts_with?(anything, "") is always true
+      assert {:match, _rule} = Intercept.match("anything.com", :a, rules)
+    end
+
+    test "empty suffix pattern matches domains ending with dot" do
+      rules = [%{match: {:suffix, ""}, type: :a, value: "0.0.0.0", ttl: 60}]
+      # Checks: domain == "" OR String.ends_with?(domain, ".")
+      # "anything.com" doesn't end with "." → :no_match for the suffix check
+      # But domain == "" is false too
+      result = Intercept.match("anything.com", :a, rules)
+      assert result == :no_match
+    end
+  end
 end

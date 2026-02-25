@@ -181,8 +181,8 @@ defmodule YellowDog.Resolved.RouterTest do
         end)
 
       assert {:ok, response_binary} = result
-      # DNS.Message.from_iodata throws (Erlang :throw), hitting the catch clause
-      assert log =~ "Query resolution crashed"
+      # Random bytes can trigger either Elixir exception (rescue) or Erlang throw (catch)
+      assert log =~ "Query resolution failed" or log =~ "Query resolution crashed"
 
       response = DNS.Message.from_iodata(response_binary)
       assert response.header.qr == 1

@@ -270,6 +270,45 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       end
     end
 
+    test "MX with empty target after split still builds record" do
+      query = build_query("mx-edge.test", 15)
+      rule = %{type: :mx, value: "10 ", ttl: 300}
+
+      # "10 " → String.split("10 ", " ", parts: 2) → ["10", ""]
+      # Empty target is technically accepted (config validation should catch this)
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      assert length(response.anlist) == 1
+    end
+
+    test "raises on MX priority with leading whitespace" do
+      query = build_query("bad-mx.test", 15)
+      rule = %{type: :mx, value: " 10 mail.example.com", ttl: 300}
+
+      # " 10 mail.example.com" → split → [" 10", "mail.example.com"]
+      # Integer.parse(" 10") → :error (leading space)
+      assert_raise ArgumentError, ~r/invalid MX priority/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on SRV with non-integer weight" do
+      query = build_query("bad-srv.test", 33)
+      rule = %{type: :srv, value: "10 abc 8080 target.com", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid SRV weight/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on SRV with only one field" do
+      query = build_query("bad-srv.test", 33)
+      rule = %{type: :srv, value: "10", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid SRV value format/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
     test "unknown query type returns empty answer (type mismatch path)" do
       # Query type 255 (ANY) doesn't match any rule type
       query = build_query("unknown.test", 255)
