@@ -79,12 +79,26 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   # -- Property Tests --
 
   describe "VendorOptions sub-option TLV roundtrip" do
-    property "encode then decode preserves all known sub-option fields" do
+    property "encode then decode preserves all known sub-option fields (inline encoder)" do
       check all(map <- sub_option_map_gen()) do
         sub_binary = encode_sub_options(map)
         option_125 = wrap_option_125(sub_binary)
 
         assert {:ok, decoded} = VendorOptions.decode_vendor_info(option_125)
+
+        assert decoded[:control_url] == map[:control_url]
+        assert decoded[:server_id] == map[:server_id]
+        assert decoded[:cluster_id] == map[:cluster_id]
+        assert decoded[:auth_token] == map[:auth_token]
+        assert decoded[:control_url_fallback] == map[:control_url_fallback]
+        assert decoded[:flags] == map[:flags]
+      end
+    end
+
+    property "VendorOptions.encode_vendor_info/1 roundtrips through decode" do
+      check all(map <- sub_option_map_gen()) do
+        encoded = VendorOptions.encode_vendor_info(map)
+        assert {:ok, decoded} = VendorOptions.decode_vendor_info(encoded)
 
         assert decoded[:control_url] == map[:control_url]
         assert decoded[:server_id] == map[:server_id]
