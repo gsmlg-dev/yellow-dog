@@ -325,6 +325,19 @@ defmodule YellowDogIdentity.IntegrationTest do
       assert Map.get(stats.trust_levels, "unverified") == 2
     end
 
+    test "stats.providers reflects unverified trust provider as string key" do
+      {:ok, _h1} =
+        YellowDogIdentity.register(%{
+          hostname: "providers-1",
+          ssh_pubkey: @key_a,
+          age_recipient: @age_a
+        })
+
+      stats = YellowDogIdentity.stats()
+      # Unverified hosts have trust_provider :none → serialized as "none"
+      assert Map.get(stats.providers, "none") == 1
+    end
+
     test "returns zeroes when registry is empty" do
       stats = YellowDogIdentity.stats()
 
