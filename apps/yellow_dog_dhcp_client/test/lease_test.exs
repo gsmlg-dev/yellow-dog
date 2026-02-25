@@ -183,6 +183,11 @@ defmodule YellowDog.DhcpClient.LeaseTest do
       assert lease.yellowdog_server == false
     end
 
+    test "known_server defaults to false" do
+      lease = %Lease{}
+      assert lease.known_server == false
+    end
+
     test "vendor_options defaults to empty map" do
       lease = %Lease{}
       assert lease.vendor_options == %{}
