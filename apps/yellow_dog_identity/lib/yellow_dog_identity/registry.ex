@@ -31,7 +31,8 @@ defmodule YellowDogIdentity.Registry do
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
-          fingerprint_index: %{String.t() => String.t()}
+          fingerprint_index: %{String.t() => String.t()},
+          instance_id_index: %{String.t() => String.t()}
         }
 
   # Client API
@@ -47,12 +48,16 @@ defmodule YellowDogIdentity.Registry do
   def put_host(%Host{} = host), do: GenServer.call(__MODULE__, {:put_host, host})
 
   @doc """
-  Atomically checks instance ID uniqueness and stores a host in a single GenServer call.
+  Atomically checks fingerprint and instance ID uniqueness, then stores a host.
 
-  Avoids the TOCTOU race where two concurrent registrations with the same cloud
-  instance ID both pass the uniqueness check before either has persisted.
+  Avoids TOCTOU races where two concurrent registrations with the same
+  fingerprint or cloud instance ID both pass uniqueness checks before either persists.
   """
-  @spec put_host_checked(Host.t()) :: :ok | {:error, :instance_id_conflict} | {:error, term()}
+  @spec put_host_checked(Host.t()) ::
+          :ok
+          | {:error, :fingerprint_conflict}
+          | {:error, :instance_id_conflict}
+          | {:error, term()}
   def put_host_checked(%Host{} = host),
     do: GenServer.call(__MODULE__, {:put_host_checked, host})
 
@@ -134,12 +139,14 @@ defmodule YellowDogIdentity.Registry do
       # Load existing data from disk
       {hosts, fingerprint_index} = load_hosts(hosts_dir)
       tokens = load_tokens(tokens_dir)
+      instance_id_index = build_instance_id_index(hosts)
 
       state = %{
         data_dir: data_dir,
         hosts: hosts,
         tokens: tokens,
-        fingerprint_index: fingerprint_index
+        fingerprint_index: fingerprint_index,
+        instance_id_index: instance_id_index
       }
 
       Process.send_after(self(), :cleanup_expired_tokens, @token_cleanup_interval_ms)
@@ -157,12 +164,15 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:put_host_checked, host}, _from, state) do
-    instance_id = get_instance_id(host.trust_evidence)
+    cond do
+      has_fingerprint_conflict?(state.fingerprint_index, host.key_fingerprint, host.id) ->
+        {:reply, {:error, :fingerprint_conflict}, state}
 
-    if instance_id && has_instance_id_conflict?(state.hosts, instance_id, host.id) do
-      {:reply, {:error, :instance_id_conflict}, state}
-    else
-      do_put_host(host, state)
+      has_instance_id_conflict?(state.instance_id_index, host.trust_evidence, host.id) ->
+        {:reply, {:error, :instance_id_conflict}, state}
+
+      true ->
+        do_put_host(host, state)
     end
   end
 
@@ -210,17 +220,26 @@ defmodule YellowDogIdentity.Registry do
       host ->
         path = host_path(state.data_dir, id)
 
-        case File.rm(path) do
+        delete_result =
+          case File.rm(path) do
+            :ok -> :ok
+            {:error, :enoent} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+
+        case delete_result do
           :ok ->
             hosts = Map.delete(state.hosts, id)
             fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
-            {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
 
-          {:error, :enoent} ->
-            # File already gone — clean up state anyway
-            hosts = Map.delete(state.hosts, id)
-            fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
-            {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+            instance_id_index =
+              case get_instance_id(host.trust_evidence) do
+                nil -> state.instance_id_index
+                iid -> Map.delete(state.instance_id_index, iid)
+              end
+
+            {:reply, :ok,
+             %{state | hosts: hosts, fingerprint_index: fingerprint_index, instance_id_index: instance_id_index}}
 
           {:error, reason} ->
             Logger.warning("Failed to delete host file #{path}: #{reason}")
@@ -353,9 +372,11 @@ defmodule YellowDogIdentity.Registry do
   defp do_put_host(host, state) do
     case persist_host(state.data_dir, host) do
       :ok ->
+        old_host = Map.get(state.hosts, host.id)
+
         # Remove stale fingerprint index entry if host existed with a different key
         fingerprint_index =
-          case Map.get(state.hosts, host.id) do
+          case old_host do
             %{key_fingerprint: old_fp} when old_fp != host.key_fingerprint ->
               Map.delete(state.fingerprint_index, old_fp)
 
@@ -363,12 +384,61 @@ defmodule YellowDogIdentity.Registry do
               state.fingerprint_index
           end
 
+        # Remove stale instance_id index entry if host changed instance ID
+        instance_id_index =
+          case old_host do
+            %{trust_evidence: old_ev} ->
+              old_iid = get_instance_id(old_ev)
+              new_iid = get_instance_id(host.trust_evidence)
+
+              if old_iid && old_iid != new_iid do
+                Map.delete(state.instance_id_index, old_iid)
+              else
+                state.instance_id_index
+              end
+
+            _ ->
+              state.instance_id_index
+          end
+
         hosts = Map.put(state.hosts, host.id, host)
         fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
-        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+
+        # Add new instance_id to index
+        new_iid = get_instance_id(host.trust_evidence)
+
+        instance_id_index =
+          if new_iid,
+            do: Map.put(instance_id_index, new_iid, host.id),
+            else: instance_id_index
+
+        {:reply, :ok,
+         %{state | hosts: hosts, fingerprint_index: fingerprint_index, instance_id_index: instance_id_index}}
 
       {:error, _} = error ->
         {:reply, error, state}
+    end
+  end
+
+  defp has_fingerprint_conflict?(fingerprint_index, fingerprint, host_id) do
+    case Map.get(fingerprint_index, fingerprint) do
+      nil -> false
+      ^host_id -> false
+      _other_id -> true
+    end
+  end
+
+  defp has_instance_id_conflict?(instance_id_index, trust_evidence, host_id) do
+    case get_instance_id(trust_evidence) do
+      nil ->
+        false
+
+      iid ->
+        case Map.get(instance_id_index, iid) do
+          nil -> false
+          ^host_id -> false
+          _other_id -> true
+        end
     end
   end
 
@@ -379,10 +449,12 @@ defmodule YellowDogIdentity.Registry do
 
   defp get_instance_id(_), do: nil
 
-  defp has_instance_id_conflict?(hosts, instance_id, current_host_id) do
-    Enum.any?(hosts, fn {id, h} ->
-      id != current_host_id &&
-        get_instance_id(h.trust_evidence) == instance_id
+  defp build_instance_id_index(hosts) do
+    Enum.reduce(hosts, %{}, fn {id, host}, acc ->
+      case get_instance_id(host.trust_evidence) do
+        nil -> acc
+        iid -> Map.put(acc, iid, id)
+      end
     end)
   end
 

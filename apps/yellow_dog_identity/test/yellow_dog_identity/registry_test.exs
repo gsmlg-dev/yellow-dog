@@ -137,6 +137,75 @@ defmodule YellowDogIdentity.RegistryTest do
     end
   end
 
+  describe "put_host_checked" do
+    test "stores host when no conflicts", %{registry: pid} do
+      host = make_host()
+      assert :ok = GenServer.call(pid, {:put_host_checked, host})
+      assert {:ok, ^host} = GenServer.call(pid, {:get_host, host.id})
+    end
+
+    test "rejects duplicate fingerprint from different host", %{registry: pid} do
+      host1 = make_host("host-a")
+      :ok = GenServer.call(pid, {:put_host_checked, host1})
+
+      # Build a second host with the same fingerprint but different ID
+      host2 = %{make_host("host-b") | key_fingerprint: host1.key_fingerprint}
+      assert {:error, :fingerprint_conflict} = GenServer.call(pid, {:put_host_checked, host2})
+    end
+
+    test "allows same host to update (no fingerprint conflict with self)", %{registry: pid} do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host_checked, host})
+
+      updated = %{host | status: :approved}
+      assert :ok = GenServer.call(pid, {:put_host_checked, updated})
+    end
+
+    test "rejects duplicate instance_id from different host", %{registry: pid} do
+      host1 = %{make_host("cloud-a") | trust_evidence: %{instance_id: "i-abc123", provider: :aws}}
+      :ok = GenServer.call(pid, {:put_host_checked, host1})
+
+      host2 = %{
+        make_host("cloud-b")
+        | trust_evidence: %{instance_id: "i-abc123", provider: :aws},
+          key_fingerprint: "SHA256:different-key-for-instance-test"
+      }
+
+      assert {:error, :instance_id_conflict} = GenServer.call(pid, {:put_host_checked, host2})
+    end
+
+    test "allows same host to update with same instance_id", %{registry: pid} do
+      host = %{make_host("cloud-a") | trust_evidence: %{instance_id: "i-abc123", provider: :aws}}
+      :ok = GenServer.call(pid, {:put_host_checked, host})
+
+      updated = %{host | status: :approved}
+      assert :ok = GenServer.call(pid, {:put_host_checked, updated})
+    end
+
+    test "allows hosts without instance_id (no conflict)", %{registry: pid} do
+      host1 = make_host("onprem-a")
+      host2 = %{make_host("onprem-b") | key_fingerprint: "SHA256:different-key"}
+      :ok = GenServer.call(pid, {:put_host_checked, host1})
+      assert :ok = GenServer.call(pid, {:put_host_checked, host2})
+    end
+
+    test "instance_id index cleaned on host delete", %{registry: pid} do
+      host1 = %{make_host("cloud-a") | trust_evidence: %{instance_id: "i-del123", provider: :aws}}
+      :ok = GenServer.call(pid, {:put_host_checked, host1})
+
+      :ok = GenServer.call(pid, {:delete_host, host1.id})
+
+      # Now a new host with the same instance_id should succeed
+      host2 = %{
+        make_host("cloud-b")
+        | trust_evidence: %{instance_id: "i-del123", provider: :aws},
+          key_fingerprint: "SHA256:different-key-for-delete-test"
+      }
+
+      assert :ok = GenServer.call(pid, {:put_host_checked, host2})
+    end
+  end
+
   describe "token CRUD" do
     test "put and get token", %{registry: pid} do
       {:ok, token, _raw} = Token.create(%{hostname_pattern: "node-*"})
