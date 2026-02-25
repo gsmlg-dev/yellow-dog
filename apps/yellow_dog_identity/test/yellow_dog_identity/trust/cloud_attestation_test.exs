@@ -79,6 +79,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AttestationTest do
 
     test "routes GCP attestation", %{jwk: jwk} do
       claims = %{
+        "iss" => "https://accounts.google.com",
         "google" => %{
           "compute_engine" => %{
             "project_id" => "my-project",
@@ -209,6 +210,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AttestationTest do
   describe "GCP verification" do
     test "verifies valid JWT token", %{jwk: jwk} do
       claims = %{
+        "iss" => "https://accounts.google.com",
         "google" => %{
           "compute_engine" => %{
             "project_id" => "test-project",

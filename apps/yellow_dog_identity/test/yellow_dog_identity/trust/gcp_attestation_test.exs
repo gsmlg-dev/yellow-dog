@@ -62,6 +62,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
 
   defp valid_gcp_claims(overrides \\ %{}) do
     base = %{
+      "iss" => "https://accounts.google.com",
       "google" => %{
         "compute_engine" => %{
           "project_id" => "my-test-project",
@@ -235,6 +236,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
 
     test "returns trusted when claims have no google.compute_engine (nil fields)", %{jwk: jwk} do
       claims = %{
+        "iss" => "https://accounts.google.com",
         "sub" => "some-subject",
         "exp" => System.system_time(:second) + 3600
       }
@@ -274,6 +276,32 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
+    end
+  end
+
+  describe "issuer check" do
+    test "rejects JWT with missing issuer", %{jwk: jwk} do
+      claims = valid_gcp_claims() |> Map.delete("iss")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :missing_issuer} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with wrong issuer", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iss" => "https://evil.example.com"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_issuer} = GCP.verify(ctx)
+    end
+
+    test "accepts accounts.google.com without https prefix", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iss" => "accounts.google.com"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
     end
   end
 

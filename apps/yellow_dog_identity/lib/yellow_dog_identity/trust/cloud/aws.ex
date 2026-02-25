@@ -92,6 +92,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
   defp check_replay_window(claims) do
     case Map.get(claims, "pendingTime") do
       nil ->
+        Logger.warning("AWS attestation: missing pendingTime field, skipping replay check")
         :ok
 
       pending_time when is_binary(pending_time) ->
@@ -140,7 +141,10 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
   defp verify_pkcs7_signature(document, signature_b64) do
     case get_aws_cert_pem() do
       nil ->
-        # No certificate configured — skip signature verification (claims-only mode)
+        Logger.warning(
+          "AWS attestation: no certificate configured, signature verification skipped (claims-only mode)"
+        )
+
         :ok
 
       _cert_pem when is_nil(signature_b64) ->

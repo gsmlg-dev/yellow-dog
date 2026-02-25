@@ -32,6 +32,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
     token = Map.get(attestation, "token") || Map.get(attestation, :token)
 
     with {:ok, claims} <- verify_and_decode_jwt(token),
+         :ok <- check_issuer(claims),
          :ok <- check_audience(claims),
          :ok <- check_expiry(claims),
          :ok <- check_allowed_project(claims),
@@ -222,6 +223,16 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
     else
       # No audience configured — skip check
       :ok
+    end
+  end
+
+  @google_issuers ["https://accounts.google.com", "accounts.google.com"]
+
+  defp check_issuer(claims) do
+    case Map.get(claims, "iss") do
+      iss when iss in @google_issuers -> :ok
+      nil -> {:error, :missing_issuer}
+      _ -> {:error, :invalid_issuer}
     end
   end
 
