@@ -493,7 +493,10 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       lease = StateMachine.lease(fsm_pid)
       assert lease.yellowdog_server == false
       assert lease.control_url == nil
+      assert lease.control_url_fallback == nil
       assert lease.auth_token == nil
+      assert lease.server_id == nil
+      assert lease.cluster_id == nil
     end
 
     test "DISCOVER and REQUEST produce valid non-zero xids" do
