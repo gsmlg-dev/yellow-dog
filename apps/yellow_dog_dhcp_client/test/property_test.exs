@@ -470,10 +470,12 @@ defmodule YellowDog.DhcpClient.PropertyTest do
 
     property "yellowdog_server offer always wins when present" do
       check all(
-              yd_offers <- list_of(offer_gen(), min_length: 1)
-                           |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, true)) end),
-              non_yd_offers <- list_of(offer_gen())
-                               |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, false)) end)
+              yd_offers <-
+                list_of(offer_gen(), min_length: 1)
+                |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, true)) end),
+              non_yd_offers <-
+                list_of(offer_gen())
+                |> map(fn offers -> Enum.map(offers, &Map.put(&1, :yellowdog_server, false)) end)
             ) do
         # Mix in any order (most-recent first in the accumulated list)
         offers = non_yd_offers ++ yd_offers
@@ -485,14 +487,16 @@ defmodule YellowDog.DhcpClient.PropertyTest do
 
     property "known_server offer wins over plain offers when no yellowdog present" do
       check all(
-              known_offers <- list_of(offer_gen(), min_length: 1)
-                              |> map(fn offers ->
-                                Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: true})
-                              end),
-              plain_offers <- list_of(offer_gen())
-                              |> map(fn offers ->
-                                Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: false})
-                              end)
+              known_offers <-
+                list_of(offer_gen(), min_length: 1)
+                |> map(fn offers ->
+                  Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: true})
+                end),
+              plain_offers <-
+                list_of(offer_gen())
+                |> map(fn offers ->
+                  Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: false})
+                end)
             ) do
         offers = plain_offers ++ known_offers
 
