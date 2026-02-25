@@ -85,6 +85,16 @@ defmodule YellowDogIdentity.Registry do
   @spec delete_token(String.t()) :: :ok | {:error, term()}
   def delete_token(id), do: GenServer.call(__MODULE__, {:delete_token, id})
 
+  @doc """
+  Atomically verifies a raw token and increments its use count in a single GenServer call.
+
+  Avoids the TOCTOU race where two concurrent callers both pass the use-count check
+  before either has persisted the increment.
+  """
+  @spec consume_token(String.t(), String.t()) :: {:ok, Token.t()} | {:error, term()}
+  def consume_token(raw_token, hostname),
+    do: GenServer.call(__MODULE__, {:consume_token, raw_token, hostname})
+
   @doc "Appends an entry to the append-only audit log."
   @spec append_audit(String.t(), String.t(), map()) :: :ok
   def append_audit(event, host_id, details \\ %{}) do
@@ -226,6 +236,19 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  def handle_call({:consume_token, raw_token, hostname}, _from, state) do
+    tokens = Map.values(state.tokens)
+
+    case do_consume_token(tokens, raw_token, hostname, state.data_dir) do
+      {:ok, updated_token} ->
+        new_tokens = Map.put(state.tokens, updated_token.id, updated_token)
+        {:reply, {:ok, updated_token}, %{state | tokens: new_tokens}}
+
+      {:error, _} = error ->
+        {:reply, error, state}
+    end
+  end
+
   def handle_call({:read_audit_log, opts}, _from, state) do
     entries = read_audit_entries(state.data_dir, opts)
     {:reply, entries, state}
@@ -239,6 +262,28 @@ defmodule YellowDogIdentity.Registry do
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Token consumption helper (used by consume_token handle_call)
+
+  defp do_consume_token(tokens, raw_token, hostname, data_dir) do
+    Enum.reduce_while(tokens, {:error, :invalid_token}, fn token, acc ->
+      case Token.verify(token, raw_token, hostname) do
+        :ok ->
+          updated = Token.increment_use(token)
+
+          case persist_token(data_dir, updated) do
+            :ok -> {:halt, {:ok, updated}}
+            {:error, _} = error -> {:halt, error}
+          end
+
+        {:error, :hostname_mismatch} ->
+          {:cont, {:error, :hostname_mismatch}}
+
+        {:error, _} ->
+          {:cont, acc}
+      end
+    end)
+  end
 
   # Persistence helpers
 
