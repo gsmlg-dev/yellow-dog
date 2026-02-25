@@ -119,7 +119,10 @@ defmodule YellowDog.DhcpClient.Telemetry do
       @prefix ++ [:lease, :expired],
       @prefix ++ [:os, :apply],
       @prefix ++ [:dad, :start],
-      @prefix ++ [:dad, :result]
+      @prefix ++ [:dad, :result],
+      @prefix ++ [:config_watcher, :started],
+      @prefix ++ [:config_watcher, :change_detected],
+      @prefix ++ [:config_watcher, :reconciled]
     ]
   end
 end

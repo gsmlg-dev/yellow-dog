@@ -227,7 +227,7 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
       names = Telemetry.event_names()
 
       assert is_list(names)
-      assert length(names) == 9
+      assert length(names) == 12
     end
 
     test "includes state change event" do
@@ -273,6 +273,13 @@ defmodule YellowDog.DhcpClient.TelemetryTest do
     test "includes dad result event" do
       names = Telemetry.event_names()
       assert [:yellow_dog, :dhcp_client, :dad, :result] in names
+    end
+
+    test "includes config_watcher events" do
+      names = Telemetry.event_names()
+      assert [:yellow_dog, :dhcp_client, :config_watcher, :started] in names
+      assert [:yellow_dog, :dhcp_client, :config_watcher, :change_detected] in names
+      assert [:yellow_dog, :dhcp_client, :config_watcher, :reconciled] in names
     end
 
     test "all events are prefixed with [:yellow_dog, :dhcp_client]" do
