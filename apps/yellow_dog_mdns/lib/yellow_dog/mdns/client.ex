@@ -18,7 +18,7 @@ defmodule YellowDog.Mdns.Client do
   """
 
   alias DNS.Message
-  alias DNS.Message.{Header, Question}
+  alias DNS.Message.Question
 
   @mdns_ipv4_addr {224, 0, 0, 251}
   @mdns_ipv6_addr {0xFF02, 0, 0, 0, 0, 0, 0, 0x00FB}
@@ -329,28 +329,11 @@ defmodule YellowDog.Mdns.Client do
   # Private functions
 
   defp build_query(name, type) do
-    question = %Question{
-      name: name,
-      type: type,
-      class: :in
-    }
-
-    %Message{
-      header: %Header{
-        id: 0,
-        qr: 0,
-        opcode: 0,
-        aa: 0,
-        tc: 0,
-        rd: 0,
-        ra: 0,
-        rcode: 0
-      },
-      qdlist: [question],
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
+    # Use Question.new/3 to convert name→Domain, type→RRType, class→Class structs.
+    # Override mDNS-specific header fields: id=0 and rd=0 (RFC 6762 §6).
+    message = Message.new()
+    message = %{message | header: %{message.header | id: 0, rd: 0}}
+    Message.add_question(message, Question.new(name, type, :in))
   end
 
   defp build_socket_opts(opts, use_ipv6) do
