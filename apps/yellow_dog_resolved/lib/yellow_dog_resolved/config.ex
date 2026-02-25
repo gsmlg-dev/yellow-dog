@@ -145,6 +145,12 @@ defmodule YellowDog.Resolved.Config do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, state) do
+    if state.watcher_pid, do: Process.exit(state.watcher_pid, :shutdown)
+    :ok
+  end
+
   # Private functions
 
   defp config_path do

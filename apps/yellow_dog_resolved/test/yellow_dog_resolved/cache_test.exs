@@ -384,4 +384,15 @@ defmodule YellowDog.Resolved.CacheTest do
       assert :miss = Cache.lookup("flush-multi.test", :aaaa)
     end
   end
+
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      pid = Process.whereis(Cache)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Cache)
+
+      refute Process.alive?(pid)
+    end
+  end
 end

@@ -275,4 +275,18 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert Config.get() == original
     end
   end
+
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      config = Config.load(@test_config_path)
+      start_supervised!({Config, config})
+
+      pid = Process.whereis(Config)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Config)
+
+      refute Process.alive?(pid)
+    end
+  end
 end

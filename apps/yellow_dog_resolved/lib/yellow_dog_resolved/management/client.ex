@@ -104,6 +104,12 @@ defmodule YellowDog.Resolved.Management.Client do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, _state) do
+    Logger.info("Management client shutting down")
+    :ok
+  end
+
   # Private functions
 
   defp schedule_heartbeat(interval_s) do

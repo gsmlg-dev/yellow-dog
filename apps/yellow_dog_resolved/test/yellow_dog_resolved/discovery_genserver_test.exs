@@ -128,4 +128,17 @@ defmodule YellowDog.Resolved.Discovery.GenServerTest do
       assert_receive {:probe_event, %{upstream: {198, 51, 100, 1}}}, 1000
     end
   end
+
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      start_supervised!({Discovery, @config})
+
+      pid = Process.whereis(Discovery)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Discovery)
+
+      refute Process.alive?(pid)
+    end
+  end
 end

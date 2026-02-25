@@ -179,6 +179,19 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      start_supervised!({Forwarder, @config})
+
+      pid = Process.whereis(Forwarder)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Forwarder)
+
+      refute Process.alive?(pid)
+    end
+  end
+
   defp build_query(domain) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))

@@ -246,6 +246,11 @@ defmodule YellowDog.Resolved.Cache do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, _state) do
+    :ok
+  end
+
   # Private functions
 
   defp oldest_entry_age do

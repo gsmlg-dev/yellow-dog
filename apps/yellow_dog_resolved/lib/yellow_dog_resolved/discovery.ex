@@ -97,6 +97,14 @@ defmodule YellowDog.Resolved.Discovery do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, %{management_pid: pid}) when is_pid(pid) do
+    if Process.alive?(pid), do: GenServer.stop(pid, :shutdown)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   # Private functions
 
   defp safe_probe(state) do

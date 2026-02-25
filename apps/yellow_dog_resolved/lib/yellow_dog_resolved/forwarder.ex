@@ -99,6 +99,11 @@ defmodule YellowDog.Resolved.Forwarder do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, _state) do
+    :ok
+  end
+
   # Private functions
 
   defp sort_upstreams(upstreams, failure_counts) do

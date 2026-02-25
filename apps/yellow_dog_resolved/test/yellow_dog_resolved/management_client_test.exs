@@ -90,4 +90,17 @@ defmodule YellowDog.Resolved.Management.ClientTest do
       assert Process.alive?(pid)
     end
   end
+
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      start_supervised!({Client, @opts})
+
+      pid = Process.whereis(Client)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Client)
+
+      refute Process.alive?(pid)
+    end
+  end
 end
