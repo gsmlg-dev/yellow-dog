@@ -95,4 +95,64 @@ defmodule YellowDog.Console.IdentityController do
     end
   end
 
+  @doc """
+  PUT /api/hosts/:id/approve
+
+  Approves a pending host.
+  """
+  def approve(conn, %{"id" => id}) do
+    approved_by = Map.get(conn.body_params, "approved_by", "api")
+
+    case YellowDogIdentity.approve(id, approved_by) do
+      {:ok, host} ->
+        json(conn, %{
+          id: host.id,
+          hostname: host.hostname,
+          status: to_string(host.status),
+          approved_by: host.approved_by,
+          message: "Host approved"
+        })
+
+      {:error, {:invalid_status, status}} ->
+        conn
+        |> put_status(409)
+        |> json(%{error: "invalid_status", message: "Host is #{status}, not pending"})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(404)
+        |> json(%{error: "not_found"})
+    end
+  end
+
+  @doc """
+  POST /api/hosts/:id/revoke
+
+  Revokes a host.
+  """
+  def revoke(conn, %{"id" => id}) do
+    revoked_by = Map.get(conn.body_params, "revoked_by", "api")
+    reason = Map.get(conn.body_params, "reason", "revoked via API")
+
+    case YellowDogIdentity.revoke(id, revoked_by, reason) do
+      {:ok, host} ->
+        json(conn, %{
+          id: host.id,
+          hostname: host.hostname,
+          status: to_string(host.status),
+          revoked_by: host.revoked_by,
+          message: "Host revoked"
+        })
+
+      {:error, :already_revoked} ->
+        conn
+        |> put_status(409)
+        |> json(%{error: "already_revoked", message: "Host is already revoked"})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(404)
+        |> json(%{error: "not_found"})
+    end
+  end
 end

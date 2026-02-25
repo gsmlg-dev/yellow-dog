@@ -3,12 +3,16 @@ defmodule YellowDogIdentity.Webhook do
   Outbound webhook notifications for host identity state changes.
 
   Sends POST requests to configured webhook URLs when hosts are
-  approved, revoked, or registered.
+  approved, revoked, or registered. Retries with exponential backoff
+  on transient failures.
   """
 
   require Logger
 
   alias YellowDogIdentity.Host
+
+  @max_retries 3
+  @base_delay_ms 1000
 
   @doc """
   Sends a webhook notification for a host state change.
@@ -41,14 +45,7 @@ defmodule YellowDogIdentity.Webhook do
     Task.start(fn ->
       try do
         body = Jason.encode!(payload)
-
-        case http_post(url, body) do
-          {:ok, _} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning("Webhook delivery failed to #{url}: #{inspect(reason)}")
-        end
+        deliver_with_retry(url, body, 0)
       rescue
         e ->
           Logger.warning("Webhook error: #{Exception.message(e)}")
@@ -58,8 +55,25 @@ defmodule YellowDogIdentity.Webhook do
     :ok
   end
 
+  defp deliver_with_retry(url, body, attempt) do
+    case http_post(url, body) do
+      {:ok, _} ->
+        :ok
+
+      {:error, _reason} when attempt < @max_retries ->
+        delay = @base_delay_ms * Integer.pow(2, attempt)
+        Logger.debug("Webhook retry #{attempt + 1}/#{@max_retries} to #{url} in #{delay}ms")
+        Process.sleep(delay)
+        deliver_with_retry(url, body, attempt + 1)
+
+      {:error, reason} ->
+        Logger.warning(
+          "Webhook delivery failed after #{@max_retries} retries to #{url}: #{inspect(reason)}"
+        )
+    end
+  end
+
   defp http_post(url, body) do
-    # Use :httpc from Erlang stdlib — no external HTTP client dependency needed
     headers = [
       {~c"content-type", ~c"application/json"},
       {~c"user-agent", ~c"yellowdog-identity/1.0"}

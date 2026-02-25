@@ -32,9 +32,6 @@ defmodule YellowDogIdentity.MixProject do
       {:telemetry, "~> 1.0"},
       {:toml, "~> 0.7"},
 
-      # YAML export
-      {:yaml_elixir, "~> 2.9"},
-
       # PubSub broadcasting to Console LiveViews
       {:phoenix_pubsub, "~> 2.1"},
 
