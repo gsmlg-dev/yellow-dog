@@ -377,5 +377,17 @@ defmodule YellowDog.DhcpClient.ConfigTest do
       assert result["eth0"].mode == :standalone
       assert result["wlan0"].mode == :hook
     end
+
+    test "filters out sections without mode key in multi-interface config" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "eth0" => %{"mode" => "standalone"},
+        "metadata" => %{"description" => "not an interface section"}
+      })
+
+      result = Config.load_all()
+
+      assert Map.has_key?(result, "eth0")
+      refute Map.has_key?(result, "metadata")
+    end
   end
 end

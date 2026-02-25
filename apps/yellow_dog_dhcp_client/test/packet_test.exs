@@ -590,5 +590,54 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
       assert lease.ntp_servers == []
     end
+
+    test "parse_ip_list discards trailing bytes shorter than 4 for DNS servers" do
+      # 11 bytes = 2 full IPs + 3 leftover bytes; the tail is silently discarded
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 11, value: <<8, 8, 8, 8, 1, 1, 1, 1, 99, 98, 97>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.dns_servers == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+    end
+
+    test "truncated Option 54 (3 bytes) causes server_ip to fall back to siaddr" do
+      # extract_ip requires at least 4 bytes; 3-byte value returns nil → falls back
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 54, length: 3, value: <<192, 168, 1>>}
+      ]
+
+      data = build_reply(siaddr: {10, 20, 30, 40}, options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.server_ip == {10, 20, 30, 40}
+    end
+
+    test "parses YD sub-option 3 (cluster_id) and sub-option 5 (control_url_fallback)" do
+      pen = VendorOptions.pen()
+
+      sub_opts =
+        <<1, 21, "http://localhost:4270">> <>
+          <<3, 7, "cluster">> <>
+          <<5, 24, "http://fallback.example/">>
+
+      vendor_data = <<pen::32, byte_size(sub_opts)::8, sub_opts::binary>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == true
+      assert lease.control_url == "http://localhost:4270"
+      assert lease.cluster_id == "cluster"
+      assert lease.control_url_fallback == "http://fallback.example/"
+    end
   end
 end
