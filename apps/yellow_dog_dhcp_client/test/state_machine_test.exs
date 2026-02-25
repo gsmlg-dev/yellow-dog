@@ -411,6 +411,21 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert length(data.offers) == 2
   end
 
+  test "returns to :init when selection window expires with no offers", ctx do
+    pid = start_fsm(ctx, %{selection_window_ms: 200})
+
+    send_offer(pid)
+    wait_for_state(pid, :selecting)
+
+    # Clear the accumulated offers so the selection fires with an empty list
+    :sys.replace_state(pid, fn {state, data} ->
+      if state == :selecting, do: {state, %{data | offers: []}}, else: {state, data}
+    end)
+
+    # Selection window fires: select_best_offer([]) -> nil -> back to :init
+    wait_for_state(pid, :init, 1000)
+  end
+
   test "ignores non-offer packets in init state", ctx do
     pid = start_fsm(ctx)
 

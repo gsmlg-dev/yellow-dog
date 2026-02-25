@@ -85,13 +85,14 @@ defmodule YellowDog.DhcpClient do
   @doc """
   Sends a DHCPRELEASE for the given interface and returns to INIT state.
 
+  If the client has no active lease the release is a no-op (returns `:ok`).
+
   ## Returns
 
-    * `:ok` on success
-    * `{:error, :not_found}` if no client is running
-    * `{:error, :not_bound}` if the client has no active lease
+    * `:ok` on success or when no lease is held
+    * `{:error, :not_found}` if no client is running for this interface
   """
-  @spec release(String.t()) :: :ok | {:error, term()}
+  @spec release(String.t()) :: :ok | {:error, :not_found}
   def release(interface) when is_binary(interface) do
     case lookup(interface) do
       {:ok, _pid} ->

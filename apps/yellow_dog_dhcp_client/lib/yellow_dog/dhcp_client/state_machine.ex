@@ -175,8 +175,14 @@ defmodule YellowDog.DhcpClient.StateMachine do
   end
 
   def handle_event({:timeout, :selection}, :select, :selecting, data) do
-    chosen = select_best_offer(data.offers)
-    {:next_state, :requesting, %{data | lease: chosen, retransmit_count: 0}}
+    case select_best_offer(data.offers) do
+      nil ->
+        Logger.debug("DHCP client #{data.interface}: no offers collected, restarting discovery")
+        {:next_state, :init, data}
+
+      chosen ->
+        {:next_state, :requesting, %{data | lease: chosen, retransmit_count: 0}}
+    end
   end
 
   # ---- REQUESTING ----
