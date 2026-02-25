@@ -99,6 +99,24 @@ defmodule YellowDogIdentity.RegistryTest do
       assert {:error, :not_found} = GenServer.call(pid, {:delete_host, "does-not-exist"})
     end
 
+    test "delete host succeeds when file was already deleted from disk (enoent)", %{
+      registry: pid,
+      tmp_dir: tmp_dir
+    } do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      # Pre-delete the file from disk, simulating external removal
+      host_file = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      File.rm!(host_file)
+
+      # delete_host must still succeed — {:error, :enoent} -> :ok in File.rm branch
+      assert :ok = GenServer.call(pid, {:delete_host, host.id})
+
+      # Host is removed from in-memory state
+      assert :not_found = GenServer.call(pid, {:get_host, host.id})
+    end
+
     test "put_host cleans stale fingerprint index on key change", %{registry: pid} do
       host = make_host()
       :ok = GenServer.call(pid, {:put_host, host})
