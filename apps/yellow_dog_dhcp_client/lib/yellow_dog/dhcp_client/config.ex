@@ -45,6 +45,7 @@ defmodule YellowDog.DhcpClient.Config do
   @type t :: %{
           interface: String.t(),
           mode: mode(),
+          mac: binary() | nil,
           hostname: String.t() | nil,
           vendor_class: String.t(),
           selection_window_ms: pos_integer(),
@@ -63,6 +64,7 @@ defmodule YellowDog.DhcpClient.Config do
 
   @defaults %{
     mode: :standalone,
+    mac: nil,
     hostname: nil,
     vendor_class: "YellowDog",
     selection_window_ms: 1000,
@@ -97,6 +99,7 @@ defmodule YellowDog.DhcpClient.Config do
     %{
       interface: interface,
       mode: parse_mode(get_in_any(raw, [:mode, "mode"], @defaults.mode)),
+      mac: parse_mac(get_in_any(raw, [:mac, "mac"], @defaults.mac)),
       hostname: get_in_any(raw, [:hostname, "hostname"], @defaults.hostname),
       vendor_class: get_in_any(raw, [:vendor_class, "vendor_class"], @defaults.vendor_class),
       selection_window_ms:
@@ -240,6 +243,32 @@ defmodule YellowDog.DhcpClient.Config do
   defp parse_mode(:hook), do: :hook
   defp parse_mode(str) when str in @valid_modes, do: String.to_existing_atom(str)
   defp parse_mode(_), do: @defaults.mode
+
+  defp parse_mac(nil), do: nil
+  defp parse_mac(mac) when is_binary(mac) and byte_size(mac) == 6, do: mac
+
+  defp parse_mac(mac_str) when is_binary(mac_str) do
+    parts = String.split(mac_str, [":", "-"])
+
+    if length(parts) == 6 do
+      bytes =
+        Enum.map(parts, fn hex ->
+          {byte, ""} = Integer.parse(hex, 16)
+          byte
+        end)
+
+      :binary.list_to_bin(bytes)
+    else
+      Logger.warning("DHCP client config: invalid MAC address #{inspect(mac_str)}, ignoring")
+      nil
+    end
+  rescue
+    _ ->
+      Logger.warning("DHCP client config: invalid MAC address #{inspect(mac_str)}, ignoring")
+      nil
+  end
+
+  defp parse_mac(_), do: nil
 
   @valid_dns_methods ~w(resolvconf direct systemd-resolved systemd_resolved)
   defp parse_dns_method(:resolvconf), do: :resolvconf

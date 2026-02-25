@@ -54,12 +54,9 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
     # Remove DNS configuration
     _ = timed_cmd(interface, :del_dns, "resolvconf", ["-d", interface])
 
-    # Clean up resolv.conf fragment
+    # Clean up resolv.conf fragment (ignore errors — file may already be gone)
     resolv_path = Path.join(@resolv_dir, "resolv.conf.#{interface}")
-
-    if File.exists?(resolv_path) do
-      File.rm(resolv_path)
-    end
+    _ = File.rm(resolv_path)
 
     :ok
   end

@@ -141,6 +141,16 @@ defmodule YellowDog.DhcpClient do
   """
   @spec read_mac(String.t()) :: {:ok, binary()} | {:error, term()}
   def read_mac(interface) when is_binary(interface) do
+    case read_mac_sysfs(interface) do
+      {:ok, _mac} = ok -> ok
+      {:error, _} -> read_mac_ifconfig(interface)
+    end
+  end
+
+  @doc false
+  def registry_name, do: @registry
+
+  defp read_mac_sysfs(interface) do
     path = "/sys/class/net/#{interface}/address"
 
     case File.read(path) do
@@ -152,8 +162,23 @@ defmodule YellowDog.DhcpClient do
     end
   end
 
-  @doc false
-  def registry_name, do: @registry
+  defp read_mac_ifconfig(interface) do
+    try do
+      case System.cmd("ifconfig", [interface], stderr_to_stdout: true) do
+        {output, 0} ->
+          case Regex.run(~r/(?:ether|HWaddr)\s+([0-9a-fA-F:]{17})/, output) do
+            [_, mac_str] -> parse_mac_string(mac_str)
+            nil -> {:error, {:read_mac, interface, :mac_not_found_in_ifconfig}}
+          end
+
+        {_output, _code} ->
+          {:error, {:read_mac, interface, :ifconfig_failed}}
+      end
+    rescue
+      e in ErlangError ->
+        {:error, {:read_mac, interface, Exception.message(e)}}
+    end
+  end
 
   defp lookup(interface) do
     case Registry.lookup(@registry, {:interface_sup, interface}) do
@@ -163,7 +188,7 @@ defmodule YellowDog.DhcpClient do
   end
 
   defp parse_mac_string(mac_str) do
-    parts = String.split(mac_str, ":")
+    parts = String.split(mac_str, [":", "-"])
 
     if length(parts) == 6 do
       bytes =

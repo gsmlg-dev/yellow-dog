@@ -255,6 +255,7 @@ defmodule YellowDog.DhcpClient.ConfigWatcher do
 
   defp start_interface(interface, config) do
     opts = [config: config]
+    opts = if config[:mac], do: Keyword.put(opts, :mac, config[:mac]), else: opts
 
     case YellowDog.DhcpClient.start_interface(interface, opts) do
       {:ok, _pid} ->

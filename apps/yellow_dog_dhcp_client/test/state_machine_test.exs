@@ -825,4 +825,119 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert metadata.interface == "test0"
     end
   end
+
+  # ── Retransmission limits ──
+
+  describe "retransmit limits" do
+    test "REQUESTING returns to :init after max retransmit attempts", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+
+      # Set retransmit_count to 3 so the next timeout (count=4) hits the limit
+      :sys.replace_state(pid, fn {state, data} ->
+        if state == :requesting do
+          {state, %{data | retransmit_count: 3}}
+        else
+          {state, data}
+        end
+      end)
+
+      # The retransmit timer from entering :requesting is already set. Wait for
+      # it to fire; since count 4 >= @max_request_attempts (4), FSM → :init
+      wait_for_state(pid, :init, 5000)
+    end
+
+    test "INIT retransmit regenerates xid", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 50})
+      {_, data1} = StateMachine.status(pid)
+      xid1 = data1.xid
+
+      # Wait for the first retransmit timeout to fire (2s + jitter)
+      Process.sleep(3500)
+
+      {state, data2} = StateMachine.status(pid)
+      assert state == :init
+      assert data2.xid != xid1, "xid should change after retransmit"
+    end
+  end
+
+  # ── Rebinding edge cases ──
+
+  describe "rebinding" do
+    test "ACK in :rebinding returns to :bound", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      # Get to :bound first
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Force into :rebinding
+      :sys.replace_state(pid, fn {_state, data} ->
+        {:rebinding, data}
+      end)
+
+      wait_for_state(pid, :rebinding, 500)
+
+      # Send ACK → should return to :bound
+      send_ack(pid)
+      wait_for_state(pid, :bound, 2000)
+    end
+
+    test "NAK in :rebinding returns to :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} ->
+        {:rebinding, data}
+      end)
+
+      wait_for_state(pid, :rebinding, 500)
+
+      send_nak(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
+    end
+  end
+
+  # ── Release from non-bound states ──
+
+  describe "release from non-bound states" do
+    test "release from :init is a no-op", ctx do
+      pid = start_fsm(ctx)
+      assert get_state(pid) == :init
+
+      StateMachine.release(pid)
+      Process.sleep(50)
+      assert get_state(pid) == :init
+    end
+
+    test "release from :selecting returns to :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 500})
+
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+    end
+
+    test "release from :requesting returns to :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+    end
+  end
 end
