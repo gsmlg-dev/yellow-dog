@@ -7,6 +7,8 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
   - `:echo` — return a valid DNS response for any query (NOERROR, with A record)
   - `:nxdomain` — return NXDOMAIN for any query
   - `:servfail` — return SERVFAIL for any query
+  - `:timeout` — silently drop packets (simulates unreachable upstream)
+  - `{:edns_yellowdog, ws_port, ws_path}` — respond with EDNS 65321 + SRV for discovery
   """
 
   use GenServer
@@ -116,6 +118,41 @@ defmodule YellowDog.Resolved.Test.FakeUpstream do
       |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.new(2))
       |> Map.put(:anlist, [])
       |> DNS.Message.update_header_attr(:ancount, 0)
+
+    DNS.to_iodata(response) |> IO.iodata_to_binary()
+  end
+
+  defp build_response(query_binary, {:edns_yellowdog, ws_port, ws_path}) do
+    query = DNS.Message.from_iodata(query_binary)
+
+    response =
+      query
+      |> DNS.Message.update_header_attr(:qr, 1)
+      |> DNS.Message.update_header_attr(:aa, 1)
+      |> DNS.Message.update_header_attr(:rd, 1)
+      |> DNS.Message.update_header_attr(:ra, 1)
+      |> DNS.Message.update_header_attr(:rcode, DNS.Message.RCode.new(0))
+
+    # SRV record: {priority, weight, port, target}
+    srv_record =
+      DNS.Message.Record.new(
+        "_yellowdog._tcp.local",
+        33,
+        1,
+        60,
+        {10, 0, ws_port, "127.0.0.1"}
+      )
+
+    # OPT record with EDNS option 65321 (version 1 + ws_path)
+    edns_data = <<1::8, ws_path::binary>>
+    opt_record = DNS.Message.Record.new(".", 41, 4096, 0, edns_data)
+
+    response =
+      response
+      |> Map.put(:anlist, [srv_record])
+      |> DNS.Message.update_header_attr(:ancount, 1)
+      |> Map.update(:arlist, [opt_record], &[opt_record | &1])
+      |> DNS.Message.update_header_attr(:arcount, 1)
 
     DNS.to_iodata(response) |> IO.iodata_to_binary()
   end

@@ -13,6 +13,8 @@ defmodule YellowDog.Resolved.Discovery do
 
   require Logger
 
+  alias YellowDog.Resolved.Upstream
+
   @edns_option_code 65321
   @edns_version 1
 
@@ -157,7 +159,9 @@ defmodule YellowDog.Resolved.Discovery do
     query = build_discovery_query(state.instance_id)
     query_binary = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
-    case Abyss.Client.send_recv(upstream, 53, query_binary, state.probe_timeout_ms) do
+    {ip, port} = Upstream.normalize(upstream)
+
+    case Abyss.Client.send_recv(ip, port, query_binary, state.probe_timeout_ms) do
       {:ok, response_binary} ->
         parse_discovery_response(response_binary)
 
