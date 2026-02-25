@@ -11,6 +11,8 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
 
   alias YellowDogIdentity.Trust.DHCP.LeaseCache
 
+  @default_grace_window_seconds 30
+
   @impl true
   def verify(%{source_ip: source_ip} = context) do
     # Check if DHCP correlation is applicable
@@ -32,10 +34,11 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
   defp verify_lease(lease_entry, context) do
     now = System.monotonic_time(:second)
     lease_age = now - lease_entry.lease_start
+    grace_window = get_grace_window()
 
     cond do
-      # Lease expired
-      lease_age > lease_entry.lease_duration ->
+      # Lease expired (with grace window)
+      lease_age > lease_entry.lease_duration + grace_window ->
         YellowDogIdentity.Telemetry.correlation_miss(context.source_ip, :expired)
         {:untrusted, :expired}
 
@@ -106,6 +109,23 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
       lease_duration: lease_entry.lease_duration,
       dhcp_interface: lease_entry.interface
     }
+  end
+
+  defp get_grace_window do
+    case Code.ensure_loaded(YellowDog.Config) do
+      {:module, _} ->
+        try do
+          config = YellowDog.Config.get_all()
+          get_in(config, ["identity", "dhcp", "grace_window_seconds"]) || @default_grace_window_seconds
+        rescue
+          _ -> @default_grace_window_seconds
+        catch
+          :exit, _ -> @default_grace_window_seconds
+        end
+
+      _ ->
+        @default_grace_window_seconds
+    end
   end
 
   defp dhcp_configured? do
