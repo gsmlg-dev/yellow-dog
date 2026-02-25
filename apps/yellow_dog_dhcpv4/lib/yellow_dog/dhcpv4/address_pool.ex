@@ -290,9 +290,12 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     do: {start_ip, end_ip}
 
   defp parse_excluded_range(%{start: start, end: end_ip}) do
-    {:ok, start_ip} = normalize_ip(start)
-    {:ok, end_ip_tuple} = normalize_ip(end_ip)
-    {start_ip, end_ip_tuple}
+    with {:ok, start_ip} <- normalize_ip(start),
+         {:ok, end_ip_tuple} <- normalize_ip(end_ip) do
+      {start_ip, end_ip_tuple}
+    else
+      _ -> nil
+    end
   end
 
   defp parse_excluded_range(_), do: nil
