@@ -36,7 +36,7 @@ defmodule YellowDog.Resolved.Supervisor do
   end
 
   defp listener_child_spec(config) do
-    {YellowDog.Resolved.Listener, config}
+    YellowDog.Resolved.Listener.listener_spec(config)
   end
 
   defp discovery_children(%{discovery: %{enabled: true}} = config) do
