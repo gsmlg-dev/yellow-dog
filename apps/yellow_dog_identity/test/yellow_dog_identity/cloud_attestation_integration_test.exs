@@ -565,4 +565,101 @@ defmodule YellowDogIdentity.CloudAttestationIntegrationTest do
       assert host.trust_provider == :gcp
     end
   end
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Revocation removes from export immediately (PRD §8.5)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  describe "revocation removes from recipient export immediately" do
+    test "revoked cloud host is no longer in export", %{jwk: jwk, original_config: orig} do
+      set_policies(orig, [
+        %{
+          "name" => "cloud-auto",
+          "action" => "approve",
+          "match" => %{"trust_level" => "cloud_verified"}
+        }
+      ])
+
+      token = sign_gcp_jwt(gcp_claims("revoke-project"), jwk)
+      params = %{hostname: "revoke-gcp-01", ssh_pubkey: @key_a, age_recipient: @age_a}
+
+      context = %{
+        attestation: %{"provider" => "gcp", "token" => token},
+        source_ip: {10, 0, 0, 60},
+        authorization: nil
+      }
+
+      {:ok, host} = YellowDogIdentity.register(params, context)
+      assert host.status == :approved
+
+      # Verify it appears in export
+      yaml_before = YellowDogIdentity.export_recipients()
+      assert yaml_before =~ @age_a
+
+      # Revoke the host
+      {:ok, revoked} = YellowDogIdentity.revoke(host.id, "security@test", "compromised key")
+      assert revoked.status == :revoked
+
+      # Verify it's immediately removed from export
+      yaml_after = YellowDogIdentity.export_recipients()
+      refute yaml_after =~ @age_a
+    end
+
+    test "revoked cloud host is excluded from sops export too", %{jwk: jwk, original_config: orig} do
+      set_policies(orig, [
+        %{"name" => "cloud-auto", "action" => "approve", "match" => %{"trust_level" => "cloud_verified"}}
+      ])
+
+      token = sign_gcp_jwt(gcp_claims("revoke-sops-project", 777, "us-west1-a"), jwk)
+      params = %{hostname: "revoke-sops-01", ssh_pubkey: @key_a, age_recipient: @age_a}
+
+      {:ok, host} = YellowDogIdentity.register(params, %{
+        attestation: %{"provider" => "gcp", "token" => token},
+        source_ip: {10, 0, 0, 61},
+        authorization: nil
+      })
+
+      assert host.status == :approved
+      sops_before = YellowDogIdentity.export_recipients(format: :sops)
+      assert sops_before =~ @age_a
+
+      {:ok, _} = YellowDogIdentity.revoke(host.id, "admin")
+      sops_after = YellowDogIdentity.export_recipients(format: :sops)
+      refute sops_after =~ @age_a
+    end
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stats reflect correct cloud provider names
+  # ──────────────────────────────────────────────────────────────────────────
+
+  describe "stats reflect cloud providers" do
+    test "stats.providers shows :aws and :gcp separately after cloud registrations", %{
+      original_config: orig
+    } do
+      set_policies(orig, [
+        %{"name" => "cloud-auto", "action" => "approve", "match" => %{"trust_level" => "cloud_verified"}}
+      ])
+
+      # Register one AWS host
+      aws_doc = aws_document_b64("111222333444")
+
+      {:ok, host_aws} =
+        YellowDogIdentity.register(
+          %{hostname: "stats-aws-01", ssh_pubkey: @key_a, age_recipient: @age_a},
+          %{
+            attestation: %{"provider" => "aws", "document" => aws_doc},
+            source_ip: {10, 0, 0, 70},
+            authorization: nil
+          }
+        )
+
+      assert host_aws.trust_provider == :aws
+
+      # Stats should show aws under providers
+      stats = YellowDogIdentity.stats()
+      assert Map.get(stats.providers, "aws") == 1
+      assert stats.trust_levels == %{"cloud_verified" => 1}
+    end
+  end
 end
