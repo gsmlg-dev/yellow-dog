@@ -762,6 +762,185 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "validate_config!/1 boundary checks" do
+    test "raises on invalid port (negative)" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_port_neg_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = -1
+      upstreams = ["8.8.8.8"]
+      """)
+
+      assert_raise ArgumentError, ~r/port must be 0\.\.65535/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on invalid port (too high)" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_port_high_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 70000
+      upstreams = ["8.8.8.8"]
+      """)
+
+      assert_raise ArgumentError, ~r/port must be 0\.\.65535/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on zero upstream_timeout_ms" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_timeout_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+      upstream_timeout_ms = 0
+      """)
+
+      assert_raise ArgumentError, ~r/upstream_timeout_ms must be positive/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on zero upstream_failure_threshold" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_threshold_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+      upstream_failure_threshold = 0
+      """)
+
+      assert_raise ArgumentError, ~r/upstream_failure_threshold must be >= 1/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises when cache min_ttl_s > max_ttl_s" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_cache_ttl_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.cache]
+      min_ttl_s = 1000
+      max_ttl_s = 100
+      """)
+
+      assert_raise ArgumentError, ~r/min_ttl_s.*must be <= max_ttl_s/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises when cache max_entries is 0" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_cache_entries_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.cache]
+      max_entries = 0
+      """)
+
+      assert_raise ArgumentError, ~r/cache max_entries must be positive/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises when reconnect_base_s > reconnect_max_s" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_reconnect_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.discovery.websocket]
+      reconnect_base_s = 120
+      reconnect_max_s = 30
+      """)
+
+      assert_raise ArgumentError, ~r/reconnect_base_s.*must be <= reconnect_max_s/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "accepts valid boundary values (port 0, port 65535)" do
+      tmp_dir = System.tmp_dir!()
+      path0 = Path.join(tmp_dir, "port_zero_#{System.unique_integer([:positive])}.toml")
+      path65535 = Path.join(tmp_dir, "port_max_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn ->
+        File.rm(path0)
+        File.rm(path65535)
+      end)
+
+      File.write!(path0, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 0
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config0 = Config.load(path0)
+      assert config0.port == 0
+
+      File.write!(path65535, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 65535
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config65535 = Config.load(path65535)
+      assert config65535.port == 65535
+    end
+
+    test "accepts equal min_ttl_s and max_ttl_s" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "equal_ttl_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.cache]
+      min_ttl_s = 60
+      max_ttl_s = 60
+      """)
+
+      config = Config.load(path)
+      assert config.cache.min_ttl_s == 60
+      assert config.cache.max_ttl_s == 60
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       config = Config.load(@test_config_path)

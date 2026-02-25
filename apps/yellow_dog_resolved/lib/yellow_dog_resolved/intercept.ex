@@ -20,11 +20,13 @@ defmodule YellowDog.Resolved.Intercept do
   Returns `{:match, rule}` if a rule matches, `:no_match` otherwise.
   """
   @spec match(String.t(), atom(), [Config.intercept_rule()]) :: match_result()
-  def match(domain, query_type, rules) do
+  def match(domain, _query_type, rules) do
     normalized = String.downcase(domain) |> String.trim_trailing(".")
 
+    # First domain-pattern match wins. Type filtering happens in ResponseBuilder:
+    # matching type → answer with record; mismatched type → NOERROR, 0 answers.
     Enum.find_value(rules, :no_match, fn rule ->
-      if matches_pattern?(normalized, rule.match) and matches_type?(query_type, rule.type) do
+      if matches_pattern?(normalized, rule.match) do
         {:match, rule}
       end
     end)
@@ -46,7 +48,4 @@ defmodule YellowDog.Resolved.Intercept do
     String.starts_with?(domain, pattern)
   end
 
-  # If the rule type matches the query type, it's a match.
-  # If they differ, the rule still matches the domain but will return empty answers.
-  defp matches_type?(_query_type, _rule_type), do: true
 end

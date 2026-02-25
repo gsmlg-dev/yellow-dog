@@ -212,7 +212,7 @@ defmodule YellowDog.Resolved.Config do
   defp parse_config(toml, path) do
     resolved = Map.get(toml, "resolved", %{})
 
-    %{
+    config = %{
       listen: parse_ip(Map.get(resolved, "listen", "127.0.0.1")),
       port: Map.get(resolved, "port", 53),
       upstreams: parse_upstreams(Map.get(resolved, "upstreams", ["1.1.1.1", "8.8.8.8"])),
@@ -223,6 +223,49 @@ defmodule YellowDog.Resolved.Config do
       discovery: parse_discovery_config(Map.get(resolved, "discovery", %{})),
       config_path: path
     }
+
+    validate_config!(config)
+    config
+  end
+
+  defp validate_config!(config) do
+    # Port range
+    unless config.port in 0..65535 do
+      raise ArgumentError, "port must be 0..65535, got: #{config.port}"
+    end
+
+    # Positive timeouts and thresholds
+    unless is_integer(config.upstream_timeout_ms) and config.upstream_timeout_ms > 0 do
+      raise ArgumentError,
+            "upstream_timeout_ms must be positive, got: #{config.upstream_timeout_ms}"
+    end
+
+    unless is_integer(config.upstream_failure_threshold) and config.upstream_failure_threshold >= 1 do
+      raise ArgumentError,
+            "upstream_failure_threshold must be >= 1, got: #{config.upstream_failure_threshold}"
+    end
+
+    # Cache TTL bounds
+    cache = config.cache
+
+    unless cache.min_ttl_s <= cache.max_ttl_s do
+      raise ArgumentError,
+            "cache min_ttl_s (#{cache.min_ttl_s}) must be <= max_ttl_s (#{cache.max_ttl_s})"
+    end
+
+    unless cache.max_entries > 0 do
+      raise ArgumentError, "cache max_entries must be positive, got: #{cache.max_entries}"
+    end
+
+    # WebSocket reconnect bounds
+    ws = config.discovery.websocket
+
+    unless ws.reconnect_base_s <= ws.reconnect_max_s do
+      raise ArgumentError,
+            "reconnect_base_s (#{ws.reconnect_base_s}) must be <= reconnect_max_s (#{ws.reconnect_max_s})"
+    end
+
+    :ok
   end
 
   defp parse_ip(ip_string) when is_binary(ip_string) do

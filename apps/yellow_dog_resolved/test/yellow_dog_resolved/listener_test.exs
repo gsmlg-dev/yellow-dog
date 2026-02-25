@@ -381,6 +381,132 @@ defmodule YellowDog.Resolved.ListenerTest do
 
   end
 
+  describe "telemetry events" do
+    setup do
+      start_supervised!({Config, @config})
+      start_supervised!({Cache, @cache_config})
+
+      {:ok, recv_socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(recv_socket) end)
+
+      {:ok, send_socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(send_socket) end)
+
+      {:ok, recv_port} = :inet.port(recv_socket)
+      state = %{socket: send_socket}
+
+      {:ok, state: state, recv_socket: recv_socket, recv_port: recv_port}
+    end
+
+    test "emits listener:request telemetry on valid query", ctx do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "listener-req-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :listener, :request],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:request_event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("listener-req-#{inspect(ref)}") end)
+
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+
+      assert_receive {:request_event, measurements, metadata}
+      assert measurements.bytes == byte_size(raw)
+      assert metadata.client_ip == {127, 0, 0, 1}
+
+      # Drain the response
+      :gen_udp.recv(ctx.recv_socket, 0, 1000)
+    end
+
+    test "emits listener:parse_error telemetry on malformed data", ctx do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "listener-parse-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :listener, :parse_error],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:parse_error_event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("listener-parse-#{inspect(ref)}") end)
+
+      # Header claims qdcount=1 but question section is garbage → from_iodata crashes
+      garbage = <<42::16, 0::16, 0, 1, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF>>
+
+      Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, garbage}, ctx.state)
+
+      assert_receive {:parse_error_event, measurements, metadata}
+      assert measurements.bytes == byte_size(garbage)
+      assert metadata.client_ip == {127, 0, 0, 1}
+      assert metadata.txn_id == 42
+
+      # Drain the response
+      :gen_udp.recv(ctx.recv_socket, 0, 1000)
+    end
+
+    test "does NOT emit parse_error on valid query", ctx do
+      ref = make_ref()
+
+      :telemetry.attach(
+        "listener-no-parse-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :listener, :parse_error],
+        fn _event, _measurements, _metadata, _ ->
+          send(self(), :unexpected_parse_error)
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("listener-no-parse-#{inspect(ref)}") end)
+
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, raw}, ctx.state)
+
+      # Drain the response
+      :gen_udp.recv(ctx.recv_socket, 0, 1000)
+
+      refute_receive :unexpected_parse_error, 100
+    end
+
+    test "emits request telemetry even for malformed packets", ctx do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "listener-req-malformed-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :listener, :request],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:request_on_malformed, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("listener-req-malformed-#{inspect(ref)}") end)
+
+      garbage = <<0xAB, 0xCD, 0::80, 0xFF, 0xFF>>
+
+      Listener.handle_data({{127, 0, 0, 1}, ctx.recv_port, garbage}, ctx.state)
+
+      assert_receive {:request_on_malformed, measurements, _metadata}
+      assert measurements.bytes == byte_size(garbage)
+
+      # Drain the response
+      :gen_udp.recv(ctx.recv_socket, 0, 1000)
+    end
+  end
+
   defp build_query(domain, type_num) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))

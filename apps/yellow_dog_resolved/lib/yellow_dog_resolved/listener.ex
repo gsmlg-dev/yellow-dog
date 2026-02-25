@@ -37,6 +37,12 @@ defmodule YellowDog.Resolved.Listener do
 
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
+    :telemetry.execute(
+      [:yellow_dog, :resolved, :listener, :request],
+      %{bytes: byte_size(data)},
+      %{client_ip: client_ip}
+    )
+
     case parse_query(data) do
       {:ok, query} ->
         # Router.resolve always returns {:ok, ...} — errors produce SERVFAIL internally
@@ -44,6 +50,12 @@ defmodule YellowDog.Resolved.Listener do
         send_response(state.socket, client_ip, client_port, response)
 
       {:error, txn_id} ->
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :listener, :parse_error],
+          %{bytes: byte_size(data)},
+          %{client_ip: client_ip, txn_id: txn_id}
+        )
+
         # Malformed query — send FORMERR
         response =
           YellowDog.Resolved.ResponseBuilder.build_formerr(txn_id)
