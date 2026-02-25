@@ -337,6 +337,215 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "prefix match pattern" do
+    test "parses prefix pattern from TOML" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "prefix_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "dev-*"
+      type = "a"
+      value = "10.0.0.1"
+      ttl = 120
+      """)
+
+      config = Config.load(path)
+      assert length(config.intercept_rules) == 1
+      [rule] = config.intercept_rules
+      assert rule.match == {:prefix, "dev-"}
+      assert rule.type == :a
+      assert rule.ttl == 120
+    end
+
+    test "prefix pattern is case-normalized" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "prefix_case_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "DEV-*"
+      type = "a"
+      value = "10.0.0.1"
+      """)
+
+      config = Config.load(path)
+      [rule] = config.intercept_rules
+      assert rule.match == {:prefix, "dev-"}
+    end
+  end
+
+  describe "MX/SRV/TXT intercept rule types" do
+    test "parses MX intercept rule" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "mx_rule_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "example.local"
+      type = "MX"
+      value = "10 mail.example.local"
+      ttl = 600
+      """)
+
+      config = Config.load(path)
+      [rule] = config.intercept_rules
+      assert rule.type == :mx
+      assert rule.value == "10 mail.example.local"
+      assert rule.ttl == 600
+    end
+
+    test "parses SRV intercept rule" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "srv_rule_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "_http._tcp.local"
+      type = "srv"
+      value = "10 20 8080 web.local"
+      ttl = 300
+      """)
+
+      config = Config.load(path)
+      [rule] = config.intercept_rules
+      assert rule.type == :srv
+      assert rule.value == "10 20 8080 web.local"
+    end
+
+    test "parses TXT intercept rule" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "txt_rule_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [[resolved.intercept]]
+      match = "info.local"
+      type = "TXT"
+      value = "v=spf1 include:example.com ~all"
+      """)
+
+      config = Config.load(path)
+      [rule] = config.intercept_rules
+      assert rule.type == :txt
+      assert rule.value == "v=spf1 include:example.com ~all"
+      # Default TTL
+      assert rule.ttl == 300
+    end
+  end
+
+  describe "config edge cases" do
+    test "duplicate upstreams are preserved" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "dup_upstream_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8", "8.8.8.8", "1.1.1.1"]
+      """)
+
+      config = Config.load(path)
+      assert length(config.upstreams) == 3
+    end
+
+    test "all-zeros listen address (bind all interfaces)" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bind_all_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "0.0.0.0"
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      upstream_timeout_ms = 5000
+      upstream_failure_threshold = 5
+      """)
+
+      config = Config.load(path)
+      assert config.listen == {0, 0, 0, 0}
+      assert config.port == 5353
+      assert config.upstream_timeout_ms == 5000
+      assert config.upstream_failure_threshold == 5
+    end
+  end
+
+  describe "config reload telemetry" do
+    test "emits telemetry on successful reload" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "reload_tel_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+      start_supervised!({Config, config})
+
+      ref = make_ref()
+      handler_id = "test-config-reload-#{inspect(ref)}"
+      test_pid = self()
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :resolved, :config, :reload],
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {:config_reload, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Update config file and trigger reload
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 6363
+      upstreams = ["1.1.1.1"]
+      """)
+
+      pid = Process.whereis(Config)
+      send(pid, {:file_event, nil, {path, [:modified]}})
+      Process.sleep(50)
+
+      assert_receive {:config_reload, [:yellow_dog, :resolved, :config, :reload], %{},
+                      %{path: ^path}}
+
+      assert Config.get().port == 6363
+    end
+  end
+
   describe "IPv6 config parsing" do
     test "accepts IPv6 listen address" do
       tmp_dir = System.tmp_dir!()
