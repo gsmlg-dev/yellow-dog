@@ -124,5 +124,101 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
       assert_receive {:reconciled, measurements, _metadata}, 2_000
       assert measurements.added >= 1
     end
+
+    test "emits reconciled telemetry with removed count when interface disappears" do
+      unique = System.unique_integer([:positive])
+      iface = "nonexistent_cw_rm_#{unique}"
+      ref = make_ref()
+      self_pid = self()
+
+      # Seed the interface into last_config first
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{iface => %{"mode" => "standalone"}})
+      ConfigWatcher.reload()
+
+      # Attach after the add so we only capture the removal event
+      handler_id = "test-cw-removed-#{inspect(ref)}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcp_client, :config_watcher, :reconciled],
+        fn _event, measurements, _metadata, _config ->
+          if measurements.removed > 0 do
+            send(self_pid, {:removed, measurements})
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Remove the interface from config and reload — should fire removed >= 1
+      Application.delete_env(:yellow_dog_dhcp_client, :config)
+      ConfigWatcher.reload()
+
+      assert_receive {:removed, measurements}, 2_000
+      assert measurements.removed >= 1
+    end
+
+    test "emits reconciled telemetry with changed count when interface config changes" do
+      unique = System.unique_integer([:positive])
+      iface = "nonexistent_cw_chg_#{unique}"
+      ref = make_ref()
+      self_pid = self()
+
+      # Seed with standalone mode (no telemetry handler yet)
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{iface => %{"mode" => "standalone"}})
+      ConfigWatcher.reload()
+
+      # Now attach and change the mode
+      handler_id = "test-cw-changed-#{inspect(ref)}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcp_client, :config_watcher, :reconciled],
+        fn _event, measurements, _metadata, _config ->
+          if measurements.changed > 0 do
+            send(self_pid, {:changed, measurements})
+          end
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{iface => %{"mode" => "hook"}})
+      ConfigWatcher.reload()
+
+      assert_receive {:changed, measurements}, 2_000
+      assert measurements.changed >= 1
+    end
+
+    test "does not emit reconciled telemetry when config is unchanged" do
+      unique = System.unique_integer([:positive])
+      iface = "nonexistent_cw_idempotent_#{unique}"
+      ref = make_ref()
+      self_pid = self()
+
+      # Seed the interface
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{iface => %{"mode" => "standalone"}})
+      ConfigWatcher.reload()
+
+      # Attach and reload again with the same config — should not fire
+      handler_id = "test-cw-idempotent-#{inspect(ref)}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcp_client, :config_watcher, :reconciled],
+        fn _event, measurements, _metadata, _config ->
+          send(self_pid, {:reconciled, measurements})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      ConfigWatcher.reload()
+
+      refute_receive {:reconciled, _}, 500
+    end
   end
 end
