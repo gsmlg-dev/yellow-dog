@@ -1180,6 +1180,40 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       StateMachine.release(pid)
       wait_for_state(pid, :init, 2000)
     end
+
+    test "release from :renewing sends RELEASE and returns to :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:renewing, data} end)
+      wait_for_state(pid, :renewing, 500)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
+    end
+
+    test "release from :rebinding sends RELEASE and returns to :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:rebinding, data} end)
+      wait_for_state(pid, :rebinding, 500)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
+    end
   end
 
   describe "xid filtering" do
