@@ -48,11 +48,7 @@ defmodule YellowDog.DhcpClient.OSIntegration.HookNM do
   @spec deconfigure(String.t()) :: :ok | {:error, term()}
   def deconfigure(interface) do
     # NetworkManager handles teardown; clean up our lease file
-    lease_path = lease_file_path(interface)
-
-    if File.exists?(lease_path) do
-      File.rm(lease_path)
-    end
+    _ = File.rm(lease_file_path(interface))
 
     Logger.debug("DHCP client hook: deconfigure no-op for #{interface} (NM handles teardown)")
     :ok

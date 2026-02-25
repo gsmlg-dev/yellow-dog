@@ -437,6 +437,21 @@ defmodule YellowDog.DhcpClient.StateMachine do
     :keep_state_and_data
   end
 
+  # When the process is terminated (e.g., supervisor shutdown), send DHCPRELEASE
+  # if we hold a lease. The InterfaceSupervisor uses rest_for_one and stops
+  # children in reverse order, so the socket is still alive at this point.
+  @impl true
+  def terminate(_reason, state, data) when state in [:bound, :renewing, :rebinding] do
+    if data.lease do
+      send_release(data)
+      deconfigure_os(data)
+    end
+
+    :ok
+  end
+
+  def terminate(_reason, _state, _data), do: :ok
+
   # --- Offer selection ---
 
   @doc """
