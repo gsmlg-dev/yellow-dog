@@ -207,6 +207,33 @@ defmodule YellowDogIdentity.RegistryTest do
       assert :ok = GenServer.call(pid, {:put_host_checked, host2})
     end
 
+    test "put_host cleans stale instance_id index when host changes instance_id", %{registry: pid} do
+      host = %{make_host("cloud-a") | trust_evidence: %{instance_id: "i-old111", provider: :aws}}
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      # Update the same host with a new instance_id
+      updated = %{host | trust_evidence: %{instance_id: "i-new222", provider: :aws}}
+      :ok = GenServer.call(pid, {:put_host, updated})
+
+      # Old instance_id must no longer block a different host
+      other_host = %{
+        make_host("cloud-b")
+        | trust_evidence: %{instance_id: "i-old111", provider: :aws},
+          key_fingerprint: "SHA256:different-key-for-iid-rotation-test"
+      }
+
+      assert :ok = GenServer.call(pid, {:put_host_checked, other_host})
+
+      # New instance_id should now conflict if another host tries to use it
+      conflict_host = %{
+        make_host("cloud-c")
+        | trust_evidence: %{instance_id: "i-new222", provider: :aws},
+          key_fingerprint: "SHA256:yet-another-key-for-iid-conflict-test"
+      }
+
+      assert {:error, :instance_id_conflict} = GenServer.call(pid, {:put_host_checked, conflict_host})
+    end
+
     test "instance_id index cleaned on host delete", %{registry: pid} do
       host1 = %{make_host("cloud-a") | trust_evidence: %{instance_id: "i-del123", provider: :aws}}
       :ok = GenServer.call(pid, {:put_host_checked, host1})

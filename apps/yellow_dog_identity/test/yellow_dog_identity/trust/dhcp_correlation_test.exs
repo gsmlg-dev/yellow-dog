@@ -79,6 +79,20 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
       # so dhcp_configured?() returns false.
       assert {:skip, :not_applicable} = Correlation.verify(%{source_ip: {10, 255, 255, 1}})
     end
+
+    test "returns {:untrusted, :no_lease} when DHCP is configured but IP has no lease" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      # Enable DHCPv4 by setting core.dhcpv4 = true
+      core = Map.put(Map.get(original, "core", %{}), "dhcpv4", true)
+      config = Map.put(original, "core", core)
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      # Unknown IP — no lease in ETS → :no_lease since DHCP is configured
+      assert {:untrusted, :no_lease} = Correlation.verify(%{source_ip: {10, 255, 255, 2}})
+    end
   end
 
   # ---------------------------------------------------------------------------
