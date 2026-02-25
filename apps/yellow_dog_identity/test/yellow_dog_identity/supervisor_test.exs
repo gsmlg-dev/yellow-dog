@@ -123,6 +123,63 @@ defmodule YellowDogIdentity.SupervisorTest do
       assert sup_flags.strategy == :one_for_one
       assert length(children) == 2
     end
+
+    test "init succeeds with invalid approval default_action (logs warning)" do
+      original = Agent.get(YellowDog.Config, & &1)
+      bad = Map.put(original, "identity", %{"approval" => %{"default_action" => "bogus"}})
+      Agent.update(YellowDog.Config, fn _ -> bad end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      assert {:ok, {_sup, children}} = IdentitySup.init([])
+      assert length(children) == 2
+    end
+
+    test "init succeeds when approval policy is missing name field (logs warning)" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      bad =
+        Map.put(original, "identity", %{
+          "approval" => %{
+            "policies" => [%{"action" => "approve"}]
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> bad end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      assert {:ok, {_sup, children}} = IdentitySup.init([])
+      assert length(children) == 2
+    end
+
+    test "init succeeds when cloud.aws.allowed_projects is not a list (logs warning)" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      bad =
+        Map.put(original, "identity", %{
+          "cloud" => %{"aws" => %{"allowed_projects" => "not-a-list"}}
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> bad end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      assert {:ok, {_sup, children}} = IdentitySup.init([])
+      assert length(children) == 2
+    end
+
+    test "init succeeds when webhook.url is not https (logs warning)" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      bad =
+        Map.put(original, "identity", %{
+          "webhook" => %{"url" => "ftp://not-valid"}
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> bad end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      assert {:ok, {_sup, children}} = IdentitySup.init([])
+      assert length(children) == 2
+    end
   end
 
   # ---------------------------------------------------------------------------

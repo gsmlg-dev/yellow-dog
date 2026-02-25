@@ -470,6 +470,34 @@ defmodule YellowDogIdentity.IntegrationTest do
   end
 
   # ──────────────────────────────────────────────
+  # 13. list_tokens/0 and revoke_token/1
+  # ──────────────────────────────────────────────
+
+  describe "list_tokens/0 and revoke_token/1" do
+    test "list_tokens returns all created tokens" do
+      {:ok, t1, _} = YellowDogIdentity.create_token(%{hostname_pattern: "node-*"})
+      {:ok, t2, _} = YellowDogIdentity.create_token(%{hostname_pattern: "db-*"})
+
+      tokens = YellowDogIdentity.list_tokens()
+      ids = Enum.map(tokens, & &1.id)
+      assert t1.id in ids
+      assert t2.id in ids
+    end
+
+    test "revoke_token removes the token from list" do
+      {:ok, token, _} = YellowDogIdentity.create_token(%{hostname_pattern: "*"})
+      assert token.id in Enum.map(YellowDogIdentity.list_tokens(), & &1.id)
+
+      assert :ok = YellowDogIdentity.revoke_token(token.id)
+      refute token.id in Enum.map(YellowDogIdentity.list_tokens(), & &1.id)
+    end
+
+    test "revoke_token returns {:error, :not_found} for nonexistent token" do
+      assert {:error, :not_found} = YellowDogIdentity.revoke_token("no-such-token")
+    end
+  end
+
+  # ──────────────────────────────────────────────
   # host_status/1 convenience check
   # ──────────────────────────────────────────────
 
