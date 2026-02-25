@@ -24,6 +24,9 @@ defmodule YellowDogIdentity.Registry do
   alias YellowDogIdentity.Host
   alias YellowDogIdentity.Token
 
+  # Clean up expired tokens every hour
+  @token_cleanup_interval_ms :timer.hours(1)
+
   @type state :: %{
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
@@ -42,6 +45,16 @@ defmodule YellowDogIdentity.Registry do
   @doc "Stores a host record, persisting to TOML."
   @spec put_host(Host.t()) :: :ok | {:error, term()}
   def put_host(%Host{} = host), do: GenServer.call(__MODULE__, {:put_host, host})
+
+  @doc """
+  Atomically checks instance ID uniqueness and stores a host in a single GenServer call.
+
+  Avoids the TOCTOU race where two concurrent registrations with the same cloud
+  instance ID both pass the uniqueness check before either has persisted.
+  """
+  @spec put_host_checked(Host.t()) :: :ok | {:error, :instance_id_conflict} | {:error, term()}
+  def put_host_checked(%Host{} = host),
+    do: GenServer.call(__MODULE__, {:put_host_checked, host})
 
   @doc "Gets a host by ID."
   @spec get_host(String.t()) :: {:ok, Host.t()} | :not_found
@@ -129,6 +142,7 @@ defmodule YellowDogIdentity.Registry do
         fingerprint_index: fingerprint_index
       }
 
+      Process.send_after(self(), :cleanup_expired_tokens, @token_cleanup_interval_ms)
       {:ok, state}
     else
       {:error, reason} ->
@@ -139,24 +153,16 @@ defmodule YellowDogIdentity.Registry do
 
   @impl true
   def handle_call({:put_host, host}, _from, state) do
-    case persist_host(state.data_dir, host) do
-      :ok ->
-        # Remove stale fingerprint index entry if host existed with a different key
-        fingerprint_index =
-          case Map.get(state.hosts, host.id) do
-            %{key_fingerprint: old_fp} when old_fp != host.key_fingerprint ->
-              Map.delete(state.fingerprint_index, old_fp)
+    do_put_host(host, state)
+  end
 
-            _ ->
-              state.fingerprint_index
-          end
+  def handle_call({:put_host_checked, host}, _from, state) do
+    instance_id = get_instance_id(host.trust_evidence)
 
-        hosts = Map.put(state.hosts, host.id, host)
-        fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
-        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
-
-      {:error, _} = error ->
-        {:reply, error, state}
+    if instance_id && has_instance_id_conflict?(state.hosts, instance_id, host.id) do
+      {:reply, {:error, :instance_id_conflict}, state}
+    else
+      do_put_host(host, state)
     end
   end
 
@@ -289,6 +295,35 @@ defmodule YellowDogIdentity.Registry do
   end
 
   @impl true
+  def handle_info(:cleanup_expired_tokens, state) do
+    now = DateTime.utc_now()
+
+    expired_ids =
+      state.tokens
+      |> Enum.filter(fn {_id, token} -> DateTime.compare(now, token.expires_at) == :gt end)
+      |> Enum.map(fn {id, _token} -> id end)
+
+    state =
+      Enum.reduce(expired_ids, state, fn id, acc ->
+        path = token_path(acc.data_dir, id)
+
+        case File.rm(path) do
+          :ok -> :ok
+          {:error, :enoent} -> :ok
+          {:error, reason} -> Logger.warning("Failed to delete expired token #{id}: #{reason}")
+        end
+
+        %{acc | tokens: Map.delete(acc.tokens, id)}
+      end)
+
+    if expired_ids != [] do
+      Logger.info("Cleaned up #{length(expired_ids)} expired token(s)")
+    end
+
+    Process.send_after(self(), :cleanup_expired_tokens, @token_cleanup_interval_ms)
+    {:noreply, state}
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   # Token consumption helper (used by consume_token handle_call)
@@ -310,6 +345,44 @@ defmodule YellowDogIdentity.Registry do
         {:error, _} ->
           {:cont, acc}
       end
+    end)
+  end
+
+  # Internal helpers for put_host
+
+  defp do_put_host(host, state) do
+    case persist_host(state.data_dir, host) do
+      :ok ->
+        # Remove stale fingerprint index entry if host existed with a different key
+        fingerprint_index =
+          case Map.get(state.hosts, host.id) do
+            %{key_fingerprint: old_fp} when old_fp != host.key_fingerprint ->
+              Map.delete(state.fingerprint_index, old_fp)
+
+            _ ->
+              state.fingerprint_index
+          end
+
+        hosts = Map.put(state.hosts, host.id, host)
+        fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
+        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
+
+      {:error, _} = error ->
+        {:reply, error, state}
+    end
+  end
+
+  defp get_instance_id(evidence) when is_map(evidence) do
+    id = Map.get(evidence, :instance_id) || Map.get(evidence, "instance_id")
+    if id, do: to_string(id), else: nil
+  end
+
+  defp get_instance_id(_), do: nil
+
+  defp has_instance_id_conflict?(hosts, instance_id, current_host_id) do
+    Enum.any?(hosts, fn {id, h} ->
+      id != current_host_id &&
+        get_instance_id(h.trust_evidence) == instance_id
     end)
   end
 

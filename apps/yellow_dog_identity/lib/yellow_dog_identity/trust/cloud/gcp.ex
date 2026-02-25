@@ -9,6 +9,8 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
 
   @behaviour YellowDogIdentity.Trust.Provider
 
+  require Logger
+
   @google_certs_url ~c"https://www.googleapis.com/oauth2/v3/certs"
   @key_cache_ttl_seconds 3600
 
@@ -69,8 +71,9 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
   defp verify_and_decode_jwt(token) when is_binary(token) do
     case fetch_google_keys() do
       {:ok, %{"keys" => []}} ->
-        # No keys in JWKS (e.g., during rotation) — degraded unverified mode
-        decode_jwt_claims_unverified(token)
+        # No keys in JWKS (e.g., during rotation) — reject to prevent forged token acceptance
+        Logger.warning("GCP JWKS contains no keys; rejecting token (key rotation in progress?)")
+        {:error, :keys_unavailable}
 
       {:ok, jwks} ->
         # Keys available — require valid signature; any key mismatch is a hard failure
@@ -80,8 +83,9 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
         end
 
       {:error, :keys_unavailable} ->
-        # Network/cache failure — degraded unverified mode
-        decode_jwt_claims_unverified(token)
+        # Network/cache failure — reject to prevent forged token acceptance
+        Logger.warning("GCP JWKS fetch failed; rejecting token")
+        {:error, :keys_unavailable}
     end
   end
 
@@ -196,26 +200,8 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
       :ets.insert(:gcp_jwks_cache, {:keys, keys, System.monotonic_time(:second)})
     rescue
       ArgumentError ->
-        require Logger
         Logger.warning("GCP JWKS cache: ETS insert failed, table may not exist")
     end
-  end
-
-  defp decode_jwt_claims_unverified(token) do
-    case String.split(token, ".") do
-      [_header, payload, _signature] ->
-        with {:ok, decoded} <- Base.url_decode64(payload, padding: false),
-             {:ok, claims} <- Jason.decode(decoded) do
-          {:ok, claims}
-        else
-          _ -> {:error, :jwt_decode_failed}
-        end
-
-      _ ->
-        {:error, :invalid_jwt_format}
-    end
-  rescue
-    _ -> {:error, :jwt_decode_failed}
   end
 
   defp check_audience(claims) do
