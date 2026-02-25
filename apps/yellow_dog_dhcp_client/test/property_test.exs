@@ -19,19 +19,23 @@ defmodule YellowDog.DhcpClient.PropertyTest do
 
   # -- Generators --
 
-  # Generate a valid sub-option map with known fields
+  # Generate a valid sub-option map with known fields.
+  # Max lengths are capped so the total TLV encoding stays under 255 bytes
+  # (RFC 3925 data_len is a single byte). Each value adds 2 bytes overhead
+  # (code + length), and flags add 4 bytes. Worst case: 5*2 + 4 = 14 bytes
+  # overhead, leaving ~241 bytes for values → ~48 bytes each for 5 fields.
   defp sub_option_map_gen do
     gen all(
           control_url <-
-            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 100)]),
+            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 40)]),
           server_id <-
-            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 50)]),
+            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 40)]),
           cluster_id <-
-            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 50)]),
+            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 40)]),
           auth_token <-
-            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 100)]),
+            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 40)]),
           control_url_fallback <-
-            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 100)]),
+            one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 40)]),
           flags <- one_of([constant(nil), integer(0..65535)])
         ) do
       %{

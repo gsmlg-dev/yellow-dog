@@ -229,6 +229,22 @@ defmodule YellowDog.DhcpClient.VendorOptionsTest do
     assert rest == <<2, 2, "s1">>
   end
 
+  test "encode_vendor_info raises when sub-options exceed 255 bytes" do
+    # Each string needs code + length (2 bytes) overhead
+    # 6 fields at ~50 bytes each = ~312 bytes, exceeding the 255 byte limit
+    long_url = String.duplicate("a", 100)
+
+    assert_raise ArgumentError, ~r/exceed RFC 3925 maximum/, fn ->
+      VendorOptions.encode_vendor_info(%{
+        control_url: long_url,
+        server_id: long_url,
+        cluster_id: long_url,
+        auth_token: long_url,
+        control_url_fallback: long_url
+      })
+    end
+  end
+
   # ── Encode/Decode Roundtrip ──
 
   test "encode_vendor_info then decode_vendor_info roundtrips all fields" do

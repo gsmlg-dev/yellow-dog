@@ -129,11 +129,21 @@ defmodule YellowDog.DhcpClient.VendorOptions do
   Encodes a sub-option map into a full Option 125 binary with Yellow Dog PEN header.
 
   RFC 3925 format: `<<PEN::32, data_length::8, sub_options::binary>>`
+
+  Raises `ArgumentError` if the encoded sub-options exceed 255 bytes
+  (the maximum for the single-byte data length field per RFC 3925).
   """
   @spec encode_vendor_info(map()) :: binary()
   def encode_vendor_info(opts) when is_map(opts) do
     sub_binary = encode_sub_options(opts)
-    <<@yellowdog_pen::32, byte_size(sub_binary)::8, sub_binary::binary>>
+    size = byte_size(sub_binary)
+
+    if size > 255 do
+      raise ArgumentError,
+            "vendor sub-options (#{size} bytes) exceed RFC 3925 maximum of 255 bytes"
+    end
+
+    <<@yellowdog_pen::32, size::8, sub_binary::binary>>
   end
 
   defp encode_tlv(_code, nil), do: nil
