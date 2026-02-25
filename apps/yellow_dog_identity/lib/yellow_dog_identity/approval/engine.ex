@@ -39,7 +39,8 @@ defmodule YellowDogIdentity.Approval.Engine do
   @doc """
   Evaluates with explicitly provided policies (for testing).
   """
-  @spec evaluate_with_policies(Host.t(), [Policy.t()], Policy.action(), map()) :: approval_result()
+  @spec evaluate_with_policies(Host.t(), [Policy.t()], Policy.action(), map()) ::
+          approval_result()
   def evaluate_with_policies(%Host{} = host, policies, default_action, trust_result \\ %{}) do
     context = build_context(host, trust_result)
 

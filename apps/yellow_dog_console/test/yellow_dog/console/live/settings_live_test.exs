@@ -464,7 +464,10 @@ defmodule YellowDog.Console.SettingsLiveTest do
       assert config["core"]["dns"] == false
     end
 
-    test "saves config changes even when source file has comments", %{conn: conn, config_path: config_path} do
+    test "saves config changes even when source file has comments", %{
+      conn: conn,
+      config_path: config_path
+    } do
       # Source file with section comments (comments are not preserved on save — the
       # config writer regenerates the file from the parsed map structure)
       config_with_comments = """

@@ -63,7 +63,8 @@ defmodule YellowDogIdentity.Registry do
 
   @doc "Lists hosts filtered by status."
   @spec list_hosts_by_status(Host.status()) :: [Host.t()]
-  def list_hosts_by_status(status), do: GenServer.call(__MODULE__, {:list_hosts_by_status, status})
+  def list_hosts_by_status(status),
+    do: GenServer.call(__MODULE__, {:list_hosts_by_status, status})
 
   @doc "Deletes a host record."
   @spec delete_host(String.t()) :: :ok | {:error, term()}
