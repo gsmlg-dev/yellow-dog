@@ -153,14 +153,18 @@ defmodule YellowDog.DhcpClient.DhcpSocket.UdpFallback do
 
   @impl true
   def send_broadcast(ref, packet) do
-    {socket, _owner} = :persistent_term.get({__MODULE__, ref})
-    :gen_udp.send(socket, {255, 255, 255, 255}, 67, packet)
+    case :persistent_term.get({__MODULE__, ref}, nil) do
+      {socket, _owner} -> :gen_udp.send(socket, {255, 255, 255, 255}, 67, packet)
+      nil -> {:error, :socket_closed}
+    end
   end
 
   @impl true
   def send_unicast(ref, dest_ip, packet) do
-    {socket, _owner} = :persistent_term.get({__MODULE__, ref})
-    :gen_udp.send(socket, dest_ip, 67, packet)
+    case :persistent_term.get({__MODULE__, ref}, nil) do
+      {socket, _owner} -> :gen_udp.send(socket, dest_ip, 67, packet)
+      nil -> {:error, :socket_closed}
+    end
   end
 
   @impl true
