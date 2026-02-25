@@ -168,4 +168,187 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.auto == true
     end
   end
+
+  describe "build_context — cloud_region extraction" do
+    test "extracts cloud_region from string-keyed region field" do
+      policies = [
+        %Policy{name: "us-only", action: :approve, match: %{"cloud_region" => "us-east-1"}}
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{"region" => "us-east-1"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "extracts cloud_region from atom-keyed region field" do
+      policies = [
+        %Policy{name: "us-only", action: :approve, match: %{"cloud_region" => "us-west-2"}}
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{region: "us-west-2"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "extracts cloud_region from zone field as fallback" do
+      policies = [
+        %Policy{
+          name: "gcp-zone",
+          action: :approve,
+          match: %{"cloud_region" => "us-central1-a"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{"zone" => "us-central1-a"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "no match when evidence is nil" do
+      policies = [
+        %Policy{name: "us-only", action: :approve, match: %{"cloud_region" => "us-east-1"}}
+      ]
+
+      host = make_host(%{trust_level: :cloud_verified, trust_evidence: nil})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :pending
+    end
+  end
+
+  describe "build_context — cloud_image extraction" do
+    test "extracts cloud_image from image_id field" do
+      policies = [
+        %Policy{
+          name: "approved-image",
+          action: :approve,
+          match: %{"cloud_image" => "ami-0abc123456"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{"image_id" => "ami-0abc123456"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "extracts cloud_image from atom-keyed image_id" do
+      policies = [
+        %Policy{
+          name: "approved-image",
+          action: :approve,
+          match: %{"cloud_image" => "ami-atom123"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{image_id: "ami-atom123"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+  end
+
+  describe "build_context — mac_prefix extraction" do
+    test "extracts first 8 chars of MAC as prefix" do
+      policies = [
+        %Policy{
+          name: "apple-devices",
+          action: :approve,
+          match: %{"mac_prefix" => "aa:bb:cc"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_evidence: %{"mac" => "aa:bb:cc:dd:ee:ff"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "returns nil mac_prefix when MAC is shorter than 8 chars" do
+      policies = [
+        %Policy{
+          name: "mac-match",
+          action: :approve,
+          match: %{"mac_prefix" => "aa:bb:c"}
+        }
+      ]
+
+      host = make_host(%{trust_evidence: %{"mac" => "aa:bb:c"}})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      # mac shorter than 8 chars → mac_prefix is nil → no match
+      assert result.action == :pending
+    end
+
+    test "returns nil mac_prefix when evidence is nil" do
+      policies = [
+        %Policy{name: "mac-match", action: :approve, match: %{"mac_prefix" => "aa:bb:cc"}}
+      ]
+
+      host = make_host(%{trust_evidence: nil})
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :pending
+    end
+  end
+
+  describe "build_context — trust_result merge" do
+    test "trust_result values override default context keys" do
+      policies = [
+        %Policy{
+          name: "custom-field",
+          action: :approve,
+          match: %{"custom_key" => "custom_value"}
+        }
+      ]
+
+      host = make_host()
+      result = Engine.evaluate_with_policies(host, policies, :pending, %{"custom_key" => "custom_value"})
+      assert result.action == :approve
+      assert result.policy_name == "custom-field"
+    end
+
+    test "trust_result can override trust_level for evaluation" do
+      policies = [
+        %Policy{
+          name: "override-trust",
+          action: :approve,
+          match: %{"trust_level" => "cloud_verified"}
+        }
+      ]
+
+      # Host has unverified trust_level
+      host = make_host(%{trust_level: :unverified})
+      # But trust_result overrides it
+      result =
+        Engine.evaluate_with_policies(host, policies, :pending, %{
+          "trust_level" => "cloud_verified"
+        })
+
+      assert result.action == :approve
+    end
+  end
 end
