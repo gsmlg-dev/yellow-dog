@@ -630,6 +630,60 @@ defmodule YellowDogIdentity.CloudAttestationIntegrationTest do
   end
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Instance ID uniqueness — anti-replay (PRD §7.5)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  describe "instance_id uniqueness (cross-instance replay prevention)" do
+    test "second AWS host with same instance_id is rejected", %{original_config: orig} do
+      set_policies(orig, [])
+
+      instance_id = "i-0unique1234567890"
+
+      doc1 = aws_document_b64("account-111", %{"instanceId" => instance_id})
+      doc2 = aws_document_b64("account-111", %{"instanceId" => instance_id})
+
+      {:ok, host1} =
+        YellowDogIdentity.register(
+          %{hostname: "instance-host-01", ssh_pubkey: @key_a, age_recipient: @age_a},
+          %{attestation: %{"provider" => "aws", "document" => doc1}, source_ip: {10, 0, 0, 80}, authorization: nil}
+        )
+
+      assert host1.trust_provider == :aws
+
+      # Second registration with same instance_id but different key
+      key_b = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHVyaWVsQGV4YW1wbGUuY29t second@host"
+      age_b = "age1qyqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9cfe3eds"
+
+      assert {:error, :instance_id_conflict} =
+               YellowDogIdentity.register(
+                 %{hostname: "instance-host-02", ssh_pubkey: key_b, age_recipient: age_b},
+                 %{attestation: %{"provider" => "aws", "document" => doc2}, source_ip: {10, 0, 0, 81}, authorization: nil}
+               )
+    end
+
+    test "same host can re-register with same instance_id (idempotent)", %{original_config: orig} do
+      set_policies(orig, [])
+
+      doc = aws_document_b64("account-222", %{"instanceId" => "i-0stable9876543210"})
+
+      {:ok, host} =
+        YellowDogIdentity.register(
+          %{hostname: "stable-host", ssh_pubkey: @key_a, age_recipient: @age_a},
+          %{attestation: %{"provider" => "aws", "document" => doc}, source_ip: {10, 0, 0, 82}, authorization: nil}
+        )
+
+      # Re-register with same key+hostname → idempotent (not conflict)
+      assert {:error, {:idempotent, existing}} =
+               YellowDogIdentity.register(
+                 %{hostname: "stable-host", ssh_pubkey: @key_a, age_recipient: @age_a},
+                 %{attestation: %{"provider" => "aws", "document" => doc}, source_ip: {10, 0, 0, 82}, authorization: nil}
+               )
+
+      assert existing.id == host.id
+    end
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Stats reflect correct cloud provider names
   # ──────────────────────────────────────────────────────────────────────────
 
