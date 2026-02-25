@@ -484,7 +484,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
         {:conflict, _mac} ->
           send_decline(data, lease)
-          actions = [{{:timeout, :dad_backoff}, 10_000, :go_init}]
+          backoff_ms = Map.get(data.config, :dad_backoff_ms, 10_000)
+          actions = [{{:timeout, :dad_backoff}, backoff_ms, :go_init}]
           {:keep_state, data, actions}
       end
     else

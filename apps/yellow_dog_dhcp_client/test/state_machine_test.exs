@@ -430,6 +430,32 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert get_state(pid) == :selecting
   end
 
+  test "DAD conflict causes DECLINE and returns to :init after backoff", ctx do
+    pid =
+      start_fsm(ctx, %{
+        selection_window_ms: 30,
+        dad_enabled: true,
+        dad_probes: 1,
+        dad_wait_ms: 2000,
+        dad_backoff_ms: 100
+      })
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+
+    # Send ACK — triggers DAD.check in the FSM process (blocks in await_conflict)
+    send_ack(pid)
+
+    # Give the FSM a moment to enter DAD.check's await_conflict receive loop
+    Process.sleep(50)
+
+    # Inject ARP conflict reply targeting the offered IP
+    send(pid, {:arp_rx, {192, 168, 1, 100}, <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01>>})
+
+    # FSM sends DECLINE, schedules dad_backoff (100ms), then transitions to :init
+    wait_for_state(pid, :init, 2000)
+  end
+
   # ── LeaseStore integration ──
 
   describe "lease store integration" do

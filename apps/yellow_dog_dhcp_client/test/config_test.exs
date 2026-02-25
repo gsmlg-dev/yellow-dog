@@ -37,11 +37,24 @@ defmodule YellowDog.DhcpClient.ConfigTest do
 
       assert config.interface == "eth0"
       assert config.mode == :standalone
+      assert config.hostname == nil
       assert config.vendor_class == "YellowDog"
       assert config.selection_window_ms == 1000
       assert config.dad_enabled == true
       assert config.dad_probes == 3
       assert config.dad_wait_ms == 2000
+    end
+
+    test "reads hostname from config" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{"hostname" => "my-node"})
+      config = Config.load("eth0")
+      assert config.hostname == "my-node"
+    end
+
+    test "hostname defaults to nil when not set" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{"mode" => "standalone"})
+      config = Config.load("eth0")
+      assert config.hostname == nil
     end
 
     test "loads standalone sub-config defaults" do
