@@ -94,5 +94,35 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
       # (start_interface failures are logged but don't abort reconciliation)
       assert ConfigWatcher.reload() == :ok
     end
+
+    test "emits config_watcher:reconciled telemetry when interfaces change" do
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-cw-reconciled-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :config_watcher, :reconciled],
+        fn _event, measurements, metadata, _config ->
+          send(self_pid, {:reconciled, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-cw-reconciled-#{inspect(ref)}") end)
+
+      # Set a config with a non-existent interface — reconcile fires because
+      # the set of interfaces changed (added one)
+      Application.delete_env(:yellow_dog_dhcp_client, :config)
+      ConfigWatcher.reload()
+
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "nonexistent_cw_telem_iface" => %{"mode" => "standalone"}
+      })
+
+      ConfigWatcher.reload()
+
+      assert_receive {:reconciled, measurements, _metadata}, 2_000
+      assert measurements.added >= 1
+    end
   end
 end
