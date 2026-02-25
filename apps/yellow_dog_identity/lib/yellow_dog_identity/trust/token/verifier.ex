@@ -31,14 +31,8 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
   defp extract_bearer_token(_), do: nil
 
   defp verify_against_stored_tokens(raw_token, hostname) do
-    # Load tokens from registry
-    case load_tokens() do
-      {:ok, tokens} ->
-        find_matching_token(tokens, raw_token, hostname)
-
-      {:error, _} ->
-        {:untrusted, :token_store_unavailable}
-    end
+    tokens = load_tokens()
+    find_matching_token(tokens, raw_token, hostname)
   end
 
   defp find_matching_token(tokens, raw_token, hostname) do
@@ -68,15 +62,15 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
     case Code.ensure_loaded(YellowDogIdentity.Registry) do
       {:module, _} ->
         try do
-          {:ok, YellowDogIdentity.Registry.list_tokens()}
+          YellowDogIdentity.Registry.list_tokens()
         rescue
-          _ -> {:ok, []}
+          _ -> []
         catch
-          :exit, _ -> {:ok, []}
+          :exit, _ -> []
         end
 
       _ ->
-        {:ok, []}
+        []
     end
   end
 end
