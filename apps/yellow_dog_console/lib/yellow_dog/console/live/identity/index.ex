@@ -61,7 +61,8 @@ defmodule YellowDog.Console.IdentityLive.Index do
   end
 
   defp default_stats do
-    %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{}}
+    %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{},
+      providers: %{}, active_tokens: 0, total_tokens: 0}
   end
 
   defp service_running? do
@@ -107,7 +108,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="card bg-base-100 shadow">
             <div class="card-body">
               <h2 class="card-title">Trust Level Distribution</h2>
@@ -122,6 +123,29 @@ defmodule YellowDog.Console.IdentityLive.Index do
                 <p :if={@stats.trust_levels == %{}} class="text-base-content/50">
                   No hosts registered
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-base-100 shadow">
+            <div class="card-body">
+              <h2 class="card-title">Trust Providers</h2>
+              <div class="space-y-2">
+                <div
+                  :for={{provider, count} <- @stats.providers}
+                  class="flex justify-between items-center"
+                >
+                  <span class="badge badge-outline">{provider}</span>
+                  <span class="font-mono">{count}</span>
+                </div>
+                <p :if={@stats.providers == %{}} class="text-base-content/50">
+                  No hosts registered
+                </p>
+                <div class="divider my-1"></div>
+                <div class="flex justify-between items-center text-sm">
+                  <span class="text-base-content/70">Active Tokens</span>
+                  <span class="font-mono">{@stats.active_tokens}/{@stats.total_tokens}</span>
+                </div>
               </div>
             </div>
           </div>

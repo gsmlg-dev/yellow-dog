@@ -264,6 +264,7 @@ defmodule YellowDogIdentity do
   @spec stats() :: map()
   def stats do
     hosts = Registry.list_hosts()
+    tokens = Registry.list_tokens()
 
     %{
       total: length(hosts),
@@ -273,11 +274,18 @@ defmodule YellowDogIdentity do
       trust_levels:
         hosts
         |> Enum.frequencies_by(& &1.trust_level)
-        |> Map.new(fn {k, v} -> {to_string(k), v} end)
+        |> Map.new(fn {k, v} -> {to_string(k), v} end),
+      providers:
+        hosts
+        |> Enum.frequencies_by(& &1.trust_provider)
+        |> Map.new(fn {k, v} -> {to_string(k), v} end),
+      active_tokens: Enum.count(tokens, &Token.valid?/1),
+      total_tokens: length(tokens)
     }
   rescue
     _ ->
-      %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{}}
+      %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{},
+        providers: %{}, active_tokens: 0, total_tokens: 0}
   end
 
   # Private implementation
