@@ -116,10 +116,10 @@ defmodule YellowDog.DhcpClient.StateMachine do
   # ---- INIT ----
 
   @impl true
-  def handle_event(:enter, _old_state, :init, data) do
+  def handle_event(:enter, old_state, :init, data) do
     now = System.monotonic_time(:millisecond)
     data = %{data | xid: generate_xid(), retransmit_count: 0, offers: [], lease: nil, start_time: now}
-    data = track_state_entry(data, :init)
+    data = track_state_entry(data, old_state, :init)
     send_discover(data)
 
     actions = [retransmit_timeout_action(data.retransmit_count)]
@@ -147,8 +147,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # ---- SELECTING ----
 
-  def handle_event(:enter, _old_state, :selecting, data) do
-    data = track_state_entry(data, :selecting)
+  def handle_event(:enter, old_state, :selecting, data) do
+    data = track_state_entry(data, old_state, :selecting)
     window_ms = Map.get(data.config, :selection_window_ms, @default_selection_window_ms)
     actions = [{{:timeout, :selection}, window_ms, :select}]
     {:keep_state, data, actions}
@@ -172,8 +172,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # ---- REQUESTING ----
 
-  def handle_event(:enter, _old_state, :requesting, data) do
-    data = track_state_entry(data, :requesting)
+  def handle_event(:enter, old_state, :requesting, data) do
+    data = track_state_entry(data, old_state, :requesting)
     send_request_broadcast(data)
 
     actions = [retransmit_timeout_action(0)]
@@ -220,7 +220,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
   # ---- BOUND ----
 
   def handle_event(:enter, old_state, :bound, data) do
-    data = track_state_entry(data, :bound)
+    data = track_state_entry(data, old_state, :bound)
 
     is_renewal = old_state in [:renewing, :rebinding]
 
@@ -279,8 +279,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # ---- RENEWING ----
 
-  def handle_event(:enter, _old_state, :renewing, data) do
-    data = track_state_entry(data, :renewing)
+  def handle_event(:enter, old_state, :renewing, data) do
+    data = track_state_entry(data, old_state, :renewing)
     data = %{data | retransmit_count: 0}
     send_request_unicast(data)
 
@@ -320,8 +320,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # ---- REBINDING ----
 
-  def handle_event(:enter, _old_state, :rebinding, data) do
-    data = track_state_entry(data, :rebinding)
+  def handle_event(:enter, old_state, :rebinding, data) do
+    data = track_state_entry(data, old_state, :rebinding)
     data = %{data | retransmit_count: 0}
     send_request_broadcast(data)
 
@@ -607,7 +607,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
   # Emits a state change telemetry event and returns data updated with the new
   # state entry timestamp so the next state transition can report an accurate
   # duration_in_state_ms.
-  defp track_state_entry(data, to_state) do
+  defp track_state_entry(data, from_state, to_state) do
     now = System.monotonic_time(:millisecond)
 
     duration_ms =
@@ -616,7 +616,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     :telemetry.execute(
       [:yellow_dog, :dhcp_client, :state, :change],
       %{duration_in_state_ms: duration_ms},
-      %{interface: data.interface, to: to_state}
+      %{interface: data.interface, from: from_state, to: to_state}
     )
 
     %{data | state_entered_at: now}

@@ -494,9 +494,11 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
     assert length(events) >= 3, "Expected at least 3 state changes (init, selecting, requesting, bound)"
 
-    for {meas, _meta} <- events do
+    for {meas, meta} <- events do
       assert is_integer(meas.duration_in_state_ms)
       assert meas.duration_in_state_ms >= 0
+      assert Map.has_key?(meta, :from)
+      assert Map.has_key?(meta, :to)
     end
   end
 
