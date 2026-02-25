@@ -61,8 +61,16 @@ defmodule YellowDog.Console.IdentityLive.Index do
   end
 
   defp default_stats do
-    %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{},
-      providers: %{}, active_tokens: 0, total_tokens: 0}
+    %{
+      total: 0,
+      pending: 0,
+      approved: 0,
+      revoked: 0,
+      trust_levels: %{},
+      providers: %{},
+      active_tokens: 0,
+      total_tokens: 0
+    }
   end
 
   defp service_running? do

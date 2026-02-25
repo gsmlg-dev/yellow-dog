@@ -572,7 +572,7 @@ defmodule YellowDog.Console.Layouts do
               </ul>
             </details>
           </li>
-
+          
     <!-- Fingerprint -->
           <li class="menu-title mt-4">
             <span>Fingerprint</span>
