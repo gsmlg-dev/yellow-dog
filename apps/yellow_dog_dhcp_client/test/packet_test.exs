@@ -338,6 +338,15 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
       assert opt.value == <<172, 16, 0, 1>>
     end
+
+    test "includes Client-ID (Option 61) with hardware type prefix" do
+      binary = Packet.build_release(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil, "Option 61 (Client-ID) must be present in DHCPRELEASE"
+      assert opt.value == <<1>> <> @test_mac
+    end
   end
 
   # ── parse_reply/1 ──

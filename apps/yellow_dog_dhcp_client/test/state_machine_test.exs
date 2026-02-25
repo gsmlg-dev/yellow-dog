@@ -908,6 +908,95 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     end
   end
 
+  # ── Lease expired telemetry ──
+
+  describe "lease expired telemetry" do
+    setup ctx do
+      Process.register(self(), :os_integration_test)
+
+      on_exit(fn ->
+        try do
+          Process.unregister(:os_integration_test)
+        rescue
+          _ -> :ok
+        end
+      end)
+
+      Map.put(ctx, :os_module, MockOSIntegration)
+    end
+
+    test "emits lease:expired telemetry when rebinding lease expires", ctx do
+      ref = make_ref()
+      self_pid = self()
+
+      :telemetry.attach(
+        "test-lease-expired-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :lease, :expired],
+        fn _event, _measurements, metadata, _config ->
+          send(self_pid, {:telemetry_expired, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("test-lease-expired-#{inspect(ref)}") end)
+
+      # Pre-populate the store with a lease that is almost expired (lease_time=2s,
+      # obtained 1s ago). When the FSM starts and enters :rebinding via disk
+      # recovery, remaining_until_expiry will be ~1s (the minimum), causing the
+      # lease_expired timeout to fire quickly.
+      lease_dir =
+        Path.join(System.tmp_dir!(), "yd_expired_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(lease_dir)
+      on_exit(fn -> File.rm_rf!(lease_dir) end)
+
+      {:ok, store_pid} =
+        YellowDog.DhcpClient.LeaseStore.start_link(
+          interface: "test0",
+          lease_dir: lease_dir
+        )
+
+      almost_expired_lease = %YellowDog.DhcpClient.Lease{
+        ip: {192, 168, 1, 50},
+        subnet_mask: {255, 255, 255, 0},
+        server_ip: {192, 168, 1, 1},
+        router: {192, 168, 1, 1},
+        dns_servers: [],
+        ntp_servers: [],
+        lease_time: 2,
+        t1: 1,
+        t2: 1,
+        obtained_at: DateTime.add(DateTime.utc_now(), -1, :second),
+        xid: 0xDEADBEEF,
+        yellowdog_server: false,
+        vendor_options: %{},
+        raw_options: %{}
+      }
+
+      YellowDog.DhcpClient.LeaseStore.store(store_pid, "test0", almost_expired_lease)
+
+      # Start FSM with the store — it should enter :rebinding and then
+      # the lease_expired timeout should fire within ~1-2s
+      {:ok, pid} =
+        StateMachine.start_link(
+          interface: "test0",
+          mac: @test_mac,
+          socket_pid: ctx.socket_pid,
+          store_pid: store_pid,
+          os_module: MockOSIntegration,
+          config: %{dad_enabled: false, selection_window_ms: 50}
+        )
+
+      wait_for_state(pid, :rebinding, 1000)
+
+      # Wait for lease_expired timeout to fire (min 1s in remaining_until_expiry)
+      wait_for_state(pid, :init, 3000)
+
+      assert_receive {:telemetry_expired, %{interface: "test0"}}, 2000
+      assert_receive {:deconfigure, "test0"}, 1000
+    end
+  end
+
   # ── Release from non-bound states ──
 
   describe "release from non-bound states" do

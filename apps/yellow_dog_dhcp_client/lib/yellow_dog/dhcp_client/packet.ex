@@ -127,7 +127,8 @@ defmodule YellowDog.DhcpClient.Packet do
   def build_release(mac, xid, server_ip, client_ip) do
     options = [
       msg_type_option(@release),
-      server_id_option(server_ip)
+      server_id_option(server_ip),
+      client_id_option(mac)
     ]
 
     msg = %Message{
