@@ -18,7 +18,7 @@ defmodule YellowDogIdentity.Host do
           | :token_verified
           | :unverified
 
-  @type trust_provider :: :dhcp | :aws | :gcp | :azure | :token | :none
+  @type trust_provider :: :dhcp | :netboot | :aws | :gcp | :azure | :token | :none
 
   @type t :: %__MODULE__{
           id: String.t(),

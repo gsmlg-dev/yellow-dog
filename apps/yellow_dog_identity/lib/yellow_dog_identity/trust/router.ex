@@ -10,6 +10,7 @@ defmodule YellowDogIdentity.Trust.Router do
 
   @default_providers [
     YellowDogIdentity.Trust.Cloud.Attestation,
+    YellowDogIdentity.Trust.Netboot,
     YellowDogIdentity.Trust.DHCP.Correlation,
     YellowDogIdentity.Trust.Token.Verifier
   ]
@@ -59,6 +60,7 @@ defmodule YellowDogIdentity.Trust.Router do
   defp provider_atom(YellowDogIdentity.Trust.Cloud.AWS), do: :aws
   defp provider_atom(YellowDogIdentity.Trust.Cloud.GCP), do: :gcp
   defp provider_atom(YellowDogIdentity.Trust.Cloud.Azure), do: :azure
+  defp provider_atom(YellowDogIdentity.Trust.Netboot), do: :netboot
   defp provider_atom(YellowDogIdentity.Trust.DHCP.Correlation), do: :dhcp
   defp provider_atom(YellowDogIdentity.Trust.Token.Verifier), do: :token
   defp provider_atom(module), do: module |> Module.split() |> List.last() |> String.downcase() |> String.to_atom()

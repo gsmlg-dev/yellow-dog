@@ -165,6 +165,7 @@ defmodule YellowDog.Console.BootController do
   defp build_script_assigns(conn, profile, mac, arch) do
     port = conn.port
     server = conn.host
+    base_url = "http://#{server}:#{port}"
 
     %{
       server: server,
@@ -173,7 +174,8 @@ defmodule YellowDog.Console.BootController do
       arch: to_string(arch || :x86_64),
       kernel: profile.kernel,
       initrd: profile.initrd,
-      kernel_args: profile.kernel_args || ""
+      kernel_args: profile.kernel_args || "",
+      registration_url: "#{base_url}/api/hosts/register"
     }
   end
 
