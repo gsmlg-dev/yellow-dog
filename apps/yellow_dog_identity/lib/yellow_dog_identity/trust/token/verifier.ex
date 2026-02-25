@@ -8,6 +8,8 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
 
   @behaviour YellowDogIdentity.Trust.Provider
 
+  require Logger
+
   alias YellowDogIdentity.Token
 
   @impl true
@@ -66,9 +68,13 @@ defmodule YellowDogIdentity.Trust.Token.Verifier do
     try do
       YellowDogIdentity.Registry.put_token(token)
     rescue
-      _ -> :ok
+      e ->
+        Logger.warning("Failed to persist token use_count update for #{token.id}: #{Exception.message(e)}")
+        :ok
     catch
-      :exit, _ -> :ok
+      :exit, reason ->
+        Logger.warning("Failed to persist token use_count update for #{token.id}: #{inspect(reason)}")
+        :ok
     end
   end
 

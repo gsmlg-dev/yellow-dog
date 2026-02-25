@@ -120,6 +120,28 @@ defmodule YellowDogIdentity.Telemetry do
     )
   end
 
+  @doc """
+  Emits a trust provider untrusted event (explicit rejection).
+  """
+  def trust_untrusted(provider, reason, hostname) do
+    :telemetry.execute(
+      [:yellow_dog, :identity, :trust, :untrusted],
+      %{count: 1},
+      %{provider: provider, reason: reason, hostname: hostname}
+    )
+  end
+
+  @doc """
+  Emits a trust resolution event (final result of trust chain).
+  """
+  def trust_resolved(duration, trust_level, provider, hostname) do
+    :telemetry.execute(
+      [:yellow_dog, :identity, :trust, :resolved],
+      %{duration: duration},
+      %{trust_level: trust_level, provider: provider, hostname: hostname}
+    )
+  end
+
   defp format_ip(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
   defp format_ip(ip) when is_binary(ip), do: ip
   defp format_ip(_), do: "unknown"

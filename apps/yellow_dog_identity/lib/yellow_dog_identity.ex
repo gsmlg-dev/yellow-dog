@@ -388,8 +388,11 @@ defmodule YellowDogIdentity do
             approved_by: "auto:#{name}"
         }
 
+      %{action: :reject, policy_name: name} ->
+        %{host | status: :pending, revoke_reason: "rejected by policy: #{name}"}
+
       %{action: :reject} ->
-        %{host | status: :revoked, revoke_reason: "rejected by policy"}
+        %{host | status: :pending, revoke_reason: "rejected by policy"}
 
       _ ->
         host

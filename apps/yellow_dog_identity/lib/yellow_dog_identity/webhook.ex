@@ -37,6 +37,7 @@ defmodule YellowDogIdentity.Webhook do
       "age_recipient" => host.age_recipient,
       "status" => to_string(host.status),
       "trust_level" => to_string(host.trust_level),
+      "trust_provider" => to_string(host.trust_provider),
       "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
     }
   end

@@ -35,12 +35,7 @@ defmodule YellowDogIdentity.Trust.Router do
 
           {:untrusted, reason} ->
             provider_name = provider_atom(provider)
-
-            :telemetry.execute(
-              [:yellow_dog, :identity, :trust, :untrusted],
-              %{count: 1},
-              %{provider: provider_name, reason: reason, hostname: context.hostname}
-            )
+            YellowDogIdentity.Telemetry.trust_untrusted(provider_name, reason, context.hostname)
 
             # Halt on untrusted — a provider that explicitly rejects should
             # not allow fallthrough to weaker providers (per PRD §5.1)
@@ -55,11 +50,7 @@ defmodule YellowDogIdentity.Trust.Router do
 
     {trust_level, provider_name, _evidence} = result
 
-    :telemetry.execute(
-      [:yellow_dog, :identity, :trust, :resolved],
-      %{duration: duration},
-      %{trust_level: trust_level, provider: provider_name, hostname: context.hostname}
-    )
+    YellowDogIdentity.Telemetry.trust_resolved(duration, trust_level, provider_name, context.hostname)
 
     result
   end
