@@ -110,6 +110,18 @@ defmodule YellowDogIdentity.IdentityApiTest do
     end
   end
 
+  describe "create_token/1 — validation errors" do
+    test "returns {:error, :invalid_max_uses} for negative max_uses" do
+      assert {:error, :invalid_max_uses} =
+               YellowDogIdentity.create_token(%{hostname_pattern: "*", max_uses: -1})
+    end
+
+    test "returns {:error, :invalid_ttl} for negative ttl_seconds" do
+      assert {:error, :invalid_ttl} =
+               YellowDogIdentity.create_token(%{hostname_pattern: "*", ttl_seconds: -1})
+    end
+  end
+
   describe "list_tokens/0" do
     test "returns tokens created via create_token" do
       assert YellowDogIdentity.list_tokens() == []
