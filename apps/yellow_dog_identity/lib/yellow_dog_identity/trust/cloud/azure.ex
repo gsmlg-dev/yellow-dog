@@ -132,8 +132,14 @@ defmodule YellowDogIdentity.Trust.Cloud.Azure do
     end
   end
 
+  defp verify_azure_signature(_document, nil, cert_chain)
+       when is_binary(cert_chain) and byte_size(cert_chain) > 0 do
+    # Certificate provided but no signature — reject (likely misconfigured client or attack)
+    {:error, :missing_signature}
+  end
+
   defp verify_azure_signature(_document, nil, _cert_chain) do
-    # No signature provided — skip verification (claims-only mode)
+    # No signature, no certificate — claims-only mode
     :ok
   end
 

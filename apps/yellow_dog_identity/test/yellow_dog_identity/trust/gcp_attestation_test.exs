@@ -125,10 +125,38 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "signature verification security" do
+    test "returns untrusted when kid is not found in non-empty JWKS (prevents forged tokens)" do
+      # When JWKS contains real keys but the token's kid does not match, this must be
+      # a hard failure — no fallback to unverified decode.
+      jwks = %{"keys" => [%{"kid" => "real-key-id", "kty" => "RSA", "n" => "fake", "e" => "AQAB"}]}
+      :ets.insert(:gcp_jwks_cache, {:keys, jwks, System.monotonic_time(:second)})
+
+      header = %{"alg" => "RS256", "kid" => "unknown-key-id-999"}
+      claims = valid_gcp_claims()
+      token = build_jwt(claims, header)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # Must fail, not fall back to unverified decode
+      assert {:untrusted, reason} = GCP.verify(ctx)
+      assert reason in [:key_not_found, :invalid_signature]
+    end
+
+    test "falls back to unverified decode when JWKS is empty (key rotation)" do
+      # Empty JWKS list is treated as degraded mode, not a hard failure
+      :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
+
+      claims = valid_gcp_claims()
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
+    end
+  end
+
   describe "unverified JWT decode path" do
-    # In test environment, Google JWKS keys are not available.
-    # The implementation falls back to decode_jwt_claims_unverified
-    # which decodes the payload without signature verification.
+    # In test environment, Google JWKS keys return empty list (setup inserts %{"keys" => []}).
+    # The implementation falls back to decode_jwt_claims_unverified for empty JWKS.
 
     test "returns trusted with valid unverified JWT containing compute_engine claims" do
       claims = valid_gcp_claims()

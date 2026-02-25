@@ -1,9 +1,33 @@
 defmodule YellowDogIdentity.Trust.Cloud.AttestationTest do
-  use ExUnit.Case, async: true
+  # async: false because GCP tests share the global :gcp_jwks_cache ETS table
+  # with gcp_attestation_test.exs which is also async: false
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Cloud.{Attestation, AWS, GCP, Azure}
 
   @source_ip {10, 0, 0, 1}
+
+  setup do
+    # Ensure JWKS cache is in degraded mode (empty keys) so GCP tests fall back
+    # to unverified decode without hitting the network
+    try do
+      :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
+    rescue
+      ArgumentError -> :ok
+    end
+
+    :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
+
+    on_exit(fn ->
+      try do
+        :ets.delete(:gcp_jwks_cache)
+      rescue
+        ArgumentError -> :ok
+      end
+    end)
+
+    :ok
+  end
 
   describe "Attestation dispatch" do
     test "skips when attestation is nil" do

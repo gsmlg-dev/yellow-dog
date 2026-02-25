@@ -64,8 +64,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
       ctx =
         build_context(%{
           "provider" => "azure",
-          "document" => document_b64,
-          "certificate" => "fake-cert-chain"
+          "document" => document_b64
         })
 
       assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
@@ -75,6 +74,19 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
       assert evidence.resource_group == "rg-production"
       assert evidence.location == "eastus"
       assert %DateTime{} = evidence.verified_at
+    end
+
+    test "returns untrusted when certificate is provided but signature is absent" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "certificate" => "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"
+        })
+
+      assert {:untrusted, :missing_signature} = Azure.verify(ctx)
     end
 
     test "returns trusted with atom provider key" do
