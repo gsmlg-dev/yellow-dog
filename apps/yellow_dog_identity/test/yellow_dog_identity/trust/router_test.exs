@@ -102,6 +102,29 @@ defmodule YellowDogIdentity.Trust.RouterTest do
       assert provider_name == :none
     end
 
+    test "Cloud.Attestation provider name is :azure for valid Azure attestation" do
+      # Azure verify succeeds with a valid document (no cert/signature required)
+      azure_doc =
+        Base.encode64(
+          Jason.encode!(%{
+            "subscriptionId" => "sub-12345678-abcd-efgh-ijkl-123456789012",
+            "vmId" => "vm-abcdef12-3456-7890-abcd-ef1234567890",
+            "resourceGroupName" => "rg-prod",
+            "location" => "eastus",
+            "name" => "router-test-vm",
+            "offer" => "UbuntuServer",
+            "publisher" => "Canonical",
+            "sku" => "22_04-lts",
+            "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+          })
+        )
+
+      context = %{@base_context | attestation: %{"provider" => "azure", "document" => azure_doc}}
+      result = Router.verify(context)
+      {_trust_level, provider_name, _evidence} = result
+      assert provider_name == :azure
+    end
+
     test "token provider name is :token when token verified" do
       # Note: this would require a running Registry with a valid token — just
       # verify the provider_atom mapping by checking the untrusted path returns :token
