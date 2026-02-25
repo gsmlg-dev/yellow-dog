@@ -1175,6 +1175,40 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       # Should still be in requesting (not bound)
       assert get_state(pid) == :requesting
     end
+
+    test "ignores ACK with mismatched xid in :renewing", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:renewing, data} end)
+      wait_for_state(pid, :renewing, 500)
+
+      send_ack(pid, xid: 0xDEADBEEF)
+      Process.sleep(100)
+
+      assert get_state(pid) == :renewing
+    end
+
+    test "ignores ACK with mismatched xid in :rebinding", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:rebinding, data} end)
+      wait_for_state(pid, :rebinding, 500)
+
+      send_ack(pid, xid: 0xDEADBEEF)
+      Process.sleep(100)
+
+      assert get_state(pid) == :rebinding
+    end
   end
 
   # ── Packet telemetry ──
