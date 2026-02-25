@@ -39,11 +39,13 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   end
 
   defp load_host(socket) do
+    host_id = socket.assigns.host_id
+
     host =
       ServiceHelper.safe_call(
         YellowDogIdentity,
         fn ->
-          case YellowDogIdentity.get_host(socket.assigns.host_id) do
+          case YellowDogIdentity.get_host(host_id) do
             {:ok, host} -> host
             _ -> nil
           end
@@ -51,8 +53,20 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
         nil
       )
 
+    audit_entries =
+      if host do
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.audit_log(host_id: host_id, limit: 20) end,
+          []
+        )
+      else
+        []
+      end
+
     socket
     |> assign(:host, host)
+    |> assign(:audit_entries, audit_entries)
     |> assign(:page_title, if(host, do: "Host: #{host.hostname}", else: "Host Not Found"))
   end
 
@@ -182,6 +196,30 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
             </div>
           </div>
 
+          <div :if={@audit_entries != []} class="card bg-base-100 shadow">
+            <div class="card-body">
+              <h2 class="card-title">Audit Trail</h2>
+              <div class="overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Event</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr :for={entry <- @audit_entries}>
+                      <td class="font-mono text-xs whitespace-nowrap">{entry.timestamp}</td>
+                      <td><span class={audit_badge(entry.event)}>{entry.event}</span></td>
+                      <td class="font-mono text-xs">{entry.details}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <div class="card bg-base-100 shadow">
             <div class="card-body">
               <h2 class="card-title">Timeline</h2>
@@ -210,6 +248,12 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     </Layouts.app>
     """
   end
+
+  defp audit_badge("host.registered"), do: "badge badge-info badge-sm"
+  defp audit_badge("host.approved"), do: "badge badge-success badge-sm"
+  defp audit_badge("host.revoked"), do: "badge badge-error badge-sm"
+  defp audit_badge("host.key_rotated"), do: "badge badge-warning badge-sm"
+  defp audit_badge(_), do: "badge badge-sm"
 
   defp status_badge_class(:pending), do: "badge badge-warning"
   defp status_badge_class(:approved), do: "badge badge-success"

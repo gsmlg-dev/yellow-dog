@@ -145,6 +145,9 @@ defmodule YellowDog.Console.IdentityLive.Index do
                 <.link navigate={~p"/identity/policies"} class="btn btn-sm btn-outline btn-block">
                   Approval Policies
                 </.link>
+                <.link navigate={~p"/identity/audit"} class="btn btn-sm btn-outline btn-block">
+                  Audit Log
+                </.link>
                 <div class="flex gap-1">
                   <button
                     class="btn btn-sm btn-outline flex-1"

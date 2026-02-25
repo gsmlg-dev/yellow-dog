@@ -217,6 +217,16 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
+  Reads the audit log. Options: limit (default 100), host_id, event.
+  """
+  @spec audit_log(keyword()) :: [map()]
+  def audit_log(opts \\ []) do
+    Registry.read_audit_log(opts)
+  rescue
+    _ -> []
+  end
+
+  @doc """
   Returns the configured approval policies and default action.
   """
   @spec list_policies() :: map()

@@ -561,6 +561,14 @@ defmodule YellowDog.Console.Layouts do
                     Policies
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    navigate="/identity/audit"
+                    class={active?(@current_path, "/identity/audit")}
+                  >
+                    Audit Log
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>

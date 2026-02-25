@@ -122,6 +122,7 @@ defmodule YellowDog.Console.Router do
     live "/identity/approvals", IdentityLive.ApprovalsLive
     live "/identity/tokens", IdentityLive.TokensLive
     live "/identity/policies", IdentityLive.PoliciesLive
+    live "/identity/audit", IdentityLive.AuditLive
 
     # Fingerprint
     live "/fingerprint/devices", FingerprintLive.DevicesLive

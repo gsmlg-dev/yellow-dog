@@ -89,6 +89,12 @@ defmodule YellowDogIdentity.Registry do
     GenServer.cast(__MODULE__, {:append_audit, event, host_id, details})
   end
 
+  @doc "Reads the audit log, returning parsed entries. Options: limit, host_id, event."
+  @spec read_audit_log(keyword()) :: [map()]
+  def read_audit_log(opts \\ []) do
+    GenServer.call(__MODULE__, {:read_audit_log, opts})
+  end
+
   # Server callbacks
 
   @impl true
@@ -198,6 +204,11 @@ defmodule YellowDogIdentity.Registry do
     File.rm(path)
     tokens = Map.delete(state.tokens, id)
     {:reply, :ok, %{state | tokens: tokens}}
+  end
+
+  def handle_call({:read_audit_log, opts}, _from, state) do
+    entries = read_audit_entries(state.data_dir, opts)
+    {:reply, entries, state}
   end
 
   @impl true
@@ -349,6 +360,49 @@ defmodule YellowDogIdentity.Registry do
   rescue
     _ -> :ok
   end
+
+  defp read_audit_entries(data_dir, opts) do
+    audit_path = Path.join(data_dir, "audit.log")
+    limit = Keyword.get(opts, :limit, 100)
+    host_filter = Keyword.get(opts, :host_id)
+    event_filter = Keyword.get(opts, :event)
+
+    case File.read(audit_path) do
+      {:ok, content} ->
+        content
+        |> String.split("\n", trim: true)
+        |> Enum.reverse()
+        |> Stream.map(&parse_audit_line/1)
+        |> Stream.reject(&is_nil/1)
+        |> maybe_filter(:host_id, host_filter)
+        |> maybe_filter(:event, event_filter)
+        |> Enum.take(limit)
+
+      {:error, _} ->
+        []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp parse_audit_line(line) do
+    # Format: "2024-01-01T00:00:00Z event host=<id> <details>"
+    case Regex.run(~r/^(\S+)\s+(\S+)\s+host=(\S+)(.*)$/, line) do
+      [_, timestamp, event, host_id, rest] ->
+        %{
+          timestamp: timestamp,
+          event: event,
+          host_id: host_id,
+          details: String.trim(rest)
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp maybe_filter(stream, _field, nil), do: stream
+  defp maybe_filter(stream, field, value), do: Stream.filter(stream, &(&1[field] == value))
 
   defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", "#{id}.toml"])
   defp token_path(data_dir, id), do: Path.join([data_dir, "tokens", "#{id}.toml"])
