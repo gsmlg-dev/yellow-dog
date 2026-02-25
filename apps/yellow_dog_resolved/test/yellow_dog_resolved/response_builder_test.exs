@@ -132,6 +132,42 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
     end
   end
 
+  describe "rewrite_txn_id/2 boundary values" do
+    test "rewrites txn_id 0 (minimum)" do
+      original = <<0xFF, 0xFF, 1, 2, 3, 4>>
+      result = ResponseBuilder.rewrite_txn_id(original, 0)
+      <<id::16, _::binary>> = result
+      assert id == 0
+    end
+
+    test "rewrites txn_id 65535 (maximum)" do
+      original = <<0x00, 0x00, 1, 2, 3, 4>>
+      result = ResponseBuilder.rewrite_txn_id(original, 65535)
+      <<id::16, _::binary>> = result
+      assert id == 65535
+    end
+
+    test "rewrites minimal 2-byte binary" do
+      result = ResponseBuilder.rewrite_txn_id(<<0xAB, 0xCD>>, 0x1234)
+      assert result == <<0x12, 0x34>>
+    end
+
+    test "preserves full DNS response structure after rewrite" do
+      # Build a real DNS response and rewrite its ID
+      query = build_query("rewrite.test", 1)
+      rule = %{type: :a, value: "10.0.0.1", ttl: 60}
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      rewritten = ResponseBuilder.rewrite_txn_id(binary, 42)
+      decoded = DNS.Message.from_iodata(rewritten)
+
+      assert decoded.header.id == 42
+      assert decoded.header.qr == 1
+      assert length(decoded.anlist) == 1
+    end
+  end
+
   describe "build_intercept_response/2 rcode" do
     test "NOERROR rcode when type matches" do
       query = build_query("test.local", 1)

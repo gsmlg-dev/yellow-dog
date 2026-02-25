@@ -101,6 +101,53 @@ defmodule YellowDog.Resolved.TelemetryTest do
     end
   end
 
+  describe "cache telemetry: domain-specific flush" do
+    test "emits flush event with domain pattern" do
+      attach_telemetry([:yellow_dog, :resolved, :cache, :flush], self())
+
+      Cache.store("domain-flush-tel.test", :a, "data", 300)
+      Process.sleep(10)
+
+      Cache.flush("domain-flush-tel.test")
+
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :cache, :flush], %{},
+                      %{pattern: "domain-flush-tel.test", count: _}}
+    end
+
+    test "emits flush event with wildcard pattern" do
+      attach_telemetry([:yellow_dog, :resolved, :cache, :flush], self())
+
+      Cache.store("a.wildcard-tel.test", :a, "data1", 300)
+      Cache.store("b.wildcard-tel.test", :a, "data2", 300)
+      Process.sleep(10)
+
+      count = Cache.flush_pattern("*.wildcard-tel.test")
+
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :cache, :flush], %{},
+                      %{pattern: "*.wildcard-tel.test", count: ^count}}
+    end
+
+    test "emits miss event on lazy eviction of expired entry" do
+      # Restart cache with short TTL for this test
+      stop_supervised!(Cache)
+      start_supervised!({Cache, %{@cache_config | min_ttl_s: 1}})
+
+      attach_telemetry([:yellow_dog, :resolved, :cache, :miss], self())
+
+      Cache.store("lazy-evict-tel.test", :a, "data", 1)
+      Process.sleep(10)
+
+      # Wait for entry to expire
+      Process.sleep(1100)
+
+      # Lookup triggers lazy eviction → should emit miss
+      Cache.lookup("lazy-evict-tel.test", :a)
+
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :cache, :miss], _,
+                      %{domain: "lazy-evict-tel.test", type: :a}}
+    end
+  end
+
   describe "query telemetry events" do
     test "emits [:yellow_dog, :resolved, :query, :start] and :stop on intercept" do
       attach_telemetry([:yellow_dog, :resolved, :query, :start], self())

@@ -426,6 +426,97 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "flush(domain) normalization" do
+    test "removes all type variants for a specific domain" do
+      Cache.store("flush-all-types.test", :a, "a-data", 300)
+      Cache.store("flush-all-types.test", :aaaa, "aaaa-data", 300)
+      Cache.store("flush-all-types.test", :mx, "mx-data", 300)
+      Cache.store("other-domain.test", :a, "safe", 300)
+      Process.sleep(10)
+
+      Cache.flush("flush-all-types.test")
+
+      assert :miss = Cache.lookup("flush-all-types.test", :a)
+      assert :miss = Cache.lookup("flush-all-types.test", :aaaa)
+      assert :miss = Cache.lookup("flush-all-types.test", :mx)
+      assert {:hit, "safe"} = Cache.lookup("other-domain.test", :a)
+    end
+
+    test "normalizes uppercase domain with trailing dot" do
+      Cache.store("normalize-flush.test", :a, "data", 300)
+      Process.sleep(10)
+
+      # Flush with uppercase + trailing dot
+      Cache.flush("NORMALIZE-FLUSH.TEST.")
+
+      assert :miss = Cache.lookup("normalize-flush.test", :a)
+    end
+
+    test "no-op for domain not in cache" do
+      Cache.store("present.test", :a, "data", 300)
+      Process.sleep(10)
+
+      Cache.flush("absent.test")
+
+      assert {:hit, "data"} = Cache.lookup("present.test", :a)
+    end
+  end
+
+  describe "stats() comprehensive" do
+    test "returns all expected map keys" do
+      stats = Cache.stats()
+
+      assert Map.has_key?(stats, :entries)
+      assert Map.has_key?(stats, :hits)
+      assert Map.has_key?(stats, :misses)
+      assert Map.has_key?(stats, :evictions)
+      assert Map.has_key?(stats, :hit_rate)
+      assert Map.has_key?(stats, :oldest_entry_age_s)
+    end
+
+    test "entries count reflects stored entries precisely" do
+      Cache.store("count-1.test", :a, "d1", 300)
+      Cache.store("count-2.test", :a, "d2", 300)
+      Cache.store("count-3.test", :aaaa, "d3", 300)
+      Process.sleep(10)
+
+      assert Cache.stats().entries == 3
+    end
+
+    test "hit_rate is 0.0 with zero lookups" do
+      assert Cache.stats().hit_rate == 0.0
+    end
+
+    test "hit_rate computes correctly for mixed hits/misses" do
+      Cache.store("hr.test", :a, "data", 300)
+      Process.sleep(10)
+
+      # 2 hits + 1 miss = 2/3 ≈ 0.67
+      Cache.lookup("hr.test", :a)
+      Cache.lookup("hr.test", :a)
+      Cache.lookup("hr-miss.test", :a)
+
+      assert Cache.stats().hit_rate == 0.67
+    end
+
+    test "oldest_entry_age_s increases over time" do
+      Cache.store("age-track.test", :a, "data", 300)
+      Process.sleep(10)
+
+      age1 = Cache.stats().oldest_entry_age_s
+      Process.sleep(1100)
+      age2 = Cache.stats().oldest_entry_age_s
+
+      assert age2 >= age1 + 1
+    end
+
+    test "evictions counter is non-negative integer" do
+      stats = Cache.stats()
+      assert is_integer(stats.evictions)
+      assert stats.evictions >= 0
+    end
+  end
+
   describe "actual TTL expiry" do
     setup do
       # Restart cache with very short min_ttl_s for expiry testing

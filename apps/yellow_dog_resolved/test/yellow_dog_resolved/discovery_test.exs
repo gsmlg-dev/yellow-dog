@@ -66,6 +66,46 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "status/0 via GenServer" do
+    setup do
+      # Start Discovery with discovery disabled (no actual probes)
+      config = %{
+        upstreams: [{198, 51, 100, 1}],
+        upstream_timeout_ms: 200,
+        discovery: %{
+          enabled: true,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        }
+      }
+
+      # Use a unique name to avoid conflicts
+      name = :"discovery_test_#{System.unique_integer([:positive])}"
+      {:ok, pid} = GenServer.start_link(Discovery, config, name: name)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+      %{pid: pid}
+    end
+
+    test "returns instance_id as hex string", %{pid: pid} do
+      status = GenServer.call(pid, :status)
+
+      assert is_binary(status.instance_id)
+      assert String.length(status.instance_id) == 32
+      # Should be valid hex
+      assert String.match?(status.instance_id, ~r/^[0-9a-f]{32}$/)
+    end
+
+    test "ws_endpoint is nil before discovery completes", %{pid: pid} do
+      status = GenServer.call(pid, :status)
+      assert status.ws_endpoint == nil
+    end
+
+    test "connected is false when no management connection", %{pid: pid} do
+      status = GenServer.call(pid, :status)
+      assert status.connected == false
+    end
+  end
+
   describe "parse_discovery_response/1" do
     test "returns :not_found for non-YellowDog response" do
       # Build a basic DNS response without EDNS option 65321
