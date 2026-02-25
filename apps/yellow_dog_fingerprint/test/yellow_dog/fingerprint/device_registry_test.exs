@@ -133,7 +133,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistryTest do
 
       DeviceRegistry.update_device(mac_a, sample_attrs(mac_a))
       DeviceRegistry.flush()
-      Process.sleep(5)
+      Process.sleep(15)
       DeviceRegistry.update_device(mac_b, sample_attrs(mac_b))
       DeviceRegistry.flush()
 
