@@ -101,7 +101,7 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
 
   @impl true
   def handle_info({:udp, _socket, _ip, _port, data}, state) do
-    send(state.owner, {:dhcp_rx, data})
+    forward_to_owner(state.owner, {:dhcp_rx, data})
     {:noreply, state}
   end
 
@@ -116,6 +116,19 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
     end
 
     :ok
+  end
+
+  # `send/2` only accepts PIDs and registered atom names — not via-tuples.
+  # When the owner is a via-registered process (the normal production case),
+  # resolve the PID through the registry before forwarding.
+  defp forward_to_owner(pid, msg) when is_pid(pid), do: send(pid, msg)
+  defp forward_to_owner(name, msg) when is_atom(name), do: send(name, msg)
+
+  defp forward_to_owner({:via, module, name}, msg) do
+    case module.whereis_name(name) do
+      :undefined -> :ok
+      pid -> send(pid, msg)
+    end
   end
 
   defp default_impl do
