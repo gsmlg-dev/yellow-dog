@@ -176,6 +176,38 @@ defmodule YellowDogIdentity.HostTest do
       assert restored.id == host.id
     end
 
+    test "round-trips machine_id through TOML map" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "machine-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient,
+          machine_id: "aabbccdd11223344aabbccdd11223344"
+        })
+
+      toml_map = Host.to_toml_map(host)
+      assert get_in(toml_map, ["host", "machine_id"]) == "aabbccdd11223344aabbccdd11223344"
+
+      {:ok, restored} = Host.from_toml_map(toml_map)
+      assert restored.machine_id == "aabbccdd11223344aabbccdd11223344"
+    end
+
+    test "machine_id is absent from TOML when nil" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "no-machine-id-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      # nil machine_id should not appear in the TOML map
+      refute Map.has_key?(toml_map["host"], "machine_id")
+
+      {:ok, restored} = Host.from_toml_map(toml_map)
+      assert restored.machine_id == nil
+    end
+
     test "from_toml_map rejects missing host section" do
       assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
     end
