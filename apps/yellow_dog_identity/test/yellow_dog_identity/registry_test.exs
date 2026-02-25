@@ -351,6 +351,26 @@ defmodule YellowDogIdentity.RegistryTest do
 
       assert {:ok, _} = GenServer.call(pid, {:get_token, token.id})
     end
+
+    test "cleanup removes expired token from state even when file deletion fails (permission denied)",
+         %{registry: pid, tmp_dir: tmp_dir} do
+      {:ok, token, _raw} = Token.create(%{ttl_seconds: 1})
+      :ok = GenServer.call(pid, {:put_token, token})
+
+      # Wait for expiry
+      Process.sleep(1100)
+
+      # Make tokens dir non-writable so File.rm will fail with :eacces
+      tokens_dir = Path.join(tmp_dir, "tokens")
+      File.chmod!(tokens_dir, 0o555)
+      on_exit(fn -> File.chmod!(tokens_dir, 0o755) end)
+
+      # Cleanup still removes from in-memory state despite file deletion failure
+      send(pid, :cleanup_expired_tokens)
+      _ = GenServer.call(pid, :list_tokens)
+
+      assert :not_found = GenServer.call(pid, {:get_token, token.id})
+    end
   end
 
   describe "TOML persistence" do

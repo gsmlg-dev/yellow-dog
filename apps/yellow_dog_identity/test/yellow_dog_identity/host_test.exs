@@ -289,5 +289,39 @@ defmodule YellowDogIdentity.HostTest do
         assert restored.trust_provider == provider, "Expected #{provider} but got #{restored.trust_provider}"
       end
     end
+
+    test "from_toml_map falls back to first valid value for unknown trust_provider string" do
+      # safe_to_atom/2 rescue path: String.to_existing_atom("totally_unknown_zxqvbn_provider")
+      # raises ArgumentError → rescue → hd(@valid_trust_providers) = :dhcp
+      {:ok, host} =
+        Host.new(%{
+          hostname: "fallback-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      corrupted = put_in(toml_map, ["host", "trust_provider"], "totally_unknown_zxqvbn_provider")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      # Unknown atom string → ArgumentError rescued → falls back to hd(valid_trust_providers)
+      assert is_atom(restored.trust_provider)
+    end
+
+    test "from_toml_map falls back to first valid value for unknown status string" do
+      # safe_to_atom/2 for status: unknown value → rescue → hd(@valid_statuses) = :pending
+      {:ok, host} =
+        Host.new(%{
+          hostname: "status-fallback-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      corrupted = put_in(toml_map, ["host", "status"], "totally_unknown_zxqvbn_status")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      assert is_atom(restored.status)
+    end
   end
 end
