@@ -6,6 +6,8 @@ defmodule YellowDogIdentity do
   for NixOS hosts within the Yellowdog infrastructure.
   """
 
+  require Logger
+
   alias YellowDogIdentity.{Host, Registry, Token, Export, Webhook}
   alias YellowDogIdentity.Trust.Router, as: TrustRouter
   alias YellowDogIdentity.Approval.Engine, as: ApprovalEngine
@@ -290,8 +292,16 @@ defmodule YellowDogIdentity do
     }
   rescue
     _ ->
-      %{total: 0, pending: 0, approved: 0, revoked: 0, trust_levels: %{},
-        providers: %{}, active_tokens: 0, total_tokens: 0}
+      %{
+        total: 0,
+        pending: 0,
+        approved: 0,
+        revoked: 0,
+        trust_levels: %{},
+        providers: %{},
+        active_tokens: 0,
+        total_tokens: 0
+      }
   end
 
   # Private implementation
@@ -341,8 +351,9 @@ defmodule YellowDogIdentity do
         :ok
     end
   rescue
-    # Registry may not be started yet
-    _ -> :ok
+    e ->
+      Logger.debug("check_duplicate skipped: #{Exception.message(e)}")
+      :ok
   end
 
   defp check_conflict(host, params) do
@@ -380,7 +391,9 @@ defmodule YellowDogIdentity do
         {:ok, host}
     end
   rescue
-    _ -> {:ok, host}
+    e ->
+      Logger.debug("check_conflict skipped: #{Exception.message(e)}")
+      {:ok, host}
   end
 
   defp check_instance_id_uniqueness(evidence) when is_map(evidence) do
@@ -402,7 +415,9 @@ defmodule YellowDogIdentity do
       :ok
     end
   rescue
-    _ -> :ok
+    e ->
+      Logger.warning("check_instance_id_uniqueness failed: #{Exception.message(e)}")
+      :ok
   end
 
   defp check_instance_id_uniqueness(_), do: :ok
