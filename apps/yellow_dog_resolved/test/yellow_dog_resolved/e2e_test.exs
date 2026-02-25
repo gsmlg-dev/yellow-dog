@@ -195,60 +195,22 @@ defmodule YellowDog.Resolved.E2ETest do
     end
   end
 
-  # Walk the Abyss supervision tree to find the UDP socket port.
-  defp find_abyss_listener_port(supervisor_pid) do
-    case walk_tree_for_port(supervisor_pid) do
-      nil -> raise "Could not find Abyss listener port"
-      port -> port
-    end
-  end
+  # Find the Abyss listener port from the ETS cache.
+  # Abyss stores {listener_pid, {ip, port}} in :abyss_listener_info.
+  defp find_abyss_listener_port(_supervisor_pid) do
+    # Give Abyss a moment to bind and cache the listener info
+    Process.sleep(50)
 
-  defp walk_tree_for_port(pid) when is_pid(pid) do
-    # Check this process's linked ports for a UDP socket
-    case Process.info(pid, :links) do
-      {:links, links} ->
-        port = find_udp_port_in_links(links)
+    case :ets.whereis(:abyss_listener_info) do
+      :undefined ->
+        raise "Abyss listener info table not found"
 
-        if port do
-          port
-        else
-          # Try children if this is a supervisor
-          try do
-            Supervisor.which_children(pid)
-            |> Enum.find_value(fn {_id, child_pid, _type, _mods} ->
-              if is_pid(child_pid), do: walk_tree_for_port(child_pid)
-            end)
-          catch
-            _, _ -> nil
-          end
+      _ref ->
+        case :ets.tab2list(:abyss_listener_info) do
+          [{_pid, {_ip, port}} | _] -> port
+          [] -> raise "No Abyss listener found in info table"
         end
-
-      _ ->
-        nil
     end
-  end
-
-  defp find_udp_port_in_links(links) do
-    Enum.find_value(links, fn
-      link when is_port(link) ->
-        case :erlang.port_info(link, :name) do
-          {:name, name} when is_list(name) ->
-            name_str = to_string(name)
-
-            if String.contains?(name_str, "udp") do
-              case :inet.port(link) do
-                {:ok, p} -> p
-                _ -> nil
-              end
-            end
-
-          _ ->
-            nil
-        end
-
-      _ ->
-        nil
-    end)
   end
 
   defp build_query(domain, type_num, txn_id) do
