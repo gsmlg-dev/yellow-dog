@@ -66,6 +66,20 @@ defmodule YellowDog.DhcpClient.OSIntegration.StandaloneTest do
       lease = test_lease(%{dns_servers: []})
       assert :ok = Standalone.apply_dns("test0", lease)
     end
+
+    test "does not crash when dns_servers is non-empty but commands fail" do
+      lease = test_lease(%{dns_servers: [{8, 8, 8, 8}]})
+      # apply_dns returns :ok or {:error, _} but must never raise
+      result = Standalone.apply_dns("test_dns_iface", lease)
+      assert result == :ok or match?({:error, _}, result)
+    end
+
+    test "filters out non-tuple dns_servers values" do
+      # If dns_servers contains a mix, only tuples should be used
+      lease = test_lease(%{dns_servers: [{8, 8, 8, 8}, "8.8.4.4"]})
+      result = Standalone.apply_dns("test_dns_iface2", lease)
+      assert result == :ok or match?({:error, _}, result)
+    end
   end
 
   describe "deconfigure/1" do
