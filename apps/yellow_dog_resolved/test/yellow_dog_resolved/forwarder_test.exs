@@ -350,6 +350,73 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "upstream deprioritization telemetry" do
+    setup do
+      config = %{
+        @config
+        | upstreams: [{198, 51, 100, 1}],
+          upstream_timeout_ms: 200,
+          upstream_failure_threshold: 2
+      }
+
+      start_supervised!({Forwarder, config})
+      :ok
+    end
+
+    test "emits deprioritized telemetry when failure threshold reached" do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "fwd-depri-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :upstream, :deprioritized],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:deprioritized, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("fwd-depri-#{inspect(ref)}") end)
+
+      pid = Process.whereis(Forwarder)
+      upstream = {198, 51, 100, 1}
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        # Second failure hits threshold (2)
+        GenServer.cast(pid, {:upstream_failure, upstream})
+        GenServer.cast(pid, {:upstream_failure, upstream})
+        Process.sleep(20)
+      end)
+
+      assert_receive {:deprioritized, measurements, metadata}
+      assert measurements.failure_count == 2
+      assert metadata.upstream == upstream
+      assert metadata.threshold == 2
+    end
+
+    test "does NOT emit deprioritized telemetry below threshold" do
+      ref = make_ref()
+
+      :telemetry.attach(
+        "fwd-no-depri-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :upstream, :deprioritized],
+        fn _event, _measurements, _metadata, _ ->
+          send(self(), :unexpected_deprioritized)
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("fwd-no-depri-#{inspect(ref)}") end)
+
+      pid = Process.whereis(Forwarder)
+      # Only 1 failure, threshold is 2
+      GenServer.cast(pid, {:upstream_failure, {198, 51, 100, 1}})
+      Process.sleep(20)
+
+      refute_receive :unexpected_deprioritized, 100
+    end
+  end
+
   describe "start_link/1 with {ip, port} upstreams" do
     test "starts with mixed upstream formats" do
       config = %{@config | upstreams: [{1, 1, 1, 1}, {{8, 8, 8, 8}, 5353}]}

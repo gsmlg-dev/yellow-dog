@@ -86,6 +86,12 @@ defmodule YellowDog.Resolved.Forwarder do
     failure_counts = Map.put(state.failure_counts, upstream, count)
 
     if count >= state.failure_threshold do
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :upstream, :deprioritized],
+        %{failure_count: count},
+        %{upstream: upstream, threshold: state.failure_threshold}
+      )
+
       Logger.warning(
         "Upstream #{Upstream.format(upstream)} deprioritized after #{count} failures"
       )

@@ -114,10 +114,22 @@ defmodule YellowDog.Resolved.Discovery do
     probe_upstreams(state)
   rescue
     e ->
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :discovery, :probe_failed],
+        %{},
+        %{reason: e, kind: :error}
+      )
+
       Logger.warning("Discovery probe failed: #{inspect(e)}")
       state
   catch
     kind, reason ->
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :discovery, :probe_failed],
+        %{},
+        %{reason: reason, kind: kind}
+      )
+
       Logger.warning("Discovery probe crashed (#{kind}): #{inspect(reason)}")
       state
   end

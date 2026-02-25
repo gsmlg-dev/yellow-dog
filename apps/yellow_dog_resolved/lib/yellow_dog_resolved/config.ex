@@ -132,6 +132,12 @@ defmodule YellowDog.Resolved.Config do
           {:noreply, %{state | config: new_config}}
 
         {:error, reason} ->
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :config, :reload_failed],
+            %{},
+            %{path: path, reason: reason}
+          )
+
           Logger.warning("Failed to reload config: #{inspect(reason)}")
           {:noreply, state}
       end
