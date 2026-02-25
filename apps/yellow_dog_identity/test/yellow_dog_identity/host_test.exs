@@ -54,6 +54,24 @@ defmodule YellowDogIdentity.HostTest do
       assert host.id =~ ~r/^[0-9a-f]{8}-/
     end
 
+    test "accepts machine_id param (dbus machine id)" do
+      params = %{
+        hostname: "node-02",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient,
+        machine_id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+      }
+
+      assert {:ok, host} = Host.new(params)
+      assert host.machine_id == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    end
+
+    test "machine_id is nil when not provided" do
+      params = %{hostname: "node-03", ssh_pubkey: @valid_ssh_pubkey, age_recipient: @valid_age_recipient}
+      assert {:ok, host} = Host.new(params)
+      assert host.machine_id == nil
+    end
+
     test "creates host with string-key params" do
       params = %{
         "hostname" => "node-02",
