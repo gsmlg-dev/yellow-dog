@@ -374,6 +374,78 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
     end
   end
 
+  defp send_ack(fsm_pid) do
+    {_state, data} = StateMachine.status(fsm_pid)
+    xid = data.xid
+    {sa, sb, sc, sd} = @server_ip
+
+    options = [
+      %Option{type: 53, length: 1, value: <<5>>},
+      %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+      %Option{type: 3, length: 4, value: <<sa, sb, sc, sd>>},
+      %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+      %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+      %Option{type: 54, length: 4, value: <<sa, sb, sc, sd>>},
+      %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+      %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+    ]
+
+    msg = %Message{
+      op: 2,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: xid,
+      secs: 0,
+      flags: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: @offered_ip,
+      siaddr: @server_ip,
+      giaddr: {0, 0, 0, 0},
+      chaddr: <<0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0::80>>,
+      sname: <<0::512>>,
+      file: <<0::1024>>,
+      options: options
+    }
+
+    packet = IO.iodata_to_binary(DHCP.Parameter.to_iodata(msg))
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
+  defp send_nak(fsm_pid) do
+    {_state, data} = StateMachine.status(fsm_pid)
+    xid = data.xid
+    {sa, sb, sc, sd} = @server_ip
+    nak_message = "address unavailable"
+
+    options = [
+      %Option{type: 53, length: 1, value: <<6>>},
+      %Option{type: 54, length: 4, value: <<sa, sb, sc, sd>>},
+      %Option{type: 56, length: byte_size(nak_message), value: nak_message}
+    ]
+
+    msg = %Message{
+      op: 2,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: xid,
+      secs: 0,
+      flags: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: {0, 0, 0, 0},
+      siaddr: @server_ip,
+      giaddr: {0, 0, 0, 0},
+      chaddr: <<0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0::80>>,
+      sname: <<0::512>>,
+      file: <<0::1024>>,
+      options: options
+    }
+
+    packet = IO.iodata_to_binary(DHCP.Parameter.to_iodata(msg))
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
   defp build_vendor_option_125(sub_options_binary) do
     pen = VendorOptions.pen()
     data_len = byte_size(sub_options_binary)
@@ -722,6 +794,42 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       # instead verify FSM cycles back to INIT (same behavior in RENEWING on NAK)
       {state, _data} = StateMachine.status(fsm_pid)
       assert state in [:init, :selecting, :requesting]
+    end
+  end
+
+  # ── Tests: Rebinding (T2) ───────────────────────────────────────────────
+
+  describe "rebinding (T2)" do
+    test "FSM returns to :bound when an ACK is received in :rebinding state" do
+      mock_pid = start_mock_server()
+      fsm_pid = start_fsm(mock_pid, %{selection_window_ms: 50})
+
+      wait_for_state(fsm_pid, :bound)
+
+      # Force FSM to :rebinding state (simulates T2 expiry)
+      :sys.replace_state(fsm_pid, fn {state, data} ->
+        if state == :bound, do: {:rebinding, data}, else: {state, data}
+      end)
+
+      # Manually send an ACK (rebinding accepts ACK from any server)
+      send_ack(fsm_pid)
+      wait_for_state(fsm_pid, :bound, 3_000)
+    end
+
+    test "FSM returns to :init when server sends NAK during rebinding" do
+      mock_pid = start_mock_server()
+      fsm_pid = start_fsm(mock_pid, %{selection_window_ms: 50})
+
+      wait_for_state(fsm_pid, :bound)
+
+      # Force to :rebinding state
+      :sys.replace_state(fsm_pid, fn {state, data} ->
+        if state == :bound, do: {:rebinding, data}, else: {state, data}
+      end)
+
+      # Send a NAK — in :rebinding, NAK causes deconfigure and return to :init
+      send_nak(fsm_pid)
+      wait_for_state(fsm_pid, :init, 3_000)
     end
   end
 end
