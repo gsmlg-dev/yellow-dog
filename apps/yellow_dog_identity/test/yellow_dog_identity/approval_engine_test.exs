@@ -351,4 +351,114 @@ defmodule YellowDogIdentity.Approval.EngineTest do
       assert result.action == :approve
     end
   end
+
+  describe "build_context — Azure cloud_account (subscription_id)" do
+    test "matches Azure subscription_id from trust_evidence" do
+      policies = [
+        %Policy{
+          name: "azure-sub",
+          action: :approve,
+          match: %{"cloud_account" => "sub-12345"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{"subscription_id" => "sub-12345"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "azure-sub"
+    end
+
+    test "prefers account_id over subscription_id when both present" do
+      policies = [
+        %Policy{
+          name: "account-id-wins",
+          action: :approve,
+          match: %{"cloud_account" => "aws-account-999"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{
+            "account_id" => "aws-account-999",
+            "subscription_id" => "azure-sub-ignored"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+  end
+
+  describe "build_context — Azure cloud_region (location)" do
+    test "matches Azure location field as cloud_region fallback" do
+      policies = [
+        %Policy{
+          name: "azure-region",
+          action: :approve,
+          match: %{"cloud_region" => "westus2"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{"location" => "westus2"}
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+      assert result.policy_name == "azure-region"
+    end
+
+    test "prefers region over location when both present" do
+      policies = [
+        %Policy{
+          name: "region-wins",
+          action: :approve,
+          match: %{"cloud_region" => "us-east-1"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{
+            "region" => "us-east-1",
+            "location" => "eastus"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+
+    test "prefers zone over location when region absent" do
+      policies = [
+        %Policy{
+          name: "zone-before-location",
+          action: :approve,
+          match: %{"cloud_region" => "us-central1-a"}
+        }
+      ]
+
+      host =
+        make_host(%{
+          trust_level: :cloud_verified,
+          trust_evidence: %{
+            "zone" => "us-central1-a",
+            "location" => "eastus"
+          }
+        })
+
+      result = Engine.evaluate_with_policies(host, policies, :pending)
+      assert result.action == :approve
+    end
+  end
 end
