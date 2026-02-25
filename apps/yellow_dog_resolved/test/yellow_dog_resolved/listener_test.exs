@@ -290,6 +290,97 @@ defmodule YellowDog.Resolved.ListenerTest do
     end
   end
 
+  describe "end-to-end via Abyss listener with FakeUpstream" do
+    setup do
+      {:ok, upstream_pid, upstream_port} =
+        YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      config = %{
+        listen: {127, 0, 0, 1},
+        port: 0,
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3,
+        intercept_rules: [
+          %{match: {:suffix, "local.dev"}, type: :a, value: "127.0.0.1", ttl: 300}
+        ],
+        cache: @cache_config,
+        discovery: %{
+          enabled: false,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        },
+        config_path: ""
+      }
+
+      start_supervised!({Config, config})
+      start_supervised!({Cache, @cache_config})
+
+      forwarder_config = %{
+        upstreams: [{{127, 0, 0, 1}, upstream_port}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      start_supervised!({YellowDog.Resolved.Forwarder, forwarder_config})
+
+      # Start the Abyss listener
+      spec = Listener.listener_spec(config)
+      {:ok, listener_pid} = start_supervised(spec)
+
+      # Get the actual bound port using Abyss API
+      Process.sleep(100)
+      listener_pool_pid = Abyss.Server.listener_pool_pid(listener_pid)
+      [listener_worker | _] = Abyss.ListenerPool.listener_pids(listener_pool_pid)
+      {_ip, listener_port} = Abyss.Listener.listener_info(listener_worker)
+
+      {:ok, client_socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_udp.close(client_socket) end)
+
+      %{client_socket: client_socket, listener_port: listener_port}
+    end
+
+    test "intercepted query returns 127.0.0.1 via full UDP stack", ctx do
+      query = build_query("app.local.dev", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      :gen_udp.send(ctx.client_socket, {127, 0, 0, 1}, ctx.listener_port, raw)
+      assert {:ok, {_ip, _port, response_binary}} = :gen_udp.recv(ctx.client_socket, 0, 5000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.id == query.header.id
+      assert length(response.anlist) == 1
+    end
+
+    test "forwarded query returns upstream response via full UDP stack", ctx do
+      query = build_query("example.com", 1)
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      :gen_udp.send(ctx.client_socket, {127, 0, 0, 1}, ctx.listener_port, raw)
+      assert {:ok, {_ip, _port, response_binary}} = :gen_udp.recv(ctx.client_socket, 0, 5000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.id == query.header.id
+      # FakeUpstream :echo returns A record answer
+      assert length(response.anlist) >= 1
+    end
+
+    test "malformed packet returns FORMERR via full UDP stack", ctx do
+      garbage = <<0xAB, 0xCD, 0::80, 0xFF, 0xFF, 0xFF, 0xFF>>
+
+      :gen_udp.send(ctx.client_socket, {127, 0, 0, 1}, ctx.listener_port, garbage)
+      assert {:ok, {_ip, _port, response_binary}} = :gen_udp.recv(ctx.client_socket, 0, 5000)
+
+      response = DNS.Message.from_iodata(response_binary)
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.form_err()
+    end
+
+  end
+
   defp build_query(domain, type_num) do
     query = DNS.Message.new()
     query = DNS.Message.update_header_attr(query, :id, :rand.uniform(65535))

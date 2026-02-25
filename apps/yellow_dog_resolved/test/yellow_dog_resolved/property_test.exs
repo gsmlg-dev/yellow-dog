@@ -12,7 +12,7 @@ defmodule YellowDog.Resolved.PropertyTest do
 
   import ExUnit.CaptureLog
 
-  alias YellowDog.Resolved.{Cache, Config, Router}
+  alias YellowDog.Resolved.{Cache, Config, ResponseBuilder, Router}
 
   @cache_config %{
     enabled: true,
@@ -225,6 +225,53 @@ defmodule YellowDog.Resolved.PropertyTest do
 
         # Should be present immediately
         assert {:hit, _} = Cache.lookup(domain, :a)
+      end
+    end
+  end
+
+  describe "property: ResponseBuilder all record types encode/decode roundtrip" do
+    defp intercept_rule do
+      gen all(type <- member_of([:a, :aaaa, :cname, :txt, :mx, :srv])) do
+        case type do
+          :a -> %{type: :a, value: "10.0.0.1", ttl: 300}
+          :aaaa -> %{type: :aaaa, value: "::1", ttl: 300}
+          :cname -> %{type: :cname, value: "target.example.com", ttl: 300}
+          :txt -> %{type: :txt, value: "v=spf1 -all", ttl: 300}
+          :mx -> %{type: :mx, value: "10 mail.example.com", ttl: 300}
+          :srv -> %{type: :srv, value: "10 20 8080 target.example.com", ttl: 300}
+        end
+      end
+    end
+
+    defp query_type_num(:a), do: 1
+    defp query_type_num(:aaaa), do: 28
+    defp query_type_num(:cname), do: 5
+    defp query_type_num(:txt), do: 16
+    defp query_type_num(:mx), do: 15
+    defp query_type_num(:srv), do: 33
+
+    property "build_intercept_response encodes to valid DNS for all types" do
+      check all(
+              domain <- dns_domain(),
+              rule <- intercept_rule(),
+              txn_id <- integer(1..65535),
+              max_runs: 100
+            ) do
+        type_num = query_type_num(rule.type)
+        query = DNS.Message.new()
+        query = DNS.Message.update_header_attr(query, :id, txn_id)
+        query = DNS.Message.update_header_attr(query, :rd, 1)
+        query = DNS.Message.add_question(query, DNS.Message.Question.new(domain, type_num, 1))
+
+        response = ResponseBuilder.build_intercept_response(query, rule)
+        binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+        assert byte_size(binary) >= 12
+
+        decoded = DNS.Message.from_iodata(binary)
+        assert decoded.header.qr == 1
+        assert decoded.header.id == txn_id
+        assert length(decoded.anlist) == 1
       end
     end
   end

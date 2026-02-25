@@ -795,6 +795,56 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "stats table resilience (catch :badarg paths)" do
+    test "stats() returns zeros when stats table is deleted" do
+      # Pre-populate to have real stats
+      Cache.store("resilience.test", :a, "data", 300)
+      Process.sleep(10)
+      Cache.lookup("resilience.test", :a)
+
+      # Verify stats work before
+      stats_before = Cache.stats()
+      assert stats_before.hits >= 1
+
+      # Delete the stats ETS table to trigger catch :badarg paths
+      :ets.delete(:"Elixir.YellowDog.Resolved.Cache.Stats")
+
+      # stats() should degrade gracefully — get_stat returns 0 for missing table
+      stats = Cache.stats()
+      assert stats.hits == 0
+      assert stats.misses == 0
+      assert stats.evictions == 0
+      assert stats.hit_rate == 0.0
+      # entries still works (different ETS table)
+      assert stats.entries >= 1
+    end
+
+    test "lookup still works when stats table is deleted" do
+      Cache.store("stats-gone.test", :a, "data", 300)
+      Process.sleep(10)
+
+      # Delete stats table
+      :ets.delete(:"Elixir.YellowDog.Resolved.Cache.Stats")
+
+      # lookup should not crash — bump_stat catch :badarg → :ok
+      assert {:hit, "data"} = Cache.lookup("stats-gone.test", :a)
+
+      # miss path should also not crash
+      assert :miss = Cache.lookup("nonexistent.test", :a)
+    end
+
+    test "store still works when stats table is deleted" do
+      # Delete stats table
+      :ets.delete(:"Elixir.YellowDog.Resolved.Cache.Stats")
+
+      # store should not crash — bump_stat for evictions still works
+      Cache.store("no-stats.test", :a, "data", 300)
+      Process.sleep(10)
+
+      assert {:hit, "data"} = Cache.lookup("no-stats.test", :a)
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       pid = Process.whereis(Cache)
