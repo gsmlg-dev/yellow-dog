@@ -78,6 +78,23 @@ defmodule YellowDogIdentity.RegistryTest do
       assert :not_found = GenServer.call(pid, {:get_host, "nonexistent"})
     end
 
+    test "get_host_by_fingerprint returns not_found when index desync (host deleted)", %{
+      registry: pid
+    } do
+      host = make_host()
+      :ok = GenServer.call(pid, {:put_host, host})
+      fingerprint = host.key_fingerprint
+
+      # Verify it's findable before deletion
+      assert {:ok, ^host} = GenServer.call(pid, {:get_host_by_fingerprint, fingerprint})
+
+      # Delete the host — after deletion the fingerprint index entry is also removed
+      :ok = GenServer.call(pid, {:delete_host, host.id})
+
+      # Fingerprint lookup must not crash — returns :not_found instead
+      assert :not_found = GenServer.call(pid, {:get_host_by_fingerprint, fingerprint})
+    end
+
     test "delete host returns not_found for unknown id", %{registry: pid} do
       assert {:error, :not_found} = GenServer.call(pid, {:delete_host, "does-not-exist"})
     end

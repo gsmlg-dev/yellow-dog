@@ -155,8 +155,14 @@ defmodule YellowDogIdentity.Registry do
 
   def handle_call({:get_host_by_fingerprint, fingerprint}, _from, state) do
     case Map.get(state.fingerprint_index, fingerprint) do
-      nil -> {:reply, :not_found, state}
-      id -> {:reply, {:ok, Map.fetch!(state.hosts, id)}, state}
+      nil ->
+        {:reply, :not_found, state}
+
+      id ->
+        case Map.fetch(state.hosts, id) do
+          {:ok, host} -> {:reply, {:ok, host}, state}
+          :error -> {:reply, :not_found, state}
+        end
     end
   end
 
