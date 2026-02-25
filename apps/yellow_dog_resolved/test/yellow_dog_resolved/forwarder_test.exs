@@ -103,6 +103,69 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "start_link/1 with {ip, port} upstreams" do
+    test "starts with mixed upstream formats" do
+      config = %{@config | upstreams: [{1, 1, 1, 1}, {{8, 8, 8, 8}, 5353}]}
+
+      assert {:ok, pid} = start_supervised({Forwarder, config})
+      assert Process.alive?(pid)
+    end
+  end
+
+  describe "telemetry events" do
+    setup do
+      {:ok, upstream_pid, upstream_port} = YellowDog.Resolved.Test.FakeUpstream.start(:echo)
+      on_exit(fn -> YellowDog.Resolved.Test.FakeUpstream.stop(upstream_pid) end)
+
+      config = %{
+        @config
+        | upstreams: [{{127, 0, 0, 1}, upstream_port}],
+          upstream_timeout_ms: 2000
+      }
+
+      start_supervised!({Forwarder, config})
+      {:ok, upstream_port: upstream_port}
+    end
+
+    test "emits forward start and stop events on success" do
+      test_pid = self()
+      ref = make_ref()
+
+      :telemetry.attach(
+        "fwd-start-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :forward, :start],
+        fn _event, _measurements, metadata, _ ->
+          send(test_pid, {:fwd_start, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        "fwd-stop-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :forward, :stop],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:fwd_stop, metadata, measurements})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach("fwd-start-#{inspect(ref)}")
+        :telemetry.detach("fwd-stop-#{inspect(ref)}")
+      end)
+
+      query = build_query("telemetry.test")
+      assert {:ok, _} = Forwarder.forward(query)
+
+      assert_receive {:fwd_start, start_meta}
+      assert String.starts_with?(start_meta.domain, "telemetry.test")
+
+      assert_receive {:fwd_stop, stop_meta, measurements}
+      assert String.starts_with?(stop_meta.domain, "telemetry.test")
+      assert is_integer(measurements.duration)
+    end
+  end
+
   describe "handle_info catch-all" do
     test "ignores unexpected messages" do
       config = %{@config | upstreams: [{198, 51, 100, 1}], upstream_timeout_ms: 200}

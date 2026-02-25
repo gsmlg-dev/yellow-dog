@@ -13,6 +13,9 @@ defmodule YellowDog.Resolved.Forwarder do
 
   require Logger
 
+  @typedoc "An upstream can be a bare IP (port 53 assumed) or {ip, port} tuple."
+  @type upstream :: :inet.ip_address() | {:inet.ip_address(), :inet.port_number()}
+
   @type pending :: %{
           client_txn_id: non_neg_integer(),
           query: DNS.Message.t(),
@@ -84,7 +87,9 @@ defmodule YellowDog.Resolved.Forwarder do
     failure_counts = Map.put(state.failure_counts, upstream, count)
 
     if count >= state.failure_threshold do
-      Logger.warning("Upstream #{:inet.ntoa(upstream)} deprioritized after #{count} failures")
+      Logger.warning(
+        "Upstream #{format_upstream(upstream)} deprioritized after #{count} failures"
+      )
     end
 
     {:noreply, %{state | failure_counts: failure_counts}}
@@ -126,7 +131,9 @@ defmodule YellowDog.Resolved.Forwarder do
     # Encode the query and send to upstream
     query_binary = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
-    case Abyss.Client.send_recv(upstream, 53, query_binary, timeout) do
+    {upstream_ip, upstream_port} = normalize_upstream(upstream)
+
+    case Abyss.Client.send_recv(upstream_ip, upstream_port, query_binary, timeout) do
       {:ok, response} ->
         duration = System.monotonic_time() - start_time
 
@@ -152,13 +159,19 @@ defmodule YellowDog.Resolved.Forwarder do
           %{upstream: upstream, reason: reason}
         )
 
-        Logger.debug("Upstream #{:inet.ntoa(upstream)} failed: #{inspect(reason)}")
+        Logger.debug("Upstream #{format_upstream(upstream)} failed: #{inspect(reason)}")
         GenServer.cast(task_state.state_pid, {:upstream_failure, upstream})
 
         # Try next upstream
         try_upstreams(%{task_state | upstreams: rest})
     end
   end
+
+  defp normalize_upstream({ip, port}) when is_tuple(ip) and is_integer(port), do: {ip, port}
+  defp normalize_upstream(ip) when is_tuple(ip), do: {ip, 53}
+
+  defp format_upstream({ip, port}) when is_tuple(ip), do: "#{:inet.ntoa(ip)}:#{port}"
+  defp format_upstream(ip) when is_tuple(ip), do: "#{:inet.ntoa(ip)}:53"
 
   defp get_query_domain(query) do
     case query.qdlist do

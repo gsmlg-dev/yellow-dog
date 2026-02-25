@@ -132,6 +132,71 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
     end
   end
 
+  describe "build_intercept_response/2 rcode" do
+    test "NOERROR rcode when type matches" do
+      query = build_query("test.local", 1)
+      rule = %{type: :a, value: "10.0.0.1", ttl: 60}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      assert response.header.rcode == DNS.Message.RCode.new(0)
+    end
+
+    test "NOERROR rcode when type mismatches (empty answer, not NXDOMAIN)" do
+      query = build_query("test.local", 28)
+      rule = %{type: :a, value: "10.0.0.1", ttl: 60}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      assert response.header.rcode == DNS.Message.RCode.new(0)
+      assert response.anlist == []
+    end
+  end
+
+  describe "build_nxdomain/1 rcode value" do
+    test "has rcode equal to nx_domain()" do
+      query = build_query("nope.test")
+      response = ResponseBuilder.build_nxdomain(query)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+    end
+
+    test "preserves query transaction ID" do
+      query = build_query("nope.test")
+      response = ResponseBuilder.build_nxdomain(query)
+      assert response.header.id == query.header.id
+    end
+  end
+
+  describe "build_servfail/1 rcode value" do
+    test "has rcode 2" do
+      query = build_query("fail.test")
+      response = ResponseBuilder.build_servfail(query)
+      assert response.header.rcode == DNS.Message.RCode.new(2)
+    end
+
+    test "preserves query transaction ID" do
+      query = build_query("fail.test")
+      response = ResponseBuilder.build_servfail(query)
+      assert response.header.id == query.header.id
+    end
+  end
+
+  describe "build_formerr/1 edge cases" do
+    test "has rcode 1" do
+      response = ResponseBuilder.build_formerr(999)
+      assert response.header.rcode == DNS.Message.RCode.new(1)
+    end
+
+    test "works with txn_id 0" do
+      response = ResponseBuilder.build_formerr(0)
+      assert response.header.id == 0
+      assert response.header.qr == 1
+    end
+
+    test "works with max txn_id" do
+      response = ResponseBuilder.build_formerr(65535)
+      assert response.header.id == 65535
+    end
+  end
+
   describe "encoding roundtrip" do
     test "intercept response encodes to valid DNS binary" do
       query = build_query("roundtrip.test", 1)
@@ -192,6 +257,39 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
     test "CNAME intercept response roundtrips" do
       query = build_query("alias.test", 5)
       rule = %{type: :cname, value: "target.example.com", ttl: 300}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert length(decoded.anlist) == 1
+    end
+
+    test "MX intercept response roundtrips" do
+      query = build_query("mail.test", 15)
+      rule = %{type: :mx, value: "10 mail.example.com", ttl: 300}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert length(decoded.anlist) == 1
+    end
+
+    test "SRV intercept response roundtrips" do
+      query = build_query("_sip._tcp.test", 33)
+      rule = %{type: :srv, value: "10 5 5060 sip.example.com", ttl: 300}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      decoded = DNS.Message.from_iodata(binary)
+      assert length(decoded.anlist) == 1
+    end
+
+    test "TXT intercept response roundtrips" do
+      query = build_query("txt.test", 16)
+      rule = %{type: :txt, value: "v=spf1 -all", ttl: 300}
 
       response = ResponseBuilder.build_intercept_response(query, rule)
       binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
