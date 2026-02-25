@@ -1131,4 +1131,130 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert get_state(pid) == :requesting
     end
   end
+
+  # ── Packet telemetry ──
+
+  describe "packet telemetry" do
+    defp attach_packet_telemetry(ref, self_pid) do
+      :telemetry.attach(
+        "test-packet-tx-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :packet, :tx],
+        fn _event, _measurements, metadata, _config ->
+          send(self_pid, {:packet_tx, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        "test-packet-rx-#{inspect(ref)}",
+        [:yellow_dog, :dhcp_client, :packet, :rx],
+        fn _event, _measurements, metadata, _config ->
+          send(self_pid, {:packet_rx, metadata})
+        end,
+        nil
+      )
+    end
+
+    test "emits packet:tx :discover on init entry", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      _pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      assert_receive {:packet_tx, %{type: :discover, interface: "test0"}}, 500
+    end
+
+    test "emits packet:tx :request on requesting entry", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+
+      assert_receive {:packet_tx, %{type: :request, interface: "test0"}}, 500
+    end
+
+    test "emits packet:tx :release on release", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 1000)
+
+      assert_receive {:packet_tx, %{type: :release, interface: "test0"}}, 500
+    end
+
+    test "emits packet:rx :offer when offer received", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid, server_ip: {192, 168, 1, 1})
+
+      assert_receive {:packet_rx, %{type: :offer, interface: "test0", server: server}}, 500
+      assert server == "192.168.1.1"
+    end
+
+    test "emits packet:rx :ack when ACK received", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid, server_ip: {192, 168, 1, 1})
+
+      assert_receive {:packet_rx, %{type: :ack, interface: "test0", server: server}}, 500
+      assert server == "192.168.1.1"
+    end
+
+    test "emits packet:rx :nak when NAK received", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_nak(pid)
+
+      assert_receive {:packet_rx, %{type: :nak, interface: "test0"}}, 500
+    end
+  end
 end
