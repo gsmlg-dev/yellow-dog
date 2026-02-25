@@ -139,7 +139,9 @@ defmodule YellowDog.Dns.ClientTest do
     @closed_port 65_001
 
     test "returns error binary when server unavailable" do
-      result = Client.query_raw("example.com", :a, {127, 0, 0, 1}, port: @closed_port, timeout: 100)
+      result =
+        Client.query_raw("example.com", :a, {127, 0, 0, 1}, port: @closed_port, timeout: 100)
+
       assert {:error, _} = result
     end
 
@@ -170,7 +172,8 @@ defmodule YellowDog.Dns.ClientTest do
       assert is_struct(message, DNS.Message)
 
       # send_message is happy to accept the struct; error is from transport
-      assert {:error, _} = Client.send_message(message, {127, 0, 0, 1}, port: 65_002, timeout: 100)
+      assert {:error, _} =
+               Client.send_message(message, {127, 0, 0, 1}, port: 65_002, timeout: 100)
     end
   end
 

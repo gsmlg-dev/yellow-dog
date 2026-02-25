@@ -246,7 +246,8 @@ defmodule YellowDog.Resolved.Config do
             "upstream_timeout_ms must be positive, got: #{config.upstream_timeout_ms}"
     end
 
-    unless is_integer(config.upstream_failure_threshold) and config.upstream_failure_threshold >= 1 do
+    unless is_integer(config.upstream_failure_threshold) and
+             config.upstream_failure_threshold >= 1 do
       raise ArgumentError,
             "upstream_failure_threshold must be >= 1, got: #{config.upstream_failure_threshold}"
     end
@@ -339,7 +340,8 @@ defmodule YellowDog.Resolved.Config do
     if normalized in @valid_types do
       String.to_atom(normalized)
     else
-      raise ArgumentError, "unsupported record type: #{inspect(type)}, expected one of: A, AAAA, CNAME, TXT, MX, SRV"
+      raise ArgumentError,
+            "unsupported record type: #{inspect(type)}, expected one of: A, AAAA, CNAME, TXT, MX, SRV"
     end
   end
 

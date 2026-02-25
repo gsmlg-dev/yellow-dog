@@ -378,7 +378,6 @@ defmodule YellowDog.Resolved.ListenerTest do
       assert response.header.qr == 1
       assert response.header.rcode == DNS.Message.RCode.form_err()
     end
-
   end
 
   describe "telemetry events" do

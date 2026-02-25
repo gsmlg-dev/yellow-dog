@@ -153,6 +153,7 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     test "backoff caps at reconnect_max_s", %{pid: pid} do
       # Inject a backoff just below the max
       fake_mgmt = spawn(fn -> Process.sleep(:infinity) end)
+
       :sys.replace_state(pid, fn state ->
         %{state | management_pid: fake_mgmt, ws_endpoint: "ws://fake/ws", backoff: 8}
       end)
@@ -166,6 +167,7 @@ defmodule YellowDog.Resolved.DiscoveryTest do
 
       # Do it again — should stay at 16 (capped)
       fake_mgmt2 = spawn(fn -> Process.sleep(:infinity) end)
+
       :sys.replace_state(pid, fn state ->
         %{state | management_pid: fake_mgmt2, ws_endpoint: "ws://fake/ws"}
       end)
@@ -250,7 +252,10 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       query = DNS.Message.new()
       query = DNS.Message.update_header_attr(query, :id, 42)
       query = DNS.Message.update_header_attr(query, :rd, 1)
-      query = DNS.Message.add_question(query, DNS.Message.Question.new("_yellowdog._tcp.local", 33, 1))
+
+      query =
+        DNS.Message.add_question(query, DNS.Message.Question.new("_yellowdog._tcp.local", 33, 1))
+
       query_binary = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
       {:ok, socket} = :gen_udp.open(0, [:binary, active: false, ip: {127, 0, 0, 1}])

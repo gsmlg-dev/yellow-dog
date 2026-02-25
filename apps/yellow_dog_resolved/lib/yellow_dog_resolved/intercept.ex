@@ -47,5 +47,4 @@ defmodule YellowDog.Resolved.Intercept do
   def matches_pattern?(domain, {:prefix, pattern}) do
     String.starts_with?(domain, pattern)
   end
-
 end

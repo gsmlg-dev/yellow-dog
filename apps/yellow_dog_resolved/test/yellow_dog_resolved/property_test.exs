@@ -53,9 +53,7 @@ defmodule YellowDog.Resolved.PropertyTest do
   end
 
   defp dns_domain do
-    gen all(
-          labels <- list_of(dns_label(), min_length: 1, max_length: 4)
-        ) do
+    gen all(labels <- list_of(dns_label(), min_length: 1, max_length: 4)) do
       Enum.join(labels, ".")
     end
   end

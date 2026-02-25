@@ -894,6 +894,7 @@ defmodule YellowDog.Resolved.ConfigTest do
       tmp_dir = System.tmp_dir!()
       path0 = Path.join(tmp_dir, "port_zero_#{System.unique_integer([:positive])}.toml")
       path65535 = Path.join(tmp_dir, "port_max_#{System.unique_integer([:positive])}.toml")
+
       on_exit(fn ->
         File.rm(path0)
         File.rm(path65535)

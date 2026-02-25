@@ -106,7 +106,11 @@ defmodule YellowDog.Resolved.Management.ClientTest do
           send(
             pid,
             {:ws_message,
-             Jason.encode!(%{"type" => "cache_flush", "id" => "crash-test", "data" => %{"pattern" => nil}})}
+             Jason.encode!(%{
+               "type" => "cache_flush",
+               "id" => "crash-test",
+               "data" => %{"pattern" => nil}
+             })}
           )
 
           Process.sleep(20)
