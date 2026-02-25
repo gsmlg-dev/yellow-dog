@@ -447,6 +447,80 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "audience check" do
+    setup %{jwk: jwk} do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "gcp" => %{"audience" => "https://yellowdog.example.com/identity"}
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      %{jwk: jwk}
+    end
+
+    test "allows JWT with matching string aud claim", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"aud" => "https://yellowdog.example.com/identity"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with non-matching aud claim", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"aud" => "https://evil.example.com/other"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with aud as list containing the expected audience", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "aud" => ["https://other.example.com", "https://yellowdog.example.com/identity"]
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with aud as list not containing the expected audience", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "aud" => ["https://other.example.com", "https://another.example.com"]
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+  end
+
+  describe "missing kid in JWT header" do
+    test "rejects JWT with valid header but no kid field" do
+      # Build a JWT with no kid — verify_with_keys pattern matches {:ok, _no_kid} → :missing_kid
+      header = %{"alg" => "RS256"}  # no "kid" key
+      claims = %{
+        "iss" => "https://accounts.google.com",
+        "exp" => System.system_time(:second) + 3600
+      }
+      token = build_unsigned_jwt(claims, header)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :missing_kid} = GCP.verify(ctx)
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields", %{jwk: jwk} do
       claims = valid_gcp_claims()
