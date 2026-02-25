@@ -255,6 +255,7 @@ defmodule YellowDogIdentity do
          :ok <- check_duplicate(host),
          {:ok, host} <- check_conflict(host, params),
          {trust_level, trust_provider, evidence} <- verify_trust(host, context),
+         :ok <- check_instance_id_uniqueness(evidence),
          host <- apply_trust(host, trust_level, trust_provider, evidence),
          host <- apply_approval(host),
          :ok <- Registry.put_host(host) do
@@ -264,8 +265,9 @@ defmodule YellowDogIdentity do
         trust_level: host.trust_level
       })
 
-      if host.status == :approved do
-        Webhook.notify("host.approved", host)
+      case host.status do
+        :approved -> Webhook.notify("host.approved", host)
+        _ -> Webhook.notify("host.registered", host)
       end
 
       broadcast("identity:hosts", {:host_registered, host})
@@ -329,6 +331,30 @@ defmodule YellowDogIdentity do
   rescue
     _ -> {:ok, host}
   end
+
+  defp check_instance_id_uniqueness(evidence) when is_map(evidence) do
+    instance_id =
+      Map.get(evidence, :instance_id) || Map.get(evidence, "instance_id")
+
+    if instance_id do
+      # Check all hosts for duplicate cloud instance ID
+      hosts = Registry.list_hosts()
+
+      case Enum.find(hosts, fn h ->
+             eid = h.trust_evidence
+             (Map.get(eid, :instance_id) || Map.get(eid, "instance_id")) == to_string(instance_id)
+           end) do
+        nil -> :ok
+        _existing -> {:error, :instance_id_conflict}
+      end
+    else
+      :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp check_instance_id_uniqueness(_), do: :ok
 
   defp verify_trust(host, context) do
     trust_context = %{

@@ -1,0 +1,259 @@
+defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDogIdentity.Trust.Cloud.GCP
+
+  @source_ip {10, 0, 0, 1}
+
+  defp build_context(attestation) do
+    %{
+      source_ip: @source_ip,
+      hostname: "test-host",
+      attestation: attestation,
+      metadata: %{},
+      authorization: nil
+    }
+  end
+
+  defp build_jwt(claims, header \\ %{"alg" => "RS256"}) do
+    header_b64 = Base.url_encode64(Jason.encode!(header), padding: false)
+    payload_b64 = Base.url_encode64(Jason.encode!(claims), padding: false)
+    signature_b64 = Base.url_encode64("fake-signature-bytes", padding: false)
+    "#{header_b64}.#{payload_b64}.#{signature_b64}"
+  end
+
+  defp valid_gcp_claims(overrides \\ %{}) do
+    base = %{
+      "google" => %{
+        "compute_engine" => %{
+          "project_id" => "my-test-project",
+          "instance_id" => 1234567890,
+          "instance_name" => "worker-node-1",
+          "zone" => "us-central1-a"
+        }
+      },
+      "exp" => System.system_time(:second) + 3600,
+      "iat" => System.system_time(:second),
+      "sub" => "1234567890"
+    }
+
+    Map.merge(base, overrides)
+  end
+
+  describe "provider routing" do
+    test "skips when provider is not gcp" do
+      ctx = build_context(%{"provider" => "aws", "token" => "some-token"})
+      assert {:skip, :not_applicable} = GCP.verify(ctx)
+    end
+
+    test "skips when provider is azure" do
+      ctx = build_context(%{"provider" => "azure", "token" => "some-token"})
+      assert {:skip, :not_applicable} = GCP.verify(ctx)
+    end
+
+    test "skips when attestation is nil" do
+      # verify/1 matches %{attestation: attestation} then calls Map.get on attestation,
+      # so nil attestation is handled by the fallback verify(_) clause via no match
+      assert {:skip, :not_applicable} = GCP.verify(%{})
+    end
+
+    test "skips when context has no attestation key" do
+      assert {:skip, :not_applicable} = GCP.verify(%{hostname: "test"})
+    end
+  end
+
+  describe "missing token" do
+    test "returns untrusted with missing_token when token is nil" do
+      ctx = build_context(%{"provider" => "gcp", "token" => nil})
+      assert {:untrusted, :missing_token} = GCP.verify(ctx)
+    end
+
+    test "returns untrusted with missing_token when token key is absent" do
+      ctx = build_context(%{"provider" => "gcp"})
+      assert {:untrusted, :missing_token} = GCP.verify(ctx)
+    end
+  end
+
+  describe "invalid JWT format" do
+    test "returns untrusted with invalid format when token has no dots" do
+      ctx = build_context(%{"provider" => "gcp", "token" => "nodots"})
+      assert {:untrusted, reason} = GCP.verify(ctx)
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+    end
+
+    test "returns untrusted with invalid format when token has only one dot" do
+      ctx = build_context(%{"provider" => "gcp", "token" => "one.dot"})
+      assert {:untrusted, reason} = GCP.verify(ctx)
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+    end
+
+    test "returns untrusted with invalid format when token has four dots" do
+      ctx = build_context(%{"provider" => "gcp", "token" => "a.b.c.d.e"})
+      assert {:untrusted, reason} = GCP.verify(ctx)
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+    end
+
+    test "returns untrusted when payload is not valid base64url" do
+      ctx = build_context(%{"provider" => "gcp", "token" => "eyJhbGciOiJSUzI1NiJ9.!!!invalid!!!.sig"})
+      assert {:untrusted, reason} = GCP.verify(ctx)
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+    end
+  end
+
+  describe "unverified JWT decode path" do
+    # In test environment, Google JWKS keys are not available.
+    # The implementation falls back to decode_jwt_claims_unverified
+    # which decodes the payload without signature verification.
+
+    test "returns trusted with valid unverified JWT containing compute_engine claims" do
+      claims = valid_gcp_claims()
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.provider == :gcp
+      assert evidence.project_id == "my-test-project"
+      assert evidence.instance_id == "1234567890"
+      assert evidence.instance_name == "worker-node-1"
+      assert evidence.zone == "us-central1-a"
+      assert %DateTime{} = evidence.verified_at
+    end
+
+    test "returns trusted with atom provider key" do
+      claims = valid_gcp_claims()
+      token = build_jwt(claims)
+      ctx = build_context(%{provider: :gcp, token: token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.provider == :gcp
+    end
+
+    test "returns trusted with different project and zone" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "production-proj-42",
+              "instance_id" => 9876543210,
+              "instance_name" => "api-server",
+              "zone" => "europe-west1-b"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.project_id == "production-proj-42"
+      assert evidence.instance_id == "9876543210"
+      assert evidence.instance_name == "api-server"
+      assert evidence.zone == "europe-west1-b"
+    end
+
+    test "returns trusted when claims have no google.compute_engine (nil fields)" do
+      claims = %{
+        "sub" => "some-subject",
+        "exp" => System.system_time(:second) + 3600
+      }
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.provider == :gcp
+      assert evidence.project_id == nil
+      assert evidence.instance_id == ""
+      assert evidence.instance_name == nil
+      assert evidence.zone == nil
+    end
+  end
+
+  describe "expiry check" do
+    test "returns untrusted when token is expired" do
+      claims = valid_gcp_claims(%{"exp" => System.system_time(:second) - 60})
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :token_expired} = GCP.verify(ctx)
+    end
+
+    test "returns trusted when token is not yet expired" do
+      claims = valid_gcp_claims(%{"exp" => System.system_time(:second) + 7200})
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
+    end
+
+    test "returns trusted when no exp claim is present" do
+      claims = valid_gcp_claims() |> Map.delete("exp")
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
+    end
+  end
+
+  describe "project and zone allowlists" do
+    # With no YellowDog.Config available in test, allowed_projects and
+    # allowed_zones default to [] which means all are allowed.
+
+    test "allows any project when allowed_projects is empty (default)" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "any-random-project",
+              "instance_id" => 111,
+              "instance_name" => "vm",
+              "zone" => "us-east1-c"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.project_id == "any-random-project"
+    end
+
+    test "allows any zone when allowed_zones is empty (default)" do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "proj",
+              "instance_id" => 222,
+              "instance_name" => "vm",
+              "zone" => "asia-southeast1-a"
+            }
+          }
+        })
+
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.zone == "asia-southeast1-a"
+    end
+  end
+
+  describe "evidence structure" do
+    test "evidence contains all expected fields" do
+      claims = valid_gcp_claims()
+      token = build_jwt(claims)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+
+      assert Map.has_key?(evidence, :provider)
+      assert Map.has_key?(evidence, :project_id)
+      assert Map.has_key?(evidence, :instance_id)
+      assert Map.has_key?(evidence, :instance_name)
+      assert Map.has_key?(evidence, :zone)
+      assert Map.has_key?(evidence, :verified_at)
+    end
+  end
+end

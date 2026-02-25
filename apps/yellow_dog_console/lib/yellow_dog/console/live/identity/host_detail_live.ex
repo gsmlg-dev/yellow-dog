@@ -162,7 +162,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                   <tbody>
                     <tr :for={{key, value} <- @host.trust_evidence}>
                       <td class="font-mono text-sm text-base-content/70">{key}</td>
-                      <td class="font-mono text-sm">{inspect(value)}</td>
+                      <td class="font-mono text-sm">{format_evidence_value(value)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -219,4 +219,25 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
   defp format_time(_), do: "-"
+
+  defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 4 do
+    # IPv4 tuple
+    :inet.ntoa(value) |> to_string()
+  rescue
+    _ -> inspect(value)
+  end
+
+  defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 8 do
+    # IPv6 tuple
+    :inet.ntoa(value) |> to_string()
+  rescue
+    _ -> inspect(value)
+  end
+
+  defp format_evidence_value(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
+  defp format_evidence_value(value) when is_atom(value), do: to_string(value)
+  defp format_evidence_value(value) when is_binary(value), do: value
+  defp format_evidence_value(value) when is_integer(value), do: Integer.to_string(value)
+  defp format_evidence_value(value) when is_number(value), do: to_string(value)
+  defp format_evidence_value(value), do: inspect(value)
 end
