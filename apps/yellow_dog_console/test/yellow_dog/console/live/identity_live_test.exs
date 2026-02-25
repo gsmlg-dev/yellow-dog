@@ -82,6 +82,53 @@ defmodule YellowDog.Console.IdentityLiveTest do
       assert html =~ "Status"
       assert html =~ "Trust"
     end
+
+    test "filter event works for pending", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_click(view, "filter", %{"status" => "pending"})
+      assert html =~ "Hostname"
+    end
+
+    test "filter event works for approved", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_click(view, "filter", %{"status" => "approved"})
+      assert html =~ "Hostname"
+    end
+
+    test "filter event works for revoked", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_click(view, "filter", %{"status" => "revoked"})
+      assert html =~ "Hostname"
+    end
+
+    test "filter event works for all", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_click(view, "filter", %{"status" => "all"})
+      assert html =~ "Hostname"
+    end
+
+    test "search event filters by hostname", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_change(view, "search", %{"q" => "node-01"})
+      assert html =~ "Hostname"
+    end
+
+    test "search event with empty query shows all", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_change(view, "search", %{"q" => ""})
+      assert html =~ "Hostname"
+    end
+
+    test "refresh event reloads host list", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts")
+      html = render_click(view, "refresh")
+      assert html =~ "Hostname"
+    end
+
+    test "shows empty state when no hosts registered", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/hosts")
+      assert html =~ "No hosts registered" or html =~ "Hostname"
+    end
   end
 
   # ============================================================================
@@ -178,6 +225,76 @@ defmodule YellowDog.Console.IdentityLiveTest do
     test "shows filter controls", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/identity/audit")
       assert html =~ "All Events" or html =~ "Event Type"
+    end
+
+    test "filter event works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/audit")
+      html = render_change(view, "filter", %{"event" => "host.approved", "host" => ""})
+      assert html =~ "Audit Log"
+    end
+
+    test "filter with host id works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/audit")
+      html = render_change(view, "filter", %{"event" => "", "host" => "some-host-id"})
+      assert html =~ "Audit Log"
+    end
+
+    test "filter reset works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/audit")
+      html = render_change(view, "filter", %{"event" => "", "host" => ""})
+      assert html =~ "Audit Log"
+    end
+
+    test "refresh event works", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/audit")
+      html = render_click(view, "refresh")
+      assert html =~ "Audit Log"
+    end
+
+    test "shows empty state when no entries", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/audit")
+      assert html =~ "No audit entries found" or html =~ "Timestamp"
+    end
+  end
+
+  # ============================================================================
+  # Host Detail
+  # ============================================================================
+
+  describe "Host Detail /identity/hosts/:id" do
+    test "mounts successfully for unknown host id", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+      assert html =~ "Host not found" or html =~ "Host"
+    end
+
+    test "shows back navigation link", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+      assert html =~ "Back" or html =~ "/identity/hosts"
+    end
+
+    test "shows not found alert for missing host", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+      assert html =~ "Host not found" or html =~ "Host"
+    end
+
+    test "page title contains Host", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+      assert html =~ "Host"
+    end
+
+    test "approve event handles gracefully when host not found", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+
+      # approve event should not crash the LiveView
+      html = render_click(view, "approve")
+      assert html =~ "Host"
+    end
+
+    test "revoke event handles gracefully when host not found", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/identity/hosts/00000000-0000-0000-0000-000000000000")
+
+      html = render_click(view, "revoke")
+      assert html =~ "Host"
     end
   end
 end

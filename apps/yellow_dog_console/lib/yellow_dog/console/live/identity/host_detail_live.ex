@@ -25,21 +25,42 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
 
   @impl true
   def handle_event("approve", _params, socket) do
-    case YellowDogIdentity.approve(socket.assigns.host_id) do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.approve(socket.assigns.host_id) end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, host} -> {:noreply, assign(socket, :host, host)}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to approve host")}
     end
   end
 
   def handle_event("revoke", _params, socket) do
-    case YellowDogIdentity.revoke(socket.assigns.host_id, "console-operator") do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.revoke(socket.assigns.host_id, "console-operator") end,
+        {:error, :unavailable}
+      )
+
+    case result do
       {:ok, host} -> {:noreply, assign(socket, :host, host)}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to revoke host")}
     end
   end
 
   def handle_event("delete", _params, socket) do
-    case YellowDogIdentity.delete_host(socket.assigns.host_id) do
+    result =
+      ServiceHelper.safe_call(
+        YellowDogIdentity,
+        fn -> YellowDogIdentity.delete_host(socket.assigns.host_id) end,
+        {:error, :unavailable}
+      )
+
+    case result do
       :ok ->
         {:noreply,
          socket
