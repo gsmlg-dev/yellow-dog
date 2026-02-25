@@ -103,6 +103,7 @@ defmodule YellowDog.Data.CollectionTest do
     end
 
     test "generates collection/0 function" do
+      Code.ensure_loaded!(TestModule)
       assert function_exported?(TestModule, :collection, 0)
     end
 
