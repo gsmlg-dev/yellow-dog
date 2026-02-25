@@ -168,9 +168,11 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     server_ip = Keyword.get(opts, :server_ip, {192, 168, 1, 1})
     yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
     extra_options = Keyword.get(opts, :extra_options, [])
+    xid = Keyword.get(opts, :xid, get_xid(fsm_pid))
 
     packet =
       build_reply(
+        xid: xid,
         yiaddr: yiaddr,
         siaddr: server_ip,
         options: offer_options(server_ip) ++ extra_options
@@ -182,9 +184,11 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
   defp send_ack(fsm_pid, opts \\ []) do
     server_ip = Keyword.get(opts, :server_ip, {192, 168, 1, 1})
     yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
+    xid = Keyword.get(opts, :xid, get_xid(fsm_pid))
 
     packet =
       build_reply(
+        xid: xid,
         yiaddr: yiaddr,
         siaddr: server_ip,
         options: ack_options(server_ip)
@@ -193,14 +197,20 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     send(fsm_pid, {:dhcp_rx, packet})
   end
 
-  defp send_nak(fsm_pid) do
-    packet = build_reply(options: nak_options())
+  defp send_nak(fsm_pid, opts \\ []) do
+    xid = Keyword.get(opts, :xid, get_xid(fsm_pid))
+    packet = build_reply(xid: xid, options: nak_options())
     send(fsm_pid, {:dhcp_rx, packet})
   end
 
   defp get_state(pid) do
     {state, _data} = StateMachine.status(pid)
     state
+  end
+
+  defp get_xid(pid) do
+    {_state, data} = StateMachine.status(pid)
+    data.xid
   end
 
   defp wait_for_state(pid, expected_state, timeout \\ 2000) do
@@ -1027,6 +1037,35 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
       StateMachine.release(pid)
       wait_for_state(pid, :init, 2000)
+    end
+  end
+
+  describe "xid filtering" do
+    test "ignores offer with mismatched xid", ctx do
+      pid = start_fsm(ctx)
+      wait_for_state(pid, :init)
+
+      # Send an offer with a wrong xid — should be silently dropped
+      send_offer(pid, xid: 0xDEADBEEF)
+      Process.sleep(100)
+
+      assert get_state(pid) == :init
+    end
+
+    test "ignores ACK with mismatched xid in :requesting", ctx do
+      pid = start_fsm(ctx)
+      wait_for_state(pid, :init)
+
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+      wait_for_state(pid, :requesting, 1000)
+
+      # Send ACK with wrong xid
+      send_ack(pid, xid: 0xDEADBEEF)
+      Process.sleep(100)
+
+      # Should still be in requesting (not bound)
+      assert get_state(pid) == :requesting
     end
   end
 end

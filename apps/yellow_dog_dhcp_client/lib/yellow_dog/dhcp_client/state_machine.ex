@@ -150,7 +150,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, {:dhcp_rx, packet}, :init, data) do
     case parse_reply(packet) do
-      {:offer, lease} ->
+      {:offer, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :offer, lease)
         {:next_state, :selecting, %{data | offers: [lease]}}
 
@@ -178,7 +178,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, {:dhcp_rx, packet}, :selecting, data) do
     case parse_reply(packet) do
-      {:offer, lease} ->
+      {:offer, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :offer, lease)
         {:keep_state, %{data | offers: [lease | data.offers]}}
 
@@ -210,7 +210,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, {:dhcp_rx, packet}, :requesting, data) do
     case parse_reply(packet) do
-      {:ack, lease} ->
+      {:ack, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :ack, lease)
         maybe_dad_then_bound(data, lease)
 
@@ -322,7 +322,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, {:dhcp_rx, packet}, :renewing, data) do
     case parse_reply(packet) do
-      {:ack, lease} ->
+      {:ack, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :ack, lease)
         {:next_state, :bound, %{data | lease: lease}}
 
@@ -369,7 +369,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, {:dhcp_rx, packet}, :rebinding, data) do
     case parse_reply(packet) do
-      {:ack, lease} ->
+      {:ack, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :ack, lease)
         {:next_state, :bound, %{data | lease: lease}}
 
