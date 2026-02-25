@@ -67,7 +67,7 @@ defmodule YellowDog.Resolved.Listener do
     rescue
       _ -> {:error, txn_id}
     catch
-      _ -> {:error, txn_id}
+      _, _ -> {:error, txn_id}
     end
   end
 

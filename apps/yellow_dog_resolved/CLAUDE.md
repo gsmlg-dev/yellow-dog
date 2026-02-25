@@ -18,7 +18,7 @@ Discovery (EDNS 65321) → Management WS Client
 | Module | Purpose |
 |--------|---------|
 | `Application` | OTP app entry; skips start in test via `:start_services` config |
-| `Supervisor` | rest_for_one: Config → Cache → Forwarder → Listener → Discovery |
+| `Supervisor` | rest_for_one: Config → Cache → Metrics → Forwarder → Listener → Discovery |
 | `Config` | TOML loader + FileSystem watcher for hot-reload |
 | `Intercept` | Rule matching: exact, suffix (`*.local.dev`), prefix (`dev-*`) |
 | `Cache` | ETS DNS cache: TTL, negative caching (NXDOMAIN), LRU eviction, sweep |
@@ -28,6 +28,7 @@ Discovery (EDNS 65321) → Management WS Client
 | `Listener` | Abyss.Handler for UDP DNS packets |
 | `Discovery` | EDNS option 65321 probe + SRV extraction |
 | `Management.Client` | WebSocket client for management commands (stub) |
+| `Metrics` | ETS query counter: total, intercepted, cached, forwarded (via telemetry) |
 | `Management.Handler` | Command dispatch: cache_flush, cache_stats, ping |
 
 ## Commands
@@ -47,7 +48,8 @@ mix credo --strict
 
 ## Key Gotchas
 
-- `Record.new/5` expects raw data (IP tuple, string), NOT `Data.A.new(ip)` result — double-wraps otherwise
+- `Record.new/5` expects raw data (IP tuple, string, binary), NOT `Data.new(type, raw)` — double-wraps otherwise
+- DNS RCode comparison: use `rcode == RCode.nx_domain()`, NOT `to_string(rcode) == "3"` (returns "NXDomain")
 - Application auto-start disabled in test via `config :yellow_dog_resolved, start_services: false`
 - Tests start components individually via `start_supervised!`
 - Config path resolution: `File.cwd!()` is already the app dir in umbrella

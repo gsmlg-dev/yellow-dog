@@ -65,8 +65,9 @@ yellow_dog_resolved (Application)
 └── YellowDog.Resolved.Supervisor
     ├── YellowDog.Resolved.Config           # Config server (TOML watcher)
     ├── YellowDog.Resolved.Cache            # ETS-based DNS cache
-    ├── YellowDog.Resolved.Listener         # Abyss UDP listener on 127.0.0.1:53
+    ├── YellowDog.Resolved.Metrics          # Query counter accumulator (via telemetry)
     ├── YellowDog.Resolved.Forwarder        # Upstream query correlation
+    ├── YellowDog.Resolved.Listener         # Abyss UDP listener on 127.0.0.1:53
     └── YellowDog.Resolved.Discovery        # EDNS probe + WS management (optional)
 ```
 
