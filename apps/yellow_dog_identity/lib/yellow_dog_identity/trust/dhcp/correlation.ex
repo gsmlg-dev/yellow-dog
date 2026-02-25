@@ -68,9 +68,32 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
   end
 
   defp fingerprint_matches?(lease_entry, _context) do
-    # For now, any fingerprint class is considered a match.
-    # Future: check against allowed fingerprint classes in config.
-    lease_entry.fingerprint_class != nil
+    allowed = get_allowed_fingerprint_classes()
+
+    cond do
+      # No allowlist configured — any fingerprint class matches
+      allowed == [] -> lease_entry.fingerprint_class != nil
+      # Check against configured allowlist
+      lease_entry.fingerprint_class in allowed -> true
+      true -> false
+    end
+  end
+
+  defp get_allowed_fingerprint_classes do
+    case Code.ensure_loaded(YellowDog.Config) do
+      {:module, _} ->
+        try do
+          config = YellowDog.Config.get_all()
+          get_in(config, ["identity", "dhcp", "allowed_fingerprint_classes"]) || []
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      _ ->
+        []
+    end
   end
 
   defp build_evidence(lease_entry) do

@@ -265,6 +265,11 @@ defmodule YellowDogIdentity do
         trust_level: host.trust_level
       })
 
+      # Fire key_rotated webhook if this was a forced re-registration with a new key
+      if host.previous_keys != [] do
+        Webhook.notify("host.key_rotated", host)
+      end
+
       case host.status do
         :approved -> Webhook.notify("host.approved", host)
         _ -> Webhook.notify("host.registered", host)
