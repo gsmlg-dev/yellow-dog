@@ -56,6 +56,7 @@ defmodule YellowDog.Resolved.Cache do
 
         :telemetry.execute(
           [:yellow_dog, :resolved, :cache, :miss],
+          %{},
           %{domain: domain, type: type}
         )
 
@@ -66,6 +67,7 @@ defmodule YellowDog.Resolved.Cache do
 
         :telemetry.execute(
           [:yellow_dog, :resolved, :cache, :miss],
+          %{},
           %{domain: domain, type: type}
         )
 

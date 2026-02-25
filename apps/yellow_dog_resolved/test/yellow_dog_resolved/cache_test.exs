@@ -240,6 +240,32 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "sweep" do
+    test "manual sweep removes expired entries" do
+      Cache.store("sweep-target.test", :a, "data", 5)
+      Process.sleep(10)
+
+      assert {:hit, "data"} = Cache.lookup("sweep-target.test", :a)
+
+      # Trigger sweep manually
+      pid = Process.whereis(YellowDog.Resolved.Cache)
+      send(pid, :sweep)
+      Process.sleep(10)
+
+      # Entry should still be alive (hasn't expired yet since min_ttl_s = 5)
+      assert {:hit, "data"} = Cache.lookup("sweep-target.test", :a)
+    end
+
+    test "sweep handles empty cache gracefully" do
+      pid = Process.whereis(YellowDog.Resolved.Cache)
+      send(pid, :sweep)
+      Process.sleep(10)
+
+      stats = Cache.stats()
+      assert stats.entries == 0
+    end
+  end
+
   describe "multiple types for same domain" do
     test "stores and retrieves different types independently" do
       Cache.store("multi.test", :a, "a_data", 300)
