@@ -205,6 +205,51 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     refute File.exists?(lease_path)
   end
 
+  test "TOML round-trip preserves strings with special characters", ctx do
+    {pid, iface} = start_store(ctx)
+
+    lease =
+      make_lease(%{
+        auth_token: ~s(token"with"quotes),
+        control_url: ~s(https://example.com/path?a=1&b="test"),
+        server_id: "server\\with\\backslash"
+      })
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    Process.sleep(1_500)
+
+    # Re-read from disk by starting a new store process
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.auth_token == lease.auth_token
+    assert loaded.control_url == lease.control_url
+    assert loaded.server_id == lease.server_id
+  end
+
+  test "rejects persisted lease with zero IP", ctx do
+    iface = "eth0"
+    obtained_at = DateTime.utc_now()
+
+    toml_content = """
+    ip = "0.0.0.0"
+    subnet_mask = "255.255.255.0"
+    server_ip = "192.168.1.1"
+    lease_time = 3600
+    t1 = 1800
+    t2 = 3150
+    obtained_at = "#{DateTime.to_iso8601(obtained_at)}"
+    xid = 1
+    yellowdog_server = false
+    """
+
+    lease_path = Path.join(ctx.lease_dir, "#{iface}.lease")
+    File.write!(lease_path, toml_content)
+
+    {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    assert :not_found = LeaseStore.lookup(pid, iface)
+  end
+
   # ── multiple interfaces ──
 
   test "stores leases independently per interface", ctx do

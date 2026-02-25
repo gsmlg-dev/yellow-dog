@@ -223,7 +223,16 @@ defmodule YellowDog.DhcpClient.LeaseStore do
     end) <> "\n"
   end
 
-  defp encode_toml_value(value) when is_binary(value), do: ~s("#{value}")
+  defp encode_toml_value(value) when is_binary(value) do
+    escaped =
+      value
+      |> String.replace("\\", "\\\\")
+      |> String.replace("\"", "\\\"")
+      |> String.replace("\n", "\\n")
+      |> String.replace("\r", "\\r")
+
+    ~s("#{escaped}")
+  end
   defp encode_toml_value(value) when is_integer(value), do: Integer.to_string(value)
   defp encode_toml_value(value) when is_boolean(value), do: Atom.to_string(value)
 
@@ -257,6 +266,8 @@ defmodule YellowDog.DhcpClient.LeaseStore do
       raw_options: %{}
     }
   end
+
+  defp lease_valid?(%{ip: {0, 0, 0, 0}}), do: false
 
   defp lease_valid?(lease) do
     case lease do
