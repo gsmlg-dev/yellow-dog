@@ -191,11 +191,12 @@ defmodule YellowDogIdentity.IdentityControllerTest do
       assert status_map.trust_level == :unverified
     end
 
-    test "map has exactly four keys" do
+    test "map contains all expected keys" do
       host = create_host!("exact-keys")
 
       assert {:ok, status_map} = YellowDogIdentity.host_status(host.id)
-      assert Enum.sort(Map.keys(status_map)) == [:hostname, :id, :status, :trust_level]
+      expected_keys = [:approved_at, :hostname, :id, :key_fingerprint, :revoke_reason, :revoked_at, :status, :trust_level, :trust_provider]
+      assert Enum.sort(Map.keys(status_map)) == expected_keys
     end
 
     test "reflects updated status after approval" do

@@ -55,7 +55,12 @@ defmodule YellowDogIdentity.Trust.DHCP.Correlation do
 
         {:trusted, :network_verified, evidence}
 
-      # Lease present but no fingerprint match
+      # Has fingerprint but doesn't match the configured allowlist
+      lease_entry.fingerprint_class && get_allowed_fingerprint_classes() != [] ->
+        YellowDogIdentity.Telemetry.correlation_miss(context.source_ip, :fingerprint_mismatch)
+        {:untrusted, :fingerprint_mismatch}
+
+      # No fingerprint data or no allowlist configured — partial trust
       true ->
         evidence = build_evidence(lease_entry)
 

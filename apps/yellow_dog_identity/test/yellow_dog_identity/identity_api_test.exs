@@ -53,8 +53,9 @@ defmodule YellowDogIdentity.IdentityApiTest do
       assert status_map.status == :approved
       assert status_map.trust_level == :unverified
 
-      # Verify the map contains exactly these four keys
-      assert Map.keys(status_map) |> Enum.sort() == [:hostname, :id, :status, :trust_level]
+      # Verify the map contains all expected keys
+      expected_keys = [:approved_at, :hostname, :id, :key_fingerprint, :revoke_reason, :revoked_at, :status, :trust_level, :trust_provider]
+      assert Map.keys(status_map) |> Enum.sort() == expected_keys
     end
 
     test "returns :not_found for non-existent host" do

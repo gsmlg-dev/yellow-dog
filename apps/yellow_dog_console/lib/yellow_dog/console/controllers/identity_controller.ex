@@ -81,12 +81,20 @@ defmodule YellowDog.Console.IdentityController do
   def status(conn, %{"id" => id}) do
     case YellowDogIdentity.host_status(id) do
       {:ok, status_map} ->
-        json(conn, %{
-          id: status_map.id,
-          hostname: status_map.hostname,
-          status: to_string(status_map.status),
-          trust_level: to_string(status_map.trust_level)
-        })
+        response =
+          %{
+            id: status_map.id,
+            hostname: status_map.hostname,
+            status: to_string(status_map.status),
+            trust_level: to_string(status_map.trust_level),
+            trust_provider: to_string(status_map.trust_provider),
+            key_fingerprint: status_map.key_fingerprint
+          }
+          |> maybe_put(:approved_at, status_map.approved_at)
+          |> maybe_put(:revoked_at, status_map.revoked_at)
+          |> maybe_put(:revoke_reason, status_map.revoke_reason)
+
+        json(conn, response)
 
       :not_found ->
         conn
@@ -94,6 +102,10 @@ defmodule YellowDog.Console.IdentityController do
         |> json(%{error: "not_found"})
     end
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, %DateTime{} = dt), do: Map.put(map, key, DateTime.to_iso8601(dt))
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   PUT /api/hosts/:id/approve

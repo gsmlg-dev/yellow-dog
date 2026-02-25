@@ -190,7 +190,12 @@ defmodule YellowDogIdentity do
            id: host.id,
            hostname: host.hostname,
            status: host.status,
-           trust_level: host.trust_level
+           trust_level: host.trust_level,
+           trust_provider: host.trust_provider,
+           approved_at: host.approved_at,
+           revoked_at: host.revoked_at,
+           revoke_reason: host.revoke_reason,
+           key_fingerprint: host.key_fingerprint
          }}
 
       :not_found ->
