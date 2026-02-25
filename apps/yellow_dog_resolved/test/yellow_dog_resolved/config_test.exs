@@ -941,6 +941,52 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "reload_failed telemetry" do
+    test "emits reload_failed telemetry on invalid config file" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "reload_fail_tel_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      port = 5353
+      upstreams = ["8.8.8.8"]
+      """)
+
+      config = Config.load(path)
+      start_supervised!({Config, config})
+
+      test_pid = self()
+      ref = make_ref()
+      handler_id = "test-reload-failed-#{inspect(ref)}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :resolved, :config, :reload_failed],
+        fn _event, _measurements, metadata, _ ->
+          send(test_pid, {:reload_failed, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Corrupt the file to trigger reload failure
+      File.write!(path, "invalid toml {{{{")
+
+      pid = Process.whereis(Config)
+
+      capture_log(fn ->
+        send(pid, {:file_event, nil, {path, [:modified]}})
+        Process.sleep(50)
+      end)
+
+      assert_receive {:reload_failed, metadata}
+      assert metadata.path == path
+      assert metadata.reason != nil
+    end
+  end
+
   describe "terminate/2" do
     test "stops cleanly without crash" do
       config = Config.load(@test_config_path)

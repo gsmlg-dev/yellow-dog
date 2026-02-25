@@ -402,4 +402,51 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       refute Process.alive?(pid)
     end
   end
+
+  describe "probe_failed telemetry" do
+    test "emits probe_failed telemetry when probe_upstreams raises" do
+      config = %{
+        upstreams: [{198, 51, 100, 1}],
+        upstream_timeout_ms: 200,
+        discovery: %{
+          enabled: true,
+          websocket: %{heartbeat_interval_s: 30, reconnect_base_s: 5, reconnect_max_s: 60}
+        }
+      }
+
+      name = :"discovery_probe_fail_#{System.unique_integer([:positive])}"
+      {:ok, pid} = GenServer.start_link(Discovery, config, name: name)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+      test_pid = self()
+      ref = make_ref()
+      handler_id = "discovery-probe-fail-#{inspect(ref)}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :resolved, :discovery, :probe_failed],
+        fn _event, _measurements, metadata, _ ->
+          send(test_pid, {:probe_failed, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Inject an invalid upstream (atom) that causes Upstream.normalize/1 to raise FunctionClauseError
+      :sys.replace_state(pid, fn state -> %{state | upstreams: [:invalid_upstream]} end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(pid, :probe)
+        Process.sleep(50)
+      end)
+
+      assert_receive {:probe_failed, metadata}
+      assert metadata.kind == :error
+      assert %FunctionClauseError{} = metadata.reason
+
+      # Process should still be alive (safe_probe rescued the exception)
+      assert Process.alive?(pid)
+    end
+  end
 end
