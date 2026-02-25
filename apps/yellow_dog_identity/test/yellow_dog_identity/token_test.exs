@@ -103,5 +103,48 @@ defmodule YellowDogIdentity.TokenTest do
       assert restored.hostname_pattern == "node-*"
       assert restored.role == "worker"
     end
+
+    test "from_toml_map rejects map without token section" do
+      assert {:error, :missing_token_section} = Token.from_toml_map(%{"wrong" => %{}})
+    end
+
+    test "from_toml_map rejects non-map input" do
+      assert {:error, :missing_token_section} = Token.from_toml_map("not a map")
+      assert {:error, :missing_token_section} = Token.from_toml_map(nil)
+    end
+
+    test "from_toml_map returns error for missing required fields" do
+      # token section present but missing required keys like id, token_hash, etc.
+      incomplete = %{"token" => %{"id" => "some-id"}}
+      assert {:error, {:invalid_toml_data, _msg}} = Token.from_toml_map(incomplete)
+    end
+
+    test "from_toml_map returns error for invalid datetime" do
+      {:ok, token, _} = Token.create(%{hostname_pattern: "*"})
+      toml_map = Token.to_toml_map(token)
+
+      # Corrupt the expires_at field
+      corrupted = put_in(toml_map, ["token", "expires_at"], "not-a-date")
+      assert {:error, {:invalid_toml_data, _msg}} = Token.from_toml_map(corrupted)
+    end
+
+    test "round-trips token without optional role" do
+      {:ok, token, _} = Token.create(%{hostname_pattern: "*"})
+      assert is_nil(token.role)
+
+      toml_map = Token.to_toml_map(token)
+      {:ok, restored} = Token.from_toml_map(toml_map)
+      assert is_nil(restored.role)
+    end
+
+    test "preserves use_count through round-trip" do
+      {:ok, token, _} = Token.create(%{hostname_pattern: "*", max_uses: 5})
+      used = Token.increment_use(token)
+      assert used.use_count == 1
+
+      toml_map = Token.to_toml_map(used)
+      {:ok, restored} = Token.from_toml_map(toml_map)
+      assert restored.use_count == 1
+    end
   end
 end
