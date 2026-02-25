@@ -1,3 +1,34 @@
+defmodule YellowDog.DhcpClient.DhcpSocket.UdpFallbackTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDog.DhcpClient.DhcpSocket.UdpFallback
+
+  describe "open/2" do
+    test "returns {:ok, ref} with a reference" do
+      {:ok, ref} = UdpFallback.open("eth0", self())
+      assert is_reference(ref)
+      UdpFallback.close(ref)
+    end
+  end
+
+  describe "send_arp_probe/2" do
+    test "returns {:error, :not_supported}" do
+      {:ok, ref} = UdpFallback.open("eth0", self())
+      assert {:error, :not_supported} = UdpFallback.send_arp_probe(ref, {192, 168, 1, 50})
+      UdpFallback.close(ref)
+    end
+  end
+
+  describe "close/1" do
+    test "returns :ok and cleans up the persistent_term entry" do
+      {:ok, ref} = UdpFallback.open("eth0", self())
+      assert :ok = UdpFallback.close(ref)
+      # Second close is also safe (returns :ok on missing entry)
+      assert :ok = UdpFallback.close(ref)
+    end
+  end
+end
+
 defmodule YellowDog.DhcpClient.DhcpSocketTest do
   use ExUnit.Case, async: true
 
@@ -101,6 +132,19 @@ defmodule YellowDog.DhcpClient.DhcpSocketTest do
       on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
 
       assert :ok = DhcpSocket.send_arp_probe(pid, {192, 168, 1, 50})
+    end
+  end
+
+  describe "close/1" do
+    test "stops the GenServer process" do
+      {:ok, pid} = DhcpSocket.start_link(interface: "eth0", owner: self(), impl: NoOpSocketImpl)
+      assert Process.alive?(pid)
+
+      DhcpSocket.close(pid)
+
+      # Give the process a moment to stop
+      Process.sleep(50)
+      refute Process.alive?(pid)
     end
   end
 end
