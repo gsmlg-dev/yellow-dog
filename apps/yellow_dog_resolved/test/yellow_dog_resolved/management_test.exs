@@ -141,6 +141,7 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       assert response["data"]["entries"] == 0
       assert response["data"]["hit_rate"] == 0.0
+      assert response["data"]["oldest_entry_age_s"] == 0
     end
   end
 

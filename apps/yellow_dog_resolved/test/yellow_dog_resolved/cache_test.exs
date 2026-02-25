@@ -182,11 +182,27 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "oldest_entry_age_s" do
+    test "returns 0 for empty cache" do
+      stats = Cache.stats()
+      assert stats.oldest_entry_age_s == 0
+    end
+
+    test "returns non-negative age for cached entries" do
+      Cache.store("age.test", :a, "data", 300)
+      Process.sleep(10)
+
+      stats = Cache.stats()
+      assert stats.oldest_entry_age_s >= 0
+    end
+  end
+
   describe "stats edge cases" do
     test "empty cache returns zero stats" do
       stats = Cache.stats()
       assert stats.entries == 0
       assert stats.hit_rate == 0.0
+      assert stats.oldest_entry_age_s == 0
     end
 
     test "hit_rate calculation with only hits" do

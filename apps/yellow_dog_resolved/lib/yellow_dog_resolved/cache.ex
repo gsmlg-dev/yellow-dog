@@ -117,12 +117,15 @@ defmodule YellowDog.Resolved.Cache do
     total = hits + misses
     hit_rate = if total > 0, do: Float.round(hits / total, 2), else: 0.0
 
+    oldest_age = oldest_entry_age()
+
     %{
       entries: entries,
       hits: hits,
       misses: misses,
       evictions: evictions,
-      hit_rate: hit_rate
+      hit_rate: hit_rate,
+      oldest_entry_age_s: oldest_age
     }
   end
 
@@ -244,6 +247,23 @@ defmodule YellowDog.Resolved.Cache do
   end
 
   # Private functions
+
+  defp oldest_entry_age do
+    now = System.monotonic_time(:second)
+
+    oldest =
+      :ets.foldl(
+        fn {_key, _response, _expires, last_accessed, _negative}, acc ->
+          min(acc, last_accessed)
+        end,
+        now,
+        @table
+      )
+
+    if :ets.info(@table, :size) == 0, do: 0, else: now - oldest
+  catch
+    :error, :badarg -> 0
+  end
 
   defp cache_key(domain, type) do
     {String.downcase(domain) |> String.trim_trailing("."), type}

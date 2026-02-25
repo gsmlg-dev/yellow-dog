@@ -59,7 +59,8 @@ defmodule YellowDog.Resolved.Management.Handler do
         "hits" => stats.hits,
         "misses" => stats.misses,
         "evictions" => stats.evictions,
-        "hit_rate" => stats.hit_rate
+        "hit_rate" => stats.hit_rate,
+        "oldest_entry_age_s" => stats.oldest_entry_age_s
       }
     }
   end
