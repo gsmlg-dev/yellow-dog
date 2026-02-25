@@ -144,6 +144,53 @@ defmodule YellowDog.Resolved.PropertyTest do
     end
   end
 
+  describe "property: intercept pattern matching invariants" do
+    property "suffix pattern always matches subdomains" do
+      check all(
+              subdomain <- dns_label(),
+              base_domain <- dns_domain(),
+              max_runs: 100
+            ) do
+        full_domain = "#{subdomain}.#{base_domain}"
+        pattern = {:suffix, base_domain}
+
+        # A subdomain of the base should always match the suffix pattern
+        assert YellowDog.Resolved.Intercept.matches_pattern?(full_domain, pattern)
+      end
+    end
+
+    property "exact pattern only matches identical domain" do
+      check all(
+              domain <- dns_domain(),
+              other <- dns_domain(),
+              max_runs: 100
+            ) do
+        pattern = {:exact, domain}
+
+        # Same domain should always match
+        assert YellowDog.Resolved.Intercept.matches_pattern?(domain, pattern)
+
+        # Different domain should not match (unless generated the same)
+        if domain != other do
+          refute YellowDog.Resolved.Intercept.matches_pattern?(other, pattern)
+        end
+      end
+    end
+
+    property "prefix pattern matches domains starting with prefix" do
+      check all(
+              prefix <- dns_label(),
+              suffix <- dns_domain(),
+              max_runs: 100
+            ) do
+        domain = "#{prefix}#{suffix}"
+        pattern = {:prefix, prefix}
+
+        assert YellowDog.Resolved.Intercept.matches_pattern?(domain, pattern)
+      end
+    end
+  end
+
   describe "property: cache TTL bounds" do
     setup do
       start_supervised!({Config, @config})
