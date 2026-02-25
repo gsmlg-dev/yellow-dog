@@ -161,22 +161,24 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
           <table class="table table-zebra w-full">
             <thead>
               <tr>
+                <th>ID</th>
                 <th>Pattern</th>
                 <th>Role</th>
                 <th>Uses</th>
                 <th>Expires</th>
-                <th>Created By</th>
+                <th>Created</th>
                 <th>Status</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               <tr :for={token <- @tokens} class="hover">
+                <td class="font-mono text-xs">{String.slice(token.id, 0, 8)}</td>
                 <td class="font-mono">{token.hostname_pattern}</td>
                 <td>{token.role || "-"}</td>
                 <td>{token.use_count}/{token.max_uses}</td>
                 <td>{format_time(token.expires_at)}</td>
-                <td>{token.created_by}</td>
+                <td class="text-sm">{format_time(token.created_at)}</td>
                 <td>
                   <span class={
                     if(YellowDogIdentity.Token.valid?(token),
@@ -198,7 +200,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 </td>
               </tr>
               <tr :if={@tokens == []}>
-                <td colspan="7" class="text-center text-base-content/50 py-8">
+                <td colspan="8" class="text-center text-base-content/50 py-8">
                   No provisioning tokens
                 </td>
               </tr>

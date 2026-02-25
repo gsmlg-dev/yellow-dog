@@ -84,6 +84,9 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
               <option value="host.key_rotated" selected={@filter_event == "host.key_rotated"}>
                 host.key_rotated
               </option>
+              <option value="host.deleted" selected={@filter_event == "host.deleted"}>
+                host.deleted
+              </option>
             </select>
           </div>
           <div class="form-control">
@@ -140,5 +143,6 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
   defp event_badge_class("host.approved"), do: "badge badge-success badge-sm"
   defp event_badge_class("host.revoked"), do: "badge badge-error badge-sm"
   defp event_badge_class("host.key_rotated"), do: "badge badge-warning badge-sm"
+  defp event_badge_class("host.deleted"), do: "badge badge-error badge-outline badge-sm"
   defp event_badge_class(_), do: "badge badge-sm"
 end

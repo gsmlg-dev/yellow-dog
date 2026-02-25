@@ -164,6 +164,7 @@ defmodule YellowDog.Console.Router do
     get "/hosts/:id/status", IdentityController, :status
     put "/hosts/:id/approve", IdentityController, :approve
     post "/hosts/:id/revoke", IdentityController, :revoke
+    delete "/hosts/:id", IdentityController, :delete
   end
 
   # Enable LiveDashboard in development

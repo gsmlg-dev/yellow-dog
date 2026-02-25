@@ -38,6 +38,19 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  def handle_event("delete", _params, socket) do
+    case YellowDogIdentity.delete_host(socket.assigns.host_id) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Host deleted")
+         |> push_navigate(to: ~p"/identity/hosts")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete host")}
+    end
+  end
+
   defp load_host(socket) do
     host_id = socket.assigns.host_id
 
@@ -103,6 +116,14 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               data-confirm="Revoke this host?"
             >
               Revoke
+            </button>
+            <button
+              :if={@host.status == :revoked}
+              class="btn btn-sm btn-error btn-outline"
+              phx-click="delete"
+              data-confirm="Permanently delete this host? This cannot be undone."
+            >
+              Delete
             </button>
           </div>
 
@@ -253,6 +274,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   defp audit_badge("host.approved"), do: "badge badge-success badge-sm"
   defp audit_badge("host.revoked"), do: "badge badge-error badge-sm"
   defp audit_badge("host.key_rotated"), do: "badge badge-warning badge-sm"
+  defp audit_badge("host.deleted"), do: "badge badge-error badge-outline badge-sm"
   defp audit_badge(_), do: "badge badge-sm"
 
   defp status_badge_class(:pending), do: "badge badge-warning"

@@ -155,4 +155,21 @@ defmodule YellowDog.Console.IdentityController do
         |> json(%{error: "not_found"})
     end
   end
+
+  @doc """
+  DELETE /api/hosts/:id
+
+  Permanently deletes a host record.
+  """
+  def delete(conn, %{"id" => id}) do
+    case YellowDogIdentity.delete_host(id) do
+      :ok ->
+        json(conn, %{message: "Host deleted"})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(404)
+        |> json(%{error: "not_found"})
+    end
+  end
 end

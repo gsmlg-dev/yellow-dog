@@ -140,6 +140,28 @@ defmodule YellowDogIdentity do
   end
 
   @doc """
+  Deletes a host record permanently.
+  """
+  @spec delete_host(String.t()) :: :ok | {:error, term()}
+  def delete_host(id) do
+    case Registry.get_host(id) do
+      {:ok, host} ->
+        case Registry.delete_host(id) do
+          :ok ->
+            Registry.append_audit("host.deleted", id, %{hostname: host.hostname})
+            broadcast("identity:hosts", {:host_updated, host})
+            :ok
+
+          error ->
+            error
+        end
+
+      :not_found ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
   Gets a host by ID.
   """
   @spec get_host(String.t()) :: {:ok, Host.t()} | :not_found
