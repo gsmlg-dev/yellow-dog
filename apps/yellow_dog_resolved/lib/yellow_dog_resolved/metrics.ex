@@ -56,6 +56,12 @@ defmodule YellowDog.Resolved.Metrics do
   end
 
   @impl true
+  def terminate(_reason, _state) do
+    :telemetry.detach("resolved-metrics-query-stop")
+    :ok
+  end
+
+  @impl true
   def handle_info(_msg, state) do
     {:noreply, state}
   end

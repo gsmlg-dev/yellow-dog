@@ -72,12 +72,46 @@ defmodule YellowDog.Resolved.MetricsTest do
     end
   end
 
+  describe "cache counter" do
+    test "increments cached counter on cache hit" do
+      # Pre-populate cache
+      query = build_query("cached-metrics.test", 1)
+      response = DNS.Message.new()
+      response = DNS.Message.update_header_attr(response, :id, 9999)
+      response = DNS.Message.update_header_attr(response, :qr, 1)
+      response_binary = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      Cache.store("cached-metrics.test.", :a, response_binary, 300)
+      Process.sleep(10)
+
+      before = Metrics.get_query_counts()
+
+      raw = DNS.to_iodata(query) |> IO.iodata_to_binary()
+      Router.resolve(query, raw)
+
+      counts = Metrics.get_query_counts()
+      assert counts.total == before.total + 1
+      assert counts.cached == before.cached + 1
+    end
+  end
+
   describe "catch-all handle_info" do
     test "ignores unexpected messages" do
       pid = Process.whereis(Metrics)
       send(pid, :unexpected)
       Process.sleep(10)
       assert Process.alive?(pid)
+    end
+  end
+
+  describe "terminate/2" do
+    test "stops cleanly without crash" do
+      pid = Process.whereis(Metrics)
+      assert Process.alive?(pid)
+
+      stop_supervised!(Metrics)
+
+      refute Process.alive?(pid)
     end
   end
 
