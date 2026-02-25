@@ -8,6 +8,8 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   - Option 124 (vendor class) encode/decode roundtrip
   - Retransmission timer jitter stays within bounds
   - Lease prefix_length for valid subnet masks
+  - Packet build content verification (XID, chaddr, flags)
+  - parse_reply robustness against arbitrary binary input
   """
 
   use ExUnit.Case, async: true
@@ -16,6 +18,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   import Bitwise
 
   alias YellowDog.DhcpClient.{Lease, VendorOptions}
+  alias DHCPv4.Message
 
   # -- Generators --
 
@@ -318,6 +321,113 @@ defmodule YellowDog.DhcpClient.PropertyTest do
         binary = IO.iodata_to_binary(result)
         assert is_binary(binary)
         assert byte_size(binary) > 240
+      end
+    end
+  end
+
+  describe "Packet build content verification" do
+    property "build_discover embeds XID and MAC address correctly" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF)
+            ) do
+        binary = IO.iodata_to_binary(YellowDog.DhcpClient.Packet.build_discover(mac, xid))
+        msg = Message.from_iodata(binary)
+
+        assert msg.xid == xid
+        # chaddr is padded to 16 bytes; first 6 must match the MAC
+        <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
+        assert mac_bytes == mac
+        # DISCOVER requests a broadcast reply
+        assert msg.flags == 0x8000
+      end
+    end
+
+    property "build_request embeds XID and MAC address correctly" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF),
+              a <- integer(1..254),
+              b <- integer(0..255),
+              c <- integer(0..255),
+              d <- integer(1..254)
+            ) do
+        server_ip = {a, b, c, d}
+        offered_ip = {a, b, c, d}
+
+        binary =
+          IO.iodata_to_binary(
+            YellowDog.DhcpClient.Packet.build_request(mac, xid, server_ip, offered_ip)
+          )
+
+        msg = Message.from_iodata(binary)
+
+        assert msg.xid == xid
+        <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
+        assert mac_bytes == mac
+      end
+    end
+
+    property "build_release sets ciaddr to client IP and clears broadcast flag" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF),
+              a <- integer(1..254),
+              b <- integer(0..255),
+              c <- integer(0..255),
+              d <- integer(1..254)
+            ) do
+        client_ip = {a, b, c, d}
+        server_ip = {a, b, c, d}
+        # build_release returns binary directly
+        binary = YellowDog.DhcpClient.Packet.build_release(mac, xid, server_ip, client_ip)
+        msg = Message.from_iodata(binary)
+
+        assert msg.xid == xid
+        # RELEASE sets ciaddr to the current lease IP
+        assert msg.ciaddr == client_ip
+        # RELEASE must NOT set the broadcast flag (unicast to server)
+        assert msg.flags == 0
+        <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
+        assert mac_bytes == mac
+      end
+    end
+
+    property "build_decline embeds XID and MAC address correctly" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF),
+              a <- integer(1..254),
+              b <- integer(0..255),
+              c <- integer(0..255),
+              d <- integer(1..254)
+            ) do
+        server_ip = {a, b, c, d}
+        declined_ip = {a, b, c, d}
+
+        binary =
+          IO.iodata_to_binary(
+            YellowDog.DhcpClient.Packet.build_decline(mac, xid, server_ip, declined_ip)
+          )
+
+        msg = Message.from_iodata(binary)
+
+        assert msg.xid == xid
+        <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
+        assert mac_bytes == mac
+      end
+    end
+  end
+
+  describe "parse_reply robustness" do
+    property "parse_reply never crashes on arbitrary binary" do
+      check all(data <- binary(min_length: 0, max_length: 1024)) do
+        result = YellowDog.DhcpClient.Packet.parse_reply(data)
+
+        assert match?({:offer, _}, result) or
+                 match?({:ack, _}, result) or
+                 match?({:nak, _}, result) or
+                 match?({:error, _}, result)
       end
     end
   end
