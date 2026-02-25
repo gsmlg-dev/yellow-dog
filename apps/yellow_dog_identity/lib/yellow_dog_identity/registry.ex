@@ -116,21 +116,25 @@ defmodule YellowDogIdentity.Registry do
     hosts_dir = Path.join(data_dir, "hosts")
     tokens_dir = Path.join(data_dir, "tokens")
 
-    File.mkdir_p!(hosts_dir)
-    File.mkdir_p!(tokens_dir)
+    with :ok <- File.mkdir_p(hosts_dir),
+         :ok <- File.mkdir_p(tokens_dir) do
+      # Load existing data from disk
+      {hosts, fingerprint_index} = load_hosts(hosts_dir)
+      tokens = load_tokens(tokens_dir)
 
-    # Load existing data from disk
-    {hosts, fingerprint_index} = load_hosts(hosts_dir)
-    tokens = load_tokens(tokens_dir)
+      state = %{
+        data_dir: data_dir,
+        hosts: hosts,
+        tokens: tokens,
+        fingerprint_index: fingerprint_index
+      }
 
-    state = %{
-      data_dir: data_dir,
-      hosts: hosts,
-      tokens: tokens,
-      fingerprint_index: fingerprint_index
-    }
-
-    {:ok, state}
+      {:ok, state}
+    else
+      {:error, reason} ->
+        Logger.error("Failed to create identity data directories: #{inspect(reason)}")
+        {:stop, {:mkdir_failed, reason}}
+    end
   end
 
   @impl true

@@ -192,9 +192,13 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
       ArgumentError -> :ok
     end
 
-    :ets.insert(:gcp_jwks_cache, {:keys, keys, System.monotonic_time(:second)})
-  rescue
-    _ -> :ok
+    try do
+      :ets.insert(:gcp_jwks_cache, {:keys, keys, System.monotonic_time(:second)})
+    rescue
+      ArgumentError ->
+        require Logger
+        Logger.warning("GCP JWKS cache: ETS insert failed, table may not exist")
+    end
   end
 
   defp decode_jwt_claims_unverified(token) do
