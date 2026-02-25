@@ -112,22 +112,32 @@ defmodule YellowDog.Resolved.ResponseBuilder do
 
   defp build_record(name, :mx, value, ttl) do
     # Value format: "10 mail.example.com"
-    [priority_str, target] = String.split(value, " ", parts: 2)
-    priority = String.to_integer(priority_str)
+    case String.split(value, " ", parts: 2) do
+      [priority_str, target] ->
+        priority = String.to_integer(priority_str)
+        DNS.Message.Record.new(to_string(name), 15, 1, ttl, {priority, target})
 
-    DNS.Message.Record.new(to_string(name), 15, 1, ttl, {priority, target})
+      _ ->
+        raise ArgumentError,
+              "invalid MX value format: #{inspect(value)}, expected \"priority target\""
+    end
   end
 
   defp build_record(name, :srv, value, ttl) do
     # Value format: "10 20 8080 target.example.com"
-    [pri_str, weight_str, port_str, target] = String.split(value, " ", parts: 4)
+    case String.split(value, " ", parts: 4) do
+      [pri_str, weight_str, port_str, target] ->
+        DNS.Message.Record.new(to_string(name), 33, 1, ttl, {
+          String.to_integer(pri_str),
+          String.to_integer(weight_str),
+          String.to_integer(port_str),
+          target
+        })
 
-    DNS.Message.Record.new(to_string(name), 33, 1, ttl, {
-      String.to_integer(pri_str),
-      String.to_integer(weight_str),
-      String.to_integer(port_str),
-      target
-    })
+      _ ->
+        raise ArgumentError,
+              "invalid SRV value format: #{inspect(value)}, expected \"priority weight port target\""
+    end
   end
 
   defp record_type_atom(type) do
@@ -140,7 +150,7 @@ defmodule YellowDog.Resolved.ResponseBuilder do
       "txt" -> :txt
       "mx" -> :mx
       "srv" -> :srv
-      _ -> String.to_atom(type_str)
+      _ -> :unknown
     end
   end
 end

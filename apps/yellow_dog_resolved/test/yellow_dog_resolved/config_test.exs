@@ -166,6 +166,40 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "config validation" do
+    test "raises on invalid IP address" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_ip_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "not-an-ip"
+      upstreams = ["8.8.8.8"]
+      """)
+
+      assert_raise ArgumentError, ~r/invalid IP address/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on invalid upstream IP" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "bad_upstream_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["999.999.999.999"]
+      """)
+
+      assert_raise ArgumentError, ~r/invalid IP address/, fn ->
+        Config.load(path)
+      end
+    end
+  end
+
   describe "hot reload via file event" do
     test "reloads config when toml file changes" do
       tmp_dir = System.tmp_dir!()

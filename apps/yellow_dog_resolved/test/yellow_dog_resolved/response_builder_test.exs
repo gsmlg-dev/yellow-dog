@@ -197,6 +197,45 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
     end
   end
 
+  describe "build_intercept_response/2 validation" do
+    test "raises on MX value with no space" do
+      query = build_query("bad-mx.test", 15)
+      rule = %{type: :mx, value: "mailserver.com", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid MX value format/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on MX value with non-integer priority" do
+      query = build_query("bad-mx.test", 15)
+      rule = %{type: :mx, value: "abc mail.example.com", ttl: 300}
+
+      assert_raise ArgumentError, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "raises on SRV value with too few fields" do
+      query = build_query("bad-srv.test", 33)
+      rule = %{type: :srv, value: "10 20 8080", ttl: 300}
+
+      assert_raise ArgumentError, ~r/invalid SRV value format/, fn ->
+        ResponseBuilder.build_intercept_response(query, rule)
+      end
+    end
+
+    test "unknown query type returns empty answer (type mismatch path)" do
+      # Query type 255 (ANY) doesn't match any rule type
+      query = build_query("unknown.test", 255)
+      rule = %{type: :a, value: "10.0.0.1", ttl: 60}
+
+      response = ResponseBuilder.build_intercept_response(query, rule)
+      assert response.anlist == []
+      assert response.header.qr == 1
+    end
+  end
+
   describe "encoding roundtrip" do
     test "intercept response encodes to valid DNS binary" do
       query = build_query("roundtrip.test", 1)

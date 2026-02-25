@@ -219,8 +219,10 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_ip(ip_string) when is_binary(ip_string) do
-    {:ok, ip} = :inet.parse_address(String.to_charlist(ip_string))
-    ip
+    case :inet.parse_address(String.to_charlist(ip_string)) do
+      {:ok, ip} -> ip
+      {:error, :einval} -> raise ArgumentError, "invalid IP address: #{inspect(ip_string)}"
+    end
   end
 
   defp parse_upstreams(list) when is_list(list) do

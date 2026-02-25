@@ -204,8 +204,8 @@ defmodule YellowDog.Resolved.TelemetryTest do
 
       Router.resolve(query, raw)
 
-      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop],
-                      %{duration: _}, %{source: :forward}}
+      assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop], %{duration: _},
+                      %{source: :forward}}
     end
 
     test "emits forward start and stop events" do
@@ -218,6 +218,7 @@ defmodule YellowDog.Resolved.TelemetryTest do
       Router.resolve(query, raw)
 
       assert_receive {:telemetry_event, [:yellow_dog, :resolved, :forward, :start], _, _}
+
       assert_receive {:telemetry_event, [:yellow_dog, :resolved, :forward, :stop], %{duration: _},
                       _}
     end
@@ -230,6 +231,7 @@ defmodule YellowDog.Resolved.TelemetryTest do
 
       # First — forward
       Router.resolve(query, raw)
+
       assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop], _,
                       %{source: :forward}}
 
@@ -240,6 +242,7 @@ defmodule YellowDog.Resolved.TelemetryTest do
       raw2 = DNS.to_iodata(query2) |> IO.iodata_to_binary()
 
       Router.resolve(query2, raw2)
+
       assert_receive {:telemetry_event, [:yellow_dog, :resolved, :query, :stop], _,
                       %{source: :cache}}
     end

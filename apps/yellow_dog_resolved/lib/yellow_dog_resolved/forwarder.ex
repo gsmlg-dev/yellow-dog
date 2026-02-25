@@ -13,8 +13,7 @@ defmodule YellowDog.Resolved.Forwarder do
 
   require Logger
 
-  @typedoc "An upstream can be a bare IP (port 53 assumed) or {ip, port} tuple."
-  @type upstream :: :inet.ip_address() | {:inet.ip_address(), :inet.port_number()}
+  alias YellowDog.Resolved.Upstream
 
   @type pending :: %{
           client_txn_id: non_neg_integer(),
@@ -88,7 +87,7 @@ defmodule YellowDog.Resolved.Forwarder do
 
     if count >= state.failure_threshold do
       Logger.warning(
-        "Upstream #{format_upstream(upstream)} deprioritized after #{count} failures"
+        "Upstream #{Upstream.format(upstream)} deprioritized after #{count} failures"
       )
     end
 
@@ -131,7 +130,7 @@ defmodule YellowDog.Resolved.Forwarder do
     # Encode the query and send to upstream
     query_binary = DNS.to_iodata(query) |> IO.iodata_to_binary()
 
-    {upstream_ip, upstream_port} = normalize_upstream(upstream)
+    {upstream_ip, upstream_port} = Upstream.normalize(upstream)
 
     case Abyss.Client.send_recv(upstream_ip, upstream_port, query_binary, timeout) do
       {:ok, response} ->
@@ -159,19 +158,13 @@ defmodule YellowDog.Resolved.Forwarder do
           %{upstream: upstream, reason: reason}
         )
 
-        Logger.debug("Upstream #{format_upstream(upstream)} failed: #{inspect(reason)}")
+        Logger.debug("Upstream #{Upstream.format(upstream)} failed: #{inspect(reason)}")
         GenServer.cast(task_state.state_pid, {:upstream_failure, upstream})
 
         # Try next upstream
         try_upstreams(%{task_state | upstreams: rest})
     end
   end
-
-  defp normalize_upstream({ip, port}) when is_tuple(ip) and is_integer(port), do: {ip, port}
-  defp normalize_upstream(ip) when is_tuple(ip), do: {ip, 53}
-
-  defp format_upstream({ip, port}) when is_tuple(ip), do: "#{:inet.ntoa(ip)}:#{port}"
-  defp format_upstream(ip) when is_tuple(ip), do: "#{:inet.ntoa(ip)}:53"
 
   defp get_query_domain(query) do
     case query.qdlist do

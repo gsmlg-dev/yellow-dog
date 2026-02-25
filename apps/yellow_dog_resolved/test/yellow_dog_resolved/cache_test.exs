@@ -180,6 +180,85 @@ defmodule YellowDog.Resolved.CacheTest do
       stats = Cache.stats()
       assert stats.entries <= 100
     end
+
+    test "evicts entries from older time bucket first" do
+      # Insert 50 entries in "old" bucket
+      for i <- 1..50 do
+        Cache.store("old-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(10)
+
+      # Wait 1+ seconds so the next batch gets a different last_accessed
+      Process.sleep(1100)
+
+      # Insert 50 entries in "new" bucket
+      for i <- 1..50 do
+        Cache.store("new-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(10)
+
+      # Insert 10 more to trigger eviction (110 > max_entries of 100)
+      for i <- 1..10 do
+        Cache.store("extra-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(50)
+
+      stats = Cache.stats()
+      assert stats.entries <= 100
+
+      # All "extra" entries (newest) should survive
+      for i <- 1..10 do
+        assert {:hit, _} = Cache.lookup("extra-#{i}.test", :a)
+      end
+
+      # All "new" bucket entries should survive
+      for i <- 1..50 do
+        assert {:hit, _} = Cache.lookup("new-#{i}.test", :a)
+      end
+
+      # At least some "old" bucket entries should be evicted
+      old_misses =
+        Enum.count(1..50, fn i ->
+          Cache.lookup("old-#{i}.test", :a) == :miss
+        end)
+
+      assert old_misses >= 10
+    end
+
+    test "cache hit refreshes LRU timestamp, preventing eviction" do
+      # Insert 50 entries in "old" bucket
+      for i <- 1..50 do
+        Cache.store("protect-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(10)
+
+      # Wait 1+ seconds for time bucket separation
+      Process.sleep(1100)
+
+      # Access entries 1-10 to refresh their LRU timestamp to "now"
+      for i <- 1..10 do
+        assert {:hit, _} = Cache.lookup("protect-#{i}.test", :a)
+      end
+
+      # Insert 60 more entries to trigger eviction
+      for i <- 1..60 do
+        Cache.store("fill-#{i}.test", :a, "data-#{i}", 300)
+      end
+
+      Process.sleep(50)
+
+      stats = Cache.stats()
+      assert stats.entries <= 100
+
+      # The touched entries (1-10) should survive eviction
+      for i <- 1..10 do
+        assert {:hit, _} = Cache.lookup("protect-#{i}.test", :a)
+      end
+    end
   end
 
   describe "oldest_entry_age_s" do
