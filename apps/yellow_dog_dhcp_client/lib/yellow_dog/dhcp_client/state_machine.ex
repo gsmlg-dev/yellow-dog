@@ -297,6 +297,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   def handle_event(:info, :interface_down, :bound, data) do
     deconfigure_os(data)
+    delete_lease(data)
     {:next_state, :init, %{data | lease: nil}}
   end
 
@@ -410,7 +411,11 @@ defmodule YellowDog.DhcpClient.StateMachine do
   end
 
   def handle_event(:info, :interface_down, _state, data) do
-    if data.lease, do: deconfigure_os(data)
+    if data.lease do
+      deconfigure_os(data)
+      delete_lease(data)
+    end
+
     {:next_state, :init, %{data | lease: nil}}
   end
 
