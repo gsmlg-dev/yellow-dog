@@ -113,7 +113,8 @@ defmodule YellowDog.DhcpClient.Packet do
     options = [
       msg_type_option(@decline),
       requested_ip_option(declined_ip),
-      server_id_option(server_ip)
+      server_id_option(server_ip),
+      client_id_option(mac)
     ]
 
     build_message(mac, xid, @zero_ip, options)

@@ -26,13 +26,36 @@ defmodule YellowDog.DhcpClientTest do
     end
 
     test "returns error for invalid MAC content (uses temp file)" do
-      # Write a bogus MAC address to a temp file and try to read it
-      # We can test parse_mac_string indirectly via read_mac using a file that
-      # the function would read if sysfs wasn't the target.
       # Since read_mac reads /sys/class/net/{iface}/address, we can't intercept
       # without process mocking. Instead, verify the error shape for missing iface.
       result = DhcpClient.read_mac("")
       assert {:error, _} = result
+    end
+  end
+
+  # -- Public API edge cases --
+
+  describe "stop_interface/1" do
+    test "returns {:error, :not_found} for non-running interface" do
+      assert {:error, :not_found} = DhcpClient.stop_interface("nonexistent_api_test_iface")
+    end
+  end
+
+  describe "release/1" do
+    test "returns {:error, :not_found} for non-running interface" do
+      assert {:error, :not_found} = DhcpClient.release("nonexistent_api_test_iface")
+    end
+  end
+
+  describe "status/1" do
+    test "returns {:error, :not_found} for non-running interface" do
+      assert {:error, :not_found} = DhcpClient.status("nonexistent_api_test_iface")
+    end
+  end
+
+  describe "lease/1" do
+    test "returns nil for non-running interface" do
+      assert nil == DhcpClient.lease("nonexistent_api_test_iface")
     end
   end
 end

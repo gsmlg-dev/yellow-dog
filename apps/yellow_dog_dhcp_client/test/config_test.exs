@@ -229,6 +229,72 @@ defmodule YellowDog.DhcpClient.ConfigTest do
     assert config.mode == :standalone
   end
 
+  # -- mac parsing --
+
+  describe "mac parsing" do
+    test "parses colon-separated MAC from string config" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "mac" => "AA:BB:CC:DD:EE:FF"
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+    end
+
+    test "parses dash-separated MAC from string config" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "mac" => "AA-BB-CC-DD-EE-FF"
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+    end
+
+    test "parses lowercase MAC" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "mac" => "aa:bb:cc:dd:ee:ff"
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+    end
+
+    test "preserves 6-byte binary MAC passed directly" do
+      mac = <<0x01, 0x02, 0x03, 0x04, 0x05, 0x06>>
+
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        mac: mac
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == mac
+    end
+
+    test "mac defaults to nil when not set" do
+      Application.delete_env(:yellow_dog_dhcp_client, :config)
+      config = Config.load("eth0")
+      assert config.mac == nil
+    end
+
+    test "invalid MAC string returns nil" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "mac" => "not-a-mac"
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == nil
+    end
+
+    test "non-binary non-nil MAC returns nil" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        mac: 12345
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == nil
+    end
+  end
+
   # -- os_integration_module/1 --
 
   describe "os_integration_module/1" do

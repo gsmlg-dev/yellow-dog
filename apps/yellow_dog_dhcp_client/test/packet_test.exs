@@ -304,6 +304,15 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert opt50.value == <<10, 0, 0, 50>>
       assert opt54.value == <<10, 0, 0, 1>>
     end
+
+    test "includes Client-ID (Option 61) with hardware type prefix" do
+      binary = Packet.build_decline(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil, "Option 61 (Client-ID) must be present in DHCPDECLINE"
+      assert opt.value == <<1>> <> @test_mac
+    end
   end
 
   # ── build_release/4 ──
