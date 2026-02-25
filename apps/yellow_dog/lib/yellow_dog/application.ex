@@ -43,6 +43,8 @@ defmodule YellowDog.Application do
     children = [
       # Configuration manager - must start first
       {YellowDog.Config, config},
+      # Data layer supervisor (Registry for collection tracking)
+      YellowDog.Data.Supervisor,
       # Service heartbeat for periodic status logging
       YellowDog.ServiceHeartbeat
     ]
