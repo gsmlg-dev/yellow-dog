@@ -477,7 +477,7 @@ defmodule DNS.Zone.FileParser do
   defp parse_mx_data(data_str) do
     case String.split(data_str, ~r/\s+/, trim: true) do
       [preference, exchange] ->
-        %{type: :mx, preference: String.to_integer(preference), exchange: exchange}
+        %{type: :mx, preference: parse_integer_param(preference), exchange: exchange}
 
       _ ->
         %{type: :mx, data: data_str}
@@ -498,9 +498,9 @@ defmodule DNS.Zone.FileParser do
       [priority, weight, port, target] ->
         %{
           type: :srv,
-          priority: String.to_integer(priority),
-          weight: String.to_integer(weight),
-          port: String.to_integer(port),
+          priority: parse_integer_param(priority),
+          weight: parse_integer_param(weight),
+          port: parse_integer_param(port),
           target: target
         }
 
@@ -544,7 +544,7 @@ defmodule DNS.Zone.FileParser do
 
     case parts do
       [flags, tag, value] ->
-        %{type: :caa, flags: String.to_integer(flags), tag: tag, value: String.trim(value, "\"")}
+        %{type: :caa, flags: parse_integer_param(flags), tag: tag, value: String.trim(value, "\"")}
 
       _ ->
         %{type: :caa, data: data_str}
@@ -558,9 +558,9 @@ defmodule DNS.Zone.FileParser do
       [usage, selector, matching_type, certificate] ->
         %{
           type: :tlsa,
-          usage: String.to_integer(usage),
-          selector: String.to_integer(selector),
-          matching_type: String.to_integer(matching_type),
+          usage: parse_integer_param(usage),
+          selector: parse_integer_param(selector),
+          matching_type: parse_integer_param(matching_type),
           certificate: certificate
         }
 
@@ -576,9 +576,9 @@ defmodule DNS.Zone.FileParser do
       [flags, protocol, algorithm, public_key] ->
         %{
           type: :dnskey,
-          flags: String.to_integer(flags),
-          protocol: String.to_integer(protocol),
-          algorithm: String.to_integer(algorithm),
+          flags: parse_integer_param(flags),
+          protocol: parse_integer_param(protocol),
+          algorithm: parse_integer_param(algorithm),
           public_key: public_key
         }
 
@@ -594,9 +594,9 @@ defmodule DNS.Zone.FileParser do
       [key_tag, algorithm, digest_type, digest] ->
         %{
           type: :ds,
-          key_tag: String.to_integer(key_tag),
-          algorithm: String.to_integer(algorithm),
-          digest_type: String.to_integer(digest_type),
+          key_tag: parse_integer_param(key_tag),
+          algorithm: parse_integer_param(algorithm),
+          digest_type: parse_integer_param(digest_type),
           digest: digest
         }
 
@@ -624,12 +624,12 @@ defmodule DNS.Zone.FileParser do
         %{
           type: :rrsig,
           covered: covered,
-          algorithm: String.to_integer(algorithm),
-          labels: String.to_integer(labels),
-          original_ttl: String.to_integer(original_ttl),
-          expiration: String.to_integer(expiration),
-          inception: String.to_integer(inception),
-          key_tag: String.to_integer(key_tag),
+          algorithm: parse_integer_param(algorithm),
+          labels: parse_integer_param(labels),
+          original_ttl: parse_integer_param(original_ttl),
+          expiration: parse_integer_param(expiration),
+          inception: parse_integer_param(inception),
+          key_tag: parse_integer_param(key_tag),
           signer_name: signer_name,
           signature: signature
         }
@@ -658,9 +658,9 @@ defmodule DNS.Zone.FileParser do
       [hash_algorithm, flags, iterations, salt, next_hashed_owner_name | types] ->
         %{
           type: :nsec3,
-          hash_algorithm: String.to_integer(hash_algorithm),
-          flags: String.to_integer(flags),
-          iterations: String.to_integer(iterations),
+          hash_algorithm: parse_integer_param(hash_algorithm),
+          flags: parse_integer_param(flags),
+          iterations: parse_integer_param(iterations),
           salt: salt,
           next_hashed_owner_name: next_hashed_owner_name,
           types: types
@@ -678,9 +678,9 @@ defmodule DNS.Zone.FileParser do
       [hash_algorithm, flags, iterations, salt] ->
         %{
           type: :nsec3param,
-          hash_algorithm: String.to_integer(hash_algorithm),
-          flags: String.to_integer(flags),
-          iterations: String.to_integer(iterations),
+          hash_algorithm: parse_integer_param(hash_algorithm),
+          flags: parse_integer_param(flags),
+          iterations: parse_integer_param(iterations),
           salt: salt
         }
 
@@ -696,7 +696,7 @@ defmodule DNS.Zone.FileParser do
       [priority, target | params] ->
         %{
           type: :https,
-          priority: String.to_integer(priority),
+          priority: parse_integer_param(priority),
           target: target,
           params: Enum.join(params, " ")
         }
@@ -713,7 +713,7 @@ defmodule DNS.Zone.FileParser do
       [priority, target | params] ->
         %{
           type: :svcb,
-          priority: String.to_integer(priority),
+          priority: parse_integer_param(priority),
           target: target,
           params: Enum.join(params, " ")
         }
