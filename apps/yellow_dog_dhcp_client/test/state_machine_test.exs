@@ -1479,4 +1479,64 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert_receive {:packet_tx, %{type: :decline, interface: "test0"}}, 2000
     end
   end
+
+  # ── Packets in :bound (should be silently ignored) ──
+
+  describe "stray packets in :bound" do
+    test "ACK received while :bound is silently ignored — stays :bound with original lease",
+         ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      original_lease = StateMachine.lease(pid)
+      assert original_lease != nil
+
+      # Send another ACK offering a different IP while in :bound
+      send_ack(pid, yiaddr: {10, 20, 30, 40})
+      Process.sleep(100)
+
+      assert get_state(pid) == :bound
+      assert StateMachine.lease(pid).ip == original_lease.ip
+    end
+
+    test "OFFER received while :bound is silently ignored — stays :bound", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      send_offer(pid)
+      Process.sleep(100)
+
+      assert get_state(pid) == :bound
+    end
+  end
+
+  # ── XID filtering in :selecting ──
+
+  describe "XID filtering in :selecting" do
+    test "offer with correct XID is accumulated; offer with wrong XID is not", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 500})
+
+      # Send one valid offer (correct XID) to enter :selecting
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+
+      {_state, data_before} = StateMachine.status(pid)
+      count_before = length(data_before.offers)
+
+      # Send an offer with the wrong XID — should be discarded silently
+      send_offer(pid, xid: 0xBADBAD00)
+      Process.sleep(50)
+
+      {_state, data_after} = StateMachine.status(pid)
+      assert length(data_after.offers) == count_before
+    end
+  end
 end

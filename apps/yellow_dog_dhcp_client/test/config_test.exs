@@ -336,6 +336,24 @@ defmodule YellowDog.DhcpClient.ConfigTest do
 
       assert Config.config_file_path() == "/etc/yd/dhcp.toml"
     end
+
+    test "falls back to :yellow_dog config_file when dhcp_client is not set" do
+      Application.delete_env(:yellow_dog_dhcp_client, :config_file)
+      Application.put_env(:yellow_dog, :config_file, "/etc/yellow_dog.toml")
+
+      on_exit(fn -> Application.delete_env(:yellow_dog, :config_file) end)
+
+      assert Config.config_file_path() == "/etc/yellow_dog.toml"
+    end
+
+    test "prefers dhcp_client config_file over yellow_dog fallback" do
+      Application.put_env(:yellow_dog_dhcp_client, :config_file, "/etc/dhcp.toml")
+      Application.put_env(:yellow_dog, :config_file, "/etc/yellow_dog.toml")
+
+      on_exit(fn -> Application.delete_env(:yellow_dog, :config_file) end)
+
+      assert Config.config_file_path() == "/etc/dhcp.toml"
+    end
   end
 
   # -- load_all/0 --
