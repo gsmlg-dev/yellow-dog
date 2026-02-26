@@ -32,6 +32,7 @@ defmodule YellowDogIdentity.Registry do
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
           fingerprint_index: %{String.t() => String.t()},
+          hostname_index: %{String.t() => String.t()},
           instance_id_index: %{String.t() => String.t()}
         }
 
@@ -137,7 +138,7 @@ defmodule YellowDogIdentity.Registry do
     with :ok <- File.mkdir_p(hosts_dir),
          :ok <- File.mkdir_p(tokens_dir) do
       # Load existing data from disk
-      {hosts, fingerprint_index} = load_hosts(hosts_dir)
+      {hosts, fingerprint_index, hostname_index} = load_hosts(hosts_dir)
       tokens = load_tokens(tokens_dir)
       instance_id_index = build_instance_id_index(hosts)
 
@@ -146,6 +147,7 @@ defmodule YellowDogIdentity.Registry do
         hosts: hosts,
         tokens: tokens,
         fingerprint_index: fingerprint_index,
+        hostname_index: hostname_index,
         instance_id_index: instance_id_index
       }
 
@@ -197,9 +199,15 @@ defmodule YellowDogIdentity.Registry do
   end
 
   def handle_call({:get_host_by_hostname, hostname}, _from, state) do
-    case Enum.find(state.hosts, fn {_id, h} -> h.hostname == hostname end) do
-      nil -> {:reply, :not_found, state}
-      {_id, host} -> {:reply, {:ok, host}, state}
+    case Map.get(state.hostname_index, hostname) do
+      nil ->
+        {:reply, :not_found, state}
+
+      id ->
+        case Map.fetch(state.hosts, id) do
+          {:ok, host} -> {:reply, {:ok, host}, state}
+          :error -> {:reply, :not_found, state}
+        end
     end
   end
 
@@ -231,6 +239,7 @@ defmodule YellowDogIdentity.Registry do
           :ok ->
             hosts = Map.delete(state.hosts, id)
             fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+            hostname_index = Map.delete(state.hostname_index, host.hostname)
 
             instance_id_index =
               case get_instance_id(host.trust_evidence) do
@@ -239,7 +248,13 @@ defmodule YellowDogIdentity.Registry do
               end
 
             {:reply, :ok,
-             %{state | hosts: hosts, fingerprint_index: fingerprint_index, instance_id_index: instance_id_index}}
+             %{
+               state
+               | hosts: hosts,
+                 fingerprint_index: fingerprint_index,
+                 hostname_index: hostname_index,
+                 instance_id_index: instance_id_index
+             }}
 
           {:error, reason} ->
             Logger.warning("Failed to delete host file #{path}: #{reason}")
@@ -392,6 +407,16 @@ defmodule YellowDogIdentity.Registry do
               state.fingerprint_index
           end
 
+        # Remove stale hostname index entry if host changed hostname
+        hostname_index =
+          case old_host do
+            %{hostname: old_hn} when old_hn != host.hostname ->
+              Map.delete(state.hostname_index, old_hn)
+
+            _ ->
+              state.hostname_index
+          end
+
         # Remove stale instance_id index entry if host changed instance ID
         instance_id_index =
           case old_host do
@@ -411,6 +436,7 @@ defmodule YellowDogIdentity.Registry do
 
         hosts = Map.put(state.hosts, host.id, host)
         fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
+        hostname_index = Map.put(hostname_index, host.hostname, host.id)
 
         # Add new instance_id to index
         new_iid = get_instance_id(host.trust_evidence)
@@ -421,7 +447,13 @@ defmodule YellowDogIdentity.Registry do
             else: instance_id_index
 
         {:reply, :ok,
-         %{state | hosts: hosts, fingerprint_index: fingerprint_index, instance_id_index: instance_id_index}}
+         %{
+           state
+           | hosts: hosts,
+             fingerprint_index: fingerprint_index,
+             hostname_index: hostname_index,
+             instance_id_index: instance_id_index
+         }}
 
       {:error, _} = error ->
         {:reply, error, state}
@@ -569,13 +601,17 @@ defmodule YellowDogIdentity.Registry do
     hosts_dir
     |> Path.join("*.toml")
     |> Path.wildcard()
-    |> Enum.reduce({%{}, %{}}, fn path, {hosts, idx} ->
+    |> Enum.reduce({%{}, %{}, %{}}, fn path, {hosts, fp_idx, hn_idx} ->
       case load_host_file(path) do
         {:ok, host} ->
-          {Map.put(hosts, host.id, host), Map.put(idx, host.key_fingerprint, host.id)}
+          {
+            Map.put(hosts, host.id, host),
+            Map.put(fp_idx, host.key_fingerprint, host.id),
+            Map.put(hn_idx, host.hostname, host.id)
+          }
 
         {:error, _reason} ->
-          {hosts, idx}
+          {hosts, fp_idx, hn_idx}
       end
     end)
   end

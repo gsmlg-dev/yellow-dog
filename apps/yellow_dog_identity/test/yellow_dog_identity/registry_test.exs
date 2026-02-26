@@ -161,6 +161,49 @@ defmodule YellowDogIdentity.RegistryTest do
       assert {:ok, ^updated} = GenServer.call(pid, {:get_host_by_fingerprint, host.key_fingerprint})
     end
 
+    test "hostname index provides O(1) lookup", %{registry: pid} do
+      host = make_host("indexed-host")
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      assert {:ok, ^host} = GenServer.call(pid, {:get_host_by_hostname, "indexed-host"})
+    end
+
+    test "hostname index cleans stale entry on hostname change", %{registry: pid} do
+      host = make_host("old-hostname")
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      updated = %{host | hostname: "new-hostname"}
+      :ok = GenServer.call(pid, {:put_host, updated})
+
+      assert :not_found = GenServer.call(pid, {:get_host_by_hostname, "old-hostname"})
+      assert {:ok, ^updated} = GenServer.call(pid, {:get_host_by_hostname, "new-hostname"})
+    end
+
+    test "delete host removes hostname index entry", %{registry: pid} do
+      host = make_host("deletable")
+      :ok = GenServer.call(pid, {:put_host, host})
+
+      :ok = GenServer.call(pid, {:delete_host, host.id})
+      assert :not_found = GenServer.call(pid, {:get_host_by_hostname, "deletable"})
+    end
+
+    test "hostname index survives restart", %{tmp_dir: tmp_dir} do
+      name1 = :"hn_persist_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
+
+      host = make_host("persisted-host")
+      :ok = GenServer.call(pid1, {:put_host, host})
+      GenServer.stop(pid1)
+
+      name2 = :"hn_persist_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid2} = Registry.start_link(data_dir: tmp_dir, name: name2)
+
+      assert {:ok, restored} = GenServer.call(pid2, {:get_host_by_hostname, "persisted-host"})
+      assert restored.hostname == "persisted-host"
+
+      GenServer.stop(pid2)
+    end
+
     test "delete host removes fingerprint index entry", %{registry: pid} do
       host = make_host()
       :ok = GenServer.call(pid, {:put_host, host})
