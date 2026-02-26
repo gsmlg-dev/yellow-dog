@@ -136,9 +136,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
             <h2 class="card-title">Create Provisioning Token</h2>
             <form phx-submit="create_token" class="space-y-4">
               <div class="form-control">
-                <label class="label"><span class="label-text">Hostname Pattern</span></label>
+                <label class="label" for="hostname_pattern">
+                  <span class="label-text">Hostname Pattern</span>
+                </label>
                 <input
                   type="text"
+                  id="hostname_pattern"
                   name="hostname_pattern"
                   value={@form["hostname_pattern"].value}
                   class="input input-bordered"
@@ -147,9 +150,10 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div class="form-control">
-                  <label class="label"><span class="label-text">Max Uses</span></label>
+                  <label class="label" for="max_uses"><span class="label-text">Max Uses</span></label>
                   <input
                     type="number"
+                    id="max_uses"
                     name="max_uses"
                     value={@form["max_uses"].value}
                     min="1"
@@ -157,9 +161,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                   />
                 </div>
                 <div class="form-control">
-                  <label class="label"><span class="label-text">TTL (hours)</span></label>
+                  <label class="label" for="ttl_hours">
+                    <span class="label-text">TTL (hours)</span>
+                  </label>
                   <input
                     type="number"
+                    id="ttl_hours"
                     name="ttl_hours"
                     value={@form["ttl_hours"].value}
                     min="1"
@@ -168,9 +175,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 </div>
               </div>
               <div class="form-control">
-                <label class="label"><span class="label-text">Role (optional)</span></label>
+                <label class="label" for="role">
+                  <span class="label-text">Role (optional)</span>
+                </label>
                 <input
                   type="text"
+                  id="role"
                   name="role"
                   value={@form["role"].value}
                   class="input input-bordered"

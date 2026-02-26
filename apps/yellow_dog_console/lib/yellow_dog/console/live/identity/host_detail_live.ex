@@ -218,6 +218,12 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               <h2 class="card-title">Trust Evidence</h2>
               <div class="overflow-x-auto">
                 <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     <tr :for={{key, value} <- @host.trust_evidence}>
                       <td class="font-mono text-sm text-base-content/70">{key}</td>

@@ -201,6 +201,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   checked={MapSet.member?(@selected, host.id)}
                   phx-click="toggle_select"
                   phx-value-id={host.id}
+                  aria-label={"Select #{host.hostname}"}
                 />
                 <div>
                   <h3 class="font-bold text-lg">{host.hostname}</h3>
@@ -215,6 +216,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-success"
                   phx-click="approve"
                   phx-value-id={host.id}
+                  aria-label={"Approve #{host.hostname}"}
                 >
                   Approve
                 </button>
@@ -222,6 +224,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-error btn-outline"
                   phx-click="reject"
                   phx-value-id={host.id}
+                  aria-label={"Reject #{host.hostname}"}
                 >
                   Reject
                 </button>
