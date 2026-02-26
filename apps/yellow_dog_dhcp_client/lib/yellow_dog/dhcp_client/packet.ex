@@ -274,6 +274,7 @@ defmodule YellowDog.DhcpClient.Packet do
     t2 = extract_u32(opts_map, @opt_t2, div(lease_time * 7, 8))
 
     {yellowdog_server, vendor} = extract_vendor_options(opts_map)
+    yellowdog_vendor_class = yellowdog_vendor_class?(opts_map)
 
     %Lease{
       ip: msg.yiaddr,
@@ -295,10 +296,23 @@ defmodule YellowDog.DhcpClient.Packet do
       server_id: vendor[:server_id],
       cluster_id: vendor[:cluster_id],
       yellowdog_server: yellowdog_server,
+      yellowdog_vendor_class: yellowdog_vendor_class,
       obtained_at: DateTime.utc_now(),
       xid: msg.xid,
       raw_options: opts_map
     }
+  end
+
+  # Checks if the server's Option 60 starts with "YellowDog" (older YD servers
+  # that may not send Option 125 with PEN but still identify via vendor class).
+  defp yellowdog_vendor_class?(opts_map) do
+    case Map.get(opts_map, @opt_vendor_class) do
+      %Option{value: value} when is_binary(value) ->
+        String.starts_with?(value, "YellowDog")
+
+      _ ->
+        false
+    end
   end
 
   # Returns {yellowdog_pen_matched :: boolean(), vendor_info :: map()}

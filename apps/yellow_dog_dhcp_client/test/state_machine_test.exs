@@ -460,6 +460,42 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert result.ip == {192, 168, 1, 200}
     end
 
+    test "prefers yellowdog_vendor_class over known_server (tier 2 vs tier 3)" do
+      regular = %{
+        ip: {192, 168, 1, 100},
+        yellowdog_server: false,
+        yellowdog_vendor_class: false,
+        known_server: true
+      }
+
+      vendor_class = %{
+        ip: {192, 168, 1, 200},
+        yellowdog_server: false,
+        yellowdog_vendor_class: true,
+        known_server: false
+      }
+
+      result = StateMachine.select_best_offer([regular, vendor_class])
+      assert result.ip == {192, 168, 1, 200}
+    end
+
+    test "yellowdog_server (tier 1) beats yellowdog_vendor_class (tier 2)" do
+      pen_match = %{
+        ip: {192, 168, 1, 100},
+        yellowdog_server: true,
+        yellowdog_vendor_class: true
+      }
+
+      class_only = %{
+        ip: {192, 168, 1, 200},
+        yellowdog_server: false,
+        yellowdog_vendor_class: true
+      }
+
+      result = StateMachine.select_best_offer([class_only, pen_match])
+      assert result.ip == {192, 168, 1, 100}
+    end
+
     test "falls back to known_server when no yellowdog" do
       regular = %{ip: {192, 168, 1, 100}, yellowdog_server: false, known_server: false}
       known = %{ip: {192, 168, 1, 150}, yellowdog_server: false, known_server: true}

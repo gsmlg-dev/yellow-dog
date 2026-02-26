@@ -475,10 +475,11 @@ defmodule YellowDog.DhcpClient.StateMachine do
   @doc """
   Selects the best offer from the accumulated list.
 
-  Priority:
+  Priority per PRD:
   1. Offers with Yellow Dog PEN in Option 125 (`yellowdog_server: true`)
-  2. Offers from known servers
-  3. First offer received (FIFO)
+  2. Offers with Yellow Dog vendor class in Option 60 (`yellowdog_vendor_class: true`)
+  3. Offers from known servers (`known_server: true`)
+  4. First offer received (FIFO)
   """
   @spec select_best_offer([map()]) :: map() | nil
   def select_best_offer([]), do: nil
@@ -488,6 +489,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     reversed = Enum.reverse(offers)
 
     Enum.find(reversed, fn o -> Map.get(o, :yellowdog_server, false) end) ||
+      Enum.find(reversed, fn o -> Map.get(o, :yellowdog_vendor_class, false) end) ||
       Enum.find(reversed, fn o -> Map.get(o, :known_server, false) end) ||
       List.first(reversed)
   end

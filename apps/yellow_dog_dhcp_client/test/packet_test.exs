@@ -552,6 +552,44 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert lease.yellowdog_server == true
     end
 
+    test "sets yellowdog_vendor_class when server Option 60 starts with YellowDog" do
+      vc = "YellowDog:1.0:dns"
+
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 60, length: byte_size(vc), value: vc}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == true
+      # No PEN match since we didn't include Option 125
+      assert lease.yellowdog_server == false
+    end
+
+    test "yellowdog_vendor_class is false when server Option 60 is absent" do
+      options = [%Option{type: 53, length: 1, value: <<5>>}]
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == false
+    end
+
+    test "yellowdog_vendor_class is false when server Option 60 is non-YellowDog" do
+      vc = "OtherVendor"
+
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 60, length: byte_size(vc), value: vc}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == false
+    end
+
     test "preserves xid from reply" do
       custom_xid = 0xDEADBEEF
       data = build_reply(xid: custom_xid, options: standard_ack_options())
