@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.Index do
+  @moduledoc "Identity overview dashboard showing host enrollment statistics and trust status."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.AuditLive do
+  @moduledoc "Identity audit log with search and filtering for enrollment events."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

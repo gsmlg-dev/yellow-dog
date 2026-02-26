@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.HostDetailLive do
+  @moduledoc "Detailed view of a single enrolled host including trust history and attestation data."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

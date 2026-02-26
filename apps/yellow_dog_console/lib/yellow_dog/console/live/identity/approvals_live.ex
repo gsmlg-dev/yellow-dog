@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
+  @moduledoc "Displays pending host enrollment approvals with accept/reject actions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

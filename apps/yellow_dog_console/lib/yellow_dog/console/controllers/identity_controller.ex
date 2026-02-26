@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityController do
+  @moduledoc "JSON API controller for host identity registration and attestation."
   use YellowDog.Console, :controller
 
   # No action_fallback — errors handled inline per action

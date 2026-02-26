@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.PoliciesLive do
+  @moduledoc "Manages approval policies for automated host enrollment decisions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

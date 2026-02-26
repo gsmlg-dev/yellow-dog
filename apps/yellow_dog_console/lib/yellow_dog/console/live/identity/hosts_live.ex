@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.HostsLive do
+  @moduledoc "Lists enrolled hosts with search, filtering, and bulk actions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper

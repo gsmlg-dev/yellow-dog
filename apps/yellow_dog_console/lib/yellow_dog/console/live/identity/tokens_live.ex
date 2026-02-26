@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.TokensLive do
+  @moduledoc "Manages provisioning tokens for host enrollment."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
