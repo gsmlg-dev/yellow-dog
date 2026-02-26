@@ -46,7 +46,9 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
-             /data/yellowdog/mdns
+             /data/yellowdog/mdns \
+             /data/yellowdog/identity/hosts \
+             /data/yellowdog/identity/tokens
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
