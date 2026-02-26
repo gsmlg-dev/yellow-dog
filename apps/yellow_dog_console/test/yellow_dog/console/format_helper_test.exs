@@ -82,6 +82,11 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.format_expiration(nil) == "N/A"
       assert FormatHelper.format_expiration("invalid") == "N/A"
     end
+
+    test "returns N/A for out-of-range timestamp" do
+      # Extremely large timestamp that DateTime.from_unix rejects
+      assert FormatHelper.format_expiration(999_999_999_999_999) == "N/A"
+    end
   end
 
   describe "format_time_remaining/1" do
@@ -156,6 +161,10 @@ defmodule YellowDog.Console.FormatHelperTest do
     test "returns empty string for non-DateTime and non-integer" do
       assert FormatHelper.format_time("14:30:45") == ""
     end
+
+    test "returns empty string for out-of-range timestamp" do
+      assert FormatHelper.format_time(999_999_999_999_999) == ""
+    end
   end
 
   describe "format_time_ms/1" do
@@ -187,6 +196,10 @@ defmodule YellowDog.Console.FormatHelperTest do
 
     test "returns placeholder for non-DateTime" do
       assert FormatHelper.format_time_ms("14:30:45") == "--:--:--.---"
+    end
+
+    test "returns placeholder for out-of-range nanosecond timestamp" do
+      assert FormatHelper.format_time_ms(999_999_999_999_999_999_999) == "--:--:--.---"
     end
   end
 
