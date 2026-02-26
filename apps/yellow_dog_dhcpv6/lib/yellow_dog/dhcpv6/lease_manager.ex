@@ -20,6 +20,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   use GenServer
 
+  require Logger
+
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
   alias YellowDog.Dhcpv6.{AddressPool, DuidFormat, Ipv6Util, LeaseStorage, PoolStore}
@@ -655,7 +657,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 
@@ -935,7 +938,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       toml_leases =
         Enum.map(leases, fn lease ->
           # Calculate preferred_until from expires_at and lifetimes
-          valid_until = DateTime.from_unix!(lease.expires_at)
+          valid_until =
+            case DateTime.from_unix(lease.expires_at) do
+              {:ok, dt} -> dt
+              {:error, _} -> DateTime.utc_now()
+            end
+
           preferred_diff = lease.valid_lifetime - lease.preferred_lifetime
           preferred_until = DateTime.add(valid_until, -preferred_diff, :second)
 

@@ -9,6 +9,8 @@ defmodule YellowDog.Mdns.Server do
 
   use GenServer
 
+  require Logger
+
   @type options :: keyword()
   @type server_config :: map()
 
@@ -19,6 +21,7 @@ defmodule YellowDog.Mdns.Server do
   @mdns_multicast_ttl 255
   # RFC 6762 §17: mDNS messages should fit in a single packet
   @mdns_max_packet_size 1232
+  @default_read_timeout 5000
 
   @doc """
   Starts the mDNS server with the given options.
@@ -133,7 +136,7 @@ defmodule YellowDog.Mdns.Server do
         add_membership: {@mdns_multicast_address, {0, 0, 0, 0}},
         multicast_ttl: @mdns_multicast_ttl
       ],
-      read_timeout: 5000,
+      read_timeout: @default_read_timeout,
       num_listeners: 1,
       max_packet_size: @mdns_max_packet_size
     ]
@@ -248,6 +251,12 @@ defmodule YellowDog.Mdns.Server do
 
         {:reply, error, state}
     end
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
   end
 
   @impl true

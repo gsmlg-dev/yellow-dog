@@ -22,6 +22,8 @@ defmodule YellowDog.ServiceHeartbeat do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Telemetry
 
   @default_interval 30_000
@@ -102,7 +104,8 @@ defmodule YellowDog.ServiceHeartbeat do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

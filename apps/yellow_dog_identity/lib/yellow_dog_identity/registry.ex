@@ -178,6 +178,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil -> {:reply, :not_found, state}
@@ -185,6 +186,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host_by_fingerprint, fingerprint}, _from, state) do
     case Map.get(state.fingerprint_index, fingerprint) do
       nil ->
@@ -198,6 +200,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host_by_hostname, hostname}, _from, state) do
     case Map.get(state.hostname_index, hostname) do
       nil ->
@@ -211,15 +214,18 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call(:list_hosts, _from, state) do
     {:reply, Map.values(state.hosts), state}
   end
 
+  @impl true
   def handle_call({:list_hosts_by_status, status}, _from, state) do
     filtered = state.hosts |> Map.values() |> Enum.filter(&(&1.status == status))
     {:reply, filtered, state}
   end
 
+  @impl true
   def handle_call({:delete_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil ->
@@ -263,6 +269,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:put_token, token}, _from, state) do
     case persist_token(state.data_dir, token) do
       :ok ->
@@ -274,6 +281,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil -> {:reply, :not_found, state}
@@ -281,10 +289,12 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call(:list_tokens, _from, state) do
     {:reply, Map.values(state.tokens), state}
   end
 
+  @impl true
   def handle_call({:delete_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil ->
@@ -312,6 +322,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:consume_token, raw_token, hostname}, _from, state) do
     tokens = Map.values(state.tokens)
 
@@ -325,6 +336,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:read_audit_log, opts}, _from, state) do
     entries = read_audit_entries(state.data_dir, opts)
     {:reply, entries, state}
@@ -366,7 +378,10 @@ defmodule YellowDogIdentity.Registry do
     {:noreply, state}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
 
   # Token consumption helper (used by consume_token handle_call)
 
@@ -691,7 +706,8 @@ defmodule YellowDogIdentity.Registry do
         []
     end
   rescue
-    _ -> []
+    e -> Logger.debug("Failed to read audit entries: #{inspect(e)}")
+    []
   end
 
   defp parse_audit_line(line) do

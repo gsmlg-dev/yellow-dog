@@ -168,8 +168,11 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       Code.ensure_loaded!(Handler)
 
       # Test that the handler implements the required callbacks
+      Code.ensure_loaded!(Handler)
       assert function_exported?(Handler, :handle_data, 2)
+      Code.ensure_loaded!(Handler)
       assert function_exported?(Handler, :handle_error, 2)
+      Code.ensure_loaded!(Handler)
       assert function_exported?(Handler, :handle_timeout, 1)
     end
   end

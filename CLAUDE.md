@@ -13,7 +13,7 @@ apps/<app_name>/CLAUDE.md
 
 Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
 
-### Applications (13 total)
+### Applications (15 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -25,6 +25,8 @@ Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using
 | **YellowDog.Mdns** | `apps/yellow_dog_mdns/` | mDNS responder: service discovery and registration |
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
+| **YellowDog.Identity** | `apps/yellow_dog_identity/` | Host identity: registry, SSH key validation, trust verification, approval policies |
+| **YellowDog.Resolved** | `apps/yellow_dog_resolved/` | DNS stub resolver: intercept rules, cache, upstream forwarding, EDNS discovery |
 | **YellowDogConsole** | `apps/yellow_dog_console/` | Phoenix LiveView web console (DaisyUI, Bun) |
 | **GeoIpDb** | `apps/geo_ip_db/` | IP geolocation database library (MMDB format) |
 | **Abyss** | `apps/abyss/` | UDP server library (used by all protocol apps) |
@@ -90,6 +92,7 @@ YellowDog (core: config, orchestration)
 ├── YellowDog.Mdns        → ex_dns + abyss + yellow_dog_telemetry
 ├── YellowDog.Netboot     → abyss + yellow_dog_telemetry
 ├── YellowDog.Fingerprint → ex_dhcp + yellow_dog_telemetry
+├── YellowDog.Identity    → yellow_dog + yellow_dog_telemetry
 └── YellowDogConsole      → phoenix + all service apps + geo_ip_db (read-only status/stats)
 ```
 

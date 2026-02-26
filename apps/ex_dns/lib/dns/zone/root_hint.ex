@@ -67,7 +67,13 @@ defmodule DNS.Zone.RootHint do
             Domain.new(data)
         end
 
-      [name: name, ttl: String.to_integer(ttl), type: RRType.new(rtype), rdata: rdata]
+      parsed_ttl =
+        case Integer.parse(ttl) do
+          {int, _} -> int
+          :error -> 0
+        end
+
+      [name: name, ttl: parsed_ttl, type: RRType.new(rtype), rdata: rdata]
     end
   end
 

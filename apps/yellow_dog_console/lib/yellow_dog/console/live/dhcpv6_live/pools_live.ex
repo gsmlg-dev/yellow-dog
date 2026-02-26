@@ -157,10 +157,16 @@ defmodule YellowDog.Console.Dhcpv6Live.PoolsLive do
             pool_config = build_pool_config(pool)
             YellowDog.Dhcpv6.update_pool(pool.name, pool_config)
         end
-      rescue
-        e -> {:error, Exception.message(e)}
       catch
-        :exit, reason -> {:error, "Service unavailable: #{inspect(reason)}"}
+        kind, reason ->
+          msg =
+            case {kind, reason} do
+              {:error, %{message: m}} -> m
+              {:exit, _} -> "Service unavailable"
+              _ -> Exception.format(kind, reason)
+            end
+
+          {:error, msg}
       end
 
     case result do

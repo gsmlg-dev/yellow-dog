@@ -35,20 +35,25 @@ defmodule Abyss.Transport.UDP.CoreTest do
     test "exports recv/2 and recv/3" do
       Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :recv, 2)
+      Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :recv, 3)
     end
 
     test "exports send/2, send/3, send/4, send/5" do
       Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :send, 2)
+      Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :send, 3)
+      Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :send, 4)
+      Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :send, 5)
     end
 
     test "exports getopts/2 and setopts/2" do
       Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :getopts, 2)
+      Code.ensure_loaded!(Core)
       assert Kernel.function_exported?(Core, :setopts, 2)
     end
 

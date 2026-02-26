@@ -555,9 +555,13 @@ defmodule YellowDog.Dns.Zone.RPZTest do
       {:module, _} = Code.ensure_loaded(RPZ)
 
       # Verify the module exports all required Behaviour functions
+      Code.ensure_loaded!(RPZ)
       assert function_exported?(RPZ, :get_name, 1)
+      Code.ensure_loaded!(RPZ)
       assert function_exported?(RPZ, :resolve, 2)
+      Code.ensure_loaded!(RPZ)
       assert function_exported?(RPZ, :reload, 2)
+      Code.ensure_loaded!(RPZ)
       assert function_exported?(RPZ, :stats, 1)
     end
   end

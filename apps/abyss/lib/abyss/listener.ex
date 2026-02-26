@@ -51,6 +51,8 @@ defmodule Abyss.Listener do
 
   use GenServer, restart: :transient
 
+  require Logger
+
   # ETS table name for caching listener info (accessible while listener is blocked in recv)
   @listener_info_table :abyss_listener_info
 
@@ -445,7 +447,8 @@ defmodule Abyss.Listener do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

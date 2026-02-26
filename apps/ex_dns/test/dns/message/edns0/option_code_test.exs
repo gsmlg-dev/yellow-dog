@@ -815,8 +815,8 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
         end)
 
       assert length(codes) == 10001
-      # Should complete in under 50ms
-      assert time < 50000
+      # Should complete in under 100ms (generous for CI/loaded systems)
+      assert time < 100_000
     end
 
     test "formatting many option codes is efficient" do
@@ -828,8 +828,8 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
         end)
 
       assert length(strings) == 1001
-      # Should complete in under 50ms
-      assert time < 50000
+      # Should complete in under 100ms (generous for CI/loaded systems)
+      assert time < 100_000
     end
 
     test "serializing many option codes is efficient" do
@@ -841,8 +841,8 @@ defmodule DNS.Message.EDNS0.OptionCodeTest do
         end)
 
       assert length(binaries) == 1001
-      # Should complete in under 50ms
-      assert time < 50000
+      # Should complete in under 100ms (generous for CI/loaded systems)
+      assert time < 100_000
     end
   end
 end

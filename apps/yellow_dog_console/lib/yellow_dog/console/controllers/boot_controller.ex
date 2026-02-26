@@ -158,8 +158,8 @@ defmodule YellowDog.Console.BootController do
             end
         end
     end
-  rescue
-    _ -> :no_profile
+  catch
+    _, _ -> :no_profile
   end
 
   defp build_script_assigns(conn, profile, mac, arch) do

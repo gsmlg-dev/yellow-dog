@@ -1,7 +1,9 @@
 defmodule YellowDog.Console.IdentityLive.TokensLive do
+  @moduledoc "Manages provisioning tokens for host enrollment."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -22,6 +24,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     {:noreply, assign(socket, :show_create, !socket.assigns.show_create)}
   end
 
+  @impl true
   def handle_event(
         "create_token",
         %{
@@ -60,6 +63,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     end
   end
 
+  @impl true
   def handle_event("revoke_token", %{"id" => id}, socket) do
     result =
       ServiceHelper.safe_call(
@@ -74,10 +78,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     end
   end
 
+  @impl true
   def handle_event("dismiss_token", _params, socket) do
     {:noreply, assign(socket, :new_token_raw, nil)}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_tokens(socket)}
   end
@@ -117,7 +123,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
             <button class="btn btn-sm btn-primary" phx-click="toggle_create">
               + New Token
             </button>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh">
+            <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
               ↻
             </button>
           </div>
@@ -263,10 +269,6 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
   # Ensures TTL is not 0 (would create already-expired token)
   defp safe_ttl(hours) when hours <= 0, do: 24
   defp safe_ttl(hours), do: hours
-
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  defp format_time(_), do: "-"
 
   defp humanize_error(:unavailable), do: "service unavailable"
   defp humanize_error(:invalid_pattern), do: "invalid hostname pattern"

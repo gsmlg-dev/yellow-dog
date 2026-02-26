@@ -103,8 +103,14 @@ end
 # Handle LOG_LEVEL environment variable
 if config_env() == :prod do
   case System.fetch_env("LOG_LEVEL") do
-    {:ok, level} ->
-      config :logger, :console, level: String.to_atom(level)
+    {:ok, level}
+    when level in ~w(emergency alert critical error warning warn notice info debug) ->
+      config :logger, :console, level: String.to_existing_atom(level)
+
+    {:ok, invalid} ->
+      IO.warn(
+        "Invalid LOG_LEVEL=#{inspect(invalid)}, ignoring (valid: emergency|alert|critical|error|warning|info|debug)"
+      )
 
     _ ->
       nil

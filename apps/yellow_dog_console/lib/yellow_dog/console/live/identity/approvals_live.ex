@@ -1,7 +1,9 @@
 defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
+  @moduledoc "Displays pending host enrollment approvals with accept/reject actions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -20,9 +22,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
   def handle_info({:host_registered, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info({:host_updated, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -40,6 +44,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     end
   end
 
+  @impl true
   def handle_event("reject", %{"id" => id}, socket) do
     result =
       ServiceHelper.safe_call(
@@ -54,6 +59,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     end
   end
 
+  @impl true
   def handle_event("toggle_select", %{"id" => id}, socket) do
     selected = socket.assigns.selected
 
@@ -65,15 +71,18 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     {:noreply, assign(socket, :selected, selected)}
   end
 
+  @impl true
   def handle_event("select_all", _params, socket) do
     ids = Enum.map(socket.assigns.pending, & &1.id)
     {:noreply, assign(socket, :selected, MapSet.new(ids))}
   end
 
+  @impl true
   def handle_event("select_none", _params, socket) do
     {:noreply, assign(socket, :selected, MapSet.new())}
   end
 
+  @impl true
   def handle_event("bulk_approve", _params, socket) do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
@@ -101,6 +110,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
      |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
+  @impl true
   def handle_event("bulk_reject", _params, socket) do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
@@ -128,6 +138,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
      |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_pending(socket)}
   end
@@ -152,7 +163,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Pending Approvals</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
             ↻
           </button>
         </div>
@@ -272,7 +283,9 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
   defp trust_level_badge_class_sm(:unverified), do: "badge badge-error badge-sm"
   defp trust_level_badge_class_sm(_), do: "badge badge-outline badge-sm"
 
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  defp format_time(_), do: "-"
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end

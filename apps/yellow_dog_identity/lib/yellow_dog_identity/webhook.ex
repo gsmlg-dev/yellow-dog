@@ -50,12 +50,12 @@ defmodule YellowDogIdentity.Webhook do
 
   defp send_async(url, payload) do
     Task.start(fn ->
-      try do
-        body = Jason.encode!(payload)
-        deliver_with_retry(url, body, 0)
-      rescue
-        e ->
-          Logger.warning("Webhook error: #{Exception.message(e)}")
+      case Jason.encode(payload) do
+        {:ok, body} ->
+          deliver_with_retry(url, body, 0)
+
+        {:error, reason} ->
+          Logger.warning("Webhook encoding failed: #{inspect(reason)}")
       end
     end)
 

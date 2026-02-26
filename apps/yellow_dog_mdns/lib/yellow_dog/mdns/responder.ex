@@ -138,26 +138,33 @@ defmodule YellowDog.Mdns.Responder do
 
   defp records_match?(record1, record2) do
     normalize_name(record1.name) == normalize_name(record2.name) and
-      record1.type == record2.type and
+      to_string(record1.type) == to_string(record2.type) and
       record1.class == record2.class and
       normalize_data(record1.data, record1.type) == normalize_data(record2.data, record2.type)
   end
 
   defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
-  defp normalize_data(data, :PTR), do: normalize_name(data)
-  defp normalize_data(data, :TXT) when is_list(data), do: Enum.sort(data)
+  # Normalize record data for comparison — handles both atom types and RRType structs
+  defp normalize_data(data, type) do
+    case to_string(type) do
+      "PTR" -> normalize_name(to_string(data))
+      "TXT" -> if is_list(data), do: Enum.sort(data), else: data
+      "SRV" -> normalize_srv_data(data)
+      _ -> data
+    end
+  end
 
-  defp normalize_data(%{target: target} = data, :SRV) do
+  defp normalize_srv_data(%{target: target} = data) do
     %{data | target: normalize_name(target)}
   end
 
-  defp normalize_data(data, _type), do: data
+  defp normalize_srv_data(data), do: data
 
   defp deduplicate_records(records) do
     records
     |> Enum.uniq_by(fn record ->
-      {normalize_name(record.name), record.type, record.class,
+      {normalize_name(record.name), to_string(record.type), record.class,
        normalize_data(record.data, record.type)}
     end)
   end
@@ -208,12 +215,12 @@ defmodule YellowDog.Mdns.Responder do
     fixed_size = 10
 
     data_size =
-      case {type, data} do
-        {:A, {_, _, _, _}} -> 4
-        {:AAAA, {_, _, _, _, _, _, _, _}} -> 16
-        {:PTR, target} -> byte_size(to_string(target))
-        {:TXT, list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
-        {:SRV, %{target: target}} -> byte_size(to_string(target)) + 6
+      case {to_string(type), data} do
+        {"A", {_, _, _, _}} -> 4
+        {"AAAA", {_, _, _, _, _, _, _, _}} -> 16
+        {"PTR", target} -> byte_size(to_string(target))
+        {"TXT", list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
+        {"SRV", %{target: target}} -> byte_size(to_string(target)) + 6
         _ -> 20
       end
 
@@ -236,16 +243,17 @@ defmodule YellowDog.Mdns.Responder do
 
   defp find_matching_services(question, services) do
     qname = normalize_name(question.name)
-    qtype = question.type
+    # Use to_string/1 so both atoms (:PTR) and RRType structs compare correctly
+    qtype_str = to_string(question.type)
 
     Enum.filter(services, fn service ->
       service_fqdn = normalize_name(service.fqdn)
       service_type = normalize_name("#{service.type}.#{service.domain}")
       service_host = normalize_name(service.host)
 
-      (qtype == :PTR and qname == service_type) or
-        (qtype in [:SRV, :TXT, :ANY] and qname == service_fqdn) or
-        (qtype in [:A, :AAAA, :ANY] and qname == service_host)
+      (qtype_str == "PTR" and qname == service_type) or
+        (qtype_str in ["SRV", "TXT", "ANY"] and qname == service_fqdn) or
+        (qtype_str in ["A", "AAAA", "ANY"] and qname == service_host)
     end)
   end
 
@@ -261,11 +269,12 @@ defmodule YellowDog.Mdns.Responder do
     matching_services =
       Enum.filter(services, fn service ->
         qname = normalize_name(query_name)
+        query_type_str = to_string(query_type)
         service_type = normalize_name("#{service.type}.#{service.domain}")
         service_fqdn = normalize_name(service.fqdn)
 
-        (query_type == :PTR and qname == service_type) or
-          (query_type in [:SRV, :ANY] and qname == service_fqdn)
+        (query_type_str == "PTR" and qname == service_type) or
+          (query_type_str in ["SRV", "ANY"] and qname == service_fqdn)
       end)
 
     if matching_services == [] do

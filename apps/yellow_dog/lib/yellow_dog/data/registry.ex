@@ -26,6 +26,8 @@ defmodule YellowDog.Data.Registry do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Data.Store
 
   @type state :: %{collections: %{atom() => Store.state()}}
@@ -80,6 +82,7 @@ defmodule YellowDog.Data.Registry do
     {:reply, :ok, %{state | collections: collections}}
   end
 
+  @impl true
   def handle_call({:lookup, name}, _from, state) do
     case Map.fetch(state.collections, name) do
       {:ok, adapter_state} -> {:reply, {:ok, adapter_state}, state}
@@ -87,15 +90,18 @@ defmodule YellowDog.Data.Registry do
     end
   end
 
+  @impl true
   def handle_call({:unregister, name}, _from, state) do
     collections = Map.delete(state.collections, name)
     {:reply, :ok, %{state | collections: collections}}
   end
 
+  @impl true
   def handle_call(:list_collections, _from, state) do
     {:reply, Map.keys(state.collections), state}
   end
 
+  @impl true
   def handle_call(:flush_all, _from, state) do
     Enum.each(state.collections, fn {_name, adapter_state} ->
       Store.flush(adapter_state)
@@ -105,7 +111,8 @@ defmodule YellowDog.Data.Registry do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

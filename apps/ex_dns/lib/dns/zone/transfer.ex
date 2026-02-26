@@ -214,26 +214,65 @@ defmodule DNS.Zone.Transfer do
 
   defp get_zone_serial_from_records(records) do
     Enum.find_value(records, 0, fn record ->
-      if record.type == :soa do
-        {_mname, _rname, serial, _refresh, _retry, _expire, _minimum} = record.data
-        serial
+      if normalize_type_str(record.type) == "SOA" do
+        extract_soa_serial(record.data)
       else
         nil
       end
     end)
   end
 
+  defp extract_soa_serial({_mname, _rname, serial, _refresh, _retry, _expire, _minimum}),
+    do: serial
+
+  defp extract_soa_serial(%{data: data}) when is_tuple(data), do: extract_soa_serial(data)
+  defp extract_soa_serial(_), do: 0
+
   defp ip_matches?(allowed_ip, client_ip) when is_tuple(allowed_ip) and is_tuple(client_ip) do
     allowed_ip == client_ip
   end
 
-  defp ip_matches?(allowed_subnet, client_ip) when is_binary(allowed_subnet) do
-    # Simple subnet matching - TODO: Implement proper CIDR matching
-    not String.contains?(allowed_subnet, "/") and
-      allowed_subnet == to_string(:inet_parse.ntoa(client_ip))
+  defp ip_matches?(allowed_string, client_ip) when is_binary(allowed_string) do
+    case String.split(allowed_string, "/") do
+      [ip_str, prefix_str] ->
+        with {:ok, ip} <- :inet.parse_address(String.to_charlist(ip_str)),
+             {prefix, ""} <- Integer.parse(prefix_str) do
+          ip_in_subnet?(client_ip, ip, prefix)
+        else
+          _ -> false
+        end
+
+      [ip_str] ->
+        case :inet.parse_address(String.to_charlist(ip_str)) do
+          {:ok, ip} -> ip == client_ip
+          _ -> false
+        end
+    end
   end
 
   defp ip_matches?(_, _), do: false
+
+  defp ip_in_subnet?(client, network, prefix)
+       when tuple_size(client) == 4 and tuple_size(network) == 4 and prefix >= 0 and prefix <= 32 do
+    <<c_prefix::size(prefix), _::bitstring>> = ip4_to_bin(client)
+    <<n_prefix::size(prefix), _::bitstring>> = ip4_to_bin(network)
+    c_prefix == n_prefix
+  end
+
+  defp ip_in_subnet?(client, network, prefix)
+       when tuple_size(client) == 8 and tuple_size(network) == 8 and prefix >= 0 and
+              prefix <= 128 do
+    <<c_prefix::size(prefix), _::bitstring>> = ip6_to_bin(client)
+    <<n_prefix::size(prefix), _::bitstring>> = ip6_to_bin(network)
+    c_prefix == n_prefix
+  end
+
+  defp ip_in_subnet?(_, _, _), do: false
+
+  defp ip4_to_bin({a, b, c, d}), do: <<a, b, c, d>>
+
+  defp ip6_to_bin({a, b, c, d, e, f, g, h}),
+    do: <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
 
   defp apply_axfr(zone_name, records, _options) do
     # Create new zone with transferred records
@@ -264,4 +303,6 @@ defmodule DNS.Zone.Transfer do
 
     %{zone | options: Keyword.merge(zone.options, record_options)}
   end
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

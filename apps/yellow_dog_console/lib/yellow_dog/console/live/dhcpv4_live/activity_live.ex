@@ -9,7 +9,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
+  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1, format_ip: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -335,10 +335,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
   end
 
   defp filter_by_type(entries, type) do
-    type_atom = String.to_existing_atom(type)
-    Enum.filter(entries, fn e -> e.type == type_atom end)
-  rescue
-    ArgumentError -> entries
+    Enum.filter(entries, fn e -> to_string(e.type) == type end)
   end
 
   defp filter_by_search(entries, ""), do: entries
@@ -358,7 +355,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
   defp build_entry_from_telemetry(event, measurements, metadata) do
     {type, details} = classify_event(event, measurements, metadata)
     client_mac = format_mac(metadata[:client_mac] || metadata[:chaddr])
-    client_ip = format_client_ip(metadata[:client_ip])
+    client_ip = format_ip(metadata[:client_ip])
 
     %{
       timestamp: DateTime.utc_now(),
@@ -399,7 +396,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
 
   defp classify_event([:yellow_dog, :dhcpv4, :lease, :declined], _m, meta) do
     ip = meta[:declined_ip] || "?"
-    {:decline, "DECLINE for #{format_client_ip(ip)}"}
+    {:decline, "DECLINE for #{format_ip(ip)}"}
   end
 
   defp classify_event([:yellow_dog, :dhcpv4, :offer, :failed], _m, meta) do
@@ -440,11 +437,6 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
   end
 
   defp format_mac(mac), do: inspect(mac)
-
-  defp format_client_ip(nil), do: nil
-  defp format_client_ip(ip) when is_binary(ip), do: ip
-  defp format_client_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_client_ip(ip), do: inspect(ip)
 
   defp build_csv(entries) do
     header = "Timestamp,Type,Client MAC,Client IP,Details\r\n"

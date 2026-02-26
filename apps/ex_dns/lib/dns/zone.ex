@@ -343,10 +343,6 @@ defmodule DNS.Zone do
   @spec record_type_to_option_key() :: %{atom() => atom()}
   def record_type_to_option_key, do: @record_type_to_option_key
 
-  @doc "Returns the list of all zone option keys (e.g., `:soa_records`, `:a_records`)."
-  @spec record_option_keys() :: [atom()]
-  def record_option_keys, do: Map.values(@record_type_to_option_key)
-
   @doc "Returns the option key for a given record type atom, or nil if unknown."
   @spec record_option_key(atom()) :: atom() | nil
   def record_option_key(type) when is_atom(type), do: Map.get(@record_type_to_option_key, type)
@@ -571,7 +567,7 @@ defmodule DNS.Zone do
   end
 
   defp extract_soa_record(%__MODULE__{records: records} = zone) do
-    soa_record = Enum.find(records, fn rr -> rr.type == :soa end)
+    soa_record = Enum.find(records, fn rr -> normalize_type_str(rr.type) == "SOA" end)
 
     if soa_record do
       soa_data = List.first(soa_record.data)
@@ -582,13 +578,8 @@ defmodule DNS.Zone do
   end
 
   defp generate_soa_record(%DNS.Zone.Parser.SOARecord{} = soa) do
-    primary_ns =
-      if String.ends_with?(soa.primary_ns, "."), do: soa.primary_ns, else: soa.primary_ns <> "."
-
-    admin_email =
-      if String.ends_with?(soa.admin_email, "."),
-        do: soa.admin_email,
-        else: soa.admin_email <> "."
+    primary_ns = ensure_fqdn(soa.primary_ns)
+    admin_email = ensure_fqdn(soa.admin_email)
 
     lines = [
       "@ IN SOA #{primary_ns} #{admin_email} (",
@@ -600,6 +591,10 @@ defmodule DNS.Zone do
     ]
 
     Enum.join(lines, "\n")
+  end
+
+  defp ensure_fqdn(name) do
+    if String.ends_with?(name, "."), do: name, else: name <> "."
   end
 
   defp generate_bind_record(rr) do
@@ -640,4 +635,6 @@ defmodule DNS.Zone do
         inspect(data)
     end
   end
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

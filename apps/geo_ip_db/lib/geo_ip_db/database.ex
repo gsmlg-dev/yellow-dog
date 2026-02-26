@@ -169,7 +169,11 @@ defmodule GeoIpDb.Database do
     %{
       binary_format_major_version: meta.binary_format_major_version,
       binary_format_minor_version: meta.binary_format_minor_version,
-      build_epoch: DateTime.from_unix!(meta.build_epoch),
+      build_epoch:
+        case DateTime.from_unix(meta.build_epoch) do
+          {:ok, dt} -> dt
+          {:error, _} -> DateTime.utc_now()
+        end,
       database_type: meta.database_type,
       description: meta.description,
       ip_version: meta.ip_version,

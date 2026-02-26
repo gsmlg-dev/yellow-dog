@@ -1,7 +1,9 @@
 defmodule YellowDog.Console.IdentityLive.AuditLive do
+  @moduledoc "Identity audit log with search and filtering for enrollment events."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,6 +28,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
      |> load_entries()}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_entries(socket)}
   end
@@ -81,7 +84,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Audit Log</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
             ↻
           </button>
         </div>
@@ -157,11 +160,4 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
     </Layouts.app>
     """
   end
-
-  defp event_badge_class("host.registered"), do: "badge badge-info badge-sm"
-  defp event_badge_class("host.approved"), do: "badge badge-success badge-sm"
-  defp event_badge_class("host.revoked"), do: "badge badge-error badge-sm"
-  defp event_badge_class("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp event_badge_class("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp event_badge_class(_), do: "badge badge-sm"
 end

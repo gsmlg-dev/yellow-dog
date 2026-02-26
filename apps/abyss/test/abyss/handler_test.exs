@@ -23,19 +23,6 @@ defmodule Abyss.HandlerTest do
     def handle_close(state) do
       Map.put(state, :closed, true)
     end
-
-    @impl true
-    def terminate(_reason, state) do
-      # In test environment, socket might be a reference, not a real socket
-      # Handle gracefully without trying to use :inet.udp_controlling_process
-      if is_reference(state.socket) do
-        # Test socket reference, ignore
-        :ok
-      else
-        # Real socket, use default handling
-        :ok
-      end
-    end
   end
 
   defmodule MemoryTestHandler do
@@ -53,19 +40,6 @@ defmodule Abyss.HandlerTest do
     @impl true
     def handle_timeout(state) do
       Map.put(state, :timeout_occurred, true)
-    end
-
-    @impl true
-    def terminate(_reason, state) do
-      # In test environment, socket might be a reference, not a real socket
-      # Handle gracefully without trying to use :inet.udp_controlling_process
-      if is_reference(state.socket) do
-        # Test socket reference, ignore
-        :ok
-      else
-        # Real socket, use default handling
-        :ok
-      end
     end
   end
 

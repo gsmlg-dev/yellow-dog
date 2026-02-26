@@ -109,6 +109,7 @@ defmodule Abyss.ShutdownListener do
     Abyss.ListenerPool.suspend(listener_pool_pid)
   end
 
+  @impl true
   @spec terminate(reason, state) :: :ok
         when reason: :normal | :shutdown | {:shutdown, term} | term
   def terminate(_reason, _state), do: :ok

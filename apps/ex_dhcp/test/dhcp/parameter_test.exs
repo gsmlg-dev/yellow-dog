@@ -23,6 +23,7 @@ defmodule DHCP.ParameterTest do
     test "defines to_iodata/1 callback" do
       Code.ensure_loaded!(DHCP.Parameter)
       # Protocol has the function
+      Code.ensure_loaded!(DHCP.Parameter)
       assert function_exported?(DHCP.Parameter, :to_iodata, 1)
     end
   end
