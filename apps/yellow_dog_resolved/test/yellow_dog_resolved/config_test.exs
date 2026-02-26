@@ -940,6 +940,97 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert config.cache.min_ttl_s == 60
       assert config.cache.max_ttl_s == 60
     end
+
+    test "raises on negative upstream_timeout_ms" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "neg_timeout_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+      upstream_timeout_ms = -500
+      """)
+
+      assert_raise ArgumentError, ~r/upstream_timeout_ms must be positive/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on negative upstream_failure_threshold" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "neg_threshold_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+      upstream_failure_threshold = -1
+      """)
+
+      assert_raise ArgumentError, ~r/upstream_failure_threshold must be >= 1/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "raises on negative cache max_entries" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "neg_entries_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.cache]
+      max_entries = -100
+      """)
+
+      assert_raise ArgumentError, ~r/cache max_entries must be positive/, fn ->
+        Config.load(path)
+      end
+    end
+
+    test "accepts equal reconnect_base_s and reconnect_max_s" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "equal_reconnect_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+
+      [resolved.discovery.websocket]
+      reconnect_base_s = 60
+      reconnect_max_s = 60
+      """)
+
+      config = Config.load(path)
+      assert config.discovery.websocket.reconnect_base_s == 60
+      assert config.discovery.websocket.reconnect_max_s == 60
+    end
+
+    test "accepts large timeout values" do
+      tmp_dir = System.tmp_dir!()
+      path = Path.join(tmp_dir, "large_timeout_#{System.unique_integer([:positive])}.toml")
+      on_exit(fn -> File.rm(path) end)
+
+      File.write!(path, """
+      [resolved]
+      listen = "127.0.0.1"
+      upstreams = ["8.8.8.8"]
+      upstream_timeout_ms = 60000
+      upstream_failure_threshold = 100
+      """)
+
+      config = Config.load(path)
+      assert config.upstream_timeout_ms == 60000
+      assert config.upstream_failure_threshold == 100
+    end
   end
 
   describe "reload_failed telemetry" do
