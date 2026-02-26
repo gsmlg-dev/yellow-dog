@@ -165,6 +165,16 @@ defmodule YellowDog.DhcpClient do
     end
   end
 
+  @doc """
+  Returns a list of interface names that currently have running DHCP clients.
+  """
+  @spec list_interfaces() :: [String.t()]
+  def list_interfaces do
+    Registry.select(@registry, [
+      {{{:interface_sup, :"$1"}, :_, :_}, [], [:"$1"]}
+    ])
+  end
+
   @doc false
   def registry_name, do: @registry
 

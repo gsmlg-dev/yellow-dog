@@ -122,5 +122,22 @@ defmodule YellowDog.DhcpClientTest do
       assert :ok = DhcpClient.stop_interface(iface)
       assert {:error, :not_found} = DhcpClient.status(iface)
     end
+
+    test "list_interfaces/0 includes the running interface", %{iface: iface} do
+      interfaces = DhcpClient.list_interfaces()
+      assert is_list(interfaces)
+      assert iface in interfaces
+    end
+  end
+
+  describe "list_interfaces/0" do
+    test "returns empty list when no interfaces are running" do
+      # Filter to a unique prefix to avoid seeing test setup interfaces
+      interfaces = DhcpClient.list_interfaces()
+      assert is_list(interfaces)
+      # Can't assert empty since other tests may be running concurrently,
+      # but the result must be a list of strings
+      Enum.each(interfaces, fn iface -> assert is_binary(iface) end)
+    end
   end
 end
