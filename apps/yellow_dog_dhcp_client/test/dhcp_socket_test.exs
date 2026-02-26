@@ -147,4 +147,52 @@ defmodule YellowDog.DhcpClient.DhcpSocketTest do
       refute Process.alive?(pid)
     end
   end
+
+  describe "init/1 failure" do
+    defmodule FailingSocketImpl do
+      @moduledoc false
+      @behaviour YellowDog.DhcpClient.DhcpSocket
+      @impl true
+      def open(_interface, _owner), do: {:error, :eacces}
+      @impl true
+      def send_broadcast(_ref, _packet), do: :ok
+      @impl true
+      def send_unicast(_ref, _dest, _packet), do: :ok
+      @impl true
+      def send_arp_probe(_ref, _ip), do: :ok
+      @impl true
+      def close(_ref), do: :ok
+    end
+
+    test "start_link returns {:error, reason} when impl.open fails" do
+      # trap_exit so the EXIT signal from the failed GenServer becomes a message
+      Process.flag(:trap_exit, true)
+      result = DhcpSocket.start_link(interface: "eth0", owner: self(), impl: FailingSocketImpl)
+      assert {:error, :eacces} = result
+    end
+  end
+
+  describe "packet forwarding to atom-named owner" do
+    test "forwards {:dhcp_rx, data} to a registered atom owner" do
+      atom_name = :"test_atom_owner_#{:erlang.unique_integer([:positive])}"
+      Process.register(self(), atom_name)
+
+      on_exit(fn ->
+        try do
+          Process.unregister(atom_name)
+        rescue
+          ArgumentError -> :ok
+        end
+      end)
+
+      {:ok, socket_pid} =
+        DhcpSocket.start_link(interface: "eth0", owner: atom_name, impl: NoOpSocketImpl)
+
+      on_exit(fn -> if Process.alive?(socket_pid), do: GenServer.stop(socket_pid) end)
+
+      send(socket_pid, {:udp, make_ref(), {192, 168, 1, 1}, 67, "atom-data"})
+
+      assert_receive {:dhcp_rx, "atom-data"}, 500
+    end
+  end
 end

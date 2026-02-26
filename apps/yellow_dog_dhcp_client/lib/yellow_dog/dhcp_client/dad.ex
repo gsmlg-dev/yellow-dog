@@ -51,7 +51,7 @@ defmodule YellowDog.DhcpClient.DAD do
   defp send_probes_and_listen(socket_pid, ip, probes, wait_ms) do
     deadline = System.monotonic_time(:millisecond) + wait_ms
 
-    Enum.each(0..(probes - 1), fn i ->
+    Enum.each(0..(probes - 1)//1, fn i ->
       if i > 0 do
         Process.sleep(@probe_interval_ms)
       end

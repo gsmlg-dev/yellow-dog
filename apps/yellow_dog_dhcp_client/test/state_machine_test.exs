@@ -1629,6 +1629,25 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert_receive {:packet_rx, %{type: :nak, interface: "test0"}}, 500
     end
 
+    test "emits packet:rx :nak with server: \"unknown\" when NAK has no server_ip", ctx do
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_nak(pid)
+
+      assert_receive {:packet_rx, %{type: :nak, server: server}}, 500
+      # NAK carries no lease, so emit_packet_rx passes nil → "unknown"
+      assert server == "unknown"
+    end
+
     test "emits packet:tx :decline on DAD conflict", ctx do
       ref = make_ref()
       attach_packet_telemetry(ref, self())
