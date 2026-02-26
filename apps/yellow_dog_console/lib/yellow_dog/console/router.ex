@@ -75,6 +75,7 @@ defmodule YellowDog.Console.Router do
     # DHCP Client Management Routes
     live "/dhcp-client", DhcpClientLive.Index
     live "/dhcp-client/interfaces", DhcpClientLive.InterfacesLive
+    live "/dhcp-client/activity", DhcpClientLive.ActivityLive
 
     # DNS Management Routes (sidebar: Overview, Data, ACL)
     live "/dns", DnsLive.Index

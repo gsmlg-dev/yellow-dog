@@ -387,6 +387,14 @@ defmodule YellowDog.Console.Layouts do
                     Interfaces
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    navigate="/dhcp-client/activity"
+                    class={active?(@current_path, "/dhcp-client/activity")}
+                  >
+                    Activity
+                  </.link>
+                </li>
               </ul>
             </details>
           </li>
