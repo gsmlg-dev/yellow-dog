@@ -128,6 +128,15 @@ defmodule YellowDog.DhcpClientTest do
       assert is_list(interfaces)
       assert iface in interfaces
     end
+
+    test "all_statuses/0 includes the running interface with :init state", %{iface: iface} do
+      statuses = DhcpClient.all_statuses()
+      assert is_list(statuses)
+      entry = Enum.find(statuses, &(&1.interface == iface))
+      assert entry != nil
+      assert entry.state == :init
+      assert entry.lease == nil
+    end
   end
 
   describe "list_interfaces/0" do

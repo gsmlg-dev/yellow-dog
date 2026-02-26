@@ -9,7 +9,7 @@ defmodule YellowDog.DhcpClient do
   public API for starting, stopping, and querying DHCP client instances.
   """
 
-  alias YellowDog.DhcpClient.{Application, LeaseStore, StateMachine}
+  alias YellowDog.DhcpClient.{Application, Lease, LeaseStore, StateMachine}
 
   @registry YellowDog.DhcpClient.Registry
 
@@ -173,6 +173,25 @@ defmodule YellowDog.DhcpClient do
     Registry.select(@registry, [
       {{{:interface_sup, :"$1"}, :_, :_}, [], [:"$1"]}
     ])
+  end
+
+  @doc """
+  Returns a summary of all running interfaces with their states and leases.
+
+  Each entry is a map with `:interface`, `:state`, and `:lease` keys.
+  This is the preferred way for UIs to fetch DHCP client status.
+  """
+  @spec all_statuses() :: [%{interface: String.t(), state: atom(), lease: Lease.t() | nil}]
+  def all_statuses do
+    for interface <- list_interfaces() do
+      state =
+        case status(interface) do
+          {:error, _} -> :unknown
+          s -> s
+        end
+
+      %{interface: interface, state: state, lease: lease(interface)}
+    end
   end
 
   @doc false
