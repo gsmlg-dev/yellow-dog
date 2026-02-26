@@ -301,6 +301,6 @@ defmodule YellowDog.DhcpClient.ConfigWatcher do
   defp matches_config_file?(_, _), do: false
 
   defp should_reload?(events) do
-    Enum.any?(events, fn event -> event in [:modified, :created, :renamed] end)
+    Enum.any?(events, fn event -> event in [:modified, :created, :renamed, :deleted] end)
   end
 end

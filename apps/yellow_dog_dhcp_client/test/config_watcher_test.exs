@@ -312,6 +312,21 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
       count_after = GenServer.call(pid, :status).reload_count
       assert count_after == count_before + 1
     end
+
+    test "file :deleted event triggers a debounced reload", %{
+      config_file: config_file,
+      watcher: pid
+    } do
+      count_before = GenServer.call(pid, :status).reload_count
+
+      send(pid, {:file_event, nil, {config_file, [:deleted]}})
+
+      # Wait for debounce timer (200ms + buffer)
+      Process.sleep(500)
+
+      count_after = GenServer.call(pid, :status).reload_count
+      assert count_after == count_before + 1
+    end
   end
 
   # -- file_event handling --
