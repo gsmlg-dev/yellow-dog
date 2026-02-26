@@ -166,6 +166,9 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
         nil ->
           :ok
 
+        "" ->
+          :ok
+
         domain ->
           timed_cmd(interface, :add_dns_domain, "resolvectl", ["domain", interface, domain])
       end
