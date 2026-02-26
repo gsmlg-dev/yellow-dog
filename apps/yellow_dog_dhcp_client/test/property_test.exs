@@ -816,6 +816,69 @@ defmodule YellowDog.DhcpClient.PropertyTest do
     end
   end
 
+  describe "Lease.t1_at/1 and t2_at/1 invariants" do
+    property "t1_at equals obtained_at + t1" do
+      check all(
+              t1 <- integer(1..7200),
+              past_seconds <- integer(0..86_400)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: t1 * 2,
+          t1: t1
+        }
+
+        expected = DateTime.add(obtained_at, t1, :second)
+        assert Lease.t1_at(lease) == expected
+      end
+    end
+
+    property "t2_at equals obtained_at + t2" do
+      check all(
+              t2 <- integer(1..7200),
+              past_seconds <- integer(0..86_400)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: t2 * 2,
+          t2: t2
+        }
+
+        expected = DateTime.add(obtained_at, t2, :second)
+        assert Lease.t2_at(lease) == expected
+      end
+    end
+
+    property "t1_at < t2_at < expires_at when t1 < t2 < lease_time" do
+      check all(
+              lease_time <- integer(100..86_400),
+              t1_frac <- float(min: 0.3, max: 0.5),
+              t2_frac <- float(min: 0.7, max: 0.9)
+            ) do
+        t1 = trunc(lease_time * t1_frac)
+        t2 = trunc(lease_time * t2_frac)
+        obtained_at = DateTime.utc_now()
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time,
+          t1: t1,
+          t2: t2
+        }
+
+        assert DateTime.compare(Lease.t1_at(lease), Lease.t2_at(lease)) == :lt
+        assert DateTime.compare(Lease.t2_at(lease), Lease.expires_at(lease)) == :lt
+      end
+    end
+  end
+
   describe "Lease.prefix_length boundary masks" do
     test "all-zeros subnet mask returns 0" do
       lease = %Lease{

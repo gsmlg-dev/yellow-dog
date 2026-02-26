@@ -217,6 +217,46 @@ defmodule YellowDog.DhcpClient.LeaseTest do
     end
   end
 
+  # ── t1_at/1 ──
+
+  describe "t1_at/1" do
+    test "returns correct T1 DateTime" do
+      obtained = ~U[2026-01-01 00:00:00Z]
+      lease = make_lease(%{obtained_at: obtained, t1: 1800})
+      assert Lease.t1_at(lease) == ~U[2026-01-01 00:30:00Z]
+    end
+
+    test "returns nil when t1 is nil" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), t1: nil}
+      assert Lease.t1_at(lease) == nil
+    end
+
+    test "returns nil when obtained_at is nil" do
+      lease = %Lease{obtained_at: nil, t1: 1800}
+      assert Lease.t1_at(lease) == nil
+    end
+  end
+
+  # ── t2_at/1 ──
+
+  describe "t2_at/1" do
+    test "returns correct T2 DateTime" do
+      obtained = ~U[2026-01-01 00:00:00Z]
+      lease = make_lease(%{obtained_at: obtained, t2: 3150})
+      assert Lease.t2_at(lease) == ~U[2026-01-01 00:52:30Z]
+    end
+
+    test "returns nil when t2 is nil" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), t2: nil}
+      assert Lease.t2_at(lease) == nil
+    end
+
+    test "returns nil when obtained_at is nil" do
+      lease = %Lease{obtained_at: nil, t2: 3150}
+      assert Lease.t2_at(lease) == nil
+    end
+  end
+
   # ── prefix_length/1 ──
 
   describe "prefix_length/1" do

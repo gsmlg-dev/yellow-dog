@@ -144,6 +144,44 @@ defmodule YellowDog.DhcpClient.Lease do
   def expires_at(%__MODULE__{}), do: nil
 
   @doc """
+  Returns the `DateTime` at which the T1 (renewal) timer fires.
+
+  Returns `nil` if `obtained_at` or `t1` is missing/invalid.
+
+  ## Examples
+
+      iex> lease = %YellowDog.DhcpClient.Lease{obtained_at: ~U[2026-01-01 00:00:00Z], t1: 1800}
+      iex> YellowDog.DhcpClient.Lease.t1_at(lease)
+      ~U[2026-01-01 00:30:00Z]
+  """
+  @spec t1_at(t()) :: DateTime.t() | nil
+  def t1_at(%__MODULE__{obtained_at: %DateTime{} = obtained_at, t1: t1})
+      when is_integer(t1) and t1 > 0 do
+    DateTime.add(obtained_at, t1, :second)
+  end
+
+  def t1_at(%__MODULE__{}), do: nil
+
+  @doc """
+  Returns the `DateTime` at which the T2 (rebind) timer fires.
+
+  Returns `nil` if `obtained_at` or `t2` is missing/invalid.
+
+  ## Examples
+
+      iex> lease = %YellowDog.DhcpClient.Lease{obtained_at: ~U[2026-01-01 00:00:00Z], t2: 3150}
+      iex> YellowDog.DhcpClient.Lease.t2_at(lease)
+      ~U[2026-01-01 00:52:30Z]
+  """
+  @spec t2_at(t()) :: DateTime.t() | nil
+  def t2_at(%__MODULE__{obtained_at: %DateTime{} = obtained_at, t2: t2})
+      when is_integer(t2) and t2 > 0 do
+    DateTime.add(obtained_at, t2, :second)
+  end
+
+  def t2_at(%__MODULE__{}), do: nil
+
+  @doc """
   Returns the number of seconds remaining until the lease expires.
 
   Returns `0` if the lease has already expired, `nil` if the lease data is incomplete.
