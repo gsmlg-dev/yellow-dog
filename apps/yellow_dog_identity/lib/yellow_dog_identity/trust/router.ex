@@ -2,8 +2,22 @@ defmodule YellowDogIdentity.Trust.Router do
   @moduledoc """
   Routes registration contexts through the trust provider chain.
 
-  Providers are tried in priority order. First `{:trusted, ...}` wins.
-  If all providers return `{:skip, ...}`, the result is `{:unverified, :none, %{}}`.
+  Providers are tried in priority order (strongest → weakest):
+
+  1. Cloud Attestation (AWS/GCP/Azure)
+  2. Netboot (PXE boot registry)
+  3. DHCP Correlation (fingerprint + lease match)
+  4. Token (provisioning token)
+
+  Each provider returns one of:
+
+  - `{:trusted, level, evidence}` — halts chain, host is trusted at `level`
+  - `{:untrusted, reason}` — halts chain, explicit rejection (no fallthrough
+    to weaker providers; per PRD §5.1 a provider that actively rejects
+    prevents weaker providers from overriding that decision)
+  - `{:skip, :not_applicable}` — continues to next provider
+
+  If all providers skip, the result is `{:unverified, :none, %{}}`.
   """
 
   alias YellowDogIdentity.Trust.Provider

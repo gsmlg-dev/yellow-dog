@@ -6,6 +6,8 @@ defmodule YellowDogIdentity.Approval.Engine do
   First matching policy determines the action. Falls back to default action.
   """
 
+  require Logger
+
   alias YellowDogIdentity.Approval.Policy
   alias YellowDogIdentity.Host
 
@@ -136,9 +138,13 @@ defmodule YellowDogIdentity.Approval.Engine do
           policy_list = get_in(config, ["identity", "approval", "policies"]) || []
           Policy.from_config(policy_list)
         rescue
-          _ -> []
+          e ->
+            Logger.warning("Failed to load approval policies: #{Exception.message(e)}")
+            []
         catch
-          :exit, _ -> []
+          :exit, reason ->
+            Logger.warning("Failed to load approval policies: #{inspect(reason)}")
+            []
         end
 
       _ ->

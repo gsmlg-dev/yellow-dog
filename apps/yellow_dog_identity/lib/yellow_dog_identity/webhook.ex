@@ -91,7 +91,15 @@ defmodule YellowDogIdentity.Webhook do
     ]
 
     request = {String.to_charlist(url), headers, ~c"application/json", body}
-    http_opts = [{:timeout, 10_000}, {:connect_timeout, 5_000}]
+
+    ssl_opts =
+      if String.starts_with?(url, "https") do
+        [{:ssl, [{:verify, :verify_peer}, {:cacerts, :public_key.cacerts_get()}, {:depth, 3}]}]
+      else
+        []
+      end
+
+    http_opts = [{:timeout, 10_000}, {:connect_timeout, 5_000}] ++ ssl_opts
 
     case :httpc.request(:post, request, http_opts, []) do
       {:ok, {{_, status, _}, _, _}} when status in 200..299 ->
