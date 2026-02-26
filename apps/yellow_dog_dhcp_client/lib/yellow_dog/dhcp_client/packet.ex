@@ -211,7 +211,8 @@ defmodule YellowDog.DhcpClient.Packet do
 
   defp pad_mac(mac) when byte_size(mac) == 6, do: mac <> <<0::8*10>>
   defp pad_mac(mac) when byte_size(mac) == 16, do: mac
-  defp pad_mac(mac), do: :binary.copy(<<0>>, 16 - byte_size(mac)) |> then(&(mac <> &1))
+  defp pad_mac(mac) when byte_size(mac) < 16, do: :binary.copy(<<0>>, 16 - byte_size(mac)) |> then(&(mac <> &1))
+  defp pad_mac(mac), do: binary_part(mac, 0, 16)
 
   defp msg_type_option(type), do: %Option{type: @opt_message_type, length: 1, value: <<type>>}
 

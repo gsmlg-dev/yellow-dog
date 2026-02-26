@@ -300,6 +300,8 @@ defmodule YellowDog.DhcpClient.LeaseStore do
     end
   end
 
+  defp parse_ip(_), do: {0, 0, 0, 0}
+
   defp parse_ip_optional(nil), do: nil
   defp parse_ip_optional(str), do: parse_ip(str)
 

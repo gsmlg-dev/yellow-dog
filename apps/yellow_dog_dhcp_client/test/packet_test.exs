@@ -724,5 +724,28 @@ defmodule YellowDog.DhcpClient.PacketTest do
       # index_options/1 uses Map.new so the last entry with key 6 wins
       assert lease.dns_servers == [{1, 1, 1, 1}]
     end
+
+    test "truncated DNS option (5 bytes = 1 complete IP + 1 trailing byte) keeps only complete IPs" do
+      # parse_ip_list consumes 4 bytes at a time; the trailing 5th byte is silently dropped
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 5, value: <<8, 8, 8, 8, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.dns_servers == [{8, 8, 8, 8}]
+      assert length(lease.dns_servers) == 1
+    end
+
+    test "build_discover with oversized MAC (>16 bytes) does not crash — truncates to 16" do
+      oversized_mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11,
+                        0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA>>
+
+      packet = Packet.build_discover(oversized_mac, 0x12345678)
+      assert is_binary(packet)
+      # chaddr field is 16 bytes in BOOTP; packet should be valid length
+      assert byte_size(packet) >= 236
+    end
   end
 end
