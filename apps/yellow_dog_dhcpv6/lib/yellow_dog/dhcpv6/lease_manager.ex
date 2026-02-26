@@ -929,7 +929,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       toml_leases =
         Enum.map(leases, fn lease ->
           # Calculate preferred_until from expires_at and lifetimes
-          valid_until = DateTime.from_unix!(lease.expires_at)
+          valid_until =
+            case DateTime.from_unix(lease.expires_at) do
+              {:ok, dt} -> dt
+              {:error, _} -> DateTime.utc_now()
+            end
+
           preferred_diff = lease.valid_lifetime - lease.preferred_lifetime
           preferred_until = DateTime.add(valid_until, -preferred_diff, :second)
 

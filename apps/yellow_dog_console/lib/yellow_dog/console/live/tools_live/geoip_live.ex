@@ -130,8 +130,12 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
   defp format_epoch(nil), do: "—"
   defp format_epoch(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d")
 
-  defp format_epoch(epoch) when is_integer(epoch),
-    do: epoch |> DateTime.from_unix!() |> format_epoch()
+  defp format_epoch(epoch) when is_integer(epoch) do
+    case DateTime.from_unix(epoch) do
+      {:ok, dt} -> format_epoch(dt)
+      {:error, _} -> "—"
+    end
+  end
 
   defp format_epoch(_), do: "—"
 
