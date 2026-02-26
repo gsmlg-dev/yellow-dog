@@ -484,6 +484,34 @@ defmodule YellowDogIdentity.RegistryTest do
       GenServer.stop(pid2)
     end
 
+    test "host with control chars in metadata survives TOML round-trip", %{tmp_dir: tmp_dir} do
+      name1 = :"persist_ctrl_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)
+
+      host = %{make_host("ctrl-host") | metadata: %{"notes" => "line1\nline2\ttabbed\rcarriage"}}
+      :ok = GenServer.call(pid1, {:put_host, host})
+
+      # Verify TOML file is valid (no raw control chars breaking parsing)
+      host_file = Path.join([tmp_dir, "hosts", "#{host.id}.toml"])
+      content = File.read!(host_file)
+      assert content =~ "\\n"
+      assert content =~ "\\t"
+      assert content =~ "\\r"
+
+      GenServer.stop(pid1)
+
+      # Restart and verify round-trip
+      name2 = :"persist_ctrl_#{:erlang.unique_integer([:positive])}"
+      {:ok, pid2} = Registry.start_link(data_dir: tmp_dir, name: name2)
+
+      assert {:ok, restored} = GenServer.call(pid2, {:get_host, host.id})
+      notes = Map.get(restored.metadata, "notes")
+      assert notes =~ "line1"
+      assert notes =~ "line2"
+
+      GenServer.stop(pid2)
+    end
+
     test "GCP-attested host with DateTime in trust_evidence survives restart", %{tmp_dir: tmp_dir} do
       name1 = :"persist_gcp_#{:erlang.unique_integer([:positive])}"
       {:ok, pid1} = Registry.start_link(data_dir: tmp_dir, name: name1)

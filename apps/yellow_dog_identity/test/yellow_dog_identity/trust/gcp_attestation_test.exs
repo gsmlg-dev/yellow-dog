@@ -279,6 +279,42 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "issued-at (iat) check" do
+    test "rejects JWT with iat far in the future (clock skew attack)", %{jwk: jwk} do
+      # iat 10 minutes in the future exceeds the 5-minute skew tolerance
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) + 600})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :token_not_yet_valid} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with iat slightly in the future (within skew tolerance)", %{jwk: jwk} do
+      # iat 2 minutes in the future is within the 5-minute tolerance
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) + 120})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with iat in the past", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) - 3600})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with no iat claim", %{jwk: jwk} do
+      claims = valid_gcp_claims() |> Map.delete("iat")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+  end
+
   describe "issuer check" do
     test "rejects JWT with missing issuer", %{jwk: jwk} do
       claims = valid_gcp_claims() |> Map.delete("iss")

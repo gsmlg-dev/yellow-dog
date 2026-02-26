@@ -171,9 +171,9 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
     with {:ok, sig_der} <- decode_signature(signature_b64),
          {:ok, rsa_key} <- extract_cert_public_key(cert_pem),
          {:ok, raw_sig} <- extract_pkcs7_signature(sig_der) do
-      # AWS signs with SHA1 (SHA-1 with RSA) for the PKCS7 signature
-      if :public_key.verify(document, :sha, raw_sig, rsa_key) or
-           :public_key.verify(document, :sha256, raw_sig, rsa_key) do
+      # Prefer SHA-256; fall back to SHA-1 for older AWS regions
+      if :public_key.verify(document, :sha256, raw_sig, rsa_key) or
+           :public_key.verify(document, :sha, raw_sig, rsa_key) do
         :ok
       else
         {:error, :invalid_signature}

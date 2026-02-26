@@ -531,7 +531,14 @@ defmodule YellowDogIdentity.Registry do
   end
 
   defp encode_toml_value(v) when is_binary(v) do
-    escaped = v |> String.replace("\\", "\\\\") |> String.replace("\"", "\\\"")
+    escaped =
+      v
+      |> String.replace("\\", "\\\\")
+      |> String.replace("\"", "\\\"")
+      |> String.replace("\n", "\\n")
+      |> String.replace("\r", "\\r")
+      |> String.replace("\t", "\\t")
+
     ~s("#{escaped}")
   end
   defp encode_toml_value(v) when is_integer(v), do: Integer.to_string(v)

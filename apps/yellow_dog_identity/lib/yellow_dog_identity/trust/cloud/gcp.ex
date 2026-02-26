@@ -35,6 +35,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
          :ok <- check_issuer(claims),
          :ok <- check_audience(claims),
          :ok <- check_expiry(claims),
+         :ok <- check_issued_at(claims),
          :ok <- check_allowed_project(claims),
          :ok <- check_allowed_zones(claims) do
       google_claims = Map.get(claims, "google", %{})
@@ -254,6 +255,26 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
 
       _ ->
         # No exp claim — allow (some tokens may not have it)
+        :ok
+    end
+  end
+
+  # Reject tokens with `iat` (issued-at) in the future beyond a 5-minute clock skew tolerance.
+  @iat_skew_seconds 300
+
+  defp check_issued_at(claims) do
+    case Map.get(claims, "iat") do
+      iat when is_integer(iat) ->
+        now = System.system_time(:second)
+
+        if iat <= now + @iat_skew_seconds do
+          :ok
+        else
+          {:error, :token_not_yet_valid}
+        end
+
+      _ ->
+        # No iat claim — allow
         :ok
     end
   end
