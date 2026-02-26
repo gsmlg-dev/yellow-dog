@@ -169,6 +169,12 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
     ArgumentError -> :ok
   end
 
+  @impl true
+  def terminate(_reason, _state) do
+    :telemetry.detach("identity-lease-cache")
+    :ok
+  end
+
   defp to_string_or_nil(nil), do: nil
   defp to_string_or_nil(val), do: to_string(val)
 end
