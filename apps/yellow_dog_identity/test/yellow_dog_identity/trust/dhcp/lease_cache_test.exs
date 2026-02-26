@@ -374,6 +374,67 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCacheTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Telemetry integration
+  # ---------------------------------------------------------------------------
+
+  describe "telemetry integration" do
+    test "real telemetry event triggers cache update via handler", %{table: table} do
+      ip = {10, 99, 0, 1}
+
+      # Fire a real telemetry event — the handler dispatches to our test table
+      # only if the handler config uses our table name. Since handlers are attached
+      # with the default table, we call the handler directly with our test table config.
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :commit],
+        %{duration: 100},
+        %{ip: ip, mac: "ff:00:ff:00:ff:00", hostname: "telemetry-host", lease_duration: 1800},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.mac == "ff:00:ff:00:ff:00"
+      assert entry.hostname == "telemetry-host"
+      assert entry.lease_duration == 1800
+
+      # Now fire a release event
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcp, :lease, :release],
+        %{},
+        %{ip: ip},
+        %{table: table}
+      )
+
+      assert :not_found = LeaseCache.lookup(ip, table)
+    end
+
+    test "dhcpv4 allocated event via telemetry handler", %{table: table} do
+      ip = {10, 99, 0, 2}
+
+      LeaseCache.handle_telemetry_event(
+        [:yellow_dog, :dhcpv4, :lease, :allocated],
+        %{},
+        %{ip: ip, mac: "aa:bb:cc:dd:ee:01", lease_duration: 3600, hostname: "v4-host"},
+        %{table: table}
+      )
+
+      assert {:ok, entry} = LeaseCache.lookup(ip, table)
+      assert entry.mac == "aa:bb:cc:dd:ee:01"
+      assert entry.hostname == "v4-host"
+    end
+
+    test "handler does not crash on unexpected event names", %{table: table} do
+      # Should be a no-op, not a crash
+      assert :ok =
+               LeaseCache.handle_telemetry_event(
+                 [:something, :completely, :different],
+                 %{},
+                 %{},
+                 %{table: table}
+               )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 

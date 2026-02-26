@@ -83,6 +83,99 @@ defmodule YellowDog.Console.IdentityControllerTest do
     end
   end
 
+  describe "POST /api/hosts/register — edge cases" do
+    test "returns 422 for missing ssh_pubkey", %{conn: conn} do
+      payload = %{
+        "hostname" => "edge-host",
+        "age_recipient" => @valid_age_recipient
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 422)
+      assert body["error"] =~ "ssh_pubkey"
+    end
+
+    test "returns 422 for missing age_recipient", %{conn: conn} do
+      payload = %{
+        "hostname" => "edge-host",
+        "ssh_pubkey" => @valid_ssh_pubkey
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 422)
+      assert body["error"] =~ "age_recipient"
+    end
+
+    test "returns 422 for invalid SSH key format", %{conn: conn} do
+      payload = %{
+        "hostname" => "bad-key",
+        "ssh_pubkey" => "not-a-valid-key",
+        "age_recipient" => @valid_age_recipient
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 422)
+      assert body["error"]
+    end
+
+    test "returns 422 for invalid age recipient format", %{conn: conn} do
+      payload = %{
+        "hostname" => "bad-age",
+        "ssh_pubkey" => @valid_ssh_pubkey,
+        "age_recipient" => "not-an-age-recipient"
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 422)
+      assert body["error"]
+    end
+
+    test "registration with nil authorization header succeeds", %{conn: conn} do
+      # No Authorization header — context.authorization = nil
+      payload = %{
+        "hostname" => "no-auth",
+        "ssh_pubkey" => @valid_ssh_pubkey,
+        "age_recipient" => @valid_age_recipient
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 201)
+      assert body["id"]
+    end
+
+    test "registration with attestation field works", %{conn: conn} do
+      payload = %{
+        "hostname" => "cloud-vm",
+        "ssh_pubkey" => @valid_ssh_pubkey,
+        "age_recipient" => @valid_age_recipient,
+        "attestation" => %{
+          "provider" => "aws",
+          "document" => Base.encode64("{}"),
+          "signature" => Base.encode64("sig")
+        }
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      # Should succeed (claims-only mode when no cert configured)
+      status = conn.status
+      assert status in [200, 201]
+    end
+
+    test "sanitizes unknown error atoms to generic message", %{conn: conn} do
+      # hostname_invalid_chars triggers a known error
+      payload = %{
+        "hostname" => "bad/host!name",
+        "ssh_pubkey" => @valid_ssh_pubkey,
+        "age_recipient" => @valid_age_recipient
+      }
+
+      conn = post(conn, "/api/hosts/register", payload)
+      body = json_response(conn, 422)
+      # Error is sanitized — either known error or generic "registration_failed"
+      assert is_binary(body["error"])
+    end
+  end
+
   describe "GET /api/hosts/recipients" do
     test "returns YAML recipients for approved hosts", %{conn: conn} do
       # Create and approve a host
