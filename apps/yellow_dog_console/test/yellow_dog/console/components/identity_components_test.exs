@@ -24,7 +24,8 @@ defmodule YellowDog.Console.IdentityComponentsTest do
 
   describe "event_badge_class/1" do
     test "returns info badge for host.registered" do
-      assert IdentityComponents.event_badge_class("host.registered") == "badge badge-info badge-sm"
+      assert IdentityComponents.event_badge_class("host.registered") ==
+               "badge badge-info badge-sm"
     end
 
     test "returns success badge for host.approved" do

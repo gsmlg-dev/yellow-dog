@@ -91,12 +91,14 @@ defmodule YellowDog.Console.FormatHelper do
   @doc "Formats a DateTime or unix timestamp as HH:MM:SS."
   @spec format_time(DateTime.t() | integer() | nil) :: String.t()
   def format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M:%S")
+
   def format_time(ts) when is_integer(ts) do
     case DateTime.from_unix(ts) do
       {:ok, dt} -> format_time(dt)
       {:error, _} -> ""
     end
   end
+
   def format_time(_), do: ""
 
   @doc "Formats a DateTime or unix nanosecond timestamp as HH:MM:SS.mmm (with milliseconds)."
