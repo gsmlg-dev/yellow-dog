@@ -126,6 +126,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status == :pending}
               class="btn btn-sm btn-success"
               phx-click="approve"
+              phx-disable-with="Approving..."
               data-confirm="Approve this host?"
             >
               Approve
@@ -134,6 +135,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status in [:pending, :approved]}
               class="btn btn-sm btn-error"
               phx-click="revoke"
+              phx-disable-with="Revoking..."
               data-confirm="Revoke this host?"
             >
               Revoke
@@ -142,6 +144,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status == :revoked}
               class="btn btn-sm btn-error btn-outline"
               phx-click="delete"
+              phx-disable-with="Deleting..."
               data-confirm="Permanently delete this host? This cannot be undone."
             >
               Delete

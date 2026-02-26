@@ -164,6 +164,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
           <button
             class="btn btn-sm btn-success"
             phx-click="bulk_approve"
+            phx-disable-with="Approving..."
             data-confirm={"Approve #{MapSet.size(@selected)} host(s)?"}
           >
             Approve Selected
@@ -171,6 +172,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
           <button
             class="btn btn-sm btn-error btn-outline"
             phx-click="bulk_reject"
+            phx-disable-with="Rejecting..."
             data-confirm={"Reject #{MapSet.size(@selected)} host(s)?"}
           >
             Reject Selected

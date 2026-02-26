@@ -177,7 +177,9 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                   placeholder="worker"
                 />
               </div>
-              <button type="submit" class="btn btn-primary">Create Token</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">
+                Create Token
+              </button>
             </form>
           </div>
         </div>
