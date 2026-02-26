@@ -402,7 +402,7 @@ defmodule DNS.Zone.Validator do
   @spec generate_statistics(Zone.t()) :: map()
   def generate_statistics(zone) do
     all_records = get_all_records(zone)
-    records_by_type = Enum.group_by(all_records, & &1.type)
+    records_by_type = Enum.group_by(all_records, &normalize_type_str(&1.type))
 
     %{
       total_records: length(all_records),
