@@ -565,6 +565,21 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "find_key fallback — malformed JWKS structure" do
+    test "rejects token when cached JWKS has no 'keys' field", %{jwk: jwk} do
+      # find_key(_, _) catch-all is triggered when jwks is not %{"keys" => [...]}
+      # Overwrite cache with a JWKS map that has no "keys" key
+      :ets.insert(:gcp_jwks_cache, {:keys, %{"not_keys" => []}, System.monotonic_time(:second)})
+
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # find_key(%{"not_keys" => []}, kid) hits fallback → :key_not_found
+      assert {:untrusted, :key_not_found} = GCP.verify(ctx)
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields", %{jwk: jwk} do
       claims = valid_gcp_claims()
