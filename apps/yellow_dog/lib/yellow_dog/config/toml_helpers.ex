@@ -170,8 +170,12 @@ defmodule YellowDog.Config.TomlHelpers do
   @spec format_datetime(DateTime.t() | integer() | term()) :: String.t()
   def format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
 
-  def format_datetime(unix) when is_integer(unix),
-    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
+  def format_datetime(unix) when is_integer(unix) do
+    case DateTime.from_unix(unix) do
+      {:ok, dt} -> DateTime.to_iso8601(dt)
+      {:error, _} -> DateTime.to_iso8601(DateTime.utc_now())
+    end
+  end
 
   def format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
 
