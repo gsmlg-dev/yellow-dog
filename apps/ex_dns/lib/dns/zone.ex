@@ -582,13 +582,8 @@ defmodule DNS.Zone do
   end
 
   defp generate_soa_record(%DNS.Zone.Parser.SOARecord{} = soa) do
-    primary_ns =
-      if String.ends_with?(soa.primary_ns, "."), do: soa.primary_ns, else: soa.primary_ns <> "."
-
-    admin_email =
-      if String.ends_with?(soa.admin_email, "."),
-        do: soa.admin_email,
-        else: soa.admin_email <> "."
+    primary_ns = ensure_fqdn(soa.primary_ns)
+    admin_email = ensure_fqdn(soa.admin_email)
 
     lines = [
       "@ IN SOA #{primary_ns} #{admin_email} (",
@@ -600,6 +595,10 @@ defmodule DNS.Zone do
     ]
 
     Enum.join(lines, "\n")
+  end
+
+  defp ensure_fqdn(name) do
+    if String.ends_with?(name, "."), do: name, else: name <> "."
   end
 
   defp generate_bind_record(rr) do
