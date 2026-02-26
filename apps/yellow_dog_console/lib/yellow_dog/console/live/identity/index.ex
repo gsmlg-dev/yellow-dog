@@ -96,7 +96,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
             ]}>
               {if @service_running, do: "Running", else: "Stopped"}
             </span>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh">
+            <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
               ↻
             </button>
           </div>
@@ -190,6 +190,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
                     class="btn btn-sm btn-outline flex-1"
                     phx-click="preview_export"
                     phx-value-format="yaml"
+                    phx-disable-with="Exporting..."
                   >
                     Export YAML
                   </button>
@@ -197,6 +198,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
                     class="btn btn-sm btn-outline flex-1"
                     phx-click="preview_export"
                     phx-value-format="sops"
+                    phx-disable-with="Exporting..."
                   >
                     Export sops
                   </button>

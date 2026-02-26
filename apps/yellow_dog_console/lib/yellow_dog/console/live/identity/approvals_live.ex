@@ -146,7 +146,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Pending Approvals</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
             ↻
           </button>
         </div>

@@ -117,7 +117,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
             <button class="btn btn-sm btn-primary" phx-click="toggle_create">
               + New Token
             </button>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh">
+            <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
               ↻
             </button>
           </div>
@@ -221,6 +221,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                     class="btn btn-xs btn-error btn-outline"
                     phx-click="revoke_token"
                     phx-value-id={token.id}
+                    phx-disable-with="Revoking..."
                     data-confirm="Revoke this provisioning token?"
                   >
                     Revoke
