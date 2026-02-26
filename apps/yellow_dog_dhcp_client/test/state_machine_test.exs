@@ -1453,6 +1453,24 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert get_state(pid) == :init
     end
 
+    test "double release from :bound is idempotent", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      # Second release while already in :init should not crash
+      StateMachine.release(pid)
+      Process.sleep(50)
+      assert get_state(pid) == :init
+      assert Process.alive?(pid)
+    end
+
     test "release from :selecting returns to :init", ctx do
       pid = start_fsm(ctx, %{selection_window_ms: 500})
 
