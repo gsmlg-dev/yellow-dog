@@ -777,6 +777,45 @@ defmodule YellowDog.DhcpClient.PropertyTest do
     end
   end
 
+  describe "Lease.expires_at/1 and time_remaining/1 invariants" do
+    property "expires_at equals obtained_at + lease_time" do
+      check all(
+              lease_time <- integer(1..86_400),
+              past_seconds <- integer(0..86_400)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        expected = DateTime.add(obtained_at, lease_time, :second)
+        assert Lease.expires_at(lease) == expected
+      end
+    end
+
+    property "time_remaining is non-negative" do
+      check all(
+              lease_time <- integer(1..86_400),
+              past_seconds <- integer(0..172_800)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        remaining = Lease.time_remaining(lease)
+        assert is_integer(remaining)
+        assert remaining >= 0
+      end
+    end
+  end
+
   describe "Lease.prefix_length boundary masks" do
     test "all-zeros subnet mask returns 0" do
       lease = %Lease{
