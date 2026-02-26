@@ -283,11 +283,16 @@ defmodule YellowDog.Console.LogsLive do
   end
 
   defp format_csv_timestamp(system_time) when is_integer(system_time) do
-    datetime = DateTime.from_unix!(system_time, :nanosecond)
-    ms = rem(div(system_time, 1_000_000), 1000)
+    case DateTime.from_unix(system_time, :nanosecond) do
+      {:ok, datetime} ->
+        ms = rem(div(system_time, 1_000_000), 1000)
 
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S") <>
-      "." <> String.pad_leading(Integer.to_string(ms), 3, "0")
+        Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S") <>
+          "." <> String.pad_leading(Integer.to_string(ms), 3, "0")
+
+      {:error, _} ->
+        ""
+    end
   end
 
   defp format_csv_timestamp(_), do: ""
