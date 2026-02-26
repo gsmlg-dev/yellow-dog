@@ -207,6 +207,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
               <button
                 phx-click="toggle_rescue"
+                phx-disable-with="Updating..."
                 class={[
                   "btn btn-sm w-full",
                   if(@device.rescue_mode,

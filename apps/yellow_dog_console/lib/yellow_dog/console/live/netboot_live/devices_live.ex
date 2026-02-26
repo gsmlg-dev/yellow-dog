@@ -317,6 +317,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                         class="btn btn-ghost btn-xs"
                         title="Request reinstall"
                         aria-label="Request reinstall"
+                        phx-disable-with="..."
                         data-confirm={"Request reinstall for #{device.mac}?"}
                       >
                         ↻
@@ -338,6 +339,7 @@ defmodule YellowDog.Console.NetbootLive.DevicesLive do
                             do: "Disable rescue mode",
                             else: "Enable rescue mode"
                         }
+                        phx-disable-with="..."
                       >
                         ⛑
                       </button>

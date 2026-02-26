@@ -33,31 +33,37 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
         },
         socket
       ) do
-    params = %{
-      hostname_pattern: pattern,
-      max_uses: String.to_integer(max_uses),
-      ttl_seconds: String.to_integer(ttl_hours) * 3600,
-      role: if(role == "", do: nil, else: role),
-      created_by: "console-operator"
-    }
+    with {max, _} <- Integer.parse(max_uses),
+         {ttl, _} <- Integer.parse(ttl_hours) do
+      params = %{
+        hostname_pattern: pattern,
+        max_uses: max,
+        ttl_seconds: ttl * 3600,
+        role: if(role == "", do: nil, else: role),
+        created_by: "console-operator"
+      }
 
-    result =
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.create_token(params) end,
-        {:error, :unavailable}
-      )
+      result =
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.create_token(params) end,
+          {:error, :unavailable}
+        )
 
-    case result do
-      {:ok, _token, raw_token} ->
-        {:noreply,
-         socket
-         |> assign(:new_token_raw, raw_token)
-         |> load_tokens()
-         |> put_flash(:info, "Token created successfully")}
+      case result do
+        {:ok, _token, raw_token} ->
+          {:noreply,
+           socket
+           |> assign(:new_token_raw, raw_token)
+           |> load_tokens()
+           |> put_flash(:info, "Token created successfully")}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to create token: #{inspect(reason)}")}
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to create token: #{inspect(reason)}")}
+      end
+    else
+      :error ->
+        {:noreply, put_flash(socket, :error, "Invalid number for max uses or TTL")}
     end
   end
 
@@ -167,7 +173,9 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                   placeholder="worker"
                 />
               </div>
-              <button type="submit" class="btn btn-primary">Create Token</button>
+              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">
+                Create Token
+              </button>
             </form>
           </div>
         </div>
