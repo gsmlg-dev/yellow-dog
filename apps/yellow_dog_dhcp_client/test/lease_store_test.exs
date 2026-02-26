@@ -423,4 +423,23 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
 
     assert loaded.ntp_servers == []
   end
+
+  test "rapid consecutive stores only flush the final lease to disk", ctx do
+    {pid, iface} = start_store(ctx)
+
+    lease1 = make_lease(%{ip: {10, 0, 0, 1}})
+    lease2 = make_lease(%{ip: {10, 0, 0, 2}})
+
+    :ok = LeaseStore.store(pid, iface, lease1)
+    :ok = LeaseStore.store(pid, iface, lease2)
+
+    # Use terminate flush (synchronous) instead of sleeping for the async timer
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    # Only lease2 should be on disk (lease1's timer was cancelled by the second store)
+    assert loaded.ip == {10, 0, 0, 2}
+  end
 end

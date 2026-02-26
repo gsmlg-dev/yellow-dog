@@ -18,6 +18,9 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
       if prev_config_file,
         do: Application.put_env(:yellow_dog_dhcp_client, :config_file, prev_config_file),
         else: Application.delete_env(:yellow_dog_dhcp_client, :config_file)
+
+      # Sync ConfigWatcher's last_config with restored env so tests don't bleed state.
+      ConfigWatcher.reload()
     end)
 
     :ok

@@ -304,4 +304,30 @@ defmodule YellowDog.DhcpClient.VendorOptionsTest do
     assert decoded.auth_token == "mytoken!"
     assert decoded.unknown == []
   end
+
+  test "multiple consecutive padding bytes (code 0) are all skipped" do
+    # Three padding bytes before a real sub-option
+    data = <<0, 0, 0, 1, 3, "url">>
+    result = VendorOptions.decode_sub_options(data)
+    assert result.control_url == "url"
+    assert result.unknown == []
+  end
+
+  test "flags sub-option with 0 bytes is silently ignored" do
+    data = <<6, 0>>
+    result = VendorOptions.decode_sub_options(data)
+    refute Map.has_key?(result, :flags)
+  end
+
+  test "flags sub-option with 1 byte is silently ignored" do
+    data = <<6, 1, 0xFF>>
+    result = VendorOptions.decode_sub_options(data)
+    refute Map.has_key?(result, :flags)
+  end
+
+  test "flags sub-option with 4 bytes is silently ignored" do
+    data = <<6, 4, 0, 0, 0, 0>>
+    result = VendorOptions.decode_sub_options(data)
+    refute Map.has_key?(result, :flags)
+  end
 end

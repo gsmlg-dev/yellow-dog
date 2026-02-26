@@ -639,5 +639,42 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert lease.cluster_id == "cluster"
       assert lease.control_url_fallback == "http://fallback.example/"
     end
+
+    test "returns {:error, :unknown_message_type} for DHCPDISCOVER (type 1) in reply position" do
+      # A server should never send type 1, but parse_reply must not crash
+      options = [%Option{type: 53, length: 1, value: <<1>>}]
+      data = build_reply(options: options)
+      assert {:error, :unknown_message_type} = Packet.parse_reply(data)
+    end
+
+    test "returns {:error, :unknown_message_type} for DHCPREQUEST (type 3) in reply position" do
+      options = [%Option{type: 53, length: 1, value: <<3>>}]
+      data = build_reply(options: options)
+      assert {:error, :unknown_message_type} = Packet.parse_reply(data)
+    end
+
+    test "extract_ip ignores trailing bytes beyond 4 in Option 54 value" do
+      # 8-byte Option 54: first 4 bytes are the server IP, trailing 4 are ignored
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 54, length: 8, value: <<192, 168, 1, 254, 0xFF, 0xFF, 0xFF, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.server_ip == {192, 168, 1, 254}
+    end
+
+    test "extract_u16 returns nil (mtu: nil) when MTU option has 3 bytes instead of 2" do
+      # Option 26 (MTU) normally carries exactly 2 bytes; 3 bytes won't match <<val::16>>
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 26, length: 3, value: <<0x05, 0xDC, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.mtu == nil
+    end
   end
 end
