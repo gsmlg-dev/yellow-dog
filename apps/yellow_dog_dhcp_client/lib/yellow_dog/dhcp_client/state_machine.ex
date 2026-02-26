@@ -372,7 +372,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
   def handle_event(:enter, old_state, :rebinding, data) do
     data = track_state_entry(data, old_state, :rebinding)
     data = %{data | retransmit_count: 0}
-    send_request_broadcast(data)
+    send_renew_request_broadcast(data)
 
     remaining_ms = remaining_until_expiry(data)
     interval = max(div(remaining_ms, 2), 1_000)
@@ -415,7 +415,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
   end
 
   def handle_event({:timeout, :retransmit}, :retransmit, :rebinding, data) do
-    send_request_broadcast(data)
+    send_renew_request_broadcast(data)
     remaining_ms = remaining_until_expiry(data)
     interval = max(div(remaining_ms, 2), 1_000)
     actions = [{{:timeout, :retransmit}, interval, :retransmit}]
@@ -518,8 +518,9 @@ defmodule YellowDog.DhcpClient.StateMachine do
     broadcast_packet(data, packet, :request)
   end
 
+  # Renewal request via unicast (RENEWING state per RFC 2131 §4.3.2)
   defp send_request_unicast(data) do
-    packet = build_request(data)
+    packet = build_renew_request(data)
 
     :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
       interface: data.interface,
@@ -527,6 +528,18 @@ defmodule YellowDog.DhcpClient.StateMachine do
     })
 
     unicast_packet(data, data.lease.server_ip, packet, :request)
+  end
+
+  # Renewal request via broadcast (REBINDING state per RFC 2131 §4.3.6)
+  defp send_renew_request_broadcast(data) do
+    packet = build_renew_request(data)
+
+    :telemetry.execute([:yellow_dog, :dhcp_client, :packet, :tx], %{}, %{
+      interface: data.interface,
+      type: :request
+    })
+
+    broadcast_packet(data, packet, :request)
   end
 
   defp send_release(data) do
@@ -611,6 +624,16 @@ defmodule YellowDog.DhcpClient.StateMachine do
       data.mac,
       data.xid,
       data.lease.server_ip,
+      data.lease.ip,
+      Map.to_list(data.config)
+    )
+  end
+
+  # RFC 2131 §4.3.2: renewal requests set ciaddr and omit Option 50/54
+  defp build_renew_request(data) do
+    packet_mod().build_renew_request(
+      data.mac,
+      data.xid,
       data.lease.ip,
       Map.to_list(data.config)
     )

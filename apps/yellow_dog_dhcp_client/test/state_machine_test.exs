@@ -23,6 +23,7 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
     def build_discover(_mac, _xid, _opts \\ []), do: <<>>
     def build_request(_mac, _xid, _server_ip, _offered_ip, _opts \\ []), do: <<>>
+    def build_renew_request(_mac, _xid, _client_ip, _opts \\ []), do: <<>>
     def build_decline(_mac, _xid, _server_ip, _declined_ip), do: <<>>
     def build_release(_mac, _xid, _server_ip, _client_ip), do: <<>>
 

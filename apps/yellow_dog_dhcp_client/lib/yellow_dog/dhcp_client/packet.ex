@@ -105,6 +105,39 @@ defmodule YellowDog.DhcpClient.Packet do
   end
 
   @doc """
+  Builds a DHCPREQUEST packet for lease renewal (RENEWING/REBINDING).
+
+  Per RFC 2131 §4.3.2, renewal requests differ from initial requests:
+    * `ciaddr` is set to the client's current IP (not zero)
+    * Option 50 (Requested IP) is NOT included
+    * Option 54 (Server Identifier) is NOT included
+
+  ## Options
+
+    * `:hostname` - Hostname for Option 12
+    * `:version` - Protocol version (default: `"1.0"`)
+    * `:capabilities` - List of capability atoms (default: `[]`)
+  """
+  @spec build_renew_request(binary(), non_neg_integer(), :inet.ip4_address(), keyword()) ::
+          binary()
+  def build_renew_request(mac, xid, client_ip, opts \\ []) do
+    hostname = Keyword.get(opts, :hostname)
+    version = Keyword.get(opts, :version, "1.0")
+    capabilities = Keyword.get(opts, :capabilities, [])
+
+    options =
+      [
+        msg_type_option(@request),
+        vendor_class_option(version, capabilities),
+        vendor_class_id_option(),
+        client_id_option(mac)
+      ]
+      |> maybe_add_hostname(hostname)
+
+    build_message(mac, xid, client_ip, options)
+  end
+
+  @doc """
   Builds a DHCPDECLINE packet for duplicate address detection failure.
   """
   @spec build_decline(binary(), non_neg_integer(), :inet.ip4_address(), :inet.ip4_address()) ::

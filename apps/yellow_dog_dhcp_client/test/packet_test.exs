@@ -283,6 +283,78 @@ defmodule YellowDog.DhcpClient.PacketTest do
     end
   end
 
+  # ── build_renew_request/4 (RFC 2131 §4.3.2) ──
+
+  describe "build_renew_request/4" do
+    test "builds valid DHCPREQUEST with correct message type" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt.value == <<3>>
+    end
+
+    test "sets ciaddr to client IP" do
+      client_ip = {10, 0, 0, 50}
+      binary = Packet.build_renew_request(@test_mac, @test_xid, client_ip)
+      msg = parse_built_packet(binary)
+
+      assert msg.ciaddr == client_ip
+    end
+
+    test "does NOT include Option 50 (Requested IP)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert find_option(msg, 50) == nil
+    end
+
+    test "does NOT include Option 54 (Server Identifier)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert find_option(msg, 54) == nil
+    end
+
+    test "includes vendor class (Option 60)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert opt != nil
+      assert String.starts_with?(opt.value, "YellowDog:")
+    end
+
+    test "includes client ID (Option 61)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil
+      assert opt.value == <<1>> <> @test_mac
+    end
+
+    test "includes hostname when provided" do
+      binary =
+        Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100},
+          hostname: "yd-node"
+        )
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt != nil
+      assert opt.value == "yd-node"
+    end
+
+    test "sets broadcast flag" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert msg.flags == 0x8000
+    end
+  end
+
   # ── build_decline/4 ──
 
   describe "build_decline/4" do
