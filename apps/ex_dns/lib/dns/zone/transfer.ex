@@ -222,7 +222,9 @@ defmodule DNS.Zone.Transfer do
     end)
   end
 
-  defp extract_soa_serial({_mname, _rname, serial, _refresh, _retry, _expire, _minimum}), do: serial
+  defp extract_soa_serial({_mname, _rname, serial, _refresh, _retry, _expire, _minimum}),
+    do: serial
+
   defp extract_soa_serial(%{data: data}) when is_tuple(data), do: extract_soa_serial(data)
   defp extract_soa_serial(_), do: 0
 
