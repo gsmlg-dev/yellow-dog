@@ -65,8 +65,12 @@ defmodule YellowDog.Console.IdentityControllerTest do
 
     test "returns idempotent 200 for duplicate registration", %{conn: conn} do
       key = generate_ssh_key()
-      params = %{"hostname" => "dup-node", "ssh_pubkey" => key,
-                 "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"}
+
+      params = %{
+        "hostname" => "dup-node",
+        "ssh_pubkey" => key,
+        "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"
+      }
 
       # First registration
       post(conn, "/api/hosts/register", params)
@@ -80,13 +84,21 @@ defmodule YellowDog.Console.IdentityControllerTest do
     end
 
     test "returns 409 for hostname conflict without force", %{conn: conn} do
-      params1 = %{"hostname" => "conflict-node", "ssh_pubkey" => generate_ssh_key(),
-                  "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"}
+      params1 = %{
+        "hostname" => "conflict-node",
+        "ssh_pubkey" => generate_ssh_key(),
+        "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"
+      }
+
       post(conn, "/api/hosts/register", params1)
 
       # Different key, same hostname, no force
-      params2 = %{"hostname" => "conflict-node", "ssh_pubkey" => generate_ssh_key(),
-                  "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"}
+      params2 = %{
+        "hostname" => "conflict-node",
+        "ssh_pubkey" => generate_ssh_key(),
+        "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"
+      }
+
       conn2 = post(conn, "/api/hosts/register", params2)
       body = json_response(conn2, 409)
 
@@ -95,14 +107,22 @@ defmodule YellowDog.Console.IdentityControllerTest do
     end
 
     test "resolves conflict with force: true", %{conn: conn} do
-      params1 = %{"hostname" => "force-node", "ssh_pubkey" => generate_ssh_key(),
-                  "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"}
+      params1 = %{
+        "hostname" => "force-node",
+        "ssh_pubkey" => generate_ssh_key(),
+        "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar"
+      }
+
       post(conn, "/api/hosts/register", params1)
 
       # Different key, same hostname, with force
-      params2 = %{"hostname" => "force-node", "ssh_pubkey" => generate_ssh_key(),
-                  "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar",
-                  "force" => true}
+      params2 = %{
+        "hostname" => "force-node",
+        "ssh_pubkey" => generate_ssh_key(),
+        "age_recipient" => "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3cyqar",
+        "force" => true
+      }
+
       conn2 = post(conn, "/api/hosts/register", params2)
       body = json_response(conn2, conn2.status)
 
@@ -267,10 +287,12 @@ defmodule YellowDog.Console.IdentityControllerTest do
       body = json_response(register_conn, register_conn.status)
       host_id = body["id"]
 
-      conn2 = post(conn, "/api/hosts/#{host_id}/revoke", %{
-        "revoked_by" => "security-bot",
-        "reason" => "compromised key"
-      })
+      conn2 =
+        post(conn, "/api/hosts/#{host_id}/revoke", %{
+          "revoked_by" => "security-bot",
+          "reason" => "compromised key"
+        })
+
       revoke_body = json_response(conn2, 200)
 
       assert revoke_body["id"] == host_id
