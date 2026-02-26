@@ -215,6 +215,27 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert match?({:ok, _}, result) or result == :not_found
   end
 
+  test "TOML lease with invalid IP string falls back to {0,0,0,0} for that field", ctx do
+    iface = "eth0"
+    lease_path = Path.join(ctx.lease_dir, "#{iface}.lease")
+
+    File.write!(lease_path, """
+    ip = "192.168.1.50"
+    subnet_mask = "999.999.999.999"
+    server_ip = "192.168.1.1"
+    lease_time = 3600
+    obtained_at = "#{DateTime.to_iso8601(DateTime.utc_now())}"
+    xid = 1
+    yellowdog_server = false
+    """)
+
+    {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid, iface)
+    # "999.999.999.999" is not a valid IP → parse_ip returns {0,0,0,0}
+    assert loaded.subnet_mask == {0, 0, 0, 0}
+    assert loaded.ip == {192, 168, 1, 50}
+  end
+
   test "delete removes lease file from disk", ctx do
     {pid, iface} = start_store(ctx)
     lease = make_lease()

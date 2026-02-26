@@ -236,6 +236,16 @@ defmodule YellowDog.DhcpClient.VendorOptionsTest do
     assert rest == <<2, 2, "s1">>
   end
 
+  test "encode_vendor_info with exactly 255-byte sub-options succeeds (boundary)" do
+    # control_url sub-option: code(1) + len(1) + 253 bytes = 255 bytes exactly
+    url_253 = String.duplicate("x", 253)
+    result = VendorOptions.encode_vendor_info(%{control_url: url_253})
+    assert is_binary(result)
+    # Header: pen(4) + data_len(1) + data(255) = 260 bytes total
+    assert byte_size(result) == 260
+    <<_pen::32, 255::8, _rest::binary>> = result
+  end
+
   test "encode_vendor_info raises when sub-options exceed 255 bytes" do
     # Each string needs code + length (2 bytes) overhead
     # 6 fields at ~50 bytes each = ~312 bytes, exceeding the 255 byte limit
