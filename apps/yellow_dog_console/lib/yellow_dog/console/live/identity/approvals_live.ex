@@ -216,6 +216,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-success"
                   phx-click="approve"
                   phx-value-id={host.id}
+                  phx-disable-with="Approving..."
                   aria-label={"Approve #{host.hostname}"}
                 >
                   Approve
@@ -224,6 +225,8 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-error btn-outline"
                   phx-click="reject"
                   phx-value-id={host.id}
+                  phx-disable-with="Rejecting..."
+                  data-confirm={"Reject #{host.hostname}?"}
                   aria-label={"Reject #{host.hostname}"}
                 >
                   Reject

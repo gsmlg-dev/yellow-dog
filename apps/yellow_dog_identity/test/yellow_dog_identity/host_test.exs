@@ -34,6 +34,35 @@ defmodule YellowDogIdentity.HostTest do
     test "rejects invalid age recipient" do
       assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("not-age")
     end
+
+    test "rejects empty string" do
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("")
+    end
+
+    test "rejects recipient at exactly 10 chars (boundary)" do
+      # 10 chars is <= 10, must be > 10
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("age1qpzry9")
+    end
+
+    test "accepts recipient at 11 chars (boundary)" do
+      assert :ok = Host.validate_age_recipient("age1qpzry9x")
+    end
+
+    test "rejects recipient at 91 chars (exceeds max)" do
+      long = "age1" <> String.duplicate("q", 87)
+      assert byte_size(long) == 91
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient(long)
+    end
+
+    test "accepts recipient at exactly 90 chars (max boundary)" do
+      at_max = "age1" <> String.duplicate("q", 86)
+      assert byte_size(at_max) == 90
+      assert :ok = Host.validate_age_recipient(at_max)
+    end
+
+    test "rejects recipient with uppercase chars (not bech32)" do
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("age1QPZRY9X8GF2TVDW0S3JN54")
+    end
   end
 
   describe "new/1" do

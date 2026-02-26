@@ -231,6 +231,8 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                     class="btn btn-xs btn-error btn-outline"
                     phx-click="revoke_token"
                     phx-value-id={token.id}
+                    phx-disable-with="Revoking..."
+                    data-confirm="Revoke this token? This cannot be undone."
                   >
                     Revoke
                   </button>

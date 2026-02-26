@@ -48,6 +48,29 @@ defmodule YellowDogIdentity.TokenTest do
     test "allows zero ttl_seconds for immediately expiring token" do
       assert {:ok, %Token{}, _} = Token.create(%{ttl_seconds: 0})
     end
+
+    test "accepts max_uses at exact boundary (100_000)" do
+      assert {:ok, %Token{max_uses: 100_000}, _} = Token.create(%{max_uses: 100_000})
+    end
+
+    test "accepts ttl_seconds at exact boundary (365 days)" do
+      assert {:ok, %Token{}, _} = Token.create(%{ttl_seconds: 86_400 * 365})
+    end
+
+    test "accepts hostname_pattern at exact max length (256)" do
+      pattern = String.duplicate("a", 256)
+      assert {:ok, %Token{hostname_pattern: ^pattern}, _} = Token.create(%{hostname_pattern: pattern})
+    end
+
+    test "rejects non-integer max_uses" do
+      assert {:error, :invalid_max_uses} = Token.create(%{max_uses: 1.5})
+      assert {:error, :invalid_max_uses} = Token.create(%{max_uses: "5"})
+    end
+
+    test "rejects non-integer ttl_seconds" do
+      assert {:error, :invalid_ttl} = Token.create(%{ttl_seconds: 3600.5})
+      assert {:error, :invalid_ttl} = Token.create(%{ttl_seconds: "3600"})
+    end
   end
 
   describe "verify/3" do
