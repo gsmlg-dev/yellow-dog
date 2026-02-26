@@ -134,7 +134,12 @@ defmodule YellowDogIdentity.Trust.Cloud.GCP do
   defp find_key(%{"keys" => keys}, kid) do
     case Enum.find(keys, fn k -> Map.get(k, "kid") == kid end) do
       nil -> :error
-      key_map -> {:ok, JOSE.JWK.from_map(key_map)}
+      key_map ->
+        try do
+          {:ok, JOSE.JWK.from_map(key_map)}
+        rescue
+          _ -> :error
+        end
     end
   end
 

@@ -78,38 +78,54 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
 
-    Enum.each(selected, fn id ->
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(id, "console-operator") end,
-        {:error, :unavailable}
-      )
-    end)
+    results =
+      Enum.map(selected, fn id ->
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.approve(id, "console-operator") end,
+          {:error, :unavailable}
+        )
+      end)
+
+    failed = Enum.count(results, &match?({:error, _}, &1))
+
+    flash_msg =
+      if failed > 0,
+        do: "#{count - failed} host(s) approved, #{failed} failed",
+        else: "#{count} host(s) approved"
 
     {:noreply,
      socket
      |> assign(:selected, MapSet.new())
      |> load_pending()
-     |> put_flash(:info, "#{count} host(s) approved")}
+     |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
   def handle_event("bulk_reject", _params, socket) do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
 
-    Enum.each(selected, fn id ->
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
-        {:error, :unavailable}
-      )
-    end)
+    results =
+      Enum.map(selected, fn id ->
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
+          {:error, :unavailable}
+        )
+      end)
+
+    failed = Enum.count(results, &match?({:error, _}, &1))
+
+    flash_msg =
+      if failed > 0,
+        do: "#{count - failed} host(s) rejected, #{failed} failed",
+        else: "#{count} host(s) rejected"
 
     {:noreply,
      socket
      |> assign(:selected, MapSet.new())
      |> load_pending()
-     |> put_flash(:info, "#{count} host(s) rejected")}
+     |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
   def handle_event("refresh", _params, socket) do

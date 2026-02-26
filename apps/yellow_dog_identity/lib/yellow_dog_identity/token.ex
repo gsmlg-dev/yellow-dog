@@ -99,7 +99,7 @@ defmodule YellowDogIdentity.Token do
   @spec verify(t(), String.t(), String.t()) :: :ok | {:error, term()}
   def verify(%__MODULE__{} = token, raw_token, hostname) do
     cond do
-      hash_token(raw_token) != token.token_hash ->
+      not constant_time_compare(hash_token(raw_token), token.token_hash) ->
         {:error, :invalid_token}
 
       DateTime.compare(DateTime.utc_now(), token.expires_at) == :gt ->
@@ -184,6 +184,14 @@ defmodule YellowDogIdentity.Token do
 
   defp hash_token(raw_token) do
     :crypto.hash(:sha256, raw_token) |> Base.encode64(padding: false)
+  end
+
+  defp constant_time_compare(a, b) when is_binary(a) and is_binary(b) do
+    if byte_size(a) == byte_size(b) do
+      :crypto.hash_equals(a, b)
+    else
+      false
+    end
   end
 
   @doc false

@@ -56,7 +56,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
          |> put_flash(:info, "Token created successfully")}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to create token: #{inspect(reason)}")}
+        {:noreply, put_flash(socket, :error, "Failed to create token: #{humanize_error(reason)}")}
     end
   end
 
@@ -249,4 +249,10 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
   defp format_time(_), do: "-"
+
+  defp humanize_error(:unavailable), do: "service unavailable"
+  defp humanize_error(:invalid_pattern), do: "invalid hostname pattern"
+  defp humanize_error(:invalid_ttl), do: "invalid TTL value"
+  defp humanize_error(:invalid_max_uses), do: "max uses must be positive"
+  defp humanize_error(_), do: "unexpected error"
 end
