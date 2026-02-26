@@ -452,10 +452,11 @@ defmodule YellowDog.Mdns.Client do
     end
   end
 
+  # Use to_string/1 for type comparisons — works for both atoms and %RRType{} structs
   defp extract_ptr_targets(responses) do
     for msg <- responses,
         record <- msg.anlist,
-        record.type == :PTR,
+        to_string(record.type) == "PTR",
         uniq: true,
         do: to_string(record.data)
   end
@@ -463,18 +464,27 @@ defmodule YellowDog.Mdns.Client do
   defp extract_a_records(responses) do
     for msg <- responses,
         record <- msg.anlist ++ msg.arlist,
-        record.type == :A,
+        to_string(record.type) == "A",
+        ip = extract_ip(record),
+        ip != nil,
         uniq: true,
-        do: record.data
+        do: ip
   end
 
   defp extract_aaaa_records(responses) do
     for msg <- responses,
         record <- msg.anlist ++ msg.arlist,
-        record.type == :AAAA,
+        to_string(record.type) == "AAAA",
+        ip = extract_ip(record),
+        ip != nil,
         uniq: true,
-        do: record.data
+        do: ip
   end
+
+  # Extract IP tuple from record — handles Data.A/AAAA structs and plain tuples
+  defp extract_ip(%{data: %{data: ip}}) when is_tuple(ip), do: ip
+  defp extract_ip(%{data: ip}) when is_tuple(ip), do: ip
+  defp extract_ip(_), do: nil
 
   defp fetch_service_details(instance_name, opts) do
     # Query for SRV record to get host and port
@@ -515,34 +525,44 @@ defmodule YellowDog.Mdns.Client do
 
   defp extract_srv_record(responses) do
     Enum.find_value(responses, fn msg ->
-      Enum.find_value(msg.anlist ++ msg.arlist, fn
-        %{type: :SRV, data: %{target: target, port: port, priority: priority, weight: weight}} ->
-          %{host: to_string(target), port: port, priority: priority, weight: weight}
-
-        _ ->
-          nil
+      Enum.find_value(msg.anlist ++ msg.arlist, fn record ->
+        if to_string(record.type) == "SRV" do
+          extract_srv_info(record.data)
+        end
       end)
     end)
   end
 
+  # Extract SRV info from Data.SRV struct {priority, weight, port, domain} or plain map
+  defp extract_srv_info(%{data: {priority, weight, port, target}}) do
+    %{host: to_string(target), port: port, priority: priority, weight: weight}
+  end
+
+  defp extract_srv_info(%{priority: priority, weight: weight, port: port, target: target}) do
+    %{host: to_string(target), port: port, priority: priority, weight: weight}
+  end
+
+  defp extract_srv_info(_), do: nil
+
   defp extract_txt_record(responses) do
     responses
     |> Enum.flat_map(fn msg -> msg.anlist ++ msg.arlist end)
-    |> Enum.filter(fn record -> record.type == :TXT end)
+    |> Enum.filter(fn record -> to_string(record.type) == "TXT" end)
     |> Enum.flat_map(fn record ->
-      case record.data do
-        list when is_list(list) ->
-          Enum.map(list, fn entry ->
-            case String.split(to_string(entry), "=", parts: 2) do
-              [key, value] -> {key, value}
-              [key] -> {key, ""}
-            end
-          end)
+      list = extract_txt_data(record.data)
 
-        _ ->
-          []
-      end
+      Enum.map(list, fn entry ->
+        case String.split(to_string(entry), "=", parts: 2) do
+          [key, value] -> {key, value}
+          [key] -> {key, ""}
+        end
+      end)
     end)
     |> Map.new()
   end
+
+  # Extract TXT list from Data.TXT struct or plain list
+  defp extract_txt_data(%{data: list}) when is_list(list), do: list
+  defp extract_txt_data(list) when is_list(list), do: list
+  defp extract_txt_data(_), do: []
 end

@@ -481,21 +481,23 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   defp matches_query?(service, qname, qtype) do
     # Match service FQDN or type enumeration
+    # Use to_string/1 so both atoms (:PTR) and RRType structs compare correctly
+    qtype_str = to_string(qtype)
     service_fqdn = normalize_name(service.fqdn)
     service_type = normalize_name("#{service.type}.#{service.domain}")
     service_host = normalize_name(service.host)
 
     cond do
       # Direct service name query
-      qname == service_fqdn and qtype in [:ANY, :SRV, :TXT] ->
+      qname == service_fqdn and qtype_str in ["ANY", "SRV", "TXT"] ->
         true
 
       # Service type enumeration (PTR query)
-      qname == service_type and qtype == :PTR ->
+      qname == service_type and qtype_str == "PTR" ->
         true
 
       # Host address query
-      qname == service_host and qtype in [:A, :AAAA, :ANY] ->
+      qname == service_host and qtype_str in ["A", "AAAA", "ANY"] ->
         true
 
       true ->
