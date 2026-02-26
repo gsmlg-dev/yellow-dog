@@ -13,6 +13,8 @@ defmodule YellowDog.Fingerprint.Database do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Data.{Collection, Store}
   alias YellowDog.Fingerprint.Types.{DeviceProfile, Fingerprint}
 
@@ -160,6 +162,12 @@ defmodule YellowDog.Fingerprint.Database do
     :persistent_term.put({__MODULE__, :stores}, stores)
     save_overrides(stores, state.data_dir)
     {:reply, :ok, %{state | stores: stores}}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
   end
 
   @impl true

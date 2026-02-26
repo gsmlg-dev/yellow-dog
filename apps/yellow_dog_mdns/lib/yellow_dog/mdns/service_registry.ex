@@ -9,6 +9,8 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   use GenServer
   use YellowDog.Data.Collection
 
+  require Logger
+
   alias YellowDog.Data.Store
   alias YellowDog.Mdns.ServiceStore
 
@@ -367,6 +369,12 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   def handle_call(:save_to_file, _from, state) do
     result = save_services_to_file(state)
     {:reply, result, state}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
   end
 
   @impl true

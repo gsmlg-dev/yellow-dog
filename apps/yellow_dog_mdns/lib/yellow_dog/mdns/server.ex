@@ -9,6 +9,8 @@ defmodule YellowDog.Mdns.Server do
 
   use GenServer
 
+  require Logger
+
   @type options :: keyword()
   @type server_config :: map()
 
@@ -248,6 +250,12 @@ defmodule YellowDog.Mdns.Server do
 
         {:reply, error, state}
     end
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
   end
 
   @impl true
