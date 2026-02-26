@@ -28,6 +28,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
     {:noreply, load_data(socket)}
   end
 
+  @impl true
   def handle_event("preview_export", %{"format" => format}, socket) do
     export =
       ServiceHelper.safe_call(
@@ -44,6 +45,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
     {:noreply, socket |> assign(:export_preview, export) |> assign(:export_format, format)}
   end
 
+  @impl true
   def handle_event("close_export", _params, socket) do
     {:noreply, assign(socket, :export_preview, nil)}
   end

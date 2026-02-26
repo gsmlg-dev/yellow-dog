@@ -39,6 +39,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  @impl true
   def handle_event("revoke", _params, socket) do
     result =
       ServiceHelper.safe_call(
@@ -53,6 +54,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  @impl true
   def handle_event("delete", _params, socket) do
     result =
       ServiceHelper.safe_call(

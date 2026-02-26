@@ -28,10 +28,12 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
     {:noreply, socket |> assign(:filter, status) |> load_hosts()}
   end
 
+  @impl true
   def handle_event("search", %{"q" => query}, socket) do
     {:noreply, socket |> assign(:search, query) |> load_hosts()}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_hosts(socket)}
   end

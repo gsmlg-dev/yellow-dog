@@ -26,6 +26,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
      |> load_entries()}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_entries(socket)}
   end

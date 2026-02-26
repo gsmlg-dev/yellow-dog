@@ -23,6 +23,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     {:noreply, assign(socket, :show_create, !socket.assigns.show_create)}
   end
 
+  @impl true
   def handle_event(
         "create_token",
         %{
@@ -67,6 +68,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     end
   end
 
+  @impl true
   def handle_event("revoke_token", %{"id" => id}, socket) do
     result =
       ServiceHelper.safe_call(
@@ -81,10 +83,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     end
   end
 
+  @impl true
   def handle_event("dismiss_token", _params, socket) do
     {:noreply, assign(socket, :new_token_raw, nil)}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_tokens(socket)}
   end
