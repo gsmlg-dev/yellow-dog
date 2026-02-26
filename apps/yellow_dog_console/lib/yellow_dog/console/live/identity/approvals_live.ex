@@ -205,6 +205,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-error btn-outline"
                   phx-click="reject"
                   phx-value-id={host.id}
+                  data-confirm="Reject this host?"
                 >
                   Reject
                 </button>
