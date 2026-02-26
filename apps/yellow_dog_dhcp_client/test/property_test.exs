@@ -440,6 +440,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   defp offer_gen do
     gen all(
           yellowdog_server <- boolean(),
+          yellowdog_vendor_class <- boolean(),
           known_server <- boolean(),
           a <- integer(1..254),
           b <- integer(0..255),
@@ -448,6 +449,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
         ) do
       %{
         yellowdog_server: yellowdog_server,
+        yellowdog_vendor_class: yellowdog_vendor_class,
         known_server: known_server,
         ip: {a, b, c, d}
       }
@@ -487,17 +489,64 @@ defmodule YellowDog.DhcpClient.PropertyTest do
       end
     end
 
+    property "yellowdog_vendor_class offer wins over known_server when no yellowdog_server present" do
+      check all(
+              vc_offers <-
+                list_of(offer_gen(), min_length: 1)
+                |> map(fn offers ->
+                  Enum.map(
+                    offers,
+                    &%{&1 | yellowdog_server: false, yellowdog_vendor_class: true}
+                  )
+                end),
+              known_offers <-
+                list_of(offer_gen())
+                |> map(fn offers ->
+                  Enum.map(
+                    offers,
+                    &%{
+                      &1
+                      | yellowdog_server: false,
+                        yellowdog_vendor_class: false,
+                        known_server: true
+                    }
+                  )
+                end)
+            ) do
+        offers = known_offers ++ vc_offers
+
+        result = StateMachine.select_best_offer(offers)
+        assert result.yellowdog_vendor_class == true
+      end
+    end
+
     property "known_server offer wins over plain offers when no yellowdog present" do
       check all(
               known_offers <-
                 list_of(offer_gen(), min_length: 1)
                 |> map(fn offers ->
-                  Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: true})
+                  Enum.map(
+                    offers,
+                    &%{
+                      &1
+                      | yellowdog_server: false,
+                        yellowdog_vendor_class: false,
+                        known_server: true
+                    }
+                  )
                 end),
               plain_offers <-
                 list_of(offer_gen())
                 |> map(fn offers ->
-                  Enum.map(offers, &%{&1 | yellowdog_server: false, known_server: false})
+                  Enum.map(
+                    offers,
+                    &%{
+                      &1
+                      | yellowdog_server: false,
+                        yellowdog_vendor_class: false,
+                        known_server: false
+                    }
+                  )
                 end)
             ) do
         offers = plain_offers ++ known_offers
