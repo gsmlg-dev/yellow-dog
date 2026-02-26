@@ -147,28 +147,8 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
   end
 
   defp load_interfaces do
-    registry = YellowDog.DhcpClient.registry_name()
-
     try do
-      Registry.select(registry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
-      |> Enum.filter(fn {{type, _}, _pid} -> type == :fsm end)
-      |> Enum.map(fn {{:fsm, interface}, pid} ->
-        {state, _data} =
-          try do
-            YellowDog.DhcpClient.StateMachine.status(pid)
-          catch
-            _, _ -> {:unknown, %{}}
-          end
-
-        lease =
-          try do
-            YellowDog.DhcpClient.StateMachine.lease(pid)
-          catch
-            _, _ -> nil
-          end
-
-        %{interface: interface, state: state, lease: lease}
-      end)
+      YellowDog.DhcpClient.all_statuses()
     rescue
       _ -> []
     end

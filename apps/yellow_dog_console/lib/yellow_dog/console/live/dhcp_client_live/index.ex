@@ -263,34 +263,10 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
   end
 
   defp load_interfaces do
-    case safe_call(YellowDog.DhcpClient, fn -> load_client_interfaces() end, []) do
+    case safe_call(YellowDog.DhcpClient, fn -> YellowDog.DhcpClient.all_statuses() end, []) do
       interfaces when is_list(interfaces) -> interfaces
       _ -> []
     end
-  end
-
-  defp load_client_interfaces do
-    registry = YellowDog.DhcpClient.registry_name()
-
-    Registry.select(registry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.filter(fn {{type, _}, _pid} -> type == :fsm end)
-    |> Enum.map(fn {{:fsm, interface}, pid} ->
-      {state, _data} =
-        try do
-          YellowDog.DhcpClient.StateMachine.status(pid)
-        catch
-          _, _ -> {:unknown, %{}}
-        end
-
-      lease =
-        try do
-          YellowDog.DhcpClient.StateMachine.lease(pid)
-        catch
-          _, _ -> nil
-        end
-
-      %{interface: interface, state: state, lease: lease, pid: pid}
-    end)
   end
 
   defp count_by_state(interfaces, state) do
