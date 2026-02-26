@@ -83,6 +83,15 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
   # Max length for assign key names to prevent atom table exhaustion
   @max_key_length 64
 
+  # Known template variables declared as atoms at compile time.
+  # This ensures String.to_existing_atom/1 can find them at runtime
+  # without needing String.to_atom/1 (which risks atom table exhaustion).
+  @known_assign_keys ~w(
+    server port mac arch kernel initrd kernel_args registration_url
+    hostname ip name base_url flag version profile_id device_id
+    gateway netmask dns_servers ntp_servers vlan
+  )a
+
   defp do_render(template, assigns) do
     assigns_keyword =
       assigns
@@ -104,10 +113,13 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
   defp safe_to_atom(key) when is_binary(key) and byte_size(key) <= @max_key_length do
     {:ok, String.to_existing_atom(key)}
   rescue
-    ArgumentError -> {:ok, String.to_atom(key)}
+    ArgumentError -> :skip
   end
 
   defp safe_to_atom(_key), do: :skip
+
+  @doc false
+  def known_assign_keys, do: @known_assign_keys
 
   defp load_template(filename, fallback) do
     priv_path = :code.priv_dir(:yellow_dog_netboot)
