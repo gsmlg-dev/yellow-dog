@@ -728,29 +728,6 @@ defmodule DNS.Zone.FileParser do
     end
   end
 
-  # defp validate_soa(soa, errors) do
-  #   cond do
-  #     !soa.mname || !soa.rname ->
-  #       [
-  #         %{line: 0, message: "SOA record missing mname or rname", context: "SOA validation"}
-  #         | errors
-  #       ]
-  #
-  #     soa.serial == 0 ->
-  #       [
-  #         %{
-  #           line: 0,
-  #           message: "SOA serial is 0, may indicate testing zone",
-  #           context: "SOA validation"
-  #         }
-  #         | errors
-  #       ]
-  #
-  #     true ->
-  #       errors
-  #   end
-  # end
-
   defp validate_duplicate_records(records, errors) do
     duplicates =
       records
