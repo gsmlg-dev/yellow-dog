@@ -10,6 +10,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
      |> assign(:page_title, "Identity Audit Log")
      |> assign(:filter_event, nil)
      |> assign(:filter_host, "")
+     |> assign(:loading, true)
      |> load_entries()}
   end
 
@@ -40,9 +41,20 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
 
     opts =
       case socket.assigns[:filter_host] do
-        "" -> opts
-        nil -> opts
-        host_id -> Keyword.put(opts, :host_id, host_id)
+        "" ->
+          opts
+
+        nil ->
+          opts
+
+        host_id ->
+          # Validate host_id is UUID format before passing to backend
+          if valid_uuid?(host_id) do
+            Keyword.put(opts, :host_id, host_id)
+          else
+            # Invalid UUID format — skip filter, don't pass invalid input
+            opts
+          end
       end
 
     entries =
@@ -52,8 +64,15 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
         []
       )
 
-    assign(socket, :entries, entries)
+    socket |> assign(:entries, entries) |> assign(:loading, false)
   end
+
+  defp valid_uuid?(str) when is_binary(str) do
+    # UUID v4 format: 8-4-4-4-12 hex digits
+    String.match?(str, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  end
+
+  defp valid_uuid?(_), do: false
 
   @impl true
   def render(assigns) do

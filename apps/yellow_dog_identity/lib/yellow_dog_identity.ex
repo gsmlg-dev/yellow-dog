@@ -254,7 +254,7 @@ defmodule YellowDogIdentity do
     Registry.read_audit_log(opts)
   rescue
     e ->
-      Logger.debug("audit_log unavailable: #{Exception.message(e)}")
+      Logger.warning("audit_log unavailable: #{Exception.message(e)}")
       []
   end
 
@@ -266,7 +266,7 @@ defmodule YellowDogIdentity do
     ApprovalEngine.list_policies()
   rescue
     e ->
-      Logger.debug("list_policies unavailable: #{Exception.message(e)}")
+      Logger.warning("list_policies unavailable: #{Exception.message(e)}")
       %{policies: [], default_action: :pending}
   end
 
@@ -357,7 +357,7 @@ defmodule YellowDogIdentity do
     end
   rescue
     e ->
-      Logger.debug("check_duplicate skipped: #{Exception.message(e)}")
+      Logger.warning("check_duplicate error: #{Exception.message(e)}")
       :ok
   end
 
@@ -396,7 +396,7 @@ defmodule YellowDogIdentity do
     end
   rescue
     e ->
-      Logger.debug("check_conflict skipped: #{Exception.message(e)}")
+      Logger.warning("check_conflict error: #{Exception.message(e)}")
       {:ok, host}
   end
 
