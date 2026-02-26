@@ -1887,5 +1887,73 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
       refute_receive {:packet_tx, %{type: :release}}, 200
     end
+
+    test "terminating while :renewing sends DHCPRELEASE", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Force into :renewing
+      :sys.replace_state(pid, fn {_state, data} -> {:renewing, data} end)
+      wait_for_state(pid, :renewing, 500)
+
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      :gen_statem.stop(pid)
+
+      assert_receive {:packet_tx, %{type: :release, interface: "test0"}}, 500
+    end
+
+    test "terminating while :rebinding sends DHCPRELEASE", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      # Force into :rebinding
+      :sys.replace_state(pid, fn {_state, data} -> {:rebinding, data} end)
+      wait_for_state(pid, :rebinding, 500)
+
+      ref = make_ref()
+      attach_packet_telemetry(ref, self())
+
+      on_exit(fn ->
+        :telemetry.detach("test-packet-tx-#{inspect(ref)}")
+        :telemetry.detach("test-packet-rx-#{inspect(ref)}")
+      end)
+
+      :gen_statem.stop(pid)
+
+      assert_receive {:packet_tx, %{type: :release, interface: "test0"}}, 500
+    end
+  end
+
+  # ── catch-all handler ──
+
+  describe "catch-all handler" do
+    test "unknown events are silently ignored without crashing", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      assert get_state(pid) == :init
+
+      # Send various unknown messages to the FSM process
+      send(pid, {:completely_unknown, :payload, 42})
+      send(pid, :random_atom)
+      send(pid, "string message")
+
+      Process.sleep(50)
+
+      # FSM should still be alive and in the same state
+      assert Process.alive?(pid)
+      assert get_state(pid) == :init
+    end
   end
 end
