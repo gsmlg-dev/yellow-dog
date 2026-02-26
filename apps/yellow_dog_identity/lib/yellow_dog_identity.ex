@@ -68,7 +68,9 @@ defmodule YellowDogIdentity do
   Approves a pending host.
   """
   @spec approve(String.t(), String.t()) :: {:ok, Host.t()} | {:error, term()}
-  def approve(host_id, approved_by \\ "manual") do
+  def approve(host_id, approved_by \\ "manual")
+      when is_binary(host_id) and byte_size(host_id) > 0 and is_binary(approved_by) and
+             byte_size(approved_by) > 0 do
     case Registry.get_host(host_id) do
       {:ok, %Host{status: :pending} = host} ->
         now = DateTime.utc_now()
@@ -104,7 +106,9 @@ defmodule YellowDogIdentity do
   Revokes an approved host.
   """
   @spec revoke(String.t(), String.t(), String.t()) :: {:ok, Host.t()} | {:error, term()}
-  def revoke(host_id, revoked_by, reason \\ "manual revocation") do
+  def revoke(host_id, revoked_by, reason \\ "manual revocation")
+      when is_binary(host_id) and byte_size(host_id) > 0 and is_binary(revoked_by) and
+             byte_size(revoked_by) > 0 and is_binary(reason) and byte_size(reason) > 0 do
     case Registry.get_host(host_id) do
       {:ok, %Host{status: status} = host} when status in [:approved, :pending] ->
         now = DateTime.utc_now()
@@ -145,7 +149,7 @@ defmodule YellowDogIdentity do
   Deletes a host record permanently.
   """
   @spec delete_host(String.t()) :: :ok | {:error, term()}
-  def delete_host(id) do
+  def delete_host(id) when is_binary(id) and byte_size(id) > 0 do
     case Registry.get_host(id) do
       {:ok, host} ->
         case Registry.delete_host(id) do
@@ -168,7 +172,8 @@ defmodule YellowDogIdentity do
   Gets a host by ID.
   """
   @spec get_host(String.t()) :: {:ok, Host.t()} | :not_found
-  def get_host(id), do: Registry.get_host(id)
+  def get_host(id) when is_binary(id) and byte_size(id) > 0, do: Registry.get_host(id)
+  def get_host(_), do: :not_found
 
   @doc """
   Lists all hosts, optionally filtered by status.
@@ -185,7 +190,7 @@ defmodule YellowDogIdentity do
   Gets the status of a specific host (for revocation checking).
   """
   @spec host_status(String.t()) :: {:ok, map()} | :not_found
-  def host_status(id) do
+  def host_status(id) when is_binary(id) and byte_size(id) > 0 do
     case Registry.get_host(id) do
       {:ok, host} ->
         {:ok,
@@ -233,7 +238,9 @@ defmodule YellowDogIdentity do
   Revokes a provisioning token.
   """
   @spec revoke_token(String.t()) :: :ok | {:error, term()}
-  def revoke_token(id), do: Registry.delete_token(id)
+  def revoke_token(id) when is_binary(id) and byte_size(id) > 0 do
+    Registry.delete_token(id)
+  end
 
   @doc """
   Exports approved recipients in YAML format.
