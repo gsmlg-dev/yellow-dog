@@ -15,23 +15,28 @@ defmodule YellowDog.Resolved.ResponseBuilder do
   """
   @spec build_intercept_response(DNS.Message.t(), map()) :: DNS.Message.t()
   def build_intercept_response(query, rule) do
-    question = List.first(query.qdlist)
-    query_type = record_type_atom(question.type)
+    case query.qdlist do
+      [question | _] ->
+        query_type = record_type_atom(question.type)
 
-    if query_type == rule.type do
-      # Types match — return answer
-      record = build_record(question.name, rule.type, rule.value, rule.ttl)
+        if query_type == rule.type do
+          # Types match — return answer
+          record = build_record(question.name, rule.type, rule.value, rule.ttl)
 
-      query
-      |> set_response_flags()
-      |> Map.put(:anlist, [record])
-      |> update_counts(1, 0, 0)
-    else
-      # Types don't match — return empty answer (NOERROR, 0 answers)
-      query
-      |> set_response_flags()
-      |> Map.put(:anlist, [])
-      |> update_counts(0, 0, 0)
+          query
+          |> set_response_flags()
+          |> Map.put(:anlist, [record])
+          |> update_counts(1, 0, 0)
+        else
+          # Types don't match — return empty answer (NOERROR, 0 answers)
+          query
+          |> set_response_flags()
+          |> Map.put(:anlist, [])
+          |> update_counts(0, 0, 0)
+        end
+
+      [] ->
+        build_formerr(query)
     end
   end
 
