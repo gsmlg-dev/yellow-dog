@@ -33,7 +33,7 @@ defmodule YellowDog.DhcpClient.DAD do
     * `:ok` - No conflict detected
     * `{:conflict, mac}` - Address is in use by the given MAC
   """
-  @spec check(pid(), :inet.ip4_address(), keyword()) :: :ok | {:conflict, binary()}
+  @spec check(GenServer.server(), :inet.ip4_address(), keyword()) :: :ok | {:conflict, binary()}
   def check(socket_pid, ip, opts \\ []) do
     probes = Keyword.get(opts, :probes, @default_probes)
     wait_ms = Keyword.get(opts, :wait_ms, @default_wait_ms)
