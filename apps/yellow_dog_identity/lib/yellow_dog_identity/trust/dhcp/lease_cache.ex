@@ -84,6 +84,7 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(msg, state) do
     Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}

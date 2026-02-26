@@ -116,8 +116,8 @@ defmodule YellowDogIdentity.Registry do
     hosts_dir = Path.join(data_dir, "hosts")
     tokens_dir = Path.join(data_dir, "tokens")
 
-    File.mkdir_p!(hosts_dir)
-    File.mkdir_p!(tokens_dir)
+    safe_mkdir_p(hosts_dir)
+    safe_mkdir_p(tokens_dir)
 
     # Load existing data from disk
     {hosts, fingerprint_index} = load_hosts(hosts_dir)
@@ -146,6 +146,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil -> {:reply, :not_found, state}
@@ -153,6 +154,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host_by_fingerprint, fingerprint}, _from, state) do
     case Map.get(state.fingerprint_index, fingerprint) do
       nil ->
@@ -166,6 +168,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_host_by_hostname, hostname}, _from, state) do
     case Enum.find(state.hosts, fn {_id, h} -> h.hostname == hostname end) do
       nil -> {:reply, :not_found, state}
@@ -173,15 +176,18 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call(:list_hosts, _from, state) do
     {:reply, Map.values(state.hosts), state}
   end
 
+  @impl true
   def handle_call({:list_hosts_by_status, status}, _from, state) do
     filtered = state.hosts |> Map.values() |> Enum.filter(&(&1.status == status))
     {:reply, filtered, state}
   end
 
+  @impl true
   def handle_call({:delete_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil ->
@@ -202,6 +208,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:put_token, token}, _from, state) do
     case persist_token(state.data_dir, token) do
       :ok ->
@@ -213,6 +220,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:get_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil -> {:reply, :not_found, state}
@@ -220,10 +228,12 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call(:list_tokens, _from, state) do
     {:reply, Map.values(state.tokens), state}
   end
 
+  @impl true
   def handle_call({:delete_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil ->
@@ -243,6 +253,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:consume_token, raw_token, hostname}, _from, state) do
     tokens = Map.values(state.tokens)
 
@@ -256,6 +267,7 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
+  @impl true
   def handle_call({:read_audit_log, opts}, _from, state) do
     entries = read_audit_entries(state.data_dir, opts)
     {:reply, entries, state}
@@ -313,7 +325,7 @@ defmodule YellowDogIdentity.Registry do
     content = encode_toml(map)
     tmp_path = path <> ".tmp"
     dir = Path.dirname(path)
-    File.mkdir_p!(dir)
+    safe_mkdir_p(dir)
 
     with :ok <- File.write(tmp_path, content),
          # Validate round-trip
@@ -488,6 +500,13 @@ defmodule YellowDogIdentity.Registry do
 
   defp host_path(data_dir, id), do: Path.join([data_dir, "hosts", "#{id}.toml"])
   defp token_path(data_dir, id), do: Path.join([data_dir, "tokens", "#{id}.toml"])
+
+  defp safe_mkdir_p(dir) do
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Identity] Failed to create dir #{dir}: #{reason}")
+    end
+  end
 
   defp default_data_dir do
     case Code.ensure_loaded(YellowDog.Config) do
