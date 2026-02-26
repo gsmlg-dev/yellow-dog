@@ -246,9 +246,9 @@ defmodule YellowDog.Dns.ClientTest do
 
   # ── Integration tests (skipped in CI) ────────────────────────────
 
-  @tag :skip
-  @tag :integration
   describe "integration with real DNS server" do
+    @describetag :skip
+    @describetag :integration
     test "query returns valid DNS response for known domain" do
       # Requires internet access or a local DNS server on port 53
       assert {:ok, message} = Client.query("example.com", :a, {8, 8, 8, 8})

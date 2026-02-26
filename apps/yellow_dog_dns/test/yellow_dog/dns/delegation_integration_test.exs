@@ -342,9 +342,9 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
   end
 
   defp ensure_registry(name) do
-    case Process.whereis(name) do
-      nil -> Registry.start_link(keys: :unique, name: name)
-      _pid -> {:ok, name}
+    case Registry.start_link(keys: :unique, name: name) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
     end
   end
 end
