@@ -138,6 +138,22 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
                   {if iface.lease, do: "0x#{Integer.to_string(iface.lease.xid, 16)}", else: "-"}
                 </div>
               </div>
+              <%= if iface.lease do %>
+                <div>
+                  <div class="text-xs font-semibold text-base-content/50 uppercase">Lease Time</div>
+                  <div class="text-sm">{format_lease_time(iface.lease.lease_time)}</div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-base-content/50 uppercase">Remaining</div>
+                  <div class="text-sm">{format_lease_remaining(iface.lease)}</div>
+                </div>
+                <%= if iface.lease.yellowdog_server do %>
+                  <div>
+                    <div class="text-xs font-semibold text-base-content/50 uppercase">YellowDog</div>
+                    <div><span class="badge badge-success badge-sm">YD Server</span></div>
+                  </div>
+                <% end %>
+              <% end %>
             </div>
           </div>
         </div>
@@ -165,6 +181,24 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
   defp state_badge(:renewing), do: "badge-info"
   defp state_badge(:rebinding), do: "badge-warning"
   defp state_badge(_), do: "badge-ghost"
+
+  defp format_lease_remaining(lease) do
+    case YellowDog.DhcpClient.Lease.time_remaining(lease) do
+      nil -> "-"
+      0 -> "Expired"
+      remaining -> format_lease_time(remaining)
+    end
+  end
+
+  defp format_lease_time(nil), do: "-"
+  defp format_lease_time(seconds) when seconds < 60, do: "#{seconds}s"
+  defp format_lease_time(seconds) when seconds < 3600, do: "#{div(seconds, 60)}m"
+
+  defp format_lease_time(seconds) when seconds < 86400,
+    do: "#{div(seconds, 3600)}h #{div(rem(seconds, 3600), 60)}m"
+
+  defp format_lease_time(seconds),
+    do: "#{div(seconds, 86400)}d #{div(rem(seconds, 86400), 3600)}h"
 
   defp handle_telemetry(_event, _measurements, _metadata, %{pid: pid}) do
     send(pid, {:telemetry_event, nil, nil, nil})

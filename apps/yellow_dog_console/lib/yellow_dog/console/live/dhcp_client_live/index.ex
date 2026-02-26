@@ -149,7 +149,7 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
                         <% end %>
                       </td>
                       <td>
-                        <%= if iface.state == :bound do %>
+                        <%= if iface.state in [:bound, :renewing, :rebinding] do %>
                           <button
                             phx-click="release"
                             phx-value-interface={iface.interface}
@@ -221,6 +221,34 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
                   <div class="text-sm font-semibold text-base-content/70">T2 (Rebind)</div>
                   <div>{format_lease_time(iface.lease.t2)}</div>
                 </div>
+                <div>
+                  <div class="text-sm font-semibold text-base-content/70">Time Remaining</div>
+                  <div>{format_lease_remaining(iface.lease)}</div>
+                </div>
+                <div>
+                  <div class="text-sm font-semibold text-base-content/70">Obtained At</div>
+                  <div class="text-sm">
+                    {if iface.lease.obtained_at,
+                      do: Calendar.strftime(iface.lease.obtained_at, "%Y-%m-%d %H:%M:%S UTC"),
+                      else: "-"}
+                  </div>
+                </div>
+
+                <%= if iface.lease.mtu do %>
+                  <div>
+                    <div class="text-sm font-semibold text-base-content/70">MTU</div>
+                    <div>{iface.lease.mtu}</div>
+                  </div>
+                <% end %>
+
+                <%= if iface.lease.ntp_servers != [] do %>
+                  <div>
+                    <div class="text-sm font-semibold text-base-content/70">NTP Servers</div>
+                    <div class="font-mono text-sm">
+                      {Enum.map_join(iface.lease.ntp_servers, ", ", &format_ip/1)}
+                    </div>
+                  </div>
+                <% end %>
 
                 <%= if iface.lease.control_url do %>
                   <div class="col-span-full">
@@ -229,10 +257,26 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
                   </div>
                 <% end %>
 
+                <%= if iface.lease.control_url_fallback do %>
+                  <div class="col-span-full">
+                    <div class="text-sm font-semibold text-base-content/70">
+                      Control URL (Fallback)
+                    </div>
+                    <div class="font-mono text-sm">{iface.lease.control_url_fallback}</div>
+                  </div>
+                <% end %>
+
                 <%= if iface.lease.cluster_id do %>
                   <div>
                     <div class="text-sm font-semibold text-base-content/70">Cluster ID</div>
                     <div class="font-mono text-sm">{iface.lease.cluster_id}</div>
+                  </div>
+                <% end %>
+
+                <%= if iface.lease.server_id do %>
+                  <div>
+                    <div class="text-sm font-semibold text-base-content/70">Server ID</div>
+                    <div class="font-mono text-sm">{iface.lease.server_id}</div>
                   </div>
                 <% end %>
               </div>
@@ -280,6 +324,14 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
   defp state_badge_class(:selecting), do: "badge-ghost"
   defp state_badge_class(:requesting), do: "badge-warning"
   defp state_badge_class(_), do: "badge-ghost"
+
+  defp format_lease_remaining(lease) do
+    case YellowDog.DhcpClient.Lease.time_remaining(lease) do
+      nil -> "-"
+      0 -> "Expired"
+      remaining -> format_lease_time(remaining)
+    end
+  end
 
   defp format_lease_time(nil), do: "-"
   defp format_lease_time(seconds) when seconds < 60, do: "#{seconds}s"

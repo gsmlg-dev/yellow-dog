@@ -1956,6 +1956,118 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     end
   end
 
+  # ── T1/T2 timer transitions from :bound ──
+
+  describe "T1/T2 timer transitions" do
+    test "T1 timeout from :bound transitions to :renewing", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      assert get_state(pid) == :init
+
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+      wait_for_state(pid, :requesting)
+
+      # Send ACK with very short T1 (1 second) so the timer fires quickly
+      send_ack_with_timers(pid, 1, 3600)
+      wait_for_state(pid, :bound)
+
+      # Wait for T1 timeout (1s + some buffer)
+      wait_for_state(pid, :renewing, 3000)
+    end
+
+    test "T2 timeout from :bound transitions to :rebinding when T1 is skipped", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      assert get_state(pid) == :init
+
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+      wait_for_state(pid, :requesting)
+
+      # Short T1 and T2 — T1 fires first → renewing, then T2 → rebinding
+      send_ack_with_timers(pid, 1, 2)
+      wait_for_state(pid, :bound)
+
+      # Should go renewing → rebinding within ~3s
+      wait_for_state(pid, :rebinding, 5000)
+    end
+  end
+
+  # ── retransmit in renewing/rebinding ──
+
+  describe "retransmit in renewing" do
+    test "retransmit timer in :renewing sends unicast and emits packet:tx", ctx do
+      handler_id = "test-retransmit-renewing-#{:erlang.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcp_client, :packet, :tx],
+        fn _event, _measurements, metadata, %{pid: pid} ->
+          send(pid, {:packet_tx, metadata})
+        end,
+        %{pid: self()}
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+      wait_for_state(pid, :requesting)
+      send_ack_with_timers(pid, 1, 3600)
+      wait_for_state(pid, :bound)
+
+      # Drain telemetry events from the DORA cycle
+      flush_messages()
+
+      # Wait for T1 → renewing
+      wait_for_state(pid, :renewing, 3000)
+
+      # Should get at least one :request TX from the renewing enter handler
+      assert_receive {:packet_tx, %{type: :request, interface: "test0"}}, 2000
+    end
+  end
+
+  describe "retransmit in rebinding" do
+    test "retransmit timer in :rebinding sends broadcast and emits packet:tx", ctx do
+      handler_id = "test-retransmit-rebinding-#{:erlang.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcp_client, :packet, :tx],
+        fn _event, _measurements, metadata, %{pid: pid} ->
+          send(pid, {:packet_tx, metadata})
+        end,
+        %{pid: self()}
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :selecting)
+      wait_for_state(pid, :requesting)
+      send_ack_with_timers(pid, 1, 2)
+      wait_for_state(pid, :bound)
+
+      # Drain telemetry events from the DORA cycle
+      flush_messages()
+
+      # Wait for rebinding (T1=1s → renewing, T2=2s → rebinding)
+      wait_for_state(pid, :rebinding, 5000)
+
+      # Should get a :request TX from rebinding enter handler
+      assert_receive {:packet_tx, %{type: :request, interface: "test0"}}, 2000
+    end
+  end
+
+  defp flush_messages do
+    receive do
+      _ -> flush_messages()
+    after
+      50 -> :ok
+    end
+  end
+
   # ── catch-all handler ──
 
   describe "catch-all handler" do
