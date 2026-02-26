@@ -648,4 +648,31 @@ defmodule YellowDog.DhcpClient.PropertyTest do
       end
     end
   end
+
+  # -- Lease temporal monotonic ordering --
+
+  describe "Lease temporal monotonic ordering" do
+    property "if expired? then t1_elapsed? and t2_elapsed? (t1 <= t2 <= lease_time)" do
+      check all(
+              lease_time <- integer(3..7200),
+              t1 <- integer(1..(lease_time - 1)),
+              t2 <- integer(t1..lease_time)
+            ) do
+        # Lease clearly expired: obtained_at is (lease_time + 10) seconds ago
+        obtained_at = DateTime.add(DateTime.utc_now(), -(lease_time + 10), :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time,
+          t1: t1,
+          t2: t2
+        }
+
+        assert Lease.expired?(lease)
+        assert Lease.t1_elapsed?(lease)
+        assert Lease.t2_elapsed?(lease)
+      end
+    end
+  end
 end
