@@ -118,6 +118,9 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   end
 
   @impl true
+  def handle_info(_msg, state), do: {:noreply, state, @timeout_ms}
+
+  @impl true
   def terminate(_reason, %{socket: socket}) when not is_nil(socket) do
     Abyss.Transport.UDP.close(socket)
   end
