@@ -335,10 +335,7 @@ defmodule YellowDog.Console.Dhcpv4Live.ActivityLive do
   end
 
   defp filter_by_type(entries, type) do
-    type_atom = String.to_existing_atom(type)
-    Enum.filter(entries, fn e -> e.type == type_atom end)
-  rescue
-    ArgumentError -> entries
+    Enum.filter(entries, fn e -> to_string(e.type) == type end)
   end
 
   defp filter_by_search(entries, ""), do: entries

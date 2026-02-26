@@ -42,6 +42,7 @@ defmodule YellowDog.Fingerprint.Types.DeviceProfile do
   ]
 
   @valid_device_types ~w(computer phone tablet printer voip_phone camera tv game_console iot network_equipment server virtual_machine container unknown)a
+  @valid_device_type_map Map.new(@valid_device_types, fn atom -> {to_string(atom), atom} end)
 
   @doc """
   Parses a device type string to atom, defaulting to :unknown.
@@ -50,10 +51,7 @@ defmodule YellowDog.Fingerprint.Types.DeviceProfile do
   def parse_device_type(type) when type in @valid_device_types, do: type
 
   def parse_device_type(type) when is_binary(type) do
-    atom = String.to_existing_atom(type)
-    if atom in @valid_device_types, do: atom, else: :unknown
-  rescue
-    ArgumentError -> :unknown
+    Map.get(@valid_device_type_map, type, :unknown)
   end
 
   def parse_device_type(_), do: :unknown
