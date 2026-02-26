@@ -695,12 +695,16 @@ defmodule YellowDog.Dns.RecursionWorkerTest do
 
     @tag :capture_log
     test "default opts use root servers and default timeout" do
-      # Without specifying root_servers, it uses real root servers
-      # which will timeout in tests (short timeout)
+      # Use unreachable servers so we get a quick timeout without hitting the network.
+      # This verifies resolve/2 handles opts correctly without crashing.
       query = build_test_query("default-opts.example.com")
 
-      # Just verify resolve doesn't crash with default opts
-      result = RecursionWorker.resolve(query, %{query_timeout: 100})
+      result =
+        RecursionWorker.resolve(query, %{
+          root_servers: [{{127, 0, 0, 1}, 1}],
+          query_timeout: 100
+        })
+
       assert {:error, _reason} = result
     end
   end
