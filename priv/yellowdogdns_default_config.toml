@@ -43,6 +43,7 @@ valid_lifetime = 7200
 
 [identity]
 data_path = "data/identity"
+# registration_url = "http://yellowdog:4270/api/hosts/register"
 
 [identity.approval]
 default_action = "pending"
