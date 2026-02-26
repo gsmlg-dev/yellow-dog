@@ -840,6 +840,40 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     def apply_dns(_interface, _lease), do: :ok
   end
 
+  defmodule MockOSIntegrationError do
+    @moduledoc false
+    @behaviour YellowDog.DhcpClient.OSIntegration
+
+    @impl true
+    def apply_lease(_interface, _lease), do: {:error, :simulated_os_error}
+
+    @impl true
+    def deconfigure(_interface), do: {:error, :simulated_os_error}
+
+    @impl true
+    def apply_routes(_interface, _lease), do: :ok
+
+    @impl true
+    def apply_dns(_interface, _lease), do: :ok
+  end
+
+  defmodule MockOSIntegrationRaise do
+    @moduledoc false
+    @behaviour YellowDog.DhcpClient.OSIntegration
+
+    @impl true
+    def apply_lease(_interface, _lease), do: raise("simulated OS apply_lease crash")
+
+    @impl true
+    def deconfigure(_interface), do: raise("simulated OS deconfigure crash")
+
+    @impl true
+    def apply_routes(_interface, _lease), do: :ok
+
+    @impl true
+    def apply_dns(_interface, _lease), do: :ok
+  end
+
   describe "OS integration" do
     setup ctx do
       Process.register(self(), :os_integration_test)
@@ -899,6 +933,64 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       wait_for_state(pid, :init, 2000)
 
       assert_receive {:deconfigure, "test0"}, 1000
+    end
+  end
+
+  # ── OS integration resilience ──
+
+  describe "OS integration resilience" do
+    test "apply_lease returning {:error, reason} does not prevent FSM reaching :bound", ctx do
+      pid =
+        start_fsm(Map.put(ctx, :os_module, MockOSIntegrationError), %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound, 2000)
+
+      assert is_struct(StateMachine.lease(pid), YellowDog.DhcpClient.Lease)
+    end
+
+    test "apply_lease raising exception does not crash FSM — FSM still reaches :bound", ctx do
+      pid =
+        start_fsm(Map.put(ctx, :os_module, MockOSIntegrationRaise), %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound, 2000)
+
+      assert is_struct(StateMachine.lease(pid), YellowDog.DhcpClient.Lease)
+    end
+
+    test "deconfigure returning {:error, reason} does not prevent return to :init", ctx do
+      pid =
+        start_fsm(Map.put(ctx, :os_module, MockOSIntegrationError), %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
+    end
+
+    test "deconfigure raising exception does not crash FSM — FSM returns to :init", ctx do
+      pid =
+        start_fsm(Map.put(ctx, :os_module, MockOSIntegrationRaise), %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      StateMachine.release(pid)
+      wait_for_state(pid, :init, 2000)
+
+      assert StateMachine.lease(pid) == nil
     end
   end
 
