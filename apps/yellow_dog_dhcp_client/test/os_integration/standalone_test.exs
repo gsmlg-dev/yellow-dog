@@ -269,4 +269,30 @@ defmodule YellowDog.DhcpClient.OSIntegration.StandaloneTest do
       assert is_integer(dur) and dur >= 0
     end
   end
+
+  describe "build_resolv_conf/2" do
+    test "with nil domain_name produces only nameserver lines" do
+      result = Standalone.build_resolv_conf([{8, 8, 8, 8}], nil)
+      refute String.contains?(result, "search")
+      assert String.contains?(result, "nameserver 8.8.8.8")
+    end
+
+    test "with empty string domain_name treats it as absent (no search line)" do
+      result = Standalone.build_resolv_conf([{8, 8, 8, 8}], "")
+      refute String.contains?(result, "search")
+      assert String.contains?(result, "nameserver 8.8.8.8")
+    end
+
+    test "with non-empty domain_name includes search line" do
+      result = Standalone.build_resolv_conf([{8, 8, 8, 8}], "example.com")
+      assert String.contains?(result, "search example.com")
+      assert String.contains?(result, "nameserver 8.8.8.8")
+    end
+
+    test "with multiple servers produces multiple nameserver lines" do
+      result = Standalone.build_resolv_conf([{8, 8, 8, 8}, {1, 1, 1, 1}], "example.com")
+      assert String.contains?(result, "nameserver 8.8.8.8")
+      assert String.contains?(result, "nameserver 1.1.1.1")
+    end
+  end
 end

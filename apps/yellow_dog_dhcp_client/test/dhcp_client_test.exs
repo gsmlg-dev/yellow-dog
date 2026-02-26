@@ -68,6 +68,18 @@ defmodule YellowDog.DhcpClientTest do
       assert {:error, {:mac_detection_failed, _reason}} = result
     end
 
+    test "logs a warning when MAC auto-detect fails" do
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          DhcpClient.start_interface("nonexistent_mac_logtest_iface")
+        end)
+
+      assert String.contains?(log, "could not auto-detect MAC")
+      assert String.contains?(log, "nonexistent_mac_logtest_iface")
+    end
+
     test "returns {:error, :already_started} when called twice for same interface" do
       unique = System.unique_integer([:positive])
       iface = "test_dup_#{unique}"

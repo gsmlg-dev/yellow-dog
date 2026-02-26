@@ -206,10 +206,12 @@ defmodule YellowDog.DhcpClient.OSIntegration.Standalone do
     :ok
   end
 
-  defp build_resolv_conf(servers, domain_name) do
+  @doc false
+  def build_resolv_conf(servers, domain_name) do
     lines =
       case domain_name do
         nil -> []
+        "" -> []
         domain -> ["search #{domain}"]
       end
 
