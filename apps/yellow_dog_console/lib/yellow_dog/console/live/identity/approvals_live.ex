@@ -220,6 +220,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   phx-click="approve"
                   phx-value-id={host.id}
                   phx-disable-with="Approving..."
+                  data-confirm={"Approve #{host.hostname}?"}
                   aria-label={"Approve #{host.hostname}"}
                 >
                   Approve
