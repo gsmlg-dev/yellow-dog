@@ -224,4 +224,48 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
       refute_receive {:reconciled, _}, 500
     end
   end
+
+  # -- file_event handling --
+
+  describe "file_event handling" do
+    test "file_event :stop is handled gracefully without crashing" do
+      status_before = ConfigWatcher.status()
+
+      # Simulate the file watcher process stopping
+      send(Process.whereis(ConfigWatcher), {:file_event, nil, :stop})
+      Process.sleep(50)
+
+      # ConfigWatcher is still alive and state is intact
+      status_after = ConfigWatcher.status()
+      assert is_map(status_after)
+
+      # reload_count should not change (stop event doesn't trigger config reload)
+      assert status_after.reload_count == status_before.reload_count
+    end
+
+    test "file_event for a non-matching path is silently ignored" do
+      count_before = ConfigWatcher.status().reload_count
+
+      # Send a file event for an unrelated path
+      send(
+        Process.whereis(ConfigWatcher),
+        {:file_event, nil, {"/some/completely/unrelated/file.conf", [:modified]}}
+      )
+
+      Process.sleep(50)
+
+      assert ConfigWatcher.status().reload_count == count_before
+    end
+
+    test "unknown messages are silently ignored (catch-all handler)" do
+      count_before = ConfigWatcher.status().reload_count
+
+      send(Process.whereis(ConfigWatcher), {:unexpected_msg, :some_payload, 12_345})
+      Process.sleep(50)
+
+      status = ConfigWatcher.status()
+      assert is_map(status)
+      assert status.reload_count == count_before
+    end
+  end
 end
