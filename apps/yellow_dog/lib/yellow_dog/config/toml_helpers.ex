@@ -134,11 +134,10 @@ defmodule YellowDog.Config.TomlHelpers do
   @spec atomic_write(Path.t(), String.t()) :: :ok | {:error, term()}
   def atomic_write(file_path, content) do
     dir = Path.dirname(file_path)
-    File.mkdir_p!(dir)
-
     tmp_path = file_path <> ".tmp"
 
-    with :ok <- File.write(tmp_path, content),
+    with :ok <- File.mkdir_p(dir),
+         :ok <- File.write(tmp_path, content),
          :ok <- File.rename(tmp_path, file_path) do
       :ok
     else

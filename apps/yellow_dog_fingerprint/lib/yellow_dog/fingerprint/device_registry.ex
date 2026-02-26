@@ -287,7 +287,11 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
 
   defp save_devices(store, data_dir) do
     path = Path.join(data_dir, "devices.toml")
-    File.mkdir_p!(data_dir)
+
+    case File.mkdir_p(data_dir) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to create data dir: #{inspect(reason)}")
+    end
 
     {:ok, devices} = Store.list(store)
     devices = Enum.sort_by(devices, & &1.last_seen, {:desc, DateTime})
@@ -317,10 +321,10 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
       end)
       |> Enum.join("\n")
 
-    File.write!(path, content)
-  rescue
-    error ->
-      Logger.warning("Failed to save devices: #{inspect(error)}")
+    case File.write(path, content) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to save devices: #{inspect(reason)}")
+    end
   end
 
   defp read_toml(path) do
