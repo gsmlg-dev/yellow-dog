@@ -49,7 +49,7 @@ defmodule YellowDog.DhcpClient.Packet do
     * `:capabilities` - List of capability atoms (default: `[]`)
     * `:version` - Protocol version (default: `"1.0"`)
   """
-  @spec build_discover(binary(), non_neg_integer(), keyword()) :: binary()
+  @spec build_discover(binary(), non_neg_integer(), keyword()) :: iodata()
   def build_discover(mac, xid, opts \\ []) do
     hostname = Keyword.get(opts, :hostname)
     version = Keyword.get(opts, :version, "1.0")
@@ -84,7 +84,7 @@ defmodule YellowDog.DhcpClient.Packet do
           :inet.ip4_address(),
           keyword()
         ) ::
-          binary()
+          iodata()
   def build_request(mac, xid, server_ip, offered_ip, opts \\ []) do
     hostname = Keyword.get(opts, :hostname)
     version = Keyword.get(opts, :version, "1.0")
@@ -119,7 +119,7 @@ defmodule YellowDog.DhcpClient.Packet do
     * `:capabilities` - List of capability atoms (default: `[]`)
   """
   @spec build_renew_request(binary(), non_neg_integer(), :inet.ip4_address(), keyword()) ::
-          binary()
+          iodata()
   def build_renew_request(mac, xid, client_ip, opts \\ []) do
     hostname = Keyword.get(opts, :hostname)
     version = Keyword.get(opts, :version, "1.0")
@@ -141,7 +141,7 @@ defmodule YellowDog.DhcpClient.Packet do
   Builds a DHCPDECLINE packet for duplicate address detection failure.
   """
   @spec build_decline(binary(), non_neg_integer(), :inet.ip4_address(), :inet.ip4_address()) ::
-          binary()
+          iodata()
   def build_decline(mac, xid, server_ip, declined_ip) do
     options = [
       msg_type_option(@decline),
