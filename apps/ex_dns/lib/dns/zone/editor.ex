@@ -496,7 +496,7 @@ defmodule DNS.Zone.Editor do
         "#{priority} #{exchange}"
 
       "TXT" ->
-        data
+        if is_list(data), do: Enum.join(data, " "), else: data
 
       "SOA" ->
         {mname, rname, serial, refresh, retry, expire, minimum} = data
@@ -530,19 +530,17 @@ defmodule DNS.Zone.Editor do
     ]
 
     # Sort records by type and name
-    sorted_records = Enum.sort_by(records, [& &1.type, & &1.name.value])
+    sorted_records = Enum.sort_by(records, &{to_string(&1.type), &1.name.value})
 
     # Group by type
     by_type = Enum.group_by(sorted_records, & &1.type)
 
     content =
       content ++
-        Enum.flat_map(by_type, fn {type, records} ->
-          [
-            "; #{String.upcase(to_string(type))} records",
-            Enum.map(records, &record_to_bind_line/1),
-            ""
-          ]
+        Enum.flat_map(by_type, fn {type, type_records} ->
+          ["; #{String.upcase(to_string(type))} records"] ++
+            Enum.map(type_records, &record_to_bind_line/1) ++
+            [""]
         end)
 
     {:ok, Enum.join(content, "\n")}
@@ -594,31 +592,40 @@ defmodule DNS.Zone.Editor do
   end
 
   defp record_to_bind_line(record) do
-    name = if record.name.value == record.zone_name.value, do: "@", else: record.name.value
-
-    "#{name} #{record.ttl} IN #{String.upcase(to_string(record.type))} #{format_record_data(record)}"
+    "#{record.name.value} #{record.ttl} IN #{String.upcase(to_string(record.type))} #{format_record_data(record)}"
   end
 
-  defp format_record_data_for_export(%{type: :a} = record),
-    do: record.data.data |> Tuple.to_list() |> Enum.join(".")
+  defp format_record_data_for_export(record) do
+    data = extract_data(record.data)
 
-  defp format_record_data_for_export(%{type: :aaaa} = record),
-    do: record.data.data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
+    case normalize_type_str(record.type) do
+      "A" ->
+        data |> Tuple.to_list() |> Enum.join(".")
 
-  defp format_record_data_for_export(%{type: type} = record) when type in [:cname, :ns, :txt],
-    do: to_string(record.data.data)
+      "AAAA" ->
+        data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
 
-  defp format_record_data_for_export(%{type: :mx} = record) do
-    {priority, exchange} = record.data.data
-    "#{priority} #{exchange}"
+      "CNAME" ->
+        to_string(data)
+
+      "NS" ->
+        to_string(data)
+
+      "MX" ->
+        {priority, exchange} = data
+        "#{priority} #{exchange}"
+
+      "TXT" ->
+        if is_list(data), do: Enum.join(data, " "), else: data
+
+      "SOA" ->
+        {mname, rname, serial, refresh, retry, expire, minimum} = data
+        "#{mname} #{rname} #{serial} #{refresh} #{retry} #{expire} #{minimum}"
+
+      _ ->
+        inspect(data)
+    end
   end
-
-  defp format_record_data_for_export(%{type: :soa} = record) do
-    {mname, rname, serial, refresh, retry, expire, minimum} = record.data.data
-    "#{mname} #{rname} #{serial} #{refresh} #{retry} #{expire} #{minimum}"
-  end
-
-  defp format_record_data_for_export(record), do: inspect(record.data.data)
 
   defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end
