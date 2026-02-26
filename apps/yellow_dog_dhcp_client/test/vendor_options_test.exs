@@ -109,6 +109,13 @@ defmodule YellowDog.DhcpClient.VendorOptionsTest do
     assert {:error, :malformed} = VendorOptions.decode_vendor_info(<<0, 0, 0, 1>>)
   end
 
+  test "returns :malformed (not :pen_mismatch) when PEN is correct but data_len exceeds binary" do
+    pen = VendorOptions.pen()
+    # Claim 100 bytes of data but only provide 5 — correct PEN, truncated body
+    data = <<pen::32, 100::8, "short">>
+    assert {:error, :malformed} = VendorOptions.decode_vendor_info(data)
+  end
+
   test "decode_vendor_info ignores trailing data after declared length" do
     sub_opts = <<2, 4, "test">>
     trailing = <<0xFF, 0xFF, 0xFF>>

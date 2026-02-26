@@ -675,4 +675,28 @@ defmodule YellowDog.DhcpClient.PropertyTest do
       end
     end
   end
+
+  describe "Lease.prefix_length boundary masks" do
+    test "all-zeros subnet mask returns 0" do
+      lease = %Lease{
+        ip: {192, 168, 1, 1},
+        subnet_mask: {0, 0, 0, 0},
+        lease_time: 3600,
+        obtained_at: DateTime.utc_now()
+      }
+
+      assert Lease.prefix_length(lease) == 0
+    end
+
+    test "all-ones subnet mask returns 32" do
+      lease = %Lease{
+        ip: {192, 168, 1, 1},
+        subnet_mask: {255, 255, 255, 255},
+        lease_time: 3600,
+        obtained_at: DateTime.utc_now()
+      }
+
+      assert Lease.prefix_length(lease) == 32
+    end
+  end
 end

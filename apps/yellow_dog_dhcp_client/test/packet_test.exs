@@ -700,5 +700,29 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert {:nak, reason} = Packet.parse_reply(data)
       assert reason == reason_str
     end
+
+    test "truncated Option 3 (router, 3 bytes) results in router: nil" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 3, length: 3, value: <<192, 168, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.router == nil
+    end
+
+    test "duplicate option codes — last occurrence in packet wins" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+        %Option{type: 6, length: 4, value: <<1, 1, 1, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      # index_options/1 uses Map.new so the last entry with key 6 wins
+      assert lease.dns_servers == [{1, 1, 1, 1}]
+    end
   end
 end

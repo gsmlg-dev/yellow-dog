@@ -89,6 +89,11 @@ defmodule YellowDog.DhcpClient.VendorOptions do
     {:ok, decode_sub_options(data)}
   end
 
+  def decode_vendor_info(<<pen::32, _data_len::8, _rest::binary>>)
+      when pen == @yellowdog_pen do
+    {:error, :malformed}
+  end
+
   def decode_vendor_info(<<_pen::32, _data_len::8, _rest::binary>>) do
     {:error, :pen_mismatch}
   end
