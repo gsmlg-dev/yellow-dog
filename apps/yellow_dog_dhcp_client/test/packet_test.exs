@@ -933,4 +933,169 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert ack_lease.lease_time == 3600
     end
   end
+
+  # ── parse_reply edge cases: malformed options ──
+
+  describe "parse_reply edge cases" do
+    test "DNS servers option with uneven byte count (4n+3) silently truncates" do
+      # 7 bytes = one full IP (4) + 3 trailing junk bytes
+      dns_data = <<8, 8, 8, 8, 1, 2, 3>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      # Only the complete IP quad should be extracted
+      assert lease.dns_servers == [{8, 8, 8, 8}]
+    end
+
+    test "DNS servers option with exactly 3 bytes returns empty list" do
+      dns_data = <<1, 2, 3>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.dns_servers == []
+    end
+
+    test "multiple DNS servers (8 bytes) returns two IPs" do
+      dns_data = <<8, 8, 8, 8, 1, 1, 1, 1>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.dns_servers == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+    end
+
+    test "missing subnet mask defaults to {255, 255, 255, 0}" do
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        # No subnet mask (option 1)
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.subnet_mask == {255, 255, 255, 0}
+    end
+
+    test "missing router defaults to nil" do
+      options = standard_offer_options()
+      # standard_offer_options includes router (type 3) — remove it
+      options = Enum.reject(options, fn %Option{type: t} -> t == 3 end)
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.router == nil
+    end
+
+    test "missing T1/T2 defaults to 50%/87.5% of lease time" do
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>}
+        # No T1 (58) or T2 (59) options
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.lease_time == 3600
+      # T1 = 50% of 3600 = 1800
+      assert lease.t1 == 1800
+      # T2 = 87.5% of 3600 = 3150
+      assert lease.t2 == 3150
+    end
+
+    test "MTU option with wrong length (not 2 bytes) returns nil" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 26, length: 4, value: <<0, 0, 5, 220>>}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      # extract_u16 expects exactly 2 bytes, 4 bytes won't match
+      assert lease.mtu == nil
+    end
+
+    test "domain name option with empty string returns nil" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 15, length: 0, value: ""}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.domain_name == nil
+    end
+
+    test "NAK with reason message extracts the reason string" do
+      options = [
+        %Option{type: 53, length: 1, value: <<6>>},
+        %Option{type: 56, length: 19, value: "requested IP in use"}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:nak, reason} = Packet.parse_reply(bin)
+      assert reason == "requested IP in use"
+    end
+
+    test "NAK without reason message returns default string" do
+      options = [%Option{type: 53, length: 1, value: <<6>>}]
+
+      bin = build_reply(options: options)
+      assert {:nak, reason} = Packet.parse_reply(bin)
+      assert reason == "DHCPNAK received"
+    end
+
+    test "NTP servers option is correctly extracted" do
+      ntp_data = <<132, 163, 96, 1, 132, 163, 96, 2>>
+
+      options =
+        standard_offer_options() ++
+          [%Option{type: 42, length: byte_size(ntp_data), value: ntp_data}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.ntp_servers == [{132, 163, 96, 1}, {132, 163, 96, 2}]
+    end
+
+    test "MTU option with correct 2-byte value is extracted" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 26, length: 2, value: <<5, 220>>}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.mtu == 1500
+    end
+  end
 end
