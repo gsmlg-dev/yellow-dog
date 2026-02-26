@@ -257,6 +257,7 @@ defmodule Abyss.Handler do
         {:stop, _, _} = stop -> stop
       end
 
+      @impl GenServer
       def handle_info(
             {:new_connection, listener_socket, recv_data},
             %{broadcast: true} = state
@@ -266,10 +267,12 @@ defmodule Abyss.Handler do
         {:stop, _, _} = stop -> stop
       end
 
+      @impl GenServer
       def handle_info(:timeout, state) do
         {:stop, {:shutdown, :timeout}, state}
       end
 
+      @impl GenServer
       def handle_info(:memory_check, %{memory_check_interval: interval} = state) do
         case :erlang.process_info(self(), :memory) do
           {:memory, memory_words} ->
@@ -341,6 +344,7 @@ defmodule Abyss.Handler do
         |> Abyss.Handler.handle_continuation(final_state)
       end
 
+      @impl true
       def handle_continue({:handle_broadcast_data, recv_data}, state) do
         _reason = __MODULE__.handle_data(recv_data, state)
         Process.send_after(self(), :broadcast, 10)
@@ -365,6 +369,7 @@ defmodule Abyss.Handler do
       end
 
       # Called by GenServer if we hit our read_timeout. Socket is still open
+      @impl true
       def terminate({:shutdown, :timeout}, state) do
         out = __MODULE__.handle_timeout(state)
         terminate_cleanup(state, :timeout)
@@ -372,6 +377,7 @@ defmodule Abyss.Handler do
       end
 
       # Called if we're being shutdown in an orderly manner. Socket is still open
+      @impl true
       def terminate(:shutdown, state) do
         out = __MODULE__.handle_shutdown(state)
         terminate_cleanup(state, :shutdown)
@@ -380,6 +386,7 @@ defmodule Abyss.Handler do
 
       # Called if the socket encountered an error and we are configured to shutdown silently.
       # Socket is closed
+      @impl true
       def terminate({:shutdown, {:silent_termination, reason}}, state) do
         out = __MODULE__.handle_error(reason, state)
         terminate_cleanup(state, reason)
@@ -388,6 +395,7 @@ defmodule Abyss.Handler do
 
       # Called if the remote end shut down the connection, or if the local end closed the
       # connection by returning a `{:close,...}` tuple (in which case the socket will be open)
+      @impl true
       def terminate({:shutdown, reason}, state) do
         out = __MODULE__.handle_close(state)
         terminate_cleanup(state, reason)

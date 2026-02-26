@@ -176,6 +176,7 @@ defmodule YellowDog.Fingerprint.Database do
     {:noreply, %{state | stores: stores}}
   end
 
+  @impl true
   def handle_cast({:record_fingerprint, %Fingerprint{protocol: :dhcpv6} = fp}, state) do
     stores = update_fingerprint_entry(state.stores, :v6, fp)
     {:noreply, %{state | stores: stores}}
