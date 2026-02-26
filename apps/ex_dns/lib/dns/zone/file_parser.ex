@@ -544,7 +544,12 @@ defmodule DNS.Zone.FileParser do
 
     case parts do
       [flags, tag, value] ->
-        %{type: :caa, flags: parse_integer_param(flags), tag: tag, value: String.trim(value, "\"")}
+        %{
+          type: :caa,
+          flags: parse_integer_param(flags),
+          tag: tag,
+          value: String.trim(value, "\"")
+        }
 
       _ ->
         %{type: :caa, data: data_str}
