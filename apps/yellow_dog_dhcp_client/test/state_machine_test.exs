@@ -1249,7 +1249,8 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert StateMachine.lease(pid) == nil
     end
 
-    test "ACK without Option 58/59 computes RFC defaults: t1=lease_time/2, t2=7*lease_time/8", ctx do
+    test "ACK without Option 58/59 computes RFC defaults: t1=lease_time/2, t2=7*lease_time/8",
+         ctx do
       pid = start_fsm(ctx, %{selection_window_ms: 30})
       send_offer(pid)
       wait_for_state(pid, :requesting, 1000)
@@ -1257,6 +1258,7 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       # Build ACK with lease_time=3600 but NO Option 58 (t1) or 59 (t2)
       xid = get_xid(pid)
       {a, b, c, d} = {192, 168, 1, 1}
+
       opts_no_timers = [
         %Option{type: 53, length: 1, value: <<5>>},
         %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
@@ -1771,7 +1773,8 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
   # ── Store crash fallback ──
 
   describe "store crash fallback" do
-    test "starts in :init when store_pid raises on lookup (try_recover_from_store rescues)", ctx do
+    test "starts in :init when store_pid raises on lookup (try_recover_from_store rescues)",
+         ctx do
       # Passing a bad store_pid causes LeaseStore.lookup to raise (exit).
       # try_recover_from_store rescues and returns :not_found → FSM starts in :init.
       {:ok, pid} =

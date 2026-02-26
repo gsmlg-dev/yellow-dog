@@ -691,6 +691,7 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
     test "DHCPNAK with custom message in Option 56 returns that message as reason" do
       reason_str = "address in use: policy violation"
+
       nak_options = [
         %Option{type: 53, length: 1, value: <<6>>},
         %Option{type: 56, length: byte_size(reason_str), value: reason_str}
@@ -739,8 +740,9 @@ defmodule YellowDog.DhcpClient.PacketTest do
     end
 
     test "build_discover with oversized MAC (>16 bytes) does not crash — truncates to 16" do
-      oversized_mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11,
-                        0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA>>
+      oversized_mac =
+        <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+          0x88, 0x99, 0xAA>>
 
       packet = Packet.build_discover(oversized_mac, 0x12345678)
       assert is_binary(packet)
