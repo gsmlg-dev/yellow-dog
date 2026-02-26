@@ -77,6 +77,18 @@ defmodule YellowDogIdentity.TokenTest do
       {:ok, token, raw_token} = Token.create(%{hostname_pattern: "web-*"})
       assert {:error, :hostname_mismatch} = Token.verify(token, raw_token, "db-01")
     end
+
+    test "rejects token with different length hash" do
+      {:ok, token, _raw_token} = Token.create(%{})
+      assert {:error, :invalid_token} = Token.verify(token, "", "host")
+    end
+
+    test "rejects token with partial prefix match" do
+      {:ok, token, raw_token} = Token.create(%{})
+      # Modify just the last character to test constant-time comparison
+      corrupted = String.slice(raw_token, 0..-2//1) <> "X"
+      assert {:error, :invalid_token} = Token.verify(token, corrupted, "host")
+    end
   end
 
   describe "valid?/1" do

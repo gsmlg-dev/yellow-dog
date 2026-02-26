@@ -580,6 +580,23 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
+  describe "find_key — malformed key map" do
+    test "rejects token when matching key has invalid JWK fields", %{jwk: jwk} do
+      # A key with matching kid but invalid/missing JWK fields should not crash
+      malformed_key = %{"kid" => @kid, "kty" => "INVALID", "bogus" => true}
+      :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => [malformed_key]}, System.monotonic_time(:second)})
+
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # Should return error, not crash
+      result = GCP.verify(ctx)
+      assert {:untrusted, reason} = result
+      assert reason in [:key_not_found, :invalid_signature]
+    end
+  end
+
   describe "evidence structure" do
     test "evidence contains all expected fields", %{jwk: jwk} do
       claims = valid_gcp_claims()
