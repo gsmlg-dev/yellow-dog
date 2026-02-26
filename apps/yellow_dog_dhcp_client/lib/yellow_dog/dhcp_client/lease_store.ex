@@ -201,7 +201,8 @@ defmodule YellowDog.DhcpClient.LeaseStore do
       "t2" => lease.t2,
       "obtained_at" => DateTime.to_iso8601(lease.obtained_at),
       "xid" => lease.xid,
-      "yellowdog_server" => Map.get(lease, :yellowdog_server, false)
+      "yellowdog_server" => Map.get(lease, :yellowdog_server, false),
+      "yellowdog_vendor_class" => Map.get(lease, :yellowdog_vendor_class, false)
     }
 
     map
@@ -259,6 +260,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
       obtained_at: parse_datetime(Map.get(map, "obtained_at")),
       xid: Map.get(map, "xid"),
       yellowdog_server: Map.get(map, "yellowdog_server", false),
+      yellowdog_vendor_class: Map.get(map, "yellowdog_vendor_class", false),
       control_url: Map.get(map, "control_url"),
       control_url_fallback: Map.get(map, "control_url_fallback"),
       auth_token: Map.get(map, "auth_token"),
