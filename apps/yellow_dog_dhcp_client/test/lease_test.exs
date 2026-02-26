@@ -132,6 +132,54 @@ defmodule YellowDog.DhcpClient.LeaseTest do
     end
   end
 
+  # ── expires_at/1 ──
+
+  describe "expires_at/1" do
+    test "returns correct expiry DateTime" do
+      obtained = ~U[2026-01-01 00:00:00Z]
+      lease = make_lease(%{obtained_at: obtained, lease_time: 3600})
+      assert Lease.expires_at(lease) == ~U[2026-01-01 01:00:00Z]
+    end
+
+    test "returns nil when lease_time is nil" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), lease_time: nil}
+      assert Lease.expires_at(lease) == nil
+    end
+
+    test "returns nil when obtained_at is nil" do
+      lease = %Lease{obtained_at: nil, lease_time: 3600}
+      assert Lease.expires_at(lease) == nil
+    end
+
+    test "returns nil when lease_time is 0" do
+      lease = %Lease{obtained_at: DateTime.utc_now(), lease_time: 0}
+      assert Lease.expires_at(lease) == nil
+    end
+  end
+
+  # ── time_remaining/1 ──
+
+  describe "time_remaining/1" do
+    test "returns positive seconds for fresh lease" do
+      lease = make_lease(%{lease_time: 3600, obtained_at: DateTime.utc_now()})
+      remaining = Lease.time_remaining(lease)
+      assert is_integer(remaining)
+      assert remaining > 3590
+      assert remaining <= 3600
+    end
+
+    test "returns 0 for expired lease" do
+      past = DateTime.add(DateTime.utc_now(), -7200, :second)
+      lease = make_lease(%{lease_time: 3600, obtained_at: past})
+      assert Lease.time_remaining(lease) == 0
+    end
+
+    test "returns nil when lease data is incomplete" do
+      lease = %Lease{obtained_at: nil, lease_time: nil}
+      assert Lease.time_remaining(lease) == nil
+    end
+  end
+
   # ── prefix_length/1 ──
 
   describe "prefix_length/1" do

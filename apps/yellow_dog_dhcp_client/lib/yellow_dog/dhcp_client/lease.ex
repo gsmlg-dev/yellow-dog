@@ -105,6 +105,38 @@ defmodule YellowDog.DhcpClient.Lease do
   def t2_elapsed?(%__MODULE__{}), do: true
 
   @doc """
+  Returns the `DateTime` at which the lease expires.
+
+  Returns `nil` if `obtained_at` or `lease_time` is missing/invalid.
+
+  ## Examples
+
+      iex> lease = %YellowDog.DhcpClient.Lease{obtained_at: ~U[2026-01-01 00:00:00Z], lease_time: 3600}
+      iex> YellowDog.DhcpClient.Lease.expires_at(lease)
+      ~U[2026-01-01 01:00:00Z]
+  """
+  @spec expires_at(t()) :: DateTime.t() | nil
+  def expires_at(%__MODULE__{obtained_at: %DateTime{} = obtained_at, lease_time: lease_time})
+      when is_integer(lease_time) and lease_time > 0 do
+    DateTime.add(obtained_at, lease_time, :second)
+  end
+
+  def expires_at(%__MODULE__{}), do: nil
+
+  @doc """
+  Returns the number of seconds remaining until the lease expires.
+
+  Returns `0` if the lease has already expired, `nil` if the lease data is incomplete.
+  """
+  @spec time_remaining(t()) :: non_neg_integer() | nil
+  def time_remaining(%__MODULE__{} = lease) do
+    case expires_at(lease) do
+      nil -> nil
+      expires -> max(DateTime.diff(expires, DateTime.utc_now(), :second), 0)
+    end
+  end
+
+  @doc """
   Converts the subnet mask to a CIDR prefix length.
 
   ## Examples
