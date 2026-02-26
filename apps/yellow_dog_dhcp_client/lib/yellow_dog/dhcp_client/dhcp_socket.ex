@@ -16,8 +16,8 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
 
   @callback open(interface :: String.t(), owner :: pid()) ::
               {:ok, socket_ref()} | {:error, term()}
-  @callback send_broadcast(socket_ref(), packet :: binary()) :: :ok | {:error, term()}
-  @callback send_unicast(socket_ref(), dest :: :inet.ip4_address(), packet :: binary()) ::
+  @callback send_broadcast(socket_ref(), packet :: iodata()) :: :ok | {:error, term()}
+  @callback send_unicast(socket_ref(), dest :: :inet.ip4_address(), packet :: iodata()) ::
               :ok | {:error, term()}
   @callback send_arp_probe(socket_ref(), target_ip :: :inet.ip4_address()) ::
               :ok | {:error, term()}
@@ -38,13 +38,13 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
   end
 
   @doc "Sends a DHCP broadcast packet through the socket."
-  @spec send_broadcast(GenServer.server(), binary()) :: :ok | {:error, term()}
+  @spec send_broadcast(GenServer.server(), iodata()) :: :ok | {:error, term()}
   def send_broadcast(server, packet) do
     GenServer.call(server, {:send_broadcast, packet})
   end
 
   @doc "Sends a DHCP unicast packet to `dest_ip` through the socket."
-  @spec send_unicast(GenServer.server(), :inet.ip4_address(), binary()) :: :ok | {:error, term()}
+  @spec send_unicast(GenServer.server(), :inet.ip4_address(), iodata()) :: :ok | {:error, term()}
   def send_unicast(server, dest_ip, packet) do
     GenServer.call(server, {:send_unicast, dest_ip, packet})
   end
