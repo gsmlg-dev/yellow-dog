@@ -35,7 +35,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     params = %{
       hostname_pattern: pattern,
       max_uses: safe_to_integer(max_uses, 1),
-      ttl_seconds: safe_to_integer(ttl_hours, 24) * 3600,
+      ttl_seconds: safe_ttl(safe_to_integer(ttl_hours, 24)) * 3600,
       role: if(role == "", do: nil, else: role),
       created_by: "console-operator"
     }
@@ -259,6 +259,10 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
   end
 
   defp safe_to_integer(_, default), do: default
+
+  # Ensures TTL is not 0 (would create already-expired token)
+  defp safe_ttl(hours) when hours <= 0, do: 24
+  defp safe_ttl(hours), do: hours
 
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")

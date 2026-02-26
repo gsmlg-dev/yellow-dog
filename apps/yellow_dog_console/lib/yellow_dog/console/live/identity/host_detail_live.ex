@@ -194,7 +194,11 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                   </div>
                   <div class="flex justify-between">
                     <dt class="text-base-content/70">Trust Level</dt>
-                    <dd><span class="badge badge-outline">{@host.trust_level}</span></dd>
+                    <dd>
+                      <span class={trust_level_badge_class(@host.trust_level)}>
+                        {@host.trust_level}
+                      </span>
+                    </dd>
                   </div>
                   <div class="flex justify-between">
                     <dt class="text-base-content/70">Trust Provider</dt>
@@ -311,6 +315,13 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   defp status_badge_class(:approved), do: "badge badge-success"
   defp status_badge_class(:revoked), do: "badge badge-error"
   defp status_badge_class(_), do: "badge"
+
+  defp trust_level_badge_class(:cloud_verified), do: "badge badge-success"
+  defp trust_level_badge_class(:token_verified), do: "badge badge-warning"
+  defp trust_level_badge_class(:network_verified), do: "badge badge-info"
+  defp trust_level_badge_class(:network_partial), do: "badge badge-info badge-outline"
+  defp trust_level_badge_class(:unverified), do: "badge badge-error"
+  defp trust_level_badge_class(_), do: "badge badge-outline"
 
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")

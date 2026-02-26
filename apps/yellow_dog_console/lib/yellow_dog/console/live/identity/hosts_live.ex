@@ -28,7 +28,9 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
   end
 
   def handle_event("search", %{"q" => query}, socket) do
-    {:noreply, socket |> assign(:search, query) |> load_hosts()}
+    # Sanitize: trim and limit length to prevent DoS
+    sanitized = query |> String.trim() |> String.slice(0, 256)
+    {:noreply, socket |> assign(:search, sanitized) |> load_hosts()}
   end
 
   def handle_event("refresh", _params, socket) do
@@ -120,7 +122,9 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
                     {host.status}
                   </span>
                 </td>
-                <td><span class="badge badge-outline badge-sm">{host.trust_level}</span></td>
+                <td>
+                  <span class={trust_level_badge_class_sm(host.trust_level)}>{host.trust_level}</span>
+                </td>
                 <td>{host.trust_provider}</td>
                 <td class="font-mono text-xs max-w-[200px] truncate">{host.age_recipient}</td>
                 <td class="text-sm">{format_time(host.created_at)}</td>
@@ -147,6 +151,13 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
   defp status_badge_class(:approved), do: "badge badge-success"
   defp status_badge_class(:revoked), do: "badge badge-error"
   defp status_badge_class(_), do: "badge"
+
+  defp trust_level_badge_class_sm(:cloud_verified), do: "badge badge-success badge-sm"
+  defp trust_level_badge_class_sm(:token_verified), do: "badge badge-warning badge-sm"
+  defp trust_level_badge_class_sm(:network_verified), do: "badge badge-info badge-sm"
+  defp trust_level_badge_class_sm(:network_partial), do: "badge badge-info badge-outline badge-sm"
+  defp trust_level_badge_class_sm(:unverified), do: "badge badge-error badge-sm"
+  defp trust_level_badge_class_sm(_), do: "badge badge-outline badge-sm"
 
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")

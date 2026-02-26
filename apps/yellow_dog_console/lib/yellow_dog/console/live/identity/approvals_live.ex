@@ -206,7 +206,10 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                 <div>
                   <h3 class="font-bold text-lg">{host.hostname}</h3>
                   <p class="text-sm text-base-content/70">
-                    Trust: <span class="badge badge-outline badge-sm">{host.trust_level}</span>
+                    Trust:
+                    <span class={trust_level_badge_class_sm(host.trust_level)}>
+                      {host.trust_level}
+                    </span>
                     via {host.trust_provider}
                   </p>
                 </div>
@@ -260,6 +263,13 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     </Layouts.app>
     """
   end
+
+  defp trust_level_badge_class_sm(:cloud_verified), do: "badge badge-success badge-sm"
+  defp trust_level_badge_class_sm(:token_verified), do: "badge badge-warning badge-sm"
+  defp trust_level_badge_class_sm(:network_verified), do: "badge badge-info badge-sm"
+  defp trust_level_badge_class_sm(:network_partial), do: "badge badge-info badge-outline badge-sm"
+  defp trust_level_badge_class_sm(:unverified), do: "badge badge-error badge-sm"
+  defp trust_level_badge_class_sm(_), do: "badge badge-outline badge-sm"
 
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
