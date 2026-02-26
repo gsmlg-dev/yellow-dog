@@ -231,7 +231,10 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
     setup do
       # Create a temporary config file so the watcher has a path to match against.
       tmp_dir = System.tmp_dir!()
-      config_file = Path.join(tmp_dir, "yd_debounce_test_#{System.unique_integer([:positive])}.toml")
+
+      config_file =
+        Path.join(tmp_dir, "yd_debounce_test_#{System.unique_integer([:positive])}.toml")
+
       File.write!(config_file, "")
 
       Application.delete_env(:yellow_dog_dhcp_client, :config)
