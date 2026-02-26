@@ -292,12 +292,24 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_intercept_rule(rule) do
-    %{
-      match: parse_match_pattern(Map.fetch!(rule, "match")),
-      type: parse_record_type(Map.fetch!(rule, "type")),
-      value: Map.fetch!(rule, "value"),
-      ttl: Map.get(rule, "ttl", 300)
-    }
+    with {:ok, match_str} <- Map.fetch(rule, "match"),
+         {:ok, type_str} <- Map.fetch(rule, "type"),
+         {:ok, value} <- Map.fetch(rule, "value") do
+      %{
+        match: parse_match_pattern(match_str),
+        type: parse_record_type(type_str),
+        value: value,
+        ttl: Map.get(rule, "ttl", 300)
+      }
+    else
+      :error ->
+        missing =
+          ["match", "type", "value"]
+          |> Enum.reject(&Map.has_key?(rule, &1))
+          |> Enum.join(", ")
+
+        raise ArgumentError, "intercept rule missing required fields: #{missing}"
+    end
   end
 
   @spec parse_match_pattern(String.t()) :: {:exact | :suffix | :prefix, String.t()}

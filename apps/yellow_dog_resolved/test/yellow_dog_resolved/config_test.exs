@@ -695,7 +695,7 @@ defmodule YellowDog.Resolved.ConfigTest do
       value = "10.0.0.1"
       """)
 
-      assert_raise KeyError, ~r/"match"/, fn ->
+      assert_raise ArgumentError, ~r/missing required fields.*match/, fn ->
         Config.load(path)
       end
     end
@@ -715,7 +715,7 @@ defmodule YellowDog.Resolved.ConfigTest do
       value = "10.0.0.1"
       """)
 
-      assert_raise KeyError, ~r/"type"/, fn ->
+      assert_raise ArgumentError, ~r/missing required fields.*type/, fn ->
         Config.load(path)
       end
     end
@@ -735,7 +735,7 @@ defmodule YellowDog.Resolved.ConfigTest do
       type = "a"
       """)
 
-      assert_raise KeyError, ~r/"value"/, fn ->
+      assert_raise ArgumentError, ~r/missing required fields.*value/, fn ->
         Config.load(path)
       end
     end

@@ -343,10 +343,6 @@ defmodule DNS.Zone do
   @spec record_type_to_option_key() :: %{atom() => atom()}
   def record_type_to_option_key, do: @record_type_to_option_key
 
-  @doc "Returns the list of all zone option keys (e.g., `:soa_records`, `:a_records`)."
-  @spec record_option_keys() :: [atom()]
-  def record_option_keys, do: Map.values(@record_type_to_option_key)
-
   @doc "Returns the option key for a given record type atom, or nil if unknown."
   @spec record_option_key(atom()) :: atom() | nil
   def record_option_key(type) when is_atom(type), do: Map.get(@record_type_to_option_key, type)
