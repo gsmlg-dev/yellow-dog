@@ -21,9 +21,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
   def handle_info({:host_registered, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info({:host_updated, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

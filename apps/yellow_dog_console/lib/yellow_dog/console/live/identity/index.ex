@@ -20,7 +20,9 @@ defmodule YellowDog.Console.IdentityLive.Index do
 
   @impl true
   def handle_info({:host_registered, _host}, socket), do: {:noreply, load_data(socket)}
+  @impl true
   def handle_info({:host_updated, _host}, socket), do: {:noreply, load_data(socket)}
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true

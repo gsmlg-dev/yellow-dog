@@ -20,7 +20,9 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
 
   @impl true
   def handle_info({:host_registered, _}, socket), do: {:noreply, load_hosts(socket)}
+  @impl true
   def handle_info({:host_updated, _}, socket), do: {:noreply, load_hosts(socket)}
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
