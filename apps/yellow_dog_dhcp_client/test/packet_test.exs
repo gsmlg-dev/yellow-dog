@@ -814,12 +814,13 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert find_option(discover_msg, 124) != nil
 
       # == Step 2: Build mock OFFER with Option 125 (YellowDog vendor info) ==
-      vendor_info = VendorOptions.encode_vendor_info(%{
-        control_url: "wss://yd.example.com/ctrl",
-        server_id: "srv-alpha",
-        cluster_id: "cluster-prod",
-        auth_token: "tok-secret-123"
-      })
+      vendor_info =
+        VendorOptions.encode_vendor_info(%{
+          control_url: "wss://yd.example.com/ctrl",
+          server_id: "srv-alpha",
+          cluster_id: "cluster-prod",
+          auth_token: "tok-secret-123"
+        })
 
       vc = "YellowDog:1.0:dns"
 
@@ -846,9 +847,7 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
       # == Step 3: Build REQUEST using offer's server_ip and offered_ip ==
       request_bin =
-        IO.iodata_to_binary(
-          Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip)
-        )
+        IO.iodata_to_binary(Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip))
 
       request_msg = Message.from_iodata(request_bin)
 
@@ -918,9 +917,7 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
       # REQUEST can still be built
       request_bin =
-        IO.iodata_to_binary(
-          Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip)
-        )
+        IO.iodata_to_binary(Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip))
 
       request_msg = Message.from_iodata(request_bin)
       assert request_msg.xid == xid
