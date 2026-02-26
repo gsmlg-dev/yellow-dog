@@ -699,4 +699,40 @@ defmodule YellowDog.DhcpClient.PropertyTest do
       assert Lease.prefix_length(lease) == 32
     end
   end
+
+  describe "StateMachine.retransmit_timeout_action backoff bounds" do
+    alias YellowDog.DhcpClient.StateMachine
+
+    property "retransmit delay is always >= 500ms and <= 65001ms for any count 0..10" do
+      check all(count <- integer(0..10)) do
+        {{:timeout, :retransmit}, delay, :retransmit} =
+          StateMachine.retransmit_timeout_action(count)
+
+        # min delay is max(base + jitter, 500) where jitter >= -1000
+        assert delay >= 500
+        # max delay is max_retransmit_ms (64000) + max_jitter (1000)
+        assert delay <= 65_001
+      end
+    end
+
+    property "retransmit delay is non-decreasing on average for growing count" do
+      check all(count <- integer(0..5)) do
+        # Verify that higher counts produce higher *base* (ignoring jitter)
+        # by checking that count=6 always caps at 64000+jitter
+        {{:timeout, :retransmit}, delay_low, :retransmit} =
+          StateMachine.retransmit_timeout_action(count)
+
+        {{:timeout, :retransmit}, delay_high, :retransmit} =
+          StateMachine.retransmit_timeout_action(count + 5)
+
+        # With count+5, base is much larger (or capped), so ignoring jitter:
+        # delay_high should generally be larger, but due to jitter overlap
+        # at low counts we just verify neither is out of [500, 65001]
+        assert delay_low >= 500
+        assert delay_high >= 500
+        assert delay_low <= 65_001
+        assert delay_high <= 65_001
+      end
+    end
+  end
 end

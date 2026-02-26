@@ -724,7 +724,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # --- Timer helpers ---
 
-  defp retransmit_timeout_action(retransmit_count) do
+  @doc false
+  def retransmit_timeout_action(retransmit_count) do
     base = min(@initial_retransmit_ms * Integer.pow(2, retransmit_count), @max_retransmit_ms)
     jitter = :rand.uniform(2_001) - 1_001
     delay = max(base + jitter, 500)

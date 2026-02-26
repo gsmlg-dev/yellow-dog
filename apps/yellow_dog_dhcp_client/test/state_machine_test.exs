@@ -1249,6 +1249,34 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       assert StateMachine.lease(pid) == nil
     end
 
+    test "ACK without Option 58/59 computes RFC defaults: t1=lease_time/2, t2=7*lease_time/8", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+
+      # Build ACK with lease_time=3600 but NO Option 58 (t1) or 59 (t2)
+      xid = get_xid(pid)
+      {a, b, c, d} = {192, 168, 1, 1}
+      opts_no_timers = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 3, length: 4, value: <<a, b, c, d>>},
+        %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+        %Option{type: 51, length: 4, value: <<3600::32>>},
+        %Option{type: 54, length: 4, value: <<a, b, c, d>>}
+        # No type 58 or 59 — parse_reply fills in RFC defaults
+      ]
+
+      send(pid, {:dhcp_rx, build_reply(xid: xid, options: opts_no_timers)})
+      wait_for_state(pid, :bound, 2000)
+
+      lease = StateMachine.lease(pid)
+      assert lease.lease_time == 3600
+      # parse_reply computes: t1 = lease_time / 2 = 1800, t2 = 7 * lease_time / 8 = 3150
+      assert lease.t1 == 1800
+      assert lease.t2 == 3150
+    end
+
     test "T2 timeout while :renewing transitions to :rebinding", ctx do
       pid = start_fsm(ctx, %{selection_window_ms: 30})
 

@@ -62,6 +62,12 @@ defmodule YellowDog.DhcpClientTest do
   # -- start_interface/2 happy path and duplicate guard --
 
   describe "start_interface/2" do
+    test "returns {:error, {:mac_detection_failed, ...}} when no :mac opt and auto-detect fails" do
+      # Nonexistent interface → read_mac fails → resolve_mac returns mac_detection_failed
+      result = DhcpClient.start_interface("nonexistent_mac_autodetect_iface")
+      assert {:error, {:mac_detection_failed, _reason}} = result
+    end
+
     test "returns {:error, :already_started} when called twice for same interface" do
       unique = System.unique_integer([:positive])
       iface = "test_dup_#{unique}"
