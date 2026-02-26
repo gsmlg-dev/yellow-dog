@@ -775,10 +775,16 @@ defmodule YellowDog.Console.SettingsLive do
         :views -> YellowDog.Dns.ConfigWatcher.reload_views()
         :acls -> YellowDog.Dns.ConfigWatcher.reload_acls()
       end
-    rescue
-      e -> {:error, Exception.message(e)}
     catch
-      :exit, reason -> {:error, reason}
+      kind, reason ->
+        msg =
+          case {kind, reason} do
+            {:error, %{message: m}} -> m
+            {:exit, _} -> "Service unavailable"
+            _ -> Exception.format(kind, reason)
+          end
+
+        {:error, msg}
     end
   end
 end

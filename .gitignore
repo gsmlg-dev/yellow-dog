@@ -50,6 +50,7 @@ yellow_dog-*.tar
 
 /apps/yellow_dog_mdns/data/
 /apps/yellow_dog_dhcpv4/data/
+/apps/yellow_dog_dhcpv6/data/
 /apps/yellow_dog_console/data/
 /apps/yellow_dog_fingerprint/data/
 /apps/yellow_dog_dns/priv/zones/
