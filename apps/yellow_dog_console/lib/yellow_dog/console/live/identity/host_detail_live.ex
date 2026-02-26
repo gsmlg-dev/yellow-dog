@@ -327,4 +327,10 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   defp format_evidence_value(value) when is_integer(value), do: Integer.to_string(value)
   defp format_evidence_value(value) when is_number(value), do: to_string(value)
   defp format_evidence_value(value), do: inspect(value)
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end

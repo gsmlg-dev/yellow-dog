@@ -631,4 +631,10 @@ defmodule YellowDog.Console.DnsLive.ViewLive.Index do
       end
     end)
   end
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:views")
+    :ok
+  end
 end

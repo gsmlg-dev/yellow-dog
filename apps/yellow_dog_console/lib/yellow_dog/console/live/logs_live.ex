@@ -562,4 +562,10 @@ defmodule YellowDog.Console.LogsLive do
     </Layouts.app>
     """
   end
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, LogBroadcaster.topic())
+    :ok
+  end
 end

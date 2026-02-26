@@ -216,4 +216,10 @@ defmodule YellowDog.Console.IdentityLive.Index do
     </Layouts.app>
     """
   end
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end

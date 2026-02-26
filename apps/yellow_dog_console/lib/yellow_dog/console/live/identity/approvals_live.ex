@@ -240,4 +240,10 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
   defp format_time(nil), do: "-"
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
   defp format_time(_), do: "-"
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end
