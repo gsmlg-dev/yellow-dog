@@ -581,8 +581,11 @@ defmodule YellowDog.Dhcpv6.PoolStore do
 
     # Ensure directory exists
     case File.mkdir_p(leases_directory()) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("[DHCPv6] Failed to create leases dir: #{inspect(reason)}")
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[DHCPv6] Failed to create leases dir: #{inspect(reason)}")
     end
 
     content = leases_to_toml(pool_name, leases)

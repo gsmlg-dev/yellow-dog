@@ -159,8 +159,11 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   defp configure_mnesia_dir(data_dir) do
     # Ensure the directory exists
     case File.mkdir_p(data_dir) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("[DHCPv6] Failed to create Mnesia dir: #{inspect(reason)}")
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[DHCPv6] Failed to create Mnesia dir: #{inspect(reason)}")
     end
 
     # Set Mnesia directory (must be done before :mnesia.start())
