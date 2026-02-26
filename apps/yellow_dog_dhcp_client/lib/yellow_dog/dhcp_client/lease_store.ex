@@ -34,13 +34,13 @@ defmodule YellowDog.DhcpClient.LeaseStore do
   end
 
   @doc "Stores a lease for the interface. Schedules an asynchronous disk flush."
-  @spec store(GenServer.server(), String.t(), map()) :: :ok
+  @spec store(GenServer.server(), String.t(), Lease.t()) :: :ok
   def store(server, interface, lease) do
     GenServer.call(server, {:store, interface, lease})
   end
 
   @doc "Looks up the current lease for the interface from ETS."
-  @spec lookup(GenServer.server(), String.t()) :: {:ok, map()} | :not_found
+  @spec lookup(GenServer.server(), String.t()) :: {:ok, Lease.t()} | :not_found
   def lookup(server, interface) do
     GenServer.call(server, {:lookup, interface})
   end

@@ -703,6 +703,14 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert lease.server_ip == {192, 168, 1, 254}
     end
 
+    test "parses reply with XID = 0 without special-case issues" do
+      data = build_reply(xid: 0, options: standard_ack_options())
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.xid == 0
+      assert lease.ip == {192, 168, 1, 100}
+    end
+
     test "extract_u16 returns nil (mtu: nil) when MTU option has 3 bytes instead of 2" do
       # Option 26 (MTU) normally carries exactly 2 bytes; 3 bytes won't match <<val::16>>
       options = [

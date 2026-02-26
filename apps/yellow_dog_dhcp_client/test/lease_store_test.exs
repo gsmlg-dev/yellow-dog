@@ -500,6 +500,43 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert :not_found = LeaseStore.lookup(pid, iface)
   end
 
+  test "TOML roundtrip preserves lease with all optional fields nil", ctx do
+    {pid, iface} = start_store(ctx)
+
+    lease =
+      make_lease(%{
+        router: nil,
+        domain_name: nil,
+        mtu: nil,
+        control_url: nil,
+        control_url_fallback: nil,
+        auth_token: nil,
+        server_id: nil,
+        cluster_id: nil,
+        dns_servers: [],
+        ntp_servers: []
+      })
+
+    :ok = LeaseStore.store(pid, iface, lease)
+    GenServer.stop(pid)
+
+    {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+
+    assert loaded.router == nil
+    assert loaded.domain_name == nil
+    assert loaded.mtu == nil
+    assert loaded.control_url == nil
+    assert loaded.control_url_fallback == nil
+    assert loaded.auth_token == nil
+    assert loaded.server_id == nil
+    assert loaded.cluster_id == nil
+    assert loaded.dns_servers == []
+    assert loaded.ntp_servers == []
+    assert loaded.ip == lease.ip
+    assert loaded.lease_time == lease.lease_time
+  end
+
   test "rapid consecutive stores only flush the final lease to disk", ctx do
     {pid, iface} = start_store(ctx)
 
