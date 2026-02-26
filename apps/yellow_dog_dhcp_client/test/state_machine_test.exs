@@ -557,6 +557,23 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     assert get_state(pid) == :init
   end
 
+  test "dad_probes: 0 skips all ARP probes and still reaches :bound", ctx do
+    pid =
+      start_fsm(ctx, %{
+        selection_window_ms: 30,
+        dad_enabled: true,
+        dad_probes: 0,
+        dad_wait_ms: 200,
+        dad_backoff_ms: 100
+      })
+
+    send_offer(pid)
+    wait_for_state(pid, :requesting, 1000)
+    send_ack(pid)
+    # With zero probes, DAD loop is skipped; await_conflict waits dad_wait_ms then :ok
+    wait_for_state(pid, :bound, 2000)
+  end
+
   test "DAD conflict causes DECLINE and returns to :init after backoff", ctx do
     pid =
       start_fsm(ctx, %{

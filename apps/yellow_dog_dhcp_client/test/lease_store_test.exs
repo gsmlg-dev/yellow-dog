@@ -448,6 +448,37 @@ defmodule YellowDog.DhcpClient.LeaseStoreTest do
     assert loaded.ntp_servers == []
   end
 
+  test "flush creates missing lease_dir directory on first store", ctx do
+    missing_dir = Path.join(ctx.lease_dir, "nested/subdir")
+    refute File.exists?(missing_dir)
+
+    {:ok, pid} = LeaseStore.start_link(interface: "eth0", lease_dir: missing_dir)
+    lease = make_lease()
+    :ok = LeaseStore.store(pid, "eth0", lease)
+    GenServer.stop(pid)
+
+    assert File.exists?(missing_dir)
+    assert File.exists?(Path.join(missing_dir, "eth0.lease"))
+  end
+
+  test "TOML lease with missing 'ip' field is treated as invalid (:not_found)", ctx do
+    iface = "eth0"
+    lease_path = Path.join(ctx.lease_dir, "#{iface}.lease")
+
+    File.write!(lease_path, """
+    subnet_mask = "255.255.255.0"
+    server_ip = "192.168.1.1"
+    lease_time = 3600
+    obtained_at = "#{DateTime.to_iso8601(DateTime.utc_now())}"
+    xid = 1
+    yellowdog_server = false
+    """)
+
+    {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: ctx.lease_dir)
+    # Missing "ip" → parse_ip(nil) → {0,0,0,0} → lease_valid? returns false
+    assert :not_found = LeaseStore.lookup(pid, iface)
+  end
+
   test "rapid consecutive stores only flush the final lease to disk", ctx do
     {pid, iface} = start_store(ctx)
 
