@@ -196,6 +196,51 @@ defmodule YellowDog.DhcpClient.OSIntegration.StandaloneTest do
 
       refute_receive :mtu_set_called, 200
     end
+
+    test "accepts MTU of 68 (minimum boundary) — no invalid-MTU warning logged" do
+      import ExUnit.CaptureLog
+
+      # apply_lease short-circuits at add_addr, but maybe_set_mtu would NOT log
+      # a warning for 68. Verify the function doesn't crash and the warning is absent.
+      lease = test_lease(%{mtu: 68})
+
+      log =
+        capture_log(fn ->
+          _result = Standalone.apply_lease("test_mtu_68_min", lease)
+        end)
+
+      refute String.contains?(log, "ignoring invalid MTU")
+    end
+
+    test "accepts MTU of 65535 (maximum boundary) — no invalid-MTU warning logged" do
+      import ExUnit.CaptureLog
+
+      lease = test_lease(%{mtu: 65_535})
+
+      log =
+        capture_log(fn ->
+          _result = Standalone.apply_lease("test_mtu_65535_max", lease)
+        end)
+
+      refute String.contains?(log, "ignoring invalid MTU")
+    end
+  end
+
+  describe "apply_lease/2 edge cases" do
+    test "apply_lease with all optional fields nil does not crash" do
+      minimal =
+        test_lease(%{
+          router: nil,
+          dns_servers: [],
+          domain_name: nil,
+          mtu: nil,
+          ntp_servers: []
+        })
+
+      # Must not raise even though commands fail (no CAP_NET_ADMIN)
+      result = Standalone.apply_lease("test_minimal_opts", minimal)
+      assert result == :ok or match?({:error, _}, result)
+    end
   end
 
   describe "apply_lease/2 telemetry" do

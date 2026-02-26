@@ -390,6 +390,16 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     wait_for_state(pid, :init, 2000)
   end
 
+  test "interface_down from :init is a no-op (FSM stays in :init)", ctx do
+    pid = start_fsm(ctx)
+    assert get_state(pid) == :init
+
+    send(pid, :interface_down)
+    Process.sleep(50)
+
+    assert get_state(pid) == :init
+  end
+
   test "status/1 returns state and data", ctx do
     pid = start_fsm(ctx)
     {state, data} = StateMachine.status(pid)

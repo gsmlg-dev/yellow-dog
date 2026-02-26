@@ -120,8 +120,14 @@ defmodule YellowDog.DhcpClient do
     case lookup(interface) do
       {:ok, _pid} ->
         fsm = {:via, Registry, {@registry, {:fsm, interface}}}
-        {state, _data} = StateMachine.status(fsm)
-        state
+
+        try do
+          {state, _data} = StateMachine.status(fsm)
+          state
+        catch
+          # Registry entry exists but process has already terminated
+          :exit, {:noproc, _} -> {:error, :not_found}
+        end
 
       :error ->
         {:error, :not_found}

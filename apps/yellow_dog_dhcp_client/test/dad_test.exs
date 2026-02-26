@@ -243,4 +243,27 @@ defmodule YellowDog.DhcpClient.DADTest do
 
     assert_receive {:ip_format, "10.0.0.1"}, 1000
   end
+
+  test "telemetry metadata omits :interface key when not provided", %{socket_pid: socket_pid} do
+    ref = make_ref()
+    test_pid = self()
+
+    :telemetry.attach(
+      "dad-test-no-iface-#{inspect(ref)}",
+      [:yellow_dog, :dhcp_client, :dad, :start],
+      fn _event, _measurements, metadata, _config ->
+        send(test_pid, {:dad_start_meta, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach("dad-test-no-iface-#{inspect(ref)}") end)
+
+    # Call without :interface keyword — interface defaults to nil
+    DAD.check(socket_pid, @target_ip, probes: 1, wait_ms: 50)
+
+    assert_receive {:dad_start_meta, meta}, 1000
+    assert Map.has_key?(meta, :ip)
+    refute Map.has_key?(meta, :interface)
+  end
 end
