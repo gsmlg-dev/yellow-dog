@@ -30,7 +30,11 @@ defmodule YellowDog.Config.TomlHelpers do
   def get_integer(map, keys, default) do
     case get_value(map, keys, default) do
       value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {int, ""} -> int
+          _ -> default
+        end
       _ -> default
     end
   end
