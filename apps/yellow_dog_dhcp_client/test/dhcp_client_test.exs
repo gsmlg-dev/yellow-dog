@@ -58,4 +58,51 @@ defmodule YellowDog.DhcpClientTest do
       assert nil == DhcpClient.lease("nonexistent_api_test_iface")
     end
   end
+
+  # -- start_interface/2 happy path and duplicate guard --
+
+  describe "start_interface/2" do
+    test "returns {:error, :already_started} when called twice for same interface" do
+      unique = System.unique_integer([:positive])
+      iface = "test_dup_#{unique}"
+      mac = <<0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC>>
+
+      {:ok, _pid} = DhcpClient.start_interface(iface, mac: mac)
+      on_exit(fn -> DhcpClient.stop_interface(iface) end)
+
+      assert {:error, :already_started} = DhcpClient.start_interface(iface, mac: mac)
+    end
+  end
+
+  describe "running interface queries" do
+    setup do
+      unique = System.unique_integer([:positive])
+      iface = "test_running_#{unique}"
+      mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+
+      {:ok, _pid} = DhcpClient.start_interface(iface, mac: mac)
+      on_exit(fn -> DhcpClient.stop_interface(iface) end)
+
+      %{iface: iface}
+    end
+
+    test "status/1 returns an FSM state atom for a running interface", %{iface: iface} do
+      state = DhcpClient.status(iface)
+      assert is_atom(state)
+      assert state == :init
+    end
+
+    test "lease/1 returns nil when no lease has been acquired", %{iface: iface} do
+      assert nil == DhcpClient.lease(iface)
+    end
+
+    test "release/1 returns :ok for a running interface even without a lease", %{iface: iface} do
+      assert :ok = DhcpClient.release(iface)
+    end
+
+    test "stop_interface/1 returns :ok and terminates the supervisor", %{iface: iface} do
+      assert :ok = DhcpClient.stop_interface(iface)
+      assert {:error, :not_found} = DhcpClient.status(iface)
+    end
+  end
 end

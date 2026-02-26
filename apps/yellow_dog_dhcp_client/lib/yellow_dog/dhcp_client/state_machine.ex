@@ -60,6 +60,17 @@ defmodule YellowDog.DhcpClient.StateMachine do
 
   # --- Public API ---
 
+  @doc false
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 5000
+    }
+  end
+
   @doc "Starts the DHCP client state machine."
   @spec start_link(keyword()) :: :gen_statem.start_ret()
   def start_link(opts) do
@@ -81,8 +92,13 @@ defmodule YellowDog.DhcpClient.StateMachine do
       start_time: System.monotonic_time(:millisecond)
     }
 
-    start_opts = if name, do: [name: name], else: []
-    :gen_statem.start_link(__MODULE__, data, start_opts)
+    # :gen_statem.start_link/3 does not support the `name:` option in Opts —
+    # registration requires the 4-argument form with ServerName as the first arg.
+    if name do
+      :gen_statem.start_link(name, __MODULE__, data, [])
+    else
+      :gen_statem.start_link(__MODULE__, data, [])
+    end
   end
 
   @doc "Triggers a DHCPRELEASE and returns to INIT."
