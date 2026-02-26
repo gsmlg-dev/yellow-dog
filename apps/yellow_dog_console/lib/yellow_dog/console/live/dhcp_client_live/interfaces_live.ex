@@ -147,9 +147,8 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
   end
 
   defp load_interfaces do
-    try do
-      YellowDog.DhcpClient.all_statuses()
-    rescue
+    case safe_call(YellowDog.DhcpClient, fn -> YellowDog.DhcpClient.all_statuses() end, []) do
+      interfaces when is_list(interfaces) -> interfaces
       _ -> []
     end
   end
