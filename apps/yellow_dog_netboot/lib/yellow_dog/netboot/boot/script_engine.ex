@@ -37,18 +37,24 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
   @spec render(map()) :: {:ok, String.t()} | {:error, term()}
   def render(assigns) do
     GenServer.call(__MODULE__, {:render, :default, assigns})
+  catch
+    :exit, _ -> {:error, :engine_not_running}
   end
 
   @doc "Render a rescue iPXE script."
   @spec render_rescue(map()) :: {:ok, String.t()} | {:error, term()}
   def render_rescue(assigns) do
     GenServer.call(__MODULE__, {:render, :rescue, assigns})
+  catch
+    :exit, _ -> {:error, :engine_not_running}
   end
 
   @doc "Render a script with a custom template string."
   @spec render_custom(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
   def render_custom(template, assigns) do
     GenServer.call(__MODULE__, {:render_custom, template, assigns})
+  catch
+    :exit, _ -> {:error, :engine_not_running}
   end
 
   @impl true
