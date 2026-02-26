@@ -726,6 +726,57 @@ defmodule YellowDog.DhcpClient.PropertyTest do
     end
   end
 
+  describe "Lease.valid?/1 invariants" do
+    property "valid? is true iff IP is non-zero and lease is not expired" do
+      check all(
+              lease_time <- integer(1..86_400),
+              past_seconds <- integer(0..(lease_time - 1)),
+              ip_last <- integer(1..254)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -past_seconds, :second)
+
+        lease = %Lease{
+          ip: {192, 168, 1, ip_last},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        assert Lease.valid?(lease)
+        refute Lease.expired?(lease)
+      end
+    end
+
+    property "zero-IP lease is never valid regardless of timing" do
+      check all(lease_time <- integer(1..86_400)) do
+        lease = %Lease{
+          ip: {0, 0, 0, 0},
+          obtained_at: DateTime.utc_now(),
+          lease_time: lease_time
+        }
+
+        refute Lease.valid?(lease)
+      end
+    end
+
+    property "expired lease is never valid" do
+      check all(
+              lease_time <- integer(1..3600),
+              extra_past <- integer(1..3600)
+            ) do
+        obtained_at = DateTime.add(DateTime.utc_now(), -(lease_time + extra_past), :second)
+
+        lease = %Lease{
+          ip: {10, 0, 0, 1},
+          obtained_at: obtained_at,
+          lease_time: lease_time
+        }
+
+        refute Lease.valid?(lease)
+        assert Lease.expired?(lease)
+      end
+    end
+  end
+
   describe "Lease.prefix_length boundary masks" do
     test "all-zeros subnet mask returns 0" do
       lease = %Lease{
