@@ -326,6 +326,23 @@ defmodule YellowDog.DhcpClient.PropertyTest do
         assert byte_size(binary) > 240
       end
     end
+
+    property "build_renew_request produces valid binary for any valid inputs" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF),
+              a <- integer(1..254),
+              b <- integer(0..255),
+              c <- integer(0..255),
+              d <- integer(1..254)
+            ) do
+        client_ip = {a, b, c, d}
+        result = YellowDog.DhcpClient.Packet.build_renew_request(mac, xid, client_ip)
+        binary = IO.iodata_to_binary(result)
+        assert is_binary(binary)
+        assert byte_size(binary) > 240
+      end
+    end
   end
 
   describe "Packet build content verification" do
@@ -393,6 +410,42 @@ defmodule YellowDog.DhcpClient.PropertyTest do
         assert msg.flags == 0
         <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
         assert mac_bytes == mac
+      end
+    end
+
+    property "build_renew_request sets ciaddr and omits Option 50/54 per RFC 2131" do
+      check all(
+              mac <- binary(length: 6),
+              xid <- integer(0..0xFFFFFFFF),
+              a <- integer(1..254),
+              b <- integer(0..255),
+              c <- integer(0..255),
+              d <- integer(1..254)
+            ) do
+        client_ip = {a, b, c, d}
+
+        binary =
+          IO.iodata_to_binary(
+            YellowDog.DhcpClient.Packet.build_renew_request(mac, xid, client_ip)
+          )
+
+        msg = Message.from_iodata(binary)
+
+        assert msg.xid == xid
+        # Renewal sets ciaddr to the client's current IP
+        assert msg.ciaddr == client_ip
+        <<mac_bytes::binary-size(6), _padding::binary>> = msg.chaddr
+        assert mac_bytes == mac
+
+        # RFC 2131 §4.3.2: renewal MUST NOT include Option 50 or Option 54
+        option_types = Enum.map(msg.options, fn %{type: t} -> t end)
+        refute 50 in option_types, "renewal request must not include Option 50 (Requested IP)"
+        refute 54 in option_types, "renewal request must not include Option 54 (Server ID)"
+
+        # Must include Option 53 (message type = REQUEST)
+        msg_type_opt = Enum.find(msg.options, fn %{type: t} -> t == 53 end)
+        assert msg_type_opt != nil
+        assert msg_type_opt.value == <<3>>
       end
     end
 
