@@ -130,7 +130,7 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
       # For updates, we need to check conflicts excluding the current record
       existing_records =
         Auth.get_all_records(zone_pid)
-        |> Enum.reject(&(normalize_name(&1.name) == normalize_name(name) and &1.type == type))
+        |> Enum.reject(&(normalize_name(&1.name) == normalize_name(name) and normalize_type_str(&1.type) == normalize_type_str(type)))
 
       with {:ok, validated} <- RecordValidator.validate(type, params),
            {:ok, :no_conflict} <-
@@ -411,4 +411,6 @@ defmodule YellowDog.Dns.Boundaries.ZoneService do
 
   defp rdata_to_string(rdata) when is_binary(rdata), do: rdata
   defp rdata_to_string(rdata), do: inspect(rdata)
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

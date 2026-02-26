@@ -360,7 +360,7 @@ defmodule DNS.Zone.Validator do
 
         # Warn about very short TTLs for non-transaction records
         warn_acc =
-          if record.ttl < 30 and record.type not in [:soa] do
+          if record.ttl < 30 and normalize_type_str(record.type) != "SOA" do
             ["Very short TTL for #{record.type} record: #{record.ttl}" | warn_acc]
           else
             warn_acc
@@ -556,4 +556,6 @@ defmodule DNS.Zone.Validator do
     # Rough estimate per record
     record_count * 100
   end
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

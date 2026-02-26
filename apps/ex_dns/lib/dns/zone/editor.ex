@@ -449,7 +449,7 @@ defmodule DNS.Zone.Editor do
     Enum.all?(options, fn {key, value} ->
       case key do
         :name -> record.name.value == value
-        :type -> record.type == value
+        :type -> normalize_type_str(record.type) == normalize_type_str(value)
         :ttl -> record.ttl == value
         :class -> record.class == value
         # Ignore unknown keys
@@ -476,34 +476,40 @@ defmodule DNS.Zone.Editor do
   defp get_all_records(zone), do: Zone.all_records(zone)
 
   defp format_record_data(record) do
-    case record.type do
-      :a ->
-        record.data |> Tuple.to_list() |> Enum.join(".")
+    data = extract_data(record.data)
 
-      :aaaa ->
-        record.data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
+    case normalize_type_str(record.type) do
+      "A" ->
+        data |> Tuple.to_list() |> Enum.join(".")
 
-      :cname ->
-        record.data
+      "AAAA" ->
+        data |> Tuple.to_list() |> Enum.map_join(":", &Integer.to_string(&1, 16))
 
-      :ns ->
-        record.data
+      "CNAME" ->
+        to_string(data)
 
-      :mx ->
-        {priority, exchange} = record.data
+      "NS" ->
+        to_string(data)
+
+      "MX" ->
+        {priority, exchange} = data
         "#{priority} #{exchange}"
 
-      :txt ->
-        record.data
+      "TXT" ->
+        data
 
-      :soa ->
-        {mname, rname, serial, refresh, retry, expire, minimum} = record.data
+      "SOA" ->
+        {mname, rname, serial, refresh, retry, expire, minimum} = data
         "#{mname} #{rname} #{serial} #{refresh} #{retry} #{expire} #{minimum}"
 
       _ ->
-        inspect(record.data)
+        inspect(data)
     end
   end
+
+  # Extract inner data from Data.* structs or pass through raw values
+  defp extract_data(%{data: data}), do: data
+  defp extract_data(data), do: data
 
   defp update_zone_names(source_zone, _new_zone_name) do
     # Update all record names to use new zone name
@@ -613,4 +619,6 @@ defmodule DNS.Zone.Editor do
   end
 
   defp format_record_data_for_export(record), do: inspect(record.data.data)
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

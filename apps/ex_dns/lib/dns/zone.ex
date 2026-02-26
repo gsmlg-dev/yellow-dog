@@ -571,7 +571,7 @@ defmodule DNS.Zone do
   end
 
   defp extract_soa_record(%__MODULE__{records: records} = zone) do
-    soa_record = Enum.find(records, fn rr -> rr.type == :soa end)
+    soa_record = Enum.find(records, fn rr -> normalize_type_str(rr.type) == "SOA" end)
 
     if soa_record do
       soa_data = List.first(soa_record.data)
@@ -640,4 +640,6 @@ defmodule DNS.Zone do
         inspect(data)
     end
   end
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end

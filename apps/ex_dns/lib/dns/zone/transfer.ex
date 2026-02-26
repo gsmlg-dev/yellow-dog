@@ -214,14 +214,17 @@ defmodule DNS.Zone.Transfer do
 
   defp get_zone_serial_from_records(records) do
     Enum.find_value(records, 0, fn record ->
-      if record.type == :soa do
-        {_mname, _rname, serial, _refresh, _retry, _expire, _minimum} = record.data
-        serial
+      if normalize_type_str(record.type) == "SOA" do
+        extract_soa_serial(record.data)
       else
         nil
       end
     end)
   end
+
+  defp extract_soa_serial({_mname, _rname, serial, _refresh, _retry, _expire, _minimum}), do: serial
+  defp extract_soa_serial(%{data: data}) when is_tuple(data), do: extract_soa_serial(data)
+  defp extract_soa_serial(_), do: 0
 
   defp ip_matches?(allowed_ip, client_ip) when is_tuple(allowed_ip) and is_tuple(client_ip) do
     allowed_ip == client_ip
@@ -264,4 +267,6 @@ defmodule DNS.Zone.Transfer do
 
     %{zone | options: Keyword.merge(zone.options, record_options)}
   end
+
+  defp normalize_type_str(type), do: type |> to_string() |> String.upcase()
 end
