@@ -225,6 +225,92 @@ defmodule YellowDog.DhcpClient.ConfigWatcherTest do
     end
   end
 
+  # -- debounce behaviour --
+
+  describe "debounce" do
+    setup do
+      # Create a temporary config file so the watcher has a path to match against.
+      tmp_dir = System.tmp_dir!()
+      config_file = Path.join(tmp_dir, "yd_debounce_test_#{System.unique_integer([:positive])}.toml")
+      File.write!(config_file, "")
+
+      Application.delete_env(:yellow_dog_dhcp_client, :config)
+
+      # Start a dedicated (unnamed) ConfigWatcher with the test config_file and a
+      # short debounce so tests run quickly.  The global ConfigWatcher has
+      # config_file: nil so it won't conflict with file-event matching.
+      {:ok, pid} =
+        GenServer.start_link(ConfigWatcher, config_file: config_file, debounce_ms: 200)
+
+      # Wait for the :initial_reconcile timer (100ms in init) to fire
+      Process.sleep(150)
+
+      on_exit(fn ->
+        if Process.alive?(pid), do: GenServer.stop(pid)
+        File.rm(config_file)
+      end)
+
+      %{config_file: config_file, watcher: pid}
+    end
+
+    test "multiple rapid file events result in only one reconciliation", %{
+      config_file: config_file,
+      watcher: pid
+    } do
+      count_before = GenServer.call(pid, :status).reload_count
+
+      # Send 5 rapid file events — debounce should collapse into one reload
+      for _ <- 1..5 do
+        send(pid, {:file_event, nil, {config_file, [:modified]}})
+      end
+
+      # Wait for the debounce timer (200ms + buffer)
+      Process.sleep(500)
+
+      count_after = GenServer.call(pid, :status).reload_count
+      assert count_after == count_before + 1
+    end
+
+    test "change_detected telemetry fires per event but reload only once", %{
+      config_file: config_file,
+      watcher: pid
+    } do
+      ref = make_ref()
+      self_pid = self()
+      detect_id = "test-debounce-detect-#{inspect(ref)}"
+
+      :telemetry.attach(
+        detect_id,
+        [:yellow_dog, :dhcp_client, :config_watcher, :change_detected],
+        fn _event, _measurements, _metadata, _config ->
+          send(self_pid, :change_detected)
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(detect_id) end)
+
+      count_before = GenServer.call(pid, :status).reload_count
+
+      for _ <- 1..3 do
+        send(pid, {:file_event, nil, {config_file, [:modified]}})
+        Process.sleep(10)
+      end
+
+      # Each event triggers change_detected telemetry immediately
+      assert_receive :change_detected, 500
+      assert_receive :change_detected, 500
+      assert_receive :change_detected, 500
+
+      # Wait for debounce timer to fire (200ms + buffer)
+      Process.sleep(500)
+
+      # Debounce collapsed 3 events into a single reconciliation
+      count_after = GenServer.call(pid, :status).reload_count
+      assert count_after == count_before + 1
+    end
+  end
+
   # -- file_event handling --
 
   describe "file_event handling" do
