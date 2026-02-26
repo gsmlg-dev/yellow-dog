@@ -3,6 +3,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -260,7 +261,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                   <tbody>
                     <tr :for={entry <- @audit_entries}>
                       <td class="font-mono text-xs whitespace-nowrap">{entry.timestamp}</td>
-                      <td><span class={audit_badge(entry.event)}>{entry.event}</span></td>
+                      <td><span class={event_badge_class(entry.event)}>{entry.event}</span></td>
                       <td class="font-mono text-xs">{entry.details}</td>
                     </tr>
                   </tbody>
@@ -275,15 +276,15 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               <dl class="space-y-1">
                 <div class="flex justify-between">
                   <dt class="text-base-content/70">Created</dt>
-                  <dd>{format_time(@host.created_at)}</dd>
+                  <dd>{format_time_detail(@host.created_at)}</dd>
                 </div>
                 <div :if={@host.approved_at} class="flex justify-between">
                   <dt class="text-base-content/70">Approved</dt>
-                  <dd>{format_time(@host.approved_at)} by {@host.approved_by}</dd>
+                  <dd>{format_time_detail(@host.approved_at)} by {@host.approved_by}</dd>
                 </div>
                 <div :if={@host.revoked_at} class="flex justify-between">
                   <dt class="text-base-content/70">Revoked</dt>
-                  <dd>{format_time(@host.revoked_at)} by {@host.revoked_by}</dd>
+                  <dd>{format_time_detail(@host.revoked_at)} by {@host.revoked_by}</dd>
                 </div>
                 <div :if={@host.revoke_reason} class="flex justify-between">
                   <dt class="text-base-content/70">Reason</dt>
@@ -297,22 +298,6 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     </Layouts.app>
     """
   end
-
-  defp audit_badge("host.registered"), do: "badge badge-info badge-sm"
-  defp audit_badge("host.approved"), do: "badge badge-success badge-sm"
-  defp audit_badge("host.revoked"), do: "badge badge-error badge-sm"
-  defp audit_badge("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp audit_badge("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp audit_badge(_), do: "badge badge-sm"
-
-  defp status_badge_class(:pending), do: "badge badge-warning"
-  defp status_badge_class(:approved), do: "badge badge-success"
-  defp status_badge_class(:revoked), do: "badge badge-error"
-  defp status_badge_class(_), do: "badge"
-
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-  defp format_time(_), do: "-"
 
   defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 4 do
     # IPv4 tuple

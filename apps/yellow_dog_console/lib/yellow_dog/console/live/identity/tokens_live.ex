@@ -3,6 +3,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -240,8 +241,4 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     </Layouts.app>
     """
   end
-
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  defp format_time(_), do: "-"
 end

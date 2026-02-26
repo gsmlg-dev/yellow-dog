@@ -3,6 +3,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -140,11 +141,4 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
     </Layouts.app>
     """
   end
-
-  defp event_badge_class("host.registered"), do: "badge badge-info badge-sm"
-  defp event_badge_class("host.approved"), do: "badge badge-success badge-sm"
-  defp event_badge_class("host.revoked"), do: "badge badge-error badge-sm"
-  defp event_badge_class("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp event_badge_class("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp event_badge_class(_), do: "badge badge-sm"
 end
