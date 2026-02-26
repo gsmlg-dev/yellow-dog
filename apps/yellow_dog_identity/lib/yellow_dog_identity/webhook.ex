@@ -30,7 +30,7 @@ defmodule YellowDogIdentity.Webhook do
   end
 
   defp build_payload(event, host) do
-    %{
+    payload = %{
       "event" => event,
       "host_id" => host.id,
       "hostname" => host.hostname,
@@ -40,6 +40,12 @@ defmodule YellowDogIdentity.Webhook do
       "trust_provider" => to_string(host.trust_provider),
       "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
     }
+
+    # Include recipients_url for GitOps integration on approval/revocation events
+    case get_registration_url() do
+      nil -> payload
+      base_url -> Map.put(payload, "recipients_url", String.replace(base_url, "/register", "/recipients"))
+    end
   end
 
   defp send_async(url, payload) do
@@ -100,11 +106,19 @@ defmodule YellowDogIdentity.Webhook do
   end
 
   defp get_webhook_url do
+    get_config_value(["identity", "webhook", "url"])
+  end
+
+  defp get_registration_url do
+    get_config_value(["identity", "registration_url"])
+  end
+
+  defp get_config_value(path) do
     case Code.ensure_loaded(YellowDog.Config) do
       {:module, _} ->
         try do
           config = YellowDog.Config.get_all()
-          get_in(config, ["identity", "webhook", "url"])
+          get_in(config, path)
         rescue
           _ -> nil
         catch
