@@ -339,7 +339,7 @@ defmodule YellowDog.Resolved.Config do
     normalized = String.downcase(type)
 
     if normalized in @valid_types do
-      String.to_atom(normalized)
+      String.to_existing_atom(normalized)
     else
       raise ArgumentError,
             "unsupported record type: #{inspect(type)}, expected one of: A, AAAA, CNAME, TXT, MX, SRV"
