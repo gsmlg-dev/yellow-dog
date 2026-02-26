@@ -102,21 +102,21 @@ defmodule YellowDog.DhcpClient.StateMachine do
   end
 
   @doc "Triggers a DHCPRELEASE and returns to INIT."
-  @spec release(pid()) :: :ok
-  def release(pid) do
-    :gen_statem.cast(pid, :release)
+  @spec release(:gen_statem.server_ref()) :: :ok
+  def release(server) do
+    :gen_statem.cast(server, :release)
   end
 
   @doc "Returns the current state and data."
-  @spec status(pid()) :: {atom(), t()}
-  def status(pid) do
-    :gen_statem.call(pid, :status)
+  @spec status(:gen_statem.server_ref()) :: {atom(), t()}
+  def status(server) do
+    :gen_statem.call(server, :status)
   end
 
   @doc "Returns the current lease, or `nil` if not bound."
-  @spec lease(pid()) :: map() | nil
-  def lease(pid) do
-    :gen_statem.call(pid, :lease)
+  @spec lease(:gen_statem.server_ref()) :: Lease.t() | nil
+  def lease(server) do
+    :gen_statem.call(server, :lease)
   end
 
   # --- gen_statem callbacks ---
