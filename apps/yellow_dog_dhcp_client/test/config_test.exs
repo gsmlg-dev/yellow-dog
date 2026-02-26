@@ -285,6 +285,15 @@ defmodule YellowDog.DhcpClient.ConfigTest do
       assert config.mac == nil
     end
 
+    test "invalid hex characters in MAC string return nil" do
+      Application.put_env(:yellow_dog_dhcp_client, :config, %{
+        "mac" => "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ"
+      })
+
+      config = Config.load("eth0")
+      assert config.mac == nil
+    end
+
     test "non-binary non-nil MAC returns nil" do
       Application.put_env(:yellow_dog_dhcp_client, :config, %{
         mac: 12345

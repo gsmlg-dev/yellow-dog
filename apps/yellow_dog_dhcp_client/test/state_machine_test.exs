@@ -197,6 +197,26 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     send(fsm_pid, {:dhcp_rx, packet})
   end
 
+  # Like send_ack but with explicit T1/T2 values (in seconds) for timer tests.
+  defp send_ack_with_timers(fsm_pid, t1_s, t2_s) do
+    xid = get_xid(fsm_pid)
+    {a, b, c, d} = {192, 168, 1, 1}
+
+    options = [
+      %Option{type: 53, length: 1, value: <<5>>},
+      %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+      %Option{type: 3, length: 4, value: <<a, b, c, d>>},
+      %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+      %Option{type: 51, length: 4, value: <<3600::32>>},
+      %Option{type: 54, length: 4, value: <<a, b, c, d>>},
+      %Option{type: 58, length: 4, value: <<t1_s::32>>},
+      %Option{type: 59, length: 4, value: <<t2_s::32>>}
+    ]
+
+    packet = build_reply(xid: xid, options: options)
+    send(fsm_pid, {:dhcp_rx, packet})
+  end
+
   defp send_nak(fsm_pid, opts \\ []) do
     xid = Keyword.get(opts, :xid, get_xid(fsm_pid))
     packet = build_reply(xid: xid, options: nak_options())
@@ -1057,6 +1077,23 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
 
       assert StateMachine.lease(pid) == nil
     end
+
+    test "stray OFFER while :rebinding is silently ignored", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:rebinding, data} end)
+      wait_for_state(pid, :rebinding, 500)
+
+      send_offer(pid)
+      Process.sleep(100)
+
+      assert get_state(pid) == :rebinding
+    end
   end
 
   # ── Renewing ──
@@ -1101,6 +1138,41 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
       wait_for_state(pid, :init, 2000)
 
       assert StateMachine.lease(pid) == nil
+    end
+
+    test "T2 timeout while :renewing transitions to :rebinding", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      # ACK with T1=1s, T2=2s so timers fire quickly
+      send_ack_with_timers(pid, 1, 2)
+      wait_for_state(pid, :bound)
+
+      # T1 fires after ~1s → :renewing
+      wait_for_state(pid, :renewing, 2000)
+
+      # T2 fires after ~2s from :bound entry → :rebinding
+      wait_for_state(pid, :rebinding, 3000)
+
+      assert is_struct(StateMachine.lease(pid), YellowDog.DhcpClient.Lease)
+    end
+
+    test "stray OFFER while :renewing is silently ignored", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 30})
+
+      send_offer(pid)
+      wait_for_state(pid, :requesting, 1000)
+      send_ack(pid)
+      wait_for_state(pid, :bound)
+
+      :sys.replace_state(pid, fn {_state, data} -> {:renewing, data} end)
+      wait_for_state(pid, :renewing, 500)
+
+      send_offer(pid)
+      Process.sleep(100)
+
+      assert get_state(pid) == :renewing
     end
   end
 
