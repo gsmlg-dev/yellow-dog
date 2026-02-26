@@ -8,15 +8,15 @@ defmodule YellowDog.DhcpClient.Lease do
   """
 
   @type t :: %__MODULE__{
-          ip: :inet.ip4_address(),
-          subnet_mask: :inet.ip4_address(),
+          ip: :inet.ip4_address() | nil,
+          subnet_mask: :inet.ip4_address() | nil,
           router: :inet.ip4_address() | nil,
           dns_servers: [:inet.ip4_address()],
-          server_ip: :inet.ip4_address(),
+          server_ip: :inet.ip4_address() | nil,
           server_mac: binary() | nil,
-          lease_time: pos_integer(),
-          t1: pos_integer(),
-          t2: pos_integer(),
+          lease_time: pos_integer() | nil,
+          t1: pos_integer() | nil,
+          t2: pos_integer() | nil,
           domain_name: String.t() | nil,
           ntp_servers: [:inet.ip4_address()],
           mtu: pos_integer() | nil,
@@ -29,8 +29,8 @@ defmodule YellowDog.DhcpClient.Lease do
           yellowdog_server: boolean(),
           yellowdog_vendor_class: boolean(),
           known_server: boolean(),
-          obtained_at: DateTime.t(),
-          xid: non_neg_integer(),
+          obtained_at: DateTime.t() | nil,
+          xid: non_neg_integer() | nil,
           raw_options: map()
         }
 
