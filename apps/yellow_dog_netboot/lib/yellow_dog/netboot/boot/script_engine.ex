@@ -80,16 +80,34 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
     {:reply, result, state}
   end
 
+  # Max length for assign key names to prevent atom table exhaustion
+  @max_key_length 64
+
   defp do_render(template, assigns) do
-    assigns_keyword = Enum.map(assigns, fn {k, v} -> {to_atom(k), v} end)
+    assigns_keyword =
+      assigns
+      |> Enum.flat_map(fn {k, v} ->
+        case safe_to_atom(k) do
+          {:ok, atom_key} -> [{atom_key, v}]
+          :skip -> []
+        end
+      end)
+
     rendered = EEx.eval_string(template, assigns: assigns_keyword)
     {:ok, rendered}
   rescue
     e -> {:error, Exception.message(e)}
   end
 
-  defp to_atom(key) when is_atom(key), do: key
-  defp to_atom(key) when is_binary(key), do: String.to_atom(key)
+  defp safe_to_atom(key) when is_atom(key), do: {:ok, key}
+
+  defp safe_to_atom(key) when is_binary(key) and byte_size(key) <= @max_key_length do
+    {:ok, String.to_existing_atom(key)}
+  rescue
+    ArgumentError -> {:ok, String.to_atom(key)}
+  end
+
+  defp safe_to_atom(_key), do: :skip
 
   defp load_template(filename, fallback) do
     priv_path = :code.priv_dir(:yellow_dog_netboot)

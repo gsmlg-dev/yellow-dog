@@ -55,7 +55,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
       identified_devices: identified,
       unknown_devices: total - identified,
       avg_confidence:
-        if(identified > 0,
+        if(total > 0,
           do: round(Enum.sum(Enum.map(devices, & &1.profile_confidence)) / total),
           else: 0
         )
