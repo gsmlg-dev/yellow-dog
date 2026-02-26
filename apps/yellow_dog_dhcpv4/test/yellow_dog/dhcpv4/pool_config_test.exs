@@ -113,6 +113,16 @@ defmodule YellowDog.Dhcpv4.PoolConfigTest do
       assert {:error, :missing_ranges} = PoolConfig.validate(config)
     end
 
+    test "returns error for empty ranges list" do
+      config = %{
+        "name" => "test",
+        "gateway" => "192.168.1.1",
+        "ranges" => []
+      }
+
+      assert {:error, :empty_ranges} = PoolConfig.validate(config)
+    end
+
     test "returns error for invalid subnet format" do
       config = %{
         "name" => "test",

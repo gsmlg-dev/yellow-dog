@@ -209,6 +209,9 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
       nil ->
         {:error, :missing_ranges}
 
+      [] ->
+        {:error, :empty_ranges}
+
       ranges when is_list(ranges) ->
         parsed_ranges =
           Enum.map(ranges, &parse_range_string/1)
