@@ -125,7 +125,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
           {:ok, map} ->
             lease = deserialize_lease(map)
 
-            if lease_valid?(lease) do
+            if Lease.valid?(lease) do
               :ets.insert(state.table, {state.interface, lease})
               Logger.debug("Loaded persisted lease for #{state.interface}")
             else
@@ -271,19 +271,6 @@ defmodule YellowDog.DhcpClient.LeaseStore do
     })
   end
 
-  defp lease_valid?(%{ip: {0, 0, 0, 0}}), do: false
-
-  defp lease_valid?(lease) do
-    case lease do
-      %{obtained_at: %DateTime{} = obtained, lease_time: lt} when is_integer(lt) and lt > 0 ->
-        expires = DateTime.add(obtained, lt, :second)
-        DateTime.before?(DateTime.utc_now(), expires)
-
-      _ ->
-        false
-    end
-  end
-
   # --- IP formatting helpers ---
 
   defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
@@ -310,7 +297,7 @@ defmodule YellowDog.DhcpClient.LeaseStore do
   defp parse_ip_list(list) when is_list(list), do: Enum.map(list, &parse_ip/1)
   defp parse_ip_list(_), do: []
 
-  # Use Unix epoch for missing/unparseable timestamps so that lease_valid?/1
+  # Use Unix epoch for missing/unparseable timestamps so that Lease.valid?/1
   # correctly detects the lease as expired rather than treating it as fresh.
   @epoch DateTime.from_unix!(0)
 

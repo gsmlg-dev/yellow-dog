@@ -180,6 +180,43 @@ defmodule YellowDog.DhcpClient.LeaseTest do
     end
   end
 
+  # ── valid?/1 ──
+
+  describe "valid?/1" do
+    test "returns true for fresh lease with valid IP" do
+      lease =
+        make_lease(%{ip: {192, 168, 1, 100}, lease_time: 3600, obtained_at: DateTime.utc_now()})
+
+      assert Lease.valid?(lease)
+    end
+
+    test "returns false for zero IP" do
+      lease = make_lease(%{ip: {0, 0, 0, 0}, lease_time: 3600, obtained_at: DateTime.utc_now()})
+      refute Lease.valid?(lease)
+    end
+
+    test "returns false for expired lease" do
+      past = DateTime.add(DateTime.utc_now(), -7200, :second)
+      lease = make_lease(%{ip: {192, 168, 1, 100}, lease_time: 3600, obtained_at: past})
+      refute Lease.valid?(lease)
+    end
+
+    test "returns false for nil lease_time" do
+      lease = %Lease{ip: {192, 168, 1, 100}, obtained_at: DateTime.utc_now(), lease_time: nil}
+      refute Lease.valid?(lease)
+    end
+
+    test "returns false for nil obtained_at" do
+      lease = %Lease{ip: {192, 168, 1, 100}, obtained_at: nil, lease_time: 3600}
+      refute Lease.valid?(lease)
+    end
+
+    test "returns false for zero lease_time" do
+      lease = %Lease{ip: {192, 168, 1, 100}, obtained_at: DateTime.utc_now(), lease_time: 0}
+      refute Lease.valid?(lease)
+    end
+  end
+
   # ── prefix_length/1 ──
 
   describe "prefix_length/1" do

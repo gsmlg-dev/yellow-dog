@@ -105,6 +105,26 @@ defmodule YellowDog.DhcpClient.Lease do
   def t2_elapsed?(%__MODULE__{}), do: true
 
   @doc """
+  Returns `true` if the lease is usable: has a non-zero IP and has not expired.
+
+  Combines the zero-IP check with `expired?/1` to provide a single validation
+  predicate suitable for deciding whether a persisted lease can be reused.
+
+  ## Examples
+
+      iex> lease = %YellowDog.DhcpClient.Lease{ip: {192, 168, 1, 100}, obtained_at: ~U[2099-01-01 00:00:00Z], lease_time: 3600}
+      iex> YellowDog.DhcpClient.Lease.valid?(lease)
+      true
+
+      iex> lease = %YellowDog.DhcpClient.Lease{ip: {0, 0, 0, 0}, obtained_at: ~U[2099-01-01 00:00:00Z], lease_time: 3600}
+      iex> YellowDog.DhcpClient.Lease.valid?(lease)
+      false
+  """
+  @spec valid?(t()) :: boolean()
+  def valid?(%__MODULE__{ip: {0, 0, 0, 0}}), do: false
+  def valid?(%__MODULE__{} = lease), do: not expired?(lease)
+
+  @doc """
   Returns the `DateTime` at which the lease expires.
 
   Returns `nil` if `obtained_at` or `lease_time` is missing/invalid.
