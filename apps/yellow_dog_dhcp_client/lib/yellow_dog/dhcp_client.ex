@@ -72,9 +72,14 @@ defmodule YellowDog.DhcpClient do
       {:ok, _pid} ->
         store = {:via, Registry, {@registry, {:store, interface}}}
 
-        case LeaseStore.lookup(store, interface) do
-          {:ok, lease} -> lease
-          :not_found -> nil
+        try do
+          case LeaseStore.lookup(store, interface) do
+            {:ok, lease} -> lease
+            :not_found -> nil
+          end
+        catch
+          :exit, {:noproc, _} -> nil
+          :error, %ArgumentError{} -> nil
         end
 
       :error ->
@@ -97,7 +102,14 @@ defmodule YellowDog.DhcpClient do
     case lookup(interface) do
       {:ok, _pid} ->
         fsm = {:via, Registry, {@registry, {:fsm, interface}}}
-        StateMachine.release(fsm)
+
+        try do
+          StateMachine.release(fsm)
+        catch
+          # :gen_statem.cast via Registry raises ArgumentError when unregistered
+          :error, %ArgumentError{} -> {:error, :not_found}
+          :exit, {:noproc, _} -> {:error, :not_found}
+        end
 
       :error ->
         {:error, :not_found}
