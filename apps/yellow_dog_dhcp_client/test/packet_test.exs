@@ -788,4 +788,152 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert byte_size(packet) >= 236
     end
   end
+
+  # ── Full DORA Packet Roundtrip ──
+
+  describe "full DORA packet roundtrip" do
+    @doc """
+    Simulates a complete DORA handshake at the packet level:
+      1. Build DISCOVER → verify it includes vendor options
+      2. Build mock OFFER with Option 125 → parse → extract lease
+      3. Build REQUEST using offer's server_ip and offered_ip
+      4. Build mock ACK with full vendor options → parse → verify all fields
+    """
+    test "DISCOVER → OFFER → REQUEST → ACK preserves XID and extracts vendor options" do
+      mac = @test_mac
+      xid = 0xDEADBEEF
+
+      # == Step 1: Build DISCOVER ==
+      discover_bin = IO.iodata_to_binary(Packet.build_discover(mac, xid))
+      discover_msg = Message.from_iodata(discover_bin)
+
+      assert discover_msg.xid == xid
+      assert discover_msg.op == 1
+      # DISCOVER must include Option 60 (vendor class) and Option 124 (vendor class ID)
+      assert find_option(discover_msg, 60) != nil
+      assert find_option(discover_msg, 124) != nil
+
+      # == Step 2: Build mock OFFER with Option 125 (YellowDog vendor info) ==
+      vendor_info = VendorOptions.encode_vendor_info(%{
+        control_url: "wss://yd.example.com/ctrl",
+        server_id: "srv-alpha",
+        cluster_id: "cluster-prod",
+        auth_token: "tok-secret-123"
+      })
+
+      vc = "YellowDog:1.0:dns"
+
+      offer_options =
+        standard_offer_options() ++
+          [
+            %Option{type: 125, length: byte_size(vendor_info), value: vendor_info},
+            %Option{type: 60, length: byte_size(vc), value: vc}
+          ]
+
+      offer_bin = build_reply(xid: xid, options: offer_options)
+      assert {:offer, offer_lease} = Packet.parse_reply(offer_bin)
+
+      # Offer preserves XID and extracts vendor fields
+      assert offer_lease.xid == xid
+      assert offer_lease.ip == {192, 168, 1, 100}
+      assert offer_lease.server_ip == {192, 168, 1, 1}
+      assert offer_lease.yellowdog_server == true
+      assert offer_lease.yellowdog_vendor_class == true
+      assert offer_lease.control_url == "wss://yd.example.com/ctrl"
+      assert offer_lease.server_id == "srv-alpha"
+      assert offer_lease.cluster_id == "cluster-prod"
+      assert offer_lease.auth_token == "tok-secret-123"
+
+      # == Step 3: Build REQUEST using offer's server_ip and offered_ip ==
+      request_bin =
+        IO.iodata_to_binary(
+          Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip)
+        )
+
+      request_msg = Message.from_iodata(request_bin)
+
+      # REQUEST must preserve XID
+      assert request_msg.xid == xid
+      # REQUEST must include Option 54 (server identifier) from the offer
+      server_id_opt = find_option(request_msg, 54)
+      assert server_id_opt != nil
+      assert server_id_opt.value == <<192, 168, 1, 1>>
+      # REQUEST must include Option 50 (requested IP) from the offer
+      requested_ip_opt = find_option(request_msg, 50)
+      assert requested_ip_opt != nil
+      assert requested_ip_opt.value == <<192, 168, 1, 100>>
+      # REQUEST must include vendor class options
+      assert find_option(request_msg, 60) != nil
+
+      # == Step 4: Build mock ACK with same vendor options ==
+      ack_options =
+        standard_ack_options() ++
+          [
+            %Option{type: 125, length: byte_size(vendor_info), value: vendor_info},
+            %Option{type: 60, length: byte_size(vc), value: vc},
+            %Option{type: 15, length: 11, value: "example.com"},
+            %Option{type: 42, length: 4, value: <<129, 6, 15, 28>>},
+            %Option{type: 26, length: 2, value: <<0x05, 0xDC>>}
+          ]
+
+      ack_bin = build_reply(xid: xid, options: ack_options)
+      assert {:ack, ack_lease} = Packet.parse_reply(ack_bin)
+
+      # ACK lease has all expected fields
+      assert ack_lease.xid == xid
+      assert ack_lease.ip == {192, 168, 1, 100}
+      assert ack_lease.subnet_mask == {255, 255, 255, 0}
+      assert ack_lease.router == {192, 168, 1, 1}
+      assert ack_lease.dns_servers == [{8, 8, 8, 8}]
+      assert ack_lease.server_ip == {192, 168, 1, 1}
+      assert ack_lease.lease_time == 3600
+      assert ack_lease.t1 == 1800
+      assert ack_lease.t2 == 3156
+      assert ack_lease.domain_name == "example.com"
+      assert ack_lease.ntp_servers == [{129, 6, 15, 28}]
+      assert ack_lease.mtu == 1500
+      # Vendor options from Option 125
+      assert ack_lease.yellowdog_server == true
+      assert ack_lease.yellowdog_vendor_class == true
+      assert ack_lease.control_url == "wss://yd.example.com/ctrl"
+      assert ack_lease.server_id == "srv-alpha"
+      assert ack_lease.cluster_id == "cluster-prod"
+      assert ack_lease.auth_token == "tok-secret-123"
+    end
+
+    test "DORA with non-YellowDog server: no vendor options, nil vendor fields" do
+      mac = @test_mac
+      xid = 0xCAFE0001
+
+      # OFFER without Option 125 or Option 60
+      offer_bin = build_reply(xid: xid, options: standard_offer_options())
+      assert {:offer, offer_lease} = Packet.parse_reply(offer_bin)
+
+      assert offer_lease.yellowdog_server == false
+      assert offer_lease.yellowdog_vendor_class == false
+      assert offer_lease.control_url == nil
+      assert offer_lease.auth_token == nil
+      assert offer_lease.server_id == nil
+      assert offer_lease.cluster_id == nil
+
+      # REQUEST can still be built
+      request_bin =
+        IO.iodata_to_binary(
+          Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip)
+        )
+
+      request_msg = Message.from_iodata(request_bin)
+      assert request_msg.xid == xid
+
+      # ACK without vendor options
+      ack_bin = build_reply(xid: xid, options: standard_ack_options())
+      assert {:ack, ack_lease} = Packet.parse_reply(ack_bin)
+
+      assert ack_lease.yellowdog_server == false
+      assert ack_lease.control_url == nil
+      # Standard lease fields still present
+      assert ack_lease.ip == {192, 168, 1, 100}
+      assert ack_lease.lease_time == 3600
+    end
+  end
 end
