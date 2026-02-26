@@ -117,12 +117,9 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
       |> to_string()
       |> Path.join("templates/#{filename}")
 
-    if File.exists?(path) do
-      File.read!(path)
-    else
-      fallback
+    case File.read(path) do
+      {:ok, content} -> content
+      {:error, _} -> fallback
     end
-  rescue
-    File.Error -> fallback
   end
 end

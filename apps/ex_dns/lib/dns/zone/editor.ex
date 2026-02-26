@@ -564,7 +564,10 @@ defmodule DNS.Zone.Editor do
         end)
     }
 
-    {:ok, Jason.encode!(data, pretty: true)}
+    case Jason.encode(data, pretty: true) do
+      {:ok, json} -> {:ok, json}
+      {:error, reason} -> {:error, {:json_encoding_failed, reason}}
+    end
   end
 
   defp export_yaml_format(zone) do

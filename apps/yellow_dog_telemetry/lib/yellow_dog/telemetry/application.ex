@@ -102,17 +102,17 @@ defmodule YellowDog.Telemetry.Application do
     %{message: message, app: app, module: module} = metadata
 
     if Code.ensure_loaded?(Jason) do
-      json =
-        Jason.encode!(%{
-          timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-          level: level,
-          app: app,
-          module: module,
-          message: message,
-          metadata: Map.drop(metadata, [:message, :app, :module])
-        })
-
-      Logger.log(level, json)
+      case Jason.encode(%{
+             timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+             level: level,
+             app: app,
+             module: module,
+             message: message,
+             metadata: Map.drop(metadata, [:message, :app, :module])
+           }) do
+        {:ok, json} -> Logger.log(level, json)
+        {:error, _} -> log_default(level, metadata)
+      end
     else
       # Fallback to default formatter if Jason is not available
       log_default(level, metadata)
