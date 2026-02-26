@@ -319,7 +319,11 @@ defmodule YellowDog.Fingerprint.Database do
 
   defp save_overrides(stores, data_dir) do
     path = Path.join(data_dir, "overrides.toml")
-    File.mkdir_p!(data_dir)
+
+    case File.mkdir_p(data_dir) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to create data dir: #{inspect(reason)}")
+    end
 
     # We need the keys too — get from ETS directly since Store.list only returns values
     overrides =
@@ -344,7 +348,10 @@ defmodule YellowDog.Fingerprint.Database do
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n\n")
 
-    File.write!(path, content)
+    case File.write(path, content) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to save overrides: #{inspect(reason)}")
+    end
   end
 
   defp read_toml(path) do
