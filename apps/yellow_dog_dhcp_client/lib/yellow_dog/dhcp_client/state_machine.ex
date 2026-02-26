@@ -683,6 +683,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
     end
   rescue
     _ -> :not_found
+  catch
+    :exit, _ -> :not_found
   end
 
   defp apply_os_lease(%{os_module: nil}), do: :ok

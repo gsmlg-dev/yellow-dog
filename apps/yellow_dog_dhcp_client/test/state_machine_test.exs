@@ -1682,6 +1682,47 @@ defmodule YellowDog.DhcpClient.StateMachineTest do
     end
   end
 
+  # ── XID filtering in :init ──
+
+  describe "XID filtering in :init" do
+    test "OFFER with wrong XID while :init is discarded — FSM stays in :init", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 500})
+      assert get_state(pid) == :init
+
+      send_offer(pid, xid: 0xBADBAD00)
+      Process.sleep(50)
+
+      assert get_state(pid) == :init
+    end
+
+    test "OFFER with correct XID while :init transitions to :selecting", ctx do
+      pid = start_fsm(ctx, %{selection_window_ms: 500})
+      assert get_state(pid) == :init
+
+      send_offer(pid)
+      wait_for_state(pid, :selecting, 500)
+    end
+  end
+
+  # ── Store crash fallback ──
+
+  describe "store crash fallback" do
+    test "starts in :init when store_pid raises on lookup (try_recover_from_store rescues)", ctx do
+      # Passing a bad store_pid causes LeaseStore.lookup to raise (exit).
+      # try_recover_from_store rescues and returns :not_found → FSM starts in :init.
+      {:ok, pid} =
+        StateMachine.start_link(
+          interface: "test0",
+          mac: @test_mac,
+          socket_pid: ctx.socket_pid,
+          store_pid: :nonexistent_store_atom,
+          config: %{dad_enabled: false, selection_window_ms: 50}
+        )
+
+      assert get_state(pid) == :init
+    end
+  end
+
   # ── XID filtering in :selecting ──
 
   describe "XID filtering in :selecting" do

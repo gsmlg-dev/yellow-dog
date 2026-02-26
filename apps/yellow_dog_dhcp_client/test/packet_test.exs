@@ -676,5 +676,29 @@ defmodule YellowDog.DhcpClient.PacketTest do
       assert {:ack, lease} = Packet.parse_reply(data)
       assert lease.mtu == nil
     end
+
+    test "empty Option 15 (domain name) is treated as absent — domain_name is nil" do
+      # extract_string guards against empty binary; "" should yield nil
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 15, length: 0, value: ""}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.domain_name == nil
+    end
+
+    test "DHCPNAK with custom message in Option 56 returns that message as reason" do
+      reason_str = "address in use: policy violation"
+      nak_options = [
+        %Option{type: 53, length: 1, value: <<6>>},
+        %Option{type: 56, length: byte_size(reason_str), value: reason_str}
+      ]
+
+      data = build_reply(options: nak_options)
+      assert {:nak, reason} = Packet.parse_reply(data)
+      assert reason == reason_str
+    end
   end
 end
