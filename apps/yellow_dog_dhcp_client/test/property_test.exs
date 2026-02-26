@@ -12,6 +12,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
   - parse_reply robustness against arbitrary binary input
   - select_best_offer selection invariants
   - Lease.expired? temporal invariants
+  - Lease serialization roundtrip via LeaseStore (TOML persistence)
   """
 
   use ExUnit.Case, async: true
@@ -19,7 +20,7 @@ defmodule YellowDog.DhcpClient.PropertyTest do
 
   import Bitwise
 
-  alias YellowDog.DhcpClient.{Lease, VendorOptions}
+  alias YellowDog.DhcpClient.{Lease, LeaseStore, VendorOptions}
   alias DHCPv4.Message
 
   # -- Generators --
@@ -732,6 +733,169 @@ defmodule YellowDog.DhcpClient.PropertyTest do
         assert delay_high >= 500
         assert delay_low <= 65_001
         assert delay_high <= 65_001
+      end
+    end
+  end
+
+  # -- Lease serialization roundtrip --
+
+  # Generators for valid lease field values
+
+  defp ipv4_gen do
+    gen all(
+          a <- integer(1..254),
+          b <- integer(0..255),
+          c <- integer(0..255),
+          d <- integer(1..254)
+        ) do
+      {a, b, c, d}
+    end
+  end
+
+  defp subnet_mask_gen do
+    gen all(prefix <- integer(8..30)) do
+      mask_int = 0xFFFFFFFF <<< (32 - prefix) &&& 0xFFFFFFFF
+
+      {mask_int >>> 24 &&& 0xFF, mask_int >>> 16 &&& 0xFF, mask_int >>> 8 &&& 0xFF,
+       mask_int &&& 0xFF}
+    end
+  end
+
+  defp optional_ipv4_gen do
+    one_of([constant(nil), ipv4_gen()])
+  end
+
+  defp ip_list_gen do
+    list_of(ipv4_gen(), max_length: 4)
+  end
+
+  # Strings that exercise TOML escaping: include quotes, backslashes, and newlines
+  defp toml_string_gen do
+    gen all(
+          parts <-
+            list_of(
+              one_of([
+                string(:alphanumeric, min_length: 1, max_length: 8),
+                constant("\""),
+                constant("\\"),
+                constant("\n"),
+                constant("\r")
+              ]),
+              min_length: 1,
+              max_length: 5
+            )
+        ) do
+      Enum.join(parts)
+    end
+  end
+
+  defp optional_toml_string_gen do
+    one_of([constant(nil), toml_string_gen()])
+  end
+
+  defp lease_gen do
+    gen all(
+          ip <- ipv4_gen(),
+          subnet_mask <- subnet_mask_gen(),
+          router <- optional_ipv4_gen(),
+          dns_servers <- ip_list_gen(),
+          ntp_servers <- ip_list_gen(),
+          server_ip <- ipv4_gen(),
+          lease_time <- integer(3600..86_400),
+          t1_frac <- float(min: 0.3, max: 0.6),
+          t2_frac <- float(min: 0.7, max: 0.9),
+          domain_name <- optional_toml_string_gen(),
+          mtu <- one_of([constant(nil), integer(576..9000)]),
+          xid <- integer(0..0xFFFFFFFF),
+          yellowdog_server <- boolean(),
+          yellowdog_vendor_class <- boolean(),
+          control_url <- optional_toml_string_gen(),
+          control_url_fallback <- optional_toml_string_gen(),
+          auth_token <- optional_toml_string_gen(),
+          server_id <- optional_toml_string_gen(),
+          cluster_id <- optional_toml_string_gen()
+        ) do
+      t1 = trunc(lease_time * t1_frac)
+      t2 = trunc(lease_time * t2_frac)
+
+      struct(Lease, %{
+        ip: ip,
+        subnet_mask: subnet_mask,
+        router: router,
+        dns_servers: dns_servers,
+        ntp_servers: ntp_servers,
+        server_ip: server_ip,
+        server_mac: nil,
+        lease_time: lease_time,
+        t1: t1,
+        t2: t2,
+        domain_name: domain_name,
+        mtu: mtu,
+        obtained_at: DateTime.utc_now(),
+        xid: xid,
+        yellowdog_server: yellowdog_server,
+        yellowdog_vendor_class: yellowdog_vendor_class,
+        known_server: false,
+        control_url: control_url,
+        control_url_fallback: control_url_fallback,
+        auth_token: auth_token,
+        server_id: server_id,
+        cluster_id: cluster_id,
+        vendor_options: %{},
+        raw_options: %{}
+      })
+    end
+  end
+
+  describe "LeaseStore serialization roundtrip" do
+    property "store → flush → load preserves all persisted lease fields" do
+      check all(lease <- lease_gen(), max_runs: 50) do
+        dir = Path.join(System.tmp_dir!(), "yd_prop_#{:erlang.unique_integer([:positive])}")
+        File.mkdir_p!(dir)
+        iface = "prop_eth0"
+
+        try do
+          {:ok, pid} = LeaseStore.start_link(interface: iface, lease_dir: dir)
+          :ok = LeaseStore.store(pid, iface, lease)
+          # terminate/2 flushes synchronously
+          GenServer.stop(pid)
+
+          {:ok, pid2} = LeaseStore.start_link(interface: iface, lease_dir: dir)
+          assert {:ok, loaded} = LeaseStore.lookup(pid2, iface)
+          GenServer.stop(pid2)
+
+          # Verify all persisted fields
+          assert loaded.ip == lease.ip
+          assert loaded.subnet_mask == lease.subnet_mask
+          assert loaded.router == lease.router
+          assert loaded.dns_servers == lease.dns_servers
+          assert loaded.ntp_servers == lease.ntp_servers
+          assert loaded.server_ip == lease.server_ip
+          assert loaded.lease_time == lease.lease_time
+          assert loaded.t1 == lease.t1
+          assert loaded.t2 == lease.t2
+          assert loaded.domain_name == lease.domain_name
+          assert loaded.mtu == lease.mtu
+          assert loaded.xid == lease.xid
+          assert loaded.yellowdog_server == lease.yellowdog_server
+          assert loaded.yellowdog_vendor_class == lease.yellowdog_vendor_class
+          assert loaded.control_url == lease.control_url
+          assert loaded.control_url_fallback == lease.control_url_fallback
+          assert loaded.auth_token == lease.auth_token
+          assert loaded.server_id == lease.server_id
+          assert loaded.cluster_id == lease.cluster_id
+          # obtained_at: compare to second precision (ISO8601 roundtrip may shift
+          # microsecond precision depending on the TOML library)
+          assert DateTime.diff(loaded.obtained_at, lease.obtained_at, :second) == 0
+
+          # Non-persisted fields get defaults
+          assert loaded.vendor_options == %{}
+          assert loaded.raw_options == %{}
+          assert loaded.known_server == false
+          assert loaded.server_mac == nil
+        after
+          File.rm_rf!(dir)
+        end
       end
     end
   end
