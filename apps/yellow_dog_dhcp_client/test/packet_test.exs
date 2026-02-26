@@ -336,9 +336,7 @@ defmodule YellowDog.DhcpClient.PacketTest do
 
     test "includes hostname when provided" do
       binary =
-        Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100},
-          hostname: "yd-node"
-        )
+        Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100}, hostname: "yd-node")
 
       msg = parse_built_packet(binary)
       opt = find_option(msg, 12)
