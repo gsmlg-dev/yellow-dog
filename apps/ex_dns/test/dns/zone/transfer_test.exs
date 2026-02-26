@@ -454,23 +454,59 @@ defmodule DNS.Zone.TransferTest do
     end
 
     test "transfer_allowed? with CIDR subnet string" do
-      # Note: CIDR subnet matching may not be implemented
-      # Testing with specific IP tuple instead
       zone_name = "cidr-acl.com"
       zone = Zone.new(zone_name, :authoritative)
-      # Use explicit IP tuples instead of CIDR notation
-      options = Keyword.put(zone.options, :allow_transfer, [{192, 168, 1, 1}, {192, 168, 1, 100}])
+      options = Keyword.put(zone.options, :allow_transfer, ["192.168.1.0/24"])
       zone = %{zone | options: options}
 
       Manager.create_zone(zone_name, :authoritative, zone.options)
 
-      # IPs in the list should be allowed
+      # IPs in the /24 subnet should be allowed
       assert Transfer.transfer_allowed?(zone_name, {192, 168, 1, 1})
       assert Transfer.transfer_allowed?(zone_name, {192, 168, 1, 100})
+      assert Transfer.transfer_allowed?(zone_name, {192, 168, 1, 254})
 
-      # IPs not in list should be denied
-      refute Transfer.transfer_allowed?(zone_name, {192, 168, 1, 254})
+      # IPs outside the subnet should be denied
+      refute Transfer.transfer_allowed?(zone_name, {192, 168, 2, 1})
       refute Transfer.transfer_allowed?(zone_name, {10, 0, 0, 1})
+    end
+
+    test "transfer_allowed? with CIDR /16 subnet" do
+      zone_name = "cidr16-acl.com"
+      zone = Zone.new(zone_name, :authoritative)
+      options = Keyword.put(zone.options, :allow_transfer, ["10.0.0.0/16"])
+      zone = %{zone | options: options}
+
+      Manager.create_zone(zone_name, :authoritative, zone.options)
+
+      assert Transfer.transfer_allowed?(zone_name, {10, 0, 0, 1})
+      assert Transfer.transfer_allowed?(zone_name, {10, 0, 255, 255})
+      refute Transfer.transfer_allowed?(zone_name, {10, 1, 0, 1})
+    end
+
+    test "transfer_allowed? with IPv6 CIDR" do
+      zone_name = "cidr-ipv6-acl.com"
+      zone = Zone.new(zone_name, :authoritative)
+      options = Keyword.put(zone.options, :allow_transfer, ["2001:db8::/32"])
+      zone = %{zone | options: options}
+
+      Manager.create_zone(zone_name, :authoritative, zone.options)
+
+      assert Transfer.transfer_allowed?(zone_name, {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 1})
+      assert Transfer.transfer_allowed?(zone_name, {0x2001, 0x0DB8, 0xFFFF, 0, 0, 0, 0, 1})
+      refute Transfer.transfer_allowed?(zone_name, {0x2001, 0x0DB9, 0, 0, 0, 0, 0, 1})
+    end
+
+    test "transfer_allowed? with exact IP string (no CIDR)" do
+      zone_name = "exact-str-acl.com"
+      zone = Zone.new(zone_name, :authoritative)
+      options = Keyword.put(zone.options, :allow_transfer, ["192.168.1.100"])
+      zone = %{zone | options: options}
+
+      Manager.create_zone(zone_name, :authoritative, zone.options)
+
+      assert Transfer.transfer_allowed?(zone_name, {192, 168, 1, 100})
+      refute Transfer.transfer_allowed?(zone_name, {192, 168, 1, 101})
     end
 
     test "transfer_allowed? with non-existent zone" do
