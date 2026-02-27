@@ -178,6 +178,7 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       Process.sleep(100)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.state != :failed,
              "FSM should leave :failed state after activate cast, got: #{state.state}"
     end

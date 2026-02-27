@@ -19,15 +19,13 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
 
   defp interface_name_gen do
     StreamData.string(:alphanumeric, min_length: 3, max_length: 8)
-    |> StreamData.map(&("eth#{&1}"))
+    |> StreamData.map(&"eth#{&1}")
   end
-
 
   defp observed_state_gen do
     gen all(
           ifaces <-
-            StreamData.list_of(interface_name_gen(), min_length: 0, max_length: 5,
-              uniq_by: & &1)
+            StreamData.list_of(interface_name_gen(), min_length: 0, max_length: 5, uniq_by: & &1)
         ) do
       links =
         Enum.reduce(ifaces, %{}, fn iface, acc ->
@@ -62,8 +60,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
   property "empty observed links produce no activation diffs" do
     check all(
             ifaces <-
-              StreamData.list_of(interface_name_gen(), min_length: 1, max_length: 5,
-                uniq_by: & &1)
+              StreamData.list_of(interface_name_gen(),
+                min_length: 1,
+                max_length: 5,
+                uniq_by: & &1
+              )
           ) do
       connections =
         Enum.reduce(ifaces, %{}, fn iface, acc ->
@@ -170,8 +171,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     # that desired connections built from profiles never reference loopback.
     check all(
             ifaces <-
-              StreamData.list_of(interface_name_gen(), min_length: 0, max_length: 4,
-                uniq_by: & &1)
+              StreamData.list_of(interface_name_gen(),
+                min_length: 0,
+                max_length: 4,
+                uniq_by: & &1
+              )
           ) do
       all_ifaces = ["lo" | ifaces]
 

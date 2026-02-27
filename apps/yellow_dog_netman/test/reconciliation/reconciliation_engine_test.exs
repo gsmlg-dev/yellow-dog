@@ -90,6 +90,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       diffs1 = ReconciliationEngine.diff(desired1, observed1)
 
       activate_diffs = Enum.filter(diffs1, &(&1.action == :activate_connection))
+
       assert length(activate_diffs) >= 1,
              "Expected at least one activation diff for new interface"
 
@@ -106,7 +107,8 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       desired2 = ReconciliationEngine.compute_desired()
       diffs2 = ReconciliationEngine.diff(desired2, observed2)
 
-      activate_diffs2 = Enum.filter(diffs2, &(&1.action == :activate_connection and &1.interface == iface))
+      activate_diffs2 =
+        Enum.filter(diffs2, &(&1.action == :activate_connection and &1.interface == iface))
 
       assert activate_diffs2 == [],
              "Second reconciliation cycle should produce no activation diffs for already-active interface"

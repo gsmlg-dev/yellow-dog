@@ -109,7 +109,8 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert profile.ipv4.method == :manual
 
       # EventBus should have received a :reloaded notification
-      assert_receive {:netman_event, "netman:profile:changed", {:reloaded, "hotreload-test-profile"}},
+      assert_receive {:netman_event, "netman:profile:changed",
+                      {:reloaded, "hotreload-test-profile"}},
                      500
 
       # Cleanup
