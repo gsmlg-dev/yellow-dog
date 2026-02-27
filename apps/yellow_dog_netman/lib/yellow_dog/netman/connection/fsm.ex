@@ -143,6 +143,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :disconnected, :prepare, [{:next_event, :internal, :setup_link}])
   end
 
+  def disconnected(:info, {:netman_event, _, {:link_update, %{carrier: true}}}, data) do
+    {:keep_state, data, [{:next_event, :internal, :auto_activate}]}
+  end
+
   def disconnected(:info, {:netman_event, _, {:removed, _}}, data) do
     transition(data, :disconnected, :unavailable)
   end
