@@ -103,17 +103,19 @@ defmodule YellowDog.Netman.API.CLI do
   defp handle_client(socket) do
     case :gen_tcp.recv(socket, 0, 5000) do
       {:ok, data} ->
-        response =
-          data
-          |> String.trim()
-          |> Jason.decode()
-          |> case do
-            {:ok, command} -> handle_command(command)
-            {:error, _} -> %{"error" => "invalid JSON"}
-          end
+        case data |> String.trim() |> Jason.decode() do
+          {:ok, %{"method" => "monitor"}} ->
+            handle_monitor(socket)
 
-        :gen_tcp.send(socket, Jason.encode!(response) <> "\n")
-        :gen_tcp.close(socket)
+          {:ok, command} ->
+            response = handle_command(command)
+            :gen_tcp.send(socket, Jason.encode!(response) <> "\n")
+            :gen_tcp.close(socket)
+
+          {:error, _} ->
+            :gen_tcp.send(socket, Jason.encode!(%{"error" => "invalid JSON"}) <> "\n")
+            :gen_tcp.close(socket)
+        end
 
       {:error, _} ->
         :gen_tcp.close(socket)
@@ -121,6 +123,64 @@ defmodule YellowDog.Netman.API.CLI do
   end
 
   @doc false
+  @monitor_events [
+    [:yellow_dog, :netman, :connection, :state_change],
+    [:yellow_dog, :netman, :reconciliation, :stop],
+    [:yellow_dog, :netman, :kernel, :link_change],
+    [:yellow_dog, :netman, :kernel, :address_change],
+    [:yellow_dog, :netman, :kernel, :route_change]
+  ]
+
+  defp handle_monitor(socket) do
+    pid = self()
+    handler_id = {__MODULE__, :monitor, pid}
+
+    :telemetry.attach_many(
+      handler_id,
+      @monitor_events,
+      fn event_name, measurements, metadata, _config ->
+        send(pid, {:telemetry_event, event_name, measurements, metadata})
+      end,
+      nil
+    )
+
+    :gen_tcp.send(socket, Jason.encode!(%{"event" => "monitor_started"}) <> "\n")
+    result = monitor_loop(socket)
+    :telemetry.detach(handler_id)
+    result
+  end
+
+  defp monitor_loop(socket) do
+    receive do
+      {:telemetry_event, event_name, measurements, metadata} ->
+        event = %{
+          "event" => Enum.join(event_name, "."),
+          "measurements" => stringify_map(measurements),
+          "metadata" => stringify_map(metadata),
+          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+        }
+
+        case :gen_tcp.send(socket, Jason.encode!(event) <> "\n") do
+          :ok -> monitor_loop(socket)
+          {:error, _} -> :ok
+        end
+    after
+      30_000 ->
+        case :gen_tcp.send(socket, Jason.encode!(%{"event" => "keepalive"}) <> "\n") do
+          :ok -> monitor_loop(socket)
+          {:error, _} -> :ok
+        end
+    end
+  end
+
+  defp stringify_map(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), stringify_value(v)} end)
+  end
+
+  defp stringify_value(v) when is_atom(v), do: to_string(v)
+  defp stringify_value(v) when is_tuple(v), do: inspect(v)
+  defp stringify_value(v), do: v
+
   def handle_command(%{"method" => "status"}) do
     status = YellowDog.Netman.status()
     %{"result" => format_system_status(status)}

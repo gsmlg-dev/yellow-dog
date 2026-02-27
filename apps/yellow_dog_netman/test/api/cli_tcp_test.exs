@@ -57,4 +57,37 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       end
     end
   end
+
+  describe "monitor over TCP" do
+    @tag :capture_log
+    test "monitor command streams events until client disconnects" do
+      port = get_cli_port()
+
+      {:ok, socket} =
+        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+
+      # Should receive monitor_started
+      {:ok, started_line} = :gen_tcp.recv(socket, 0, 2000)
+      assert %{"event" => "monitor_started"} = Jason.decode!(String.trim(started_line))
+
+      # Trigger a telemetry event via MockNetlink
+      iface = "tcp_mon_#{:rand.uniform(100_000)}"
+      YellowDog.Netman.Test.MockNetlink.link_up(iface)
+      Process.sleep(100)
+
+      # Read the streamed event
+      {:ok, event_line} = :gen_tcp.recv(socket, 0, 2000)
+      event = Jason.decode!(String.trim(event_line))
+      assert event["event"] == "yellow_dog.netman.kernel.link_change"
+      assert is_map(event["metadata"])
+      assert is_map(event["measurements"])
+
+      # Disconnect client — monitor loop should exit cleanly
+      :gen_tcp.close(socket)
+
+      YellowDog.Netman.Test.MockNetlink.link_removed(iface)
+    end
+  end
 end

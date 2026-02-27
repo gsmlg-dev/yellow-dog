@@ -196,6 +196,25 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
     assert Enum.any?(addresses, &(&1.scope == :global))
   end
 
+  test "address with invalid CIDR prefix defaults to /32" do
+    iface = "addr_bad_cidr_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "address" => "10.8.0.1/abc"
+        }}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.address == "10.8.0.1" and &1.prefix_len == 32))
+  end
+
   test "address with host scope is parsed correctly" do
     iface = "addr_host_scope_#{:rand.uniform(65535)}"
 

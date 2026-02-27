@@ -140,8 +140,14 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   defp parse_cidr(cidr) do
     case String.split(cidr, "/") do
-      [addr, prefix] -> {addr, String.to_integer(prefix)}
-      [addr] -> {addr, 32}
+      [addr, prefix] ->
+        case Integer.parse(prefix) do
+          {n, ""} -> {addr, n}
+          _ -> {addr, 32}
+        end
+
+      [addr] ->
+        {addr, 32}
     end
   end
 

@@ -411,8 +411,14 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   defp parse_cidr(cidr) do
     case String.split(cidr, "/") do
-      [addr, prefix] -> {addr, String.to_integer(prefix)}
-      [addr] -> {addr, 24}
+      [addr, prefix] ->
+        case Integer.parse(prefix) do
+          {n, ""} -> {addr, n}
+          _ -> {addr, 24}
+        end
+
+      [addr] ->
+        {addr, 24}
     end
   end
 end

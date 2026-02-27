@@ -313,4 +313,12 @@ defmodule YellowDog.Netman.API.CLITest do
       YellowDog.Netman.Test.MockNetlink.link_removed(iface)
     end
   end
+
+  describe "monitor command" do
+    test "monitor is not handled by handle_command (routed at handle_client level)" do
+      # monitor is intercepted in handle_client before reaching handle_command
+      result = CLI.handle_command(%{"method" => "monitor"})
+      assert %{"error" => "unknown method: monitor"} = result
+    end
+  end
 end
