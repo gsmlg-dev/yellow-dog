@@ -24,6 +24,8 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
 
   use GenServer
 
+  require Logger
+
   @type config_callback :: (map() -> :ok | {:error, term()})
 
   @debounce_ms 1000
@@ -153,6 +155,17 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
             )
 
             {:stop, reason}
+
+          :ignore ->
+            Logger.warning("FileSystem watcher unavailable (inotify-tools missing?), config watcher disabled")
+
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv4, :config_watcher, :start_failed],
+              %{count: 1},
+              %{reason: "filesystem_watcher_unavailable"}
+            )
+
+            {:ok, %{enabled: false}}
         end
     end
   end
