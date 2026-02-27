@@ -412,8 +412,12 @@ defmodule YellowDog.Netman.Connection.FSM do
       servers =
         Enum.flat_map(dns_servers, fn s ->
           case :inet.parse_address(String.to_charlist(s)) do
-            {:ok, ip} -> [ip]
-            _ -> []
+            {:ok, ip} ->
+              [ip]
+
+            {:error, _} ->
+              Logger.warning("Invalid DNS server address #{inspect(s)} for #{data.interface}, skipping")
+              []
           end
         end)
 
