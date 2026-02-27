@@ -417,11 +417,10 @@ defmodule YellowDog.Netman.Connection.FSM do
           end
         end)
 
-      YellowDog.Resolved.set_link_dns(data.interface, %{
-        servers: servers,
-        search: [],
-        priority: data.profile.autoconnect_priority
-      })
+      apply(YellowDog.Resolved, :set_link_dns, [
+        data.interface,
+        %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
+      ])
     else
       :ok
     end
@@ -429,7 +428,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   defp reset_dns(data) do
     if Code.ensure_loaded?(YellowDog.Resolved) do
-      YellowDog.Resolved.reset_link_dns(data.interface)
+      apply(YellowDog.Resolved, :reset_link_dns, [data.interface])
     else
       :ok
     end
