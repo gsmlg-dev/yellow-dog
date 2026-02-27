@@ -3,18 +3,18 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
   alias YellowDog.Netman.API.CLI
 
-  defp get_cli_port do
-    state = :sys.get_state(CLI)
-    {:ok, port} = :inet.port(state.listen_socket)
-    port
+  defp connect_to_cli do
+    socket_path = :sys.get_state(CLI).socket_path
+    :gen_tcp.connect({:local, String.to_charlist(socket_path)}, 0, [
+      :binary,
+      packet: :line,
+      active: false
+    ])
   end
 
-  describe "TCP accept loop" do
+  describe "Unix socket accept loop" do
     test "CLI accepts a JSON command and returns a response" do
-      port = get_cli_port()
-
-      {:ok, socket} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket} = connect_to_cli()
 
       :gen_tcp.send(socket, Jason.encode!(%{"method" => "status"}) <> "\n")
 
@@ -26,10 +26,7 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     end
 
     test "CLI returns error for invalid JSON" do
-      port = get_cli_port()
-
-      {:ok, socket} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket} = connect_to_cli()
 
       :gen_tcp.send(socket, "not valid json\n")
 
@@ -41,11 +38,8 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     end
 
     test "CLI handles multiple sequential connections" do
-      port = get_cli_port()
-
       for _ <- 1..3 do
-        {:ok, socket} =
-          :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+        {:ok, socket} = connect_to_cli()
 
         # Use "status" which returns a small fixed-size response regardless of system state
         :gen_tcp.send(socket, Jason.encode!(%{"method" => "status"}) <> "\n")
@@ -58,13 +52,10 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     end
   end
 
-  describe "monitor over TCP" do
+  describe "monitor over Unix socket" do
     @tag :capture_log
     test "monitor command streams events until client disconnects" do
-      port = get_cli_port()
-
-      {:ok, socket} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket} = connect_to_cli()
 
       :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
 
@@ -93,18 +84,14 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
   describe "edge cases" do
     test "client that disconnects before sending data is handled" do
-      port = get_cli_port()
-
-      {:ok, socket} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket} = connect_to_cli()
 
       # Close immediately without sending anything — exercises recv error path
       :gen_tcp.close(socket)
       Process.sleep(50)
 
       # Server should still be alive and accepting new connections
-      {:ok, socket2} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket2} = connect_to_cli()
 
       :gen_tcp.send(socket2, Jason.encode!(%{"method" => "status"}) <> "\n")
       {:ok, response} = :gen_tcp.recv(socket2, 0, 2000)
@@ -114,10 +101,7 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     end
 
     test "monitor with tuple values in telemetry metadata" do
-      port = get_cli_port()
-
-      {:ok, socket} =
-        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+      {:ok, socket} = connect_to_cli()
 
       :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
       {:ok, _started} = :gen_tcp.recv(socket, 0, 2000)

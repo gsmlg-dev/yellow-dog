@@ -44,7 +44,7 @@ defmodule YellowDog.Netman.API.CLI do
            :binary,
            packet: :line,
            active: false,
-           reuseaddr: true
+           ifaddr: {:local, String.to_charlist(socket_path)}
          ]) do
       {:ok, listen_socket} ->
         # Accept connections asynchronously
