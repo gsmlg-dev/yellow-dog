@@ -207,5 +207,84 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert Process.alive?(Process.whereis(ProfileStore))
       assert length(ProfileStore.list()) == existing_count
     end
+
+    test "delete publishes :deleted event" do
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+      profile = %Profile{id: "event-del-test", type: :ethernet}
+      ProfileStore.put("event-del-test", profile)
+      # Drain the :updated event
+      assert_receive {:netman_event, "netman:profile:changed", {:updated, "event-del-test"}}, 500
+
+      ProfileStore.delete("event-del-test")
+      assert_receive {:netman_event, "netman:profile:changed", {:deleted, "event-del-test"}}, 500
+    end
+  end
+
+  describe "import_file/1" do
+    test "import_file with nonexistent file returns file_read error" do
+      result = ProfileStore.import_file("/nonexistent/path/profile.toml")
+      assert {:error, {:file_read, :enoent}} = result
+    end
+
+    test "import_file with invalid TOML returns toml_parse error" do
+      tmp_path = System.tmp_dir!() |> Path.join("bad_import_#{:rand.uniform(65535)}.toml")
+      File.write!(tmp_path, "{{invalid toml")
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      result = ProfileStore.import_file(tmp_path)
+      assert {:error, {:toml_parse, _}} = result
+    end
+  end
+
+  describe "match_interface/2 priority ordering" do
+    test "prefers exact interface match over wildcard" do
+      unique_iface = "prio_eth_#{:rand.uniform(65535)}"
+
+      exact = %Profile{
+        id: "exact-match-#{unique_iface}",
+        type: :ethernet,
+        interface: unique_iface,
+        autoconnect_priority: 50
+      }
+
+      wildcard = %Profile{
+        id: "wildcard-match-#{unique_iface}",
+        type: :ethernet,
+        interface: nil,
+        autoconnect_priority: 200
+      }
+
+      ProfileStore.put(exact.id, exact)
+      ProfileStore.put(wildcard.id, wildcard)
+
+      on_exit(fn ->
+        ProfileStore.delete(exact.id)
+        ProfileStore.delete(wildcard.id)
+      end)
+
+      profile = ProfileStore.match_interface(unique_iface)
+      assert profile.id == exact.id
+    end
+
+    test "match_interface with non-ethernet type" do
+      wifi = %Profile{id: "wifi-test", type: :wifi, interface: "wlan0"}
+      ProfileStore.put("wifi-test", wifi)
+      on_exit(fn -> ProfileStore.delete("wifi-test") end)
+
+      profile = ProfileStore.match_interface("wlan0", :wifi)
+      assert profile != nil
+      assert profile.id == "wifi-test"
+    end
+  end
+
+  describe "file_event edge cases" do
+    test "non-modified events on TOML files are ignored" do
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      send(ProfileStore, {:file_event, self(), {"/tmp/test.toml", [:created]}})
+      Process.sleep(100)
+
+      refute_receive {:netman_event, "netman:profile:changed", _}, 200
+    end
   end
 end

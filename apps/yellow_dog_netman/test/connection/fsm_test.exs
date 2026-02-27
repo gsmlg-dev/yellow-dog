@@ -608,4 +608,133 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
     GenServer.stop(pid, :normal)
   end
+
+  test "deactivate from configuring transitions to deactivating then disconnected" do
+    interface = "fsm_deact_conf_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "deact-conf-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface, carrier: false)
+    Process.sleep(30)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(30)
+
+    # Suspend to queue activate then deactivate atomically
+    :sys.suspend(pid)
+    FSM.activate(pid)
+    FSM.deactivate(pid)
+    :sys.resume(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "ipv4 disabled method skips IP configuration and proceeds to ip_check" do
+    interface = "fsm_disabled_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "disabled-ip-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    FSM.activate(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    # ipv4 disabled → skips DHCP/static, goes to ip_check → activated
+    assert state.state == :activated
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "get_state on stopped FSM returns error" do
+    result = FSM.get_state(spawn(fn -> :ok end))
+    Process.sleep(50)
+    assert {:error, :not_running} = result
+  end
+
+  test "catch-all in unavailable ignores unknown events" do
+    interface = "fsm_catchall_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "catchall-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(30)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :unavailable
+
+    # Send random event — should be ignored by catch-all
+    send(pid, {:some_random_event, :test})
+    Process.sleep(50)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :unavailable
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "activated with route installation via gateway" do
+    interface = "fsm_route_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "route-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :manual, address: "10.3.0.100/24", gateway: "10.3.0.1", dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+    MockNetlink.address_added(interface, "10.3.0.100/24")
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+    FSM.activate(pid)
+    Process.sleep(300)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :activated
+
+    GenServer.stop(pid, :normal)
+  end
 end

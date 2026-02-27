@@ -178,4 +178,139 @@ defmodule YellowDog.Netman.API.CLITest do
       assert Process.alive?(pid)
     end
   end
+
+  describe "additional coverage" do
+    @moduletag :capture_log
+
+    test "handle_info(:accept, %{listen_socket: nil}) is a no-op" do
+      state = %CLI{socket_path: "/tmp/cli_test_nil.sock", listen_socket: nil, clients: []}
+      assert {:noreply, ^state} = CLI.handle_info(:accept, state)
+    end
+
+    test "terminate/2 cleans up listen_socket and socket file" do
+      # Create a real TCP listen socket to verify terminate closes it
+      {:ok, listen_socket} =
+        :gen_tcp.listen(0, [:binary, packet: :line, active: false, reuseaddr: true])
+
+      socket_path = Path.join(System.tmp_dir!(), "cli_term_test_#{:rand.uniform(100_000)}.sock")
+      File.write!(socket_path, "")
+      on_exit(fn -> File.rm(socket_path) end)
+
+      state = %CLI{socket_path: socket_path, listen_socket: listen_socket, clients: []}
+
+      CLI.terminate(:normal, state)
+
+      # Socket should be closed (port/recv fails)
+      assert {:error, _} = :gen_tcp.accept(listen_socket, 0)
+
+      # Socket file should be removed
+      refute File.exists?(socket_path)
+    end
+
+    test "terminate/2 with nil listen_socket does not crash" do
+      socket_path = Path.join(System.tmp_dir!(), "cli_term_nil_#{:rand.uniform(100_000)}.sock")
+      File.write!(socket_path, "")
+      on_exit(fn -> File.rm(socket_path) end)
+
+      state = %CLI{socket_path: socket_path, listen_socket: nil, clients: []}
+
+      # Should not raise
+      CLI.terminate(:shutdown, state)
+      refute File.exists?(socket_path)
+    end
+
+    test "device.show with a valid interface returns result" do
+      iface = "cli_dev_show_#{:rand.uniform(100_000)}"
+
+      YellowDog.Netman.Test.MockNetlink.link_up(iface, index: 42, mac: "00:11:22:33:44:55")
+      Process.sleep(50)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "device.show",
+          "params" => %{"interface" => iface}
+        })
+
+      assert %{"result" => info} = result
+      assert info.interface == iface
+
+      # Cleanup
+      YellowDog.Netman.Test.MockNetlink.link_removed(iface)
+    end
+
+    test "connection.up with a valid profile and matching interface activates" do
+      iface = "cli_up_#{:rand.uniform(100_000)}"
+      profile_id = "cli-up-profile-#{:rand.uniform(100_000)}"
+
+      # Seed the interface via MockNetlink
+      YellowDog.Netman.Test.MockNetlink.link_up(iface)
+      Process.sleep(50)
+
+      profile = %YellowDog.Netman.Types.Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      on_exit(fn -> ProfileStore.delete(profile_id) end)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.up",
+          "params" => %{"id" => profile_id}
+        })
+
+      assert %{"result" => "activated"} = result
+
+      # Cleanup: stop the connection FSM that was started
+      YellowDog.Netman.Connection.Supervisor.stop_connection(iface)
+      YellowDog.Netman.Test.MockNetlink.link_removed(iface)
+    end
+
+    test "connection.down deactivating an active connection returns deactivated" do
+      iface = "cli_down_#{:rand.uniform(100_000)}"
+      profile_id = "cli-down-profile-#{:rand.uniform(100_000)}"
+
+      profile = %YellowDog.Netman.Types.Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Create the interface and start an FSM for it
+      YellowDog.Netman.Test.MockNetlink.link_up(iface)
+      Process.sleep(50)
+
+      ProfileStore.put(profile_id, profile)
+      on_exit(fn -> ProfileStore.delete(profile_id) end)
+
+      {:ok, _pid} =
+        YellowDog.Netman.Connection.Supervisor.start_connection(iface, profile)
+
+      Process.sleep(50)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.down",
+          "params" => %{"id" => profile_id}
+        })
+
+      assert %{"result" => "deactivated"} = result
+
+      # Cleanup
+      YellowDog.Netman.Connection.Supervisor.stop_connection(iface)
+      YellowDog.Netman.Test.MockNetlink.link_removed(iface)
+    end
+  end
 end

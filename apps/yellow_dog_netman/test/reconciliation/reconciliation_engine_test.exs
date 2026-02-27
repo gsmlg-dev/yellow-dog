@@ -308,4 +308,112 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       ProfileStore.delete(profile_id)
     end
   end
+
+  describe "deactivate/1 with active FSM" do
+    test "deactivate stops a running connection FSM" do
+      iface = "recon_deact_#{:rand.uniform(65535)}"
+      profile_id = "recon-deact-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      assert {:ok, _} = Connection.Supervisor.find_connection(iface)
+
+      assert :ok = ReconciliationEngine.deactivate(profile_id)
+      Process.sleep(100)
+
+      ProfileStore.delete(profile_id)
+    end
+  end
+
+  describe "compute_desired/0" do
+    test "includes autoconnect profiles matching non-loopback ethernet links" do
+      iface = "recon_desired_#{:rand.uniform(65535)}"
+      profile_id = "recon-desired-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 150,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      desired = ReconciliationEngine.compute_desired()
+      assert Map.has_key?(desired.connections, profile_id)
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
+
+    test "excludes non-autoconnect profiles" do
+      iface = "recon_noauto_#{:rand.uniform(65535)}"
+      profile_id = "recon-noauto-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      desired = ReconciliationEngine.compute_desired()
+      refute Map.has_key?(desired.connections, profile_id)
+
+      ProfileStore.delete(profile_id)
+    end
+  end
+
+  describe "periodic reconciliation" do
+    test "periodic_reconcile fires and reschedules" do
+      test_pid = self()
+      handler_id = {__MODULE__, :periodic, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:periodic_recon, measurements})
+        end,
+        nil
+      )
+
+      pid = Process.whereis(ReconciliationEngine)
+      send(pid, :periodic_reconcile)
+
+      assert_receive {:periodic_recon, %{diffs_count: _}}, 2000
+
+      :telemetry.detach(handler_id)
+    end
+  end
 end

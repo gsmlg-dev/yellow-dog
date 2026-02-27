@@ -198,6 +198,10 @@ defmodule YellowDog.Netman.ProfileStore do
           FileSystem.subscribe(pid)
           pid
 
+        :ignore ->
+          Logger.info("Profile watcher not started (ignored)")
+          nil
+
         {:error, reason} ->
           Logger.warning("Failed to start profile watcher: #{inspect(reason)}")
           nil
