@@ -46,4 +46,27 @@ defmodule YellowDog.Netman.EventBusTest do
     assert_receive {:netman_event, "test:multi:1", :msg}
     Task.await(task1)
   end
+
+  test "broadcast delivers to all prefix-matching subscribers" do
+    EventBus.subscribe("netman:link:eth0")
+    EventBus.subscribe("netman:link:eth1")
+
+    EventBus.broadcast("netman:link:", :carrier_change)
+
+    assert_receive {:netman_event, "netman:link:eth0", :carrier_change}
+    assert_receive {:netman_event, "netman:link:eth1", :carrier_change}
+  end
+
+  test "broadcast does not deliver to non-matching topics" do
+    EventBus.subscribe("netman:address:eth0")
+
+    EventBus.broadcast("netman:link:", :carrier_change)
+
+    refute_receive {:netman_event, _, :carrier_change}, 50
+  end
+
+  test "broadcast with no subscribers does nothing" do
+    assert :ok = EventBus.broadcast("netman:nonexistent:", :ping)
+    refute_receive {:netman_event, _, _}, 50
+  end
 end

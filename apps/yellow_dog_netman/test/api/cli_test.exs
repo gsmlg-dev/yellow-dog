@@ -81,6 +81,83 @@ defmodule YellowDog.Netman.API.CLITest do
       assert %{"error" => _} = result
     end
 
+    test "connection.delete with known id returns deleted" do
+      profile = %YellowDog.Netman.Types.Profile{
+        id: "cli-delete-profile",
+        type: :ethernet,
+        interface: "eth0",
+        autoconnect_priority: 100,
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put("cli-delete-profile", profile)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.delete",
+          "params" => %{"id" => "cli-delete-profile"}
+        })
+
+      assert %{"result" => "deleted"} = result
+    end
+
+    test "connection.up with unknown id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.up",
+          "params" => %{"id" => "nonexistent-profile-up"}
+        })
+
+      assert %{"error" => _} = result
+    end
+
+    test "connection.down with unknown id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.down",
+          "params" => %{"id" => "nonexistent-profile-down"}
+        })
+
+      assert %{"error" => _} = result
+    end
+
+    test "connection.add with invalid path returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => "/nonexistent/path/profile.toml"}
+        })
+
+      assert %{"error" => _} = result
+    end
+
+    test "connection.add with valid TOML file imports profile" do
+      toml = """
+      [connection]
+      id = "cli-import-test"
+      type = "ethernet"
+      interface = "eth99"
+      autoconnect = true
+      autoconnect_priority = 100
+
+      [ipv4]
+      method = "auto"
+
+      [ipv6]
+      method = "auto"
+      """
+
+      tmp_path = System.tmp_dir!() |> Path.join("cli-import-test.toml")
+      File.write!(tmp_path, toml)
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => tmp_path}})
+
+      assert %{"result" => "imported: cli-import-test"} = result
+    end
+
     test "unknown method returns error" do
       result = CLI.handle_command(%{"method" => "foobar.unknown"})
       assert %{"error" => "unknown method: foobar.unknown"} = result
