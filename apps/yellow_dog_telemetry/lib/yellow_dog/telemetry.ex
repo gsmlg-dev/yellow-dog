@@ -823,6 +823,7 @@ defmodule YellowDog.Telemetry do
       String.starts_with?(module_str, "Elixir.YellowDog.Dhcpv6") -> :yellow_dog_dhcpv6
       String.starts_with?(module_str, "Elixir.YellowDog.Mdns") -> :yellow_dog_mdns
       String.starts_with?(module_str, "Elixir.YellowDog.Console") -> :yellow_dog_console
+      String.starts_with?(module_str, "Elixir.YellowDog.Netman") -> :yellow_dog_netman
       String.starts_with?(module_str, "Elixir.YellowDog") -> :yellow_dog
       true -> :unknown
     end
