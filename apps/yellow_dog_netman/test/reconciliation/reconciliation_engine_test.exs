@@ -1,8 +1,10 @@
 defmodule YellowDog.Netman.ReconciliationEngineTest do
   use ExUnit.Case
 
-  alias YellowDog.Netman.ReconciliationEngine
-  alias YellowDog.Netman.Types.{DesiredState, ObservedState, Diff}
+  alias YellowDog.Netman.{ReconciliationEngine, ProfileStore}
+  alias YellowDog.Netman.Connection
+  alias YellowDog.Netman.Test.MockNetlink
+  alias YellowDog.Netman.Types.{DesiredState, ObservedState, Diff, Profile}
 
   describe "diff/2" do
     test "empty desired and observed produces no diffs" do
@@ -60,6 +62,58 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
       assert diffs1 == diffs2
       assert diffs1 == []
+    end
+  end
+
+  describe "idempotency with live processes" do
+    test "second reconciliation cycle produces no new activation diffs" do
+      iface = "recon_idem_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "recon-idem-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile.id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      # First cycle: should produce activate_connection diff
+      observed1 = ReconciliationEngine.observe()
+      desired1 = ReconciliationEngine.compute_desired()
+      diffs1 = ReconciliationEngine.diff(desired1, observed1)
+
+      activate_diffs = Enum.filter(diffs1, &(&1.action == :activate_connection))
+      assert length(activate_diffs) >= 1,
+             "Expected at least one activation diff for new interface"
+
+      # Apply diffs: start the connection FSM
+      for diff <- activate_diffs do
+        {:ok, p} = ProfileStore.get(diff.params.profile_id)
+        Connection.Supervisor.start_connection(diff.interface, p)
+      end
+
+      Process.sleep(100)
+
+      # Second cycle: FSMs are now active, should produce no new activation diffs
+      observed2 = ReconciliationEngine.observe()
+      desired2 = ReconciliationEngine.compute_desired()
+      diffs2 = ReconciliationEngine.diff(desired2, observed2)
+
+      activate_diffs2 = Enum.filter(diffs2, &(&1.action == :activate_connection and &1.interface == iface))
+
+      assert activate_diffs2 == [],
+             "Second reconciliation cycle should produce no activation diffs for already-active interface"
+
+      # Cleanup
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile.id)
     end
   end
 
