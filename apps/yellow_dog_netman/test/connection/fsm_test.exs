@@ -186,6 +186,77 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     GenServer.stop(pid, :normal)
   end
 
+  test "state transitions emit telemetry events" do
+    interface = "fsm_telem_#{:rand.uniform(100_000)}"
+    test_pid = self()
+
+    telem_profile = %Profile{
+      id: "telem-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    handler_id = {__MODULE__, :telem_test, :rand.uniform(1_000_000)}
+
+    :telemetry.attach(
+      handler_id,
+      [:yellow_dog, :netman, :connection, :state_change],
+      fn _event, _measurements, metadata, _config ->
+        send(test_pid, {:telemetry_event, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: telem_profile)
+    Process.sleep(200)
+
+    # Should have received telemetry for init → unavailable/disconnected
+    assert_receive {:telemetry_event, %{interface: ^interface}}, 500
+
+    # Deactivate to trigger more transitions
+    FSM.deactivate(pid)
+    Process.sleep(150)
+
+    # Should have received multiple telemetry events
+    assert_receive {:telemetry_event, %{to: :activated}}, 500
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "reconciliation start/stop telemetry is emitted" do
+    test_pid = self()
+
+    handler_id = {__MODULE__, :recon_telem, :rand.uniform(1_000_000)}
+
+    :telemetry.attach(
+      handler_id,
+      [:yellow_dog, :netman, :reconciliation, :stop],
+      fn _event, measurements, _metadata, _config ->
+        send(test_pid, {:recon_stop, measurements})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    YellowDog.Netman.ReconciliationEngine.reconcile()
+    Process.sleep(300)
+
+    assert_receive {:recon_stop, %{duration_ms: dur, diffs_count: _, applied_count: _}}, 500
+    assert is_integer(dur)
+    assert dur >= 0
+  end
+
   test "unavailable transitions to disconnected without carrier" do
     interface = "fsm_nocarrier_#{:rand.uniform(100_000)}"
 
