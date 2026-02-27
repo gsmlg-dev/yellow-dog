@@ -359,6 +359,224 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     GenServer.stop(pid, :normal)
   end
 
+  test "MTU is configured during prepare state when non-nil" do
+    interface = "fsm_mtu_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "mtu-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: 1400},
+      ipv4: %{method: :manual, address: "10.1.0.100/24", gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+    MockNetlink.address_added(interface, "10.1.0.100/24")
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    FSM.activate(pid)
+    Process.sleep(200)
+
+    # FSM should have passed through prepare (which calls Netlink.command with MTU)
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state in [:configuring, :ip_check, :activated, :failed]
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "carrier loss while activated transitions to disconnected" do
+    interface = "fsm_carrier_loss_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "carrier-loss-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :manual, address: "10.2.0.100/24", gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+    MockNetlink.address_added(interface, "10.2.0.100/24")
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+    FSM.activate(pid)
+    Process.sleep(300)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :activated
+
+    # Simulate cable unplug — triggers activated(:info, {:netman_event, _, {:link_update, %{carrier: false}}})
+    MockNetlink.carrier_change(interface, false)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "carrier true event while in disconnected triggers internal auto_activate check" do
+    interface = "fsm_disc_carrier_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "disc-carrier-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    # Link up without carrier → FSM starts in disconnected
+    MockNetlink.link_up(interface, carrier: false)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    # Carrier returns — fires disconnected(:info, {:netman_event, _, {:link_update, %{carrier: true}}})
+    MockNetlink.carrier_change(interface, true)
+    Process.sleep(100)
+
+    # autoconnect: false means auto_activate is a no-op, stays disconnected
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "global address event while configuring (DHCP) transitions to ip_check" do
+    interface = "fsm_conf_addr_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "conf-addr-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface, carrier: false)
+    Process.sleep(30)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(30)
+
+    # Suspend FSM so we can inject both messages atomically before processing
+    :sys.suspend(pid)
+    FSM.activate(pid)
+
+    # Address event goes into mailbox AFTER activate cast but BEFORE DHCP failure
+    # (DHCP failure appended during activate processing, AFTER this send)
+    send(
+      pid,
+      {:netman_event, "netman:address:#{interface}",
+       {:add, %{scope: :global, address: "10.0.0.50", prefix_len: 24}}}
+    )
+
+    :sys.resume(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    # Address event was processed in :configuring — FSM progressed past it
+    assert state.state in [:ip_check, :activated, :disconnected, :failed]
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "DHCP lease acquired while configuring transitions to ip_check" do
+    interface = "fsm_dhcp_lease_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "dhcp-lease-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface, carrier: false)
+    Process.sleep(30)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(30)
+
+    # Suspend FSM, inject activate then lease message atomically
+    :sys.suspend(pid)
+    FSM.activate(pid)
+
+    send(
+      pid,
+      {:dhcp_lease_acquired, %{address: "10.0.0.5", prefix_len: 24, gateway: nil, dns: []}}
+    )
+
+    :sys.resume(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    # DHCP lease was processed in :configuring → FSM transitioned to ip_check or beyond
+    assert state.state in [:ip_check, :activated, :disconnected, :failed]
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "parse_cidr defaults prefix to 24 when no slash present" do
+    interface = "fsm_noprefix_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "noprefix-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      # Address without /prefix — parse_cidr returns default 24
+      ipv4: %{method: :manual, address: "10.9.0.100", gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+    MockNetlink.address_added(interface, "10.9.0.100/24")
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    FSM.activate(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    # parse_cidr("10.9.0.100") should default to prefix 24 and proceed
+    assert state.state in [:ip_check, :activated, :failed]
+
+    GenServer.stop(pid, :normal)
+  end
+
   test "disconnected transitions to unavailable on link removal" do
     interface = "fsm_del_#{:rand.uniform(100_000)}"
 

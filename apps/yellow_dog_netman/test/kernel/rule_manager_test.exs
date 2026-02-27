@@ -65,4 +65,18 @@ defmodule YellowDog.Netman.Kernel.RuleManagerTest do
     assert rule.source == nil
     assert rule.destination == nil
   end
+
+  test "unknown action in rule event is handled gracefully" do
+    pid = Process.whereis(RuleManager)
+    send(pid, {:netlink_event, {:rule_change, %{"action" => "flush", "priority" => 99_999}}})
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "handle_info with unknown message is silently ignored" do
+    pid = Process.whereis(RuleManager)
+    send(pid, :some_unknown_message)
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
 end

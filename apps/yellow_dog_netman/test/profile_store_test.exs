@@ -187,5 +187,25 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       # No crash - the watcher_pid is set to nil
       assert Process.alive?(Process.whereis(ProfileStore))
     end
+
+    test "handle_info with unknown message is silently ignored" do
+      pid = Process.whereis(ProfileStore)
+      send(pid, :some_unexpected_profile_store_msg)
+      Process.sleep(20)
+      assert Process.alive?(pid)
+    end
+
+    test "reload error when TOML is invalid logs warning and keeps state" do
+      tmp_file = System.tmp_dir!() |> Path.join("invalid_#{:rand.uniform(65535)}.toml")
+      File.write!(tmp_file, "not valid toml {{ broken\n")
+      on_exit(fn -> File.rm(tmp_file) end)
+
+      existing_count = length(ProfileStore.list())
+      send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
+      Process.sleep(100)
+
+      assert Process.alive?(Process.whereis(ProfileStore))
+      assert length(ProfileStore.list()) == existing_count
+    end
   end
 end

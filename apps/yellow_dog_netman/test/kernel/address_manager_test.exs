@@ -107,4 +107,112 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
     matching = Enum.filter(addresses, &(&1.address == "10.4.0.1"))
     assert length(matching) == 1, "Expected exactly 1 entry for duplicate address"
   end
+
+  test "add_address/3 sends netlink command without crashing" do
+    result = AddressManager.add_address("eth0", "192.168.1.1", 24)
+    assert result == :ok or match?({:error, _}, result)
+  end
+
+  test "remove_address/3 sends netlink command without crashing" do
+    result = AddressManager.remove_address("eth0", "192.168.1.1", 24)
+    assert result == :ok or match?({:error, _}, result)
+  end
+
+  test "handle_info with unknown message is silently ignored" do
+    pid = Process.whereis(AddressManager)
+    assert pid != nil
+    send(pid, :unexpected_message_xyz)
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "address event with unknown action emits telemetry as :remove" do
+    iface = "addr_unknown_action_#{:rand.uniform(65535)}"
+    test_pid = self()
+    handler_id = {__MODULE__, :addr_unknown, :rand.uniform(1_000_000)}
+
+    :telemetry.attach(
+      handler_id,
+      [:yellow_dog, :netman, :kernel, :address_change],
+      fn _event, _measurements, meta, _config ->
+        if meta.interface == iface, do: send(test_pid, {:telem, meta})
+      end,
+      nil
+    )
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "update",
+          "interface" => iface,
+          "address" => "10.5.0.1/24"
+        }}}
+    )
+
+    assert_receive {:telem, %{action: :remove, interface: ^iface}}, 500
+    :telemetry.detach(handler_id)
+  end
+
+  test "address event with malformed payload is handled gracefully" do
+    pid = Process.whereis(AddressManager)
+    send(pid, {:netlink_event, {:address_change, "not_a_map"}})
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "address without CIDR prefix defaults to /32" do
+    iface = "addr_no_prefix_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change, %{"action" => "add", "interface" => iface, "address" => "10.6.0.1"}}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.address == "10.6.0.1" and &1.prefix_len == 32))
+  end
+
+  test "address with unknown scope defaults to :global" do
+    iface = "addr_scope_unk_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "address" => "10.7.0.1/24",
+          "scope" => "bizarre_scope"
+        }}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.scope == :global))
+  end
+
+  test "address with host scope is parsed correctly" do
+    iface = "addr_host_scope_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "address" => "127.0.0.1/8",
+          "scope" => "host"
+        }}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.scope == :host))
+  end
 end

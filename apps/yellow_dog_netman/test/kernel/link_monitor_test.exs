@@ -126,4 +126,18 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
 
     :telemetry.detach(handler_id)
   end
+
+  test "handle_info with unknown message is silently ignored" do
+    pid = Process.whereis(LinkMonitor)
+    send(pid, :unexpected_link_monitor_msg)
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "malformed link event with no interface key is handled gracefully" do
+    pid = Process.whereis(LinkMonitor)
+    send(pid, {:netlink_event, {:link_change, %{"action" => "add", "state" => "up"}}})
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
 end

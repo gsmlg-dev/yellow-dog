@@ -168,4 +168,14 @@ defmodule YellowDog.Netman.API.CLITest do
       assert %{"error" => "invalid command format"} = result
     end
   end
+
+  describe "GenServer handle_info" do
+    test "unknown message is silently ignored" do
+      pid = Process.whereis(CLI)
+      assert pid != nil
+      send(pid, :unexpected_cli_message)
+      Process.sleep(20)
+      assert Process.alive?(pid)
+    end
+  end
 end

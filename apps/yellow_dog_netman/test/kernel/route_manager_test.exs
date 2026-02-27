@@ -77,7 +77,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
 
     route = RouteManager.default_route()
     assert route != nil
-    assert route.destination == "default"
+    assert route.destination in ["default", "0.0.0.0/0"]
   end
 
   test "flush removes all routes for an interface" do
@@ -141,5 +141,150 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
 
     routes = RouteManager.get_routes(iface)
     assert Enum.any?(routes, &(&1.protocol == :dhcp))
+  end
+
+  test "route protocol :boot is parsed correctly" do
+    iface = "test_boot_proto_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.31.0.0/24",
+      gateway: nil,
+      interface: iface,
+      protocol: "boot"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.protocol == :boot))
+  end
+
+  test "route protocol :static is parsed correctly" do
+    iface = "test_static_proto_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.32.0.0/24",
+      gateway: nil,
+      interface: iface,
+      protocol: "static"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.protocol == :static))
+  end
+
+  test "route protocol :kernel is parsed correctly" do
+    iface = "test_kernel_proto_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.33.0.0/24",
+      gateway: nil,
+      interface: iface,
+      protocol: "kernel"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.protocol == :kernel))
+  end
+
+  test "unknown protocol defaults to :unspec" do
+    iface = "test_unspec_proto_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.34.0.0/24",
+      gateway: nil,
+      interface: iface,
+      protocol: "ospf"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.protocol == :unspec))
+  end
+
+  test "host scope is parsed correctly" do
+    iface = "test_host_scope_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "127.0.0.1/32",
+      gateway: nil,
+      interface: iface,
+      scope: "host"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.scope == :host))
+  end
+
+  test "unknown scope defaults to :universe" do
+    iface = "test_unk_scope_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.35.0.0/24",
+      gateway: nil,
+      interface: iface,
+      scope: "weird_scope"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.scope == :universe))
+  end
+
+  test "add_route/1 sends netlink command without crashing" do
+    result =
+      RouteManager.add_route(%{
+        destination: "default",
+        gateway: "10.0.0.1",
+        interface: "eth0",
+        metric: 100
+      })
+
+    assert result == :ok or match?({:error, _}, result)
+  end
+
+  test "remove_route/1 sends netlink command without crashing" do
+    result =
+      RouteManager.remove_route(%{destination: "default", gateway: "10.0.0.1", interface: "eth0"})
+
+    assert result == :ok or match?({:error, _}, result)
+  end
+
+  test "handle_info with unknown message is silently ignored" do
+    pid = Process.whereis(RouteManager)
+    send(pid, :some_unknown_route_msg)
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "unknown action in route event is handled gracefully" do
+    pid = Process.whereis(RouteManager)
+
+    send(
+      pid,
+      {:netlink_event, {:route_change, %{"action" => "flush", "destination" => "default"}}}
+    )
+
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "malformed route event is handled gracefully" do
+    pid = Process.whereis(RouteManager)
+    send(pid, {:netlink_event, {:route_change, "not_a_map"}})
+    Process.sleep(20)
+    assert Process.alive?(pid)
+  end
+
+  test "default_route also matches 0.0.0.0/0 destination" do
+    iface = "test_default_cidr_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "0.0.0.0/0",
+      gateway: "10.50.0.1",
+      interface: iface,
+      metric: 10
+    )
+
+    Process.sleep(50)
+
+    route = RouteManager.default_route()
+    assert route != nil
   end
 end

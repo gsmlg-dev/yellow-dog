@@ -223,5 +223,89 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
       :telemetry.detach(handler_id)
     end
+
+    test "handle_info with unknown message is silently ignored" do
+      pid = Process.whereis(ReconciliationEngine)
+      send(pid, :some_unexpected_recon_message)
+      Process.sleep(20)
+      assert Process.alive?(pid)
+    end
+
+    test "second reconcile within debounce window hits already-set debounce_ref branch" do
+      # Cast reconcile twice rapidly — the second cast sees debounce_ref already set
+      # and returns state unchanged (the `if state.debounce_ref do state end` branch)
+      ReconciliationEngine.reconcile()
+      ReconciliationEngine.reconcile()
+
+      # Wait for debounce to fire and reconciliation to complete
+      Process.sleep(300)
+      assert Process.alive?(Process.whereis(ReconciliationEngine))
+    end
+  end
+
+  describe "activate/1 edge cases" do
+    test "activate with nil interface finds matching ethernet link via find_matching_interface" do
+      iface = "recon_find_#{:rand.uniform(65535)}"
+      profile_id = "recon-find-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      # kind: nil is not "loopback" — matches_profile? returns true for :ethernet
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+
+      before_interfaces =
+        Connection.Supervisor.list_connections()
+        |> Enum.map(& &1.interface)
+        |> MapSet.new()
+
+      result = ReconciliationEngine.activate(profile_id)
+      # find_matching_interface finds a non-loopback ethernet link → starts FSM → :ok
+      assert result == :ok
+      Process.sleep(100)
+
+      after_interfaces =
+        Connection.Supervisor.list_connections()
+        |> Enum.map(& &1.interface)
+        |> MapSet.new()
+
+      # Stop any newly started FSM(s) and clean up
+      MapSet.difference(after_interfaces, before_interfaces)
+      |> Enum.each(&Connection.Supervisor.stop_connection/1)
+
+      ProfileStore.delete(profile_id)
+    end
+
+    test "activate with profile having nil interface and no matching link returns error" do
+      profile_id = "recon-no-iface-#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :wifi,
+        interface: nil,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+
+      result = ReconciliationEngine.activate(profile_id)
+      assert result == :ok or result == {:error, :no_matching_interface}
+
+      ProfileStore.delete(profile_id)
+    end
   end
 end

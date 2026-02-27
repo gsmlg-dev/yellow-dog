@@ -103,4 +103,13 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       assert_receive {:netlink_event, {:neighbor_change, _}}, 500
     end
   end
+
+  describe "handle_info catch-all" do
+    test "unknown messages are silently ignored" do
+      pid = Process.whereis(Netlink)
+      send(pid, :some_random_message_for_netlink)
+      Process.sleep(20)
+      assert Process.alive?(pid)
+    end
+  end
 end

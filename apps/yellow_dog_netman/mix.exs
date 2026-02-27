@@ -13,7 +13,18 @@ defmodule YellowDog.Netman.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      aliases: aliases()
+      aliases: aliases(),
+      test_coverage: [
+        threshold: 90,
+        ignore_modules: [
+          # Requires Rust toolchain — not testable in CI without native build
+          Mix.Tasks.Compile.RustPorts,
+          # Test support helper — not production code
+          YellowDog.Netman.Test.MockNetlink,
+          # Rust port communication paths — untestable without the native binary
+          YellowDog.Netman.Kernel.Netlink
+        ]
+      ]
     ]
   end
 

@@ -54,4 +54,48 @@ defmodule YellowDog.NetmanTest do
       assert result == :none or match?({:ok, _}, result)
     end
   end
+
+  describe "activate/1 and deactivate/1" do
+    test "activate returns error for unknown profile" do
+      assert {:error, :not_found} = Netman.activate("nonexistent-facade-profile")
+    end
+
+    test "deactivate returns error for unknown profile" do
+      assert {:error, :not_found} = Netman.deactivate("nonexistent-facade-profile")
+    end
+  end
+
+  describe "get_profile/1 found case" do
+    test "returns profile when it exists" do
+      profile = %YellowDog.Netman.Types.Profile{
+        id: "facade-get-test",
+        type: :ethernet,
+        interface: "eth0",
+        autoconnect_priority: 100,
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      YellowDog.Netman.ProfileStore.put("facade-get-test", profile)
+
+      assert {:ok, %{id: "facade-get-test"}} = Netman.get_profile("facade-get-test")
+
+      YellowDog.Netman.ProfileStore.delete("facade-get-test")
+    end
+  end
+
+  describe "list_connections/0" do
+    test "returns a list" do
+      assert is_list(Netman.list_connections())
+    end
+  end
+
+  describe "child_spec/1 delegation" do
+    test "child_spec delegates to Supervisor and returns a valid spec map" do
+      spec = Netman.child_spec([])
+      assert is_map(spec)
+      assert Map.has_key?(spec, :id)
+      assert Map.has_key?(spec, :start)
+    end
+  end
 end
