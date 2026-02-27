@@ -109,15 +109,21 @@ defmodule YellowDog.Dns.ServerTest do
   describe "Server lifecycle" do
     test "server module exports required functions" do
       # start_link has default argument, so arity is 0
+      Code.ensure_loaded!(Server)
+
       assert function_exported?(Server, :start_link, 0) or
                function_exported?(Server, :start_link, 1)
 
+      Code.ensure_loaded!(Server)
       assert function_exported?(Server, :stop, 1)
+      Code.ensure_loaded!(Server)
       assert function_exported?(Server, :get_config, 0)
     end
 
     test "stop/1 accepts server name or PID" do
       # stop/1 has default arg so it exports both stop/0 and stop/1
+      Code.ensure_loaded!(Server)
+
       assert function_exported?(Server, :stop, 0) or
                function_exported?(Server, :stop, 1)
     end
@@ -150,12 +156,15 @@ defmodule YellowDog.Dns.ServerTest do
 
     test "server is a Supervisor" do
       # Verify the module uses Supervisor
+      Code.ensure_loaded!(Server)
       assert Kernel.function_exported?(Server, :init, 1)
       # Supervisor.init/1 returns {:ok, supervisor_spec}
     end
 
     test "server exports get_port/0 and get_port/1 functions" do
+      Code.ensure_loaded!(Server)
       assert Kernel.function_exported?(Server, :get_port, 0)
+      Code.ensure_loaded!(Server)
       assert Kernel.function_exported?(Server, :get_port, 1)
     end
   end
@@ -168,6 +177,7 @@ defmodule YellowDog.Dns.ServerTest do
 
     test "server is a Supervisor for Abyss and ThousandIsland" do
       # The server wraps both, so init should be defined
+      Code.ensure_loaded!(Server)
       assert Kernel.function_exported?(Server, :init, 1)
     end
 
@@ -590,12 +600,16 @@ defmodule YellowDog.Dns.ServerTest do
     test "exports start_link/0" do
       {:module, _} = Code.ensure_loaded(Server)
 
+      Code.ensure_loaded!(Server)
+
       assert function_exported?(Server, :start_link, 0) or
                function_exported?(Server, :start_link, 1)
     end
 
     test "exports stop/0 and stop/1" do
       {:module, _} = Code.ensure_loaded(Server)
+
+      Code.ensure_loaded!(Server)
 
       assert function_exported?(Server, :stop, 0) or
                function_exported?(Server, :stop, 1)
@@ -619,18 +633,21 @@ defmodule YellowDog.Dns.ServerTest do
     test "exports get_port/0 and get_port/1" do
       {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_port, 0)
+      Code.ensure_loaded!(Server)
       assert function_exported?(Server, :get_port, 1)
     end
 
     test "exports get_udp_port/0 and get_udp_port/1" do
       {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_udp_port, 0)
+      Code.ensure_loaded!(Server)
       assert function_exported?(Server, :get_udp_port, 1)
     end
 
     test "exports get_tcp_port/0 and get_tcp_port/1" do
       {:module, _} = Code.ensure_loaded(Server)
       assert function_exported?(Server, :get_tcp_port, 0)
+      Code.ensure_loaded!(Server)
       assert function_exported?(Server, :get_tcp_port, 1)
     end
   end

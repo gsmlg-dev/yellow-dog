@@ -101,9 +101,15 @@ defmodule YellowDogIdentity.Host do
   @doc """
   Validates an age recipient format (age1...).
   """
+  # Bech32 charset enforced to prevent YAML/TOML injection via special chars
+  @age_max_len 90
+  @age_bech32_re ~r/^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/
+
   @spec validate_age_recipient(String.t()) :: :ok | {:error, :invalid_age_recipient}
   def validate_age_recipient(age_recipient) when is_binary(age_recipient) do
-    if String.starts_with?(age_recipient, "age1") and byte_size(age_recipient) > 10 do
+    len = byte_size(age_recipient)
+
+    if len > 10 and len <= @age_max_len and Regex.match?(@age_bech32_re, age_recipient) do
       :ok
     else
       {:error, :invalid_age_recipient}
@@ -215,12 +221,27 @@ defmodule YellowDogIdentity.Host do
 
   # Private helpers
 
+  @max_hostname_length 253
+
   defp validate_required(hostname, ssh_pubkey, age_recipient) do
     cond do
-      is_nil(hostname) or hostname == "" -> {:error, :hostname_required}
-      is_nil(ssh_pubkey) or ssh_pubkey == "" -> {:error, :ssh_pubkey_required}
-      is_nil(age_recipient) or age_recipient == "" -> {:error, :age_recipient_required}
-      true -> :ok
+      is_nil(hostname) or hostname == "" ->
+        {:error, :hostname_required}
+
+      byte_size(hostname) > @max_hostname_length ->
+        {:error, :hostname_too_long}
+
+      not Regex.match?(~r/^[\w\-\.]+$/, hostname) ->
+        {:error, :hostname_invalid_chars}
+
+      is_nil(ssh_pubkey) or ssh_pubkey == "" ->
+        {:error, :ssh_pubkey_required}
+
+      is_nil(age_recipient) or age_recipient == "" ->
+        {:error, :age_recipient_required}
+
+      true ->
+        :ok
     end
   end
 
@@ -280,12 +301,15 @@ defmodule YellowDogIdentity.Host do
   defp put_if_nonempty(map, _key, []), do: map
   defp put_if_nonempty(map, key, list), do: Map.put(map, key, list)
 
-  defp stringify_map(map) when is_map(map) do
+  # Exclude structs — DateTime and other structs are not regular enumerable maps
+  defp stringify_map(map) when is_map(map) and not is_struct(map) do
     Map.new(map, fn {k, v} -> {to_string(k), stringify_value(v)} end)
   end
 
   defp stringify_map(other), do: other
 
+  # DateTime must come before the generic is_map/1 guard (structs pass is_map)
+  defp stringify_value(%DateTime{} = dt), do: format_datetime(dt)
   defp stringify_value(v) when is_atom(v), do: to_string(v)
   defp stringify_value(v) when is_map(v), do: stringify_map(v)
   defp stringify_value(v), do: v

@@ -13,4 +13,14 @@ defmodule YellowDog.Console.ErrorJSONTest do
     assert ErrorJSON.render("500.json", %{}) ==
              %{errors: %{detail: "Internal Server Error"}}
   end
+
+  test "catch-all renders status message from template" do
+    result = ErrorJSON.render("400.json", %{})
+    assert %{errors: %{detail: "Bad Request"}} = result
+  end
+
+  test "catch-all renders 422" do
+    result = ErrorJSON.render("422.json", %{})
+    assert %{errors: %{detail: "Unprocessable Entity"}} = result
+  end
 end

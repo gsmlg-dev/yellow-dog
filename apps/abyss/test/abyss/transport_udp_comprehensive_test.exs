@@ -82,6 +82,7 @@ defmodule Abyss.Transport.UDPComprehensiveTest do
 
       # This will block, so we need to be careful
       # We'll test the function exists rather than block
+      Code.ensure_loaded!(UDP)
       assert function_exported?(UDP, :recv, 2)
 
       :ok = UDP.close(socket)

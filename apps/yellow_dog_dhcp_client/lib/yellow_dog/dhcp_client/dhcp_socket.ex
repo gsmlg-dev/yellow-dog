@@ -135,7 +135,7 @@ defmodule YellowDog.DhcpClient.DhcpSocket do
     Application.get_env(
       :yellow_dog_dhcp_client,
       :socket_impl,
-      YellowDog.DhcpClient.DhcpSocket.UdpFallback
+      YellowDog.DhcpClient.DhcpSocket.Native
     )
   end
 end

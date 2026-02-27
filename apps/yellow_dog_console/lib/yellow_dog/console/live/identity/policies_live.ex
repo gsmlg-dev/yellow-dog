@@ -1,4 +1,5 @@
 defmodule YellowDog.Console.IdentityLive.PoliciesLive do
+  @moduledoc "Manages approval policies for automated host enrollment decisions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
@@ -33,7 +34,7 @@ defmodule YellowDog.Console.IdentityLive.PoliciesLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Approval Policies</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
             ↻
           </button>
         </div>

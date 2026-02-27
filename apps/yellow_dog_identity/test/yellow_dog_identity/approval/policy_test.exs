@@ -150,6 +150,15 @@ defmodule YellowDogIdentity.Approval.PolicyTest do
       refute Policy.matches?(policy, %{"trust_level" => "unverified"})
     end
 
+    test "consecutive wildcards (**) skip empty segments in glob matching" do
+      # "node-**-dc1" splits on * → ["node-", "", "-dc1"]
+      # glob_match_rest skips the empty "" segment via ["" | rest] clause, then checks suffix "-dc1"
+      policy = %Policy{name: "double-wild", action: :approve, match: %{"hostname" => "node-**-dc1"}}
+      assert Policy.matches?(policy, %{"hostname" => "node-web-dc1"})
+      assert Policy.matches?(policy, %{"hostname" => "node-api-server-dc1"})
+      refute Policy.matches?(policy, %{"hostname" => "node-web-dc2"})
+    end
+
     test "nil actual value does not match expected" do
       policy = %Policy{
         name: "requires-field",

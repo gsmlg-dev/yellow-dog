@@ -74,7 +74,11 @@ defmodule YellowDog.Console.Dhcpv6Live.LeasesLive do
   def handle_event("release_lease", %{"duid" => duid_str, "iaid" => iaid_str}, socket) do
     with {iaid, ""} <- Integer.parse(iaid_str),
          duid_binary <- parse_duid_string(duid_str) do
-      case YellowDog.Dhcpv6.release_lease(duid_binary, iaid) do
+      case safe_call(
+             YellowDog.Dhcpv6,
+             fn -> YellowDog.Dhcpv6.release_lease(duid_binary, iaid) end,
+             {:error, :service_unavailable}
+           ) do
         :ok ->
           {:noreply,
            socket

@@ -12,6 +12,8 @@ defmodule YellowDog.Dhcpv6.PoolStore do
   - Atomic updates to individual pools without affecting others
   """
 
+  require Logger
+
   alias YellowDog.Dhcpv6.{AddressPool, Ipv6Util}
   import YellowDog.Config.TomlHelpers
 
@@ -578,7 +580,13 @@ defmodule YellowDog.Dhcpv6.PoolStore do
     lease_path = Path.join(leases_directory(), "#{pool_name}.toml")
 
     # Ensure directory exists
-    File.mkdir_p!(leases_directory())
+    case File.mkdir_p(leases_directory()) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[DHCPv6] Failed to create leases dir: #{inspect(reason)}")
+    end
 
     content = leases_to_toml(pool_name, leases)
 

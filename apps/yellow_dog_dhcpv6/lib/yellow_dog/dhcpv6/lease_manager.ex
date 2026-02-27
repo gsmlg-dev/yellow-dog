@@ -20,6 +20,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   use GenServer
 
+  require Logger
+
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
   alias YellowDog.Dhcpv6.{AddressPool, DuidFormat, Ipv6Util, LeaseStorage, PoolStore}
@@ -655,7 +657,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 
@@ -848,15 +851,19 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
           loaded =
             Enum.reduce(leases, 0, fn lease_data, count ->
               # Convert TOML lease to storage format
-              lease = convert_toml_lease_to_storage(lease_data, pool)
+              case convert_toml_lease_to_storage(lease_data, pool) do
+                {:ok, lease} ->
+                  # Store in Mnesia
+                  case LeaseStorage.put(lease) do
+                    {:ok, _} ->
+                      # Also store in ETS cache
+                      lease_key = make_lease_key(lease.duid, lease.iaid)
+                      :ets.insert(@table_name, {lease_key, lease})
+                      count + 1
 
-              # Store in Mnesia
-              case LeaseStorage.put(lease) do
-                {:ok, _} ->
-                  # Also store in ETS cache
-                  lease_key = make_lease_key(lease.duid, lease.iaid)
-                  :ets.insert(@table_name, {lease_key, lease})
-                  count + 1
+                    {:error, _} ->
+                      count
+                  end
 
                 {:error, _} ->
                   count
@@ -889,28 +896,33 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     now = System.system_time(:second)
 
     # Parse IPv6 address if it's a string
-    {:ok, ip} = Ipv6Util.parse(lease_data.ip)
+    case Ipv6Util.parse(lease_data.ip) do
+      {:ok, ip} ->
+        # Calculate expires_at from valid_until (DateTime or unix timestamp)
+        expires_at =
+          case lease_data.valid_until do
+            %DateTime{} = dt -> DateTime.to_unix(dt)
+            unix when is_integer(unix) -> unix
+            _ -> now + pool.valid_lifetime
+          end
 
-    # Calculate expires_at from valid_until (DateTime or unix timestamp)
-    expires_at =
-      case lease_data.valid_until do
-        %DateTime{} = dt -> DateTime.to_unix(dt)
-        unix when is_integer(unix) -> unix
-        _ -> now + pool.valid_lifetime
-      end
+        {:ok,
+         %{
+           duid: lease_data.duid,
+           iaid: lease_data.iaid,
+           ip_address: ip,
+           ip: ip,
+           pool_name: pool.name,
+           ia_type: :ia_na,
+           state: lease_data.state || :active,
+           preferred_lifetime: pool.preferred_lifetime,
+           valid_lifetime: pool.valid_lifetime,
+           expires_at: expires_at
+         }}
 
-    %{
-      duid: lease_data.duid,
-      iaid: lease_data.iaid,
-      ip_address: ip,
-      ip: ip,
-      pool_name: pool.name,
-      ia_type: :ia_na,
-      state: lease_data.state || :active,
-      preferred_lifetime: pool.preferred_lifetime,
-      valid_lifetime: pool.valid_lifetime,
-      expires_at: expires_at
-    }
+      {:error, reason} ->
+        {:error, {:invalid_ip, reason}}
+    end
   end
 
   # Flush all leases to TOML files
@@ -926,7 +938,12 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
       toml_leases =
         Enum.map(leases, fn lease ->
           # Calculate preferred_until from expires_at and lifetimes
-          valid_until = DateTime.from_unix!(lease.expires_at)
+          valid_until =
+            case DateTime.from_unix(lease.expires_at) do
+              {:ok, dt} -> dt
+              {:error, _} -> DateTime.utc_now()
+            end
+
           preferred_diff = lease.valid_lifetime - lease.preferred_lifetime
           preferred_until = DateTime.add(valid_until, -preferred_diff, :second)
 

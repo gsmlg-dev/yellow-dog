@@ -4,20 +4,27 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
   alias YellowDogIdentity.Trust.Cloud.GCP
 
   @source_ip {10, 0, 0, 1}
+  @kid "test-key-id-1"
 
-  # Pre-populate the JWKS cache so tests don't hit the real Google endpoint.
-  # Using {:error, :keys_unavailable} forces the unverified decode fallback path.
-  setup do
+  # Generate a test RSA key pair for signing JWTs
+  setup_all do
+    jwk = JOSE.JWK.generate_key({:rsa, 2048})
+    {_, public_map} = JOSE.JWK.to_map(jwk)
+    public_map = Map.put(public_map, "kid", @kid)
+
+    %{jwk: jwk, public_map: public_map}
+  end
+
+  # Pre-populate the JWKS cache with the test public key
+  setup %{public_map: public_map} do
     try do
       :ets.new(:gcp_jwks_cache, [:set, :public, :named_table])
     rescue
       ArgumentError -> :ok
     end
 
-    # Set cache to very old timestamp so it appears expired, which triggers
-    # fetch_and_cache_keys. Instead, we insert a valid cache with empty keys
-    # that will cause the "keys_unavailable" fallback.
-    :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
+    jwks = %{"keys" => [public_map]}
+    :ets.insert(:gcp_jwks_cache, {:keys, jwks, System.monotonic_time(:second)})
 
     on_exit(fn ->
       try do
@@ -40,7 +47,13 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     }
   end
 
-  defp build_jwt(claims, header \\ %{"alg" => "RS256"}) do
+  defp sign_jwt(claims, jwk) do
+    jws = %{"alg" => "RS256", "kid" => @kid}
+    {_, token} = JOSE.JWT.sign(jwk, jws, claims) |> JOSE.JWS.compact()
+    token
+  end
+
+  defp build_unsigned_jwt(claims, header \\ %{"alg" => "RS256"}) do
     header_b64 = Base.url_encode64(Jason.encode!(header), padding: false)
     payload_b64 = Base.url_encode64(Jason.encode!(claims), padding: false)
     signature_b64 = Base.url_encode64("fake-signature-bytes", padding: false)
@@ -49,6 +62,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
 
   defp valid_gcp_claims(overrides \\ %{}) do
     base = %{
+      "iss" => "https://accounts.google.com",
       "google" => %{
         "compute_engine" => %{
           "project_id" => "my-test-project",
@@ -77,8 +91,6 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
 
     test "skips when attestation is nil" do
-      # verify/1 matches %{attestation: attestation} then calls Map.get on attestation,
-      # so nil attestation is handled by the fallback verify(_) clause via no match
       assert {:skip, :not_applicable} = GCP.verify(%{})
     end
 
@@ -103,64 +115,82 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     test "returns untrusted with invalid format when token has no dots" do
       ctx = build_context(%{"provider" => "gcp", "token" => "nodots"})
       assert {:untrusted, reason} = GCP.verify(ctx)
-      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed, :keys_unavailable]
     end
 
     test "returns untrusted with invalid format when token has only one dot" do
       ctx = build_context(%{"provider" => "gcp", "token" => "one.dot"})
       assert {:untrusted, reason} = GCP.verify(ctx)
-      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed, :keys_unavailable]
     end
 
     test "returns untrusted with invalid format when token has four dots" do
       ctx = build_context(%{"provider" => "gcp", "token" => "a.b.c.d.e"})
       assert {:untrusted, reason} = GCP.verify(ctx)
-      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed, :keys_unavailable]
     end
 
     test "returns untrusted when payload is not valid base64url" do
-      ctx = build_context(%{"provider" => "gcp", "token" => "eyJhbGciOiJSUzI1NiJ9.!!!invalid!!!.sig"})
+      ctx =
+        build_context(%{
+          "provider" => "gcp",
+          "token" => "eyJhbGciOiJSUzI1NiJ9.!!!invalid!!!.sig"
+        })
+
       assert {:untrusted, reason} = GCP.verify(ctx)
-      assert reason in [:invalid_jwt_format, :jwt_decode_failed]
+      assert reason in [:invalid_jwt_format, :jwt_decode_failed, :keys_unavailable, :missing_kid]
     end
   end
 
   describe "signature verification security" do
     test "returns untrusted when kid is not found in non-empty JWKS (prevents forged tokens)" do
-      # When JWKS contains real keys but the token's kid does not match, this must be
-      # a hard failure — no fallback to unverified decode.
-      jwks = %{"keys" => [%{"kid" => "real-key-id", "kty" => "RSA", "n" => "fake", "e" => "AQAB"}]}
+      jwks = %{
+        "keys" => [%{"kid" => "real-key-id", "kty" => "RSA", "n" => "fake", "e" => "AQAB"}]
+      }
+
       :ets.insert(:gcp_jwks_cache, {:keys, jwks, System.monotonic_time(:second)})
 
       header = %{"alg" => "RS256", "kid" => "unknown-key-id-999"}
       claims = valid_gcp_claims()
-      token = build_jwt(claims, header)
+      token = build_unsigned_jwt(claims, header)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
-      # Must fail, not fall back to unverified decode
       assert {:untrusted, reason} = GCP.verify(ctx)
       assert reason in [:key_not_found, :invalid_signature]
     end
 
-    test "falls back to unverified decode when JWKS is empty (key rotation)" do
-      # Empty JWKS list is treated as degraded mode, not a hard failure
-      :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => []}, System.monotonic_time(:second)})
+    test "rejects tokens when JWKS is empty (prevents forged token acceptance)" do
+      :ets.insert(
+        :gcp_jwks_cache,
+        {:keys, %{"keys" => []}, System.monotonic_time(:second)}
+      )
 
       claims = valid_gcp_claims()
-      token = build_jwt(claims)
+      token = build_unsigned_jwt(claims)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
-      assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
+      assert {:untrusted, :keys_unavailable} = GCP.verify(ctx)
+    end
+
+    test "rejects forged JWT even with valid claims", %{public_map: public_map} do
+      # Re-populate JWKS with test key
+      jwks = %{"keys" => [public_map]}
+      :ets.insert(:gcp_jwks_cache, {:keys, jwks, System.monotonic_time(:second)})
+
+      # JWT signed with wrong key should be rejected
+      wrong_key = JOSE.JWK.generate_key({:rsa, 2048})
+      jws = %{"alg" => "RS256", "kid" => @kid}
+      {_, token} = JOSE.JWT.sign(wrong_key, jws, valid_gcp_claims()) |> JOSE.JWS.compact()
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_signature} = GCP.verify(ctx)
     end
   end
 
-  describe "unverified JWT decode path" do
-    # In test environment, Google JWKS keys return empty list (setup inserts %{"keys" => []}).
-    # The implementation falls back to decode_jwt_claims_unverified for empty JWKS.
-
-    test "returns trusted with valid unverified JWT containing compute_engine claims" do
+  describe "verified JWT decode path" do
+    test "returns trusted with valid signed JWT containing compute_engine claims", %{jwk: jwk} do
       claims = valid_gcp_claims()
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
@@ -172,16 +202,16 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
       assert %DateTime{} = evidence.verified_at
     end
 
-    test "returns trusted with atom provider key" do
+    test "returns trusted with atom provider key", %{jwk: jwk} do
       claims = valid_gcp_claims()
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{provider: :gcp, token: token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
       assert evidence.provider == :gcp
     end
 
-    test "returns trusted with different project and zone" do
+    test "returns trusted with different project and zone", %{jwk: jwk} do
       claims =
         valid_gcp_claims(%{
           "google" => %{
@@ -194,7 +224,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
           }
         })
 
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
@@ -204,13 +234,14 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
       assert evidence.zone == "europe-west1-b"
     end
 
-    test "returns trusted when claims have no google.compute_engine (nil fields)" do
+    test "returns trusted when claims have no google.compute_engine (nil fields)", %{jwk: jwk} do
       claims = %{
+        "iss" => "https://accounts.google.com",
         "sub" => "some-subject",
         "exp" => System.system_time(:second) + 3600
       }
 
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
@@ -223,36 +254,95 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
   end
 
   describe "expiry check" do
-    test "returns untrusted when token is expired" do
+    test "returns untrusted when token is expired", %{jwk: jwk} do
       claims = valid_gcp_claims(%{"exp" => System.system_time(:second) - 60})
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:untrusted, :token_expired} = GCP.verify(ctx)
     end
 
-    test "returns trusted when token is not yet expired" do
+    test "returns trusted when token is not yet expired", %{jwk: jwk} do
       claims = valid_gcp_claims(%{"exp" => System.system_time(:second) + 7200})
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
     end
 
-    test "returns trusted when no exp claim is present" do
+    test "returns trusted when no exp claim is present", %{jwk: jwk} do
       claims = valid_gcp_claims() |> Map.delete("exp")
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, _evidence} = GCP.verify(ctx)
     end
   end
 
-  describe "project and zone allowlists" do
-    # With no YellowDog.Config available in test, allowed_projects and
-    # allowed_zones default to [] which means all are allowed.
+  describe "issued-at (iat) check" do
+    test "rejects JWT with iat far in the future (clock skew attack)", %{jwk: jwk} do
+      # iat 10 minutes in the future exceeds the 5-minute skew tolerance
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) + 600})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
 
-    test "allows any project when allowed_projects is empty (default)" do
+      assert {:untrusted, :token_not_yet_valid} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with iat slightly in the future (within skew tolerance)", %{jwk: jwk} do
+      # iat 2 minutes in the future is within the 5-minute tolerance
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) + 120})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with iat in the past", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iat" => System.system_time(:second) - 3600})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with no iat claim", %{jwk: jwk} do
+      claims = valid_gcp_claims() |> Map.delete("iat")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+  end
+
+  describe "issuer check" do
+    test "rejects JWT with missing issuer", %{jwk: jwk} do
+      claims = valid_gcp_claims() |> Map.delete("iss")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :missing_issuer} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with wrong issuer", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iss" => "https://evil.example.com"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_issuer} = GCP.verify(ctx)
+    end
+
+    test "accepts accounts.google.com without https prefix", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"iss" => "accounts.google.com"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+  end
+
+  describe "project and zone allowlists" do
+    test "allows any project when allowed_projects is empty (default)", %{jwk: jwk} do
       claims =
         valid_gcp_claims(%{
           "google" => %{
@@ -265,14 +355,14 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
           }
         })
 
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
       assert evidence.project_id == "any-random-project"
     end
 
-    test "allows any zone when allowed_zones is empty (default)" do
+    test "allows any zone when allowed_zones is empty (default)", %{jwk: jwk} do
       claims =
         valid_gcp_claims(%{
           "google" => %{
@@ -285,7 +375,7 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
           }
         })
 
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
@@ -293,10 +383,260 @@ defmodule YellowDogIdentity.Trust.Cloud.GCPAttestationTest do
     end
   end
 
-  describe "evidence structure" do
-    test "evidence contains all expected fields" do
+  describe "project allowlist rejection" do
+    setup %{jwk: jwk} do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "gcp" => %{
+                "allowed_projects" => ["allowed-project-1", "allowed-project-2"],
+                "allowed_zones" => ["us-central1-a", "europe-west1-b"]
+              }
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      %{jwk: jwk}
+    end
+
+    test "rejects project not in allowed_projects list", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "unauthorized-project",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "us-central1-a"
+            }
+          }
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :project_not_allowed} = GCP.verify(ctx)
+    end
+
+    test "allows project in allowed_projects list", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "us-central1-a"
+            }
+          }
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.project_id == "allowed-project-1"
+    end
+
+    test "rejects zone not in allowed_zones list", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "asia-east1-b"
+            }
+          }
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :zone_not_allowed} = GCP.verify(ctx)
+    end
+
+    test "allows zone in allowed_zones list", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "google" => %{
+            "compute_engine" => %{
+              "project_id" => "allowed-project-1",
+              "instance_id" => 999,
+              "instance_name" => "vm",
+              "zone" => "europe-west1-b"
+            }
+          }
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)
+      assert evidence.zone == "europe-west1-b"
+    end
+  end
+
+  describe "audience check" do
+    setup %{jwk: jwk} do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "gcp" => %{"audience" => "https://yellowdog.example.com/identity"}
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      %{jwk: jwk}
+    end
+
+    test "allows JWT with matching string aud claim", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"aud" => "https://yellowdog.example.com/identity"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with non-matching aud claim", %{jwk: jwk} do
+      claims = valid_gcp_claims(%{"aud" => "https://evil.example.com/other"})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+
+    test "allows JWT with aud as list containing the expected audience", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "aud" => ["https://other.example.com", "https://yellowdog.example.com/identity"]
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:trusted, :cloud_verified, _} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT with aud as list not containing the expected audience", %{jwk: jwk} do
+      claims =
+        valid_gcp_claims(%{
+          "aud" => ["https://other.example.com", "https://another.example.com"]
+        })
+
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT when aud claim is an unexpected type (integer, not string or list)", %{jwk: jwk} do
+      # aud is an integer — neither matches expected string nor is a list
+      # cond: actual == expected_audience → false; is_list(actual) → false; true → false
+      claims = valid_gcp_claims(%{"aud" => 12345})
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+
+    test "rejects JWT when aud claim is absent (nil)", %{jwk: jwk} do
+      # aud missing → Map.get returns nil → cond true -> false → :invalid_audience
+      claims = valid_gcp_claims() |> Map.delete("aud")
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :invalid_audience} = GCP.verify(ctx)
+    end
+  end
+
+  describe "missing kid in JWT header" do
+    test "rejects JWT with valid header but no kid field" do
+      # Build a JWT with no kid — verify_with_keys pattern matches {:ok, _no_kid} → :missing_kid
+      header = %{"alg" => "RS256"}  # no "kid" key
+      claims = %{
+        "iss" => "https://accounts.google.com",
+        "exp" => System.system_time(:second) + 3600
+      }
+      token = build_unsigned_jwt(claims, header)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      assert {:untrusted, :missing_kid} = GCP.verify(ctx)
+    end
+  end
+
+  describe "JWKS cache expiration" do
+    test "expired JWKS cache triggers a refetch attempt (cache miss path)", %{jwk: jwk} do
+      # Overwrite the cache entry with a stale timestamp (older than 3600s TTL)
+      # age = now - stale_time = 4000 > 3600 → get_cached_keys returns :miss
+      stale_time = System.monotonic_time(:second) - 4000
+
+      :ets.insert(
+        :gcp_jwks_cache,
+        {:keys, %{"keys" => []}, stale_time}
+      )
+
       claims = valid_gcp_claims()
-      token = build_jwt(claims)
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # Stale cache → refetch attempted. Outcome depends on network:
+      #   - No network: {:untrusted, :keys_unavailable}
+      #   - Real JWKS fetched but test kid absent: {:untrusted, :key_not_found}
+      # Either way the token is untrusted (test key is not a real Google key)
+      result = GCP.verify(ctx)
+      assert elem(result, 0) == :untrusted
+      assert elem(result, 1) in [:keys_unavailable, :key_not_found]
+    end
+  end
+
+  describe "find_key fallback — malformed JWKS structure" do
+    test "rejects token when cached JWKS has no 'keys' field", %{jwk: jwk} do
+      # find_key(_, _) catch-all is triggered when jwks is not %{"keys" => [...]}
+      # Overwrite cache with a JWKS map that has no "keys" key
+      :ets.insert(:gcp_jwks_cache, {:keys, %{"not_keys" => []}, System.monotonic_time(:second)})
+
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # find_key(%{"not_keys" => []}, kid) hits fallback → :key_not_found
+      assert {:untrusted, :key_not_found} = GCP.verify(ctx)
+    end
+  end
+
+  describe "find_key — malformed key map" do
+    test "rejects token when matching key has invalid JWK fields", %{jwk: jwk} do
+      # A key with matching kid but invalid/missing JWK fields should not crash
+      malformed_key = %{"kid" => @kid, "kty" => "INVALID", "bogus" => true}
+      :ets.insert(:gcp_jwks_cache, {:keys, %{"keys" => [malformed_key]}, System.monotonic_time(:second)})
+
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
+      ctx = build_context(%{"provider" => "gcp", "token" => token})
+
+      # Should return error, not crash
+      result = GCP.verify(ctx)
+      assert {:untrusted, reason} = result
+      assert reason in [:key_not_found, :invalid_signature]
+    end
+  end
+
+  describe "evidence structure" do
+    test "evidence contains all expected fields", %{jwk: jwk} do
+      claims = valid_gcp_claims()
+      token = sign_jwt(claims, jwk)
       ctx = build_context(%{"provider" => "gcp", "token" => token})
 
       assert {:trusted, :cloud_verified, evidence} = GCP.verify(ctx)

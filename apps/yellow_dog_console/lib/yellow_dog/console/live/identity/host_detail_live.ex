@@ -1,7 +1,9 @@
 defmodule YellowDog.Console.IdentityLive.HostDetailLive do
+  @moduledoc "Detailed view of a single enrolled host including trust history and attestation data."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -21,6 +23,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -38,6 +41,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  @impl true
   def handle_event("revoke", _params, socket) do
     result =
       ServiceHelper.safe_call(
@@ -52,6 +56,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     end
   end
 
+  @impl true
   def handle_event("delete", _params, socket) do
     result =
       ServiceHelper.safe_call(
@@ -126,6 +131,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status == :pending}
               class="btn btn-sm btn-success"
               phx-click="approve"
+              phx-disable-with="Approving..."
               data-confirm="Approve this host?"
             >
               Approve
@@ -134,6 +140,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status in [:pending, :approved]}
               class="btn btn-sm btn-error"
               phx-click="revoke"
+              phx-disable-with="Revoking..."
               data-confirm="Revoke this host?"
             >
               Revoke
@@ -142,6 +149,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               :if={@host.status == :revoked}
               class="btn btn-sm btn-error btn-outline"
               phx-click="delete"
+              phx-disable-with="Deleting..."
               data-confirm="Permanently delete this host? This cannot be undone."
             >
               Delete
@@ -191,7 +199,11 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                   </div>
                   <div class="flex justify-between">
                     <dt class="text-base-content/70">Trust Level</dt>
-                    <dd><span class="badge badge-outline">{@host.trust_level}</span></dd>
+                    <dd>
+                      <span class={trust_level_badge_class(@host.trust_level)}>
+                        {@host.trust_level}
+                      </span>
+                    </dd>
                   </div>
                   <div class="flex justify-between">
                     <dt class="text-base-content/70">Trust Provider</dt>
@@ -215,6 +227,12 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               <h2 class="card-title">Trust Evidence</h2>
               <div class="overflow-x-auto">
                 <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     <tr :for={{key, value} <- @host.trust_evidence}>
                       <td class="font-mono text-sm text-base-content/70">{key}</td>
@@ -253,7 +271,7 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                   <tbody>
                     <tr :for={entry <- @audit_entries}>
                       <td class="font-mono text-xs whitespace-nowrap">{entry.timestamp}</td>
-                      <td><span class={audit_badge(entry.event)}>{entry.event}</span></td>
+                      <td><span class={event_badge_class(entry.event)}>{entry.event}</span></td>
                       <td class="font-mono text-xs">{entry.details}</td>
                     </tr>
                   </tbody>
@@ -268,15 +286,15 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
               <dl class="space-y-1">
                 <div class="flex justify-between">
                   <dt class="text-base-content/70">Created</dt>
-                  <dd>{format_time(@host.created_at)}</dd>
+                  <dd>{format_time_detail(@host.created_at)}</dd>
                 </div>
                 <div :if={@host.approved_at} class="flex justify-between">
                   <dt class="text-base-content/70">Approved</dt>
-                  <dd>{format_time(@host.approved_at)} by {@host.approved_by}</dd>
+                  <dd>{format_time_detail(@host.approved_at)} by {@host.approved_by}</dd>
                 </div>
                 <div :if={@host.revoked_at} class="flex justify-between">
                   <dt class="text-base-content/70">Revoked</dt>
-                  <dd>{format_time(@host.revoked_at)} by {@host.revoked_by}</dd>
+                  <dd>{format_time_detail(@host.revoked_at)} by {@host.revoked_by}</dd>
                 </div>
                 <div :if={@host.revoke_reason} class="flex justify-between">
                   <dt class="text-base-content/70">Reason</dt>
@@ -291,21 +309,12 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
     """
   end
 
-  defp audit_badge("host.registered"), do: "badge badge-info badge-sm"
-  defp audit_badge("host.approved"), do: "badge badge-success badge-sm"
-  defp audit_badge("host.revoked"), do: "badge badge-error badge-sm"
-  defp audit_badge("host.key_rotated"), do: "badge badge-warning badge-sm"
-  defp audit_badge("host.deleted"), do: "badge badge-error badge-outline badge-sm"
-  defp audit_badge(_), do: "badge badge-sm"
-
-  defp status_badge_class(:pending), do: "badge badge-warning"
-  defp status_badge_class(:approved), do: "badge badge-success"
-  defp status_badge_class(:revoked), do: "badge badge-error"
-  defp status_badge_class(_), do: "badge"
-
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
-  defp format_time(_), do: "-"
+  defp trust_level_badge_class(:cloud_verified), do: "badge badge-success"
+  defp trust_level_badge_class(:token_verified), do: "badge badge-warning"
+  defp trust_level_badge_class(:network_verified), do: "badge badge-info"
+  defp trust_level_badge_class(:network_partial), do: "badge badge-info badge-outline"
+  defp trust_level_badge_class(:unverified), do: "badge badge-error"
+  defp trust_level_badge_class(_), do: "badge badge-outline"
 
   defp format_evidence_value(value) when is_tuple(value) and tuple_size(value) == 4 do
     # IPv4 tuple
@@ -327,4 +336,10 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
   defp format_evidence_value(value) when is_integer(value), do: Integer.to_string(value)
   defp format_evidence_value(value) when is_number(value), do: to_string(value)
   defp format_evidence_value(value), do: inspect(value)
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end

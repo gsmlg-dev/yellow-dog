@@ -14,7 +14,9 @@ defmodule YellowDog.DnsTest do
       # Ensure the module is loaded first
       Code.ensure_loaded!(YellowDog.Dns)
       assert Kernel.function_exported?(YellowDog.Dns, :start_link, 0)
+      Code.ensure_loaded!(YellowDog.Dns)
       assert Kernel.function_exported?(YellowDog.Dns, :start_link, 1)
+      Code.ensure_loaded!(YellowDog.Dns)
       assert Kernel.function_exported?(YellowDog.Dns, :child_spec, 1)
     end
 

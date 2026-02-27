@@ -34,6 +34,35 @@ defmodule YellowDogIdentity.HostTest do
     test "rejects invalid age recipient" do
       assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("not-age")
     end
+
+    test "rejects empty string" do
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("")
+    end
+
+    test "rejects recipient at exactly 10 chars (boundary)" do
+      # 10 chars is <= 10, must be > 10
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("age1qpzry9")
+    end
+
+    test "accepts recipient at 11 chars (boundary)" do
+      assert :ok = Host.validate_age_recipient("age1qpzry9x")
+    end
+
+    test "rejects recipient at 91 chars (exceeds max)" do
+      long = "age1" <> String.duplicate("q", 87)
+      assert byte_size(long) == 91
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient(long)
+    end
+
+    test "accepts recipient at exactly 90 chars (max boundary)" do
+      at_max = "age1" <> String.duplicate("q", 86)
+      assert byte_size(at_max) == 90
+      assert :ok = Host.validate_age_recipient(at_max)
+    end
+
+    test "rejects recipient with uppercase chars (not bech32)" do
+      assert {:error, :invalid_age_recipient} = Host.validate_age_recipient("age1QPZRY9X8GF2TVDW0S3JN54")
+    end
   end
 
   describe "new/1" do
@@ -52,6 +81,24 @@ defmodule YellowDogIdentity.HostTest do
       assert host.role == "worker"
       assert String.starts_with?(host.key_fingerprint, "SHA256:")
       assert host.id =~ ~r/^[0-9a-f]{8}-/
+    end
+
+    test "accepts machine_id param (dbus machine id)" do
+      params = %{
+        hostname: "node-02",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient,
+        machine_id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+      }
+
+      assert {:ok, host} = Host.new(params)
+      assert host.machine_id == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    end
+
+    test "machine_id is nil when not provided" do
+      params = %{hostname: "node-03", ssh_pubkey: @valid_ssh_pubkey, age_recipient: @valid_age_recipient}
+      assert {:ok, host} = Host.new(params)
+      assert host.machine_id == nil
     end
 
     test "creates host with string-key params" do
@@ -74,6 +121,11 @@ defmodule YellowDogIdentity.HostTest do
       assert {:error, :ssh_pubkey_required} = Host.new(params)
     end
 
+    test "rejects missing age_recipient" do
+      params = %{hostname: "node-01", ssh_pubkey: @valid_ssh_pubkey}
+      assert {:error, :age_recipient_required} = Host.new(params)
+    end
+
     test "rejects invalid pubkey format" do
       params = %{
         hostname: "node-01",
@@ -82,6 +134,60 @@ defmodule YellowDogIdentity.HostTest do
       }
 
       assert {:error, :invalid_pubkey} = Host.new(params)
+    end
+
+    test "rejects hostname exceeding max length" do
+      long_hostname = String.duplicate("a", 254)
+
+      params = %{
+        hostname: long_hostname,
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_too_long} = Host.new(params)
+    end
+
+    test "rejects hostname with newlines" do
+      params = %{
+        hostname: "node\n-injected",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_invalid_chars} = Host.new(params)
+    end
+
+    test "rejects hostname with spaces" do
+      params = %{
+        hostname: "node 01",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:error, :hostname_invalid_chars} = Host.new(params)
+    end
+
+    test "accepts hostname with dots, hyphens, and underscores" do
+      params = %{
+        hostname: "node-01.dc1.example_corp",
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:ok, %Host{hostname: "node-01.dc1.example_corp"}} = Host.new(params)
+    end
+
+    test "accepts hostname at max length boundary" do
+      hostname = String.duplicate("a", 253)
+
+      params = %{
+        hostname: hostname,
+        ssh_pubkey: @valid_ssh_pubkey,
+        age_recipient: @valid_age_recipient
+      }
+
+      assert {:ok, %Host{}} = Host.new(params)
     end
   end
 
@@ -104,8 +210,76 @@ defmodule YellowDogIdentity.HostTest do
       assert restored.id == host.id
     end
 
+    test "round-trips machine_id through TOML map" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "machine-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient,
+          machine_id: "aabbccdd11223344aabbccdd11223344"
+        })
+
+      toml_map = Host.to_toml_map(host)
+      assert get_in(toml_map, ["host", "machine_id"]) == "aabbccdd11223344aabbccdd11223344"
+
+      {:ok, restored} = Host.from_toml_map(toml_map)
+      assert restored.machine_id == "aabbccdd11223344aabbccdd11223344"
+    end
+
+    test "machine_id is absent from TOML when nil" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "no-machine-id-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      # nil machine_id should not appear in the TOML map
+      refute Map.has_key?(toml_map["host"], "machine_id")
+
+      {:ok, restored} = Host.from_toml_map(toml_map)
+      assert restored.machine_id == nil
+    end
+
     test "from_toml_map rejects missing host section" do
       assert {:error, :missing_host_section} = Host.from_toml_map(%{"wrong" => %{}})
+    end
+
+    test "from_toml_map returns nil for invalid created_at datetime string" do
+      {:ok, host} =
+        Host.new(%{
+          hostname: "node-01",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      # Corrupt created_at to an invalid ISO8601 string
+      corrupted =
+        put_in(toml_map, ["host", "created_at"], "not-a-valid-datetime")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      # parse_datetime returns nil for unparseable strings (not an error)
+      assert is_nil(restored.created_at)
+    end
+
+    test "from_toml_map returns invalid_toml_data when required key is missing" do
+      # Missing "id" key triggers Map.fetch! KeyError → rescue → {:error, {:invalid_toml_data, _}}
+      incomplete = %{
+        "host" => %{
+          "hostname" => "node-01",
+          "ssh_pubkey" => @valid_ssh_pubkey,
+          "key_fingerprint" => "SHA256:abc",
+          "age_recipient" => @valid_age_recipient,
+          "status" => "pending",
+          "trust_level" => "unverified",
+          "trust_provider" => "unverified"
+          # "id" intentionally omitted
+        }
+      }
+
+      assert {:error, {:invalid_toml_data, _message}} = Host.from_toml_map(incomplete)
     end
 
     test "round-trips netboot trust_provider correctly" do
@@ -143,6 +317,40 @@ defmodule YellowDogIdentity.HostTest do
         {:ok, restored} = Host.from_toml_map(toml_map)
         assert restored.trust_provider == provider, "Expected #{provider} but got #{restored.trust_provider}"
       end
+    end
+
+    test "from_toml_map falls back to first valid value for unknown trust_provider string" do
+      # safe_to_atom/2 rescue path: String.to_existing_atom("totally_unknown_zxqvbn_provider")
+      # raises ArgumentError → rescue → hd(@valid_trust_providers) = :dhcp
+      {:ok, host} =
+        Host.new(%{
+          hostname: "fallback-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      corrupted = put_in(toml_map, ["host", "trust_provider"], "totally_unknown_zxqvbn_provider")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      # Unknown atom string → ArgumentError rescued → falls back to hd(valid_trust_providers)
+      assert is_atom(restored.trust_provider)
+    end
+
+    test "from_toml_map falls back to first valid value for unknown status string" do
+      # safe_to_atom/2 for status: unknown value → rescue → hd(@valid_statuses) = :pending
+      {:ok, host} =
+        Host.new(%{
+          hostname: "status-fallback-node",
+          ssh_pubkey: @valid_ssh_pubkey,
+          age_recipient: @valid_age_recipient
+        })
+
+      toml_map = Host.to_toml_map(host)
+      corrupted = put_in(toml_map, ["host", "status"], "totally_unknown_zxqvbn_status")
+
+      {:ok, restored} = Host.from_toml_map(corrupted)
+      assert is_atom(restored.status)
     end
   end
 end

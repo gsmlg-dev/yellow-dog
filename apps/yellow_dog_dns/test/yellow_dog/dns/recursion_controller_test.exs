@@ -165,9 +165,6 @@ defmodule YellowDog.Dns.RecursionControllerTest do
       GenServer.stop(pid)
     end
 
-    # Note: Testing unreachable servers is slow due to UDP timeouts
-    # Skip this test in favor of faster unit tests
-    @tag :skip
     @tag :capture_log
     test "returns error when all servers are unreachable" do
       view_name = "test_resolve_no_srv_#{:rand.uniform(1_000_000)}"
@@ -178,12 +175,16 @@ defmodule YellowDog.Dns.RecursionControllerTest do
         {{127, 0, 0, 253}, 65534}
       ]
 
-      {:ok, pid} = RecursionController.start_link(view_name: view_name, root_servers: bad_servers)
+      # Short query_timeout keeps this test fast (~400ms instead of ~10s)
+      {:ok, pid} =
+        RecursionController.start_link(
+          view_name: view_name,
+          root_servers: bad_servers,
+          query_timeout: 200
+        )
 
       query = build_test_query("example.com")
 
-      # This will timeout trying to reach unreachable servers
-      # Use a shorter timeout by catching the exit
       result =
         try do
           RecursionController.resolve(pid, query)

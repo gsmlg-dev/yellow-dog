@@ -3,6 +3,7 @@ dns = true
 mdns = true
 dhcpv4 = true
 dhcpv6 = true
+identity = true
 
 [dns]
 listen = "0.0.0.0"
@@ -39,6 +40,21 @@ preferred_lifetime = 3600
 range_end = "2001:db8:1::200"
 range_start = "2001:db8:1::100"
 valid_lifetime = 7200
+
+[identity]
+data_path = "data/identity"
+# registration_url = "http://yellowdog:4270/api/hosts/register"
+
+[identity.approval]
+default_action = "pending"
+
+[[identity.approval.policies]]
+name = "token-approved"
+description = "Auto-approve token-verified registrations"
+action = "approve"
+
+[identity.approval.policies.match]
+trust_level = "token_verified"
 
 [[dhcpv4.pools]]
 gateway = "192.168.50.1"

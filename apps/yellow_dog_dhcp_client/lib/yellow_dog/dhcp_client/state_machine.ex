@@ -38,6 +38,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     :lease,
     :start_time,
     :state_entered_at,
+    :dad_task_pid,
     offers: [],
     retransmit_count: 0,
     config: %{}
@@ -55,7 +56,8 @@ defmodule YellowDog.DhcpClient.StateMachine do
           retransmit_count: non_neg_integer(),
           config: map(),
           start_time: integer(),
-          state_entered_at: integer() | nil
+          state_entered_at: integer() | nil,
+          dad_task_pid: pid() | nil
         }
 
   # --- Public API ---
@@ -230,7 +232,7 @@ defmodule YellowDog.DhcpClient.StateMachine do
     case parse_reply(packet) do
       {:ack, lease} when lease.xid == data.xid ->
         emit_packet_rx(data, :ack, lease)
-        maybe_dad_then_bound(data, lease)
+        start_dad_or_bind(data, lease)
 
       {:nak, _reason} ->
         emit_packet_rx(data, :nak, nil)
@@ -246,10 +248,6 @@ defmodule YellowDog.DhcpClient.StateMachine do
     {:next_state, :init, data}
   end
 
-  def handle_event({:timeout, :dad_backoff}, :go_init, :requesting, data) do
-    {:next_state, :init, data}
-  end
-
   def handle_event({:timeout, :retransmit}, :retransmit, :requesting, data) do
     count = data.retransmit_count + 1
 
@@ -261,6 +259,54 @@ defmodule YellowDog.DhcpClient.StateMachine do
       actions = [retransmit_timeout_action(count)]
       {:keep_state, data, actions}
     end
+  end
+
+  # ---- DAD_CHECKING ----
+  # Entered after receiving DHCPACK in :requesting. A Task runs DAD probes
+  # off the state machine process so that handle_event returns promptly.
+
+  def handle_event(:enter, _old_state, :dad_checking, data) do
+    parent = self()
+
+    dad_opts = [
+      probes: Map.get(data.config, :dad_probes, 3),
+      wait_ms: Map.get(data.config, :dad_wait_ms, 2_000),
+      interface: data.interface
+    ]
+
+    socket_pid = data.socket_pid
+    ip = data.lease.ip
+
+    {:ok, task_pid} =
+      Task.start(fn ->
+        result = DAD.check(socket_pid, ip, dad_opts)
+        send(parent, {:dad_result, result})
+      end)
+
+    {:keep_state, %{data | dad_task_pid: task_pid}, []}
+  end
+
+  # Forward ARP replies to the DAD task so it can detect conflicts.
+  # Callers (including tests) send {:arp_rx, ...} to the state machine pid;
+  # the state machine relays them to the task running DAD.check.
+  def handle_event(:info, {:arp_rx, _sender_ip, _sender_mac} = msg, :dad_checking, data) do
+    if data.dad_task_pid, do: send(data.dad_task_pid, msg)
+    :keep_state_and_data
+  end
+
+  def handle_event(:info, {:dad_result, :ok}, :dad_checking, data) do
+    {:next_state, :bound, %{data | dad_task_pid: nil}}
+  end
+
+  def handle_event(:info, {:dad_result, {:conflict, _mac}}, :dad_checking, data) do
+    send_decline(data, data.lease)
+    backoff_ms = Map.get(data.config, :dad_backoff_ms, 10_000)
+    actions = [{{:timeout, :dad_backoff}, backoff_ms, :go_init}]
+    {:keep_state, %{data | lease: nil, dad_task_pid: nil}, actions}
+  end
+
+  def handle_event({:timeout, :dad_backoff}, :go_init, :dad_checking, data) do
+    {:next_state, :init, data}
   end
 
   # ---- BOUND ----
@@ -553,28 +599,16 @@ defmodule YellowDog.DhcpClient.StateMachine do
     unicast_packet(data, data.lease.server_ip, packet, :release)
   end
 
-  defp maybe_dad_then_bound(data, lease) do
-    dad_enabled = Map.get(data.config, :dad_enabled, true)
+  # Transitions to :dad_checking (async DAD via Task) or directly to :bound
+  # when DAD is disabled. DAD runs off the state machine process so that
+  # handle_event returns promptly per gen_statem design expectations.
+  defp start_dad_or_bind(data, lease) do
+    data = %{data | lease: lease}
 
-    if dad_enabled do
-      dad_opts = [
-        probes: Map.get(data.config, :dad_probes, 3),
-        wait_ms: Map.get(data.config, :dad_wait_ms, 2_000),
-        interface: data.interface
-      ]
-
-      case DAD.check(data.socket_pid, lease.ip, dad_opts) do
-        :ok ->
-          {:next_state, :bound, %{data | lease: lease}}
-
-        {:conflict, _mac} ->
-          send_decline(data, lease)
-          backoff_ms = Map.get(data.config, :dad_backoff_ms, 10_000)
-          actions = [{{:timeout, :dad_backoff}, backoff_ms, :go_init}]
-          {:keep_state, data, actions}
-      end
+    if Map.get(data.config, :dad_enabled, true) do
+      {:next_state, :dad_checking, data}
     else
-      {:next_state, :bound, %{data | lease: lease}}
+      {:next_state, :bound, data}
     end
   end
 

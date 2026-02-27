@@ -623,9 +623,13 @@ defmodule YellowDog.Dns.Zone.CacheTest do
       # Ensure module is loaded
       {:module, _} = Code.ensure_loaded(Cache)
 
+      Code.ensure_loaded!(Cache)
       assert function_exported?(Cache, :get_name, 1)
+      Code.ensure_loaded!(Cache)
       assert function_exported?(Cache, :resolve, 2)
+      Code.ensure_loaded!(Cache)
       assert function_exported?(Cache, :reload, 2)
+      Code.ensure_loaded!(Cache)
       assert function_exported?(Cache, :stats, 1)
     end
   end

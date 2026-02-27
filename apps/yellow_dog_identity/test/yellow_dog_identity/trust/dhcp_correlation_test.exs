@@ -79,6 +79,20 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
       # so dhcp_configured?() returns false.
       assert {:skip, :not_applicable} = Correlation.verify(%{source_ip: {10, 255, 255, 1}})
     end
+
+    test "returns {:untrusted, :no_lease} when DHCP is configured but IP has no lease" do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      # Enable DHCPv4 by setting core.dhcpv4 = true
+      core = Map.put(Map.get(original, "core", %{}), "dhcpv4", true)
+      config = Map.put(original, "core", core)
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+
+      # Unknown IP — no lease in ETS → :no_lease since DHCP is configured
+      assert {:untrusted, :no_lease} = Correlation.verify(%{source_ip: {10, 255, 255, 2}})
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -161,6 +175,56 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
 
       assert {:untrusted, :expired} = Correlation.verify(%{source_ip: @test_ip})
     end
+
+    test "lease within grace window is still trusted" do
+      # Default grace window is 30s. Lease ended 15s ago (within grace window).
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      # Lease age = lease_duration + 15, which is within grace window (30s)
+      lease_start = now - lease_duration - 15
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: nil
+      )
+
+      assert {:trusted, :network_partial, _evidence} =
+               Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "lease just past grace window is expired" do
+      # Default grace window is 30s. Lease ended 31s ago (just past grace window).
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      # Lease age = lease_duration + 31, which exceeds grace window (30s)
+      lease_start = now - lease_duration - 31
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: "Linux"
+      )
+
+      assert {:untrusted, :expired} = Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "lease at exact grace window boundary is still trusted" do
+      # Lease age exactly = lease_duration + grace_window (30s)
+      # The condition is `>` (strictly greater), so exact boundary is trusted.
+      now = System.monotonic_time(:second)
+      lease_duration = 3600
+      lease_start = now - lease_duration - 30
+
+      insert_lease(@test_ip,
+        lease_start: lease_start,
+        lease_duration: lease_duration,
+        fingerprint_class: nil
+      )
+
+      assert {:trusted, :network_partial, _evidence} =
+               Correlation.verify(%{source_ip: @test_ip})
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -187,6 +251,51 @@ defmodule YellowDogIdentity.Trust.DHCP.CorrelationTest do
 
       assert {:trusted, :network_partial, _evidence} =
                Correlation.verify(%{source_ip: @test_ip})
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # fingerprint_mismatch — configured allowlist rejects non-matching fingerprints
+  # ---------------------------------------------------------------------------
+
+  describe "verify/1 with fingerprint allowlist configured" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "dhcp" => %{
+              "allowed_fingerprint_classes" => ["Linux", "NixOS"]
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects lease when fingerprint_class is not in allowlist" do
+      # Windows fingerprint is NOT in ["Linux", "NixOS"]
+      insert_lease(@test_ip, fingerprint_class: "Windows", mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:untrusted, :fingerprint_mismatch} = Correlation.verify(%{source_ip: @test_ip})
+    end
+
+    test "trusts lease when fingerprint_class is in allowlist" do
+      # Linux fingerprint IS in ["Linux", "NixOS"]
+      insert_lease(@test_ip, fingerprint_class: "Linux", mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:trusted, :network_verified, evidence} = Correlation.verify(%{source_ip: @test_ip})
+      assert evidence.fingerprint_class == "Linux"
+    end
+
+    test "returns network_partial when fingerprint_class is nil (no fingerprint data)" do
+      # nil fingerprint → no match possible → partial trust
+      insert_lease(@test_ip, fingerprint_class: nil, mac: "aa:bb:cc:dd:ee:ff")
+
+      assert {:trusted, :network_partial, _evidence} = Correlation.verify(%{source_ip: @test_ip})
     end
   end
 

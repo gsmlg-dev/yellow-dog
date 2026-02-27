@@ -747,9 +747,13 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       {:module, _} = Code.ensure_loaded(Auth)
 
       # Verify the module exports all required Behaviour functions
+      Code.ensure_loaded!(Auth)
       assert function_exported?(Auth, :get_name, 1)
+      Code.ensure_loaded!(Auth)
       assert function_exported?(Auth, :resolve, 2)
+      Code.ensure_loaded!(Auth)
       assert function_exported?(Auth, :reload, 2)
+      Code.ensure_loaded!(Auth)
       assert function_exported?(Auth, :stats, 1)
     end
   end

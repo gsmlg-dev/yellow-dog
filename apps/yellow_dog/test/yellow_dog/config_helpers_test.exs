@@ -84,6 +84,11 @@ defmodule YellowDog.ConfigHelpersTest do
       assert {:ok, %DateTime{}} = ConfigHelpers.parse_datetime(1_704_067_200)
     end
 
+    test "returns error for out-of-range unix timestamp" do
+      assert {:error, "Unix timestamp out of range"} =
+               ConfigHelpers.parse_datetime(999_999_999_999_999)
+    end
+
     test "returns error for other types" do
       assert {:error, "Invalid datetime"} = ConfigHelpers.parse_datetime([])
     end

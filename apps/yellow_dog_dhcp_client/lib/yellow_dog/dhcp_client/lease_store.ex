@@ -232,8 +232,19 @@ defmodule YellowDog.DhcpClient.LeaseStore do
       |> String.replace("\"", "\\\"")
       |> String.replace("\n", "\\n")
       |> String.replace("\r", "\\r")
+      |> String.replace("\t", "\\t")
+      |> escape_control_chars()
 
     ~s("#{escaped}")
+  end
+
+  # Escape remaining ASCII control characters (0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f, 0x7f)
+  # using TOML Unicode escape sequences (\uXXXX). The common ones (\n, \r, \t) are
+  # already handled above.
+  defp escape_control_chars(str) do
+    String.replace(str, ~r/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/, fn <<cp::utf8>> ->
+      "\\u#{String.pad_leading(Integer.to_string(cp, 16), 4, "0")}"
+    end)
   end
 
   defp encode_toml_value(value) when is_integer(value), do: Integer.to_string(value)

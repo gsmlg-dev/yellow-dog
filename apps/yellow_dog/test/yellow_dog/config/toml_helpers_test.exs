@@ -215,6 +215,11 @@ defmodule YellowDog.Config.TomlHelpersTest do
       result = TomlHelpers.format_datetime(nil)
       assert {:ok, _, _} = DateTime.from_iso8601(result)
     end
+
+    test "returns current time for out-of-range unix timestamp" do
+      result = TomlHelpers.format_datetime(999_999_999_999_999)
+      assert {:ok, _, _} = DateTime.from_iso8601(result)
+    end
   end
 
   describe "read_toml_file/1" do

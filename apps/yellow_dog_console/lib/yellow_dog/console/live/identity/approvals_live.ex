@@ -1,7 +1,9 @@
 defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
+  @moduledoc "Displays pending host enrollment approvals with accept/reject actions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
+  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -20,9 +22,11 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
   def handle_info({:host_registered, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info({:host_updated, _}, socket),
     do: {:noreply, load_pending(socket) |> assign(:selected, MapSet.new())}
 
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -40,6 +44,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     end
   end
 
+  @impl true
   def handle_event("reject", %{"id" => id}, socket) do
     result =
       ServiceHelper.safe_call(
@@ -54,6 +59,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     end
   end
 
+  @impl true
   def handle_event("toggle_select", %{"id" => id}, socket) do
     selected = socket.assigns.selected
 
@@ -65,53 +71,74 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     {:noreply, assign(socket, :selected, selected)}
   end
 
+  @impl true
   def handle_event("select_all", _params, socket) do
     ids = Enum.map(socket.assigns.pending, & &1.id)
     {:noreply, assign(socket, :selected, MapSet.new(ids))}
   end
 
+  @impl true
   def handle_event("select_none", _params, socket) do
     {:noreply, assign(socket, :selected, MapSet.new())}
   end
 
+  @impl true
   def handle_event("bulk_approve", _params, socket) do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
 
-    Enum.each(selected, fn id ->
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.approve(id, "console-operator") end,
-        {:error, :unavailable}
-      )
-    end)
+    results =
+      Enum.map(selected, fn id ->
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.approve(id, "console-operator") end,
+          {:error, :unavailable}
+        )
+      end)
+
+    failed = Enum.count(results, &match?({:error, _}, &1))
+
+    flash_msg =
+      if failed > 0,
+        do: "#{count - failed} host(s) approved, #{failed} failed",
+        else: "#{count} host(s) approved"
 
     {:noreply,
      socket
      |> assign(:selected, MapSet.new())
      |> load_pending()
-     |> put_flash(:info, "#{count} host(s) approved")}
+     |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
+  @impl true
   def handle_event("bulk_reject", _params, socket) do
     selected = socket.assigns.selected
     count = MapSet.size(selected)
 
-    Enum.each(selected, fn id ->
-      ServiceHelper.safe_call(
-        YellowDogIdentity,
-        fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
-        {:error, :unavailable}
-      )
-    end)
+    results =
+      Enum.map(selected, fn id ->
+        ServiceHelper.safe_call(
+          YellowDogIdentity,
+          fn -> YellowDogIdentity.revoke(id, "console-operator", "bulk rejected via console") end,
+          {:error, :unavailable}
+        )
+      end)
+
+    failed = Enum.count(results, &match?({:error, _}, &1))
+
+    flash_msg =
+      if failed > 0,
+        do: "#{count - failed} host(s) rejected, #{failed} failed",
+        else: "#{count} host(s) rejected"
 
     {:noreply,
      socket
      |> assign(:selected, MapSet.new())
      |> load_pending()
-     |> put_flash(:info, "#{count} host(s) rejected")}
+     |> put_flash(if(failed > 0, do: :warning, else: :info), flash_msg)}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_pending(socket)}
   end
@@ -136,7 +163,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Pending Approvals</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
             ↻
           </button>
         </div>
@@ -148,6 +175,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
           <button
             class="btn btn-sm btn-success"
             phx-click="bulk_approve"
+            phx-disable-with="Approving..."
             data-confirm={"Approve #{MapSet.size(@selected)} host(s)?"}
           >
             Approve Selected
@@ -155,6 +183,7 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
           <button
             class="btn btn-sm btn-error btn-outline"
             phx-click="bulk_reject"
+            phx-disable-with="Rejecting..."
             data-confirm={"Reject #{MapSet.size(@selected)} host(s)?"}
           >
             Reject Selected
@@ -183,11 +212,15 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   checked={MapSet.member?(@selected, host.id)}
                   phx-click="toggle_select"
                   phx-value-id={host.id}
+                  aria-label={"Select #{host.hostname}"}
                 />
                 <div>
                   <h3 class="font-bold text-lg">{host.hostname}</h3>
                   <p class="text-sm text-base-content/70">
-                    Trust: <span class="badge badge-outline badge-sm">{host.trust_level}</span>
+                    Trust:
+                    <span class={trust_level_badge_class_sm(host.trust_level)}>
+                      {host.trust_level}
+                    </span>
                     via {host.trust_provider}
                   </p>
                 </div>
@@ -197,6 +230,9 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-success"
                   phx-click="approve"
                   phx-value-id={host.id}
+                  phx-disable-with="Approving..."
+                  data-confirm={"Approve #{host.hostname}?"}
+                  aria-label={"Approve #{host.hostname}"}
                 >
                   Approve
                 </button>
@@ -204,6 +240,9 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
                   class="btn btn-sm btn-error btn-outline"
                   phx-click="reject"
                   phx-value-id={host.id}
+                  phx-disable-with="Rejecting..."
+                  data-confirm={"Reject #{host.hostname}?"}
+                  aria-label={"Reject #{host.hostname}"}
                 >
                   Reject
                 </button>
@@ -237,7 +276,16 @@ defmodule YellowDog.Console.IdentityLive.ApprovalsLive do
     """
   end
 
-  defp format_time(nil), do: "-"
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-  defp format_time(_), do: "-"
+  defp trust_level_badge_class_sm(:cloud_verified), do: "badge badge-success badge-sm"
+  defp trust_level_badge_class_sm(:token_verified), do: "badge badge-warning badge-sm"
+  defp trust_level_badge_class_sm(:network_verified), do: "badge badge-info badge-sm"
+  defp trust_level_badge_class_sm(:network_partial), do: "badge badge-info badge-outline badge-sm"
+  defp trust_level_badge_class_sm(:unverified), do: "badge badge-error badge-sm"
+  defp trust_level_badge_class_sm(_), do: "badge badge-outline badge-sm"
+
+  @impl true
+  def terminate(_reason, _socket) do
+    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
+    :ok
+  end
 end

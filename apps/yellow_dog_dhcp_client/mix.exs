@@ -28,6 +28,7 @@ defmodule YellowDog.DhcpClient.MixProject do
       {:yellow_dog, in_umbrella: true},
       {:yellow_dog_telemetry, in_umbrella: true},
       {:ex_dhcp, in_umbrella: true},
+      {:rustler, "~> 0.34", runtime: false},
       {:telemetry, "~> 1.0"},
       {:file_system, "~> 1.0"},
       {:toml, "~> 0.7"},

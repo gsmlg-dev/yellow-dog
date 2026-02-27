@@ -26,9 +26,15 @@ defmodule YellowDog.Dns.RecursionWorker do
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.Message.RCode
+  alias DNS.ResourceRecordType, as: RRType
 
   @max_recursion_depth 10
   @default_query_timeout 5_000
+
+  # Pre-built RRType structs for comparison (Record.type is %RRType{}, not an atom)
+  @ns_type RRType.new(:ns)
+  @a_type RRType.new(:a)
+  @aaaa_type RRType.new(:aaaa)
 
   @doc """
   Performs recursive resolution for a DNS query.
@@ -175,7 +181,7 @@ defmodule YellowDog.Dns.RecursionWorker do
 
   defp follow_referral(socket, query, question, response, timeout, depth) do
     # Extract NS records and their glue
-    ns_records = Enum.filter(response.nslist, &(&1.type == :ns))
+    ns_records = Enum.filter(response.nslist, &(&1.type == @ns_type))
 
     # Get glue records (A/AAAA in additional section)
     glue_records = extract_glue(response.arlist)
@@ -198,18 +204,19 @@ defmodule YellowDog.Dns.RecursionWorker do
   end
 
   defp has_ns_records?(records) do
-    Enum.any?(records, &(&1.type == :ns))
+    Enum.any?(records, &(&1.type == @ns_type))
   end
 
   defp extract_glue(additional) do
     additional
-    |> Enum.filter(&(&1.type in [:a, :aaaa]))
+    |> Enum.filter(&(&1.type in [@a_type, @aaaa_type]))
     |> Enum.group_by(& &1.name)
   end
 
   defp build_server_list(ns_records, glue_records) do
     Enum.flat_map(ns_records, fn ns ->
-      ns_hostname = ns.rdata
+      # NS record data is %DNS.Message.Record.Data.NS{data: %Domain{}}
+      ns_hostname = ns.data.data
 
       case Map.get(glue_records, ns_hostname, []) do
         [] ->
@@ -217,7 +224,8 @@ defmodule YellowDog.Dns.RecursionWorker do
 
         glue ->
           Enum.map(glue, fn record ->
-            {record.rdata, 53}
+            # A/AAAA record data is %Data.A{data: ip_tuple} or %Data.AAAA{data: ip_tuple}
+            {record.data.data, 53}
           end)
       end
     end)
@@ -231,14 +239,15 @@ defmodule YellowDog.Dns.RecursionWorker do
     if depth >= @max_recursion_depth do
       {:error, :max_recursion_depth}
     else
-      ns_hostname = ns.rdata
+      # NS record data is %DNS.Message.Record.Data.NS{data: %Domain{}}
+      ns_hostname = ns.data.data
 
-      # Create query for NS hostname
-      ns_query = build_query(ns_hostname, :a)
+      # Create query for NS hostname (use to_string for Domain → binary name)
+      ns_query = build_query(to_string(ns_hostname), :a)
 
       case do_resolve(socket, ns_query, default_root_servers(), timeout, depth) do
         {:ok, response} ->
-          addresses = for(r <- response.anlist, r.type == :a, do: {r.rdata, 53})
+          addresses = for(r <- response.anlist, r.type == @a_type, do: {r.data.data, 53})
 
           if addresses == [] do
             resolve_ns_addresses(socket, rest, timeout, depth)
@@ -253,24 +262,10 @@ defmodule YellowDog.Dns.RecursionWorker do
   end
 
   defp build_query(name, type) do
-    %Message{
-      header: %DNS.Message.Header{
-        id: :rand.uniform(65535),
-        qr: 0,
-        opcode: :query,
-        aa: 0,
-        tc: 0,
-        rd: 0,
-        ra: 0,
-        rcode: RCode.no_error()
-      },
-      qdlist: [
-        DNS.Message.Question.new(name, type, :in)
-      ],
-      anlist: [],
-      nslist: [],
-      arlist: []
-    }
+    Message.new()
+    |> Message.update_header_attr(:id, :rand.uniform(65535))
+    |> Message.update_header_attr(:rd, 0)
+    |> Message.add_question(DNS.Message.Question.new(name, type, :in))
   end
 
   # Normalize rcode to atom for comparison

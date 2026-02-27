@@ -13,6 +13,8 @@ defmodule YellowDog.Fingerprint.Database do
 
   use GenServer
 
+  require Logger
+
   alias YellowDog.Data.{Collection, Store}
   alias YellowDog.Fingerprint.Types.{DeviceProfile, Fingerprint}
 
@@ -163,11 +165,18 @@ defmodule YellowDog.Fingerprint.Database do
   end
 
   @impl true
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_cast({:record_fingerprint, %Fingerprint{protocol: :dhcpv4} = fp}, state) do
     stores = update_fingerprint_entry(state.stores, :v4, fp)
     {:noreply, %{state | stores: stores}}
   end
 
+  @impl true
   def handle_cast({:record_fingerprint, %Fingerprint{protocol: :dhcpv6} = fp}, state) do
     stores = update_fingerprint_entry(state.stores, :v6, fp)
     {:noreply, %{state | stores: stores}}
@@ -311,7 +320,11 @@ defmodule YellowDog.Fingerprint.Database do
 
   defp save_overrides(stores, data_dir) do
     path = Path.join(data_dir, "overrides.toml")
-    File.mkdir_p!(data_dir)
+
+    case File.mkdir_p(data_dir) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to create data dir: #{inspect(reason)}")
+    end
 
     # We need the keys too — get from ETS directly since Store.list only returns values
     overrides =
@@ -336,7 +349,10 @@ defmodule YellowDog.Fingerprint.Database do
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n\n")
 
-    File.write!(path, content)
+    case File.write(path, content) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[Fingerprint] Failed to save overrides: #{inspect(reason)}")
+    end
   end
 
   defp read_toml(path) do

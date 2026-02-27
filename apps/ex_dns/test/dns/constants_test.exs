@@ -113,9 +113,13 @@ defmodule DNS.ConstantsTest do
     test "exports validation functions" do
       Code.ensure_loaded!(Constants)
       assert Kernel.function_exported?(Constants, :valid_domain_length?, 1)
+      Code.ensure_loaded!(Constants)
       assert Kernel.function_exported?(Constants, :valid_label_length?, 1)
+      Code.ensure_loaded!(Constants)
       assert Kernel.function_exported?(Constants, :valid_ttl?, 1)
+      Code.ensure_loaded!(Constants)
       assert Kernel.function_exported?(Constants, :valid_rdlength?, 1)
+      Code.ensure_loaded!(Constants)
       assert Kernel.function_exported?(Constants, :valid_compression_depth?, 1)
     end
   end

@@ -769,7 +769,8 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 
@@ -937,11 +938,15 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
           loaded =
             Enum.reduce(leases, 0, fn lease_data, count ->
               # Convert TOML lease to Mnesia format
-              lease = convert_toml_lease_to_storage(lease_data, pool.name)
+              case convert_toml_lease_to_storage(lease_data, pool.name) do
+                {:ok, lease} ->
+                  case LeaseStorage.put(lease) do
+                    {:ok, _} -> count + 1
+                    {:error, _} -> count
+                  end
 
-              case LeaseStorage.put(lease) do
-                {:ok, _} -> count + 1
-                {:error, _} -> count
+                {:error, _} ->
+                  count
               end
             end)
 
@@ -971,27 +976,32 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     now = System.system_time(:second)
 
     # Parse IP address if it's a string
-    {:ok, ip} = Ipv4Util.parse(lease_data.ip)
+    case Ipv4Util.parse(lease_data.ip) do
+      {:ok, ip} ->
+        # Parse MAC address
+        mac =
+          case lease_data.mac do
+            mac when is_binary(mac) and byte_size(mac) == 6 -> mac
+            mac when is_binary(mac) -> parse_mac(mac)
+          end
 
-    # Parse MAC address
-    mac =
-      case lease_data.mac do
-        mac when is_binary(mac) and byte_size(mac) == 6 -> mac
-        mac when is_binary(mac) -> parse_mac(mac)
-      end
+        {:ok,
+         %{
+           mac_address: mac,
+           ip_address: ip,
+           pool_name: pool_name,
+           state: lease_data.state || :active,
+           lease_time: lease_data.lease_time || 3600,
+           expires_at: lease_data.expires_at || now + 3600,
+           hostname: lease_data.hostname,
+           client_id: lease_data.client_id,
+           created_at: lease_data.starts_at || now,
+           updated_at: now
+         }}
 
-    %{
-      mac_address: mac,
-      ip_address: ip,
-      pool_name: pool_name,
-      state: lease_data.state || :active,
-      lease_time: lease_data.lease_time || 3600,
-      expires_at: lease_data.expires_at || now + 3600,
-      hostname: lease_data.hostname,
-      client_id: lease_data.client_id,
-      created_at: lease_data.starts_at || now,
-      updated_at: now
-    }
+      {:error, reason} ->
+        {:error, {:invalid_ip, reason}}
+    end
   end
 
   # Parse MAC address from various formats

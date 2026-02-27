@@ -118,6 +118,35 @@ defmodule YellowDog.Dhcpv4.AddressPoolTest do
 
       assert {:error, _} = AddressPool.new(invalid_config)
     end
+
+    test "silently drops excluded range with invalid IP string instead of crashing" do
+      config = %{
+        name: "bad_exclusion_pool",
+        range_start: {10, 0, 0, 1},
+        range_end: {10, 0, 0, 254},
+        excluded_ranges: [
+          %{start: "not-an-ip", end: "also-bad"},
+          %{start: {10, 0, 0, 50}, end: {10, 0, 0, 60}}
+        ]
+      }
+
+      assert {:ok, pool} = AddressPool.new(config)
+      # Invalid range is dropped, valid one is kept
+      assert length(pool.excluded_ranges) == 1
+      assert {{10, 0, 0, 50}, {10, 0, 0, 60}} in pool.excluded_ranges
+    end
+
+    test "silently drops excluded range with invalid start IP" do
+      config = %{
+        name: "bad_start_pool",
+        range_start: {10, 0, 0, 1},
+        range_end: {10, 0, 0, 254},
+        excluded_ranges: [%{start: "999.999.999.999", end: {10, 0, 0, 20}}]
+      }
+
+      assert {:ok, pool} = AddressPool.new(config)
+      assert pool.excluded_ranges == []
+    end
   end
 
   describe "validate_pool_config/1" do

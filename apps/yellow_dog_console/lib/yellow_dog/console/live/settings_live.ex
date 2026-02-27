@@ -758,10 +758,16 @@ defmodule YellowDog.Console.SettingsLive do
     # Parse ISO 8601 basic format: 20250118T123045Z
     case Regex.run(~r/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, timestamp_str) do
       [_, year, month, day, hour, minute, second] ->
-        DateTime.new(
-          Date.new!(String.to_integer(year), String.to_integer(month), String.to_integer(day)),
-          Time.new!(String.to_integer(hour), String.to_integer(minute), String.to_integer(second))
-        )
+        with {:ok, date} <-
+               Date.new(String.to_integer(year), String.to_integer(month), String.to_integer(day)),
+             {:ok, time} <-
+               Time.new(
+                 String.to_integer(hour),
+                 String.to_integer(minute),
+                 String.to_integer(second)
+               ) do
+          DateTime.new(date, time)
+        end
 
       _ ->
         {:error, :invalid_format}
@@ -775,10 +781,16 @@ defmodule YellowDog.Console.SettingsLive do
         :views -> YellowDog.Dns.ConfigWatcher.reload_views()
         :acls -> YellowDog.Dns.ConfigWatcher.reload_acls()
       end
-    rescue
-      e -> {:error, Exception.message(e)}
     catch
-      :exit, reason -> {:error, reason}
+      kind, reason ->
+        msg =
+          case {kind, reason} do
+            {:error, %{message: m}} -> m
+            {:exit, _} -> "Service unavailable"
+            _ -> Exception.format(kind, reason)
+          end
+
+        {:error, msg}
     end
   end
 end

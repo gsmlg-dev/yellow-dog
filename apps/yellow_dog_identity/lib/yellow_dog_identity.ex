@@ -68,7 +68,9 @@ defmodule YellowDogIdentity do
   Approves a pending host.
   """
   @spec approve(String.t(), String.t()) :: {:ok, Host.t()} | {:error, term()}
-  def approve(host_id, approved_by \\ "manual") do
+  def approve(host_id, approved_by \\ "manual")
+      when is_binary(host_id) and byte_size(host_id) > 0 and is_binary(approved_by) and
+             byte_size(approved_by) > 0 do
     case Registry.get_host(host_id) do
       {:ok, %Host{status: :pending} = host} ->
         now = DateTime.utc_now()
@@ -104,7 +106,9 @@ defmodule YellowDogIdentity do
   Revokes an approved host.
   """
   @spec revoke(String.t(), String.t(), String.t()) :: {:ok, Host.t()} | {:error, term()}
-  def revoke(host_id, revoked_by, reason \\ "manual revocation") do
+  def revoke(host_id, revoked_by, reason \\ "manual revocation")
+      when is_binary(host_id) and byte_size(host_id) > 0 and is_binary(revoked_by) and
+             byte_size(revoked_by) > 0 and is_binary(reason) and byte_size(reason) > 0 do
     case Registry.get_host(host_id) do
       {:ok, %Host{status: status} = host} when status in [:approved, :pending] ->
         now = DateTime.utc_now()
@@ -145,7 +149,7 @@ defmodule YellowDogIdentity do
   Deletes a host record permanently.
   """
   @spec delete_host(String.t()) :: :ok | {:error, term()}
-  def delete_host(id) do
+  def delete_host(id) when is_binary(id) and byte_size(id) > 0 do
     case Registry.get_host(id) do
       {:ok, host} ->
         case Registry.delete_host(id) do
@@ -168,7 +172,8 @@ defmodule YellowDogIdentity do
   Gets a host by ID.
   """
   @spec get_host(String.t()) :: {:ok, Host.t()} | :not_found
-  def get_host(id), do: Registry.get_host(id)
+  def get_host(id) when is_binary(id) and byte_size(id) > 0, do: Registry.get_host(id)
+  def get_host(_), do: :not_found
 
   @doc """
   Lists all hosts, optionally filtered by status.
@@ -185,7 +190,7 @@ defmodule YellowDogIdentity do
   Gets the status of a specific host (for revocation checking).
   """
   @spec host_status(String.t()) :: {:ok, map()} | :not_found
-  def host_status(id) do
+  def host_status(id) when is_binary(id) and byte_size(id) > 0 do
     case Registry.get_host(id) do
       {:ok, host} ->
         {:ok,
@@ -233,7 +238,9 @@ defmodule YellowDogIdentity do
   Revokes a provisioning token.
   """
   @spec revoke_token(String.t()) :: :ok | {:error, term()}
-  def revoke_token(id), do: Registry.delete_token(id)
+  def revoke_token(id) when is_binary(id) and byte_size(id) > 0 do
+    Registry.delete_token(id)
+  end
 
   @doc """
   Exports approved recipients in YAML format.
@@ -254,7 +261,7 @@ defmodule YellowDogIdentity do
     Registry.read_audit_log(opts)
   rescue
     e ->
-      Logger.debug("audit_log unavailable: #{Exception.message(e)}")
+      Logger.warning("audit_log unavailable: #{Exception.message(e)}")
       []
   end
 
@@ -266,7 +273,7 @@ defmodule YellowDogIdentity do
     ApprovalEngine.list_policies()
   rescue
     e ->
-      Logger.debug("list_policies unavailable: #{Exception.message(e)}")
+      Logger.warning("list_policies unavailable: #{Exception.message(e)}")
       %{policies: [], default_action: :pending}
   end
 
@@ -317,10 +324,9 @@ defmodule YellowDogIdentity do
          :ok <- check_duplicate(host),
          {:ok, host} <- check_conflict(host, params),
          {trust_level, trust_provider, evidence} <- verify_trust(host, context),
-         :ok <- check_instance_id_uniqueness(evidence),
          host <- apply_trust(host, trust_level, trust_provider, evidence),
          host <- apply_approval(host),
-         :ok <- Registry.put_host(host) do
+         :ok <- Registry.put_host_checked(host) do
       Registry.append_audit("host.registered", host.id, %{
         hostname: host.hostname,
         status: host.status,
@@ -358,7 +364,7 @@ defmodule YellowDogIdentity do
     end
   rescue
     e ->
-      Logger.debug("check_duplicate skipped: #{Exception.message(e)}")
+      Logger.warning("check_duplicate error: #{Exception.message(e)}")
       :ok
   end
 
@@ -372,7 +378,8 @@ defmodule YellowDogIdentity do
           {:error, {:idempotent, existing}}
         else
           if force do
-            # Archive old key and proceed
+            # Archive old key and proceed — reuse existing.id so put_host_checked
+            # atomically overwrites the old record (same file path)
             previous_key = %{
               "ssh_pubkey" => existing.ssh_pubkey,
               "key_fingerprint" => existing.key_fingerprint,
@@ -385,8 +392,6 @@ defmodule YellowDogIdentity do
                 id: existing.id
             }
 
-            # Delete old host record (will be replaced)
-            Registry.delete_host(existing.id)
             {:ok, updated_host}
           else
             {:error, :conflict}
@@ -398,35 +403,9 @@ defmodule YellowDogIdentity do
     end
   rescue
     e ->
-      Logger.debug("check_conflict skipped: #{Exception.message(e)}")
+      Logger.warning("check_conflict error: #{Exception.message(e)}")
       {:ok, host}
   end
-
-  defp check_instance_id_uniqueness(evidence) when is_map(evidence) do
-    instance_id =
-      Map.get(evidence, :instance_id) || Map.get(evidence, "instance_id")
-
-    if instance_id do
-      # Check all hosts for duplicate cloud instance ID
-      hosts = Registry.list_hosts()
-
-      case Enum.find(hosts, fn h ->
-             eid = h.trust_evidence
-             (Map.get(eid, :instance_id) || Map.get(eid, "instance_id")) == to_string(instance_id)
-           end) do
-        nil -> :ok
-        _existing -> {:error, :instance_id_conflict}
-      end
-    else
-      :ok
-    end
-  rescue
-    e ->
-      Logger.warning("check_instance_id_uniqueness failed: #{Exception.message(e)}")
-      :ok
-  end
-
-  defp check_instance_id_uniqueness(_), do: :ok
 
   defp verify_trust(host, context) do
     trust_context = %{

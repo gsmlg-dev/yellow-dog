@@ -41,7 +41,8 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
          {:ok, claims} <- extract_claims(document_json),
          :ok <- check_replay_window(claims),
          :ok <- check_allowed_account(claims),
-         :ok <- check_allowed_regions(claims) do
+         :ok <- check_allowed_regions(claims),
+         :ok <- check_allowed_amis(claims) do
       evidence = %{
         provider: :aws,
         account_id: claims["accountId"],
@@ -92,6 +93,7 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
   defp check_replay_window(claims) do
     case Map.get(claims, "pendingTime") do
       nil ->
+        Logger.warning("AWS attestation: missing pendingTime field, skipping replay check")
         :ok
 
       pending_time when is_binary(pending_time) ->
@@ -137,10 +139,24 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
     end
   end
 
+  defp check_allowed_amis(claims) do
+    image_id = Map.get(claims, "imageId")
+    allowed = get_cloud_config("allowed_amis", [])
+
+    if allowed == [] or image_id in allowed do
+      :ok
+    else
+      {:error, :ami_not_allowed}
+    end
+  end
+
   defp verify_pkcs7_signature(document, signature_b64) do
     case get_aws_cert_pem() do
       nil ->
-        # No certificate configured — skip signature verification (claims-only mode)
+        Logger.warning(
+          "AWS attestation: no certificate configured, signature verification skipped (claims-only mode)"
+        )
+
         :ok
 
       _cert_pem when is_nil(signature_b64) ->
@@ -155,9 +171,9 @@ defmodule YellowDogIdentity.Trust.Cloud.AWS do
     with {:ok, sig_der} <- decode_signature(signature_b64),
          {:ok, rsa_key} <- extract_cert_public_key(cert_pem),
          {:ok, raw_sig} <- extract_pkcs7_signature(sig_der) do
-      # AWS signs with SHA1 (SHA-1 with RSA) for the PKCS7 signature
-      if :public_key.verify(document, :sha, raw_sig, rsa_key) or
-           :public_key.verify(document, :sha256, raw_sig, rsa_key) do
+      # Prefer SHA-256; fall back to SHA-1 for older AWS regions
+      if :public_key.verify(document, :sha256, raw_sig, rsa_key) or
+           :public_key.verify(document, :sha, raw_sig, rsa_key) do
         :ok
       else
         {:error, :invalid_signature}

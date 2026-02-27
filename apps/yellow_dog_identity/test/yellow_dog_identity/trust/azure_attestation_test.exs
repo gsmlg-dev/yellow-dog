@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias YellowDogIdentity.Trust.Cloud.Azure
 
@@ -202,6 +202,113 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
     end
   end
 
+  describe "signature verification paths" do
+    test "returns trusted when signature present but cert is nil (claims-only mode)" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("some-raw-sig-bytes"),
+          "certificate" => nil
+        })
+
+      # cert nil → extract_signing_key(nil) → :no_certificate → skip verification → :ok
+      assert {:trusted, :cloud_verified, _evidence} = Azure.verify(ctx)
+    end
+
+    test "returns trusted when signature present but cert is empty string (claims-only mode)" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("some-raw-sig-bytes"),
+          "certificate" => ""
+        })
+
+      # empty cert → extract_signing_key("") → :no_certificate → skip verification → :ok
+      assert {:trusted, :cloud_verified, _evidence} = Azure.verify(ctx)
+    end
+
+    test "returns untrusted when signature is not valid base64" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => "!!!not!valid!base64!!!",
+          "certificate" => "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAJ\n-----END CERTIFICATE-----"
+        })
+
+      assert {:untrusted, :invalid_signature_encoding} = Azure.verify(ctx)
+    end
+
+    test "returns untrusted when certificate PEM is invalid" do
+      document_b64 = valid_azure_document()
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => Base.encode64("fake-signature-bytes"),
+          "certificate" => "this-is-not-pem-at-all"
+        })
+
+      # Valid base64 sig, invalid PEM → :invalid_certificate
+      assert {:untrusted, :invalid_certificate} = Azure.verify(ctx)
+    end
+
+    test "returns untrusted when signature does not match document (valid cert, wrong signature)" do
+      document_b64 = valid_azure_document()
+
+      # Generate a real RSA key + self-signed cert so extract_signing_key succeeds
+      private_key = X509.PrivateKey.new_rsa(1024)
+      cert = X509.Certificate.self_signed(private_key, "/CN=Test")
+      cert_pem = X509.Certificate.to_pem(cert)
+
+      # Signature is valid base64 but does not match the document
+      wrong_signature = Base.encode64(:crypto.strong_rand_bytes(128))
+
+      ctx =
+        build_context(%{
+          "provider" => "azure",
+          "document" => document_b64,
+          "signature" => wrong_signature,
+          "certificate" => cert_pem
+        })
+
+      # Valid cert + valid base64 sig bytes, but sig doesn't verify → :invalid_signature
+      assert {:untrusted, :invalid_signature} = Azure.verify(ctx)
+    end
+  end
+
+  describe "timestamp edge cases" do
+    test "returns trusted when timestamp is exactly 300s old (at boundary)" do
+      boundary_time =
+        DateTime.utc_now()
+        |> DateTime.add(-300, :second)
+        |> DateTime.to_iso8601()
+
+      document_b64 = valid_azure_document(%{"timestamp" => boundary_time})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      # age == window (300 <= 300) → :ok
+      assert {:trusted, :cloud_verified, _} = Azure.verify(ctx)
+    end
+
+    test "returns trusted when timestamp is non-ISO8601 string (permissive fallback)" do
+      document_b64 = valid_azure_document(%{"timestamp" => "not-a-valid-date"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      # parse failure → :ok (permissive: can't verify what we can't parse)
+      assert {:trusted, :cloud_verified, _} = Azure.verify(ctx)
+    end
+  end
+
   describe "subscription allowlist" do
     # With no YellowDog.Config available in test, allowed_subscriptions defaults to []
     # which means all subscriptions are allowed.
@@ -245,6 +352,58 @@ defmodule YellowDogIdentity.Trust.Cloud.AzureAttestationTest do
         assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
         assert evidence.location == location
       end
+    end
+  end
+
+  describe "subscription allowlist rejection" do
+    setup do
+      original = Agent.get(YellowDog.Config, & &1)
+
+      config =
+        Map.merge(original, %{
+          "identity" => %{
+            "cloud" => %{
+              "azure" => %{
+                "allowed_subscriptions" => ["sub-allowed-1", "sub-allowed-2"],
+                "allowed_locations" => ["eastus", "westeurope"]
+              }
+            }
+          }
+        })
+
+      Agent.update(YellowDog.Config, fn _ -> config end)
+      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
+      :ok
+    end
+
+    test "rejects subscription not in allowed_subscriptions list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-unauthorized"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:untrusted, :subscription_not_allowed} = Azure.verify(ctx)
+    end
+
+    test "allows subscription in allowed_subscriptions list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
+      assert evidence.subscription_id == "sub-allowed-1"
+    end
+
+    test "rejects location not in allowed_locations list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1", "location" => "japaneast"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:untrusted, :location_not_allowed} = Azure.verify(ctx)
+    end
+
+    test "allows location in allowed_locations list" do
+      document_b64 = valid_azure_document(%{"subscriptionId" => "sub-allowed-1", "location" => "eastus"})
+      ctx = build_context(%{"provider" => "azure", "document" => document_b64})
+
+      assert {:trusted, :cloud_verified, evidence} = Azure.verify(ctx)
+      assert evidence.location == "eastus"
     end
   end
 

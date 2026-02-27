@@ -34,6 +34,8 @@ defmodule YellowDog.Console.LogBroadcaster do
 
   use GenServer
 
+  require Logger
+
   @pubsub YellowDog.Console.PubSub
   @topic "logs:stream"
 
@@ -69,7 +71,8 @@ defmodule YellowDog.Console.LogBroadcaster do
   end
 
   @impl true
-  def handle_info(_msg, state) do
+  def handle_info(msg, state) do
+    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 

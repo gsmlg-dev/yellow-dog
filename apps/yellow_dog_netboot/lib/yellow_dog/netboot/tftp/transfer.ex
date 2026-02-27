@@ -7,6 +7,7 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   """
 
   use GenServer, restart: :temporary
+  require Logger
 
   alias YellowDog.Netboot.TFTP.Protocol
 
@@ -117,6 +118,9 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   end
 
   @impl true
+  def handle_info(_msg, state), do: {:noreply, state, @timeout_ms}
+
+  @impl true
   def terminate(_reason, %{socket: socket}) when not is_nil(socket) do
     Abyss.Transport.UDP.close(socket)
   end
@@ -185,6 +189,6 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
       metadata
     )
   rescue
-    _ -> :ok
+    e -> Logger.debug("TFTP telemetry emit failed: #{inspect(e)}")
   end
 end
