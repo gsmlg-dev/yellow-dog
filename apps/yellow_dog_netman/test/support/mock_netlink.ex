@@ -122,6 +122,59 @@ defmodule YellowDog.Netman.Test.MockNetlink do
     send_event(event)
   end
 
+  @doc "Simulate a policy routing rule being added."
+  def rule_added(opts \\ []) do
+    event = %{
+      "type" => "rule_change",
+      "action" => "add",
+      "priority" => Keyword.get(opts, :priority, 0),
+      "table" => Keyword.get(opts, :table, 254),
+      "source" => Keyword.get(opts, :source),
+      "destination" => Keyword.get(opts, :destination),
+      "interface" => Keyword.get(opts, :interface)
+    }
+
+    send_event(event)
+  end
+
+  @doc "Simulate a policy routing rule being removed."
+  def rule_removed(opts \\ []) do
+    event = %{
+      "type" => "rule_change",
+      "action" => "del",
+      "priority" => Keyword.get(opts, :priority, 0),
+      "table" => Keyword.get(opts, :table, 254)
+    }
+
+    send_event(event)
+  end
+
+  @doc "Simulate a neighbor (ARP/NDP) entry being added."
+  def neighbor_added(interface, address, opts \\ []) do
+    event = %{
+      "type" => "neighbor_change",
+      "action" => "add",
+      "interface" => interface,
+      "address" => address,
+      "mac" => Keyword.get(opts, :mac),
+      "state" => Keyword.get(opts, :state, "reachable")
+    }
+
+    send_event(event)
+  end
+
+  @doc "Simulate a neighbor (ARP/NDP) entry being removed."
+  def neighbor_removed(interface, address) do
+    event = %{
+      "type" => "neighbor_change",
+      "action" => "del",
+      "interface" => interface,
+      "address" => address
+    }
+
+    send_event(event)
+  end
+
   defp send_event(event) do
     send(Netlink, {:mock_event, event})
     # Small delay to allow event propagation
