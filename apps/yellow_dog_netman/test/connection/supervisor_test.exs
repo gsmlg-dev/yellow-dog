@@ -104,4 +104,22 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
 
     ConnSupervisor.stop_connection(iface)
   end
+
+  test "list_connections handles FSM that exits during enumeration" do
+    iface = "sup_exit_#{:rand.uniform(65535)}"
+    profile = make_profile(iface)
+    MockNetlink.link_up(iface, carrier: false)
+    Process.sleep(30)
+
+    {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
+    Process.sleep(30)
+
+    # Kill the FSM process — list_connections should handle the error gracefully
+    Process.exit(pid, :kill)
+    Process.sleep(50)
+
+    # Should not crash, returns a list (possibly without the killed connection)
+    connections = ConnSupervisor.list_connections()
+    assert is_list(connections)
+  end
 end

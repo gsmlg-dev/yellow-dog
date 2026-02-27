@@ -287,4 +287,21 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       refute_receive {:netman_event, "netman:profile:changed", _}, 200
     end
   end
+
+  describe "import_file edge cases" do
+    test "import_file with valid TOML but invalid profile returns error" do
+      # TOML that parses but fails Profile.from_toml validation (missing id)
+      toml = """
+      [connection]
+      type = "ethernet"
+      """
+
+      tmp_path = System.tmp_dir!() |> Path.join("no_id_#{:rand.uniform(65535)}.toml")
+      File.write!(tmp_path, toml)
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      result = ProfileStore.import_file(tmp_path)
+      assert {:error, _} = result
+    end
+  end
 end

@@ -90,4 +90,52 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       YellowDog.Netman.Test.MockNetlink.link_removed(iface)
     end
   end
+
+  describe "edge cases" do
+    test "client that disconnects before sending data is handled" do
+      port = get_cli_port()
+
+      {:ok, socket} =
+        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+
+      # Close immediately without sending anything — exercises recv error path
+      :gen_tcp.close(socket)
+      Process.sleep(50)
+
+      # Server should still be alive and accepting new connections
+      {:ok, socket2} =
+        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+
+      :gen_tcp.send(socket2, Jason.encode!(%{"method" => "status"}) <> "\n")
+      {:ok, response} = :gen_tcp.recv(socket2, 0, 2000)
+      :gen_tcp.close(socket2)
+
+      assert {:ok, %{"result" => _}} = Jason.decode(response)
+    end
+
+    test "monitor with tuple values in telemetry metadata" do
+      port = get_cli_port()
+
+      {:ok, socket} =
+        :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
+
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+      {:ok, _started} = :gen_tcp.recv(socket, 0, 2000)
+
+      # Emit a telemetry event with a tuple in metadata (exercises stringify_value/1 tuple clause)
+      :telemetry.execute(
+        [:yellow_dog, :netman, :kernel, :link_change],
+        %{count: 1},
+        %{interface: "test0", address: {192, 168, 1, 1}, action: :up}
+      )
+
+      {:ok, event_line} = :gen_tcp.recv(socket, 0, 2000)
+      event = Jason.decode!(String.trim(event_line))
+      # Tuple should be serialized via inspect
+      assert is_binary(event["metadata"]["address"])
+      assert event["metadata"]["address"] =~ "192"
+
+      :gen_tcp.close(socket)
+    end
+  end
 end
