@@ -1,7 +1,7 @@
 FROM docker.io/library/elixir:1.19-alpine AS builder
 
-# Install git for fetching hex from GitHub
-RUN apk add --no-cache git
+# Install git for fetching hex from GitHub, and Rust/Cargo for Rustler NIFs
+RUN apk add --no-cache git rust cargo
 
 COPY . /app
 WORKDIR /app
