@@ -117,5 +117,13 @@ defmodule YellowDog.Netman.PolicyEngineTest do
 
       assert PolicyEngine.dns_priority(connections) == []
     end
+
+    test "connection with nil dns key uses empty list fallback" do
+      connections = [
+        %{id: "nil-dns", type: :ethernet, autoconnect_priority: 50, interface: "eth0"}
+      ]
+
+      assert PolicyEngine.dns_priority(connections) == []
+    end
   end
 end
