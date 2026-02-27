@@ -153,14 +153,24 @@ defmodule YellowDog.Netman.Types.Profile do
 
     if method_str in @valid_ipv4_methods do
       method = parse_ip_method(method_str)
+      address = Map.get(ipv4, "address")
 
-      {:ok,
-       %{
-         method: method,
-         address: Map.get(ipv4, "address"),
-         gateway: Map.get(ipv4, "gateway"),
-         dns: Map.get(ipv4, "dns", [])
-       }}
+      cond do
+        method == :manual and (address == nil or address == "") ->
+          {:error, "ipv4.address is required when method is manual"}
+
+        method == :manual and not valid_cidr?(address) ->
+          {:error, "ipv4.address must be valid CIDR (e.g. 192.168.1.1/24)"}
+
+        true ->
+          {:ok,
+           %{
+             method: method,
+             address: address,
+             gateway: Map.get(ipv4, "gateway"),
+             dns: Map.get(ipv4, "dns", [])
+           }}
+      end
     else
       {:error, "invalid ipv4.method: #{inspect(method_str)}"}
     end
@@ -217,6 +227,21 @@ defmodule YellowDog.Netman.Types.Profile do
   defp validate_interface(other) do
     {:error, "connection.interface must be a string, got: #{inspect(other)}"}
   end
+
+  defp valid_cidr?(cidr) when is_binary(cidr) do
+    case String.split(cidr, "/") do
+      [addr, prefix] ->
+        case {Integer.parse(prefix), :inet.parse_address(String.to_charlist(addr))} do
+          {{n, ""}, {:ok, _}} when n >= 0 and n <= 128 -> true
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_cidr?(_), do: false
 
   defp require_string(map, key) do
     case Map.get(map, key) do

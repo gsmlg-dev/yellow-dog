@@ -133,6 +133,40 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert profile.interface == nil
     end
 
+    test "rejects manual ipv4 without address" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "address is required"
+    end
+
+    test "rejects manual ipv4 with invalid CIDR" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "not-an-ip"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "valid CIDR"
+    end
+
+    test "accepts manual ipv4 with valid CIDR" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv4" => %{
+          "method" => "manual",
+          "address" => "192.168.1.100/24",
+          "gateway" => "192.168.1.1"
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.address == "192.168.1.100/24"
+    end
+
     test "rejects invalid MTU" do
       toml = %{
         "connection" => %{"id" => "test", "type" => "ethernet"},

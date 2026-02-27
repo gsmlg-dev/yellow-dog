@@ -15,6 +15,18 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     StreamData.member_of(["auto", "manual", "disabled"])
   end
 
+  defp ipv4_address_gen do
+    gen all(
+          a <- StreamData.integer(1..254),
+          b <- StreamData.integer(0..255),
+          c <- StreamData.integer(0..255),
+          d <- StreamData.integer(1..254),
+          prefix <- StreamData.integer(8..30)
+        ) do
+      "#{a}.#{b}.#{c}.#{d}/#{prefix}"
+    end
+  end
+
   defp ipv6_method_gen do
     StreamData.member_of(["auto", "manual", "disabled", "link-local"])
   end
@@ -33,8 +45,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           ipv6_method <- ipv6_method_gen(),
           mtu <- mtu_gen(),
           priority <- StreamData.integer(0..1000),
-          autoconnect <- StreamData.boolean()
+          autoconnect <- StreamData.boolean(),
+          ipv4_address <- ipv4_address_gen()
         ) do
+      ipv4 =
+        if ipv4_method == "manual" do
+          %{"method" => ipv4_method, "address" => ipv4_address}
+        else
+          %{"method" => ipv4_method}
+        end
+
       toml = %{
         "connection" => %{
           "id" => id,
@@ -42,7 +62,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           "autoconnect" => autoconnect,
           "autoconnect_priority" => priority
         },
-        "ipv4" => %{"method" => ipv4_method},
+        "ipv4" => ipv4,
         "ipv6" => %{"method" => ipv6_method}
       }
 
