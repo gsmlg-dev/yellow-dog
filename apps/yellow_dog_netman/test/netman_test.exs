@@ -98,4 +98,67 @@ defmodule YellowDog.NetmanTest do
       assert Map.has_key?(spec, :start)
     end
   end
+
+  describe "import_profile/1" do
+    test "returns error for non-existent file" do
+      assert {:error, _} = Netman.import_profile("/tmp/nonexistent_#{:rand.uniform(65535)}.toml")
+    end
+
+    test "returns error for invalid TOML file" do
+      path = System.tmp_dir!() |> Path.join("bad_#{:rand.uniform(65535)}.toml")
+      File.write!(path, "not valid toml {{ broken")
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:error, _} = Netman.import_profile(path)
+    end
+
+    test "imports a valid TOML profile" do
+      id = "facade-import-#{:rand.uniform(65535)}"
+
+      toml = """
+      [connection]
+      id = "#{id}"
+      type = "ethernet"
+      interface = "eth_facade"
+      autoconnect = false
+
+      [ipv4]
+      method = "disabled"
+
+      [ipv6]
+      method = "disabled"
+      """
+
+      path = System.tmp_dir!() |> Path.join("#{id}.toml")
+      File.write!(path, toml)
+
+      on_exit(fn ->
+        File.rm(path)
+        Netman.delete_profile(id)
+      end)
+
+      assert {:ok, profile} = Netman.import_profile(path)
+      assert profile.id == id
+    end
+  end
+
+  describe "delete_profile/1" do
+    test "deletes an existing profile" do
+      id = "facade-delete-#{:rand.uniform(65535)}"
+
+      profile = %YellowDog.Netman.Types.Profile{
+        id: id,
+        type: :ethernet,
+        interface: "eth_del"
+      }
+
+      YellowDog.Netman.ProfileStore.put(id, profile)
+      assert :ok = Netman.delete_profile(id)
+      assert {:error, :not_found} = Netman.get_profile(id)
+    end
+
+    test "returns error for non-existent profile" do
+      assert {:error, :not_found} = Netman.delete_profile("nonexistent-facade-del")
+    end
+  end
 end
