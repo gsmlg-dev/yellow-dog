@@ -1,0 +1,11 @@
+[netman]
+reconciliation_interval_ms = 30000
+reconciliation_debounce_ms = 100
+profile_dir = "/etc/yellowdog/netman/profiles"
+socket_path = "/run/yellowdog/netman.sock"
+
+[netman.logging]
+level = "info"
+
+[netman.kernel]
+netlink_helper_path = "priv/native/netlink_helper"
