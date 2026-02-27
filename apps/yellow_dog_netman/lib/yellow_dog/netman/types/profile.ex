@@ -206,7 +206,7 @@ defmodule YellowDog.Netman.Types.Profile do
 
   defp put_ipv4(map, ipv4) do
     section =
-      %{"method" => to_string(ipv4.method)}
+      %{"method" => serialize_method(ipv4.method)}
       |> maybe_put("address", ipv4.address)
       |> maybe_put("gateway", ipv4.gateway)
       |> maybe_put_list("dns", ipv4.dns)
@@ -218,13 +218,16 @@ defmodule YellowDog.Netman.Types.Profile do
 
   defp put_ipv6(map, ipv6) do
     section =
-      %{"method" => to_string(ipv6.method)}
+      %{"method" => serialize_method(ipv6.method)}
       |> maybe_put("address", ipv6.address)
       |> maybe_put("gateway", ipv6.gateway)
       |> maybe_put_list("dns", ipv6.dns)
 
     Map.put(map, "ipv6", section)
   end
+
+  defp serialize_method(:link_local), do: "link-local"
+  defp serialize_method(method), do: to_string(method)
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, val), do: Map.put(map, key, val)
