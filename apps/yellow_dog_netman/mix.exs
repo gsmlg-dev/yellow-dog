@@ -34,6 +34,7 @@ defmodule YellowDog.Netman.MixProject do
       {:yellow_dog_dhcp_client, in_umbrella: true},
       {:ex_dhcp, in_umbrella: true},
       {:telemetry, "~> 1.0"},
+      {:jason, "~> 1.4"},
       {:toml, "~> 0.7"},
       {:file_system, "~> 1.0"},
       {:stream_data, "~> 1.0", only: [:test]},
