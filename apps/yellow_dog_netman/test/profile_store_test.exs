@@ -304,4 +304,72 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert {:error, _} = result
     end
   end
+
+  describe "handle_info catch-all" do
+    test "unknown messages are ignored without crashing" do
+      send(ProfileStore, {:unknown_message_type, :test_data})
+      Process.sleep(50)
+
+      assert {:ok, %Profile{}} = ProfileStore.get("test-dhcp")
+    end
+  end
+
+  describe "match_interface priority ordering" do
+    test "exact interface match is preferred over wildcard profile" do
+      exact_id = "match-exact-#{:rand.uniform(65535)}"
+      wild_id = "match-wild-#{:rand.uniform(65535)}"
+
+      exact_profile = %Profile{
+        id: exact_id,
+        type: :ethernet,
+        interface: "eth_match_exact",
+        autoconnect: true,
+        autoconnect_priority: 50
+      }
+
+      wildcard_profile = %Profile{
+        id: wild_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: true,
+        autoconnect_priority: 200
+      }
+
+      ProfileStore.put(exact_id, exact_profile)
+      ProfileStore.put(wild_id, wildcard_profile)
+
+      on_exit(fn ->
+        ProfileStore.delete(exact_id)
+        ProfileStore.delete(wild_id)
+      end)
+
+      matched = ProfileStore.match_interface("eth_match_exact", :ethernet)
+      assert matched != nil
+      assert matched.id == exact_id
+    end
+
+    test "wildcard profile matches any interface when no exact match" do
+      wild_id = "match-any-#{:rand.uniform(65535)}"
+
+      wildcard_profile = %Profile{
+        id: wild_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: true,
+        autoconnect_priority: 100
+      }
+
+      ProfileStore.put(wild_id, wildcard_profile)
+      on_exit(fn -> ProfileStore.delete(wild_id) end)
+
+      matched = ProfileStore.match_interface("eth_unique_#{:rand.uniform(65535)}", :ethernet)
+      assert matched != nil
+      assert matched.id == wild_id
+    end
+
+    test "returns nil when no profile matches interface type" do
+      matched = ProfileStore.match_interface("eth_no_wifi_#{:rand.uniform(65535)}", :wifi)
+      assert matched == nil
+    end
+  end
 end
