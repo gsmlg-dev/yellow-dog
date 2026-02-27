@@ -1,0 +1,1179 @@
+defmodule YellowDog.DhcpClient.PacketTest do
+  use ExUnit.Case, async: true
+
+  alias YellowDog.DhcpClient.{Packet, Lease, VendorOptions}
+  alias DHCPv4.Message
+  alias DHCPv4.Message.Option
+
+  @test_mac <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+  @test_xid 0x12345678
+
+  # ── Helpers ──
+
+  defp parse_built_packet(binary) do
+    data = IO.iodata_to_binary(binary)
+    Message.from_iodata(data)
+  end
+
+  defp find_option(msg, type) do
+    Enum.find(msg.options, fn %Option{type: t} -> t == type end)
+  end
+
+  defp build_reply(opts) do
+    yiaddr = Keyword.get(opts, :yiaddr, {192, 168, 1, 100})
+    siaddr = Keyword.get(opts, :siaddr, {192, 168, 1, 1})
+    xid = Keyword.get(opts, :xid, @test_xid)
+    options = Keyword.get(opts, :options, [])
+
+    msg = %Message{
+      op: 2,
+      htype: 1,
+      hlen: 6,
+      hops: 0,
+      xid: xid,
+      secs: 0,
+      flags: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: yiaddr,
+      siaddr: siaddr,
+      giaddr: {0, 0, 0, 0},
+      chaddr: @test_mac <> <<0::80>>,
+      sname: <<0::512>>,
+      file: <<0::1024>>,
+      options: options
+    }
+
+    IO.iodata_to_binary(DHCP.Parameter.to_iodata(msg))
+  end
+
+  defp standard_offer_options do
+    [
+      %Option{type: 53, length: 1, value: <<2>>},
+      %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+      %Option{type: 3, length: 4, value: <<192, 168, 1, 1>>},
+      %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+      %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+      %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+      %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+      %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+    ]
+  end
+
+  defp standard_ack_options do
+    options = standard_offer_options()
+    # Replace message type from OFFER (2) to ACK (5)
+    Enum.map(options, fn
+      %Option{type: 53} -> %Option{type: 53, length: 1, value: <<5>>}
+      other -> other
+    end)
+  end
+
+  # ── build_discover/3 ──
+
+  describe "build_discover/3" do
+    test "builds valid DHCPDISCOVER with correct header fields" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+
+      assert msg.op == 1
+      assert msg.htype == 1
+      assert msg.hlen == 6
+      assert msg.hops == 0
+      assert msg.xid == @test_xid
+      assert msg.flags == 0x8000
+      assert msg.ciaddr == {0, 0, 0, 0}
+      assert msg.yiaddr == {0, 0, 0, 0}
+    end
+
+    test "includes DHCPDISCOVER message type (Option 53 = 1)" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt != nil
+      assert opt.value == <<1>>
+    end
+
+    test "includes vendor class (Option 60) containing YellowDog" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert opt != nil
+      assert String.starts_with?(opt.value, "YellowDog:")
+    end
+
+    test "includes vendor class ID (Option 124) with PEN bytes" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 124)
+
+      assert opt != nil
+      <<pen::32, _rest::binary>> = opt.value
+      assert pen == VendorOptions.pen()
+    end
+
+    test "includes parameter request list (Option 55)" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 55)
+
+      assert opt != nil
+      # Should request at minimum: subnet mask (1), router (3), DNS (6),
+      # lease time (51), T1 (58), T2 (59), vendor-specific (125)
+      requested = :binary.bin_to_list(opt.value)
+      assert 1 in requested
+      assert 3 in requested
+      assert 6 in requested
+      assert 51 in requested
+      assert 58 in requested
+      assert 59 in requested
+      assert 125 in requested
+    end
+
+    test "includes client ID (Option 61) with hardware type and MAC" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil
+      # Client ID: hardware type (1) + MAC address
+      assert opt.value == <<1>> <> @test_mac
+    end
+
+    test "builds DHCPDISCOVER with hostname option when provided" do
+      binary = Packet.build_discover(@test_mac, @test_xid, hostname: "yellow-node-1")
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt != nil
+      assert opt.value == "yellow-node-1"
+    end
+
+    test "omits hostname option when not provided" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt == nil
+    end
+
+    test "includes custom version in vendor class string" do
+      binary = Packet.build_discover(@test_mac, @test_xid, version: "2.5")
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert String.contains?(opt.value, "2.5")
+    end
+
+    test "includes capabilities in vendor class string" do
+      binary = Packet.build_discover(@test_mac, @test_xid, capabilities: [:dns, :dhcp])
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert String.contains?(opt.value, "dns,dhcp")
+    end
+
+    test "chaddr is padded to 16 bytes" do
+      binary = Packet.build_discover(@test_mac, @test_xid)
+      msg = parse_built_packet(binary)
+
+      assert byte_size(msg.chaddr) == 16
+      assert :binary.part(msg.chaddr, 0, 6) == @test_mac
+    end
+  end
+
+  # ── build_request/5 ──
+
+  describe "build_request/5" do
+    test "builds valid DHCPREQUEST with correct message type" do
+      server_ip = {192, 168, 1, 1}
+      offered_ip = {192, 168, 1, 100}
+
+      binary = Packet.build_request(@test_mac, @test_xid, server_ip, offered_ip)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt.value == <<3>>
+    end
+
+    test "includes requested IP address (Option 50)" do
+      server_ip = {192, 168, 1, 1}
+      offered_ip = {192, 168, 1, 100}
+
+      binary = Packet.build_request(@test_mac, @test_xid, server_ip, offered_ip)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 50)
+
+      assert opt != nil
+      assert opt.value == <<192, 168, 1, 100>>
+    end
+
+    test "includes server identifier (Option 54)" do
+      server_ip = {10, 0, 0, 1}
+      offered_ip = {10, 0, 0, 50}
+
+      binary = Packet.build_request(@test_mac, @test_xid, server_ip, offered_ip)
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 54)
+
+      assert opt != nil
+      assert opt.value == <<10, 0, 0, 1>>
+    end
+
+    test "includes vendor class option" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert opt != nil
+      assert String.starts_with?(opt.value, "YellowDog:")
+    end
+
+    test "includes vendor class ID (Option 124)" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 124)
+
+      assert opt != nil
+    end
+
+    test "sets broadcast flag" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      assert msg.flags == 0x8000
+    end
+
+    test "includes hostname (Option 12) when provided" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100},
+          hostname: "yd-node-1"
+        )
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt != nil
+      assert opt.value == "yd-node-1"
+    end
+
+    test "omits hostname option when not provided" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      assert find_option(msg, 12) == nil
+    end
+
+    test "includes client ID (Option 61) matching the MAC — consistent with DHCPDISCOVER" do
+      binary =
+        Packet.build_request(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil
+      assert opt.value == <<1>> <> @test_mac
+    end
+  end
+
+  # ── build_renew_request/4 (RFC 2131 §4.3.2) ──
+
+  describe "build_renew_request/4" do
+    test "builds valid DHCPREQUEST with correct message type" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt.value == <<3>>
+    end
+
+    test "sets ciaddr to client IP" do
+      client_ip = {10, 0, 0, 50}
+      binary = Packet.build_renew_request(@test_mac, @test_xid, client_ip)
+      msg = parse_built_packet(binary)
+
+      assert msg.ciaddr == client_ip
+    end
+
+    test "does NOT include Option 50 (Requested IP)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert find_option(msg, 50) == nil
+    end
+
+    test "does NOT include Option 54 (Server Identifier)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert find_option(msg, 54) == nil
+    end
+
+    test "includes vendor class (Option 60)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 60)
+
+      assert opt != nil
+      assert String.starts_with?(opt.value, "YellowDog:")
+    end
+
+    test "includes client ID (Option 61)" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil
+      assert opt.value == <<1>> <> @test_mac
+    end
+
+    test "includes hostname when provided" do
+      binary =
+        Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100}, hostname: "yd-node")
+
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 12)
+
+      assert opt != nil
+      assert opt.value == "yd-node"
+    end
+
+    test "sets broadcast flag" do
+      binary = Packet.build_renew_request(@test_mac, @test_xid, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert msg.flags == 0x8000
+    end
+  end
+
+  # ── build_decline/4 ──
+
+  describe "build_decline/4" do
+    test "builds valid DHCPDECLINE with correct message type" do
+      binary = Packet.build_decline(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt.value == <<4>>
+    end
+
+    test "includes requested IP and server ID" do
+      binary = Packet.build_decline(@test_mac, @test_xid, {10, 0, 0, 1}, {10, 0, 0, 50})
+      msg = parse_built_packet(binary)
+
+      opt50 = find_option(msg, 50)
+      opt54 = find_option(msg, 54)
+
+      assert opt50.value == <<10, 0, 0, 50>>
+      assert opt54.value == <<10, 0, 0, 1>>
+    end
+
+    test "includes Client-ID (Option 61) with hardware type prefix" do
+      binary = Packet.build_decline(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil, "Option 61 (Client-ID) must be present in DHCPDECLINE"
+      assert opt.value == <<1>> <> @test_mac
+    end
+  end
+
+  # ── build_release/4 ──
+
+  describe "build_release/4" do
+    test "builds valid DHCPRELEASE with correct message type" do
+      binary = Packet.build_release(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 53)
+
+      assert opt.value == <<7>>
+    end
+
+    test "sets ciaddr to client IP" do
+      binary = Packet.build_release(@test_mac, @test_xid, {10, 0, 0, 1}, {10, 0, 0, 50})
+      msg = parse_built_packet(binary)
+
+      assert msg.ciaddr == {10, 0, 0, 50}
+    end
+
+    test "flags is 0 (not broadcast) for release" do
+      binary = Packet.build_release(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+
+      assert msg.flags == 0
+    end
+
+    test "includes server identifier" do
+      binary = Packet.build_release(@test_mac, @test_xid, {172, 16, 0, 1}, {172, 16, 0, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 54)
+
+      assert opt.value == <<172, 16, 0, 1>>
+    end
+
+    test "includes Client-ID (Option 61) with hardware type prefix" do
+      binary = Packet.build_release(@test_mac, @test_xid, {192, 168, 1, 1}, {192, 168, 1, 100})
+      msg = parse_built_packet(binary)
+      opt = find_option(msg, 61)
+
+      assert opt != nil, "Option 61 (Client-ID) must be present in DHCPRELEASE"
+      assert opt.value == <<1>> <> @test_mac
+    end
+  end
+
+  # ── parse_reply/1 ──
+
+  describe "parse_reply/1" do
+    test "parses DHCPOFFER reply" do
+      data = build_reply(options: standard_offer_options())
+      assert {:offer, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.ip == {192, 168, 1, 100}
+      assert lease.subnet_mask == {255, 255, 255, 0}
+      assert lease.router == {192, 168, 1, 1}
+      assert lease.dns_servers == [{8, 8, 8, 8}]
+      assert lease.server_ip == {192, 168, 1, 1}
+      assert lease.lease_time == 3600
+      assert lease.t1 == 1800
+      assert lease.t2 == 3156
+    end
+
+    test "parses DHCPACK reply with lease fields" do
+      data = build_reply(options: standard_ack_options())
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.ip == {192, 168, 1, 100}
+      assert lease.lease_time == 3600
+      assert lease.t1 == 1800
+      assert lease.t2 == 3156
+      assert %DateTime{} = lease.obtained_at
+    end
+
+    test "parses DHCPACK with Yellow Dog vendor options" do
+      pen = VendorOptions.pen()
+
+      sub_opts =
+        <<1, 21, "http://localhost:4270">> <>
+          <<2, 6, "srv-01">> <>
+          <<4, 8, "mytoken!">>
+
+      vendor_data = <<pen::32, byte_size(sub_opts)::8, sub_opts::binary>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == true
+      assert lease.control_url == "http://localhost:4270"
+      assert lease.server_id == "srv-01"
+      assert lease.auth_token == "mytoken!"
+    end
+
+    test "parses DHCPNAK reply" do
+      reason_str = "address in use!"
+
+      nak_options = [
+        %Option{type: 53, length: 1, value: <<6>>},
+        %Option{type: 56, length: byte_size(reason_str), value: reason_str}
+      ]
+
+      data = build_reply(options: nak_options)
+      assert {:nak, reason} = Packet.parse_reply(data)
+      assert reason == "address in use!"
+    end
+
+    test "parses DHCPNAK with default reason when Option 56 absent" do
+      nak_options = [
+        %Option{type: 53, length: 1, value: <<6>>}
+      ]
+
+      data = build_reply(options: nak_options)
+      assert {:nak, "DHCPNAK received"} = Packet.parse_reply(data)
+    end
+
+    test "handles missing message type" do
+      # Build a reply with no Option 53
+      options = [
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:error, :missing_message_type} = Packet.parse_reply(data)
+    end
+
+    test "handles malformed packets" do
+      assert {:error, _reason} = Packet.parse_reply(<<1, 2, 3>>)
+    end
+
+    test "handles completely empty data" do
+      assert {:error, _reason} = Packet.parse_reply(<<>>)
+    end
+
+    test "uses default lease time when Option 51 absent" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      # Default lease_time = 3600
+      assert lease.lease_time == 3600
+    end
+
+    test "uses default T1 and T2 when options absent" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 51, length: 4, value: <<0, 0, 28, 32>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      lease_time = 7200
+      assert lease.lease_time == lease_time
+      # T1 default = lease_time / 2
+      assert lease.t1 == div(lease_time, 2)
+      # T2 default = lease_time * 7 / 8
+      assert lease.t2 == div(lease_time * 7, 8)
+    end
+
+    test "parses multiple DNS servers" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 8, value: <<8, 8, 8, 8, 1, 1, 1, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.dns_servers == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+    end
+
+    test "extracts domain name from Option 15" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 15, length: 11, value: "example.com"}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.domain_name == "example.com"
+    end
+
+    test "extracts MTU from Option 26" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 26, length: 2, value: <<0x05, 0xDC>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.mtu == 1500
+    end
+
+    test "sets yellowdog_server to false when no vendor options" do
+      data = build_reply(options: standard_ack_options())
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == false
+    end
+
+    test "sets yellowdog_server to false when vendor PEN mismatches" do
+      wrong_pen = 11_111
+      sub_opts = <<1, 3, "url">>
+      vendor_data = <<wrong_pen::32, byte_size(sub_opts)::8, sub_opts::binary>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == false
+    end
+
+    test "sets yellowdog_server to true when YD PEN matches with zero sub-options" do
+      pen = VendorOptions.pen()
+      # Valid YD PEN but empty sub-options payload
+      vendor_data = <<pen::32, 0::8>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == true
+    end
+
+    test "sets yellowdog_vendor_class when server Option 60 starts with YellowDog" do
+      vc = "YellowDog:1.0:dns"
+
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 60, length: byte_size(vc), value: vc}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == true
+      # No PEN match since we didn't include Option 125
+      assert lease.yellowdog_server == false
+    end
+
+    test "yellowdog_vendor_class is false when server Option 60 is absent" do
+      options = [%Option{type: 53, length: 1, value: <<5>>}]
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == false
+    end
+
+    test "yellowdog_vendor_class is false when server Option 60 is non-YellowDog" do
+      vc = "OtherVendor"
+
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 60, length: byte_size(vc), value: vc}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_vendor_class == false
+    end
+
+    test "preserves xid from reply" do
+      custom_xid = 0xDEADBEEF
+      data = build_reply(xid: custom_xid, options: standard_ack_options())
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.xid == custom_xid
+    end
+
+    test "falls back to siaddr for server_ip when Option 54 absent" do
+      # Build ACK without Option 54 (server identifier) — server_ip should
+      # fall back to the siaddr field in the DHCP message header
+      options =
+        Enum.reject(standard_ack_options(), fn %Option{type: t} -> t == 54 end)
+
+      data = build_reply(siaddr: {10, 0, 0, 254}, options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.server_ip == {10, 0, 0, 254}
+    end
+
+    test "extracts NTP servers from Option 42" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 42, length: 8, value: <<129, 6, 15, 28, 129, 6, 15, 29>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.ntp_servers == [{129, 6, 15, 28}, {129, 6, 15, 29}]
+    end
+
+    test "ntp_servers is empty list when Option 42 absent" do
+      data = build_reply(options: standard_ack_options())
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.ntp_servers == []
+    end
+
+    test "parse_ip_list discards trailing bytes shorter than 4 for DNS servers" do
+      # 11 bytes = 2 full IPs + 3 leftover bytes; the tail is silently discarded
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 11, value: <<8, 8, 8, 8, 1, 1, 1, 1, 99, 98, 97>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.dns_servers == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+    end
+
+    test "truncated Option 54 (3 bytes) causes server_ip to fall back to siaddr" do
+      # extract_ip requires at least 4 bytes; 3-byte value returns nil → falls back
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 54, length: 3, value: <<192, 168, 1>>}
+      ]
+
+      data = build_reply(siaddr: {10, 20, 30, 40}, options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+
+      assert lease.server_ip == {10, 20, 30, 40}
+    end
+
+    test "parses YD sub-option 3 (cluster_id) and sub-option 5 (control_url_fallback)" do
+      pen = VendorOptions.pen()
+
+      sub_opts =
+        <<1, 21, "http://localhost:4270">> <>
+          <<3, 7, "cluster">> <>
+          <<5, 24, "http://fallback.example/">>
+
+      vendor_data = <<pen::32, byte_size(sub_opts)::8, sub_opts::binary>>
+
+      options =
+        standard_ack_options() ++
+          [%Option{type: 125, length: byte_size(vendor_data), value: vendor_data}]
+
+      data = build_reply(options: options)
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.yellowdog_server == true
+      assert lease.control_url == "http://localhost:4270"
+      assert lease.cluster_id == "cluster"
+      assert lease.control_url_fallback == "http://fallback.example/"
+    end
+
+    test "returns {:error, :unknown_message_type} for DHCPDISCOVER (type 1) in reply position" do
+      # A server should never send type 1, but parse_reply must not crash
+      options = [%Option{type: 53, length: 1, value: <<1>>}]
+      data = build_reply(options: options)
+      assert {:error, :unknown_message_type} = Packet.parse_reply(data)
+    end
+
+    test "returns {:error, :unknown_message_type} for DHCPREQUEST (type 3) in reply position" do
+      options = [%Option{type: 53, length: 1, value: <<3>>}]
+      data = build_reply(options: options)
+      assert {:error, :unknown_message_type} = Packet.parse_reply(data)
+    end
+
+    test "extract_ip ignores trailing bytes beyond 4 in Option 54 value" do
+      # 8-byte Option 54: first 4 bytes are the server IP, trailing 4 are ignored
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 54, length: 8, value: <<192, 168, 1, 254, 0xFF, 0xFF, 0xFF, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.server_ip == {192, 168, 1, 254}
+    end
+
+    test "parses reply with XID = 0 without special-case issues" do
+      data = build_reply(xid: 0, options: standard_ack_options())
+      assert {:ack, %Lease{} = lease} = Packet.parse_reply(data)
+
+      assert lease.xid == 0
+      assert lease.ip == {192, 168, 1, 100}
+    end
+
+    test "extract_u16 returns nil (mtu: nil) when MTU option has 3 bytes instead of 2" do
+      # Option 26 (MTU) normally carries exactly 2 bytes; 3 bytes won't match <<val::16>>
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 26, length: 3, value: <<0x05, 0xDC, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.mtu == nil
+    end
+
+    test "empty Option 15 (domain name) is treated as absent — domain_name is nil" do
+      # extract_string guards against empty binary; "" should yield nil
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 15, length: 0, value: ""}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.domain_name == nil
+    end
+
+    test "DHCPNAK with custom message in Option 56 returns that message as reason" do
+      reason_str = "address in use: policy violation"
+
+      nak_options = [
+        %Option{type: 53, length: 1, value: <<6>>},
+        %Option{type: 56, length: byte_size(reason_str), value: reason_str}
+      ]
+
+      data = build_reply(options: nak_options)
+      assert {:nak, reason} = Packet.parse_reply(data)
+      assert reason == reason_str
+    end
+
+    test "truncated Option 3 (router, 3 bytes) results in router: nil" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 3, length: 3, value: <<192, 168, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.router == nil
+    end
+
+    test "duplicate option codes — last occurrence in packet wins" do
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 4, value: <<8, 8, 8, 8>>},
+        %Option{type: 6, length: 4, value: <<1, 1, 1, 1>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      # index_options/1 uses Map.new so the last entry with key 6 wins
+      assert lease.dns_servers == [{1, 1, 1, 1}]
+    end
+
+    test "truncated DNS option (5 bytes = 1 complete IP + 1 trailing byte) keeps only complete IPs" do
+      # parse_ip_list consumes 4 bytes at a time; the trailing 5th byte is silently dropped
+      options = [
+        %Option{type: 53, length: 1, value: <<5>>},
+        %Option{type: 6, length: 5, value: <<8, 8, 8, 8, 0xFF>>}
+      ]
+
+      data = build_reply(options: options)
+      assert {:ack, lease} = Packet.parse_reply(data)
+      assert lease.dns_servers == [{8, 8, 8, 8}]
+      assert length(lease.dns_servers) == 1
+    end
+
+    test "build_discover with oversized MAC (>16 bytes) does not crash — truncates to 16" do
+      oversized_mac =
+        <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+          0x88, 0x99, 0xAA>>
+
+      packet = Packet.build_discover(oversized_mac, 0x12345678)
+      assert is_binary(packet)
+      # chaddr field is 16 bytes in BOOTP; packet should be valid length
+      assert byte_size(packet) >= 236
+    end
+  end
+
+  # ── Full DORA Packet Roundtrip ──
+
+  describe "full DORA packet roundtrip" do
+    @doc """
+    Simulates a complete DORA handshake at the packet level:
+      1. Build DISCOVER → verify it includes vendor options
+      2. Build mock OFFER with Option 125 → parse → extract lease
+      3. Build REQUEST using offer's server_ip and offered_ip
+      4. Build mock ACK with full vendor options → parse → verify all fields
+    """
+    test "DISCOVER → OFFER → REQUEST → ACK preserves XID and extracts vendor options" do
+      mac = @test_mac
+      xid = 0xDEADBEEF
+
+      # == Step 1: Build DISCOVER ==
+      discover_bin = IO.iodata_to_binary(Packet.build_discover(mac, xid))
+      discover_msg = Message.from_iodata(discover_bin)
+
+      assert discover_msg.xid == xid
+      assert discover_msg.op == 1
+      # DISCOVER must include Option 60 (vendor class) and Option 124 (vendor class ID)
+      assert find_option(discover_msg, 60) != nil
+      assert find_option(discover_msg, 124) != nil
+
+      # == Step 2: Build mock OFFER with Option 125 (YellowDog vendor info) ==
+      vendor_info =
+        VendorOptions.encode_vendor_info(%{
+          control_url: "wss://yd.example.com/ctrl",
+          server_id: "srv-alpha",
+          cluster_id: "cluster-prod",
+          auth_token: "tok-secret-123"
+        })
+
+      vc = "YellowDog:1.0:dns"
+
+      offer_options =
+        standard_offer_options() ++
+          [
+            %Option{type: 125, length: byte_size(vendor_info), value: vendor_info},
+            %Option{type: 60, length: byte_size(vc), value: vc}
+          ]
+
+      offer_bin = build_reply(xid: xid, options: offer_options)
+      assert {:offer, offer_lease} = Packet.parse_reply(offer_bin)
+
+      # Offer preserves XID and extracts vendor fields
+      assert offer_lease.xid == xid
+      assert offer_lease.ip == {192, 168, 1, 100}
+      assert offer_lease.server_ip == {192, 168, 1, 1}
+      assert offer_lease.yellowdog_server == true
+      assert offer_lease.yellowdog_vendor_class == true
+      assert offer_lease.control_url == "wss://yd.example.com/ctrl"
+      assert offer_lease.server_id == "srv-alpha"
+      assert offer_lease.cluster_id == "cluster-prod"
+      assert offer_lease.auth_token == "tok-secret-123"
+
+      # == Step 3: Build REQUEST using offer's server_ip and offered_ip ==
+      request_bin =
+        IO.iodata_to_binary(Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip))
+
+      request_msg = Message.from_iodata(request_bin)
+
+      # REQUEST must preserve XID
+      assert request_msg.xid == xid
+      # REQUEST must include Option 54 (server identifier) from the offer
+      server_id_opt = find_option(request_msg, 54)
+      assert server_id_opt != nil
+      assert server_id_opt.value == <<192, 168, 1, 1>>
+      # REQUEST must include Option 50 (requested IP) from the offer
+      requested_ip_opt = find_option(request_msg, 50)
+      assert requested_ip_opt != nil
+      assert requested_ip_opt.value == <<192, 168, 1, 100>>
+      # REQUEST must include vendor class options
+      assert find_option(request_msg, 60) != nil
+
+      # == Step 4: Build mock ACK with same vendor options ==
+      ack_options =
+        standard_ack_options() ++
+          [
+            %Option{type: 125, length: byte_size(vendor_info), value: vendor_info},
+            %Option{type: 60, length: byte_size(vc), value: vc},
+            %Option{type: 15, length: 11, value: "example.com"},
+            %Option{type: 42, length: 4, value: <<129, 6, 15, 28>>},
+            %Option{type: 26, length: 2, value: <<0x05, 0xDC>>}
+          ]
+
+      ack_bin = build_reply(xid: xid, options: ack_options)
+      assert {:ack, ack_lease} = Packet.parse_reply(ack_bin)
+
+      # ACK lease has all expected fields
+      assert ack_lease.xid == xid
+      assert ack_lease.ip == {192, 168, 1, 100}
+      assert ack_lease.subnet_mask == {255, 255, 255, 0}
+      assert ack_lease.router == {192, 168, 1, 1}
+      assert ack_lease.dns_servers == [{8, 8, 8, 8}]
+      assert ack_lease.server_ip == {192, 168, 1, 1}
+      assert ack_lease.lease_time == 3600
+      assert ack_lease.t1 == 1800
+      assert ack_lease.t2 == 3156
+      assert ack_lease.domain_name == "example.com"
+      assert ack_lease.ntp_servers == [{129, 6, 15, 28}]
+      assert ack_lease.mtu == 1500
+      # Vendor options from Option 125
+      assert ack_lease.yellowdog_server == true
+      assert ack_lease.yellowdog_vendor_class == true
+      assert ack_lease.control_url == "wss://yd.example.com/ctrl"
+      assert ack_lease.server_id == "srv-alpha"
+      assert ack_lease.cluster_id == "cluster-prod"
+      assert ack_lease.auth_token == "tok-secret-123"
+    end
+
+    test "DORA with non-YellowDog server: no vendor options, nil vendor fields" do
+      mac = @test_mac
+      xid = 0xCAFE0001
+
+      # OFFER without Option 125 or Option 60
+      offer_bin = build_reply(xid: xid, options: standard_offer_options())
+      assert {:offer, offer_lease} = Packet.parse_reply(offer_bin)
+
+      assert offer_lease.yellowdog_server == false
+      assert offer_lease.yellowdog_vendor_class == false
+      assert offer_lease.control_url == nil
+      assert offer_lease.auth_token == nil
+      assert offer_lease.server_id == nil
+      assert offer_lease.cluster_id == nil
+
+      # REQUEST can still be built
+      request_bin =
+        IO.iodata_to_binary(Packet.build_request(mac, xid, offer_lease.server_ip, offer_lease.ip))
+
+      request_msg = Message.from_iodata(request_bin)
+      assert request_msg.xid == xid
+
+      # ACK without vendor options
+      ack_bin = build_reply(xid: xid, options: standard_ack_options())
+      assert {:ack, ack_lease} = Packet.parse_reply(ack_bin)
+
+      assert ack_lease.yellowdog_server == false
+      assert ack_lease.control_url == nil
+      # Standard lease fields still present
+      assert ack_lease.ip == {192, 168, 1, 100}
+      assert ack_lease.lease_time == 3600
+    end
+  end
+
+  # ── parse_reply edge cases: malformed options ──
+
+  describe "parse_reply edge cases" do
+    test "DNS servers option with uneven byte count (4n+3) silently truncates" do
+      # 7 bytes = one full IP (4) + 3 trailing junk bytes
+      dns_data = <<8, 8, 8, 8, 1, 2, 3>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      # Only the complete IP quad should be extracted
+      assert lease.dns_servers == [{8, 8, 8, 8}]
+    end
+
+    test "DNS servers option with exactly 3 bytes returns empty list" do
+      dns_data = <<1, 2, 3>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.dns_servers == []
+    end
+
+    test "multiple DNS servers (8 bytes) returns two IPs" do
+      dns_data = <<8, 8, 8, 8, 1, 1, 1, 1>>
+
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 6, length: byte_size(dns_data), value: dns_data},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.dns_servers == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+    end
+
+    test "missing subnet mask defaults to {255, 255, 255, 0}" do
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        # No subnet mask (option 1)
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>},
+        %Option{type: 58, length: 4, value: <<0, 0, 7, 8>>},
+        %Option{type: 59, length: 4, value: <<0, 0, 12, 84>>}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.subnet_mask == {255, 255, 255, 0}
+    end
+
+    test "missing router defaults to nil" do
+      options = standard_offer_options()
+      # standard_offer_options includes router (type 3) — remove it
+      options = Enum.reject(options, fn %Option{type: t} -> t == 3 end)
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.router == nil
+    end
+
+    test "missing T1/T2 defaults to 50%/87.5% of lease time" do
+      options = [
+        %Option{type: 53, length: 1, value: <<2>>},
+        %Option{type: 1, length: 4, value: <<255, 255, 255, 0>>},
+        %Option{type: 51, length: 4, value: <<0, 0, 14, 16>>},
+        %Option{type: 54, length: 4, value: <<192, 168, 1, 1>>}
+        # No T1 (58) or T2 (59) options
+      ]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.lease_time == 3600
+      # T1 = 50% of 3600 = 1800
+      assert lease.t1 == 1800
+      # T2 = 87.5% of 3600 = 3150
+      assert lease.t2 == 3150
+    end
+
+    test "MTU option with wrong length (not 2 bytes) returns nil" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 26, length: 4, value: <<0, 0, 5, 220>>}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      # extract_u16 expects exactly 2 bytes, 4 bytes won't match
+      assert lease.mtu == nil
+    end
+
+    test "domain name option with empty string returns nil" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 15, length: 0, value: ""}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.domain_name == nil
+    end
+
+    test "NAK with reason message extracts the reason string" do
+      options = [
+        %Option{type: 53, length: 1, value: <<6>>},
+        %Option{type: 56, length: 19, value: "requested IP in use"}
+      ]
+
+      bin = build_reply(options: options)
+      assert {:nak, reason} = Packet.parse_reply(bin)
+      assert reason == "requested IP in use"
+    end
+
+    test "NAK without reason message returns default string" do
+      options = [%Option{type: 53, length: 1, value: <<6>>}]
+
+      bin = build_reply(options: options)
+      assert {:nak, reason} = Packet.parse_reply(bin)
+      assert reason == "DHCPNAK received"
+    end
+
+    test "NTP servers option is correctly extracted" do
+      ntp_data = <<132, 163, 96, 1, 132, 163, 96, 2>>
+
+      options =
+        standard_offer_options() ++
+          [%Option{type: 42, length: byte_size(ntp_data), value: ntp_data}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.ntp_servers == [{132, 163, 96, 1}, {132, 163, 96, 2}]
+    end
+
+    test "MTU option with correct 2-byte value is extracted" do
+      options =
+        standard_offer_options() ++
+          [%Option{type: 26, length: 2, value: <<5, 220>>}]
+
+      bin = build_reply(options: options)
+      assert {:offer, lease} = Packet.parse_reply(bin)
+      assert lease.mtu == 1500
+    end
+  end
+end

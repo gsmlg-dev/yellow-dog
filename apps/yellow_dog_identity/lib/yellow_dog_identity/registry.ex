@@ -24,16 +24,11 @@ defmodule YellowDogIdentity.Registry do
   alias YellowDogIdentity.Host
   alias YellowDogIdentity.Token
 
-  # Clean up expired tokens every hour
-  @token_cleanup_interval_ms :timer.hours(1)
-
   @type state :: %{
           data_dir: String.t(),
           hosts: %{String.t() => Host.t()},
           tokens: %{String.t() => Token.t()},
-          fingerprint_index: %{String.t() => String.t()},
-          hostname_index: %{String.t() => String.t()},
-          instance_id_index: %{String.t() => String.t()}
+          fingerprint_index: %{String.t() => String.t()}
         }
 
   # Client API
@@ -47,20 +42,6 @@ defmodule YellowDogIdentity.Registry do
   @doc "Stores a host record, persisting to TOML."
   @spec put_host(Host.t()) :: :ok | {:error, term()}
   def put_host(%Host{} = host), do: GenServer.call(__MODULE__, {:put_host, host})
-
-  @doc """
-  Atomically checks fingerprint and instance ID uniqueness, then stores a host.
-
-  Avoids TOCTOU races where two concurrent registrations with the same
-  fingerprint or cloud instance ID both pass uniqueness checks before either persists.
-  """
-  @spec put_host_checked(Host.t()) ::
-          :ok
-          | {:error, :fingerprint_conflict}
-          | {:error, :instance_id_conflict}
-          | {:error, term()}
-  def put_host_checked(%Host{} = host),
-    do: GenServer.call(__MODULE__, {:put_host_checked, host})
 
   @doc "Gets a host by ID."
   @spec get_host(String.t()) :: {:ok, Host.t()} | :not_found
@@ -135,50 +116,36 @@ defmodule YellowDogIdentity.Registry do
     hosts_dir = Path.join(data_dir, "hosts")
     tokens_dir = Path.join(data_dir, "tokens")
 
-    with :ok <- File.mkdir_p(hosts_dir),
-         :ok <- File.mkdir_p(tokens_dir) do
-      # Load existing data from disk
-      {hosts, fingerprint_index, hostname_index} = load_hosts(hosts_dir)
-      tokens = load_tokens(tokens_dir)
-      instance_id_index = build_instance_id_index(hosts)
+    File.mkdir_p!(hosts_dir)
+    File.mkdir_p!(tokens_dir)
 
-      state = %{
-        data_dir: data_dir,
-        hosts: hosts,
-        tokens: tokens,
-        fingerprint_index: fingerprint_index,
-        hostname_index: hostname_index,
-        instance_id_index: instance_id_index
-      }
+    # Load existing data from disk
+    {hosts, fingerprint_index} = load_hosts(hosts_dir)
+    tokens = load_tokens(tokens_dir)
 
-      Process.send_after(self(), :cleanup_expired_tokens, @token_cleanup_interval_ms)
-      {:ok, state}
-    else
-      {:error, reason} ->
-        Logger.error("Failed to create identity data directories: #{inspect(reason)}")
-        {:stop, {:mkdir_failed, reason}}
-    end
+    state = %{
+      data_dir: data_dir,
+      hosts: hosts,
+      tokens: tokens,
+      fingerprint_index: fingerprint_index
+    }
+
+    {:ok, state}
   end
 
   @impl true
   def handle_call({:put_host, host}, _from, state) do
-    do_put_host(host, state)
-  end
+    case persist_host(state.data_dir, host) do
+      :ok ->
+        hosts = Map.put(state.hosts, host.id, host)
+        fingerprint_index = Map.put(state.fingerprint_index, host.key_fingerprint, host.id)
+        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
 
-  def handle_call({:put_host_checked, host}, _from, state) do
-    cond do
-      has_fingerprint_conflict?(state.fingerprint_index, host.key_fingerprint, host.id) ->
-        {:reply, {:error, :fingerprint_conflict}, state}
-
-      has_instance_id_conflict?(state.instance_id_index, host.trust_evidence, host.id) ->
-        {:reply, {:error, :instance_id_conflict}, state}
-
-      true ->
-        do_put_host(host, state)
+      {:error, _} = error ->
+        {:reply, error, state}
     end
   end
 
-  @impl true
   def handle_call({:get_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil -> {:reply, :not_found, state}
@@ -186,46 +153,29 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  @impl true
   def handle_call({:get_host_by_fingerprint, fingerprint}, _from, state) do
     case Map.get(state.fingerprint_index, fingerprint) do
-      nil ->
-        {:reply, :not_found, state}
-
-      id ->
-        case Map.fetch(state.hosts, id) do
-          {:ok, host} -> {:reply, {:ok, host}, state}
-          :error -> {:reply, :not_found, state}
-        end
+      nil -> {:reply, :not_found, state}
+      id -> {:reply, {:ok, Map.fetch!(state.hosts, id)}, state}
     end
   end
 
-  @impl true
   def handle_call({:get_host_by_hostname, hostname}, _from, state) do
-    case Map.get(state.hostname_index, hostname) do
-      nil ->
-        {:reply, :not_found, state}
-
-      id ->
-        case Map.fetch(state.hosts, id) do
-          {:ok, host} -> {:reply, {:ok, host}, state}
-          :error -> {:reply, :not_found, state}
-        end
+    case Enum.find(state.hosts, fn {_id, h} -> h.hostname == hostname end) do
+      nil -> {:reply, :not_found, state}
+      {_id, host} -> {:reply, {:ok, host}, state}
     end
   end
 
-  @impl true
   def handle_call(:list_hosts, _from, state) do
     {:reply, Map.values(state.hosts), state}
   end
 
-  @impl true
   def handle_call({:list_hosts_by_status, status}, _from, state) do
     filtered = state.hosts |> Map.values() |> Enum.filter(&(&1.status == status))
     {:reply, filtered, state}
   end
 
-  @impl true
   def handle_call({:delete_host, id}, _from, state) do
     case Map.get(state.hosts, id) do
       nil ->
@@ -234,42 +184,18 @@ defmodule YellowDogIdentity.Registry do
       host ->
         path = host_path(state.data_dir, id)
 
-        delete_result =
-          case File.rm(path) do
-            :ok -> :ok
-            {:error, :enoent} -> :ok
-            {:error, reason} -> {:error, reason}
-          end
-
-        case delete_result do
-          :ok ->
-            hosts = Map.delete(state.hosts, id)
-            fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
-            hostname_index = Map.delete(state.hostname_index, host.hostname)
-
-            instance_id_index =
-              case get_instance_id(host.trust_evidence) do
-                nil -> state.instance_id_index
-                iid -> Map.delete(state.instance_id_index, iid)
-              end
-
-            {:reply, :ok,
-             %{
-               state
-               | hosts: hosts,
-                 fingerprint_index: fingerprint_index,
-                 hostname_index: hostname_index,
-                 instance_id_index: instance_id_index
-             }}
-
-          {:error, reason} ->
-            Logger.warning("Failed to delete host file #{path}: #{reason}")
-            {:reply, {:error, :delete_failed}, state}
+        case File.rm(path) do
+          :ok -> :ok
+          {:error, :enoent} -> :ok
+          {:error, reason} -> Logger.warning("Failed to delete host file #{path}: #{reason}")
         end
+
+        hosts = Map.delete(state.hosts, id)
+        fingerprint_index = Map.delete(state.fingerprint_index, host.key_fingerprint)
+        {:reply, :ok, %{state | hosts: hosts, fingerprint_index: fingerprint_index}}
     end
   end
 
-  @impl true
   def handle_call({:put_token, token}, _from, state) do
     case persist_token(state.data_dir, token) do
       :ok ->
@@ -281,7 +207,6 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  @impl true
   def handle_call({:get_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil -> {:reply, :not_found, state}
@@ -289,12 +214,10 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  @impl true
   def handle_call(:list_tokens, _from, state) do
     {:reply, Map.values(state.tokens), state}
   end
 
-  @impl true
   def handle_call({:delete_token, id}, _from, state) do
     case Map.get(state.tokens, id) do
       nil ->
@@ -303,26 +226,17 @@ defmodule YellowDogIdentity.Registry do
       _token ->
         path = token_path(state.data_dir, id)
 
-        delete_result =
-          case File.rm(path) do
-            :ok -> :ok
-            {:error, :enoent} -> :ok
-            {:error, reason} -> {:error, reason}
-          end
-
-        case delete_result do
-          :ok ->
-            tokens = Map.delete(state.tokens, id)
-            {:reply, :ok, %{state | tokens: tokens}}
-
-          {:error, reason} ->
-            Logger.warning("Failed to delete token file #{path}: #{reason}")
-            {:reply, {:error, :delete_failed}, state}
+        case File.rm(path) do
+          :ok -> :ok
+          {:error, :enoent} -> :ok
+          {:error, reason} -> Logger.warning("Failed to delete token file #{path}: #{reason}")
         end
+
+        tokens = Map.delete(state.tokens, id)
+        {:reply, :ok, %{state | tokens: tokens}}
     end
   end
 
-  @impl true
   def handle_call({:consume_token, raw_token, hostname}, _from, state) do
     tokens = Map.values(state.tokens)
 
@@ -336,7 +250,6 @@ defmodule YellowDogIdentity.Registry do
     end
   end
 
-  @impl true
   def handle_call({:read_audit_log, opts}, _from, state) do
     entries = read_audit_entries(state.data_dir, opts)
     {:reply, entries, state}
@@ -349,39 +262,7 @@ defmodule YellowDogIdentity.Registry do
   end
 
   @impl true
-  def handle_info(:cleanup_expired_tokens, state) do
-    now = DateTime.utc_now()
-
-    expired_ids =
-      state.tokens
-      |> Enum.filter(fn {_id, token} -> DateTime.compare(now, token.expires_at) == :gt end)
-      |> Enum.map(fn {id, _token} -> id end)
-
-    state =
-      Enum.reduce(expired_ids, state, fn id, acc ->
-        path = token_path(acc.data_dir, id)
-
-        case File.rm(path) do
-          :ok -> :ok
-          {:error, :enoent} -> :ok
-          {:error, reason} -> Logger.warning("Failed to delete expired token #{id}: #{reason}")
-        end
-
-        %{acc | tokens: Map.delete(acc.tokens, id)}
-      end)
-
-    if expired_ids != [] do
-      Logger.info("Cleaned up #{length(expired_ids)} expired token(s)")
-    end
-
-    Process.send_after(self(), :cleanup_expired_tokens, @token_cleanup_interval_ms)
-    {:noreply, state}
-  end
-
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
-    {:noreply, state}
-  end
+  def handle_info(_msg, state), do: {:noreply, state}
 
   # Token consumption helper (used by consume_token handle_call)
 
@@ -405,114 +286,6 @@ defmodule YellowDogIdentity.Registry do
     end)
   end
 
-  # Internal helpers for put_host
-
-  defp do_put_host(host, state) do
-    case persist_host(state.data_dir, host) do
-      :ok ->
-        old_host = Map.get(state.hosts, host.id)
-
-        # Remove stale fingerprint index entry if host existed with a different key
-        fingerprint_index =
-          case old_host do
-            %{key_fingerprint: old_fp} when old_fp != host.key_fingerprint ->
-              Map.delete(state.fingerprint_index, old_fp)
-
-            _ ->
-              state.fingerprint_index
-          end
-
-        # Remove stale hostname index entry if host changed hostname
-        hostname_index =
-          case old_host do
-            %{hostname: old_hn} when old_hn != host.hostname ->
-              Map.delete(state.hostname_index, old_hn)
-
-            _ ->
-              state.hostname_index
-          end
-
-        # Remove stale instance_id index entry if host changed instance ID
-        instance_id_index =
-          case old_host do
-            %{trust_evidence: old_ev} ->
-              old_iid = get_instance_id(old_ev)
-              new_iid = get_instance_id(host.trust_evidence)
-
-              if old_iid && old_iid != new_iid do
-                Map.delete(state.instance_id_index, old_iid)
-              else
-                state.instance_id_index
-              end
-
-            _ ->
-              state.instance_id_index
-          end
-
-        hosts = Map.put(state.hosts, host.id, host)
-        fingerprint_index = Map.put(fingerprint_index, host.key_fingerprint, host.id)
-        hostname_index = Map.put(hostname_index, host.hostname, host.id)
-
-        # Add new instance_id to index
-        new_iid = get_instance_id(host.trust_evidence)
-
-        instance_id_index =
-          if new_iid,
-            do: Map.put(instance_id_index, new_iid, host.id),
-            else: instance_id_index
-
-        {:reply, :ok,
-         %{
-           state
-           | hosts: hosts,
-             fingerprint_index: fingerprint_index,
-             hostname_index: hostname_index,
-             instance_id_index: instance_id_index
-         }}
-
-      {:error, _} = error ->
-        {:reply, error, state}
-    end
-  end
-
-  defp has_fingerprint_conflict?(fingerprint_index, fingerprint, host_id) do
-    case Map.get(fingerprint_index, fingerprint) do
-      nil -> false
-      ^host_id -> false
-      _other_id -> true
-    end
-  end
-
-  defp has_instance_id_conflict?(instance_id_index, trust_evidence, host_id) do
-    case get_instance_id(trust_evidence) do
-      nil ->
-        false
-
-      iid ->
-        case Map.get(instance_id_index, iid) do
-          nil -> false
-          ^host_id -> false
-          _other_id -> true
-        end
-    end
-  end
-
-  defp get_instance_id(evidence) when is_map(evidence) do
-    id = Map.get(evidence, :instance_id) || Map.get(evidence, "instance_id")
-    if id, do: to_string(id), else: nil
-  end
-
-  defp get_instance_id(_), do: nil
-
-  defp build_instance_id_index(hosts) do
-    Enum.reduce(hosts, %{}, fn {id, host}, acc ->
-      case get_instance_id(host.trust_evidence) do
-        nil -> acc
-        iid -> Map.put(acc, iid, id)
-      end
-    end)
-  end
-
   # Persistence helpers
 
   defp persist_host(data_dir, host) do
@@ -531,9 +304,9 @@ defmodule YellowDogIdentity.Registry do
     content = encode_toml(map)
     tmp_path = path <> ".tmp"
     dir = Path.dirname(path)
+    File.mkdir_p!(dir)
 
-    with :ok <- File.mkdir_p(dir),
-         :ok <- File.write(tmp_path, content),
+    with :ok <- File.write(tmp_path, content),
          # Validate round-trip
          {:ok, _} <- read_and_parse_toml(tmp_path),
          :ok <- File.rename(tmp_path, path) do
@@ -577,17 +350,7 @@ defmodule YellowDogIdentity.Registry do
     simple_lines <> nested_lines
   end
 
-  defp encode_toml_value(v) when is_binary(v) do
-    escaped =
-      v
-      |> String.replace("\\", "\\\\")
-      |> String.replace("\"", "\\\"")
-      |> String.replace("\n", "\\n")
-      |> String.replace("\r", "\\r")
-      |> String.replace("\t", "\\t")
-
-    ~s("#{escaped}")
-  end
+  defp encode_toml_value(v) when is_binary(v), do: ~s("#{String.replace(v, "\"", "\\\"")}")
   defp encode_toml_value(v) when is_integer(v), do: Integer.to_string(v)
   defp encode_toml_value(v) when is_float(v), do: Float.to_string(v)
   defp encode_toml_value(true), do: "true"
@@ -616,17 +379,13 @@ defmodule YellowDogIdentity.Registry do
     hosts_dir
     |> Path.join("*.toml")
     |> Path.wildcard()
-    |> Enum.reduce({%{}, %{}, %{}}, fn path, {hosts, fp_idx, hn_idx} ->
+    |> Enum.reduce({%{}, %{}}, fn path, {hosts, idx} ->
       case load_host_file(path) do
         {:ok, host} ->
-          {
-            Map.put(hosts, host.id, host),
-            Map.put(fp_idx, host.key_fingerprint, host.id),
-            Map.put(hn_idx, host.hostname, host.id)
-          }
+          {Map.put(hosts, host.id, host), Map.put(idx, host.key_fingerprint, host.id)}
 
         {:error, _reason} ->
-          {hosts, fp_idx, hn_idx}
+          {hosts, idx}
       end
     end)
   end
@@ -664,12 +423,7 @@ defmodule YellowDogIdentity.Registry do
     timestamp = DateTime.to_iso8601(DateTime.utc_now())
     details_str = if details == %{}, do: "", else: " " <> inspect(details)
 
-    # Sanitize to prevent log injection via embedded newlines
-    safe_event = sanitize_log_field(event)
-    safe_host_id = sanitize_log_field(host_id)
-    safe_details = sanitize_log_field(details_str)
-
-    entry = "#{timestamp} #{safe_event} host=#{safe_host_id}#{safe_details}\n"
+    entry = "#{timestamp} #{event} host=#{host_id}#{details_str}\n"
 
     case File.write(audit_path, entry, [:append]) do
       :ok -> :ok
@@ -679,15 +433,9 @@ defmodule YellowDogIdentity.Registry do
     e -> Logger.warning("Unexpected error writing audit log: #{Exception.message(e)}")
   end
 
-  defp sanitize_log_field(value) when is_binary(value) do
-    String.replace(value, ~r/[\r\n]/, " ")
-  end
-
-  defp sanitize_log_field(value), do: sanitize_log_field(to_string(value))
-
   defp read_audit_entries(data_dir, opts) do
     audit_path = Path.join(data_dir, "audit.log")
-    limit = opts |> Keyword.get(:limit, 100) |> min(1000)
+    limit = Keyword.get(opts, :limit, 100)
     host_filter = Keyword.get(opts, :host_id)
     event_filter = Keyword.get(opts, :event)
 
@@ -706,8 +454,7 @@ defmodule YellowDogIdentity.Registry do
         []
     end
   rescue
-    e -> Logger.debug("Failed to read audit entries: #{inspect(e)}")
-    []
+    _ -> []
   end
 
   defp parse_audit_line(line) do

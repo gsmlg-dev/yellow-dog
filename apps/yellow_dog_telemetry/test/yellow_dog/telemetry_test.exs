@@ -267,8 +267,8 @@ defmodule YellowDog.TelemetryTest do
       assert metadata.key == "value"
       assert is_integer(measurements.monotonic_time)
 
-      # Delay to ensure measurable duration (10ms avoids coarse-timer flakes in CI)
-      Process.sleep(10)
+      # Small delay to ensure measurable duration
+      Process.sleep(1)
 
       Telemetry.end_span(span_id, %{status: :success})
 
@@ -296,7 +296,7 @@ defmodule YellowDog.TelemetryTest do
 
       result =
         Telemetry.span("test.wrapped", %{}, fn ->
-          Process.sleep(10)
+          Process.sleep(1)
           :test_result
         end)
 

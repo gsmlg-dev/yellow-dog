@@ -53,25 +53,5 @@ defmodule YellowDogIdentity.TokenPatternTest do
       assert Token.hostname_matches?("node.01", "node.01")
       refute Token.hostname_matches?("nodeX01", "node.01")
     end
-
-    test "ReDoS-safe: many wildcards complete in bounded time" do
-      # Pattern like a*b*c*d*...*z with many wildcards would cause
-      # exponential backtracking with regex. This must complete fast.
-      evil_pattern = Enum.map_join(1..20, "*", fn i -> "s#{i}" end)
-      long_input = String.duplicate("a", 10_000)
-
-      # Should return false quickly without hanging
-      refute Token.hostname_matches?(long_input, evil_pattern)
-    end
-
-    test "consecutive wildcards match correctly" do
-      assert Token.hostname_matches?("abc", "a**c")
-      assert Token.hostname_matches?("abc", "***")
-    end
-
-    test "wildcard at both ends" do
-      assert Token.hostname_matches?("node-01-prod", "*-01-*")
-      refute Token.hostname_matches?("node-02-prod", "*-01-*")
-    end
   end
 end

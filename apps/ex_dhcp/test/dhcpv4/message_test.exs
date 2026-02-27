@@ -33,12 +33,10 @@ defmodule DHCPv4.MessageTest do
     end
 
     test "exports new/0" do
-      Code.ensure_loaded!(Message)
       assert function_exported?(Message, :new, 0)
     end
 
     test "exports from_iodata/1" do
-      Code.ensure_loaded!(Message)
       assert function_exported?(Message, :from_iodata, 1)
     end
   end

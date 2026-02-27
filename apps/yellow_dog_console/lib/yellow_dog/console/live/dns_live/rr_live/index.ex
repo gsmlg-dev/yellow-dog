@@ -249,11 +249,6 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   end
 
   @impl true
-  def handle_event("delete_rr", _params, %{assigns: %{delete_confirm: nil}} = socket) do
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_event("delete_rr", _params, socket) do
     %{delete_confirm: %{rr: rr}, view_name: view_name, zone_type: zone_type, zone_name: zone_name} =
       socket.assigns
@@ -682,13 +677,9 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
   defp format_srv(rdata), do: to_string(rdata)
 
   defp find_auth_zone(view_name, :auth, zone_name) do
-    try do
-      case ZoneController.find_zone(view_name, :auth, zone_name) do
-        {:ok, pid} -> {:ok, pid}
-        :error -> {:error, "Authoritative zone not found: #{zone_name}"}
-      end
-    catch
-      _, _ -> {:error, "Zone not available"}
+    case ZoneController.find_zone(view_name, :auth, zone_name) do
+      {:ok, pid} -> {:ok, pid}
+      :error -> {:error, "Authoritative zone not found: #{zone_name}"}
     end
   end
 
@@ -733,11 +724,5 @@ defmodule YellowDog.Console.DnsLive.RrLive.Index do
 
   defp remove_existing_record(pid, %{name: name, type: type}) do
     YellowDog.Dns.Zone.Auth.remove_record(pid, name, normalize_record_type(type))
-  end
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:records")
-    :ok
   end
 end

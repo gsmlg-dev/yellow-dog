@@ -20,8 +20,6 @@ defmodule YellowDog.Dns.Zone.Forward do
 
   use GenServer
 
-  require Logger
-
   alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.Zone.Behaviour
 
@@ -281,33 +279,26 @@ defmodule YellowDog.Dns.Zone.Forward do
       {pending, remaining} ->
         if pending.retries > 0 do
           # Retry with next upstream
-          case select_upstream(%{state | pending: remaining}) do
-            {nil, state} ->
-              # Upstreams removed during reload — fail the pending request
-              GenServer.reply(pending.from, {:error, :no_upstreams})
-              state = %{state | error_count: state.error_count + 1}
+          {upstream, state} = select_upstream(%{state | pending: remaining})
+
+          case send_query(state, upstream, pending.query) do
+            :ok ->
+              timer_ref = Process.send_after(self(), {:timeout, query_id}, state.timeout)
+
+              new_pending = %{
+                pending
+                | upstream: upstream,
+                  timer: timer_ref,
+                  retries: pending.retries - 1
+              }
+
+              state = %{state | pending: Map.put(state.pending, query_id, new_pending)}
               {:noreply, state}
 
-            {upstream, state} ->
-              case send_query(state, upstream, pending.query) do
-                :ok ->
-                  timer_ref = Process.send_after(self(), {:timeout, query_id}, state.timeout)
-
-                  new_pending = %{
-                    pending
-                    | upstream: upstream,
-                      timer: timer_ref,
-                      retries: pending.retries - 1
-                  }
-
-                  state = %{state | pending: Map.put(state.pending, query_id, new_pending)}
-                  {:noreply, state}
-
-                {:error, _reason} ->
-                  GenServer.reply(pending.from, {:error, :servfail})
-                  state = %{state | error_count: state.error_count + 1}
-                  {:noreply, state}
-              end
+            {:error, _reason} ->
+              GenServer.reply(pending.from, {:error, :servfail})
+              state = %{state | error_count: state.error_count + 1}
+              {:noreply, state}
           end
         else
           # No more retries
@@ -324,8 +315,7 @@ defmodule YellowDog.Dns.Zone.Forward do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 
@@ -377,10 +367,6 @@ defmodule YellowDog.Dns.Zone.Forward do
       _ ->
         nil
     end
-  end
-
-  defp select_upstream(%{upstreams: []} = state) do
-    {nil, state}
   end
 
   defp select_upstream(state) do

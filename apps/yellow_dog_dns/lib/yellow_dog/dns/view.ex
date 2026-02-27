@@ -37,16 +37,12 @@ defmodule YellowDog.Dns.View do
 
   use GenServer
 
-  require Logger
-
   alias YellowDog.Telemetry
   alias YellowDog.Dns.View.ACL
   alias YellowDog.Dns.ZoneController
   alias DNS.Message
 
   @default_priority 100
-  @default_fallback_timeout 2000
-  @default_fallback_retries 1
 
   defstruct [
     :name,
@@ -61,8 +57,8 @@ defmodule YellowDog.Dns.View do
     enabled: true,
     # Fallback forwarders: list of {ip_tuple, port} for when zone resolution fails
     fallback_forwarders: [],
-    fallback_timeout: @default_fallback_timeout,
-    fallback_retries: @default_fallback_retries,
+    fallback_timeout: 2000,
+    fallback_retries: 1,
     query_count: 0,
     hit_count: 0,
     miss_count: 0
@@ -359,8 +355,7 @@ defmodule YellowDog.Dns.View do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

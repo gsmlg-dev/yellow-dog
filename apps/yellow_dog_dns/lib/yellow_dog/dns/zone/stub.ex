@@ -31,8 +31,6 @@ defmodule YellowDog.Dns.Zone.Stub do
 
   use GenServer
 
-  require Logger
-
   alias YellowDog.Dns.IpFormat
   alias YellowDog.Dns.Zone.Behaviour
   alias YellowDog.Telemetry
@@ -379,8 +377,7 @@ defmodule YellowDog.Dns.Zone.Stub do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

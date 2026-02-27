@@ -25,7 +25,6 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   - `:ram_copies` - Memory-only storage (for testing)
   """
 
-  require Logger
   require Record
 
   alias YellowDog.Dhcpv6.AddressPool
@@ -158,13 +157,7 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   # Configures the Mnesia directory
   defp configure_mnesia_dir(data_dir) do
     # Ensure the directory exists
-    case File.mkdir_p(data_dir) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[DHCPv6] Failed to create Mnesia dir: #{inspect(reason)}")
-    end
+    File.mkdir_p!(data_dir)
 
     # Set Mnesia directory (must be done before :mnesia.start())
     mnesia_dir = String.to_charlist(data_dir)

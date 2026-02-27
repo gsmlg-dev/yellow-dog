@@ -99,3 +99,9 @@ config :yellow_dog_telemetry,
 # Enable Abyss debug logging in development
 config :abyss,
   log_level: :debug
+
+
+# DHCP client NIF: skip Rust compilation in dev unless cargo is available.
+# In production, remove this config to enable NIF compilation.
+config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native,
+  skip_compilation?: true

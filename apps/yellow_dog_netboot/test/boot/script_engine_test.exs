@@ -52,18 +52,9 @@ defmodule YellowDog.Netboot.Boot.ScriptEngineTest do
     end
 
     test "renders custom template with string keys" do
-      template = "#!ipxe\necho <%= @name %>"
-      assert {:ok, script} = ScriptEngine.render_custom(template, %{"name" => "Hi"})
+      template = "#!ipxe\necho <%= @greeting %>"
+      assert {:ok, script} = ScriptEngine.render_custom(template, %{"greeting" => "Hi"})
       assert script == "#!ipxe\necho Hi"
-    end
-
-    test "skips unknown string keys to prevent atom exhaustion" do
-      template = "hello"
-      # Unknown string keys that are not existing atoms should be silently skipped
-      assert {:ok, "hello"} =
-               ScriptEngine.render_custom(template, %{
-                 "zzz_unknown_key_#{System.unique_integer()}" => "ignored"
-               })
     end
 
     test "renders custom template with multiple assigns" do

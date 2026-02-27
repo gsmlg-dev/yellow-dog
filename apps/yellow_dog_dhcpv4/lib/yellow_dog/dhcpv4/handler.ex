@@ -689,15 +689,12 @@ defmodule YellowDog.Dhcpv4.Handler do
             [%DHCPv4.Message.Option{type: 15, length: byte_size(domain), value: domain}]
       end
 
-    # Add registration URL (Option 114 / Default URL) if identity service is enabled
-    options_with_reg_url = maybe_add_registration_url(options_with_domain, context)
-
     # Apply custom options if option_set_name is specified (FR4)
     options_with_custom =
       if option_set_name do
-        apply_custom_options(options_with_reg_url, option_set_name, context)
+        apply_custom_options(options_with_domain, option_set_name, context)
       else
-        options_with_reg_url
+        options_with_domain
       end
 
     # Inject netboot options (Option 66/67) if a boot profile is configured
@@ -705,25 +702,6 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     # Add end option
     options_with_boot ++ [%DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}]
-  end
-
-  # Option 114 (Default URL) — delivers the identity registration endpoint to hosts
-  defp maybe_add_registration_url(options, _context) do
-    try do
-      config = YellowDog.Config.get_all()
-      url = get_in(config, ["identity", "registration_url"])
-
-      if is_binary(url) and byte_size(url) > 0 do
-        options ++
-          [%DHCPv4.Message.Option{type: 114, length: byte_size(url), value: url}]
-      else
-        options
-      end
-    rescue
-      _ -> options
-    catch
-      :exit, _ -> options
-    end
   end
 
   defp maybe_add_boot_options(options, context) do

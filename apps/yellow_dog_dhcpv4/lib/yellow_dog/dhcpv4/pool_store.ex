@@ -14,8 +14,6 @@ defmodule YellowDog.Dhcpv4.PoolStore do
 
   use YellowDog.Data.Collection
 
-  require Logger
-
   alias YellowDog.Dhcpv4.{AddressPool, Ipv4Util}
   import YellowDog.Config.TomlHelpers
 
@@ -593,13 +591,7 @@ defmodule YellowDog.Dhcpv4.PoolStore do
     lease_path = Path.join(leases_directory(), "#{pool_name}.toml")
 
     # Ensure directory exists
-    case File.mkdir_p(leases_directory()) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[DHCPv4] Failed to create leases dir: #{inspect(reason)}")
-    end
+    File.mkdir_p!(leases_directory())
 
     content = leases_to_toml(pool_name, leases)
 

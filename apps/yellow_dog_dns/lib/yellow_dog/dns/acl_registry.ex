@@ -175,7 +175,6 @@ defmodule YellowDog.Dns.AclRegistry do
     {:reply, :ok, state}
   end
 
-  @impl true
   def handle_call(:reload, _from, state) do
     {:ok, store} = Store.clear(state.store)
     {:reply, :ok, load_acls(%{state | store: store})}

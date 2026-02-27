@@ -703,11 +703,7 @@ defmodule YellowDog.Dns.Zone.Auth do
       %DNS.Zone.RRSet{
         name: name,
         type: type,
-        ttl:
-          case recs do
-            [r | _] -> r.ttl || 3600
-            [] -> 3600
-          end,
+        ttl: List.first(recs).ttl || 3600,
         data: Enum.map(recs, &rdata_to_bind_map(normalize_type(&1.type), record_data(&1))),
         options: []
       }

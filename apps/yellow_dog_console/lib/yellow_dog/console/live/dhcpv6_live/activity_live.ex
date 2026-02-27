@@ -9,7 +9,7 @@ defmodule YellowDog.Console.Dhcpv6Live.ActivityLive do
   use YellowDog.Console, :live_view
 
   import YellowDog.Console.CsvHelper
-  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1, format_ip: 1]
+  import YellowDog.Console.FormatHelper, only: [format_time_ms: 1]
   import YellowDog.Console.ServiceHelper
 
   alias YellowDog.Console.Layouts
@@ -371,7 +371,10 @@ defmodule YellowDog.Console.Dhcpv6Live.ActivityLive do
   end
 
   defp filter_by_type(entries, type) do
-    Enum.filter(entries, fn e -> to_string(e.type) == type end)
+    type_atom = String.to_existing_atom(type)
+    Enum.filter(entries, fn e -> e.type == type_atom end)
+  rescue
+    ArgumentError -> entries
   end
 
   defp filter_by_search(entries, ""), do: entries
@@ -391,7 +394,7 @@ defmodule YellowDog.Console.Dhcpv6Live.ActivityLive do
   defp build_entry_from_telemetry(event, measurements, metadata) do
     {type, details} = classify_event(event, measurements, metadata)
     client_duid = format_duid(metadata[:client_duid] || metadata[:duid])
-    client_ip = format_ip(metadata[:client_ip])
+    client_ip = format_client_ip(metadata[:client_ip])
 
     %{
       timestamp: DateTime.utc_now(),
@@ -456,7 +459,7 @@ defmodule YellowDog.Console.Dhcpv6Live.ActivityLive do
   end
 
   defp classify_event([:yellow_dog, :dhcpv6, :lease, :decline_completed], m, meta) do
-    ip = format_ip(meta[:declined_ip])
+    ip = format_client_ip(meta[:declined_ip])
     duration = if m[:duration], do: " (#{div(m[:duration], 1000)}ms)", else: ""
     {:decline, "DECLINE completed for #{ip || "?"}#{duration}"}
   end
@@ -493,6 +496,11 @@ defmodule YellowDog.Console.Dhcpv6Live.ActivityLive do
   end
 
   defp format_duid(duid), do: inspect(duid)
+
+  defp format_client_ip(nil), do: nil
+  defp format_client_ip(ip) when is_binary(ip), do: ip
+  defp format_client_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
+  defp format_client_ip(ip), do: inspect(ip)
 
   defp build_csv(entries) do
     header = "Timestamp,Type,Client DUID,Client IP,Details\r\n"

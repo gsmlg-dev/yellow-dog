@@ -225,11 +225,9 @@ defmodule YellowDog.Data.Store.Ets do
   @impl true
   def export(%{table: table}, :json) do
     records = Enum.map(:ets.tab2list(table), fn {_k, v} -> v end)
-
-    case Jason.encode(records) do
-      {:ok, json} -> {:ok, json}
-      {:error, reason} -> {:error, {:json_encoding_failed, reason}}
-    end
+    {:ok, Jason.encode!(records)}
+  rescue
+    e -> {:error, e}
   end
 
   def export(_state, format), do: {:error, {:unsupported_format, format}}

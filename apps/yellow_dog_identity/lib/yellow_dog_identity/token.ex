@@ -41,10 +41,6 @@ defmodule YellowDogIdentity.Token do
 
   The raw token is returned only once — it is not stored. Only the bcrypt hash is persisted.
   """
-  @max_ttl_seconds 86_400 * 365
-  @max_max_uses 100_000
-  @max_pattern_len 256
-
   @spec create(map()) :: {:ok, t(), raw_token :: String.t()} | {:error, term()}
   def create(params) when is_map(params) do
     hostname_pattern = Map.get(params, :hostname_pattern, "*")
@@ -53,22 +49,6 @@ defmodule YellowDogIdentity.Token do
     created_by = Map.get(params, :created_by, "system")
     ttl_seconds = Map.get(params, :ttl_seconds, 3600)
 
-    cond do
-      not is_integer(max_uses) or max_uses < 1 or max_uses > @max_max_uses ->
-        {:error, :invalid_max_uses}
-
-      not is_integer(ttl_seconds) or ttl_seconds < 0 or ttl_seconds > @max_ttl_seconds ->
-        {:error, :invalid_ttl}
-
-      byte_size(hostname_pattern) > @max_pattern_len ->
-        {:error, :pattern_too_long}
-
-      true ->
-        do_create(hostname_pattern, max_uses, role, created_by, ttl_seconds)
-    end
-  end
-
-  defp do_create(hostname_pattern, max_uses, role, created_by, ttl_seconds) do
     expires_at = DateTime.add(DateTime.utc_now(), ttl_seconds, :second)
 
     # Generate raw token
@@ -99,7 +79,7 @@ defmodule YellowDogIdentity.Token do
   @spec verify(t(), String.t(), String.t()) :: :ok | {:error, term()}
   def verify(%__MODULE__{} = token, raw_token, hostname) do
     cond do
-      not constant_time_compare(hash_token(raw_token), token.token_hash) ->
+      hash_token(raw_token) != token.token_hash ->
         {:error, :invalid_token}
 
       DateTime.compare(DateTime.utc_now(), token.expires_at) == :gt ->
@@ -186,55 +166,17 @@ defmodule YellowDogIdentity.Token do
     :crypto.hash(:sha256, raw_token) |> Base.encode64(padding: false)
   end
 
-  defp constant_time_compare(a, b) when is_binary(a) and is_binary(b) do
-    if byte_size(a) == byte_size(b) do
-      :crypto.hash_equals(a, b)
-    else
-      false
-    end
-  end
-
   @doc false
   def hostname_matches?(_hostname, "*"), do: true
 
   def hostname_matches?(hostname, pattern) do
-    glob_match?(hostname, pattern)
-  end
+    regex_pattern =
+      pattern
+      |> Regex.escape()
+      |> String.replace("\\*", ".*")
+      |> then(&("^" <> &1 <> "$"))
 
-  # Safe glob matching without regex to prevent ReDoS.
-  # Splits pattern on "*" and verifies segments appear in order.
-  defp glob_match?(string, pattern) do
-    parts = String.split(pattern, "*", parts: :infinity)
-
-    case parts do
-      [exact] ->
-        # No wildcards — exact match
-        string == exact
-
-      [prefix | rest] ->
-        String.starts_with?(string, prefix) &&
-          glob_match_rest(String.slice(string, String.length(prefix)..-1//1), rest)
-    end
-  end
-
-  defp glob_match_rest(_string, []), do: true
-
-  # Skip empty segments from consecutive wildcards (**)
-  defp glob_match_rest(string, ["" | rest]), do: glob_match_rest(string, rest)
-
-  defp glob_match_rest(string, [last]) do
-    # Last segment must be a suffix
-    String.ends_with?(string, last)
-  end
-
-  defp glob_match_rest(string, [segment | rest]) do
-    case :binary.match(string, segment) do
-      {pos, len} ->
-        glob_match_rest(String.slice(string, (pos + len)..-1//1), rest)
-
-      :nomatch ->
-        false
-    end
+    Regex.match?(~r/#{regex_pattern}/, hostname)
   end
 
   defp generate_uuid do

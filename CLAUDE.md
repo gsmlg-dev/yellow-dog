@@ -13,7 +13,7 @@ apps/<app_name>/CLAUDE.md
 
 Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
 
-### Applications (15 total)
+### Applications (16 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -22,6 +22,7 @@ Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using
 | **YellowDog.Dns** | `apps/yellow_dog_dns/` | DNS server: views, zones, name resolution, ACLs |
 | **YellowDog.Dhcpv4** | `apps/yellow_dog_dhcpv4/` | DHCPv4 server: lease management, address pools |
 | **YellowDog.Dhcpv6** | `apps/yellow_dog_dhcpv6/` | DHCPv6 server: DUID-based leases, IA_NA support |
+| **YellowDog.DhcpClient** | `apps/yellow_dog_dhcp_client/` | DHCPv4 client: DORA handshake, vendor options, NIF socket |
 | **YellowDog.Mdns** | `apps/yellow_dog_mdns/` | mDNS responder: service discovery and registration |
 | **YellowDog.Netboot** | `apps/yellow_dog_netboot/` | Network boot: TFTP server, iPXE scripts, device registry, HTTP boot |
 | **YellowDog.Fingerprint** | `apps/yellow_dog_fingerprint/` | Passive DHCP fingerprinting for device identification |
@@ -45,7 +46,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ## Constitution (Architectural Constraints)
 
-- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design
+- **Do not use `:gen_udp` outside `apps/abyss/`** — All UDP socket operations (open, send, recv, close) must go through the Abyss abstraction layer (`Abyss.Client`, `Abyss.Transport.UDP`). Exempt: protocol libraries `ex_dns` and `ex_dhcp` which have no Abyss dependency by design. **Exception:** `DhcpSocket.UdpFallback` in `apps/yellow_dog_dhcp_client/` is a dev/test-only socket stub that uses `:gen_udp` because the DHCP client deliberately excludes Abyss (which cannot provide the broadcast-from-`0.0.0.0:68` socket semantics required by RFC 2131). In production the Rust NIF (`DhcpSocket.Native`) is always used; `UdpFallback` is never deployed.
 
 ## Common Commands
 
@@ -58,6 +59,9 @@ cd apps/yellow_dog_console && mix test
 
 # Single test file
 mix test apps/yellow_dog_dhcpv4/test/yellow_dog/dhcpv4/handler_test.exs
+
+# DHCP client tests
+mix test apps/yellow_dog_dhcp_client/test/
 
 # E2E tests (auto-selects ports, CI-friendly)
 mix test.e2e                # All E2E
@@ -92,6 +96,7 @@ YellowDog (core: config, orchestration)
 ├── YellowDog.Mdns        → ex_dns + abyss + yellow_dog_telemetry
 ├── YellowDog.Netboot     → abyss + yellow_dog_telemetry
 ├── YellowDog.Fingerprint → ex_dhcp + yellow_dog_telemetry
+├── YellowDog.DhcpClient  → ex_dhcp + yellow_dog_telemetry
 ├── YellowDog.Identity    → yellow_dog + yellow_dog_telemetry
 └── YellowDogConsole      → phoenix + all service apps + geo_ip_db (read-only status/stats)
 ```

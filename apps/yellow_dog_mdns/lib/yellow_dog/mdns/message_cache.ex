@@ -8,8 +8,6 @@ defmodule YellowDog.Mdns.MessageCache do
 
   use GenServer
 
-  require Logger
-
   @table_name :mdns_message_cache
   @ets_options [:named_table, :public, :bag, read_concurrency: true, write_concurrency: true]
   # Cleanup every 5 minutes
@@ -183,8 +181,7 @@ defmodule YellowDog.Mdns.MessageCache do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

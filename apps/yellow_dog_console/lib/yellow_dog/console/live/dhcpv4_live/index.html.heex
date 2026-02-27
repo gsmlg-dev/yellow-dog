@@ -141,9 +141,7 @@
           </svg>
           <div class="flex-1">
             <strong>Lease Allocated:</strong>
-            MAC {format_mac(@last_event.metadata[:mac])} → IP {format_ip(
-              @last_event.metadata[:ip]
-            )}
+            MAC {format_mac(@last_event.metadata.mac)} → IP {format_ip(@last_event.metadata.ip)}
           </div>
           <span class="text-xs opacity-70">
             {Calendar.strftime(@last_event.time, "%H:%M:%S")}

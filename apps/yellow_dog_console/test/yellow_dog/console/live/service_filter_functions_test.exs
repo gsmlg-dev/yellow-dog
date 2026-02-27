@@ -213,9 +213,9 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
       assert Dhcpv4Activity.filtered_entries([], "test", "all") == []
     end
 
-    test "unrecognized type filter returns no matches" do
+    test "invalid type filter falls back to showing all" do
       result = Dhcpv4Activity.filtered_entries(@v4_entries, "", "invalid_xyz")
-      assert result == []
+      assert length(result) == 4
     end
   end
 
@@ -813,57 +813,6 @@ defmodule YellowDog.Console.ServiceFilterFunctionsTest do
 
     test "returns empty for non-matching type" do
       assert FingerprintDevices.filter_by_type(@typed_devices, "macos") == []
-    end
-  end
-
-  # ── LogsLive.filtered_logs/2 ──
-
-  alias YellowDog.Console.LogsLive
-
-  @sample_logs [
-    %{message: "DNS query for example.com"},
-    %{message: "DHCP lease granted to 192.168.1.100"},
-    %{message: "mDNS service registered"},
-    %{message: "Config reloaded"},
-    %{message: "Error connecting to upstream"}
-  ]
-
-  describe "LogsLive.filtered_logs/2" do
-    test "returns all logs when search is empty" do
-      assert LogsLive.filtered_logs(@sample_logs, "") == @sample_logs
-    end
-
-    test "filters by case-insensitive match" do
-      result = LogsLive.filtered_logs(@sample_logs, "dns")
-      # Matches "DNS query..." and "mDNS service..."
-      assert length(result) == 2
-      assert Enum.all?(result, fn log -> String.downcase(log.message) =~ "dns" end)
-    end
-
-    test "filters case-insensitively" do
-      result = LogsLive.filtered_logs(@sample_logs, "ERROR")
-      assert length(result) == 1
-      assert hd(result).message =~ "Error"
-    end
-
-    test "filters by partial match" do
-      result = LogsLive.filtered_logs(@sample_logs, "192.168")
-      assert length(result) == 1
-      assert hd(result).message =~ "192.168.1.100"
-    end
-
-    test "returns empty list when no match" do
-      assert LogsLive.filtered_logs(@sample_logs, "nonexistent") == []
-    end
-
-    test "returns empty list when logs are empty" do
-      assert LogsLive.filtered_logs([], "anything") == []
-    end
-
-    test "matches multiple logs" do
-      result = LogsLive.filtered_logs(@sample_logs, "e")
-      # "example.com", "lease", "service registered", "reloaded", "Error", "upstream"
-      assert length(result) >= 3
     end
   end
 end

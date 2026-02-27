@@ -171,8 +171,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
   @spec build_records_for_question(service(), Question.t()) :: map()
   def build_records_for_question(service, question) do
     qname = normalize_name(question.name)
-    # Use to_string/1 so both atoms (:PTR) and RRType structs compare correctly
-    qtype_str = to_string(question.type)
+    qtype = question.type
 
     service_fqdn = normalize_name(service.fqdn)
     service_type = normalize_name("#{service.type}.#{service.domain}")
@@ -180,7 +179,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
     cond do
       # PTR query for service type enumeration
-      qname == service_type and qtype_str == "PTR" ->
+      qname == service_type and qtype == :PTR ->
         ptr = build_ptr_record(service)
         srv = build_srv_record(service)
         txt = build_txt_record(service)
@@ -194,7 +193,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # SRV query for specific service instance
-      qname == service_fqdn and qtype_str in ["SRV", "ANY"] ->
+      qname == service_fqdn and qtype in [:SRV, :ANY] ->
         srv = build_srv_record(service)
         txt = build_txt_record(service)
         a_records = build_a_records(service)
@@ -207,7 +206,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # TXT query for specific service instance
-      qname == service_fqdn and qtype_str == "TXT" ->
+      qname == service_fqdn and qtype == :TXT ->
         txt = build_txt_record(service)
         srv = build_srv_record(service)
         a_records = build_a_records(service)
@@ -220,7 +219,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # A record query for host
-      qname == service_host and qtype_str in ["A", "ANY"] ->
+      qname == service_host and qtype in [:A, :ANY] ->
         a_records = build_a_records(service)
 
         %{
@@ -230,7 +229,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # AAAA record query for host
-      qname == service_host and qtype_str in ["AAAA", "ANY"] ->
+      qname == service_host and qtype in [:AAAA, :ANY] ->
         aaaa_records = build_aaaa_records(service)
 
         %{

@@ -320,14 +320,8 @@ defmodule YellowDog.Dns.Zone.RPZ do
   end
 
   defp check_response_ips(state, response) do
-    # Extract A/AAAA record IPs from response
-    # Use to_string/1 for type comparison (works with both atoms and %RRType{} structs)
-    ips =
-      for rr <- response.anlist,
-          to_string(rr.type) in ["A", "AAAA"],
-          ip = extract_record_ip(rr),
-          ip != nil,
-          do: ip
+    # Extract A/AAAA records from response
+    ips = for(rr <- response.anlist, rr.type in [:a, :aaaa], do: rr.rdata)
 
     # Check each IP against policies
     Enum.find_value(ips, :no_match, fn ip ->
@@ -337,12 +331,6 @@ defmodule YellowDog.Dns.Zone.RPZ do
       end
     end)
   end
-
-  # Extract IP tuple from record — handles Data.A/AAAA structs, plain tuples, and legacy maps
-  defp extract_record_ip(%{data: %{data: ip}}) when is_tuple(ip), do: ip
-  defp extract_record_ip(%{data: ip}) when is_tuple(ip), do: ip
-  defp extract_record_ip(%{rdata: ip}) when is_tuple(ip), do: ip
-  defp extract_record_ip(_), do: nil
 
   defp lookup_ip_policy(state, ip) do
     # Convert IP to RPZ format and lookup

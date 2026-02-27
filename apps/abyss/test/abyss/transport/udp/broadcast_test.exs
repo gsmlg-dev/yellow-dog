@@ -16,68 +16,53 @@ defmodule Abyss.Transport.UDP.BroadcastTest do
     end
 
     test "exports listen/2" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :listen, 2)
     end
 
     test "exports open/2" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :open, 2)
     end
 
     test "exports controlling_process/2" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :controlling_process, 2)
     end
 
     test "exports recv/3" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :recv, 3)
     end
 
     test "exports send/2, send/3, send/4, send/5" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :send, 2)
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :send, 3)
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :send, 4)
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :send, 5)
     end
 
     test "exports getopts/2" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :getopts, 2)
     end
 
     test "exports setopts/2" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :setopts, 2)
     end
 
     test "exports close/1" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :close, 1)
     end
 
     test "exports sockname/1" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :sockname, 1)
     end
 
     test "exports peername/1" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :peername, 1)
     end
 
     test "exports getstat/1" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :getstat, 1)
     end
 
     test "exports send_broadcast/4 utility function" do
-      Code.ensure_loaded!(Broadcast)
       assert function_exported?(Broadcast, :send_broadcast, 4)
     end
   end

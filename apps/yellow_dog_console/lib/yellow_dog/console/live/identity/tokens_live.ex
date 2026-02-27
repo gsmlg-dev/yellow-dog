@@ -1,9 +1,7 @@
 defmodule YellowDog.Console.IdentityLive.TokensLive do
-  @moduledoc "Manages provisioning tokens for host enrollment."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
-  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -24,7 +22,6 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     {:noreply, assign(socket, :show_create, !socket.assigns.show_create)}
   end
 
-  @impl true
   def handle_event(
         "create_token",
         %{
@@ -37,8 +34,8 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
       ) do
     params = %{
       hostname_pattern: pattern,
-      max_uses: safe_to_integer(max_uses, 1),
-      ttl_seconds: safe_ttl(safe_to_integer(ttl_hours, 24)) * 3600,
+      max_uses: String.to_integer(max_uses),
+      ttl_seconds: String.to_integer(ttl_hours) * 3600,
       role: if(role == "", do: nil, else: role),
       created_by: "console-operator"
     }
@@ -59,11 +56,10 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
          |> put_flash(:info, "Token created successfully")}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to create token: #{humanize_error(reason)}")}
+        {:noreply, put_flash(socket, :error, "Failed to create token: #{inspect(reason)}")}
     end
   end
 
-  @impl true
   def handle_event("revoke_token", %{"id" => id}, socket) do
     result =
       ServiceHelper.safe_call(
@@ -78,12 +74,10 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     end
   end
 
-  @impl true
   def handle_event("dismiss_token", _params, socket) do
     {:noreply, assign(socket, :new_token_raw, nil)}
   end
 
-  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_tokens(socket)}
   end
@@ -98,18 +92,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
         []
       )
 
-    assign(socket, :tokens, Enum.map(tokens, &annotate_token_status/1))
-  end
-
-  defp annotate_token_status(token) do
-    valid =
-      try do
-        YellowDogIdentity.Token.valid?(token)
-      rescue
-        _ -> false
-      end
-
-    Map.put(token, :_valid, valid)
+    assign(socket, :tokens, tokens)
   end
 
   @impl true
@@ -123,7 +106,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
             <button class="btn btn-sm btn-primary" phx-click="toggle_create">
               + New Token
             </button>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
+            <button class="btn btn-sm btn-ghost" phx-click="refresh">
               ↻
             </button>
           </div>
@@ -142,12 +125,9 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
             <h2 class="card-title">Create Provisioning Token</h2>
             <form phx-submit="create_token" class="space-y-4">
               <div class="form-control">
-                <label class="label" for="hostname_pattern">
-                  <span class="label-text">Hostname Pattern</span>
-                </label>
+                <label class="label"><span class="label-text">Hostname Pattern</span></label>
                 <input
                   type="text"
-                  id="hostname_pattern"
                   name="hostname_pattern"
                   value={@form["hostname_pattern"].value}
                   class="input input-bordered"
@@ -156,10 +136,9 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div class="form-control">
-                  <label class="label" for="max_uses"><span class="label-text">Max Uses</span></label>
+                  <label class="label"><span class="label-text">Max Uses</span></label>
                   <input
                     type="number"
-                    id="max_uses"
                     name="max_uses"
                     value={@form["max_uses"].value}
                     min="1"
@@ -167,12 +146,9 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                   />
                 </div>
                 <div class="form-control">
-                  <label class="label" for="ttl_hours">
-                    <span class="label-text">TTL (hours)</span>
-                  </label>
+                  <label class="label"><span class="label-text">TTL (hours)</span></label>
                   <input
                     type="number"
-                    id="ttl_hours"
                     name="ttl_hours"
                     value={@form["ttl_hours"].value}
                     min="1"
@@ -181,21 +157,16 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 </div>
               </div>
               <div class="form-control">
-                <label class="label" for="role">
-                  <span class="label-text">Role (optional)</span>
-                </label>
+                <label class="label"><span class="label-text">Role (optional)</span></label>
                 <input
                   type="text"
-                  id="role"
                   name="role"
                   value={@form["role"].value}
                   class="input input-bordered"
                   placeholder="worker"
                 />
               </div>
-              <button type="submit" class="btn btn-primary" phx-disable-with="Creating...">
-                Create Token
-              </button>
+              <button type="submit" class="btn btn-primary">Create Token</button>
             </form>
           </div>
         </div>
@@ -224,12 +195,12 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 <td class="text-sm">{format_time(token.created_at)}</td>
                 <td>
                   <span class={
-                    if(token._valid,
+                    if(YellowDogIdentity.Token.valid?(token),
                       do: "badge badge-success",
                       else: "badge badge-error"
                     )
                   }>
-                    {if token._valid, do: "Active", else: "Expired"}
+                    {if YellowDogIdentity.Token.valid?(token), do: "Active", else: "Expired"}
                   </span>
                 </td>
                 <td>
@@ -237,8 +208,6 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                     class="btn btn-xs btn-error btn-outline"
                     phx-click="revoke_token"
                     phx-value-id={token.id}
-                    phx-disable-with="Revoking..."
-                    data-confirm="Revoke this token? This cannot be undone."
                   >
                     Revoke
                   </button>
@@ -257,22 +226,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
     """
   end
 
-  defp safe_to_integer(str, default) when is_binary(str) do
-    case Integer.parse(str) do
-      {n, _} when n > 0 -> n
-      _ -> default
-    end
-  end
-
-  defp safe_to_integer(_, default), do: default
-
-  # Ensures TTL is not 0 (would create already-expired token)
-  defp safe_ttl(hours) when hours <= 0, do: 24
-  defp safe_ttl(hours), do: hours
-
-  defp humanize_error(:unavailable), do: "service unavailable"
-  defp humanize_error(:invalid_pattern), do: "invalid hostname pattern"
-  defp humanize_error(:invalid_ttl), do: "invalid TTL value"
-  defp humanize_error(:invalid_max_uses), do: "max uses must be positive"
-  defp humanize_error(_), do: "unexpected error"
+  defp format_time(nil), do: "-"
+  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
+  defp format_time(_), do: "-"
 end

@@ -775,7 +775,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
         end)
 
       assert length(options) == 1000
-      assert time < 100_000
+      assert time < 50000
     end
 
     test "serializing many options is efficient" do
@@ -786,7 +786,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
           Enum.map(options, &DNS.Parameter.to_iodata/1)
         end)
 
-      assert time < 100_000
+      assert time < 50000
     end
 
     test "parsing many options is efficient" do
@@ -797,7 +797,7 @@ defmodule DNS.Message.EDNS0.Option.UpdateLeaseTest do
           Enum.map(binaries, &UpdateLease.from_iodata/1)
         end)
 
-      assert time < 100_000
+      assert time < 50000
     end
 
     test "round-trip performance" do

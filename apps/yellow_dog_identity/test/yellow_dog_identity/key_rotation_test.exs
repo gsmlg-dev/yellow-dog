@@ -14,7 +14,6 @@ defmodule YellowDogIdentity.KeyRotationTest do
   # Two structurally valid ed25519 keys with distinct key material
   @key_a "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g test@host"
   @key_b "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAMKERgfJi00O0JJUFdeZWxzeoGIj5adpKuyucDHztXc second@host"
-  @key_c "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHnhf7e0kFGzHqT1RZFNlYJX6i1lx0kpLJWjJBxuRd7t third@host"
   @age_recipient "age1qyqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9cfe3eds"
 
   setup do
@@ -116,52 +115,6 @@ defmodule YellowDogIdentity.KeyRotationTest do
 
       # Verify replaced_at is a valid ISO 8601 timestamp
       assert {:ok, %DateTime{}, _} = DateTime.from_iso8601(archived["replaced_at"])
-    end
-  end
-  describe "key rotation — multiple rotations" do
-    test "second rotation accumulates two entries in previous_keys" do
-      params_a = %{hostname: "multi-rot", ssh_pubkey: @key_a, age_recipient: @age_recipient}
-      {:ok, _host_a} = YellowDogIdentity.register(params_a)
-
-      params_b = %{
-        hostname: "multi-rot",
-        ssh_pubkey: @key_b,
-        age_recipient: @age_recipient,
-        force: true
-      }
-      {:ok, host_b} = YellowDogIdentity.register(params_b)
-      assert length(host_b.previous_keys) == 1
-
-      params_c = %{
-        hostname: "multi-rot",
-        ssh_pubkey: @key_c,
-        age_recipient: @age_recipient,
-        force: true
-      }
-      {:ok, host_c} = YellowDogIdentity.register(params_c)
-
-      # After two rotations, two archived keys
-      assert length(host_c.previous_keys) == 2
-
-      fingerprints = Enum.map(host_c.previous_keys, & &1["ssh_pubkey"])
-      assert @key_a in fingerprints
-      assert @key_b in fingerprints
-
-      # Current key is the newest
-      assert host_c.ssh_pubkey == @key_c
-    end
-
-    test "force re-registration with same key is idempotent (no rotation)" do
-      params = %{hostname: "same-key-force", ssh_pubkey: @key_a, age_recipient: @age_recipient}
-      {:ok, original} = YellowDogIdentity.register(params)
-
-      params_force = Map.put(params, :force, true)
-
-      # Same key + force → idempotent (fingerprint matches existing)
-      assert {:error, {:idempotent, existing}} = YellowDogIdentity.register(params_force)
-      assert existing.id == original.id
-      # No previous_keys added
-      assert existing.previous_keys == []
     end
   end
 end

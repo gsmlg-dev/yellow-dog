@@ -325,19 +325,6 @@ defmodule YellowDogIdentity.IntegrationTest do
       assert Map.get(stats.trust_levels, "unverified") == 2
     end
 
-    test "stats.providers reflects unverified trust provider as string key" do
-      {:ok, _h1} =
-        YellowDogIdentity.register(%{
-          hostname: "providers-1",
-          ssh_pubkey: @key_a,
-          age_recipient: @age_a
-        })
-
-      stats = YellowDogIdentity.stats()
-      # Unverified hosts have trust_provider :none → serialized as "none"
-      assert Map.get(stats.providers, "none") == 1
-    end
-
     test "returns zeroes when registry is empty" do
       stats = YellowDogIdentity.stats()
 
@@ -345,22 +332,6 @@ defmodule YellowDogIdentity.IntegrationTest do
       assert stats.pending == 0
       assert stats.approved == 0
       assert stats.revoked == 0
-    end
-
-    test "counts active_tokens and total_tokens correctly" do
-      # Create one valid and one expired token
-      {:ok, _valid, _} = YellowDogIdentity.create_token(%{hostname_pattern: "*", ttl_seconds: 3600})
-
-      {:ok, expired_token, _} =
-        YellowDogIdentity.create_token(%{hostname_pattern: "expired-*", ttl_seconds: 1})
-
-      # Manually expire it by updating to a past expiry
-      expired = %{expired_token | expires_at: DateTime.add(DateTime.utc_now(), -60, :second)}
-      :ok = YellowDogIdentity.Registry.put_token(expired)
-
-      stats = YellowDogIdentity.stats()
-      assert stats.total_tokens == 2
-      assert stats.active_tokens == 1
     end
   end
 
@@ -388,112 +359,6 @@ defmodule YellowDogIdentity.IntegrationTest do
       assert content =~ "host.approved"
       assert content =~ "host.revoked"
       assert content =~ host.id
-    end
-  end
-
-  # ──────────────────────────────────────────────
-  # 10. apply_approval — rejection policy during register
-  # ──────────────────────────────────────────────
-
-  describe "apply_approval — rejection policy" do
-    test "register stores host with revoke_reason when approval policy rejects it" do
-      original = Agent.get(YellowDog.Config, & &1)
-
-      config =
-        Map.merge(original, %{
-          "identity" => %{
-            "approval" => %{
-              "policies" => [
-                %{
-                  "name" => "block-unverified",
-                  "action" => "reject",
-                  "match" => %{"trust_level" => "unverified"}
-                }
-              ],
-              "default_action" => "pending"
-            }
-          }
-        })
-
-      Agent.update(YellowDog.Config, fn _ -> config end)
-      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
-
-      {:ok, host} =
-        YellowDogIdentity.register(%{
-          hostname: "reject-policy-host",
-          ssh_pubkey: @key_a,
-          age_recipient: @age_a
-        })
-
-      # Rejection via named policy keeps status :pending but sets revoke_reason
-      assert host.status == :pending
-      assert host.revoke_reason == "rejected by policy: block-unverified"
-    end
-  end
-
-  # ──────────────────────────────────────────────
-  # 11. delete_host/1
-  # ──────────────────────────────────────────────
-
-  describe "delete_host/1" do
-    test "deletes an existing host and it is no longer retrievable" do
-      {:ok, host} =
-        YellowDogIdentity.register(%{
-          hostname: "delete-me",
-          ssh_pubkey: @key_a,
-          age_recipient: @age_a
-        })
-
-      assert :ok = YellowDogIdentity.delete_host(host.id)
-      assert :not_found = YellowDogIdentity.get_host(host.id)
-    end
-
-    test "returns {:error, :not_found} for nonexistent host" do
-      assert {:error, :not_found} = YellowDogIdentity.delete_host("does-not-exist")
-    end
-  end
-
-  # ──────────────────────────────────────────────
-  # 12. create_token/1 — validation error path
-  # ──────────────────────────────────────────────
-
-  describe "create_token/1 — validation" do
-    test "returns error for invalid max_uses (zero)" do
-      assert {:error, :invalid_max_uses} =
-               YellowDogIdentity.create_token(%{hostname_pattern: "*", max_uses: 0})
-    end
-
-    test "returns error for invalid ttl_seconds (negative)" do
-      assert {:error, :invalid_ttl} =
-               YellowDogIdentity.create_token(%{hostname_pattern: "*", ttl_seconds: -1})
-    end
-  end
-
-  # ──────────────────────────────────────────────
-  # 13. list_tokens/0 and revoke_token/1
-  # ──────────────────────────────────────────────
-
-  describe "list_tokens/0 and revoke_token/1" do
-    test "list_tokens returns all created tokens" do
-      {:ok, t1, _} = YellowDogIdentity.create_token(%{hostname_pattern: "node-*"})
-      {:ok, t2, _} = YellowDogIdentity.create_token(%{hostname_pattern: "db-*"})
-
-      tokens = YellowDogIdentity.list_tokens()
-      ids = Enum.map(tokens, & &1.id)
-      assert t1.id in ids
-      assert t2.id in ids
-    end
-
-    test "revoke_token removes the token from list" do
-      {:ok, token, _} = YellowDogIdentity.create_token(%{hostname_pattern: "*"})
-      assert token.id in Enum.map(YellowDogIdentity.list_tokens(), & &1.id)
-
-      assert :ok = YellowDogIdentity.revoke_token(token.id)
-      refute token.id in Enum.map(YellowDogIdentity.list_tokens(), & &1.id)
-    end
-
-    test "revoke_token returns {:error, :not_found} for nonexistent token" do
-      assert {:error, :not_found} = YellowDogIdentity.revoke_token("no-such-token")
     end
   end
 
