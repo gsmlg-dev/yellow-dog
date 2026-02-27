@@ -311,6 +311,19 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def failed(_event_type, _event, data), do: {:keep_state, data}
 
+  ## Graceful shutdown
+
+  @impl true
+  def terminate(_reason, state, data) when state in [:activated, :configuring, :ip_check] do
+    Logger.info("FSM terminating in #{state} for #{data.interface}, cleaning up")
+    release_dhcp(data)
+    AddressManager.flush(data.interface)
+    RouteManager.flush(data.interface)
+    :ok
+  end
+
+  def terminate(_reason, _state, _data), do: :ok
+
   ## Internal helpers
 
   defp transition(data, from, to, actions \\ []) do

@@ -737,4 +737,47 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
     GenServer.stop(pid, :normal)
   end
+
+  describe "terminate/3 graceful shutdown" do
+    test "cleans up when terminated in activated state", %{profile: profile} do
+      interface = profile.interface
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+      MockNetlink.address_added(interface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      # Trap exits so GenServer.stop doesn't kill the test process
+      Process.flag(:trap_exit, true)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(500)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Stop the process — terminate/3 should flush addresses and routes
+      GenServer.stop(pid, :shutdown)
+      assert_receive {:EXIT, ^pid, :shutdown}, 1000
+      refute Process.alive?(pid)
+    end
+
+    test "terminate in disconnected state does not crash", %{profile: profile} do
+      interface = profile.interface
+      MockNetlink.link_up(interface, carrier: false)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+  end
 end
