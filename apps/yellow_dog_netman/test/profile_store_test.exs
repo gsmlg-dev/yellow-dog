@@ -142,4 +142,50 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       assert profile == nil
     end
   end
+
+  describe "EventBus events" do
+    test "put publishes :updated event" do
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+      profile = %Profile{id: "event-put-test", type: :ethernet}
+      ProfileStore.put("event-put-test", profile)
+
+      assert_receive {:netman_event, "netman:profile:changed", {:updated, "event-put-test"}}, 500
+
+      ProfileStore.delete("event-put-test")
+    end
+
+    test "import_file publishes :added event" do
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      toml = """
+      [connection]
+      id = "event-import-test"
+      type = "ethernet"
+      interface = "eth0"
+
+      [ipv4]
+      method = "auto"
+
+      [ipv6]
+      method = "auto"
+      """
+
+      tmp_path = System.tmp_dir!() |> Path.join("event-import-test.toml")
+      File.write!(tmp_path, toml)
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      ProfileStore.import_file(tmp_path)
+
+      assert_receive {:netman_event, "netman:profile:changed", {:added, "event-import-test"}}, 500
+
+      ProfileStore.delete("event-import-test")
+    end
+
+    test "file_event :stop is handled gracefully" do
+      send(ProfileStore, {:file_event, self(), :stop})
+      Process.sleep(50)
+      # No crash - the watcher_pid is set to nil
+      assert Process.alive?(Process.whereis(ProfileStore))
+    end
+  end
 end
