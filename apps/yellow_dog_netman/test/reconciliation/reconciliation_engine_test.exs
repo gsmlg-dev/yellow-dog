@@ -394,6 +394,79 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
   end
 
+  describe "default_route_change telemetry" do
+    test "emits default_route_change on periodic reconcile with new active connection" do
+      iface = "recon_drc_#{:rand.uniform(65535)}"
+      profile_id = "recon-drc-#{iface}"
+      test_pid = self()
+      handler_id = {__MODULE__, :drc, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :policy, :default_route_change],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:drc_event, metadata})
+        end,
+        nil
+      )
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 9999,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      # Directly start and activate the FSM so it reaches :activated
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(200)
+
+      # Send periodic_reconcile directly to the GenServer
+      # This triggers do_reconcile → check_default_route_change
+      pid = Process.whereis(ReconciliationEngine)
+      send(pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      # The high-priority connection should cause a default route change
+      # (since last_default_route was likely :none or a lower-priority conn)
+      # We may or may not receive the event depending on prior state,
+      # but the code path is exercised either way.
+      # Send another periodic_reconcile after stopping to trigger reverse change
+      Connection.Supervisor.stop_connection(iface)
+      Process.sleep(100)
+
+      send(pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      # At least one default_route_change event should have been emitted
+      # (either when the connection appeared or when it disappeared)
+      received =
+        receive do
+          {:drc_event, %{reason: :reconciliation}} -> true
+        after
+          0 -> false
+        end
+
+      # Clean up state regardless of result
+      :telemetry.detach(handler_id)
+      ProfileStore.delete(profile_id)
+
+      # The telemetry event fires when the default route changes.
+      # With a very high priority connection (9999), adding/removing it
+      # will definitely change the default route at least once.
+      assert received,
+             "Expected at least one default_route_change event during connection lifecycle"
+    end
+  end
+
   describe "periodic reconciliation" do
     test "periodic_reconcile fires and reschedules" do
       test_pid = self()

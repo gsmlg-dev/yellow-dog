@@ -12,7 +12,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   require Logger
 
-  alias YellowDog.Netman.{EventBus, ProfileStore}
+  alias YellowDog.Netman.{EventBus, PolicyEngine, ProfileStore}
   alias YellowDog.Netman.Connection
   alias YellowDog.Netman.Kernel.{LinkMonitor, AddressManager, RouteManager}
   alias YellowDog.Netman.Types.{Diff, DesiredState, ObservedState}
@@ -20,7 +20,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   @default_interval 30_000
   @debounce_ms 100
 
-  defstruct [:timer_ref, :debounce_ref, reconciling: false]
+  defstruct [:timer_ref, :debounce_ref, :last_default_route, reconciling: false]
 
   ## Client API
 
@@ -109,12 +109,11 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   @impl true
   def handle_info(:initial_reconcile, state) do
-    do_reconcile()
-    {:noreply, state}
+    {:noreply, do_reconcile(state)}
   end
 
   def handle_info(:periodic_reconcile, state) do
-    do_reconcile()
+    state = do_reconcile(state)
 
     interval =
       Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
@@ -124,7 +123,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   def handle_info(:debounced_reconcile, state) do
-    do_reconcile()
+    state = do_reconcile(state)
     {:noreply, %{state | debounce_ref: nil}}
   end
 
@@ -139,7 +138,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   ## Reconciliation Logic
 
-  defp do_reconcile do
+  defp do_reconcile(state) do
     start_time = System.monotonic_time(:millisecond)
 
     :telemetry.execute(
@@ -172,6 +171,37 @@ defmodule YellowDog.Netman.ReconciliationEngine do
       Logger.info(
         "Reconciliation complete: #{length(diffs)} diffs, #{applied} applied in #{duration}ms"
       )
+    end
+
+    check_default_route_change(state)
+  end
+
+  defp check_default_route_change(state) do
+    connections = Connection.Supervisor.list_connections()
+    new_default = PolicyEngine.default_route(connections)
+
+    if new_default != state.last_default_route do
+      old_id =
+        case state.last_default_route do
+          {:ok, id} -> id
+          _ -> nil
+        end
+
+      new_id =
+        case new_default do
+          {:ok, id} -> id
+          _ -> nil
+        end
+
+      :telemetry.execute(
+        [:yellow_dog, :netman, :policy, :default_route_change],
+        %{count: 1},
+        %{old: old_id, new: new_id, reason: :reconciliation}
+      )
+
+      %{state | last_default_route: new_default}
+    else
+      state
     end
   end
 

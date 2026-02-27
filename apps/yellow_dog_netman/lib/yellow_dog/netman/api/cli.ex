@@ -128,7 +128,8 @@ defmodule YellowDog.Netman.API.CLI do
     [:yellow_dog, :netman, :reconciliation, :stop],
     [:yellow_dog, :netman, :kernel, :link_change],
     [:yellow_dog, :netman, :kernel, :address_change],
-    [:yellow_dog, :netman, :kernel, :route_change]
+    [:yellow_dog, :netman, :kernel, :route_change],
+    [:yellow_dog, :netman, :policy, :default_route_change]
   ]
 
   defp handle_monitor(socket) do

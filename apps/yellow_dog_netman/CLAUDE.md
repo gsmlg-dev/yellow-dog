@@ -53,6 +53,6 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 70 tests
+cd apps/yellow_dog_netman && mix test     # 255 tests, 92%+ coverage
 cd apps/yellow_dog_netman && mix credo --strict
 ```
