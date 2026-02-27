@@ -286,4 +286,108 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
     GenServer.stop(pid, :normal)
   end
+
+  test "manual IP with nil address transitions to failed with :no_address_configured" do
+    interface = "fsm_naddr_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "naddr-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :manual, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    FSM.activate(pid)
+    Process.sleep(200)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :failed
+    assert state.error == :no_address_configured
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "failed state transitions to disconnected when carrier returns" do
+    interface = "fsm_fail_carrier_#{:rand.uniform(100_000)}"
+
+    # autoconnect: false so after carrier recovery FSM stays in disconnected
+    profile = %Profile{
+      id: "fail-carrier-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    # Manually activate → enters configuring (DHCP mode)
+    FSM.activate(pid)
+    Process.sleep(100)
+
+    # Inject DHCP failure while in configuring → goes to failed
+    send(pid, {:dhcp_lease_failed, :test_reason})
+    Process.sleep(100)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :failed
+
+    # Carrier event should transition failed → disconnected
+    MockNetlink.carrier_change(interface, true)
+    Process.sleep(100)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    GenServer.stop(pid, :normal)
+  end
+
+  test "disconnected transitions to unavailable on link removal" do
+    interface = "fsm_del_#{:rand.uniform(100_000)}"
+
+    profile = %Profile{
+      id: "del-test-#{:rand.uniform(100_000)}",
+      type: :ethernet,
+      interface: interface,
+      autoconnect: false,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    MockNetlink.link_up(interface, carrier: false)
+    Process.sleep(50)
+
+    {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+    Process.sleep(50)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    MockNetlink.link_removed(interface)
+    Process.sleep(100)
+
+    {:ok, state} = FSM.get_state(pid)
+    assert state.state == :unavailable
+
+    GenServer.stop(pid, :normal)
+  end
 end
