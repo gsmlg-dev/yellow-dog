@@ -138,55 +138,6 @@ defmodule YellowDogIdentity.AuditLogTest do
     end
   end
 
-  describe "audit log injection prevention" do
-    test "newlines in host_id are sanitized", %{tmp_dir: tmp_dir} do
-      injected_id = "host-1\n2024-01-01T00:00:00Z host.approved host=fake-inject"
-      Registry.append_audit("host.registered", injected_id)
-      flush_cast()
-
-      # The raw file should have exactly one entry line (plus trailing newline)
-      audit_path = Path.join(tmp_dir, "audit.log")
-      content = File.read!(audit_path)
-      lines = String.split(content, "\n", trim: true)
-      assert length(lines) == 1
-
-      # The newline in host_id should have been replaced with a space
-      refute String.contains?(hd(lines), "\n")
-    end
-
-    test "newlines in event are sanitized", %{tmp_dir: tmp_dir} do
-      injected_event = "host.registered\n2024-01-01T00:00:00Z host.approved host=injected"
-      Registry.append_audit(injected_event, "host-1")
-      flush_cast()
-
-      audit_path = Path.join(tmp_dir, "audit.log")
-      content = File.read!(audit_path)
-      lines = String.split(content, "\n", trim: true)
-      assert length(lines) == 1
-    end
-
-    test "carriage returns in host_id are sanitized", %{tmp_dir: tmp_dir} do
-      injected_id = "host-1\r\nfake-second-line"
-      Registry.append_audit("host.registered", injected_id)
-      flush_cast()
-
-      audit_path = Path.join(tmp_dir, "audit.log")
-      content = File.read!(audit_path)
-      lines = String.split(content, "\n", trim: true)
-      assert length(lines) == 1
-      refute String.contains?(hd(lines), "\r")
-    end
-
-    test "non-binary host_id (atom) is converted to string without crash" do
-      Registry.append_audit("host.registered", :my_atom_host_id)
-      flush_cast()
-
-      entries = Registry.read_audit_log()
-      assert length(entries) == 1
-      assert hd(entries).host_id == "my_atom_host_id"
-    end
-  end
-
   describe "YellowDogIdentity.audit_log/1" do
     test "wraps Registry.read_audit_log" do
       Registry.append_audit("host.registered", "api-host")

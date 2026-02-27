@@ -1,9 +1,7 @@
 defmodule YellowDog.Console.IdentityLive.HostsLive do
-  @moduledoc "Lists enrolled hosts with search, filtering, and bulk actions."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
-  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -21,9 +19,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
 
   @impl true
   def handle_info({:host_registered, _}, socket), do: {:noreply, load_hosts(socket)}
-  @impl true
   def handle_info({:host_updated, _}, socket), do: {:noreply, load_hosts(socket)}
-  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -31,14 +27,10 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
     {:noreply, socket |> assign(:filter, status) |> load_hosts()}
   end
 
-  @impl true
   def handle_event("search", %{"q" => query}, socket) do
-    # Sanitize: trim and limit length to prevent DoS
-    sanitized = query |> String.trim() |> String.slice(0, 256)
-    {:noreply, socket |> assign(:search, sanitized) |> load_hosts()}
+    {:noreply, socket |> assign(:search, query) |> load_hosts()}
   end
 
-  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_hosts(socket)}
   end
@@ -79,7 +71,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Host Registry</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh">
             ↻
           </button>
         </div>
@@ -128,9 +120,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
                     {host.status}
                   </span>
                 </td>
-                <td>
-                  <span class={trust_level_badge_class_sm(host.trust_level)}>{host.trust_level}</span>
-                </td>
+                <td><span class="badge badge-outline badge-sm">{host.trust_level}</span></td>
                 <td>{host.trust_provider}</td>
                 <td class="font-mono text-xs max-w-[200px] truncate">{host.age_recipient}</td>
                 <td class="text-sm">{format_time(host.created_at)}</td>
@@ -153,16 +143,12 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
     """
   end
 
-  defp trust_level_badge_class_sm(:cloud_verified), do: "badge badge-success badge-sm"
-  defp trust_level_badge_class_sm(:token_verified), do: "badge badge-warning badge-sm"
-  defp trust_level_badge_class_sm(:network_verified), do: "badge badge-info badge-sm"
-  defp trust_level_badge_class_sm(:network_partial), do: "badge badge-info badge-outline badge-sm"
-  defp trust_level_badge_class_sm(:unverified), do: "badge badge-error badge-sm"
-  defp trust_level_badge_class_sm(_), do: "badge badge-outline badge-sm"
+  defp status_badge_class(:pending), do: "badge badge-warning"
+  defp status_badge_class(:approved), do: "badge badge-success"
+  defp status_badge_class(:revoked), do: "badge badge-error"
+  defp status_badge_class(_), do: "badge"
 
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
-    :ok
-  end
+  defp format_time(nil), do: "-"
+  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
+  defp format_time(_), do: "-"
 end

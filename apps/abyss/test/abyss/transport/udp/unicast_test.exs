@@ -16,68 +16,53 @@ defmodule Abyss.Transport.UDP.UnicastTest do
     end
 
     test "exports listen/2" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :listen, 2)
     end
 
     test "exports open/2" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :open, 2)
     end
 
     test "exports controlling_process/2" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :controlling_process, 2)
     end
 
     test "exports recv/3" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :recv, 3)
     end
 
     test "exports send/2, send/3, send/4, send/5" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :send, 2)
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :send, 3)
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :send, 4)
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :send, 5)
     end
 
     test "exports getopts/2" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :getopts, 2)
     end
 
     test "exports setopts/2" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :setopts, 2)
     end
 
     test "exports close/1" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :close, 1)
     end
 
     test "exports sockname/1" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :sockname, 1)
     end
 
     test "exports peername/1" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :peername, 1)
     end
 
     test "exports getstat/1" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :getstat, 1)
     end
 
     test "exports send_recv/3 utility function" do
-      Code.ensure_loaded!(Unicast)
       assert function_exported?(Unicast, :send_recv, 3)
     end
   end
@@ -400,8 +385,6 @@ defmodule Abyss.Transport.UDP.UnicastTest do
 
     test "uses default timeout of 5000ms" do
       # Verify function accepts 2 arguments (default timeout)
-      Code.ensure_loaded!(Unicast)
-
       assert function_exported?(Unicast, :send_recv, 2) or
                function_exported?(Unicast, :send_recv, 3)
     end

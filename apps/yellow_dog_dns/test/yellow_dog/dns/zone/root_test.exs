@@ -339,13 +339,9 @@ defmodule YellowDog.Dns.Zone.RootTest do
       {:module, _} = Code.ensure_loaded(Root)
 
       # Verify the module exports all required Behaviour functions
-      Code.ensure_loaded!(Root)
       assert function_exported?(Root, :get_name, 1)
-      Code.ensure_loaded!(Root)
       assert function_exported?(Root, :resolve, 2)
-      Code.ensure_loaded!(Root)
       assert function_exported?(Root, :reload, 2)
-      Code.ensure_loaded!(Root)
       assert function_exported?(Root, :stats, 1)
     end
   end

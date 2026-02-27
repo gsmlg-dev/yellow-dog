@@ -193,8 +193,7 @@ defmodule YellowDog.Console.Plugs.AuthRateLimiter do
   end
 
   @impl GenServer
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

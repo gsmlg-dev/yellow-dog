@@ -63,9 +63,12 @@ defmodule YellowDog.Console.MdnsLive.MonitorLive do
 
   @impl true
   def handle_event("clear_cache", _params, socket) do
-    case safe_call(YellowDog.Mdns, fn -> YellowDog.Mdns.clear_cache() end, {:error, :unavailable}) do
-      :ok -> {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
-      _ -> {:noreply, put_flash(socket, :error, "mDNS service is not running")}
+    try do
+      YellowDog.Mdns.clear_cache()
+      {:noreply, put_flash(socket, :info, "Cache cleared successfully")}
+    catch
+      _, _ ->
+        {:noreply, put_flash(socket, :error, "mDNS service is not running")}
     end
   end
 

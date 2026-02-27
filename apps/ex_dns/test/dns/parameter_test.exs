@@ -33,7 +33,6 @@ defmodule DNS.ParameterTest do
     test "defines to_iodata/1 callback" do
       Code.ensure_loaded!(DNS.Parameter)
       # Protocol has the function
-      Code.ensure_loaded!(DNS.Parameter)
       assert function_exported?(DNS.Parameter, :to_iodata, 1)
     end
   end

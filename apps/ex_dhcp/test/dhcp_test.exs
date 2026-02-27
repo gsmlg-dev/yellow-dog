@@ -7,7 +7,6 @@ defmodule DHCPTest do
     end
 
     test "exports to_iodata/1" do
-      Code.ensure_loaded!(DHCP)
       assert function_exported?(DHCP, :to_iodata, 1)
     end
   end

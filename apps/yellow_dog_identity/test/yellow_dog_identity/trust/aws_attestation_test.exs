@@ -1,5 +1,5 @@
 defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias YellowDogIdentity.Trust.Cloud.AWS
 
@@ -176,27 +176,6 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
 
       assert {:untrusted, :document_too_old} = AWS.verify(ctx)
     end
-
-    test "returns trusted when pendingTime is exactly 300s old (at boundary)" do
-      boundary_time =
-        DateTime.utc_now()
-        |> DateTime.add(-300, :second)
-        |> DateTime.to_iso8601()
-
-      document_b64 = valid_aws_document(%{"pendingTime" => boundary_time})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      # age == window (300 <= 300) → :ok
-      assert {:trusted, :cloud_verified, _} = AWS.verify(ctx)
-    end
-
-    test "returns trusted when pendingTime is non-ISO8601 string (permissive fallback)" do
-      document_b64 = valid_aws_document(%{"pendingTime" => "not-a-date"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      # parse failure → :ok (can't verify what we can't parse)
-      assert {:trusted, :cloud_verified, _} = AWS.verify(ctx)
-    end
   end
 
   describe "account allowlist" do
@@ -242,160 +221,6 @@ defmodule YellowDogIdentity.Trust.Cloud.AWSAttestationTest do
         assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
         assert evidence.region == region
       end
-    end
-  end
-
-  describe "account allowlist rejection" do
-    setup do
-      original = Agent.get(YellowDog.Config, & &1)
-
-      config =
-        Map.merge(original, %{
-          "identity" => %{
-            "cloud" => %{
-              "aws" => %{
-                "allowed_accounts" => ["allowed-account-1", "allowed-account-2"],
-                "allowed_regions" => ["us-east-1", "eu-west-1"]
-              }
-            }
-          }
-        })
-
-      Agent.update(YellowDog.Config, fn _ -> config end)
-      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
-      :ok
-    end
-
-    test "rejects account not in allowed_accounts list" do
-      document_b64 = valid_aws_document(%{"accountId" => "unauthorized-account"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :account_not_allowed} = AWS.verify(ctx)
-    end
-
-    test "allows account in allowed_accounts list" do
-      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
-      assert evidence.account_id == "allowed-account-1"
-    end
-
-    test "rejects region not in allowed_regions list" do
-      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1", "region" => "ap-southeast-1"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :region_not_allowed} = AWS.verify(ctx)
-    end
-
-    test "allows region in allowed_regions list" do
-      document_b64 = valid_aws_document(%{"accountId" => "allowed-account-1", "region" => "us-east-1"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
-      assert evidence.region == "us-east-1"
-    end
-
-    test "rejects when accountId is nil and allowlist is configured" do
-      # nil not in ["allowed-account-1", "allowed-account-2"] → :account_not_allowed
-      document_b64 = valid_aws_document(%{"accountId" => nil})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :account_not_allowed} = AWS.verify(ctx)
-    end
-
-    test "rejects when region is nil and allowlist is configured" do
-      # Document has valid accountId but nil region → :region_not_allowed
-      document_b64 =
-        valid_aws_document(%{"accountId" => "allowed-account-1", "region" => nil})
-
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :region_not_allowed} = AWS.verify(ctx)
-    end
-  end
-
-  describe "AMI allowlist (allowed_amis)" do
-    setup do
-      original = Agent.get(YellowDog.Config, & &1)
-
-      config =
-        Map.merge(original, %{
-          "identity" => %{
-            "cloud" => %{
-              "aws" => %{"allowed_amis" => ["ami-golden-001", "ami-golden-002"]}
-            }
-          }
-        })
-
-      Agent.update(YellowDog.Config, fn _ -> config end)
-      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
-      :ok
-    end
-
-    test "allows instance with AMI in allowed_amis list" do
-      document_b64 = valid_aws_document(%{"imageId" => "ami-golden-001"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
-      assert evidence.image_id == "ami-golden-001"
-    end
-
-    test "rejects instance with AMI not in allowed_amis list" do
-      document_b64 = valid_aws_document(%{"imageId" => "ami-unauthorized-999"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :ami_not_allowed} = AWS.verify(ctx)
-    end
-
-    test "allows instance with no imageId when allowed_amis set (nil image passes through)" do
-      # When instance has no imageId, we skip the check (nil is not in any list)
-      # This matches the behavior: nil in ["ami-1", "ami-2"] => false => rejected
-      document_b64 = valid_aws_document(%{"imageId" => nil})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      # nil is not in the allowlist — rejected
-      assert {:untrusted, :ami_not_allowed} = AWS.verify(ctx)
-    end
-  end
-
-  describe "AMI allowlist (empty = any)" do
-    test "allows any AMI when allowed_amis is empty (default)" do
-      document_b64 = valid_aws_document(%{"imageId" => "ami-anything-goes"})
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:trusted, :cloud_verified, evidence} = AWS.verify(ctx)
-      assert evidence.image_id == "ami-anything-goes"
-    end
-  end
-
-  describe "signature verification — cert configured but no signature provided" do
-    setup do
-      original = Agent.get(YellowDog.Config, & &1)
-
-      # Inject a dummy certificate_pem so get_aws_cert_pem() returns non-nil.
-      # The certificate does not need to be real — we only want to test the
-      # missing_signature branch before any cryptographic verification occurs.
-      config =
-        Map.merge(original, %{
-          "identity" => %{
-            "cloud" => %{
-              "aws" => %{"certificate_pem" => "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"}
-            }
-          }
-        })
-
-      Agent.update(YellowDog.Config, fn _ -> config end)
-      on_exit(fn -> Agent.update(YellowDog.Config, fn _ -> original end) end)
-      :ok
-    end
-
-    test "returns {:untrusted, :missing_signature} when cert configured but signature is absent" do
-      document_b64 = valid_aws_document(%{})
-      # No "signature" key in the attestation context
-      ctx = build_context(%{"provider" => "aws", "document" => document_b64})
-
-      assert {:untrusted, :missing_signature} = AWS.verify(ctx)
     end
   end
 

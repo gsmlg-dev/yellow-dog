@@ -30,7 +30,7 @@ defmodule YellowDogIdentity.Webhook do
   end
 
   defp build_payload(event, host) do
-    payload = %{
+    %{
       "event" => event,
       "host_id" => host.id,
       "hostname" => host.hostname,
@@ -40,22 +40,16 @@ defmodule YellowDogIdentity.Webhook do
       "trust_provider" => to_string(host.trust_provider),
       "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
     }
-
-    # Include recipients_url for GitOps integration on approval/revocation events
-    case get_registration_url() do
-      nil -> payload
-      base_url -> Map.put(payload, "recipients_url", String.replace(base_url, "/register", "/recipients"))
-    end
   end
 
   defp send_async(url, payload) do
     Task.start(fn ->
-      case Jason.encode(payload) do
-        {:ok, body} ->
-          deliver_with_retry(url, body, 0)
-
-        {:error, reason} ->
-          Logger.warning("Webhook encoding failed: #{inspect(reason)}")
+      try do
+        body = Jason.encode!(payload)
+        deliver_with_retry(url, body, 0)
+      rescue
+        e ->
+          Logger.warning("Webhook error: #{Exception.message(e)}")
       end
     end)
 
@@ -91,15 +85,7 @@ defmodule YellowDogIdentity.Webhook do
     ]
 
     request = {String.to_charlist(url), headers, ~c"application/json", body}
-
-    ssl_opts =
-      if String.starts_with?(url, "https") do
-        [{:ssl, [{:verify, :verify_peer}, {:cacerts, :public_key.cacerts_get()}, {:depth, 3}]}]
-      else
-        []
-      end
-
-    http_opts = [{:timeout, 10_000}, {:connect_timeout, 5_000}] ++ ssl_opts
+    http_opts = [{:timeout, 10_000}, {:connect_timeout, 5_000}]
 
     case :httpc.request(:post, request, http_opts, []) do
       {:ok, {{_, status, _}, _, _}} when status in 200..299 ->
@@ -114,19 +100,11 @@ defmodule YellowDogIdentity.Webhook do
   end
 
   defp get_webhook_url do
-    get_config_value(["identity", "webhook", "url"])
-  end
-
-  defp get_registration_url do
-    get_config_value(["identity", "registration_url"])
-  end
-
-  defp get_config_value(path) do
     case Code.ensure_loaded(YellowDog.Config) do
       {:module, _} ->
         try do
           config = YellowDog.Config.get_all()
-          get_in(config, path)
+          get_in(config, ["identity", "webhook", "url"])
         rescue
           _ -> nil
         catch

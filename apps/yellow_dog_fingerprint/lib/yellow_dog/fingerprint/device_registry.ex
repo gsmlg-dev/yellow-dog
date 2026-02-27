@@ -55,7 +55,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
       identified_devices: identified,
       unknown_devices: total - identified,
       avg_confidence:
-        if(total > 0,
+        if(identified > 0,
           do: round(Enum.sum(Enum.map(devices, & &1.profile_confidence)) / total),
           else: 0
         )
@@ -138,11 +138,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
-    {:noreply, state}
-  end
+  def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
   def terminate(_reason, state) do
@@ -288,11 +284,7 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
 
   defp save_devices(store, data_dir) do
     path = Path.join(data_dir, "devices.toml")
-
-    case File.mkdir_p(data_dir) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("[Fingerprint] Failed to create data dir: #{inspect(reason)}")
-    end
+    File.mkdir_p!(data_dir)
 
     {:ok, devices} = Store.list(store)
     devices = Enum.sort_by(devices, & &1.last_seen, {:desc, DateTime})
@@ -322,10 +314,10 @@ defmodule YellowDog.Fingerprint.DeviceRegistry do
       end)
       |> Enum.join("\n")
 
-    case File.write(path, content) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("[Fingerprint] Failed to save devices: #{inspect(reason)}")
-    end
+    File.write!(path, content)
+  rescue
+    error ->
+      Logger.warning("Failed to save devices: #{inspect(error)}")
   end
 
   defp read_toml(path) do

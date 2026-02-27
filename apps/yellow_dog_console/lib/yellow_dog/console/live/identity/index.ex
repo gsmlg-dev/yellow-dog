@@ -1,5 +1,4 @@
 defmodule YellowDog.Console.IdentityLive.Index do
-  @moduledoc "Identity overview dashboard showing host enrollment statistics and trust status."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
@@ -20,9 +19,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
 
   @impl true
   def handle_info({:host_registered, _host}, socket), do: {:noreply, load_data(socket)}
-  @impl true
   def handle_info({:host_updated, _host}, socket), do: {:noreply, load_data(socket)}
-  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
@@ -30,7 +27,6 @@ defmodule YellowDog.Console.IdentityLive.Index do
     {:noreply, load_data(socket)}
   end
 
-  @impl true
   def handle_event("preview_export", %{"format" => format}, socket) do
     export =
       ServiceHelper.safe_call(
@@ -47,7 +43,6 @@ defmodule YellowDog.Console.IdentityLive.Index do
     {:noreply, socket |> assign(:export_preview, export) |> assign(:export_format, format)}
   end
 
-  @impl true
   def handle_event("close_export", _params, socket) do
     {:noreply, assign(socket, :export_preview, nil)}
   end
@@ -96,7 +91,7 @@ defmodule YellowDog.Console.IdentityLive.Index do
             ]}>
               {if @service_running, do: "Running", else: "Stopped"}
             </span>
-            <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
+            <button class="btn btn-sm btn-ghost" phx-click="refresh">
               ↻
             </button>
           </div>
@@ -190,7 +185,6 @@ defmodule YellowDog.Console.IdentityLive.Index do
                     class="btn btn-sm btn-outline flex-1"
                     phx-click="preview_export"
                     phx-value-format="yaml"
-                    phx-disable-with="Exporting..."
                   >
                     Export YAML
                   </button>
@@ -198,7 +192,6 @@ defmodule YellowDog.Console.IdentityLive.Index do
                     class="btn btn-sm btn-outline flex-1"
                     phx-click="preview_export"
                     phx-value-format="sops"
-                    phx-disable-with="Exporting..."
                   >
                     Export sops
                   </button>
@@ -222,11 +215,5 @@ defmodule YellowDog.Console.IdentityLive.Index do
       </div>
     </Layouts.app>
     """
-  end
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "identity:hosts")
-    :ok
   end
 end

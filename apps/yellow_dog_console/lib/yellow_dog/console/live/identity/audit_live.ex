@@ -1,9 +1,7 @@
 defmodule YellowDog.Console.IdentityLive.AuditLive do
-  @moduledoc "Identity audit log with search and filtering for enrollment events."
   use YellowDog.Console, :live_view
 
   alias YellowDog.Console.ServiceHelper
-  import YellowDog.Console.IdentityComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -12,7 +10,6 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
      |> assign(:page_title, "Identity Audit Log")
      |> assign(:filter_event, nil)
      |> assign(:filter_host, "")
-     |> assign(:loading, true)
      |> load_entries()}
   end
 
@@ -28,7 +25,6 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
      |> load_entries()}
   end
 
-  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_entries(socket)}
   end
@@ -44,20 +40,9 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
 
     opts =
       case socket.assigns[:filter_host] do
-        "" ->
-          opts
-
-        nil ->
-          opts
-
-        host_id ->
-          # Validate host_id is UUID format before passing to backend
-          if valid_uuid?(host_id) do
-            Keyword.put(opts, :host_id, host_id)
-          else
-            # Invalid UUID format — skip filter, don't pass invalid input
-            opts
-          end
+        "" -> opts
+        nil -> opts
+        host_id -> Keyword.put(opts, :host_id, host_id)
       end
 
     entries =
@@ -67,15 +52,8 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
         []
       )
 
-    socket |> assign(:entries, entries) |> assign(:loading, false)
+    assign(socket, :entries, entries)
   end
-
-  defp valid_uuid?(str) when is_binary(str) do
-    # UUID v4 format: 8-4-4-4-12 hex digits
-    String.match?(str, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-  end
-
-  defp valid_uuid?(_), do: false
 
   @impl true
   def render(assigns) do
@@ -84,7 +62,7 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-2xl font-bold">Audit Log</h1>
-          <button class="btn btn-sm btn-ghost" phx-click="refresh" aria-label="Refresh">
+          <button class="btn btn-sm btn-ghost" phx-click="refresh">
             ↻
           </button>
         </div>
@@ -160,4 +138,11 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
     </Layouts.app>
     """
   end
+
+  defp event_badge_class("host.registered"), do: "badge badge-info badge-sm"
+  defp event_badge_class("host.approved"), do: "badge badge-success badge-sm"
+  defp event_badge_class("host.revoked"), do: "badge badge-error badge-sm"
+  defp event_badge_class("host.key_rotated"), do: "badge badge-warning badge-sm"
+  defp event_badge_class("host.deleted"), do: "badge badge-error badge-outline badge-sm"
+  defp event_badge_class(_), do: "badge badge-sm"
 end

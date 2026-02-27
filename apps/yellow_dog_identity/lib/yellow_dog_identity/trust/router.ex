@@ -2,22 +2,8 @@ defmodule YellowDogIdentity.Trust.Router do
   @moduledoc """
   Routes registration contexts through the trust provider chain.
 
-  Providers are tried in priority order (strongest → weakest):
-
-  1. Cloud Attestation (AWS/GCP/Azure)
-  2. Netboot (PXE boot registry)
-  3. DHCP Correlation (fingerprint + lease match)
-  4. Token (provisioning token)
-
-  Each provider returns one of:
-
-  - `{:trusted, level, evidence}` — halts chain, host is trusted at `level`
-  - `{:untrusted, reason}` — halts chain, explicit rejection (no fallthrough
-    to weaker providers; per PRD §5.1 a provider that actively rejects
-    prevents weaker providers from overriding that decision)
-  - `{:skip, :not_applicable}` — continues to next provider
-
-  If all providers skip, the result is `{:unverified, :none, %{}}`.
+  Providers are tried in priority order. First `{:trusted, ...}` wins.
+  If all providers return `{:skip, ...}`, the result is `{:unverified, :none, %{}}`.
   """
 
   alias YellowDogIdentity.Trust.Provider
@@ -45,11 +31,11 @@ defmodule YellowDogIdentity.Trust.Router do
       Enum.reduce_while(providers, {:unverified, :none, %{}}, fn provider, acc ->
         case provider.verify(context) do
           {:trusted, trust_level, evidence} ->
-            provider_name = provider_atom(provider, evidence)
+            provider_name = provider_atom(provider)
             {:halt, {trust_level, provider_name, evidence}}
 
           {:untrusted, reason} ->
-            provider_name = provider_atom(provider, %{})
+            provider_name = provider_atom(provider)
             YellowDogIdentity.Telemetry.trust_untrusted(provider_name, reason, context.hostname)
 
             # Halt on untrusted — a provider that explicitly rejects should
@@ -75,19 +61,7 @@ defmodule YellowDogIdentity.Trust.Router do
     result
   end
 
-  # Cloud.Attestation dispatches to AWS/GCP/Azure — extract the specific provider
-  # from evidence so trust_provider reflects the actual cloud (`:aws`, `:gcp`, `:azure`).
-  defp provider_atom(YellowDogIdentity.Trust.Cloud.Attestation, evidence) do
-    case Map.get(evidence, :provider) || Map.get(evidence, "provider") do
-      :aws -> :aws
-      :gcp -> :gcp
-      :azure -> :azure
-      _ -> :cloud
-    end
-  end
-
-  defp provider_atom(module, _evidence), do: provider_atom(module)
-
+  defp provider_atom(YellowDogIdentity.Trust.Cloud.Attestation), do: :cloud
   defp provider_atom(YellowDogIdentity.Trust.Cloud.AWS), do: :aws
   defp provider_atom(YellowDogIdentity.Trust.Cloud.GCP), do: :gcp
   defp provider_atom(YellowDogIdentity.Trust.Cloud.Azure), do: :azure

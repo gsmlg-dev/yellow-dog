@@ -82,10 +82,7 @@ defmodule YellowDog.ConfigHelpers do
   end
 
   def parse_datetime(unix) when is_integer(unix) do
-    case DateTime.from_unix(unix) do
-      {:ok, dt} -> {:ok, dt}
-      {:error, _} -> {:error, "Unix timestamp out of range"}
-    end
+    {:ok, DateTime.from_unix!(unix)}
   end
 
   def parse_datetime(_), do: {:error, "Invalid datetime"}

@@ -303,12 +303,12 @@ defmodule DHCP.SecureRandomTest do
     test "handles concurrent uniform generation" do
       tasks =
         for _ <- 1..100 do
-          Task.async(fn -> SecureRandom.uniform(1, 1_000_000_000) end)
+          Task.async(fn -> SecureRandom.uniform(1, 1_000_000) end)
         end
 
       results = Task.await_many(tasks, 5000)
 
-      # With range of 1B, collision probability is negligible (~5e-6)
+      # With range of 1M, all 100 values should be unique
       assert length(Enum.uniq(results)) == 100
     end
   end

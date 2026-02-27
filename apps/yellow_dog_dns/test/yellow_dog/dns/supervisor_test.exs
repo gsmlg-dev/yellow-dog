@@ -18,16 +18,12 @@ defmodule YellowDog.Dns.SupervisorTest do
       # Ensure module is loaded before checking exports
       {:module, _} = Code.ensure_loaded(DnsSupervisor)
 
-      Code.ensure_loaded!(DnsSupervisor)
-
       assert function_exported?(DnsSupervisor, :start_link, 0) or
                function_exported?(DnsSupervisor, :start_link, 1)
     end
 
     test "exports stop/0 and stop/1" do
       {:module, _} = Code.ensure_loaded(DnsSupervisor)
-
-      Code.ensure_loaded!(DnsSupervisor)
 
       assert function_exported?(DnsSupervisor, :stop, 0) or
                function_exported?(DnsSupervisor, :stop, 1)
@@ -110,7 +106,6 @@ defmodule YellowDog.Dns.SupervisorTest do
       # Ensure module is loaded before checking exports
       {:module, _} = Code.ensure_loaded(DnsSupervisor)
       # Function should exist and accept an atom
-      Code.ensure_loaded!(DnsSupervisor)
       assert function_exported?(DnsSupervisor, :stop, 1)
     end
 
@@ -118,8 +113,6 @@ defmodule YellowDog.Dns.SupervisorTest do
       # Ensure module is loaded before checking exports
       {:module, _} = Code.ensure_loaded(DnsSupervisor)
       # stop/0 with default arg should exist
-      Code.ensure_loaded!(DnsSupervisor)
-
       assert function_exported?(DnsSupervisor, :stop, 0) or
                function_exported?(DnsSupervisor, :stop, 1)
     end

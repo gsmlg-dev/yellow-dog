@@ -26,8 +26,6 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   use ThousandIsland.Handler
 
-  require Logger
-
   alias YellowDog.Dns.{ConnectionManager, IpFormat}
   alias YellowDog.Telemetry
 
@@ -118,8 +116,7 @@ defmodule YellowDog.Dns.Handler.TCP do
     {:noreply, {socket, state}, socket.read_timeout}
   end
 
-  def handle_info(msg, {socket, state}) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, {socket, state}) do
     {:noreply, {socket, state}, socket.read_timeout}
   end
 

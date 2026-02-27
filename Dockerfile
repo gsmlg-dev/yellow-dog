@@ -1,5 +1,6 @@
 FROM docker.io/library/elixir:1.19-alpine AS builder
 
+# Install git for fetching hex from GitHub
 RUN apk add --no-cache git
 
 COPY . /app
@@ -8,7 +9,7 @@ WORKDIR /app
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.1
 
-RUN mix local.hex --force && \
+RUN mix archive.install github hexpm/hex branch latest --force && \
     mix local.rebar --force && \
     mix deps.get && \
     mix release yellow_dog --version "${RELEASE_VERSION}"
@@ -46,9 +47,7 @@ RUN apk add --update --no-cache libncursesw libstdc++ \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
-             /data/yellowdog/mdns \
-             /data/yellowdog/identity/hosts \
-             /data/yellowdog/identity/tokens
+             /data/yellowdog/mdns
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml

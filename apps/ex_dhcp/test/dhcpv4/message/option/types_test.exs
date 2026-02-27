@@ -24,9 +24,7 @@ defmodule DHCPv4.Message.Option.TypesTest do
     test "exports decode functions" do
       Code.ensure_loaded!(Types)
       assert Kernel.function_exported?(Types, :decode_subnet_mask, 1)
-      Code.ensure_loaded!(Types)
       assert Kernel.function_exported?(Types, :decode_router, 2)
-      Code.ensure_loaded!(Types)
       assert Kernel.function_exported?(Types, :decode_dhcp_message_type, 1)
     end
   end

@@ -9,8 +9,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   use GenServer
   use YellowDog.Data.Collection
 
-  require Logger
-
   alias YellowDog.Data.Store
   alias YellowDog.Mdns.ServiceStore
 
@@ -372,12 +370,6 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
-    {:noreply, state}
-  end
-
-  @impl true
   def handle_cast({:reload_from_file, services}, state) do
     # Clear old file-based services and register new ones
     clear_file_services()
@@ -489,23 +481,21 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   defp matches_query?(service, qname, qtype) do
     # Match service FQDN or type enumeration
-    # Use to_string/1 so both atoms (:PTR) and RRType structs compare correctly
-    qtype_str = to_string(qtype)
     service_fqdn = normalize_name(service.fqdn)
     service_type = normalize_name("#{service.type}.#{service.domain}")
     service_host = normalize_name(service.host)
 
     cond do
       # Direct service name query
-      qname == service_fqdn and qtype_str in ["ANY", "SRV", "TXT"] ->
+      qname == service_fqdn and qtype in [:ANY, :SRV, :TXT] ->
         true
 
       # Service type enumeration (PTR query)
-      qname == service_type and qtype_str == "PTR" ->
+      qname == service_type and qtype == :PTR ->
         true
 
       # Host address query
-      qname == service_host and qtype_str in ["A", "AAAA", "ANY"] ->
+      qname == service_host and qtype in [:A, :AAAA, :ANY] ->
         true
 
       true ->

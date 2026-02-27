@@ -29,17 +29,9 @@ defmodule YellowDog.Config.TomlHelpers do
   @spec get_integer(map(), [atom() | String.t()], integer()) :: integer()
   def get_integer(map, keys, default) do
     case get_value(map, keys, default) do
-      value when is_integer(value) ->
-        value
-
-      value when is_binary(value) ->
-        case Integer.parse(value) do
-          {int, ""} -> int
-          _ -> default
-        end
-
-      _ ->
-        default
+      value when is_integer(value) -> value
+      value when is_binary(value) -> String.to_integer(value)
+      _ -> default
     end
   end
 
@@ -142,10 +134,11 @@ defmodule YellowDog.Config.TomlHelpers do
   @spec atomic_write(Path.t(), String.t()) :: :ok | {:error, term()}
   def atomic_write(file_path, content) do
     dir = Path.dirname(file_path)
+    File.mkdir_p!(dir)
+
     tmp_path = file_path <> ".tmp"
 
-    with :ok <- File.mkdir_p(dir),
-         :ok <- File.write(tmp_path, content),
+    with :ok <- File.write(tmp_path, content),
          :ok <- File.rename(tmp_path, file_path) do
       :ok
     else
@@ -170,12 +163,8 @@ defmodule YellowDog.Config.TomlHelpers do
   @spec format_datetime(DateTime.t() | integer() | term()) :: String.t()
   def format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
 
-  def format_datetime(unix) when is_integer(unix) do
-    case DateTime.from_unix(unix) do
-      {:ok, dt} -> DateTime.to_iso8601(dt)
-      {:error, _} -> DateTime.to_iso8601(DateTime.utc_now())
-    end
-  end
+  def format_datetime(unix) when is_integer(unix),
+    do: DateTime.to_iso8601(DateTime.from_unix!(unix))
 
   def format_datetime(_), do: DateTime.to_iso8601(DateTime.utc_now())
 

@@ -9,8 +9,6 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
   use GenServer
 
-  require Logger
-
   @response_table :mdns_responses
   @query_table :mdns_queries
   @services_table :mdns_discovered_services
@@ -329,8 +327,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 
@@ -414,8 +411,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
         queries ->
           Enum.each(queries, fn {key, query} ->
-            if to_string(query.record_type) == to_string(record.type) or
-                 to_string(query.record_type) == "ANY" do
+            if query.record_type == record.type or query.record_type == :ANY do
               updated_query = %{query | answered: true}
               :ets.delete_object(@query_table, {key, query})
               :ets.insert(@query_table, {key, updated_query})
@@ -437,9 +433,9 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp extract_services_from_message(message, source_ip) do
     now = System.system_time(:second)
 
-    # Find PTR records — use to_string/1 for type comparison (works with both atoms and RRType)
+    # Find PTR records (service type enumeration)
     ptr_records =
-      Enum.filter(message.anlist, fn record -> to_string(record.type) == "PTR" end)
+      Enum.filter(message.anlist, fn record -> record.type == :PTR end)
 
     # For each PTR, try to find corresponding SRV, TXT, A/AAAA records
     Enum.flat_map(ptr_records, fn ptr ->
@@ -449,26 +445,25 @@ defmodule YellowDog.Mdns.NetworkMonitor do
       # Find SRV record
       srv_record =
         Enum.find(message.anlist ++ message.arlist, fn record ->
-          to_string(record.type) == "SRV" and to_string(record.name) == service_instance
+          record.type == :SRV and to_string(record.name) == service_instance
         end)
 
       # Find TXT record
       txt_record =
         Enum.find(message.anlist ++ message.arlist, fn record ->
-          to_string(record.type) == "TXT" and to_string(record.name) == service_instance
+          record.type == :TXT and to_string(record.name) == service_instance
         end)
 
-      # Extract host from SRV record data (handles Data.SRV struct and plain map)
-      host = if srv_record, do: extract_srv_host(srv_record.data)
+      # Find A/AAAA records
+      host = if srv_record, do: to_string(srv_record.data.target)
 
       addresses =
         if host do
           (message.anlist ++ message.arlist)
           |> Enum.filter(fn record ->
-            to_string(record.type) in ["A", "AAAA"] and to_string(record.name) == host
+            record.type in [:A, :AAAA] and to_string(record.name) == host
           end)
-          |> Enum.map(&extract_record_ip/1)
-          |> Enum.reject(&is_nil/1)
+          |> Enum.map(& &1.data)
         else
           []
         end
@@ -481,7 +476,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
             type: service_type,
             domain: "local",
             host: host,
-            port: extract_srv_port(srv_record.data),
+            port: srv_record.data.port,
             txt_records: parse_txt_records(txt_record),
             addresses: addresses,
             timestamp: now,
@@ -505,35 +500,19 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp parse_txt_records(nil), do: %{}
 
   defp parse_txt_records(txt_record) do
-    list = extract_txt_data(txt_record.data)
+    case txt_record.data do
+      list when is_list(list) ->
+        Map.new(list, fn str ->
+          case String.split(str, "=", parts: 2) do
+            [key, value] -> {key, value}
+            [key] -> {key, ""}
+          end
+        end)
 
-    Map.new(list, fn str ->
-      case String.split(to_string(str), "=", parts: 2) do
-        [key, value] -> {key, value}
-        [key] -> {key, ""}
-      end
-    end)
+      _ ->
+        %{}
+    end
   end
-
-  # Extract host from SRV record data (handles Data.SRV struct and plain map)
-  defp extract_srv_host(%{data: {_p, _w, _port, target}}), do: to_string(target)
-  defp extract_srv_host(%{target: target}), do: to_string(target)
-  defp extract_srv_host(_), do: nil
-
-  # Extract port from SRV record data
-  defp extract_srv_port(%{data: {_p, _w, port, _target}}), do: port
-  defp extract_srv_port(%{port: port}), do: port
-  defp extract_srv_port(_), do: nil
-
-  # Extract IP tuple from record (handles Data.A/AAAA structs and plain tuples)
-  defp extract_record_ip(%{data: %{data: ip}}) when is_tuple(ip), do: ip
-  defp extract_record_ip(%{data: ip}) when is_tuple(ip), do: ip
-  defp extract_record_ip(_), do: nil
-
-  # Extract TXT list from record data (handles Data.TXT struct and plain list)
-  defp extract_txt_data(%{data: list}) when is_list(list), do: list
-  defp extract_txt_data(list) when is_list(list), do: list
-  defp extract_txt_data(_), do: []
 
   defp update_or_create_service(service_info) do
     service_id = service_info.service_id

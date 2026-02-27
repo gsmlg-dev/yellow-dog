@@ -24,8 +24,6 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
 
   use GenServer
 
-  require Logger
-
   @type config_callback :: (map() -> :ok | {:error, term()})
 
   @debounce_ms 1000
@@ -266,8 +264,7 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

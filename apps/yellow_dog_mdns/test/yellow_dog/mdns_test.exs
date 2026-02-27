@@ -67,92 +67,74 @@ defmodule YellowDog.MdnsTest do
 
   describe "module exports" do
     test "exports start_link/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :start_link, 1)
     end
 
     test "exports child_spec/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :child_spec, 1)
     end
 
     test "exports register_service/2" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :register_service, 2)
     end
 
     test "exports unregister_service/2" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :unregister_service, 2)
     end
 
     test "exports list_registered_services/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :list_registered_services, 1)
     end
 
     test "exports get_registered_service/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :get_registered_service, 1)
     end
 
     test "exports update_service/3" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :update_service, 3)
     end
 
     test "exports toggle_service/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :toggle_service, 1)
     end
 
     test "exports list_discovered_services/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :list_discovered_services, 0)
     end
 
     test "exports get_discovered_service/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :get_discovered_service, 1)
     end
 
     test "exports discover_services/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :discover_services, 1)
     end
 
     test "exports network_stats/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :network_stats, 0)
     end
 
     test "exports get_recent_queries/1" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :get_recent_queries, 1)
     end
 
     test "exports query/2" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :query, 2)
     end
 
     test "exports list_all/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :list_all, 0)
     end
 
     test "exports stats/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :stats, 0)
     end
 
     test "exports clear_cache/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :clear_cache, 0)
     end
 
     test "exports status/0" do
-      Code.ensure_loaded!(Mdns)
       assert function_exported?(Mdns, :status, 0)
     end
   end

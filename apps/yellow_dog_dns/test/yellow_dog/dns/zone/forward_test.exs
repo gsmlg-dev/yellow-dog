@@ -302,13 +302,9 @@ defmodule YellowDog.Dns.Zone.ForwardTest do
       # Ensure module is loaded
       {:module, _} = Code.ensure_loaded(Forward)
 
-      Code.ensure_loaded!(Forward)
       assert function_exported?(Forward, :get_name, 1)
-      Code.ensure_loaded!(Forward)
       assert function_exported?(Forward, :resolve, 2)
-      Code.ensure_loaded!(Forward)
       assert function_exported?(Forward, :reload, 2)
-      Code.ensure_loaded!(Forward)
       assert function_exported?(Forward, :stats, 1)
     end
   end

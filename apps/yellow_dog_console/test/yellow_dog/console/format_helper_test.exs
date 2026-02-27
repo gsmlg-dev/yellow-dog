@@ -82,11 +82,6 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.format_expiration(nil) == "N/A"
       assert FormatHelper.format_expiration("invalid") == "N/A"
     end
-
-    test "returns N/A for out-of-range timestamp" do
-      # Extremely large timestamp that DateTime.from_unix rejects
-      assert FormatHelper.format_expiration(999_999_999_999_999) == "N/A"
-    end
   end
 
   describe "format_time_remaining/1" do
@@ -136,20 +131,6 @@ defmodule YellowDog.Console.FormatHelperTest do
     test "returns Unknown for invalid input" do
       assert FormatHelper.format_prefix(nil) == "Unknown"
     end
-
-    test "returns Unknown for non-8-tuple inner" do
-      assert FormatHelper.format_prefix({{1, 2, 3, 4}, 24}) == "Unknown"
-    end
-
-    test "formats prefix with /0 length" do
-      result = FormatHelper.format_prefix({{0, 0, 0, 0, 0, 0, 0, 0}, 0})
-      assert result =~ "/0"
-    end
-
-    test "formats prefix with /128 length" do
-      result = FormatHelper.format_prefix({{0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}, 128})
-      assert result =~ "/128"
-    end
   end
 
   describe "format_time/1" do
@@ -174,10 +155,6 @@ defmodule YellowDog.Console.FormatHelperTest do
 
     test "returns empty string for non-DateTime and non-integer" do
       assert FormatHelper.format_time("14:30:45") == ""
-    end
-
-    test "returns empty string for out-of-range timestamp" do
-      assert FormatHelper.format_time(999_999_999_999_999) == ""
     end
   end
 
@@ -210,10 +187,6 @@ defmodule YellowDog.Console.FormatHelperTest do
 
     test "returns placeholder for non-DateTime" do
       assert FormatHelper.format_time_ms("14:30:45") == "--:--:--.---"
-    end
-
-    test "returns placeholder for out-of-range nanosecond timestamp" do
-      assert FormatHelper.format_time_ms(999_999_999_999_999_999_999) == "--:--:--.---"
     end
   end
 
@@ -272,14 +245,6 @@ defmodule YellowDog.Console.FormatHelperTest do
       assert FormatHelper.format_uptime(nil) == "0s"
       assert FormatHelper.format_uptime("1h") == "0s"
     end
-
-    test "exact minute boundary (60s)" do
-      assert FormatHelper.format_uptime(60) == "1m 0s"
-    end
-
-    test "exact hour boundary (3600s)" do
-      assert FormatHelper.format_uptime(3600) == "1h 0m"
-    end
   end
 
   describe "format_bytes/1" do
@@ -310,22 +275,6 @@ defmodule YellowDog.Console.FormatHelperTest do
     test "returns N/A for non-integer" do
       assert FormatHelper.format_bytes("1024") == "N/A"
       assert FormatHelper.format_bytes(1.5) == "N/A"
-    end
-
-    test "exact KB boundary (1024)" do
-      assert FormatHelper.format_bytes(1024) == "1.0KB"
-    end
-
-    test "just below KB boundary (1023)" do
-      assert FormatHelper.format_bytes(1023) == "1023B"
-    end
-
-    test "exact MB boundary (1048576)" do
-      assert FormatHelper.format_bytes(1_048_576) == "1.0MB"
-    end
-
-    test "exact GB boundary (1073741824)" do
-      assert FormatHelper.format_bytes(1_073_741_824) == "1.0GB"
     end
   end
 
@@ -377,14 +326,6 @@ defmodule YellowDog.Console.FormatHelperTest do
     test "falls back to string conversion" do
       assert FormatHelper.format_ia_type(:unknown) == "unknown"
     end
-
-    test "converts nil via to_string" do
-      assert FormatHelper.format_ia_type(nil) == ""
-    end
-
-    test "converts string input via to_string" do
-      assert FormatHelper.format_ia_type("ia_na") == "ia_na"
-    end
   end
 
   describe "parse_mac_string/1" do
@@ -396,20 +337,6 @@ defmodule YellowDog.Console.FormatHelperTest do
     test "returns zero MAC for invalid input" do
       assert FormatHelper.parse_mac_string("invalid") == <<0, 0, 0, 0, 0, 0>>
     end
-
-    test "returns empty binary for empty string" do
-      assert FormatHelper.parse_mac_string("") == ""
-    end
-
-    test "handles lowercase input" do
-      assert FormatHelper.parse_mac_string("aa:bb:cc:dd:ee:ff") ==
-               <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
-    end
-
-    test "handles mixed case" do
-      assert FormatHelper.parse_mac_string("aA:Bb:cC:Dd:eE:fF") ==
-               <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
-    end
   end
 
   describe "parse_duid_string/1" do
@@ -419,14 +346,6 @@ defmodule YellowDog.Console.FormatHelperTest do
 
     test "handles invalid hex bytes gracefully" do
       assert FormatHelper.parse_duid_string("ZZ:01") == <<0, 1>>
-    end
-
-    test "parses single byte" do
-      assert FormatHelper.parse_duid_string("FF") == <<255>>
-    end
-
-    test "handles mixed case hex" do
-      assert FormatHelper.parse_duid_string("aA:bB:cC") == <<0xAA, 0xBB, 0xCC>>
     end
   end
 

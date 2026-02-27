@@ -154,8 +154,8 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
     %{
       name: pool_def.name,
       ranges: pool_def.ranges,
-      range_start: pool_def[:range_start] || first_range_elem(pool_def.ranges, 0),
-      range_end: pool_def[:range_end] || first_range_elem(pool_def.ranges, 1),
+      range_start: pool_def[:range_start] || elem(hd(pool_def.ranges), 0),
+      range_end: pool_def[:range_end] || elem(hd(pool_def.ranges), 1),
       excluded_ranges: pool_def[:excluded_ranges] || [],
       subnet_mask: pool_def.subnet_mask,
       gateway: pool_def.gateway,
@@ -165,10 +165,6 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
       static_reservations: pool_def.static_reservations
     }
   end
-
-  defp first_range_elem([{start, _end} | _], 0), do: start
-  defp first_range_elem([{_start, end_} | _], 1), do: end_
-  defp first_range_elem(_, _), do: nil
 
   # Private functions
 
@@ -212,9 +208,6 @@ defmodule YellowDog.Dhcpv4.PoolConfig do
     case Map.get(pool_config, "ranges") do
       nil ->
         {:error, :missing_ranges}
-
-      [] ->
-        {:error, :empty_ranges}
 
       ranges when is_list(ranges) ->
         parsed_ranges =

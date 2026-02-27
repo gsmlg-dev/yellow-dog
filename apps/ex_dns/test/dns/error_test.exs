@@ -29,7 +29,6 @@ defmodule DNS.ErrorTest do
     test "exports new/3" do
       Code.ensure_loaded!(Error)
       # new/3 is the default arity with context defaulting to %{}
-      Code.ensure_loaded!(Error)
       assert Kernel.function_exported?(Error, :new, 3)
     end
 
@@ -41,7 +40,6 @@ defmodule DNS.ErrorTest do
     test "exports log_detailed_error/3" do
       Code.ensure_loaded!(Error)
       # log_detailed_error/3 with context defaulting to %{}
-      Code.ensure_loaded!(Error)
       assert Kernel.function_exported?(Error, :log_detailed_error, 3)
     end
 

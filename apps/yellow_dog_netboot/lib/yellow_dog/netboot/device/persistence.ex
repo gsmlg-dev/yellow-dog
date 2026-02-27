@@ -11,11 +11,8 @@ defmodule YellowDog.Netboot.Device.Persistence do
   @spec save(String.t(), [Device.t()]) :: :ok | {:error, term()}
   def save(path, devices) do
     content = serialize_devices(devices)
-
-    case File.mkdir_p(Path.dirname(path)) do
-      :ok -> File.write(path, content)
-      {:error, reason} -> {:error, reason}
-    end
+    File.mkdir_p!(Path.dirname(path))
+    File.write(path, content)
   end
 
   @doc "Load devices from a TOML file."

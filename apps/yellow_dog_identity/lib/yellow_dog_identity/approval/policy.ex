@@ -83,37 +83,13 @@ defmodule YellowDogIdentity.Approval.Policy do
   # Exact match
   defp field_matches?(actual, expected), do: to_string(actual) == to_string(expected)
 
-  # Safe glob matching without regex to prevent ReDoS.
-  # Splits pattern on "*" and verifies segments appear in order.
   defp glob_match?(string, pattern) do
-    parts = String.split(pattern, "*", parts: :infinity)
+    regex_pattern =
+      pattern
+      |> Regex.escape()
+      |> String.replace("\\*", ".*")
+      |> then(&("^" <> &1 <> "$"))
 
-    case parts do
-      [exact] ->
-        string == exact
-
-      [prefix | rest] ->
-        String.starts_with?(string, prefix) &&
-          glob_match_rest(String.slice(string, String.length(prefix)..-1//1), rest)
-    end
-  end
-
-  defp glob_match_rest(_string, []), do: true
-
-  # Skip empty segments from consecutive wildcards (**)
-  defp glob_match_rest(string, ["" | rest]), do: glob_match_rest(string, rest)
-
-  defp glob_match_rest(string, [last]) do
-    String.ends_with?(string, last)
-  end
-
-  defp glob_match_rest(string, [segment | rest]) do
-    case :binary.match(string, segment) do
-      {pos, len} ->
-        glob_match_rest(String.slice(string, (pos + len)..-1//1), rest)
-
-      :nomatch ->
-        false
-    end
+    Regex.match?(~r/#{regex_pattern}/, string)
   end
 end

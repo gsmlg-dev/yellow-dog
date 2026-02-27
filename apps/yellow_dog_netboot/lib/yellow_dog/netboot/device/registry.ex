@@ -10,8 +10,6 @@ defmodule YellowDog.Netboot.Device.Registry do
   use GenServer
   use YellowDog.Data.Collection
 
-  require Logger
-
   alias YellowDog.Data.Store
   alias YellowDog.Netboot.Device
   alias YellowDog.Netboot.Device.Persistence
@@ -214,8 +212,7 @@ defmodule YellowDog.Netboot.Device.Registry do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 

@@ -846,10 +846,4 @@ defmodule YellowDog.Console.DnsLive.ZoneLive.Index do
       end
     end)
   end
-
-  @impl true
-  def terminate(_reason, _socket) do
-    Phoenix.PubSub.unsubscribe(YellowDog.Console.PubSub, "dns:zones")
-    :ok
-  end
 end

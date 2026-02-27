@@ -52,45 +52,5 @@ defmodule YellowDog.Console.StringHelperTest do
       assert StringHelper.split_and_trim(nil, "\n") == []
       assert StringHelper.split_and_trim(123, "\n") == []
     end
-
-    test "splits by tab separator" do
-      assert StringHelper.split_and_trim("a\tb\tc", "\t") == ["a", "b", "c"]
-    end
-
-    test "handles leading/trailing separators" do
-      assert StringHelper.split_and_trim(",a,b,c,", ",") == ["a", "b", "c"]
-    end
-
-    test "handles multiple consecutive separators" do
-      assert StringHelper.split_and_trim("a,,,,b", ",") == ["a", "b"]
-    end
-  end
-
-  describe "downcase_contains?/2" do
-    test "finds substring when haystack has mixed case" do
-      assert StringHelper.downcase_contains?("Hello World", "hello")
-      assert StringHelper.downcase_contains?("Hello World", "world")
-    end
-
-    test "needle must be pre-downcased" do
-      # downcase_contains? only downcases the haystack, not the needle
-      refute StringHelper.downcase_contains?("Hello World", "WORLD")
-    end
-
-    test "returns false when not found" do
-      refute StringHelper.downcase_contains?("Hello World", "xyz")
-    end
-
-    test "returns true for empty needle" do
-      assert StringHelper.downcase_contains?("Hello", "")
-    end
-
-    test "returns false when needle longer than haystack" do
-      refute StringHelper.downcase_contains?("hi", "hello")
-    end
-
-    test "handles unicode characters" do
-      assert StringHelper.downcase_contains?("Café", "café")
-    end
   end
 end

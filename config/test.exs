@@ -61,7 +61,6 @@ config :yellow_dog_console, YellowDog.Console.Plugs.BasicAuth, enabled: false
 # YellowDog Resolved: don't auto-start services in test — tests start components individually
 config :yellow_dog_resolved, start_services: false
 
-
 # DHCP client NIF: skip Rust compilation in test (cargo may not be available).
 # Tests use DhcpSocket.UdpFallback configured via :socket_impl env key.
 config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native,

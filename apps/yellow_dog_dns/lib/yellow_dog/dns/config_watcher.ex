@@ -23,8 +23,6 @@ defmodule YellowDog.Dns.ConfigWatcher do
 
   use GenServer
 
-  require Logger
-
   alias YellowDog.Telemetry
   alias YellowDog.Dns.ConfigPersistence
 
@@ -273,8 +271,7 @@ defmodule YellowDog.Dns.ConfigWatcher do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    Logger.debug("#{__MODULE__} received unexpected message: #{inspect(msg)}")
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 
