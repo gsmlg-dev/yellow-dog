@@ -278,6 +278,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def deactivating(:internal, :cleanup, data) do
     release_dhcp(data)
+    reset_dns(data)
     AddressManager.flush(data.interface)
     RouteManager.flush(data.interface)
     EventBus.publish("netman:connection:#{data.profile.id}", {:deactivated, data.interface})
@@ -317,6 +318,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   def terminate(_reason, state, data) when state in [:activated, :configuring, :ip_check] do
     Logger.info("FSM terminating in #{state} for #{data.interface}, cleaning up")
     release_dhcp(data)
+    reset_dns(data)
     AddressManager.flush(data.interface)
     RouteManager.flush(data.interface)
     :ok
@@ -403,9 +405,34 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
-  defp push_dns(_data) do
-    # Stub for resolved integration — yellow_dog_resolved doesn't exist yet
-    :ok
+  defp push_dns(data) do
+    dns_servers = data.profile.ipv4.dns ++ data.profile.ipv6.dns
+
+    if dns_servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
+      servers =
+        Enum.flat_map(dns_servers, fn s ->
+          case :inet.parse_address(String.to_charlist(s)) do
+            {:ok, ip} -> [ip]
+            _ -> []
+          end
+        end)
+
+      YellowDog.Resolved.set_link_dns(data.interface, %{
+        servers: servers,
+        search: [],
+        priority: data.profile.autoconnect_priority
+      })
+    else
+      :ok
+    end
+  end
+
+  defp reset_dns(data) do
+    if Code.ensure_loaded?(YellowDog.Resolved) do
+      YellowDog.Resolved.reset_link_dns(data.interface)
+    else
+      :ok
+    end
   end
 
   defp state_info(data, state) do
