@@ -100,6 +100,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorTest do
       })
 
       neighbors = NeighborMonitor.get_neighbors("nud_test_#{state_str}")
+
       assert Enum.any?(neighbors, &(&1.state == expected_atom)),
              "Expected #{expected_atom} for state string #{inspect(state_str)}"
     end
