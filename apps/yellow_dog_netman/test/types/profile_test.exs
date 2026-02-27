@@ -93,6 +93,46 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert {:error, _} = Profile.from_toml(toml)
     end
 
+    test "rejects interface name longer than 15 characters" do
+      toml = %{
+        "connection" => %{
+          "id" => "test",
+          "type" => "ethernet",
+          "interface" => "this_name_is_way_too_long"
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "at most 15"
+    end
+
+    test "rejects interface name with spaces" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet", "interface" => "eth 0"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+
+    test "rejects empty interface name" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet", "interface" => ""}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "must not be empty"
+    end
+
+    test "accepts nil interface (wildcard match)" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.interface == nil
+    end
+
     test "rejects invalid MTU" do
       toml = %{
         "connection" => %{"id" => "test", "type" => "ethernet"},

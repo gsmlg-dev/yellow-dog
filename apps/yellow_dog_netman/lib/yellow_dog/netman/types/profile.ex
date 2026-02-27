@@ -108,12 +108,13 @@ defmodule YellowDog.Netman.Types.Profile do
     conn = Map.get(toml, "connection", %{})
 
     with {:ok, id} <- require_string(conn, "id"),
-         {:ok, type} <- parse_type(conn) do
+         {:ok, type} <- parse_type(conn),
+         {:ok, interface} <- validate_interface(Map.get(conn, "interface")) do
       {:ok,
        %{
          id: id,
          type: type,
-         interface: Map.get(conn, "interface"),
+         interface: interface,
          autoconnect: Map.get(conn, "autoconnect", true),
          autoconnect_priority: Map.get(conn, "autoconnect_priority", 0),
          zone: Map.get(conn, "zone", "default")
@@ -190,6 +191,32 @@ defmodule YellowDog.Netman.Types.Profile do
   defp parse_ip_method("manual"), do: :manual
   defp parse_ip_method("disabled"), do: :disabled
   defp parse_ip_method("link-local"), do: :link_local
+
+  # Linux IFNAMSIZ is 16 (including null terminator), so max name length is 15.
+  # Names must not contain spaces, slashes, or colons (reserved for VLAN syntax).
+  @max_ifname_len 15
+
+  defp validate_interface(nil), do: {:ok, nil}
+
+  defp validate_interface(name) when is_binary(name) do
+    cond do
+      byte_size(name) == 0 ->
+        {:error, "connection.interface must not be empty"}
+
+      byte_size(name) > @max_ifname_len ->
+        {:error, "connection.interface must be at most #{@max_ifname_len} characters"}
+
+      String.contains?(name, [" ", "/", "\t", "\n"]) ->
+        {:error, "connection.interface contains invalid characters"}
+
+      true ->
+        {:ok, name}
+    end
+  end
+
+  defp validate_interface(other) do
+    {:error, "connection.interface must be a string, got: #{inspect(other)}"}
+  end
 
   defp require_string(map, key) do
     case Map.get(map, key) do
