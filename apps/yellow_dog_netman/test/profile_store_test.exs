@@ -70,6 +70,65 @@ defmodule YellowDog.Netman.ProfileStoreTest do
     end
   end
 
+  describe "hot-reload via file_event" do
+    test "profile is updated when file_event is received for modified TOML" do
+      # Write a temp TOML file and simulate a hot-reload file event
+      tmp_dir = System.tmp_dir!()
+      tmp_file = Path.join(tmp_dir, "hotreload_test_#{:rand.uniform(65535)}.toml")
+
+      toml_content = """
+      [connection]
+      id = "hotreload-test-profile"
+      type = "ethernet"
+      interface = "eth99"
+      autoconnect = true
+      autoconnect_priority = 200
+
+      [ipv4]
+      method = "manual"
+      address = "192.168.5.10/24"
+      gateway = "192.168.5.1"
+
+      [ipv6]
+      method = "disabled"
+      """
+
+      File.write!(tmp_file, toml_content)
+
+      # Subscribe to profile change events before triggering the reload
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      # Simulate the file_event that FileSystem would send
+      send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
+      Process.sleep(100)
+
+      # Profile should now be in the store
+      assert {:ok, profile} = ProfileStore.get("hotreload-test-profile")
+      assert profile.interface == "eth99"
+      assert profile.autoconnect_priority == 200
+      assert profile.ipv4.method == :manual
+
+      # EventBus should have received a :reloaded notification
+      assert_receive {:netman_event, "netman:profile:changed", {:reloaded, "hotreload-test-profile"}},
+                     500
+
+      # Cleanup
+      File.rm(tmp_file)
+      ProfileStore.delete("hotreload-test-profile")
+    end
+
+    test "non-TOML file events are ignored" do
+      # Subscribe first to confirm no spurious events
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      send(ProfileStore, {:file_event, self(), {"/tmp/somefile.txt", [:modified]}})
+      Process.sleep(100)
+
+      # Should not receive a profile:changed event for non-TOML
+      refute_receive {:netman_event, "netman:profile:changed", _}, 200
+    end
+  end
+
   describe "match_interface/2" do
     test "matches by interface name" do
       profile = ProfileStore.match_interface("eth0")
