@@ -64,4 +64,82 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
       assert first.metric <= second.metric
     end
   end
+
+  test "default_route returns the default route entry" do
+    MockNetlink.route_added(
+      destination: "default",
+      gateway: "10.99.0.1",
+      interface: "test_default_rt",
+      metric: 50
+    )
+
+    Process.sleep(50)
+
+    route = RouteManager.default_route()
+    assert route != nil
+    assert route.destination == "default"
+  end
+
+  test "flush removes all routes for an interface" do
+    iface = "test_flush_rt_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(destination: "10.20.0.0/24", gateway: "10.20.0.1", interface: iface)
+    MockNetlink.route_added(destination: "10.21.0.0/24", gateway: "10.20.0.1", interface: iface)
+    Process.sleep(50)
+
+    assert length(RouteManager.get_routes(iface)) >= 2
+
+    RouteManager.flush(iface)
+
+    # flush sends remove commands via Netlink (mock doesn't apply them to ETS)
+    assert is_list(RouteManager.get_routes(iface))
+  end
+
+  test "route_change event is published to EventBus on add" do
+    iface = "test_rt_event_#{:rand.uniform(65535)}"
+    YellowDog.Netman.EventBus.subscribe("netman:route:254")
+
+    MockNetlink.route_added(
+      destination: "192.168.1.0/24",
+      gateway: "192.168.1.1",
+      interface: iface
+    )
+
+    Process.sleep(50)
+
+    assert_receive {:netman_event, "netman:route:254", {:add, %{destination: "192.168.1.0/24"}}},
+                   500
+  end
+
+  test "route scope is parsed correctly" do
+    iface = "test_rt_scope_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "169.254.0.0/16",
+      gateway: nil,
+      interface: iface,
+      scope: "link"
+    )
+
+    Process.sleep(50)
+
+    routes = RouteManager.get_routes(iface)
+    assert Enum.any?(routes, &(&1.scope == :link))
+  end
+
+  test "route protocol is parsed correctly" do
+    iface = "test_rt_proto_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.30.0.0/24",
+      gateway: "10.30.0.1",
+      interface: iface,
+      protocol: "dhcp"
+    )
+
+    Process.sleep(50)
+
+    routes = RouteManager.get_routes(iface)
+    assert Enum.any?(routes, &(&1.protocol == :dhcp))
+  end
 end

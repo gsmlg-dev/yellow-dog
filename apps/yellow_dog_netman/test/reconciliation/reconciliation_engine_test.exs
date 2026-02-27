@@ -134,4 +134,55 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       assert diff.params == %{}
     end
   end
+
+  describe "activate/1 and deactivate/1" do
+    test "activate with unknown profile returns error" do
+      assert {:error, :not_found} = ReconciliationEngine.activate("nonexistent-profile-xyz")
+    end
+
+    test "activate with valid profile and matching interface starts FSM" do
+      iface = "recon_act_#{:rand.uniform(65535)}"
+      profile_id = "recon-act-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+
+      assert :ok = ReconciliationEngine.activate(profile_id)
+      Process.sleep(50)
+
+      assert {:ok, _pid} = Connection.Supervisor.find_connection(iface)
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
+
+    test "deactivate with no active connection returns error" do
+      assert {:error, :not_found} = ReconciliationEngine.deactivate("nonexistent-profile-xyz")
+    end
+  end
+
+  describe "observe/0" do
+    test "observe returns current links, addresses, and routes" do
+      iface = "recon_obs_#{:rand.uniform(65535)}"
+      MockNetlink.link_up(iface)
+      MockNetlink.address_added(iface, "10.50.0.1/24")
+      Process.sleep(50)
+
+      observed = ReconciliationEngine.observe()
+      assert Map.has_key?(observed.links, iface)
+      assert Map.has_key?(observed.addresses, iface)
+    end
+  end
 end
