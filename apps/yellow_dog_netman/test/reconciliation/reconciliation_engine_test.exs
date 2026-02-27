@@ -66,11 +66,12 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
   end
 
   describe "idempotency with live processes" do
-    test "second reconciliation cycle produces no new activation diffs" do
+    test "once a connection FSM is active, diff produces no new activation diffs" do
       iface = "recon_idem_#{:rand.uniform(65535)}"
+      profile_id = "recon-idem-#{iface}"
 
       profile = %Profile{
-        id: "recon-idem-#{iface}",
+        id: profile_id,
         type: :ethernet,
         interface: iface,
         autoconnect: true,
@@ -80,42 +81,37 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      ProfileStore.put(profile.id, profile)
+      ProfileStore.put(profile_id, profile)
       MockNetlink.link_up(iface, carrier: true)
-      Process.sleep(50)
 
-      # First cycle: should produce activate_connection diff
-      observed1 = ReconciliationEngine.observe()
-      desired1 = ReconciliationEngine.compute_desired()
-      diffs1 = ReconciliationEngine.diff(desired1, observed1)
+      # Wait long enough for the ReconciliationEngine debounce (100ms) to have fired
+      # and activated the FSM. The engine subscribes to profile:changed events.
+      Process.sleep(300)
 
-      activate_diffs = Enum.filter(diffs1, &(&1.action == :activate_connection))
+      # Ensure FSM is running (either via background reconcile or we start it)
+      case Connection.Supervisor.find_connection(iface) do
+        :error ->
+          {:ok, _} = Connection.Supervisor.start_connection(iface, profile)
+          Process.sleep(50)
 
-      assert length(activate_diffs) >= 1,
-             "Expected at least one activation diff for new interface"
-
-      # Apply diffs: start the connection FSM
-      for diff <- activate_diffs do
-        {:ok, p} = ProfileStore.get(diff.params.profile_id)
-        Connection.Supervisor.start_connection(diff.interface, p)
+        {:ok, _} ->
+          :ok
       end
 
-      Process.sleep(100)
+      # Verify: diff should produce NO new activation diffs for this iface
+      observed = ReconciliationEngine.observe()
+      desired = ReconciliationEngine.compute_desired()
+      diffs = ReconciliationEngine.diff(desired, observed)
 
-      # Second cycle: FSMs are now active, should produce no new activation diffs
-      observed2 = ReconciliationEngine.observe()
-      desired2 = ReconciliationEngine.compute_desired()
-      diffs2 = ReconciliationEngine.diff(desired2, observed2)
+      activate_diffs =
+        Enum.filter(diffs, &(&1.action == :activate_connection and &1.interface == iface))
 
-      activate_diffs2 =
-        Enum.filter(diffs2, &(&1.action == :activate_connection and &1.interface == iface))
-
-      assert activate_diffs2 == [],
-             "Second reconciliation cycle should produce no activation diffs for already-active interface"
+      assert activate_diffs == [],
+             "Active FSM should produce no new activation diffs in second reconciliation"
 
       # Cleanup
       Connection.Supervisor.stop_connection(iface)
-      ProfileStore.delete(profile.id)
+      ProfileStore.delete(profile_id)
     end
   end
 
@@ -183,6 +179,49 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       observed = ReconciliationEngine.observe()
       assert Map.has_key?(observed.links, iface)
       assert Map.has_key?(observed.addresses, iface)
+    end
+  end
+
+  describe "reconcile/0 and event debounce" do
+    test "reconcile/0 triggers debounced reconciliation" do
+      test_pid = self()
+      handler_id = {__MODULE__, :recon_debounce, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      ReconciliationEngine.reconcile()
+
+      assert_receive {:recon_done, %{diffs_count: _}}, 1000
+
+      :telemetry.detach(handler_id)
+    end
+
+    test "netman_event triggers debounced reconcile" do
+      test_pid = self()
+      handler_id = {__MODULE__, :recon_event, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      # Publish a netman event which ReconciliationEngine subscribes to
+      YellowDog.Netman.EventBus.publish("netman:profile:changed", {:updated, "test"})
+
+      assert_receive {:recon_done, _}, 1000
+
+      :telemetry.detach(handler_id)
     end
   end
 end

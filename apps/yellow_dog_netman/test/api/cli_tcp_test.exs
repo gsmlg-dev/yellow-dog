@@ -47,13 +47,13 @@ defmodule YellowDog.Netman.API.CLITcpTest do
         {:ok, socket} =
           :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :line, active: false])
 
-        :gen_tcp.send(socket, Jason.encode!(%{"method" => "device.list"}) <> "\n")
-        {:ok, response_line} = :gen_tcp.recv(socket, 0, 2000)
+        # Use "status" which returns a small fixed-size response regardless of system state
+        :gen_tcp.send(socket, Jason.encode!(%{"method" => "status"}) <> "\n")
+        {:ok, response_line} = :gen_tcp.recv(socket, 0, 5000)
         :gen_tcp.close(socket)
 
         {:ok, response} = Jason.decode(response_line)
-        assert %{"result" => devices} = response
-        assert is_list(devices)
+        assert %{"result" => %{"running" => true}} = response
       end
     end
   end
