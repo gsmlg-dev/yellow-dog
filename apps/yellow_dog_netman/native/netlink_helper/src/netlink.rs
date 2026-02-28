@@ -13,6 +13,7 @@ use netlink_packet_route::neighbour::{
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteMessageBuffer, RouteProtocol, RouteScope,
 };
+use netlink_packet_route::rule::{RuleAction, RuleAttribute, RuleMessage, RuleMessageBuffer};
 use netlink_packet_route::AddressFamily;
 use netlink_sys::{protocols::NETLINK_ROUTE, Socket, SocketAddr};
 use serde_json::{json, Value};
@@ -93,11 +94,7 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
             // RTM_NEWNEIGH = 28, RTM_DELNEIGH = 29
             28 | 29 => parse_neighbour_event(msg_type, payload),
             // RTM_NEWRULE = 32, RTM_DELRULE = 33
-            32 | 33 => Some(json!({
-                "type": "rule_change",
-                "action": if msg_type == 32 { "add" } else { "del" },
-                "raw_type": msg_type
-            })),
+            32 | 33 => parse_rule_event(msg_type, payload),
             _ => None,
         };
 
@@ -286,6 +283,76 @@ fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
     }
 
     Some(event)
+}
+
+/// Parse RTM_NEWRULE / RTM_DELRULE payload into a JSON event.
+///
+/// Extracts priority, routing table, source prefix, destination prefix,
+/// incoming interface name, and action from the rule message.
+fn parse_rule_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
+    let action = if msg_type == 32 { "add" } else { "del" };
+
+    let mut event = json!({
+        "type": "rule_change",
+        "action": action,
+        "raw_type": msg_type,
+        "table": 254  // RT_TABLE_MAIN default
+    });
+
+    let payload_owned = payload.to_vec();
+    if let Ok(buf) = RuleMessageBuffer::new_checked(&payload_owned) {
+        if let Ok(msg) = RuleMessage::parse(&buf) {
+            // Header table field (u8 — for table IDs ≤ 255)
+            event["table"] = json!(msg.header.table as u32);
+
+            // Emit the rule action as a string
+            event["rule_action"] = json!(format_rule_action(&msg.header.action));
+
+            let dst_len = msg.header.dst_len;
+            let src_len = msg.header.src_len;
+
+            for attr in &msg.attributes {
+                match attr {
+                    RuleAttribute::Priority(p) => {
+                        event["priority"] = json!(p);
+                    }
+                    RuleAttribute::Table(t) => {
+                        // Extended table attribute overrides the header's u8 table field
+                        event["table"] = json!(t);
+                    }
+                    RuleAttribute::Source(addr) => {
+                        event["source"] = json!(format!("{}/{}", format_rule_address(addr), src_len));
+                    }
+                    RuleAttribute::Destination(addr) => {
+                        event["destination"] = json!(format!("{}/{}", format_rule_address(addr), dst_len));
+                    }
+                    RuleAttribute::Iifname(name) => {
+                        event["interface"] = json!(name);
+                    }
+                    RuleAttribute::Oifname(name) => {
+                        event["oif"] = json!(name);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(event)
+}
+
+fn format_rule_action(action: &RuleAction) -> &'static str {
+    match action {
+        RuleAction::ToTable => "to_table",
+        RuleAction::Blackhole => "blackhole",
+        RuleAction::Unreachable => "unreachable",
+        RuleAction::Prohibit => "prohibit",
+        _ => "unspec",
+    }
+}
+
+fn format_rule_address(addr: &std::net::IpAddr) -> String {
+    addr.to_string()
 }
 
 // NUD (Neighbour Unreachability Detection) state bit flags
