@@ -112,4 +112,43 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       assert Process.alive?(pid)
     end
   end
+
+  describe "port closed handling" do
+    @tag :capture_log
+    test "port :closed with unknown port ref is silently ignored" do
+      pid = Process.whereis(Netlink)
+      # A ref that doesn't match state.port (mock mode has nil port)
+      # is handled by the catch-all — GenServer must not crash.
+      send(pid, {make_ref(), :closed})
+      Process.sleep(20)
+      assert Process.alive?(pid)
+    end
+
+    @tag :capture_log
+    test "port :closed matching state.port clears port from state and logs warning" do
+      pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(pid)
+
+      # Use a plain reference as a fake port token.
+      # The Elixir pattern `{port, :closed}` in handle_info matches any term
+      # when port == state.port, so we inject a ref and send the matching message.
+      fake_port = make_ref()
+      :sys.replace_state(pid, fn state -> %{state | port: fake_port, backend: :port} end)
+
+      # Send the closed message directly — this is what the Erlang runtime would do
+      # when the actual port OS process exits.
+      send(pid, {fake_port, :closed})
+      Process.sleep(50)
+
+      # GenServer must still be alive
+      assert Process.alive?(pid)
+
+      # Port should have been cleared from state
+      updated_state = :sys.get_state(pid)
+      assert updated_state.port == nil
+
+      # Restore original state for other tests
+      :sys.replace_state(pid, fn _state -> original_state end)
+    end
+  end
 end

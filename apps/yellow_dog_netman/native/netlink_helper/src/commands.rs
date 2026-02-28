@@ -190,3 +190,149 @@ fn handle_route_del(cmd: &Value) -> io::Result<()> {
 
     run_ip(&args)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- validate_interface ---
+
+    #[test]
+    fn interface_empty_is_rejected() {
+        assert!(validate_interface("").is_err());
+    }
+
+    #[test]
+    fn interface_too_long_is_rejected() {
+        let long = "a".repeat(16);
+        assert!(validate_interface(&long).is_err());
+    }
+
+    #[test]
+    fn interface_exactly_15_chars_is_accepted() {
+        let name = "a".repeat(15);
+        assert!(validate_interface(&name).is_ok());
+    }
+
+    #[test]
+    fn interface_alphanumeric_underscore_hyphen_dot_accepted() {
+        assert!(validate_interface("eth0").is_ok());
+        assert!(validate_interface("eth0.100").is_ok());
+        assert!(validate_interface("br-lan").is_ok());
+        assert!(validate_interface("veth_abc").is_ok());
+    }
+
+    #[test]
+    fn interface_with_space_is_rejected() {
+        assert!(validate_interface("eth 0").is_err());
+    }
+
+    #[test]
+    fn interface_with_slash_is_rejected() {
+        assert!(validate_interface("../../etc").is_err());
+    }
+
+    #[test]
+    fn interface_with_null_byte_is_rejected() {
+        assert!(validate_interface("eth\x000").is_err());
+    }
+
+    #[test]
+    fn interface_with_semicolon_is_rejected() {
+        assert!(validate_interface("eth0;rm").is_err());
+    }
+
+    // --- validate_address ---
+
+    #[test]
+    fn address_empty_is_rejected() {
+        assert!(validate_address("").is_err());
+    }
+
+    #[test]
+    fn address_starting_with_dash_is_rejected() {
+        assert!(validate_address("-n").is_err());
+    }
+
+    #[test]
+    fn ipv4_address_accepted() {
+        assert!(validate_address("192.168.1.1").is_ok());
+    }
+
+    #[test]
+    fn ipv4_cidr_accepted() {
+        assert!(validate_address("10.0.0.0/24").is_ok());
+    }
+
+    #[test]
+    fn ipv6_address_accepted() {
+        assert!(validate_address("fe80::1").is_ok());
+    }
+
+    #[test]
+    fn ipv6_cidr_accepted() {
+        assert!(validate_address("2001:db8::/32").is_ok());
+    }
+
+    #[test]
+    fn address_with_shell_metachar_is_rejected() {
+        assert!(validate_address("10.0.0.1;whoami").is_err());
+    }
+
+    #[test]
+    fn address_with_space_is_rejected() {
+        assert!(validate_address("10.0.0.1 ").is_err());
+    }
+
+    // --- validate_destination ---
+
+    #[test]
+    fn destination_default_is_accepted() {
+        assert!(validate_destination("default").is_ok());
+    }
+
+    #[test]
+    fn destination_ip_cidr_is_accepted() {
+        assert!(validate_destination("0.0.0.0/0").is_ok());
+    }
+
+    #[test]
+    fn destination_invalid_is_rejected() {
+        assert!(validate_destination("$(evil)").is_err());
+    }
+
+    // --- handle command dispatch ---
+
+    #[test]
+    fn unknown_command_returns_ok() {
+        let cmd = serde_json::json!({"cmd": "unknown_cmd_xyz"});
+        // Unknown commands log to stderr and return Ok — no panic
+        assert!(handle(&cmd).is_ok());
+    }
+
+    #[test]
+    fn link_set_with_empty_interface_returns_err() {
+        let cmd = serde_json::json!({"cmd": "link_set", "interface": "", "state": "up"});
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn addr_add_with_invalid_interface_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "addr_add",
+            "interface": "../../etc",
+            "address": "10.0.0.1/24"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn addr_add_with_invalid_address_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "addr_add",
+            "interface": "eth0",
+            "address": "-n 10.0.0.1"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+}

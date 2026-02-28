@@ -106,3 +106,129 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
 
     events
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal valid netlink message header (16 bytes).
+    fn make_nlmsghdr(len: u32, msg_type: u16) -> Vec<u8> {
+        let mut buf = vec![0u8; len as usize];
+        buf[0..4].copy_from_slice(&(len as u32).to_ne_bytes());
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        buf
+    }
+
+    #[test]
+    fn empty_buffer_produces_no_events() {
+        let events = parse_netlink_messages(&[]);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn buffer_shorter_than_header_produces_no_events() {
+        let events = parse_netlink_messages(&[0u8; 10]);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn rtm_newlink_produces_link_change_add() {
+        let msg = make_nlmsghdr(16, 16); // RTM_NEWLINK
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[0]["action"], "add");
+    }
+
+    #[test]
+    fn rtm_dellink_produces_link_change_del() {
+        let msg = make_nlmsghdr(16, 17); // RTM_DELLINK
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_newaddr_produces_address_change_add() {
+        let msg = make_nlmsghdr(16, 20); // RTM_NEWADDR
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "address_change");
+        assert_eq!(events[0]["action"], "add");
+    }
+
+    #[test]
+    fn rtm_deladdr_produces_address_change_del() {
+        let msg = make_nlmsghdr(16, 21); // RTM_DELADDR
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "address_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_newroute_produces_route_change_add() {
+        let msg = make_nlmsghdr(16, 24); // RTM_NEWROUTE
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "route_change");
+        assert_eq!(events[0]["action"], "add");
+    }
+
+    #[test]
+    fn rtm_newneigh_produces_neighbor_change_add() {
+        let msg = make_nlmsghdr(16, 28); // RTM_NEWNEIGH
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "neighbor_change");
+        assert_eq!(events[0]["action"], "add");
+    }
+
+    #[test]
+    fn rtm_newrule_produces_rule_change_add() {
+        let msg = make_nlmsghdr(16, 32); // RTM_NEWRULE
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "rule_change");
+        assert_eq!(events[0]["action"], "add");
+    }
+
+    #[test]
+    fn unknown_message_type_produces_no_event() {
+        let msg = make_nlmsghdr(16, 999);
+        let events = parse_netlink_messages(&msg);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn multiple_messages_in_buffer_all_parsed() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&make_nlmsghdr(16, 16)); // RTM_NEWLINK
+        buf.extend_from_slice(&make_nlmsghdr(16, 20)); // RTM_NEWADDR
+        let events = parse_netlink_messages(&buf);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[1]["type"], "address_change");
+    }
+
+    #[test]
+    fn message_with_len_zero_breaks_loop() {
+        // A length of 0 (< 16) should break the parsing loop
+        let mut buf = vec![0u8; 16];
+        // len field = 0
+        buf[0..4].copy_from_slice(&0u32.to_ne_bytes());
+        let events = parse_netlink_messages(&buf);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn message_len_exceeding_buffer_breaks_loop() {
+        // Message claims length beyond the buffer
+        let mut buf = vec![0u8; 16];
+        buf[0..4].copy_from_slice(&100u32.to_ne_bytes()); // len=100 but buf is only 16 bytes
+        buf[4..6].copy_from_slice(&16u16.to_ne_bytes()); // RTM_NEWLINK — would match if parsed
+        let events = parse_netlink_messages(&buf);
+        assert!(events.is_empty());
+    }
+}

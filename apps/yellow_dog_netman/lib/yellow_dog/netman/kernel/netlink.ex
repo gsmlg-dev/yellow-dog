@@ -99,6 +99,11 @@ defmodule YellowDog.Netman.Kernel.Netlink do
     end
   end
 
+  def handle_info({port, :closed}, %{port: port} = state) do
+    Logger.warning("Netlink port closed unexpectedly, running in degraded mode")
+    {:noreply, %{state | port: nil}}
+  end
+
   def handle_info({:mock_event, event}, state) do
     dispatch_event(event, state.subscribers)
     {:noreply, state}
