@@ -20,7 +20,7 @@ fn main() -> io::Result<()> {
     let (event_tx, event_rx) = mpsc::channel::<serde_json::Value>();
 
     // Spawn netlink event listener thread
-    let _listener = thread::spawn(move || {
+    let listener = thread::spawn(move || {
         if let Err(e) = netlink::listen(event_tx) {
             eprintln!("netlink listener error: {}", e);
         }
@@ -28,7 +28,7 @@ fn main() -> io::Result<()> {
 
     // Spawn command reader thread (reads from stdin)
     let (cmd_tx, cmd_rx) = mpsc::channel::<serde_json::Value>();
-    let _reader = thread::spawn(move || {
+    let reader = thread::spawn(move || {
         if let Err(e) = read_commands(cmd_tx) {
             eprintln!("command reader error: {}", e);
         }
@@ -36,6 +36,17 @@ fn main() -> io::Result<()> {
 
     // Main loop: multiplex events and commands
     loop {
+        // Check if worker threads are still alive
+        if listener.is_finished() {
+            eprintln!("netlink listener thread exited unexpectedly");
+            return Ok(());
+        }
+        if reader.is_finished() {
+            // Reader exits normally when port closes (stdin EOF)
+            eprintln!("command reader thread exited");
+            return Ok(());
+        }
+
         // Check for events (non-blocking)
         while let Ok(event) = event_rx.try_recv() {
             if let Err(e) = protocol::write_message(&event) {
