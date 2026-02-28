@@ -1,3 +1,6 @@
+// cdylib NIF: pub items used across modules are not "dead code"
+#![allow(dead_code)]
+
 //! # DHCP Client Socket NIF
 //!
 //! Provides low-level socket operations for the YellowDog DHCP client:
@@ -226,6 +229,5 @@ fn load(env: Env, _: Term) -> bool {
 
 rustler::init!(
     "Elixir.YellowDog.DhcpClient.DhcpSocket.Native",
-    [open, send_broadcast, send_unicast, send_arp_probe, close],
     load = load
 );
