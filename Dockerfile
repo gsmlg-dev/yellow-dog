@@ -66,15 +66,17 @@ ENV YELLOW_DOG_DATA_DIR=/data/yellowdog
 VOLUME ["/etc/yellowdog", "/data/yellowdog"]
 
 RUN apk add --update --no-cache libncursesw libstdc++ \
-    musl musl-utils musl-locales tzdata inotify-tools && \
+    musl musl-utils musl-locales tzdata inotify-tools iproute2 && \
     mkdir -p /data/yellowdog/dns/zones \
              /data/yellowdog/dhcpv4 \
              /data/yellowdog/dhcpv6 \
-             /data/yellowdog/mdns
+             /data/yellowdog/mdns \
+             /etc/yellowdog/netman/profiles \
+             /run/yellowdog
 
 COPY --from=builder /app/_build/prod/rel/yellow_dog /app
 COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
 
-EXPOSE 53 67/udp 547/udp 5353/udp 4270
+EXPOSE 53 67/udp 69/udp 547/udp 5353/udp 4270
 
 CMD ["/app/bin/yellow_dog", "start"]
