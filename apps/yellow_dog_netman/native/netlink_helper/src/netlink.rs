@@ -658,4 +658,240 @@ mod tests {
         let events = parse_netlink_messages(&msg);
         assert_eq!(events[0]["scope"], "link");
     }
+
+    /// Build a real RTM_NEWROUTE message.
+    ///
+    /// rtmsg layout (12 bytes):
+    ///   u8 family, u8 dst_len, u8 src_len, u8 tos,
+    ///   u8 table, u8 protocol, u8 scope, u8 type, u32 flags
+    ///
+    /// NLAs: RTA_DST=1, RTA_GATEWAY=5, RTA_OIF=4, RTA_PRIORITY=6
+    fn make_rtm_newroute(
+        family: u8,
+        dst_len: u8,
+        protocol: u8,
+        scope: u8,
+        dst_bytes: Option<&[u8]>,
+        gw_bytes: Option<&[u8]>,
+        metric: Option<u32>,
+    ) -> Vec<u8> {
+        // rtmsg (12 bytes)
+        let mut payload = vec![0u8; 12];
+        payload[0] = family;
+        payload[1] = dst_len;
+        payload[5] = protocol;
+        payload[6] = scope;
+
+        // Helper to append a u32 NLA
+        let mut append_u32_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u32| {
+            let nla_len = 8u16; // 4 header + 4 data
+            buf.extend_from_slice(&nla_len.to_ne_bytes());
+            buf.extend_from_slice(&nla_type.to_ne_bytes());
+            buf.extend_from_slice(&val.to_ne_bytes());
+        };
+
+        // Helper to append a bytes NLA
+        let mut append_bytes_nla = |buf: &mut Vec<u8>, nla_type: u16, data: &[u8]| {
+            let nla_len = (4 + data.len()) as u16;
+            let nla_aligned = (nla_len as usize + 3) & !3;
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4..4 + data.len()].copy_from_slice(data);
+            buf.extend_from_slice(&nla);
+        };
+
+        if let Some(dst) = dst_bytes {
+            append_bytes_nla(&mut payload, 1, dst); // RTA_DST = 1
+        }
+        if let Some(gw) = gw_bytes {
+            append_bytes_nla(&mut payload, 5, gw); // RTA_GATEWAY = 5
+        }
+        if let Some(m) = metric {
+            append_u32_nla(&mut payload, 6, m); // RTA_PRIORITY = 6
+        }
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&24u16.to_ne_bytes()); // RTM_NEWROUTE
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newroute_with_destination_extracts_dst_and_scope() {
+        // IPv4: family=2, dst_len=24, protocol=3 (RTPROT_BOOT=3), scope=253 (RT_SCOPE_LINK)
+        let dst = [10u8, 0, 0, 0]; // 10.0.0.0
+        let msg = make_rtm_newroute(2, 24, 3, 253, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "route_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["destination"], "10.0.0.0/24");
+        assert_eq!(events[0]["scope"], "link");
+        assert_eq!(events[0]["protocol"], "boot");
+    }
+
+    #[test]
+    fn rtm_newroute_with_gateway_extracts_gw() {
+        let dst = [192u8, 168, 0, 0];
+        let gw = [192u8, 168, 0, 1];
+        let msg = make_rtm_newroute(2, 16, 4, 0, Some(&dst), Some(&gw), None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["destination"], "192.168.0.0/16");
+        assert_eq!(events[0]["gateway"], "192.168.0.1");
+    }
+
+    #[test]
+    fn rtm_newroute_with_metric_extracts_priority() {
+        let dst = [10u8, 0, 0, 0];
+        let msg = make_rtm_newroute(2, 8, 4, 0, Some(&dst), None, Some(100));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["metric"], 100);
+    }
+
+    #[test]
+    fn rtm_newroute_no_destination_emits_default() {
+        // prefix_len=0 and no RTA_DST → destination="default"
+        let msg = make_rtm_newroute(2, 0, 4, 0, None, None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["destination"], "default");
+    }
+
+    #[test]
+    fn rtm_delroute_produces_route_change_del() {
+        let mut msg = make_rtm_newroute(2, 24, 4, 0, None, None, None);
+        // Change msg_type to RTM_DELROUTE=25
+        msg[4..6].copy_from_slice(&25u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    /// Build a real RTM_NEWNEIGH message.
+    ///
+    /// ndmsg layout (12 bytes):
+    ///   u8 family, u8 pad1, u16 pad2, u32 ifindex, u16 state, u8 flags, u8 type
+    ///
+    /// NLAs: NDA_DST=1, NDA_LLADDR=2
+    fn make_rtm_newneigh(
+        family: u8,
+        ifindex: u32,
+        state: u16,
+        dst_bytes: &[u8],
+        mac: Option<[u8; 6]>,
+    ) -> Vec<u8> {
+        // ndmsg (12 bytes)
+        let mut payload = vec![0u8; 12];
+        payload[0] = family;
+        payload[4..8].copy_from_slice(&ifindex.to_ne_bytes());
+        payload[8..10].copy_from_slice(&state.to_ne_bytes());
+
+        // NDA_DST = 1
+        let dst_nla_len = (4 + dst_bytes.len()) as u16;
+        let dst_nla_aligned = (dst_nla_len as usize + 3) & !3;
+        let mut dst_nla = vec![0u8; dst_nla_aligned];
+        dst_nla[0..2].copy_from_slice(&dst_nla_len.to_ne_bytes());
+        dst_nla[2..4].copy_from_slice(&1u16.to_ne_bytes()); // NDA_DST
+        dst_nla[4..4 + dst_bytes.len()].copy_from_slice(dst_bytes);
+        payload.extend_from_slice(&dst_nla);
+
+        // NDA_LLADDR = 2 (optional)
+        if let Some(m) = mac {
+            let mac_nla_len = (4 + 6) as u16; // 10 bytes
+            let mac_nla_aligned = (mac_nla_len as usize + 3) & !3;
+            let mut mac_nla = vec![0u8; mac_nla_aligned];
+            mac_nla[0..2].copy_from_slice(&mac_nla_len.to_ne_bytes());
+            mac_nla[2..4].copy_from_slice(&2u16.to_ne_bytes()); // NDA_LLADDR
+            mac_nla[4..10].copy_from_slice(&m);
+            payload.extend_from_slice(&mac_nla);
+        }
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&28u16.to_ne_bytes()); // RTM_NEWNEIGH
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newneigh_with_ip_extracts_address_and_state() {
+        let dst = [192u8, 168, 1, 10];
+        // ifindex=0 (no real interface → interface field absent)
+        // state=NUD_REACHABLE=2
+        let msg = make_rtm_newneigh(2, 0, 2, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "neighbor_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["address"], "192.168.1.10");
+        assert_eq!(events[0]["state"], "reachable");
+    }
+
+    #[test]
+    fn rtm_newneigh_with_mac_extracts_formatted_mac() {
+        let dst = [10u8, 0, 0, 1];
+        let mac = [0xaau8, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let msg = make_rtm_newneigh(2, 0, 2, &dst, Some(mac));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["mac"], "aa:bb:cc:dd:ee:ff");
+    }
+
+    #[test]
+    fn rtm_delneigh_produces_neighbor_change_del() {
+        let dst = [10u8, 0, 0, 1];
+        let mut msg = make_rtm_newneigh(2, 0, 2, &dst, None);
+        msg[4..6].copy_from_slice(&29u16.to_ne_bytes()); // RTM_DELNEIGH
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    // --- format_nud_state unit tests ---
+
+    #[test]
+    fn nud_state_reachable() {
+        assert_eq!(format_nud_state(NUD_REACHABLE), "reachable");
+    }
+
+    #[test]
+    fn nud_state_stale() {
+        assert_eq!(format_nud_state(NUD_STALE), "stale");
+    }
+
+    #[test]
+    fn nud_state_delay() {
+        assert_eq!(format_nud_state(NUD_DELAY), "delay");
+    }
+
+    #[test]
+    fn nud_state_probe() {
+        assert_eq!(format_nud_state(NUD_PROBE), "probe");
+    }
+
+    #[test]
+    fn nud_state_failed() {
+        assert_eq!(format_nud_state(NUD_FAILED), "failed");
+    }
+
+    #[test]
+    fn nud_state_permanent() {
+        assert_eq!(format_nud_state(NUD_PERMANENT), "permanent");
+    }
+
+    #[test]
+    fn nud_state_incomplete() {
+        assert_eq!(format_nud_state(NUD_INCOMPLETE), "incomplete");
+    }
+
+    #[test]
+    fn nud_state_none() {
+        assert_eq!(format_nud_state(0), "none");
+    }
+
+    #[test]
+    fn nud_state_reachable_beats_stale_when_both_set() {
+        // When multiple bits set, REACHABLE takes priority (checked first)
+        assert_eq!(format_nud_state(NUD_REACHABLE | NUD_STALE), "reachable");
+    }
 }
