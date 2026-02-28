@@ -45,10 +45,8 @@ defmodule YellowDog.Netman.Integration.DriftRecoveryTest do
     MockNetlink.link_up(iface, carrier: true)
     Process.sleep(50)
 
-    # Initially no FSM for this interface
-    assert :error = Connection.Supervisor.find_connection(iface)
-
     # Trigger reconciliation — should detect the profile/link match and start FSM
+    # (the background engine may have already started it via the profile:changed event)
     ReconciliationEngine.reconcile()
     Process.sleep(300)
 

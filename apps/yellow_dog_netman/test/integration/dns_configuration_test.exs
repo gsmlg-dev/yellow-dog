@@ -85,7 +85,9 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
     Process.sleep(50)
 
     {:ok, _pid} = Connection.Supervisor.start_connection(iface, dual_profile)
+    Process.sleep(50)
     MockNetlink.address_added(iface, "10.50.0.10/24")
+    Process.sleep(50)
 
     {:ok, pid} = Connection.Supervisor.find_connection(iface)
     poll_until_activated(pid)
