@@ -965,4 +965,44 @@ mod tests {
         // When multiple bits set, REACHABLE takes priority (checked first)
         assert_eq!(format_nud_state(NUD_REACHABLE | NUD_STALE), "reachable");
     }
+
+    #[test]
+    fn rtm_delrule_produces_rule_change_del() {
+        let msg = make_nlmsghdr(16, 33); // RTM_DELRULE
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "rule_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn multicast_groups_includes_rule_groups() {
+        let groups = multicast_groups();
+        // RTNLGRP_IPV4_RULE=14, RTNLGRP_IPV6_RULE=19
+        assert_ne!(groups & (1 << (RTNLGRP_IPV4_RULE - 1)), 0);
+        assert_ne!(groups & (1 << (RTNLGRP_IPV6_RULE - 1)), 0);
+    }
+
+    #[test]
+    fn multicast_groups_includes_all_required_groups() {
+        let groups = multicast_groups();
+        let required = [
+            RTNLGRP_LINK,
+            RTNLGRP_IPV4_IFADDR,
+            RTNLGRP_IPV4_ROUTE,
+            RTNLGRP_IPV6_IFADDR,
+            RTNLGRP_IPV6_ROUTE,
+            RTNLGRP_NEIGH,
+            RTNLGRP_IPV4_RULE,
+            RTNLGRP_IPV6_RULE,
+        ];
+        for grp in required {
+            assert_ne!(
+                groups & (1 << (grp - 1)),
+                0,
+                "RTNLGRP_{} missing from multicast groups",
+                grp
+            );
+        }
+    }
 }
