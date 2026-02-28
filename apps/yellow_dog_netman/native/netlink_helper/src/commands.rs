@@ -51,6 +51,43 @@ fn validate_interface(name: &str) -> io::Result<&str> {
     }
 }
 
+/// Validate an IP address or CIDR notation (e.g., "10.0.0.1", "10.0.0.1/24", "fe80::1/64").
+/// Prevents flag injection by ensuring the value doesn't start with '-'.
+fn validate_address(addr: &str) -> io::Result<&str> {
+    if addr.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "empty address",
+        ));
+    }
+    if addr.starts_with('-') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "address must not start with '-'",
+        ));
+    }
+    // Only allow characters valid in IPv4/IPv6 addresses with optional CIDR prefix
+    if addr
+        .bytes()
+        .all(|b| b.is_ascii_hexdigit() || matches!(b, b'.' | b':' | b'/'))
+    {
+        Ok(addr)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid address: {}", addr),
+        ))
+    }
+}
+
+/// Validate a route destination (IP/CIDR or "default").
+fn validate_destination(dest: &str) -> io::Result<&str> {
+    if dest == "default" {
+        return Ok(dest);
+    }
+    validate_address(dest)
+}
+
 /// Run an ip command and report failures via stderr.
 fn run_ip(args: &[&str]) -> io::Result<()> {
     match Command::new("ip").args(args).output() {
@@ -101,42 +138,27 @@ fn handle_link_set(cmd: &Value) -> io::Result<()> {
 
 fn handle_addr_add(cmd: &Value) -> io::Result<()> {
     let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
-    let addr = cmd["address"].as_str().unwrap_or("");
-
-    if addr.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "empty address",
-        ));
-    }
-
+    let addr = validate_address(cmd["address"].as_str().unwrap_or(""))?;
     run_ip(&["addr", "add", addr, "dev", iface])
 }
 
 fn handle_addr_del(cmd: &Value) -> io::Result<()> {
     let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
-    let addr = cmd["address"].as_str().unwrap_or("");
-
-    if addr.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "empty address",
-        ));
-    }
-
+    let addr = validate_address(cmd["address"].as_str().unwrap_or(""))?;
     run_ip(&["addr", "del", addr, "dev", iface])
 }
 
 fn handle_route_add(cmd: &Value) -> io::Result<()> {
-    let dest = cmd["destination"].as_str().unwrap_or("default");
+    let dest = validate_destination(cmd["destination"].as_str().unwrap_or("default"))?;
     let mut args = vec!["route", "add", dest];
 
     if let Some(gw) = cmd["gateway"].as_str() {
+        let gw = validate_address(gw)?;
         args.push("via");
         args.push(gw);
     }
     if let Some(iface) = cmd["interface"].as_str() {
-        let _ = validate_interface(iface)?;
+        let iface = validate_interface(iface)?;
         args.push("dev");
         args.push(iface);
     }
@@ -152,15 +174,16 @@ fn handle_route_add(cmd: &Value) -> io::Result<()> {
 }
 
 fn handle_route_del(cmd: &Value) -> io::Result<()> {
-    let dest = cmd["destination"].as_str().unwrap_or("default");
+    let dest = validate_destination(cmd["destination"].as_str().unwrap_or("default"))?;
     let mut args = vec!["route", "del", dest];
 
     if let Some(gw) = cmd["gateway"].as_str() {
+        let gw = validate_address(gw)?;
         args.push("via");
         args.push(gw);
     }
     if let Some(iface) = cmd["interface"].as_str() {
-        let _ = validate_interface(iface)?;
+        let iface = validate_interface(iface)?;
         args.push("dev");
         args.push(iface);
     }

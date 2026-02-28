@@ -227,11 +227,13 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def configuring(:info, {:dhcp_lease_acquired, lease}, data) do
+    emit_dhcp_event(data, :lease_acquired, %{lease: lease})
     data = %{data | lease: lease}
     transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
   end
 
-  def configuring(:info, {:dhcp_lease_failed, _reason}, data) do
+  def configuring(:info, {:dhcp_lease_failed, reason}, data) do
+    emit_dhcp_event(data, :lease_failed, %{reason: reason})
     transition(%{data | error: :dhcp_failed}, :configuring, :failed)
   end
 
@@ -315,12 +317,12 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def activated(:info, {:dhcp_lease_renewed, lease}, data) do
-    Logger.info("DHCP lease renewed for #{data.interface}")
+    emit_dhcp_event(data, :lease_renewed, %{lease: lease})
     {:keep_state, %{data | lease: lease}}
   end
 
-  def activated(:info, {:dhcp_lease_expired, _reason}, data) do
-    Logger.warning("DHCP lease expired for #{data.interface}, deactivating")
+  def activated(:info, {:dhcp_lease_expired, reason}, data) do
+    emit_dhcp_event(data, :lease_expired, %{reason: reason})
     transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
   end
 
@@ -513,6 +515,14 @@ defmodule YellowDog.Netman.Connection.FSM do
       error: data.error,
       dns: data.profile.ipv4.dns ++ data.profile.ipv6.dns
     }
+  end
+
+  defp emit_dhcp_event(data, action, metadata) do
+    :telemetry.execute(
+      [:yellow_dog, :netman, :dhcp, action],
+      %{count: 1},
+      Map.merge(%{interface: data.interface, profile_id: data.profile.id}, metadata)
+    )
   end
 
   defp parse_cidr(cidr) do

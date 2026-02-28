@@ -1378,13 +1378,136 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
       if state.state == :configuring do
         # Simulate carrier loss
-        MockNetlink.link_update(interface, carrier: false)
+        MockNetlink.carrier_change(interface, false)
         Process.sleep(200)
 
         {:ok, state_after} = FSM.get_state(pid)
         assert state_after.state in [:deactivating, :disconnected]
       end
 
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "DHCP telemetry events" do
+    test "dhcp_lease_failed emits telemetry when DHCP auto-start fails", %{profile: profile} do
+      # When DHCP client fails to start (no real interface), the FSM
+      # self-sends {:dhcp_lease_failed, reason} which emits telemetry
+      interface = "fsm_df_#{:rand.uniform(9999)}"
+
+      profile = %{
+        profile
+        | interface: interface,
+          ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      test_pid = self()
+      handler_id = "dhcp-fail-#{interface}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :dhcp, :lease_failed],
+        fn _event, measurements, meta, _config ->
+          send(test_pid, {:dhcp_fail_telemetry, measurements, meta})
+        end,
+        nil
+      )
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      # DHCP client fails immediately on fake interface; telemetry should fire
+      assert_receive {:dhcp_fail_telemetry, %{count: 1}, %{interface: ^interface}}, 500
+
+      :telemetry.detach(handler_id)
+      GenServer.stop(pid, :normal)
+    end
+
+    test "dhcp_lease_renewed emits telemetry in activated state", %{profile: profile} do
+      interface = "fsm_dr_#{:rand.uniform(9999)}"
+      profile = %{profile | interface: interface}
+
+      test_pid = self()
+      handler_id = "dhcp-renew-#{interface}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :dhcp, :lease_renewed],
+        fn _event, measurements, meta, _config ->
+          send(test_pid, {:dhcp_renew_telemetry, measurements, meta})
+        end,
+        nil
+      )
+
+      MockNetlink.link_up(interface, carrier: true)
+      MockNetlink.address_added(interface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      send(pid, {:dhcp_lease_renewed, %{ip: "10.0.0.50", lease_time: 7200}})
+      Process.sleep(50)
+
+      assert_receive {:dhcp_renew_telemetry, %{count: 1}, %{interface: ^interface}}, 500
+
+      :telemetry.detach(handler_id)
+      GenServer.stop(pid, :normal)
+    end
+
+    test "dhcp_lease_expired emits telemetry and triggers deactivation", %{profile: profile} do
+      interface = "fsm_de_#{:rand.uniform(9999)}"
+      profile = %{profile | interface: interface}
+
+      test_pid = self()
+      handler_id = "dhcp-expire-#{interface}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :dhcp, :lease_expired],
+        fn _event, measurements, meta, _config ->
+          send(test_pid, {:dhcp_expire_telemetry, measurements, meta})
+        end,
+        nil
+      )
+
+      MockNetlink.link_up(interface, carrier: true)
+      MockNetlink.address_added(interface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      send(pid, {:dhcp_lease_expired, :timer_expired})
+      Process.sleep(100)
+
+      assert_receive {:dhcp_expire_telemetry, %{count: 1},
+                      %{interface: ^interface, reason: :timer_expired}},
+                     500
+
+      # FSM should have moved to deactivating/disconnected
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:deactivating, :disconnected]
+
+      :telemetry.detach(handler_id)
       GenServer.stop(pid, :normal)
     end
   end
