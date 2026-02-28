@@ -3,16 +3,40 @@ FROM docker.io/library/elixir:1.19-alpine AS builder
 # Install git for fetching hex from GitHub, and Rust/Cargo for Rustler NIFs
 RUN apk add --no-cache git rust cargo
 
-COPY . /app
 WORKDIR /app
 
 ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.1
 
+# Install hex and rebar (cached unless base image changes)
 RUN mix archive.install github hexpm/hex branch latest --force && \
-    mix local.rebar --force && \
-    mix deps.get && \
-    mix release yellow_dog --version "${RELEASE_VERSION}"
+    mix local.rebar --force
+
+# Copy dependency manifests first for better layer caching
+COPY mix.exs mix.lock ./
+COPY apps/abyss/mix.exs apps/abyss/mix.exs
+COPY apps/ex_dhcp/mix.exs apps/ex_dhcp/mix.exs
+COPY apps/ex_dns/mix.exs apps/ex_dns/mix.exs
+COPY apps/geo_ip_db/mix.exs apps/geo_ip_db/mix.exs
+COPY apps/yellow_dog/mix.exs apps/yellow_dog/mix.exs
+COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
+COPY apps/yellow_dog_dhcp_client/mix.exs apps/yellow_dog_dhcp_client/mix.exs
+COPY apps/yellow_dog_dhcpv4/mix.exs apps/yellow_dog_dhcpv4/mix.exs
+COPY apps/yellow_dog_dhcpv6/mix.exs apps/yellow_dog_dhcpv6/mix.exs
+COPY apps/yellow_dog_dns/mix.exs apps/yellow_dog_dns/mix.exs
+COPY apps/yellow_dog_fingerprint/mix.exs apps/yellow_dog_fingerprint/mix.exs
+COPY apps/yellow_dog_identity/mix.exs apps/yellow_dog_identity/mix.exs
+COPY apps/yellow_dog_mdns/mix.exs apps/yellow_dog_mdns/mix.exs
+COPY apps/yellow_dog_netboot/mix.exs apps/yellow_dog_netboot/mix.exs
+COPY apps/yellow_dog_netman/mix.exs apps/yellow_dog_netman/mix.exs
+COPY apps/yellow_dog_telemetry/mix.exs apps/yellow_dog_telemetry/mix.exs
+COPY config config
+
+RUN mix deps.get
+
+# Copy full source and build release
+COPY . .
+RUN mix release yellow_dog --version "${RELEASE_VERSION}"
 
 FROM docker.io/library/alpine:3.23
 
@@ -55,4 +79,3 @@ COPY priv/yellowdogdns_default_config.toml /etc/yellowdog/config.toml
 EXPOSE 53 67/udp 547/udp 5353/udp 4270
 
 CMD ["/app/bin/yellow_dog", "start"]
-
