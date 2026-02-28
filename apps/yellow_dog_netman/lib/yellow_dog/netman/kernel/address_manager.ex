@@ -97,7 +97,7 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   ## Internal
 
-  defp handle_address_event(%{"action" => action, "interface" => iface} = event) do
+  defp handle_address_event(%{"action" => action, "interface" => iface, "address" => _} = event) do
     addr = parse_address(event)
 
     case action do
@@ -128,7 +128,10 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
     EventBus.publish("netman:address:#{iface}", {action_atom, addr})
   end
 
-  defp handle_address_event(_), do: :ok
+  defp handle_address_event(event) do
+    Logger.debug("Ignoring address event with missing fields: #{inspect(event)}")
+    :ok
+  end
 
   defp parse_address(event) do
     {address, prefix_len} = parse_cidr(Map.get(event, "address", "0.0.0.0/0"))
