@@ -151,7 +151,9 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
     Process.sleep(50)
 
     {:ok, _pid} = Connection.Supervisor.start_connection(iface, no_dns_profile)
-    Process.sleep(100)
+    # Allow 300ms for the FSM to complete 5 internal transitions (disconnected →
+    # prepare → configuring → ip_check → activated) under parallel test load.
+    Process.sleep(300)
 
     {:ok, pid} = Connection.Supervisor.find_connection(iface)
     {:ok, state} = Connection.FSM.get_state(pid)
