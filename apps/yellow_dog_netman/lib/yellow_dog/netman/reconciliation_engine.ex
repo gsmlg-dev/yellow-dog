@@ -291,6 +291,14 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     RouteManager.remove_route(params)
   end
 
+  defp apply_diff(%Diff{action: :update_dns, interface: iface, params: params}) do
+    if Code.ensure_loaded?(YellowDog.Resolved) do
+      apply(YellowDog.Resolved, :set_link_dns, [iface, params])
+    else
+      :ok
+    end
+  end
+
   defp apply_diff(%Diff{}) do
     :ok
   end
