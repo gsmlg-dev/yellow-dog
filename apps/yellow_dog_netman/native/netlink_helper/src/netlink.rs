@@ -7,6 +7,9 @@ use netlink_packet_route::address::{
     AddressAttribute, AddressMessage, AddressMessageBuffer, AddressScope,
 };
 use netlink_packet_route::link::{LinkAttribute, LinkMessage, LinkMessageBuffer, State};
+use netlink_packet_route::neighbour::{
+    NeighbourAddress, NeighbourAttribute, NeighbourMessage, NeighbourMessageBuffer,
+};
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteMessageBuffer, RouteProtocol, RouteScope,
 };
@@ -88,11 +91,7 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
             // RTM_NEWROUTE = 24, RTM_DELROUTE = 25
             24 | 25 => parse_route_event(msg_type, payload),
             // RTM_NEWNEIGH = 28, RTM_DELNEIGH = 29
-            28 | 29 => Some(json!({
-                "type": "neighbor_change",
-                "action": if msg_type == 28 { "add" } else { "del" },
-                "raw_type": msg_type
-            })),
+            28 | 29 => parse_neighbour_event(msg_type, payload),
             // RTM_NEWRULE = 32, RTM_DELRULE = 33
             32 | 33 => Some(json!({
                 "type": "rule_change",
@@ -287,6 +286,85 @@ fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
     }
 
     Some(event)
+}
+
+// NUD (Neighbour Unreachability Detection) state bit flags
+const NUD_INCOMPLETE: u16 = 0x01;
+const NUD_REACHABLE: u16 = 0x02;
+const NUD_STALE: u16 = 0x04;
+const NUD_DELAY: u16 = 0x08;
+const NUD_PROBE: u16 = 0x10;
+const NUD_FAILED: u16 = 0x20;
+const NUD_PERMANENT: u16 = 0x80;
+
+/// Parse RTM_NEWNEIGH / RTM_DELNEIGH payload into a JSON event.
+///
+/// Extracts interface name (resolved from ifindex), IP address, MAC address
+/// (as colon-separated hex), and NUD state string. If parsing fails, returns
+/// a minimal event with only `type` and `action`.
+fn parse_neighbour_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
+    let action = if msg_type == 28 { "add" } else { "del" };
+
+    let mut event = json!({
+        "type": "neighbor_change",
+        "action": action,
+        "raw_type": msg_type
+    });
+
+    let payload_owned = payload.to_vec();
+    if let Ok(buf) = NeighbourMessageBuffer::new_checked(&payload_owned) {
+        if let Ok(msg) = NeighbourMessage::parse(&buf) {
+            if let Some(name) = ifindex_to_name(msg.header.ifindex) {
+                event["interface"] = json!(name);
+            }
+            event["state"] = json!(format_nud_state(msg.header.state.into()));
+
+            for attr in &msg.attributes {
+                match attr {
+                    NeighbourAttribute::Destination(addr) => {
+                        event["address"] = json!(format_neighbour_address(addr));
+                    }
+                    NeighbourAttribute::LinkLocalAddress(mac) if mac.len() == 6 => {
+                        event["mac"] = json!(format!(
+                            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(event)
+}
+
+fn format_neighbour_address(addr: &NeighbourAddress) -> String {
+    match addr {
+        NeighbourAddress::Inet(ip) => ip.to_string(),
+        NeighbourAddress::Inet6(ip) => ip.to_string(),
+        _ => format!("{:?}", addr),
+    }
+}
+
+fn format_nud_state(state: u16) -> &'static str {
+    if state & NUD_REACHABLE != 0 {
+        "reachable"
+    } else if state & NUD_STALE != 0 {
+        "stale"
+    } else if state & NUD_DELAY != 0 {
+        "delay"
+    } else if state & NUD_PROBE != 0 {
+        "probe"
+    } else if state & NUD_FAILED != 0 {
+        "failed"
+    } else if state & NUD_PERMANENT != 0 {
+        "permanent"
+    } else if state & NUD_INCOMPLETE != 0 {
+        "incomplete"
+    } else {
+        "none"
+    }
 }
 
 /// Format a RouteAddress (IPv4 or IPv6) as a dotted-decimal / colon-hex string.
