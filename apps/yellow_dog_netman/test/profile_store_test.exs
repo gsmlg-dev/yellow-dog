@@ -305,6 +305,25 @@ defmodule YellowDog.Netman.ProfileStoreTest do
     end
   end
 
+  describe "import_file path validation" do
+    test "import_file rejects non-.toml extension" do
+      tmp_path = Path.join(System.tmp_dir!(), "profile_#{:rand.uniform(65535)}.json")
+      File.write!(tmp_path, "{}")
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      assert {:error, :invalid_path} = ProfileStore.import_file(tmp_path)
+    end
+
+    test "import_file rejects path with null byte" do
+      assert {:error, :invalid_path} = ProfileStore.import_file("/tmp/test\x00.toml")
+    end
+
+    test "import_file rejects extremely long path" do
+      long_path = "/" <> String.duplicate("a", 5000) <> ".toml"
+      assert {:error, :invalid_path} = ProfileStore.import_file(long_path)
+    end
+  end
+
   describe "handle_info catch-all" do
     test "unknown messages are ignored without crashing" do
       send(ProfileStore, {:unknown_message_type, :test_data})
