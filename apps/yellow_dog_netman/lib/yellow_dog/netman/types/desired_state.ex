@@ -26,7 +26,7 @@ defmodule YellowDog.Netman.Types.DesiredState do
   def from_profiles(profile_interface_pairs) do
     connections =
       for {profile, interface} <- profile_interface_pairs, into: %{} do
-        dns = profile.ipv4.dns ++ profile.ipv6.dns
+        dns = (profile.ipv4.dns || []) ++ (profile.ipv6.dns || [])
 
         connection = %{
           profile_id: profile.id,
