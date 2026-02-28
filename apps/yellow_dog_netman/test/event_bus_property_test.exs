@@ -1,0 +1,93 @@
+defmodule YellowDog.Netman.EventBusPropertyTest do
+  use ExUnit.Case
+  use ExUnitProperties
+
+  alias YellowDog.Netman.EventBus
+
+  @moduletag :capture_log
+
+  defp topic_segment do
+    gen all(
+          segment <- string(:alphanumeric, min_length: 1, max_length: 10)
+        ) do
+      segment
+    end
+  end
+
+  defp topic_gen do
+    gen all(
+          segments <- list_of(topic_segment(), min_length: 2, max_length: 4)
+        ) do
+      Enum.join(segments, ":")
+    end
+  end
+
+  property "exact subscribers always receive published messages" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.publish(topic, message)
+      assert_receive {:netman_event, ^topic, ^message}, 100
+      EventBus.unsubscribe(topic)
+    end
+  end
+
+  property "wildcard subscriber receives messages matching prefix" do
+    check all(
+            prefix <- topic_segment(),
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      wildcard_topic = "prop_test:#{prefix}:*"
+      specific_topic = "prop_test:#{prefix}:#{suffix}"
+
+      {:ok, _} = EventBus.subscribe(wildcard_topic)
+      EventBus.publish(specific_topic, message)
+      assert_receive {:netman_event, ^specific_topic, ^message}, 100
+      EventBus.unsubscribe(wildcard_topic)
+    end
+  end
+
+  property "wildcard subscriber does not receive messages from different prefix" do
+    check all(
+            prefix_a <- topic_segment(),
+            prefix_b <- topic_segment(),
+            prefix_a != prefix_b,
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      wildcard_topic = "prop_test:#{prefix_a}:*"
+      other_topic = "prop_test:#{prefix_b}:#{suffix}"
+
+      {:ok, _} = EventBus.subscribe(wildcard_topic)
+      EventBus.publish(other_topic, message)
+      refute_receive {:netman_event, ^other_topic, _}, 20
+      EventBus.unsubscribe(wildcard_topic)
+    end
+  end
+
+  property "publish order is preserved for a single subscriber" do
+    check all(
+            topic <- topic_gen(),
+            messages <- list_of(integer(), min_length: 2, max_length: 20)
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+
+      Enum.each(messages, &EventBus.publish(topic, &1))
+
+      received =
+        Enum.map(messages, fn _msg ->
+          receive do
+            {:netman_event, ^topic, value} -> value
+          after
+            100 -> :timeout
+          end
+        end)
+
+      assert received == messages
+      EventBus.unsubscribe(topic)
+    end
+  end
+end
