@@ -69,4 +69,28 @@ defmodule YellowDog.Netman.EventBusTest do
     assert :ok = EventBus.broadcast("netman:nonexistent:", :ping)
     refute_receive {:netman_event, _, _}, 50
   end
+
+  test "wildcard subscription receives events published to matching topics" do
+    EventBus.subscribe("test:wildcard:*")
+    EventBus.publish("test:wildcard:foo", :hello)
+
+    assert_receive {:netman_event, "test:wildcard:foo", :hello}
+  end
+
+  test "wildcard subscription does not receive events from non-matching topics" do
+    EventBus.subscribe("test:wc_other:*")
+    EventBus.publish("test:no_match:bar", :hello)
+
+    refute_receive {:netman_event, _, _}, 50
+  end
+
+  test "wildcard and exact subscriptions both receive events" do
+    EventBus.subscribe("test:both:*")
+    EventBus.subscribe("test:both:specific")
+    EventBus.publish("test:both:specific", :msg)
+
+    # Should receive from both exact match AND wildcard match
+    assert_receive {:netman_event, "test:both:specific", :msg}
+    assert_receive {:netman_event, "test:both:specific", :msg}
+  end
 end

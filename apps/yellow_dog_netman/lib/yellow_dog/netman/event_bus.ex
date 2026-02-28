@@ -31,14 +31,23 @@ defmodule YellowDog.Netman.EventBus do
     Registry.unregister(@registry, topic)
   end
 
-  @doc "Publish a message to all subscribers of a topic."
+  @doc """
+  Publish a message to all subscribers of a topic.
+
+  Also dispatches to wildcard subscribers. A subscription to `"netman:link:*"`
+  will receive events published to any `"netman:link:<interface>"` topic.
+  """
   @spec publish(String.t(), term()) :: :ok
   def publish(topic, message) when is_binary(topic) do
+    # Dispatch to exact-match subscribers
     Registry.dispatch(@registry, topic, fn entries ->
       for {pid, _value} <- entries do
         send(pid, {:netman_event, topic, message})
       end
     end)
+
+    # Dispatch to wildcard subscribers matching this topic
+    dispatch_to_wildcards(topic, message)
   end
 
   @doc """
@@ -54,6 +63,22 @@ defmodule YellowDog.Netman.EventBus do
     |> Enum.filter(fn {topic, _pid} -> String.starts_with?(topic, prefix) end)
     |> Enum.each(fn {topic, pid} ->
       send(pid, {:netman_event, topic, message})
+    end)
+  end
+
+  # Find all wildcard subscriptions (topics ending with "*") that match
+  # the published topic by prefix. For example, "netman:link:*" matches
+  # "netman:link:eth0".
+  defp dispatch_to_wildcards(topic, message) do
+    Registry.select(@registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.each(fn {subscribed_topic, pid} ->
+      if String.ends_with?(subscribed_topic, "*") do
+        prefix = String.trim_trailing(subscribed_topic, "*")
+
+        if String.starts_with?(topic, prefix) do
+          send(pid, {:netman_event, topic, message})
+        end
+      end
     end)
   end
 end
