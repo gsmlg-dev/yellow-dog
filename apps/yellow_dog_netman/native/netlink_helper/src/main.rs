@@ -56,6 +56,8 @@ fn main() -> io::Result<()> {
     }
 }
 
+const MAX_MESSAGE_SIZE: usize = 1_000_000; // 1 MB max
+
 fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -68,6 +70,11 @@ fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;
+        if len > MAX_MESSAGE_SIZE {
+            eprintln!("message too large: {} bytes (max {})", len, MAX_MESSAGE_SIZE);
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "message too large"));
+        }
+
         let mut buf = vec![0u8; len];
         stdin.read_exact(&mut buf)?;
 
