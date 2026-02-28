@@ -1279,4 +1279,72 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  describe "DHCP lease lifecycle in activated state" do
+    test "lease renewal updates lease data without state change", %{profile: profile} do
+      MockNetlink.link_up(profile.interface)
+      Process.sleep(50)
+      MockNetlink.address_added(profile.interface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: profile.interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Send lease renewal
+      new_lease = %{address: "10.0.0.100", lease_time: 7200}
+      send(pid, {:dhcp_lease_renewed, new_lease})
+      Process.sleep(50)
+
+      {:ok, state_after} = FSM.get_state(pid)
+      assert state_after.state == :activated
+      assert state_after.lease == new_lease
+
+      GenServer.stop(pid, :normal)
+    end
+
+    test "lease expiry triggers deactivation" do
+      interface = "fsm_lease_exp_#{:rand.uniform(100_000)}"
+
+      # Use static IP to avoid DHCP client MAC detection in test environment
+      profile = %Profile{
+        id: "lease-exp-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+      MockNetlink.address_added(interface, "10.0.0.50/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Simulate lease expiry arriving while activated
+      send(pid, {:dhcp_lease_expired, :timeout})
+      Process.sleep(200)
+
+      {:ok, state_after} = FSM.get_state(pid)
+      assert state_after.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

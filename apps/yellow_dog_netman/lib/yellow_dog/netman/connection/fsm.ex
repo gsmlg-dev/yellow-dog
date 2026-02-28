@@ -287,6 +287,16 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
   end
 
+  def activated(:info, {:dhcp_lease_renewed, lease}, data) do
+    Logger.info("DHCP lease renewed for #{data.interface}")
+    {:keep_state, %{data | lease: lease}}
+  end
+
+  def activated(:info, {:dhcp_lease_expired, _reason}, data) do
+    Logger.warning("DHCP lease expired for #{data.interface}, deactivating")
+    transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+  end
+
   def activated(:cast, :deactivate, data) do
     transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
   end

@@ -225,4 +225,72 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert parsed.type == original.type
     end
   end
+
+  describe "gateway validation" do
+    test "rejects invalid gateway IP address" do
+      toml = %{
+        "connection" => %{"id" => "gw-test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "10.0.0.1/24", "gateway" => "not-an-ip"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "ipv4.gateway"
+    end
+
+    test "accepts valid gateway IP address" do
+      toml = %{
+        "connection" => %{"id" => "gw-ok", "type" => "ethernet"},
+        "ipv4" => %{
+          "method" => "manual",
+          "address" => "10.0.0.1/24",
+          "gateway" => "10.0.0.254"
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.gateway == "10.0.0.254"
+    end
+
+    test "accepts nil gateway" do
+      toml = %{
+        "connection" => %{"id" => "gw-nil", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.gateway == nil
+    end
+  end
+
+  describe "DNS validation" do
+    test "rejects invalid DNS server address" do
+      toml = %{
+        "connection" => %{"id" => "dns-test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto", "dns" => ["8.8.8.8", "not-valid"]}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "ipv4.dns"
+    end
+
+    test "accepts valid DNS server addresses" do
+      toml = %{
+        "connection" => %{"id" => "dns-ok", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto", "dns" => ["8.8.8.8", "1.1.1.1"]}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4.dns == ["8.8.8.8", "1.1.1.1"]
+    end
+
+    test "accepts IPv6 DNS servers" do
+      toml = %{
+        "connection" => %{"id" => "dns6", "type" => "ethernet"},
+        "ipv6" => %{"method" => "auto", "dns" => ["2001:4860:4860::8888"]}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv6.dns == ["2001:4860:4860::8888"]
+    end
+  end
 end

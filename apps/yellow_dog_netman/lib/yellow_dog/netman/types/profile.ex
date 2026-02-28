@@ -163,13 +163,13 @@ defmodule YellowDog.Netman.Types.Profile do
           {:error, "ipv4.address must be valid CIDR (e.g. 192.168.1.1/24)"}
 
         true ->
-          {:ok,
-           %{
-             method: method,
-             address: address,
-             gateway: Map.get(ipv4, "gateway"),
-             dns: Map.get(ipv4, "dns", [])
-           }}
+          gateway = Map.get(ipv4, "gateway")
+          dns = Map.get(ipv4, "dns", [])
+
+          with :ok <- validate_gateway(gateway, "ipv4"),
+               :ok <- validate_dns_list(dns, "ipv4") do
+            {:ok, %{method: method, address: address, gateway: gateway, dns: dns}}
+          end
       end
     else
       {:error, "invalid ipv4.method: #{inspect(method_str)}"}
@@ -184,14 +184,19 @@ defmodule YellowDog.Netman.Types.Profile do
 
     if method_str in @valid_ipv6_methods do
       method = parse_ip_method(method_str)
+      gateway = Map.get(ipv6, "gateway")
+      dns = Map.get(ipv6, "dns", [])
 
-      {:ok,
-       %{
-         method: method,
-         address: Map.get(ipv6, "address"),
-         gateway: Map.get(ipv6, "gateway"),
-         dns: Map.get(ipv6, "dns", [])
-       }}
+      with :ok <- validate_gateway(gateway, "ipv6"),
+           :ok <- validate_dns_list(dns, "ipv6") do
+        {:ok,
+         %{
+           method: method,
+           address: Map.get(ipv6, "address"),
+           gateway: gateway,
+           dns: dns
+         }}
+      end
     else
       {:error, "invalid ipv6.method: #{inspect(method_str)}"}
     end
@@ -226,6 +231,40 @@ defmodule YellowDog.Netman.Types.Profile do
 
   defp validate_interface(other) do
     {:error, "connection.interface must be a string, got: #{inspect(other)}"}
+  end
+
+  defp validate_gateway(nil, _section), do: :ok
+
+  defp validate_gateway(gw, section) when is_binary(gw) do
+    case :inet.parse_address(String.to_charlist(gw)) do
+      {:ok, _} -> :ok
+      {:error, _} -> {:error, "#{section}.gateway is not a valid IP address: #{gw}"}
+    end
+  end
+
+  defp validate_gateway(other, section) do
+    {:error, "#{section}.gateway must be a string, got: #{inspect(other)}"}
+  end
+
+  defp validate_dns_list(list, section) when is_list(list) do
+    invalid =
+      Enum.reject(list, fn
+        s when is_binary(s) ->
+          match?({:ok, _}, :inet.parse_address(String.to_charlist(s)))
+
+        _ ->
+          false
+      end)
+
+    if invalid == [] do
+      :ok
+    else
+      {:error, "#{section}.dns contains invalid addresses: #{inspect(invalid)}"}
+    end
+  end
+
+  defp validate_dns_list(other, section) do
+    {:error, "#{section}.dns must be a list, got: #{inspect(other)}"}
   end
 
   defp valid_cidr?(cidr) when is_binary(cidr) do
