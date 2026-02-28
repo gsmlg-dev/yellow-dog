@@ -38,13 +38,13 @@ defmodule Mix.Tasks.Compile.RustPorts do
 
   @impl true
   def run(_args) do
-    app_dir = File.cwd!()
+    app_dir = app_source_dir()
     native_dir = Path.join(app_dir, @native_dir)
     output_dir = Path.join(app_dir, @output_dir)
     output_binary = Path.join(output_dir, @binary_name)
 
     if not File.dir?(native_dir) do
-      Mix.shell().info("RustPorts: native directory not found, skipping build")
+      Mix.shell().info("RustPorts: native directory not found at #{native_dir}, skipping build")
       {:ok, []}
     else
       case System.find_executable("cargo") do
@@ -64,7 +64,7 @@ defmodule Mix.Tasks.Compile.RustPorts do
 
   @impl true
   def clean do
-    app_dir = File.cwd!()
+    app_dir = app_source_dir()
     output_binary = Path.join([app_dir, @output_dir, @binary_name])
 
     if File.exists?(output_binary) do
@@ -124,6 +124,12 @@ defmodule Mix.Tasks.Compile.RustPorts do
         {:error, [diagnostic]}
     end
   end
+
+  # Resolve the app's source directory. In umbrella projects, File.cwd!()
+  # returns the umbrella root. We use the compile-time path of this file
+  # (lib/mix/tasks/compile/rust_ports.ex) to derive the app root.
+  @app_root Path.expand("../../../../", __DIR__)
+  defp app_source_dir, do: @app_root
 
   defp rust_env do
     # Pass through relevant environment variables for cross-compilation
