@@ -596,6 +596,51 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
   end
 
+  describe "activate/1 and deactivate/1 API" do
+    @tag :capture_log
+    test "activate with non-existent profile returns error" do
+      result = ReconciliationEngine.activate("nonexistent-profile-id-999")
+      assert {:error, _} = result
+    end
+
+    @tag :capture_log
+    test "deactivate with non-existent profile returns error" do
+      result = ReconciliationEngine.deactivate("nonexistent-deact-id-999")
+      assert {:error, :not_found} = result
+    end
+
+    @tag :capture_log
+    test "activate with valid profile starts connection" do
+      iface = "recon_act_#{:rand.uniform(65535)}"
+      profile_id = "recon-act-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      result = ReconciliationEngine.activate(profile_id)
+      assert result == :ok
+      Process.sleep(100)
+
+      assert {:ok, _pid} = Connection.Supervisor.find_connection(iface)
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+  end
+
   describe "terminate/2 timer cleanup" do
     test "terminate cancels pending timers without crashing" do
       # Create a state with active timer refs
