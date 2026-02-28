@@ -132,7 +132,13 @@ defmodule YellowDog.Netman.Integration.RoutePriorityTest do
     assert state_hi.state == :disconnected
 
     # Now only low-priority should be active — it becomes default
-    connections_after = Connection.Supervisor.list_connections()
+    # Filter to only this test's connections to avoid interference from parallel tests
+    test_ids = MapSet.new([profile_hi.id, profile_lo.id])
+
+    connections_after =
+      Connection.Supervisor.list_connections()
+      |> Enum.filter(&MapSet.member?(test_ids, &1.profile_id))
+
     active = Enum.filter(connections_after, &(&1.state == :activated))
 
     case PolicyEngine.default_route(active) do
