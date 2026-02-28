@@ -5,6 +5,7 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
   defp connect_to_cli do
     socket_path = :sys.get_state(CLI).socket_path
+
     :gen_tcp.connect({:local, String.to_charlist(socket_path)}, 0, [
       :binary,
       packet: :line,

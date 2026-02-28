@@ -76,9 +76,13 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
     get_routes(interface)
     |> Enum.each(fn route ->
       case remove_route(route) do
-        :ok -> :ok
+        :ok ->
+          :ok
+
         {:error, reason} ->
-          Logger.warning("Failed to remove route #{route.destination} via #{route.gateway} on #{interface}: #{inspect(reason)}")
+          Logger.warning(
+            "Failed to remove route #{route.destination} via #{route.gateway} on #{interface}: #{inspect(reason)}"
+          )
       end
     end)
   end

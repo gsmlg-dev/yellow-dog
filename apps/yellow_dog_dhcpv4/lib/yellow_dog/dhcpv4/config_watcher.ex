@@ -157,7 +157,9 @@ defmodule YellowDog.Dhcpv4.ConfigWatcher do
             {:stop, reason}
 
           :ignore ->
-            Logger.warning("FileSystem watcher unavailable (inotify-tools missing?), config watcher disabled")
+            Logger.warning(
+              "FileSystem watcher unavailable (inotify-tools missing?), config watcher disabled"
+            )
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv4, :config_watcher, :start_failed],

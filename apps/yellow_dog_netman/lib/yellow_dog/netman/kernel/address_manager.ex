@@ -69,9 +69,13 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
     get_addresses(interface)
     |> Enum.each(fn addr ->
       case remove_address(interface, addr.address, addr.prefix_len) do
-        :ok -> :ok
+        :ok ->
+          :ok
+
         {:error, reason} ->
-          Logger.warning("Failed to remove address #{addr.address}/#{addr.prefix_len} from #{interface}: #{inspect(reason)}")
+          Logger.warning(
+            "Failed to remove address #{addr.address}/#{addr.prefix_len} from #{interface}: #{inspect(reason)}"
+          )
       end
     end)
   end

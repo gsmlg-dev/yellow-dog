@@ -416,7 +416,10 @@ defmodule YellowDog.Netman.Connection.FSM do
               [ip]
 
             {:error, _} ->
-              Logger.warning("Invalid DNS server address #{inspect(s)} for #{data.interface}, skipping")
+              Logger.warning(
+                "Invalid DNS server address #{inspect(s)} for #{data.interface}, skipping"
+              )
+
               []
           end
         end)
