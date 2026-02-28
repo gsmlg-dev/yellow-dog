@@ -335,4 +335,50 @@ mod tests {
         });
         assert!(handle(&cmd).is_err());
     }
+
+    #[test]
+    fn link_set_with_invalid_state_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "state": "destroy"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn route_add_with_invalid_gateway_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "default",
+            "gateway": "-flag_inject"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn route_del_with_invalid_destination_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "route_del",
+            "destination": "$(rm -rf /)"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn addr_del_with_empty_address_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "addr_del",
+            "interface": "eth0",
+            "address": ""
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn missing_cmd_field_returns_ok() {
+        // No "cmd" field → empty string → unknown command → Ok
+        let cmd = serde_json::json!({"interface": "eth0"});
+        assert!(handle(&cmd).is_ok());
+    }
 }

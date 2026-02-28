@@ -1512,6 +1512,82 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     end
   end
 
+  describe "address removal during activated" do
+    @tag :capture_log
+    test "all global addresses removed triggers deactivation" do
+      interface = "fsm_addrm_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "addrm-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+      MockNetlink.address_added(interface, "10.0.0.50/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Remove the global address — FSM should deactivate
+      MockNetlink.address_removed(interface, "10.0.0.50/24")
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "address removal with ipv4 disabled does not deactivate" do
+      interface = "fsm_adrdis_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "adrdis-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Removal of a global address shouldn't matter when ipv4 is disabled
+      MockNetlink.address_removed(interface, "10.0.0.99/24")
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   describe "deactivate in failed state" do
     @tag :capture_log
     test "deactivate cast in failed state is a no-op (catch-all)" do

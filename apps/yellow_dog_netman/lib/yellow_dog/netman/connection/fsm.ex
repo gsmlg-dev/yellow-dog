@@ -316,6 +316,23 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
   end
 
+  def activated(:info, {:netman_event, _, {:remove, %{scope: :global}}}, data) do
+    # A global address was removed — check if we still have any
+    if data.profile.ipv4.method != :disabled do
+      addresses = AddressManager.get_addresses(data.interface)
+      has_global = Enum.any?(addresses, &(&1.scope == :global))
+
+      if has_global do
+        {:keep_state, data}
+      else
+        Logger.info("All global addresses lost for #{data.interface}, deactivating")
+        transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+      end
+    else
+      {:keep_state, data}
+    end
+  end
+
   def activated(:info, {:dhcp_lease_renewed, lease}, data) do
     emit_dhcp_event(data, :lease_renewed, %{lease: lease})
     {:keep_state, %{data | lease: lease}}
