@@ -279,7 +279,8 @@ pub fn get_interface_mac(interface: &str) -> Result<[u8; 6], String> {
     }
 
     // SAFETY: ioctl with SIOCGIFHWADDR reads the interface's MAC address.
-    let ret = unsafe { libc::ioctl(sock, libc::SIOCGIFHWADDR, &mut ifr as *mut libc::ifreq) };
+    // Cast request code via `as _` for musl (c_int) vs glibc (c_ulong) portability.
+    let ret = unsafe { libc::ioctl(sock, libc::SIOCGIFHWADDR as _, &mut ifr as *mut libc::ifreq) };
     unsafe { libc::close(sock); }
 
     if ret < 0 {
