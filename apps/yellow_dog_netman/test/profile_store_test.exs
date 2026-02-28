@@ -181,11 +181,17 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       ProfileStore.delete("event-import-test")
     end
 
-    test "file_event :stop is handled gracefully" do
-      send(ProfileStore, {:file_event, self(), :stop})
-      Process.sleep(50)
-      # No crash - the watcher_pid is set to nil
+    test "file_event :stop is handled gracefully and logs warning" do
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          send(ProfileStore, {:file_event, self(), :stop})
+          Process.sleep(50)
+        end)
+
       assert Process.alive?(Process.whereis(ProfileStore))
+      assert log =~ "watcher stopped"
     end
 
     test "handle_info with unknown message is silently ignored" do
