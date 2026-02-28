@@ -396,5 +396,40 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       matched = ProfileStore.match_interface("eth_no_wifi_#{:rand.uniform(65535)}", :wifi)
       assert matched == nil
     end
+
+    test "highest priority wildcard profile wins when multiple wildcards exist" do
+      lo_id = "match-wild-lo-#{:rand.uniform(65535)}"
+      hi_id = "match-wild-hi-#{:rand.uniform(65535)}"
+
+      lo_profile = %Profile{
+        id: lo_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: true,
+        autoconnect_priority: 50
+      }
+
+      hi_profile = %Profile{
+        id: hi_id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: true,
+        autoconnect_priority: 300
+      }
+
+      ProfileStore.put(lo_id, lo_profile)
+      ProfileStore.put(hi_id, hi_profile)
+
+      on_exit(fn ->
+        ProfileStore.delete(lo_id)
+        ProfileStore.delete(hi_id)
+      end)
+
+      matched =
+        ProfileStore.match_interface("eth_multi_wild_#{:rand.uniform(65535)}", :ethernet)
+
+      assert matched != nil
+      assert matched.id == hi_id
+    end
   end
 end
