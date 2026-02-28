@@ -29,12 +29,15 @@ defmodule YellowDog.Netman.Connection.FSM do
           | :deactivating
           | :failed
 
+  @max_ip_check_retries 30
+
   defstruct [
     :interface,
     :profile,
     :lease,
     current_state: :unavailable,
-    error: nil
+    error: nil,
+    ip_check_retries: 0
   ]
 
   ## Client API
@@ -179,6 +182,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :prepare, :configuring, [{:next_event, :internal, :configure_ip}])
   end
 
+  def prepare(:cast, :deactivate, data) do
+    transition(data, :prepare, :deactivating, [{:next_event, :internal, :cleanup}])
+  end
+
   def prepare({:call, from}, :get_state, data) do
     {:keep_state, data, [{:reply, from, {:ok, state_info(data, :prepare)}}]}
   end
@@ -233,15 +240,31 @@ defmodule YellowDog.Netman.Connection.FSM do
     has_global = Enum.any?(addresses, &(&1.scope == :global))
 
     if has_global or data.profile.ipv4.method == :disabled do
-      transition(data, :ip_check, :activated, [{:next_event, :internal, :post_activate}])
+      transition(%{data | ip_check_retries: 0}, :ip_check, :activated, [
+        {:next_event, :internal, :post_activate}
+      ])
     else
-      # Retry after a short delay
-      {:keep_state, data, [{:state_timeout, 2000, :retry_check}]}
+      if data.ip_check_retries >= @max_ip_check_retries do
+        Logger.warning(
+          "IP check for #{data.interface} exhausted #{@max_ip_check_retries} retries, failing"
+        )
+
+        transition(%{data | error: :ip_check_timeout, ip_check_retries: 0}, :ip_check, :failed)
+      else
+        {:keep_state, %{data | ip_check_retries: data.ip_check_retries + 1},
+         [{:state_timeout, 2000, :retry_check}]}
+      end
     end
   end
 
   def ip_check(:state_timeout, :retry_check, data) do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
+  end
+
+  def ip_check(:cast, :deactivate, data) do
+    transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
+      {:next_event, :internal, :cleanup}
+    ])
   end
 
   def ip_check({:call, from}, :get_state, data) do

@@ -78,9 +78,14 @@ defmodule YellowDog.Netman.Integration.RoutePriorityTest do
     # Start both connections
     {:ok, pid_hi} = Connection.Supervisor.start_connection(iface_hi, profile_hi)
     {:ok, pid_lo} = Connection.Supervisor.start_connection(iface_lo, profile_lo)
-    Process.sleep(500)
 
-    # Both should reach activated
+    # Wait for both to reach activated (poll with timeout)
+    assert wait_for_state(pid_hi, :activated, 5000),
+           "High-priority FSM did not reach :activated"
+
+    assert wait_for_state(pid_lo, :activated, 5000),
+           "Low-priority FSM did not reach :activated"
+
     {:ok, state_hi} = Connection.FSM.get_state(pid_hi)
     {:ok, state_lo} = Connection.FSM.get_state(pid_lo)
     assert state_hi.state == :activated
@@ -239,5 +244,29 @@ defmodule YellowDog.Netman.Integration.RoutePriorityTest do
 
     assert metrics1 == metrics2
     assert metrics2 == metrics3
+  end
+
+  defp wait_for_state(pid, expected_state, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+
+    wait_loop(pid, expected_state, deadline)
+  end
+
+  defp wait_loop(pid, expected_state, deadline) do
+    case Connection.FSM.get_state(pid) do
+      {:ok, %{state: ^expected_state}} ->
+        true
+
+      {:ok, _} ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(100)
+          wait_loop(pid, expected_state, deadline)
+        else
+          false
+        end
+
+      _ ->
+        false
+    end
   end
 end
