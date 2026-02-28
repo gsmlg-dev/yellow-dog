@@ -485,7 +485,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   defp push_dns(data) do
-    dns_servers = data.profile.ipv4.dns ++ data.profile.ipv6.dns
+    dns_servers = (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
 
     if dns_servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
       servers =
@@ -530,7 +530,7 @@ defmodule YellowDog.Netman.Connection.FSM do
       priority: data.profile.autoconnect_priority,
       lease: data.lease,
       error: data.error,
-      dns: data.profile.ipv4.dns ++ data.profile.ipv6.dns
+      dns: (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
     }
   end
 
