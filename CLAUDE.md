@@ -43,6 +43,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 - Infrastructure libs (abyss, ex_dns, ex_dhcp) are **in-umbrella** with shared build paths
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)
 - Configuration via TOML files loaded by `YellowDog.Config`
+- **DhcpClient** uses swappable implementations via Application env: `socket_impl` (NIF in prod, `UdpFallback` in test) and `os_integration` (`Standalone` via `ip` commands, or `HookNM` for NetworkManager)
 
 ## Constitution (Architectural Constraints)
 
@@ -72,13 +73,24 @@ mix compile --warnings-as-errors
 mix format --check-formatted
 mix credo --strict
 
+# Lint + Dialyzer (available per-app via `mix lint`, CI disables Dialyzer due to memory)
+mix lint                    # from any app dir: runs credo --strict + dialyzer
+
 # Start Phoenix console (dev)
 cd apps/yellow_dog_console && mix phx.server    # http://localhost:4270
+
+# Console setup (first time or after deps change)
+cd apps/yellow_dog_console
+mix setup                   # deps.get + assets.setup + assets.build
 
 # Asset building
 cd apps/yellow_dog_console
 bun run build               # Dev (255KB + sourcemaps)
 bun run build:prod          # Prod (136KB minified)
+# Note: Bun bundles JS; Tailwind CSS v4 runs as a standalone CLI (not via PostCSS)
+
+# Pre-commit check (console only)
+cd apps/yellow_dog_console && mix precommit     # compile + format + test
 
 # Dev environment
 direnv allow                # or: devenv shell
@@ -149,17 +161,51 @@ LiveView pages in `apps/yellow_dog_console/lib/yellow_dog/console/live/`:
 - IPv4/IPv6 integer conversion: use shared `Ipv4Util`/`Ipv6Util` modules (not private defp copies)
 - DUID formatting: `DuidFormat.format!/2` returns "UNKNOWN" on failure (vs `format/2` → nil)
 
+### Storage Patterns
+
+- **DHCP leases (DHCPv4/v6)**: Mnesia with `disc_copies` — ACID-safe, persists across restarts; tables have secondary indices by IP, state, and pool
+- **DNS zones**: ETS for high-concurrency in-memory access
+- **DHCP client leases**: TOML file persistence via `LeaseStore`
+
+### TOML Configuration Structure
+
+Default config (`config/yellowdogdns_default_config.toml`):
+```toml
+data_dir = "data"
+
+[core]
+dns = true
+mdns = true
+dhcpv4 = true
+dhcpv6 = false
+netboot = false
+
+[dns]
+# DNS server options
+
+[[dhcpv4.pools]]
+# Pool definitions (array-of-tables)
+
+[dhcpv4.static_reservations]
+"aa:bb:cc:dd:ee:ff" = "192.168.1.10"
+```
+
+Config changes trigger reload via `ConfigWatcher` (hot-reload supported).
+
 ## Test Environment
 
 - DNS service disabled (avoids privileged port 53)
 - DHCPv4 uses port 6767, DHCPv6 uses port 5667
 - E2E tests start with `port: 0` for auto-selection
 - mDNS uses unicast to loopback in CI (no multicast)
+- Property-based tests use `ExUnitProperties` (stream_data) — present in dhcp_client and ex_dhcp
+- Console integration tests use `ConnCase`; config tests write temp TOML files to `System.tmp_dir!()`
+- Test fixtures: `apps/yellow_dog/test/fixtures/*.toml` (valid_config, minimal_config, all_disabled, etc.)
 
 ## CI/CD
 
 GitHub Actions workflows:
-- **CI** (`ci.yml`): Matrix test on OTP 27+28, `--warnings-as-errors`, format check
+- **CI** (`ci.yml`): Matrix test on OTP 27+28, `--warnings-as-errors`, format check; Dialyzer **disabled** (GitHub runner OOM)
 - **Docker** (`docker.yml`): Multi-arch Nix builds → GitHub Container Registry
 - **Release** (`release.yml`): Automated releases
 - Never disable any job in ci.yml
