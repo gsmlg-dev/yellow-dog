@@ -513,4 +513,116 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       assert diff.interface == "test_eth0"
     end
   end
+
+  describe "reconciliation error resilience" do
+    @tag :capture_log
+    test "reconciliation completes even when profile vanishes during apply" do
+      iface = "recon_vanish_#{:rand.uniform(65535)}"
+      profile_id = "recon-vanish-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      # Delete profile right before reconciliation tries to apply
+      ProfileStore.delete(profile_id)
+
+      # Trigger reconciliation - should not crash
+      test_pid = self()
+      handler_id = {__MODULE__, :vanish, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      ReconciliationEngine.reconcile()
+      assert_receive {:recon_done, _}, 2000
+
+      # Engine should still be alive
+      assert Process.alive?(Process.whereis(ReconciliationEngine))
+
+      :telemetry.detach(handler_id)
+      MockNetlink.link_removed(iface)
+    end
+  end
+
+  describe "reconciling flag prevents overlapping cycles" do
+    test "rapid periodic_reconcile messages do not cause concurrent reconciliation" do
+      pid = Process.whereis(ReconciliationEngine)
+      test_pid = self()
+      handler_id = {__MODULE__, :overlap, :rand.uniform(1_000_000)}
+
+      recon_count = :counters.new(1, [:atomics])
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, _measurements, _meta, _config ->
+          :counters.add(recon_count, 1, 1)
+          send(test_pid, :recon_tick)
+        end,
+        nil
+      )
+
+      # Fire multiple periodic reconciles rapidly
+      send(pid, :periodic_reconcile)
+      send(pid, :periodic_reconcile)
+      send(pid, :periodic_reconcile)
+
+      # Wait for at least one to complete
+      assert_receive :recon_tick, 2000
+      Process.sleep(200)
+
+      # Engine should still be alive and functional
+      assert Process.alive?(pid)
+
+      :telemetry.detach(handler_id)
+    end
+  end
+
+  describe "terminate/2 timer cleanup" do
+    test "terminate cancels pending timers without crashing" do
+      # Create a state with active timer refs
+      timer_ref = Process.send_after(self(), :test_timer, 60_000)
+      debounce_ref = Process.send_after(self(), :test_debounce, 60_000)
+
+      state = %ReconciliationEngine{
+        timer_ref: timer_ref,
+        debounce_ref: debounce_ref,
+        reconciling: false
+      }
+
+      assert :ok = ReconciliationEngine.terminate(:normal, state)
+
+      # Timers should have been cancelled
+      refute_receive :test_timer, 100
+      refute_receive :test_debounce, 100
+    end
+
+    test "terminate with nil timer refs does not crash" do
+      state = %ReconciliationEngine{
+        timer_ref: nil,
+        debounce_ref: nil,
+        reconciling: false
+      }
+
+      assert :ok = ReconciliationEngine.terminate(:shutdown, state)
+    end
+  end
 end

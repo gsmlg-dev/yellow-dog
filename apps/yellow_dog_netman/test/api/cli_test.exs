@@ -232,7 +232,7 @@ defmodule YellowDog.Netman.API.CLITest do
     end
 
     test "device.show with a valid interface returns result" do
-      iface = "cli_dev_show_#{:rand.uniform(100_000)}"
+      iface = "cds#{:rand.uniform(9999)}"
 
       YellowDog.Netman.Test.MockNetlink.link_up(iface, index: 42, mac: "00:11:22:33:44:55")
       Process.sleep(50)
@@ -331,6 +331,125 @@ defmodule YellowDog.Netman.API.CLITest do
       # monitor is intercepted in handle_client before reaching handle_command
       result = CLI.handle_command(%{"method" => "monitor"})
       assert %{"error" => "unknown method: monitor"} = result
+    end
+  end
+
+  describe "input validation" do
+    test "connection.show with overly long id returns error" do
+      long_id = String.duplicate("a", 200)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => long_id}
+        })
+
+      assert %{"error" => "identifier too long"} = result
+    end
+
+    test "connection.show with special characters in id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => "../../etc/passwd"}
+        })
+
+      assert %{"error" => "identifier contains invalid characters"} = result
+    end
+
+    test "connection.show with empty id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => ""}
+        })
+
+      assert %{"error" => "identifier cannot be empty"} = result
+    end
+
+    test "connection.up with invalid id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.up",
+          "params" => %{"id" => "foo bar\tbaz"}
+        })
+
+      assert %{"error" => "identifier contains invalid characters"} = result
+    end
+
+    test "connection.down with invalid id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.down",
+          "params" => %{"id" => "a\x00b"}
+        })
+
+      assert %{"error" => "identifier contains invalid characters"} = result
+    end
+
+    test "connection.delete with invalid id returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.delete",
+          "params" => %{"id" => "foo/bar"}
+        })
+
+      assert %{"error" => "identifier contains invalid characters"} = result
+    end
+
+    test "device.show with interface name over 15 chars returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "device.show",
+          "params" => %{"interface" => "this_is_way_too_long"}
+        })
+
+      assert %{"error" => "identifier too long"} = result
+    end
+
+    test "connection.add with non-toml file returns error" do
+      tmp_path = Path.join(System.tmp_dir!(), "cli-test-nottoml.json")
+      File.write!(tmp_path, "{}")
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => tmp_path}
+        })
+
+      assert %{"error" => "profile must be a .toml file"} = result
+    end
+
+    test "connection.add with path containing null byte returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => "/tmp/test\x00.toml"}
+        })
+
+      assert %{"error" => "path contains null byte"} = result
+    end
+
+    test "connection.add with nonexistent toml file returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => "/nonexistent/path.toml"}
+        })
+
+      assert %{"error" => "file not found"} = result
+    end
+
+    test "valid identifiers with hyphens and dots pass validation" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => "my-profile.v2"}
+        })
+
+      # Should pass validation (returns not_found, not validation error)
+      assert %{"error" => "profile not found"} = result
     end
   end
 end

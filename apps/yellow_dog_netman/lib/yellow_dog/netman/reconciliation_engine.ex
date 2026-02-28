@@ -112,9 +112,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     {:noreply, do_reconcile(state)}
   end
 
-  def handle_info(:periodic_reconcile, state) do
-    state = do_reconcile(state)
-
+  def handle_info(:periodic_reconcile, %{reconciling: true} = state) do
+    # Skip overlapping reconciliation; reschedule
     interval =
       Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
 
@@ -122,9 +121,26 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     {:noreply, %{state | timer_ref: timer_ref}}
   end
 
-  def handle_info(:debounced_reconcile, state) do
+  def handle_info(:periodic_reconcile, state) do
+    state = %{state | reconciling: true}
     state = do_reconcile(state)
+
+    interval =
+      Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
+
+    timer_ref = Process.send_after(self(), :periodic_reconcile, interval)
+    {:noreply, %{state | timer_ref: timer_ref, reconciling: false}}
+  end
+
+  def handle_info(:debounced_reconcile, %{reconciling: true} = state) do
+    # Skip overlapping reconciliation
     {:noreply, %{state | debounce_ref: nil}}
+  end
+
+  def handle_info(:debounced_reconcile, state) do
+    state = %{state | reconciling: true}
+    state = do_reconcile(state)
+    {:noreply, %{state | debounce_ref: nil, reconciling: false}}
   end
 
   def handle_info({:netman_event, _topic, _message}, state) do
@@ -134,6 +150,13 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   def handle_info(_msg, state) do
     {:noreply, state}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    if state.timer_ref, do: Process.cancel_timer(state.timer_ref)
+    if state.debounce_ref, do: Process.cancel_timer(state.debounce_ref)
+    :ok
   end
 
   ## Reconciliation Logic
@@ -154,8 +177,15 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     applied =
       Enum.count(diffs, fn d ->
         case apply_diff(d) do
-          :ok -> true
-          {:error, _} -> false
+          :ok ->
+            true
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to apply diff #{d.action} on #{d.interface || "global"}: #{inspect(reason)}"
+            )
+
+            false
         end
       end)
 

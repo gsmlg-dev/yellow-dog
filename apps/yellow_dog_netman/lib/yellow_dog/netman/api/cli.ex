@@ -197,9 +197,15 @@ defmodule YellowDog.Netman.API.CLI do
   end
 
   def handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}}) do
-    case YellowDog.Netman.interface_info(iface) do
-      {:ok, info} -> %{"result" => info}
-      {:error, :not_found} -> %{"error" => "interface not found: #{iface}"}
+    case validate_identifier(iface, 15) do
+      :ok ->
+        case YellowDog.Netman.interface_info(iface) do
+          {:ok, info} -> %{"result" => info}
+          {:error, :not_found} -> %{"error" => "interface not found"}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
@@ -213,37 +219,67 @@ defmodule YellowDog.Netman.API.CLI do
   end
 
   def handle_command(%{"method" => "connection.show", "params" => %{"id" => id}}) do
-    case YellowDog.Netman.get_profile(id) do
-      {:ok, profile} -> %{"result" => format_profile(profile)}
-      {:error, :not_found} -> %{"error" => "profile not found: #{id}"}
+    case validate_identifier(id) do
+      :ok ->
+        case YellowDog.Netman.get_profile(id) do
+          {:ok, profile} -> %{"result" => format_profile(profile)}
+          {:error, :not_found} -> %{"error" => "profile not found"}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
   def handle_command(%{"method" => "connection.up", "params" => %{"id" => id}}) do
-    case YellowDog.Netman.activate(id) do
-      :ok -> %{"result" => "activated"}
-      {:error, reason} -> %{"error" => inspect(reason)}
+    case validate_identifier(id) do
+      :ok ->
+        case YellowDog.Netman.activate(id) do
+          :ok -> %{"result" => "activated"}
+          {:error, reason} -> %{"error" => inspect(reason)}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
   def handle_command(%{"method" => "connection.down", "params" => %{"id" => id}}) do
-    case YellowDog.Netman.deactivate(id) do
-      :ok -> %{"result" => "deactivated"}
-      {:error, reason} -> %{"error" => inspect(reason)}
+    case validate_identifier(id) do
+      :ok ->
+        case YellowDog.Netman.deactivate(id) do
+          :ok -> %{"result" => "deactivated"}
+          {:error, reason} -> %{"error" => inspect(reason)}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
   def handle_command(%{"method" => "connection.add", "params" => %{"file" => path}}) do
-    case YellowDog.Netman.import_profile(path) do
-      {:ok, profile} -> %{"result" => "imported: #{profile.id}"}
-      {:error, reason} -> %{"error" => inspect(reason)}
+    case validate_profile_path(path) do
+      :ok ->
+        case YellowDog.Netman.import_profile(path) do
+          {:ok, profile} -> %{"result" => "imported: #{profile.id}"}
+          {:error, reason} -> %{"error" => inspect(reason)}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
   def handle_command(%{"method" => "connection.delete", "params" => %{"id" => id}}) do
-    case YellowDog.Netman.delete_profile(id) do
-      :ok -> %{"result" => "deleted"}
-      {:error, reason} -> %{"error" => inspect(reason)}
+    case validate_identifier(id) do
+      :ok ->
+        case YellowDog.Netman.delete_profile(id) do
+          :ok -> %{"result" => "deleted"}
+          {:error, reason} -> %{"error" => inspect(reason)}
+        end
+
+      {:error, reason} ->
+        %{"error" => reason}
     end
   end
 
@@ -253,6 +289,44 @@ defmodule YellowDog.Netman.API.CLI do
 
   def handle_command(_) do
     %{"error" => "invalid command format"}
+  end
+
+  @max_id_length 128
+  @id_pattern ~r/^[a-zA-Z0-9_\-\.]+$/
+
+  defp validate_identifier(id, max_len \\ @max_id_length) do
+    cond do
+      not is_binary(id) -> {:error, "invalid identifier"}
+      byte_size(id) == 0 -> {:error, "identifier cannot be empty"}
+      byte_size(id) > max_len -> {:error, "identifier too long"}
+      not Regex.match?(@id_pattern, id) -> {:error, "identifier contains invalid characters"}
+      true -> :ok
+    end
+  end
+
+  defp validate_profile_path(path) do
+    cond do
+      not is_binary(path) ->
+        {:error, "invalid path"}
+
+      byte_size(path) > 4096 ->
+        {:error, "path too long"}
+
+      String.contains?(path, "\0") ->
+        {:error, "path contains null byte"}
+
+      Path.extname(path) != ".toml" ->
+        {:error, "profile must be a .toml file"}
+
+      true ->
+        expanded = Path.expand(path)
+
+        if File.regular?(expanded) do
+          :ok
+        else
+          {:error, "file not found"}
+        end
+    end
   end
 
   defp format_system_status(status) do
