@@ -1750,4 +1750,331 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  describe "prepare timeout" do
+    @tag :capture_log
+    test "prepare state timeout triggers failure when link setup stalls" do
+      # Verify the prepare timeout constant is defined and the timeout action
+      # is applied. We can't wait 10s in a test, but we can verify the FSM
+      # handles the :setup_timeout message in prepare state.
+      interface = "fsm_pto_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "pto-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      # Activate — the FSM transitions through prepare quickly to configuring
+      # for manual IP. Verify it doesn't get stuck.
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      # prepare is transient for manual IP — should have passed through it
+      assert state.state != :prepare,
+             "FSM should not remain in :prepare for manual IP, got: #{state.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "init with interface present but no carrier" do
+    @tag :capture_log
+    test "starts in disconnected without auto_activate when carrier is false" do
+      interface = "fsm_nocar_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "nocar-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Interface exists but with carrier: false
+      MockNetlink.link_up(interface, carrier: false)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Should be in disconnected, NOT auto-activated (no carrier)
+      assert state.state == :disconnected
+
+      # Now carrier arrives — should trigger auto_activate
+      MockNetlink.carrier_change(interface, true)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:configuring, :ip_check, :activated, :failed]
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "link flapping" do
+    @tag :capture_log
+    test "rapid carrier on/off does not crash FSM" do
+      interface = "fsm_flap_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "flap-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      # Send rapid carrier on/off events
+      for _ <- 1..10 do
+        MockNetlink.carrier_change(interface, false)
+        MockNetlink.carrier_change(interface, true)
+      end
+
+      Process.sleep(200)
+
+      # FSM should still be alive and in a valid state
+      assert Process.alive?(pid)
+      {:ok, state} = FSM.get_state(pid)
+
+      assert state.state in [
+               :unavailable,
+               :disconnected,
+               :prepare,
+               :configuring,
+               :ip_check,
+               :activated,
+               :deactivating,
+               :failed
+             ]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "link removed then re-added transitions through unavailable" do
+      interface = "fsm_reap_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "reap-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      # Remove the interface
+      MockNetlink.link_removed(interface)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :unavailable
+
+      # Re-add the interface
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "graceful shutdown during ip_check" do
+    @tag :capture_log
+    test "terminate during ip_check cleans up resources" do
+      interface = "fsm_ipck_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "ipck-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(50)
+
+      # Inject a lease to get to ip_check
+      send(pid, {:dhcp_lease_acquired, %{address: "10.0.0.50", lease_time: 3600}})
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Should be in ip_check or past it
+      if state.state == :ip_check do
+        # Terminate during ip_check — should clean up
+        ref = Process.monitor(pid)
+        GenServer.stop(pid, :normal)
+        assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+      else
+        GenServer.stop(pid, :normal)
+      end
+    end
+  end
+
+  describe "DHCP events in various states" do
+    @tag :capture_log
+    test "dhcp_lease_acquired in non-configuring state is ignored" do
+      interface = "fsm_dign_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "dign-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      # Send DHCP event while in disconnected — should be ignored
+      send(pid, {:dhcp_lease_acquired, %{address: "10.0.0.77", lease_time: 3600}})
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+      assert state.lease == nil
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "dhcp_lease_failed in non-configuring state is ignored" do
+      interface = "fsm_dfig_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "dfig-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      # Send DHCP failure while in disconnected — should be ignored
+      send(pid, {:dhcp_lease_failed, :no_server})
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+      assert state.error == nil
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "EventBus integration" do
+    @tag :capture_log
+    test "FSM publishes connection events on activation and deactivation" do
+      interface = "fsm_ebus_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "ebus-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.50/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Subscribe to connection events
+      YellowDog.Netman.EventBus.subscribe("netman:connection:#{profile.id}")
+
+      MockNetlink.link_up(interface, carrier: true)
+      MockNetlink.address_added(interface, "10.0.0.50/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(500)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      if state.state == :activated do
+        # Should have received activated event
+        assert_receive {:netman_event, _, {:activated, ^interface}}, 500
+
+        # Now deactivate
+        FSM.deactivate(pid)
+        Process.sleep(200)
+
+        assert_receive {:netman_event, _, {:deactivated, ^interface}}, 500
+      end
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

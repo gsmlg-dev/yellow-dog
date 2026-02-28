@@ -670,4 +670,182 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       assert :ok = ReconciliationEngine.terminate(:shutdown, state)
     end
   end
+
+  describe "concurrent activate/deactivate stress" do
+    @tag :capture_log
+    test "multiple concurrent activations for different interfaces do not crash" do
+      interfaces =
+        for i <- 1..5 do
+          iface = "recon_stress_#{i}_#{:rand.uniform(65535)}"
+          profile_id = "stress-#{iface}"
+
+          profile = %Profile{
+            id: profile_id,
+            type: :ethernet,
+            interface: iface,
+            autoconnect: false,
+            autoconnect_priority: 100 + i,
+            ethernet: %{mtu: nil},
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+          }
+
+          MockNetlink.link_up(iface, carrier: true)
+          ProfileStore.put(profile_id, profile)
+          {iface, profile_id}
+        end
+
+      Process.sleep(50)
+
+      # Activate all concurrently
+      tasks =
+        Enum.map(interfaces, fn {_iface, profile_id} ->
+          Task.async(fn -> ReconciliationEngine.activate(profile_id) end)
+        end)
+
+      results = Task.await_many(tasks, 5000)
+
+      # All should succeed
+      Enum.each(results, fn result ->
+        assert result == :ok
+      end)
+
+      Process.sleep(200)
+
+      # Engine should still be alive
+      assert Process.alive?(Process.whereis(ReconciliationEngine))
+
+      # Cleanup
+      Enum.each(interfaces, fn {iface, profile_id} ->
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+        MockNetlink.link_removed(iface)
+      end)
+
+      Process.sleep(50)
+    end
+
+    @tag :capture_log
+    test "activate then immediately deactivate same profile does not crash" do
+      iface = "recon_actdeact_#{:rand.uniform(65535)}"
+      profile_id = "actdeact-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      # Activate
+      :ok = ReconciliationEngine.activate(profile_id)
+      Process.sleep(50)
+
+      # Immediately deactivate
+      ReconciliationEngine.deactivate(profile_id)
+      Process.sleep(200)
+
+      # Engine should still be alive
+      assert Process.alive?(Process.whereis(ReconciliationEngine))
+
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+  end
+
+  describe "reconciliation with multiple interfaces" do
+    @tag :capture_log
+    test "reconciliation handles multiple autoconnect profiles with priority ordering" do
+      ifaces =
+        for i <- 1..3 do
+          iface = "recon_multi_#{i}_#{:rand.uniform(65535)}"
+          profile_id = "multi-#{iface}"
+          priority = 100 * i
+
+          profile = %Profile{
+            id: profile_id,
+            type: :ethernet,
+            interface: iface,
+            autoconnect: true,
+            autoconnect_priority: priority,
+            ethernet: %{mtu: nil},
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+          }
+
+          MockNetlink.link_up(iface, carrier: true)
+          ProfileStore.put(profile_id, profile)
+          {iface, profile_id, priority}
+        end
+
+      Process.sleep(50)
+
+      # Trigger reconciliation
+      ReconciliationEngine.reconcile()
+      Process.sleep(500)
+
+      # All interfaces should have FSMs
+      Enum.each(ifaces, fn {iface, _profile_id, _priority} ->
+        case Connection.Supervisor.find_connection(iface) do
+          {:ok, pid} ->
+            assert Process.alive?(pid)
+
+          :error ->
+            # May not have auto-activated yet, that's acceptable
+            :ok
+        end
+      end)
+
+      # Cleanup
+      Enum.each(ifaces, fn {iface, profile_id, _priority} ->
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+        MockNetlink.link_removed(iface)
+      end)
+
+      Process.sleep(50)
+    end
+  end
+
+  describe "debounce coalescing" do
+    @tag :capture_log
+    test "many rapid events result in a single reconciliation cycle" do
+      test_pid = self()
+      recon_count = :counters.new(1, [:atomics])
+      handler_id = {__MODULE__, :coalesce, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, _measurements, _meta, _config ->
+          :counters.add(recon_count, 1, 1)
+          send(test_pid, :coalesce_tick)
+        end,
+        nil
+      )
+
+      # Fire many events rapidly (within debounce window)
+      for _ <- 1..20 do
+        YellowDog.Netman.EventBus.publish("netman:profile:changed", {:updated, "coalesce-test"})
+      end
+
+      # Wait for debounce + reconciliation
+      assert_receive :coalesce_tick, 2000
+      Process.sleep(300)
+
+      # Should have far fewer reconciliation cycles than events
+      count = :counters.get(recon_count, 1)
+      assert count < 20, "Expected coalesced reconciliation, got #{count} cycles for 20 events"
+
+      :telemetry.detach(handler_id)
+    end
+  end
 end

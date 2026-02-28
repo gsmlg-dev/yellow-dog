@@ -452,4 +452,169 @@ defmodule YellowDog.Netman.API.CLITest do
       assert %{"error" => "profile not found"} = result
     end
   end
+
+  describe "missing params edge cases" do
+    test "device.show with empty params falls through to invalid command" do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{}})
+      # Pattern match on %{"interface" => iface} fails, falls to catch-all
+      assert %{"error" => _} = result
+    end
+
+    test "device.show without params key falls through to unknown method" do
+      result = CLI.handle_command(%{"method" => "device.show"})
+      # Matches %{"method" => method} catch-all since no "params"
+      assert %{"error" => "unknown method: device.show"} = result
+    end
+
+    test "connection.show with empty params returns error" do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{}})
+      assert %{"error" => _} = result
+    end
+
+    test "connection.up with empty params returns error" do
+      result = CLI.handle_command(%{"method" => "connection.up", "params" => %{}})
+      assert %{"error" => _} = result
+    end
+
+    test "connection.down with empty params returns error" do
+      result = CLI.handle_command(%{"method" => "connection.down", "params" => %{}})
+      assert %{"error" => _} = result
+    end
+
+    test "connection.add with empty params returns error" do
+      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{}})
+      assert %{"error" => _} = result
+    end
+
+    test "connection.delete with empty params returns error" do
+      result = CLI.handle_command(%{"method" => "connection.delete", "params" => %{}})
+      assert %{"error" => _} = result
+    end
+
+    test "params as string instead of map returns error" do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => "eth0"})
+      assert %{"error" => _} = result
+    end
+
+    test "params as list instead of map returns error" do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => ["test"]})
+      assert %{"error" => _} = result
+    end
+
+    test "nil command returns invalid command format" do
+      result = CLI.handle_command(nil)
+      assert %{"error" => "invalid command format"} = result
+    end
+
+    test "integer command returns invalid command format" do
+      result = CLI.handle_command(42)
+      assert %{"error" => "invalid command format"} = result
+    end
+  end
+
+  describe "identifier boundary conditions" do
+    test "identifier of exactly max length (128 chars) is accepted" do
+      id = String.duplicate("a", 128)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => id}
+        })
+
+      # Passes validation — returns not_found (not a validation error)
+      assert %{"error" => "profile not found"} = result
+    end
+
+    test "identifier one over max length (129 chars) is rejected" do
+      id = String.duplicate("a", 129)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => id}
+        })
+
+      assert %{"error" => "identifier too long"} = result
+    end
+
+    test "interface name of exactly 15 chars is accepted" do
+      iface = String.duplicate("a", 15)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "device.show",
+          "params" => %{"interface" => iface}
+        })
+
+      # Passes validation — returns interface not found
+      assert %{"error" => "interface not found"} = result
+    end
+
+    test "interface name of 16 chars is rejected" do
+      iface = String.duplicate("a", 16)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "device.show",
+          "params" => %{"interface" => iface}
+        })
+
+      assert %{"error" => "identifier too long"} = result
+    end
+
+    test "unicode characters in identifier are rejected" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => "café"}
+        })
+
+      assert %{"error" => "identifier contains invalid characters"} = result
+    end
+
+    test "non-string identifier returns invalid identifier" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => 12345}
+        })
+
+      assert %{"error" => "invalid identifier"} = result
+    end
+  end
+
+  describe "profile path edge cases" do
+    test "connection.add with .TOML uppercase extension is rejected" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => "/tmp/test.TOML"}
+        })
+
+      assert %{"error" => "profile must be a .toml file"} = result
+    end
+
+    test "connection.add with path over 4096 chars is rejected" do
+      long_path = "/" <> String.duplicate("a", 4092) <> ".toml"
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => long_path}
+        })
+
+      assert %{"error" => "path too long"} = result
+    end
+
+    test "connection.add with non-string path returns error" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => 12345}
+        })
+
+      assert %{"error" => _} = result
+    end
+  end
 end
