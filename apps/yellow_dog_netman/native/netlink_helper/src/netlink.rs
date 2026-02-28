@@ -2,6 +2,12 @@
 
 use std::sync::mpsc;
 
+use netlink_packet_utils::traits::Parseable;
+use netlink_packet_route::address::{
+    AddressAttribute, AddressMessage, AddressMessageBuffer, AddressScope,
+};
+use netlink_packet_route::link::{LinkAttribute, LinkMessage, LinkMessageBuffer, State};
+use netlink_packet_route::AddressFamily;
 use netlink_sys::{protocols::NETLINK_ROUTE, Socket, SocketAddr};
 use serde_json::{json, Value};
 
@@ -48,8 +54,15 @@ pub fn listen(tx: mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>>
 
 /// Parse raw netlink message buffer into JSON events.
 ///
-/// This is a simplified parser — in production, use netlink-packet-route
-/// for full RTM_* message parsing. This stub extracts basic info.
+/// Uses `netlink-packet-route` for RTM_NEWLINK/RTM_DELLINK and
+/// RTM_NEWADDR/RTM_DELADDR to extract interface names, addresses, and
+/// state fields expected by the Elixir kernel subsystem.
+///
+/// Events include:
+/// - Link: `{"type": "link_change", "action": "add"|"del", "interface": "eth0",
+///   "index": 2, "carrier": true, "mtu": 1500, "state": "up", "mac": "aa:bb:..."}`
+/// - Address: `{"type": "address_change", "action": "add"|"del", "interface": "eth0",
+///   "address": "10.0.0.1/24", "family": "inet", "scope": "global"}`
 fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
     let mut events = Vec::new();
     let mut offset = 0;
@@ -61,20 +74,14 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
         }
 
         let msg_type = u16::from_ne_bytes([buf[offset + 4], buf[offset + 5]]);
+        // Netlink header is 16 bytes; payload follows
+        let payload = &buf[offset + 16..offset + len];
 
         let event = match msg_type {
             // RTM_NEWLINK = 16, RTM_DELLINK = 17
-            16 | 17 => Some(json!({
-                "type": "link_change",
-                "action": if msg_type == 16 { "add" } else { "del" },
-                "raw_type": msg_type
-            })),
+            16 | 17 => parse_link_event(msg_type, payload),
             // RTM_NEWADDR = 20, RTM_DELADDR = 21
-            20 | 21 => Some(json!({
-                "type": "address_change",
-                "action": if msg_type == 20 { "add" } else { "del" },
-                "raw_type": msg_type
-            })),
+            20 | 21 => parse_address_event(msg_type, payload),
             // RTM_NEWROUTE = 24, RTM_DELROUTE = 25
             24 | 25 => Some(json!({
                 "type": "route_change",
@@ -105,6 +112,128 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
     }
 
     events
+}
+
+/// Parse RTM_NEWLINK / RTM_DELLINK payload into a JSON event.
+///
+/// Extracts interface name, index, carrier, MTU, MAC address, and
+/// operational state from the link message NLAs. If parsing fails
+/// (e.g. empty payload in unit tests), returns a minimal event with
+/// only `type` and `action`.
+fn parse_link_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
+    let action = if msg_type == 16 { "add" } else { "del" };
+
+    let mut event = json!({
+        "type": "link_change",
+        "action": action,
+        "raw_type": msg_type
+    });
+
+    // LinkMessageBuffer requires &T where T: Sized — use Vec<u8> to satisfy this
+    let payload_owned = payload.to_vec();
+    if let Ok(buf) = LinkMessageBuffer::new_checked(&payload_owned) {
+        if let Ok(msg) = LinkMessage::parse(&buf) {
+            event["index"] = json!(msg.header.index);
+
+            for attr in &msg.attributes {
+                match attr {
+                    LinkAttribute::IfName(name) => {
+                        event["interface"] = json!(name);
+                    }
+                    LinkAttribute::Mtu(mtu) => {
+                        event["mtu"] = json!(mtu);
+                    }
+                    LinkAttribute::Carrier(carrier) => {
+                        event["carrier"] = json!(*carrier != 0);
+                    }
+                    LinkAttribute::OperState(state) => {
+                        event["state"] = json!(format_link_state(state));
+                    }
+                    LinkAttribute::Address(mac) if mac.len() == 6 => {
+                        event["mac"] = json!(format!(
+                            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(event)
+}
+
+/// Parse RTM_NEWADDR / RTM_DELADDR payload into a JSON event.
+///
+/// Extracts interface name (from Label NLA), IP address with prefix
+/// length, address family (inet/inet6), and scope. If parsing fails,
+/// returns a minimal event with only `type` and `action`.
+fn parse_address_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
+    let action = if msg_type == 20 { "add" } else { "del" };
+
+    let mut event = json!({
+        "type": "address_change",
+        "action": action,
+        "raw_type": msg_type
+    });
+
+    // AddressMessageBuffer requires &T where T: Sized — use Vec<u8> to satisfy this
+    let payload_owned = payload.to_vec();
+    if let Ok(buf) = AddressMessageBuffer::new_checked(&payload_owned) {
+        if let Ok(msg) = AddressMessage::parse(&buf) {
+            let prefix_len = msg.header.prefix_len;
+
+            event["family"] = json!(format_address_family(&msg.header.family));
+            event["prefix_len"] = json!(prefix_len);
+            event["scope"] = json!(format_address_scope(&msg.header.scope));
+
+            for attr in &msg.attributes {
+                match attr {
+                    AddressAttribute::Address(ip) => {
+                        event["address"] = json!(format!("{}/{}", ip, prefix_len));
+                    }
+                    AddressAttribute::Label(label) => {
+                        event["interface"] = json!(label);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(event)
+}
+
+fn format_link_state(state: &State) -> &'static str {
+    match state {
+        State::Up => "up",
+        State::Down => "down",
+        State::Dormant => "dormant",
+        State::LowerLayerDown => "lowerlayerdown",
+        State::Testing => "testing",
+        State::NotPresent => "notpresent",
+        State::Unknown | _ => "unknown",
+    }
+}
+
+fn format_address_family(family: &AddressFamily) -> &'static str {
+    match family {
+        AddressFamily::Inet => "inet",
+        AddressFamily::Inet6 => "inet6",
+        _ => "unknown",
+    }
+}
+
+fn format_address_scope(scope: &AddressScope) -> &'static str {
+    match scope {
+        AddressScope::Universe => "global",
+        AddressScope::Link => "link",
+        AddressScope::Host => "host",
+        AddressScope::Site => "site",
+        AddressScope::Nowhere => "nowhere",
+        _ => "unknown",
+    }
 }
 
 #[cfg(test)]
@@ -230,5 +359,120 @@ mod tests {
         buf[4..6].copy_from_slice(&16u16.to_ne_bytes()); // RTM_NEWLINK — would match if parsed
         let events = parse_netlink_messages(&buf);
         assert!(events.is_empty());
+    }
+
+    /// Build a real RTM_NEWLINK message with ifinfomsg header + IfName NLA.
+    ///
+    /// ifinfomsg layout (16 bytes):
+    ///   u8  ifi_family, u8 pad, u16 ifi_type, u32 ifi_index, u32 ifi_flags, u32 ifi_change
+    ///
+    /// NLA layout: u16 nla_len, u16 nla_type, [data]
+    fn make_rtm_newlink_with_ifname(index: u32, name: &str) -> Vec<u8> {
+        // ifinfomsg (16 bytes)
+        let mut payload = vec![0u8; 16];
+        payload[4..8].copy_from_slice(&index.to_ne_bytes()); // ifi_index
+
+        // IFLA_IFNAME = 3, NLA format: u16 len + u16 type + name + null
+        let name_bytes = name.as_bytes();
+        let nla_data_len = name_bytes.len() + 1; // +1 for null terminator
+        let nla_len = (4 + nla_data_len) as u16; // 4 = nla header
+        let nla_len_aligned = (nla_len as usize + 3) & !3;
+
+        let mut nla = vec![0u8; nla_len_aligned];
+        nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+        nla[2..4].copy_from_slice(&3u16.to_ne_bytes()); // IFLA_IFNAME = 3
+        nla[4..4 + name_bytes.len()].copy_from_slice(name_bytes);
+        // null terminator at nla[4 + name_bytes.len()] is already 0
+
+        payload.extend_from_slice(&nla);
+
+        // Build complete netlink message
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&16u16.to_ne_bytes()); // RTM_NEWLINK
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newlink_with_ifname_extracts_interface() {
+        let msg = make_rtm_newlink_with_ifname(2, "eth0");
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["interface"], "eth0");
+        assert_eq!(events[0]["index"], 2);
+    }
+
+    /// Build a real RTM_NEWADDR message with ifaddrmsg header + Label NLA + Address NLA.
+    ///
+    /// ifaddrmsg layout (8 bytes):
+    ///   u8 ifa_family, u8 ifa_prefixlen, u8 ifa_flags, u8 ifa_scope, u32 ifa_index
+    fn make_rtm_newaddr_with_label(
+        family: u8,
+        prefix_len: u8,
+        scope: u8,
+        label: &str,
+        addr_bytes: &[u8],
+    ) -> Vec<u8> {
+        // ifaddrmsg (8 bytes)
+        let mut payload = vec![0u8; 8];
+        payload[0] = family;
+        payload[1] = prefix_len;
+        payload[3] = scope;
+
+        // IFA_LABEL = 3, NLA format
+        let label_bytes = label.as_bytes();
+        let label_nla_data_len = label_bytes.len() + 1;
+        let label_nla_len = (4 + label_nla_data_len) as u16;
+        let label_nla_aligned = (label_nla_len as usize + 3) & !3;
+        let mut label_nla = vec![0u8; label_nla_aligned];
+        label_nla[0..2].copy_from_slice(&label_nla_len.to_ne_bytes());
+        label_nla[2..4].copy_from_slice(&3u16.to_ne_bytes()); // IFA_LABEL = 3
+        label_nla[4..4 + label_bytes.len()].copy_from_slice(label_bytes);
+        payload.extend_from_slice(&label_nla);
+
+        // IFA_ADDRESS = 1, NLA format
+        let addr_nla_len = (4 + addr_bytes.len()) as u16;
+        let addr_nla_aligned = (addr_nla_len as usize + 3) & !3;
+        let mut addr_nla = vec![0u8; addr_nla_aligned];
+        addr_nla[0..2].copy_from_slice(&addr_nla_len.to_ne_bytes());
+        addr_nla[2..4].copy_from_slice(&1u16.to_ne_bytes()); // IFA_ADDRESS = 1
+        addr_nla[4..4 + addr_bytes.len()].copy_from_slice(addr_bytes);
+        payload.extend_from_slice(&addr_nla);
+
+        // Build complete netlink message
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&20u16.to_ne_bytes()); // RTM_NEWADDR
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newaddr_with_label_extracts_interface_and_address() {
+        // IPv4: family=2 (AF_INET), prefix=24, scope=0 (Universe/global)
+        let addr_bytes = [10u8, 0, 0, 1]; // 10.0.0.1
+        let msg = make_rtm_newaddr_with_label(2, 24, 0, "eth0", &addr_bytes);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "address_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["interface"], "eth0");
+        assert_eq!(events[0]["address"], "10.0.0.1/24");
+        assert_eq!(events[0]["family"], "inet");
+        assert_eq!(events[0]["scope"], "global");
+    }
+
+    #[test]
+    fn rtm_newaddr_link_scope_is_reported() {
+        // scope=253 = RT_SCOPE_LINK → "link"
+        let addr_bytes = [169u8, 254, 1, 1]; // 169.254.1.1 (link-local)
+        let msg = make_rtm_newaddr_with_label(2, 16, 253, "eth0", &addr_bytes);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["scope"], "link");
     }
 }
