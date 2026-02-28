@@ -141,11 +141,11 @@ fn handle_route_add(cmd: &Value) -> io::Result<()> {
         args.push(iface);
     }
 
-    if let Some(metric) = cmd["metric"].as_u64() {
-        let metric_str = metric.to_string();
+    // Hoist metric_str so its lifetime covers the run_ip call
+    let metric_str = cmd["metric"].as_u64().map(|m| m.to_string());
+    if let Some(ref s) = metric_str {
         args.push("metric");
-        args.push(&metric_str);
-        return run_ip(&args);
+        args.push(s);
     }
 
     run_ip(&args)
