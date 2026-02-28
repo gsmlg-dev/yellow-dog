@@ -107,14 +107,18 @@ defmodule YellowDog.Netman.ProfileStore do
   end
 
   def handle_call({:import_file, path}, _from, state) do
-    case parse_toml_file(path) do
-      {:ok, profile} ->
-        profiles = Map.put(state.profiles, profile.id, profile)
-        EventBus.publish("netman:profile:changed", {:added, profile.id})
-        {:reply, {:ok, profile}, %{state | profiles: profiles}}
+    if valid_profile_path?(path) do
+      case parse_toml_file(path) do
+        {:ok, profile} ->
+          profiles = Map.put(state.profiles, profile.id, profile)
+          EventBus.publish("netman:profile:changed", {:added, profile.id})
+          {:reply, {:ok, profile}, %{state | profiles: profiles}}
 
-      {:error, _} = error ->
-        {:reply, error, state}
+        {:error, _} = error ->
+          {:reply, error, state}
+      end
+    else
+      {:reply, {:error, :invalid_path}, state}
     end
   end
 
@@ -156,6 +160,14 @@ defmodule YellowDog.Netman.ProfileStore do
   end
 
   ## Internal
+
+  defp valid_profile_path?(path) when is_binary(path) do
+    not String.contains?(path, "\0") and
+      Path.extname(path) == ".toml" and
+      byte_size(path) <= 4096
+  end
+
+  defp valid_profile_path?(_), do: false
 
   defp load_profiles(dir) do
     if File.dir?(dir) do
