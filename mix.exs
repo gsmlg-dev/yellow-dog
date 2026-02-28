@@ -20,17 +20,15 @@ defmodule YellowDog.Umbrella.MixProject do
             yellow_dog_dhcp_client: :permanent,
             yellow_dog_netman: :permanent,
             yellow_dog_netboot: :permanent,
-            yellow_dog_identity: :permanent,
-            yellow_dog_console: :permanent
+            yellow_dog_identity: :permanent
           ]
         ]
       ],
       dialyzer: dialyzer(),
       aliases: aliases(),
       docs: docs(),
-      deps: deps(),
-      listeners: [Phoenix.CodeReloader]
-    ]
+      deps: deps()
+    ] ++ phoenix_listeners()
   end
 
   # Dependencies listed here are available only for this
@@ -46,6 +44,14 @@ defmodule YellowDog.Umbrella.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  defp phoenix_listeners do
+    if Code.ensure_loaded?(Phoenix.CodeReloader) do
+      [listeners: [Phoenix.CodeReloader]]
+    else
+      []
+    end
   end
 
   defp dialyzer do

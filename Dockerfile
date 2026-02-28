@@ -19,7 +19,6 @@ COPY apps/ex_dhcp/mix.exs apps/ex_dhcp/mix.exs
 COPY apps/ex_dns/mix.exs apps/ex_dns/mix.exs
 COPY apps/geo_ip_db/mix.exs apps/geo_ip_db/mix.exs
 COPY apps/yellow_dog/mix.exs apps/yellow_dog/mix.exs
-COPY apps/yellow_dog_console/mix.exs apps/yellow_dog_console/mix.exs
 COPY apps/yellow_dog_dhcp_client/mix.exs apps/yellow_dog_dhcp_client/mix.exs
 COPY apps/yellow_dog_dhcpv4/mix.exs apps/yellow_dog_dhcpv4/mix.exs
 COPY apps/yellow_dog_dhcpv6/mix.exs apps/yellow_dog_dhcpv6/mix.exs
