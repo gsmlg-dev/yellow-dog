@@ -155,6 +155,15 @@ data_dir =
 # Store data directory in application config (nil means use config file value or default)
 config :yellow_dog, :data_dir, data_dir
 
+# NetMan configuration from environment
+if profile_dir = System.get_env("YELLOW_DOG_NETMAN_PROFILE_DIR") do
+  config :yellow_dog_netman, :profile_dir, profile_dir
+end
+
+if socket_path = System.get_env("YELLOW_DOG_NETMAN_SOCKET") do
+  config :yellow_dog_netman, :socket_path, socket_path
+end
+
 # Configure Tailwind CSS binary path from environment variable
 if tailwind_bin = System.get_env("TAILWINDCSS_BIN") do
   config :tailwind, path: tailwind_bin

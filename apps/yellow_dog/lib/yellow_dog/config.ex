@@ -9,7 +9,7 @@ defmodule YellowDog.Config do
   use Agent
 
   @type config_map :: map()
-  @type service_name :: :dns | :mdns | :dhcpv4 | :dhcpv6
+  @type service_name :: :dns | :mdns | :dhcpv4 | :dhcpv6 | :identity | :netman
   @type config_key :: atom()
   @type config_value :: term()
   @type zone_name :: String.t()

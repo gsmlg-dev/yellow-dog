@@ -213,6 +213,7 @@ defmodule YellowDog.Application do
   defp service_app_module(:dhcpv4), do: YellowDog.Dhcpv4
   defp service_app_module(:dhcpv6), do: YellowDog.Dhcpv6
   defp service_app_module(:identity), do: YellowDogIdentity
+  defp service_app_module(:netman), do: YellowDog.Netman
 
   # Note: config_change is not needed in the main YellowDog app
   # The console app handles its own config changes through YellowDog.Console.Application
@@ -311,8 +312,9 @@ defmodule YellowDog.Application do
 
     # Log enabled services
     case Map.get(config, "core") do
-      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
-        services = [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}]
+      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
+        netman = Map.get(core, "netman", true)
+        services = [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}, {"NetMan", netman}]
         enabled_services = for({name, true} <- services, do: name)
         disabled_services = for({name, false} <- services, do: name)
 
@@ -540,13 +542,13 @@ defmodule YellowDog.Application do
   # Checks if a service is enabled in the configuration.
   defp service_enabled?(config, service_name) do
     case Map.get(config, "core") do
-      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} ->
+      %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
         case service_name do
           :dns -> dns
           :mdns -> mdns
           :dhcpv4 -> dhcpv4
           :dhcpv6 -> dhcpv6
-          _ -> false
+          other -> Map.get(core, to_string(other), true)
         end
 
       core_config when is_map(core_config) ->

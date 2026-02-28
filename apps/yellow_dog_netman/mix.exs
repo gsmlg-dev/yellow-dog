@@ -10,6 +10,7 @@ defmodule YellowDog.Netman.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.18",
+      compilers: [:rust_ports | Mix.compilers()],
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),

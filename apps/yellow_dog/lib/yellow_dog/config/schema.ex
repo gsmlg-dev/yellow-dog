@@ -24,7 +24,8 @@ defmodule YellowDog.Config.Schema do
         "dns" => true,
         "mdns" => true,
         "dhcpv4" => true,
-        "dhcpv6" => true
+        "dhcpv6" => true,
+        "netman" => true
       },
       "dns" => %{
         "listen" => "0.0.0.0",
@@ -72,6 +73,11 @@ defmodule YellowDog.Config.Schema do
           "enabled" => false,
           "replay_window_seconds" => 300
         }
+      },
+      "netman" => %{
+        "profile_dir" => "/etc/yellowdog/netman/profiles",
+        "reconciliation_interval_ms" => 5000,
+        "socket_path" => "/run/yellowdog/netman.sock"
       }
     }
   end
@@ -86,7 +92,8 @@ defmodule YellowDog.Config.Schema do
         "dns" => false,
         "mdns" => false,
         "dhcpv4" => false,
-        "dhcpv6" => false
+        "dhcpv6" => false,
+        "netman" => false
       },
       "dns" => %{
         "listen" => "0.0.0.0",
@@ -158,7 +165,8 @@ defmodule YellowDog.Config.Schema do
       "mdns" => "# mDNS responder configuration",
       "dhcpv4" => "# DHCPv4 server configuration",
       "dhcpv6" => "# DHCPv6 server configuration",
-      "identity" => "# Host Identity Registry configuration"
+      "identity" => "# Host Identity Registry configuration",
+      "netman" => "# Network Manager configuration"
     }
   end
 
@@ -229,7 +237,8 @@ defmodule YellowDog.Config.Schema do
     {"core.dns", ["core", "dns"]},
     {"core.mdns", ["core", "mdns"]},
     {"core.dhcpv4", ["core", "dhcpv4"]},
-    {"core.dhcpv6", ["core", "dhcpv6"]}
+    {"core.dhcpv6", ["core", "dhcpv6"]},
+    {"core.netman", ["core", "netman"]}
   ]
 
   defp validate_booleans(errors, config) do

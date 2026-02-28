@@ -21,6 +21,15 @@ defmodule YellowDog.Config.SchemaTest do
       assert core["mdns"] == true
       assert core["dhcpv4"] == true
       assert core["dhcpv6"] == true
+      assert core["netman"] == true
+    end
+
+    test "netman section has defaults" do
+      netman = Schema.defaults()["netman"]
+
+      assert is_binary(netman["profile_dir"])
+      assert is_integer(netman["reconciliation_interval_ms"])
+      assert is_binary(netman["socket_path"])
     end
 
     test "dns section has default listen and port" do
@@ -65,6 +74,7 @@ defmodule YellowDog.Config.SchemaTest do
       assert config["core"]["mdns"] == false
       assert config["core"]["dhcpv4"] == false
       assert config["core"]["dhcpv6"] == false
+      assert config["core"]["netman"] == false
     end
 
     test "has listen and port for all services" do
