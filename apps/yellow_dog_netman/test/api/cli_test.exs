@@ -20,6 +20,12 @@ defmodule YellowDog.Netman.API.CLITest do
       assert is_list(devices)
     end
 
+    test "device is an alias for device.list" do
+      result = CLI.handle_command(%{"method" => "device"})
+      assert %{"result" => devices} = result
+      assert is_list(devices)
+    end
+
     test "device.show with unknown interface returns error" do
       result =
         CLI.handle_command(%{
@@ -32,6 +38,12 @@ defmodule YellowDog.Netman.API.CLITest do
 
     test "connection.list returns list" do
       result = CLI.handle_command(%{"method" => "connection.list"})
+      assert %{"result" => profiles} = result
+      assert is_list(profiles)
+    end
+
+    test "connection is an alias for connection.list" do
+      result = CLI.handle_command(%{"method" => "connection"})
       assert %{"result" => profiles} = result
       assert is_list(profiles)
     end

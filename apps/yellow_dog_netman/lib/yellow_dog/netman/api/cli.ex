@@ -187,6 +187,10 @@ defmodule YellowDog.Netman.API.CLI do
     %{"result" => format_system_status(status)}
   end
 
+  def handle_command(%{"method" => "device"}) do
+    handle_command(%{"method" => "device.list"})
+  end
+
   def handle_command(%{"method" => "device.list"}) do
     devices = YellowDog.Netman.list_interfaces()
     %{"result" => devices}
@@ -197,6 +201,10 @@ defmodule YellowDog.Netman.API.CLI do
       {:ok, info} -> %{"result" => info}
       {:error, :not_found} -> %{"error" => "interface not found: #{iface}"}
     end
+  end
+
+  def handle_command(%{"method" => "connection"}) do
+    handle_command(%{"method" => "connection.list"})
   end
 
   def handle_command(%{"method" => "connection.list"}) do
