@@ -200,7 +200,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
 
     # State: failed (via DHCP failure)
     iface2 = "freach_2_#{:rand.uniform(99999)}"
-    profile2 = %{make_profile(iface2) | ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}}
+
+    profile2 = %{
+      make_profile(iface2)
+      | ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}
+    }
+
     MockNetlink.link_up(iface2, carrier: true)
     Process.sleep(50)
     {:ok, pid2} = FSM.start_link(interface: iface2, profile: profile2)

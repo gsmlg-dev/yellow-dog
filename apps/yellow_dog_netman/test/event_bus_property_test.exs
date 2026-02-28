@@ -7,17 +7,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   @moduletag :capture_log
 
   defp topic_segment do
-    gen all(
-          segment <- string(:alphanumeric, min_length: 1, max_length: 10)
-        ) do
+    gen all(segment <- string(:alphanumeric, min_length: 1, max_length: 10)) do
       segment
     end
   end
 
   defp topic_gen do
-    gen all(
-          segments <- list_of(topic_segment(), min_length: 2, max_length: 4)
-        ) do
+    gen all(segments <- list_of(topic_segment(), min_length: 2, max_length: 4)) do
       Enum.join(segments, ":")
     end
   end
