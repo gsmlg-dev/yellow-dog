@@ -118,6 +118,16 @@ defmodule YellowDog.Netman.Kernel.Netlink do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, %{port: port} = _state) when port != nil do
+    Port.close(port)
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   ## Internal
 
   defp open_port do

@@ -25,6 +25,8 @@ const RTNLGRP_IPV4_ROUTE: u32 = 6;
 const RTNLGRP_IPV6_IFADDR: u32 = 9;
 const RTNLGRP_IPV6_ROUTE: u32 = 10;
 const RTNLGRP_NEIGH: u32 = 13;
+const RTNLGRP_IPV4_RULE: u32 = 14;
+const RTNLGRP_IPV6_RULE: u32 = 19;
 
 fn multicast_groups() -> u32 {
     (1 << (RTNLGRP_LINK - 1))
@@ -33,6 +35,8 @@ fn multicast_groups() -> u32 {
         | (1 << (RTNLGRP_IPV6_IFADDR - 1))
         | (1 << (RTNLGRP_IPV6_ROUTE - 1))
         | (1 << (RTNLGRP_NEIGH - 1))
+        | (1 << (RTNLGRP_IPV4_RULE - 1))
+        | (1 << (RTNLGRP_IPV6_RULE - 1))
 }
 
 /// Listen for netlink events and send them to the channel.

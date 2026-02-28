@@ -150,12 +150,9 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
     MockNetlink.link_up(iface, carrier: true)
     Process.sleep(50)
 
-    {:ok, _pid} = Connection.Supervisor.start_connection(iface, no_dns_profile)
-    # Allow 300ms for the FSM to complete 5 internal transitions (disconnected →
-    # prepare → configuring → ip_check → activated) under parallel test load.
-    Process.sleep(300)
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, no_dns_profile)
+    poll_until_activated(pid)
 
-    {:ok, pid} = Connection.Supervisor.find_connection(iface)
     {:ok, state} = Connection.FSM.get_state(pid)
     assert state.state == :activated
     assert state.dns == []
