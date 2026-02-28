@@ -314,7 +314,15 @@ defmodule YellowDog.Application do
     case Map.get(config, "core") do
       %{"dns" => dns, "mdns" => mdns, "dhcpv4" => dhcpv4, "dhcpv6" => dhcpv6} = core ->
         netman = Map.get(core, "netman", true)
-        services = [{"DNS", dns}, {"mDNS", mdns}, {"DHCPv4", dhcpv4}, {"DHCPv6", dhcpv6}, {"NetMan", netman}]
+
+        services = [
+          {"DNS", dns},
+          {"mDNS", mdns},
+          {"DHCPv4", dhcpv4},
+          {"DHCPv6", dhcpv6},
+          {"NetMan", netman}
+        ]
+
         enabled_services = for({name, true} <- services, do: name)
         disabled_services = for({name, false} <- services, do: name)
 

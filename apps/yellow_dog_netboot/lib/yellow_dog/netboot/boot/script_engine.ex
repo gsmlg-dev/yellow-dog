@@ -89,7 +89,8 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
   end
 
   defp to_atom(key) when is_binary(key) do
-    raise ArgumentError, "assign key too long (#{byte_size(key)} bytes, max 64): #{String.slice(key, 0, 20)}..."
+    raise ArgumentError,
+          "assign key too long (#{byte_size(key)} bytes, max 64): #{String.slice(key, 0, 20)}..."
   end
 
   defp load_template(filename, fallback) do
