@@ -321,10 +321,15 @@ defmodule YellowDog.Netman.API.CLI do
       true ->
         expanded = Path.expand(path)
 
-        if File.regular?(expanded) do
-          :ok
-        else
-          {:error, "file not found"}
+        cond do
+          not File.regular?(expanded) ->
+            {:error, "file not found"}
+
+          match?({:ok, _}, File.read_link(expanded)) ->
+            {:error, "symlinks are not allowed"}
+
+          true ->
+            :ok
         end
     end
   end

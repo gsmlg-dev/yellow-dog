@@ -616,5 +616,31 @@ defmodule YellowDog.Netman.API.CLITest do
 
       assert %{"error" => _} = result
     end
+
+    test "connection.add with symlink is rejected" do
+      real_path = Path.join(System.tmp_dir!(), "real_profile_#{:rand.uniform(100_000)}.toml")
+      link_path = Path.join(System.tmp_dir!(), "link_profile_#{:rand.uniform(100_000)}.toml")
+
+      File.write!(real_path, """
+      [connection]
+      id = "symlink-test"
+      type = "ethernet"
+      """)
+
+      File.ln_s!(real_path, link_path)
+
+      on_exit(fn ->
+        File.rm(link_path)
+        File.rm(real_path)
+      end)
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => link_path}
+        })
+
+      assert %{"error" => "symlinks are not allowed"} = result
+    end
   end
 end

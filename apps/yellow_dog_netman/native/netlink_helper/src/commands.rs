@@ -117,6 +117,12 @@ fn handle_link_set(cmd: &Value) -> io::Result<()> {
     let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
 
     if let Some(mtu) = cmd["mtu"].as_u64() {
+        if mtu < 68 || mtu > 65535 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("MTU out of valid range (68-65535): {}", mtu),
+            ));
+        }
         let mtu_str = mtu.to_string();
         run_ip(&["link", "set", iface, "mtu", &mtu_str])?;
     }
@@ -380,5 +386,54 @@ mod tests {
         // No "cmd" field → empty string → unknown command → Ok
         let cmd = serde_json::json!({"interface": "eth0"});
         assert!(handle(&cmd).is_ok());
+    }
+
+    #[test]
+    fn mtu_below_minimum_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": 67
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn mtu_above_maximum_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": 65536
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn mtu_at_minimum_boundary_is_valid() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": 68
+        });
+        // This will fail due to ip command not finding eth0, but the
+        // MTU validation itself should pass. We test it doesn't return
+        // an InvalidInput error about MTU range.
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("MTU out of valid range"));
+        }
+    }
+
+    #[test]
+    fn mtu_at_maximum_boundary_is_valid() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": 65535
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("MTU out of valid range"));
+        }
     }
 }
