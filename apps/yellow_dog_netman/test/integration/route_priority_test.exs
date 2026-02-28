@@ -8,7 +8,6 @@ defmodule YellowDog.Netman.Integration.RoutePriorityTest do
 
   alias YellowDog.Netman.{PolicyEngine, ProfileStore}
   alias YellowDog.Netman.Connection
-  alias YellowDog.Netman.Kernel.RouteManager
   alias YellowDog.Netman.Test.MockNetlink
   alias YellowDog.Netman.Types.Profile
 
