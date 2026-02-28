@@ -10,7 +10,7 @@ mod commands;
 mod netlink;
 mod protocol;
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::sync::mpsc;
 use std::thread;
 

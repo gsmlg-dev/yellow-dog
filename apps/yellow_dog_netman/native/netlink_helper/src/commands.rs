@@ -24,45 +24,107 @@ pub fn handle(cmd: &Value) -> io::Result<()> {
     }
 }
 
+/// Validate that an interface name contains only safe characters.
+fn validate_interface(name: &str) -> io::Result<&str> {
+    if name.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "empty interface name",
+        ));
+    }
+    if name.len() > 15 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "interface name too long",
+        ));
+    }
+    if name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+    {
+        Ok(name)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid interface name: {}", name),
+        ))
+    }
+}
+
+/// Run an ip command and report failures via stderr.
+fn run_ip(args: &[&str]) -> io::Result<()> {
+    match Command::new("ip").args(args).output() {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let msg = format!(
+                    "ip {} failed ({}): {}",
+                    args.join(" "),
+                    output.status,
+                    stderr.trim()
+                );
+                eprintln!("{}", msg);
+                Err(io::Error::new(io::ErrorKind::Other, msg))
+            }
+        }
+        Err(e) => {
+            eprintln!("failed to execute ip command: {}", e);
+            Err(e)
+        }
+    }
+}
+
 fn handle_link_set(cmd: &Value) -> io::Result<()> {
-    let iface = cmd["interface"].as_str().unwrap_or("");
-    let mut args = vec!["link", "set", iface];
+    let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
+
+    if let Some(mtu) = cmd["mtu"].as_u64() {
+        let mtu_str = mtu.to_string();
+        run_ip(&["link", "set", iface, "mtu", &mtu_str])?;
+    }
 
     if let Some(state) = cmd["state"].as_str() {
-        args.push(state);
-    }
-    if let Some(mtu) = cmd["mtu"].as_u64() {
-        args.push("mtu");
-        let mtu_str = mtu.to_string();
-        // Use ip command
-        let _ = Command::new("ip")
-            .args(&["link", "set", iface, "mtu", &mtu_str])
-            .output();
-        return Ok(());
+        match state {
+            "up" | "down" => run_ip(&["link", "set", iface, state])?,
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid link state: {}", state),
+                ));
+            }
+        }
     }
 
-    let _ = Command::new("ip").args(&args).output();
     Ok(())
 }
 
 fn handle_addr_add(cmd: &Value) -> io::Result<()> {
-    let iface = cmd["interface"].as_str().unwrap_or("");
+    let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
     let addr = cmd["address"].as_str().unwrap_or("");
 
-    let _ = Command::new("ip")
-        .args(&["addr", "add", addr, "dev", iface])
-        .output();
-    Ok(())
+    if addr.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "empty address",
+        ));
+    }
+
+    run_ip(&["addr", "add", addr, "dev", iface])
 }
 
 fn handle_addr_del(cmd: &Value) -> io::Result<()> {
-    let iface = cmd["interface"].as_str().unwrap_or("");
+    let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
     let addr = cmd["address"].as_str().unwrap_or("");
 
-    let _ = Command::new("ip")
-        .args(&["addr", "del", addr, "dev", iface])
-        .output();
-    Ok(())
+    if addr.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "empty address",
+        ));
+    }
+
+    run_ip(&["addr", "del", addr, "dev", iface])
 }
 
 fn handle_route_add(cmd: &Value) -> io::Result<()> {
@@ -74,20 +136,19 @@ fn handle_route_add(cmd: &Value) -> io::Result<()> {
         args.push(gw);
     }
     if let Some(iface) = cmd["interface"].as_str() {
+        let _ = validate_interface(iface)?;
         args.push("dev");
         args.push(iface);
     }
+
     if let Some(metric) = cmd["metric"].as_u64() {
-        args.push("metric");
         let metric_str = metric.to_string();
-        let mut full_args = args.clone();
-        full_args.push(&metric_str);
-        let _ = Command::new("ip").args(&full_args).output();
-        return Ok(());
+        args.push("metric");
+        args.push(&metric_str);
+        return run_ip(&args);
     }
 
-    let _ = Command::new("ip").args(&args).output();
-    Ok(())
+    run_ip(&args)
 }
 
 fn handle_route_del(cmd: &Value) -> io::Result<()> {
@@ -99,10 +160,10 @@ fn handle_route_del(cmd: &Value) -> io::Result<()> {
         args.push(gw);
     }
     if let Some(iface) = cmd["interface"].as_str() {
+        let _ = validate_interface(iface)?;
         args.push("dev");
         args.push(iface);
     }
 
-    let _ = Command::new("ip").args(&args).output();
-    Ok(())
+    run_ip(&args)
 }
