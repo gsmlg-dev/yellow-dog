@@ -113,6 +113,36 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
     end
   end
 
+  describe "terminate/2" do
+    test "terminate closes a port without crashing" do
+      pid = Process.whereis(Netlink)
+      fake_port = make_ref()
+      :sys.replace_state(pid, fn state -> %{state | port: fake_port, backend: :port} end)
+
+      # GenServer.stop triggers terminate/2. We restart it afterward.
+      # Since the fake port isn't a real port, Port.close will raise ArgumentError
+      # which the terminate callback rescues. Verify no crash propagates.
+      GenServer.stop(pid, :normal)
+      Process.sleep(50)
+
+      # The supervisor should have restarted it
+      new_pid = Process.whereis(Netlink)
+      assert new_pid != nil
+      assert Process.alive?(new_pid)
+    end
+
+    test "terminate with nil port (mock mode) does not crash" do
+      pid = Process.whereis(Netlink)
+      # In mock mode port is nil; verify terminate handles it
+      GenServer.stop(pid, :normal)
+      Process.sleep(50)
+
+      new_pid = Process.whereis(Netlink)
+      assert new_pid != nil
+      assert Process.alive?(new_pid)
+    end
+  end
+
   describe "port closed handling" do
     @tag :capture_log
     test "port :closed with unknown port ref is silently ignored" do

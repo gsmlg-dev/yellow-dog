@@ -80,6 +80,46 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorTest do
     assert Enum.any?(b_neighbors, &(&1.address == "10.100.0.2"))
   end
 
+  test "IPv6 neighbor entries are tracked" do
+    send_neighbor_event(%{
+      "action" => "add",
+      "interface" => "neigh_v6_eth0",
+      "address" => "fe80::1",
+      "mac" => "aa:bb:cc:dd:ee:06",
+      "state" => "reachable"
+    })
+
+    neighbors = NeighborMonitor.get_neighbors("neigh_v6_eth0")
+    neigh = Enum.find(neighbors, &(&1.address == "fe80::1"))
+    assert neigh != nil
+    assert neigh.mac == "aa:bb:cc:dd:ee:06"
+    assert neigh.state == :reachable
+  end
+
+  test "duplicate neighbor add updates existing entry" do
+    send_neighbor_event(%{
+      "action" => "add",
+      "interface" => "neigh_dup_eth0",
+      "address" => "10.150.0.1",
+      "mac" => "aa:bb:cc:00:00:01",
+      "state" => "reachable"
+    })
+
+    send_neighbor_event(%{
+      "action" => "add",
+      "interface" => "neigh_dup_eth0",
+      "address" => "10.150.0.1",
+      "mac" => "aa:bb:cc:00:00:02",
+      "state" => "stale"
+    })
+
+    neighbors = NeighborMonitor.get_neighbors("neigh_dup_eth0")
+    matching = Enum.filter(neighbors, &(&1.address == "10.150.0.1"))
+    # Should have updated entry, not duplicated
+    assert length(matching) == 1
+    assert hd(matching).state == :stale
+  end
+
   test "NUD state parsing" do
     states = [
       {"reachable", :reachable},
