@@ -7,6 +7,9 @@ use netlink_packet_route::address::{
     AddressAttribute, AddressMessage, AddressMessageBuffer, AddressScope,
 };
 use netlink_packet_route::link::{LinkAttribute, LinkMessage, LinkMessageBuffer, State};
+use netlink_packet_route::route::{
+    RouteAddress, RouteAttribute, RouteMessage, RouteMessageBuffer, RouteProtocol, RouteScope,
+};
 use netlink_packet_route::AddressFamily;
 use netlink_sys::{protocols::NETLINK_ROUTE, Socket, SocketAddr};
 use serde_json::{json, Value};
@@ -83,11 +86,7 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
             // RTM_NEWADDR = 20, RTM_DELADDR = 21
             20 | 21 => parse_address_event(msg_type, payload),
             // RTM_NEWROUTE = 24, RTM_DELROUTE = 25
-            24 | 25 => Some(json!({
-                "type": "route_change",
-                "action": if msg_type == 24 { "add" } else { "del" },
-                "raw_type": msg_type
-            })),
+            24 | 25 => parse_route_event(msg_type, payload),
             // RTM_NEWNEIGH = 28, RTM_DELNEIGH = 29
             28 | 29 => Some(json!({
                 "type": "neighbor_change",
@@ -222,6 +221,112 @@ fn format_address_family(family: &AddressFamily) -> &'static str {
         AddressFamily::Inet => "inet",
         AddressFamily::Inet6 => "inet6",
         _ => "unknown",
+    }
+}
+
+/// Parse RTM_NEWROUTE / RTM_DELROUTE payload into a JSON event.
+///
+/// Extracts destination (as IP/prefix or "default"), gateway, interface name
+/// (resolved from Oif index via libc::if_indextoname), metric, table, scope,
+/// and protocol from the route message. If parsing fails, returns a minimal
+/// event with only `type` and `action`.
+fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
+    let action = if msg_type == 24 { "add" } else { "del" };
+
+    let mut event = json!({
+        "type": "route_change",
+        "action": action,
+        "raw_type": msg_type
+    });
+
+    let payload_owned = payload.to_vec();
+    if let Ok(buf) = RouteMessageBuffer::new_checked(&payload_owned) {
+        if let Ok(msg) = RouteMessage::parse(&buf) {
+            let prefix_len = msg.header.destination_prefix_length;
+            event["table"] = json!(msg.header.table as u32);
+            event["scope"] = json!(format_route_scope(&msg.header.scope));
+            event["protocol"] = json!(format_route_protocol(&msg.header.protocol));
+
+            let mut destination: Option<String> = None;
+            let mut gateway: Option<String> = None;
+
+            for attr in &msg.attributes {
+                match attr {
+                    RouteAttribute::Destination(addr) => {
+                        destination = Some(format!("{}/{}", format_route_address(addr), prefix_len));
+                    }
+                    RouteAttribute::Gateway(addr) => {
+                        gateway = Some(format_route_address(addr));
+                    }
+                    RouteAttribute::Oif(idx) => {
+                        if let Some(name) = ifindex_to_name(*idx) {
+                            event["interface"] = json!(name);
+                        }
+                    }
+                    RouteAttribute::Priority(metric) => {
+                        event["metric"] = json!(metric);
+                    }
+                    RouteAttribute::Table(t) => {
+                        // Extended table attribute overrides the header's u8 table field
+                        event["table"] = json!(t);
+                    }
+                    _ => {}
+                }
+            }
+
+            // Emit "default" when prefix_len == 0 and no Destination attribute
+            event["destination"] = match destination {
+                Some(dest) => json!(dest),
+                None => json!("default"),
+            };
+
+            if let Some(gw) = gateway {
+                event["gateway"] = json!(gw);
+            }
+        }
+    }
+
+    Some(event)
+}
+
+/// Format a RouteAddress (IPv4 or IPv6) as a dotted-decimal / colon-hex string.
+fn format_route_address(addr: &RouteAddress) -> String {
+    match addr {
+        RouteAddress::Inet(ip) => ip.to_string(),
+        RouteAddress::Inet6(ip) => ip.to_string(),
+        _ => format!("{:?}", addr),
+    }
+}
+
+/// Resolve a network interface index to its name via libc.
+fn ifindex_to_name(index: u32) -> Option<String> {
+    let mut buf = [0i8; libc::IFNAMSIZ];
+    let result = unsafe { libc::if_indextoname(index, buf.as_mut_ptr()) };
+    if result.is_null() {
+        return None;
+    }
+    let cstr = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
+    Some(cstr.to_string_lossy().into_owned())
+}
+
+fn format_route_scope(scope: &RouteScope) -> &'static str {
+    match scope {
+        RouteScope::Universe => "universe",
+        RouteScope::Site => "site",
+        RouteScope::Link => "link",
+        RouteScope::Host => "host",
+        RouteScope::NoWhere => "nowhere",
+        _ => "unknown",
+    }
+}
+
+fn format_route_protocol(protocol: &RouteProtocol) -> &'static str {
+    match protocol {
+        RouteProtocol::Kernel => "kernel",
+        RouteProtocol::Boot => "boot",
+        RouteProtocol::Static => "static",
+        RouteProtocol::Dhcp => "dhcp",
+        _ => "unspec",
     }
 }
 
