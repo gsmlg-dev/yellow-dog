@@ -202,5 +202,12 @@ defmodule YellowDog.Netboot.Boot.ScriptEngineTest do
       assert {:ok, "yes"} = ScriptEngine.render_custom(template, %{flag: true})
       assert {:ok, "no"} = ScriptEngine.render_custom(template, %{flag: false})
     end
+
+    test "rejects oversized assign keys" do
+      long_key = String.duplicate("a", 65)
+      template = "<%= @x %>"
+      assert {:error, msg} = ScriptEngine.render_custom(template, %{long_key => "val"})
+      assert msg =~ "assign key too long"
+    end
   end
 end
