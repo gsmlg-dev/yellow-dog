@@ -34,7 +34,13 @@ fn main() -> io::Result<()> {
         }
     });
 
-    // Main loop: multiplex events and commands
+    // Main loop: multiplex events and commands.
+    //
+    // We block on event_rx.recv_timeout() rather than sleeping so that
+    // netlink events are forwarded to Elixir with minimal latency. The
+    // 50 ms timeout lets us still check worker liveness and drain pending
+    // commands even when the network is quiet.
+    let poll_interval = std::time::Duration::from_millis(50);
     loop {
         // Check if worker threads are still alive
         if listener.is_finished() {
@@ -47,10 +53,25 @@ fn main() -> io::Result<()> {
             return Ok(());
         }
 
-        // Check for events (non-blocking)
-        while let Ok(event) = event_rx.try_recv() {
-            if let Err(e) = protocol::write_message(&event) {
-                eprintln!("write error: {}", e);
+        // Block until an event arrives or the poll interval elapses.
+        // Either way, drain any additional events that arrived in the interim.
+        match event_rx.recv_timeout(poll_interval) {
+            Ok(event) => {
+                if let Err(e) = protocol::write_message(&event) {
+                    eprintln!("write error: {}", e);
+                    return Ok(());
+                }
+                // Drain any further events that arrived back-to-back
+                while let Ok(event) = event_rx.try_recv() {
+                    if let Err(e) = protocol::write_message(&event) {
+                        eprintln!("write error: {}", e);
+                        return Ok(());
+                    }
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                eprintln!("event channel disconnected");
                 return Ok(());
             }
         }
@@ -61,9 +82,6 @@ fn main() -> io::Result<()> {
                 eprintln!("command error: {}", e);
             }
         }
-
-        // Small sleep to avoid busy-waiting
-        thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
