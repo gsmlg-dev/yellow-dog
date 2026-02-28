@@ -1014,4 +1014,164 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  describe "get_state in configuring state" do
+    test "get_state returns configuring info when DHCP is pending" do
+      interface = "fsm_conf_gs_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "conf-gs-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(30)
+
+      # Suspend FSM, then queue activate + get_state calls before resume.
+      # After resume, the FSM processes:
+      #   1. activate cast → disconnected → prepare → configuring
+      #   2. configure_ip internal → start_dhcp fails → send self dhcp_lease_failed → {:keep_state}
+      #   3. get_state call (in mailbox BEFORE dhcp_lease_failed) → replies from :configuring
+      #   4. dhcp_lease_failed → transitions to :failed
+      :sys.suspend(pid)
+      FSM.activate(pid)
+
+      task = Task.async(fn -> FSM.get_state(pid) end)
+
+      :sys.resume(pid)
+
+      {:ok, state} = Task.await(task, 5000)
+      assert state.state == :configuring
+      assert state.profile_id == profile.id
+
+      # Let the dhcp_lease_failed settle
+      Process.sleep(100)
+
+      {:ok, final} = FSM.get_state(pid)
+      assert final.state == :failed
+
+      GenServer.stop(pid, :normal)
+    end
+
+    test "catch-all in configuring ignores unknown events deterministically" do
+      interface = "fsm_conf_ca_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "conf-ca-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(30)
+
+      # Queue: activate, unknown event, get_state — all before resume
+      :sys.suspend(pid)
+      FSM.activate(pid)
+      send(pid, {:some_unknown_event, :test_value})
+      task = Task.async(fn -> FSM.get_state(pid) end)
+      :sys.resume(pid)
+
+      {:ok, state} = Task.await(task, 5000)
+      # The unknown event was handled by configuring catch-all, FSM is still in configuring
+      assert state.state == :configuring
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "failed(:cast, :activate) recovery" do
+    test "activate from failed clears error and transitions to disconnected" do
+      interface = "fsm_fail_recov_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "fail-recov-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      # Activate → DHCP fails → :failed
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :failed
+      assert state.error == :dhcp_failed
+
+      # Cast :activate from :failed → clears error → :disconnected
+      # With autoconnect: false, stays in :disconnected
+      FSM.activate(pid)
+      Process.sleep(200)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+      assert state.error == nil
+
+      GenServer.stop(pid, :normal)
+    end
+
+    test "activate from failed with autoconnect re-enters activation cycle" do
+      interface = "fsm_fail_auto_#{:rand.uniform(100_000)}"
+
+      profile = %Profile{
+        id: "fail-auto-#{:rand.uniform(100_000)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      # autoconnect: true → auto-activate → DHCP fails → :failed
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :failed
+
+      # Cast :activate from :failed → :disconnected → auto_activate → prepare → ...
+      # DHCP fails again → :failed
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :failed
+      assert state.error == :dhcp_failed
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end
