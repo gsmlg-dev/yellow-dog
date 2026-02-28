@@ -30,6 +30,8 @@ defmodule YellowDog.Netman.Connection.FSM do
           | :failed
 
   @max_ip_check_retries 30
+  @configuring_timeout_ms 120_000
+  @prepare_timeout_ms 10_000
 
   defstruct [
     :interface,
@@ -136,7 +138,10 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def disconnected(:internal, :auto_activate, data) do
     if data.profile.autoconnect do
-      transition(data, :disconnected, :prepare, [{:next_event, :internal, :setup_link}])
+      transition(data, :disconnected, :prepare, [
+        {:next_event, :internal, :setup_link},
+        {:state_timeout, @prepare_timeout_ms, :setup_timeout}
+      ])
     else
       {:keep_state, data}
     end
@@ -179,7 +184,15 @@ defmodule YellowDog.Netman.Connection.FSM do
       "state" => "up"
     })
 
-    transition(data, :prepare, :configuring, [{:next_event, :internal, :configure_ip}])
+    transition(data, :prepare, :configuring, [
+      {:next_event, :internal, :configure_ip},
+      {:state_timeout, @configuring_timeout_ms, :configuring_timeout}
+    ])
+  end
+
+  def prepare(:state_timeout, :setup_timeout, data) do
+    Logger.warning("Prepare timed out for #{data.interface}")
+    transition(%{data | error: :setup_timeout}, :prepare, :failed)
   end
 
   def prepare(:cast, :deactivate, data) do
@@ -220,6 +233,20 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def configuring(:info, {:dhcp_lease_failed, _reason}, data) do
     transition(%{data | error: :dhcp_failed}, :configuring, :failed)
+  end
+
+  def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    # Carrier lost during configuration
+    Logger.info("Carrier lost during configuring for #{data.interface}")
+    transition(data, :configuring, :deactivating, [{:next_event, :internal, :cleanup}])
+  end
+
+  def configuring(:state_timeout, :configuring_timeout, data) do
+    Logger.warning(
+      "Configuration timed out for #{data.interface} after #{@configuring_timeout_ms}ms"
+    )
+
+    transition(%{data | error: :configuring_timeout}, :configuring, :failed)
   end
 
   def configuring(:cast, :deactivate, data) do
