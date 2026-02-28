@@ -83,7 +83,10 @@ defmodule YellowDog.Netboot.Boot.ScriptEngine do
   end
 
   defp to_atom(key) when is_atom(key), do: key
-  defp to_atom(key) when is_binary(key), do: String.to_existing_atom(key)
+
+  defp to_atom(key) when is_binary(key) and byte_size(key) <= 64 do
+    String.to_atom(key)
+  end
 
   defp load_template(filename, fallback) do
     priv_path = :code.priv_dir(:yellow_dog_netboot)
