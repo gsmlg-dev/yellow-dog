@@ -13,6 +13,33 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
   @moduletag :capture_log
 
   describe "CLI handle_info edge cases via :sys.replace_state" do
+    test "accept with closed socket triggers non-timeout error branch" do
+      pid = Process.whereis(CLI)
+      assert pid != nil
+
+      original_state = :sys.get_state(pid)
+
+      # Create and immediately close a socket — accept on it returns {:error, :closed}
+      {:ok, dead_socket} =
+        :gen_tcp.listen(0, [:binary, packet: :line, active: false, reuseaddr: true])
+
+      :gen_tcp.close(dead_socket)
+
+      on_exit(fn ->
+        :sys.replace_state(pid, fn _state -> original_state end)
+      end)
+
+      :sys.replace_state(pid, fn state -> %{state | listen_socket: dead_socket} end)
+
+      # Trigger :accept — gen_tcp.accept on closed socket fails with non-timeout error
+      send(pid, :accept)
+      Process.sleep(200)
+
+      assert Process.alive?(pid)
+
+      :sys.replace_state(pid, fn _state -> original_state end)
+    end
+
     test "accept with nil listen_socket is a no-op" do
       pid = Process.whereis(CLI)
       assert pid != nil
