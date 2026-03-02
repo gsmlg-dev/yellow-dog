@@ -50,13 +50,17 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   @doc "Add a route via netlink."
   @spec add_route(map()) :: :ok | {:error, term()}
   def add_route(route) do
-    Netlink.command(%{
-      "cmd" => "route_add",
-      "destination" => Map.get(route, :destination, "default"),
-      "gateway" => Map.get(route, :gateway),
-      "interface" => Map.get(route, :interface),
-      "metric" => Map.get(route, :metric, 100)
-    })
+    cmd =
+      %{
+        "cmd" => "route_add",
+        "destination" => Map.get(route, :destination, "default"),
+        "gateway" => Map.get(route, :gateway),
+        "interface" => Map.get(route, :interface),
+        "metric" => Map.get(route, :metric, 100)
+      }
+      |> maybe_put_family(Map.get(route, :family))
+
+    Netlink.command(cmd)
   end
 
   @doc "Remove a route via netlink."
@@ -164,4 +168,8 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   defp parse_scope("link"), do: :link
   defp parse_scope("host"), do: :host
   defp parse_scope(_), do: :universe
+
+  defp maybe_put_family(cmd, :inet), do: Map.put(cmd, "family", "inet")
+  defp maybe_put_family(cmd, :inet6), do: Map.put(cmd, "family", "inet6")
+  defp maybe_put_family(cmd, _), do: cmd
 end

@@ -35,7 +35,7 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   @doc "Send a command to the netlink port."
   @spec command(map()) :: :ok | {:error, term()}
   def command(cmd) when is_map(cmd) do
-    GenServer.call(__MODULE__, {:command, cmd})
+    GenServer.call(__MODULE__, {:command, cmd}, 10_000)
   end
 
   @doc "Subscribe the current process to netlink events."

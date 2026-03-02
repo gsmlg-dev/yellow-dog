@@ -45,7 +45,9 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   @doc "Add an address to an interface via netlink."
   @spec add_address(String.t(), String.t(), non_neg_integer()) :: :ok | {:error, term()}
-  def add_address(interface, address, prefix_len) do
+  def add_address(interface, address, prefix_len)
+      when is_binary(interface) and is_binary(address) and
+             is_integer(prefix_len) and prefix_len >= 0 and prefix_len <= 128 do
     Netlink.command(%{
       "cmd" => "addr_add",
       "interface" => interface,
@@ -55,7 +57,9 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   @doc "Remove an address from an interface via netlink."
   @spec remove_address(String.t(), String.t(), non_neg_integer()) :: :ok | {:error, term()}
-  def remove_address(interface, address, prefix_len) do
+  def remove_address(interface, address, prefix_len)
+      when is_binary(interface) and is_binary(address) and
+             is_integer(prefix_len) and prefix_len >= 0 and prefix_len <= 128 do
     Netlink.command(%{
       "cmd" => "addr_del",
       "interface" => interface,

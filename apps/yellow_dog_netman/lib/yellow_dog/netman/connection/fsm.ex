@@ -620,7 +620,8 @@ defmodule YellowDog.Netman.Connection.FSM do
           destination: "default",
           gateway: gw,
           interface: data.interface,
-          metric: metric
+          metric: metric,
+          family: :inet
         })
 
       _ ->
