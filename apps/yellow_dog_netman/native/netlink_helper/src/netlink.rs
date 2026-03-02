@@ -1378,4 +1378,47 @@ mod tests {
         assert_eq!(events[0]["interface"], "lo");
         assert!(events[0].get("mac").is_none() || events[0]["mac"].is_null());
     }
+
+    // --- IPv6 route tests ---
+
+    #[test]
+    fn rtm_newroute_ipv6_with_destination() {
+        // IPv6: family=10 (AF_INET6), dst_len=64, protocol=2 (RTPROT_KERNEL)
+        // 2001:db8:: = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let dst = [0x20u8, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let msg = make_rtm_newroute(10, 64, 2, 0, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["destination"], "2001:db8::/64");
+        assert_eq!(events[0]["protocol"], "kernel");
+    }
+
+    #[test]
+    fn rtm_newroute_with_all_attributes() {
+        // Route with destination, gateway, and metric
+        let dst = [10u8, 0, 0, 0];
+        let gw = [10u8, 0, 0, 1];
+        let msg = make_rtm_newroute(2, 24, 16, 0, Some(&dst), Some(&gw), Some(600));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["destination"], "10.0.0.0/24");
+        assert_eq!(events[0]["gateway"], "10.0.0.1");
+        assert_eq!(events[0]["metric"], 600);
+        assert_eq!(events[0]["protocol"], "dhcp"); // protocol=16 is RTPROT_DHCP
+    }
+
+    // --- IPv6 address test ---
+
+    #[test]
+    fn rtm_newaddr_ipv6_link_local() {
+        // family=10 (AF_INET6), prefix_len=64, scope=253 (link)
+        // fe80::1 = [0xfe, 0x80, 0,0,0,0,0,0, 0,0,0,0,0,0,0,1]
+        let addr = [0xfeu8, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let msg = make_rtm_newaddr_with_label(10, 64, 253, "eth0", &addr);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "address_change");
+        assert_eq!(events[0]["family"], "inet6");
+        assert_eq!(events[0]["scope"], "link");
+        assert_eq!(events[0]["interface"], "eth0");
+    }
 }
