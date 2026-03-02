@@ -206,8 +206,25 @@ defmodule YellowDog.Netman.Types.ObservedStateTest do
   end
 
   test "put_link/2 replaces existing link" do
-    link1 = %{interface: "eth0", index: 1, state: :down, carrier: false, mtu: 1500, mac: nil, kind: nil}
-    link2 = %{interface: "eth0", index: 1, state: :up, carrier: true, mtu: 9000, mac: "aa:bb:cc:dd:ee:ff", kind: nil}
+    link1 = %{
+      interface: "eth0",
+      index: 1,
+      state: :down,
+      carrier: false,
+      mtu: 1500,
+      mac: nil,
+      kind: nil
+    }
+
+    link2 = %{
+      interface: "eth0",
+      index: 1,
+      state: :up,
+      carrier: true,
+      mtu: 9000,
+      mac: "aa:bb:cc:dd:ee:ff",
+      kind: nil
+    }
 
     state =
       ObservedState.new()
@@ -220,8 +237,22 @@ defmodule YellowDog.Netman.Types.ObservedStateTest do
   end
 
   test "multiple addresses on same interface" do
-    addr1 = %{interface: "eth0", address: "10.0.0.1", prefix_len: 24, family: :inet, scope: :global}
-    addr2 = %{interface: "eth0", address: "192.168.1.1", prefix_len: 24, family: :inet, scope: :global}
+    addr1 = %{
+      interface: "eth0",
+      address: "10.0.0.1",
+      prefix_len: 24,
+      family: :inet,
+      scope: :global
+    }
+
+    addr2 = %{
+      interface: "eth0",
+      address: "192.168.1.1",
+      prefix_len: 24,
+      family: :inet,
+      scope: :global
+    }
+
     addr3 = %{interface: "eth0", address: "fe80::1", prefix_len: 64, family: :inet6, scope: :link}
 
     state =
