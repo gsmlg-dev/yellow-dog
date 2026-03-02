@@ -34,6 +34,20 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     end
   end
 
+  # Read events until one matching pred/1 is found or attempts are exhausted.
+  defp await_event(socket, pred, attempts \\ 20) do
+    assert attempts > 0, "expected event not received within attempt window"
+
+    case :gen_tcp.recv(socket, 0, 500) do
+      {:ok, line} ->
+        event = Jason.decode!(String.trim(line))
+        if pred.(event), do: {:ok, event}, else: await_event(socket, pred, attempts - 1)
+
+      {:error, reason} ->
+        flunk("socket error while waiting for event: #{inspect(reason)}")
+    end
+  end
+
   describe "Unix socket accept loop" do
     test "CLI accepts a JSON command and returns a response" do
       {:ok, socket} = connect_to_cli()
@@ -182,6 +196,33 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       assert event["metadata"]["address"] =~ "192"
 
       :gen_tcp.close(socket)
+    end
+
+    @tag :capture_log
+    test "multiple concurrent monitor clients each receive the same events" do
+      {:ok, socket1} = connect_to_cli()
+      :gen_tcp.send(socket1, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+      {:ok, started1} = :gen_tcp.recv(socket1, 0, 2000)
+      assert %{"event" => "monitor_started"} = Jason.decode!(String.trim(started1))
+
+      {:ok, socket2} = connect_to_cli()
+      :gen_tcp.send(socket2, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+      {:ok, started2} = :gen_tcp.recv(socket2, 0, 2000)
+      assert %{"event" => "monitor_started"} = Jason.decode!(String.trim(started2))
+
+      iface = "mm_#{:rand.uniform(100_000)}"
+      YellowDog.Netman.Test.MockNetlink.link_up(iface)
+
+      # Both monitors must receive the link_change event for our interface
+      link_change? = &(&1["event"] == "yellow_dog.netman.kernel.link_change" and
+                       &1["metadata"]["interface"] == iface)
+
+      assert {:ok, _} = await_event(socket1, link_change?)
+      assert {:ok, _} = await_event(socket2, link_change?)
+
+      :gen_tcp.close(socket1)
+      :gen_tcp.close(socket2)
+      YellowDog.Netman.Test.MockNetlink.link_removed(iface)
     end
 
     @tag :capture_log
