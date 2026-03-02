@@ -68,3 +68,9 @@ yellow_dog-*.tar
 
 
 Mnesia.nonode@nohost/
+
+# Rust build artifacts (netlink_helper port binary)
+**/native/*/target/
+
+# Mix install cache
+/.mix/
