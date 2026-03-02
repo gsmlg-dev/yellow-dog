@@ -5,6 +5,7 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
   - handle_info(:accept) when active_clients >= max_concurrent_clients
   - handle_info(:accept) with non-timeout accept error
   - monitor_loop keepalive after 30s (skipped — impractical timeout)
+  - init/1 mkdir_p error (lines 37-38) and listen failure (line 61)
   """
   use ExUnit.Case
 
@@ -14,6 +15,78 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
   alias YellowDog.Netman.Test.MockNetlink
 
   @moduletag :capture_log
+
+  describe "CLI init/1 socket setup error paths" do
+    setup do
+      old_path = Application.get_env(:yellow_dog_netman, :socket_path)
+
+      on_exit(fn ->
+        case old_path do
+          nil -> Application.delete_env(:yellow_dog_netman, :socket_path)
+          path -> Application.put_env(:yellow_dog_netman, :socket_path, path)
+        end
+      end)
+
+      :ok
+    end
+
+    test "mkdir_p catch-all error when socket dir component is an existing file (line 38 + 61)" do
+      # Put a regular file where CLI expects a directory.
+      # File.mkdir_p/1 returns {:error, :eexist} — hits the catch-all on line 38.
+      # The subsequent gen_tcp.listen also fails (no such directory) — hits line 61.
+      tmp_file = Path.join(System.tmp_dir!(), "cli_cov_notdir_#{:rand.uniform(65_535)}")
+      File.write!(tmp_file, "existing_file")
+      on_exit(fn -> File.rm(tmp_file) end)
+
+      socket_path = "#{tmp_file}/netman.sock"
+      Application.put_env(:yellow_dog_netman, :socket_path, socket_path)
+
+      {:ok, pid} = GenServer.start_link(CLI, [])
+      assert Process.alive?(pid)
+      GenServer.stop(pid)
+    end
+
+    test "listen failure with socket path exceeding UNIX_PATH_MAX (line 61)" do
+      # Linux UNIX_PATH_MAX = 108 bytes; paths > 107 chars cause bind to fail with :einval.
+      # /tmp (5 chars) + 103 'a' chars + ".sock" (5 chars) = 113 chars > 107.
+      # File.mkdir_p("/tmp") succeeds; gen_tcp.listen fails — hits line 61.
+      long_name = String.duplicate("a", 103)
+      socket_path = "/tmp/#{long_name}.sock"
+      Application.put_env(:yellow_dog_netman, :socket_path, socket_path)
+
+      {:ok, pid} = GenServer.start_link(CLI, [])
+      assert Process.alive?(pid)
+      GenServer.stop(pid)
+    end
+
+    test "mkdir_p eacces error for unwritable socket directory (line 37)" do
+      # chmod 555 prevents writes by non-root users.
+      # Root bypasses filesystem permissions, so we skip the assertion in that case.
+      {uid_str, 0} = System.cmd("id", ["-u"])
+      uid = String.trim(uid_str) |> String.to_integer()
+
+      tmp_parent = Path.join(System.tmp_dir!(), "cli_cov_ro_#{:rand.uniform(65_535)}")
+      File.mkdir_p!(tmp_parent)
+
+      on_exit(fn ->
+        File.chmod(tmp_parent, 0o755)
+        File.rm_rf(tmp_parent)
+      end)
+
+      if uid == 0 do
+        # Running as root — permission restrictions don't apply; line 37 untestable here.
+        assert true
+      else
+        File.chmod!(tmp_parent, 0o555)
+        socket_path = "#{tmp_parent}/sub/netman.sock"
+        Application.put_env(:yellow_dog_netman, :socket_path, socket_path)
+
+        {:ok, pid} = GenServer.start_link(CLI, [])
+        assert Process.alive?(pid)
+        GenServer.stop(pid)
+      end
+    end
+  end
 
   describe "CLI handle_info edge cases via :sys.replace_state" do
     test "accept with closed socket triggers non-timeout error branch" do
