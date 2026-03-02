@@ -298,4 +298,94 @@ mod tests {
         // read_exact for length fails → returns Ok (port closed)
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn many_messages_back_to_back() {
+        let mut data = Vec::new();
+        for i in 0..100 {
+            data.extend(encode_message(&json!({"seq": i})));
+        }
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        for i in 0..100 {
+            let msg = rx.recv().unwrap();
+            assert_eq!(msg["seq"], i);
+        }
+        // Channel should be empty
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn deeply_nested_json_is_parsed() {
+        let nested = json!({
+            "a": {"b": {"c": {"d": {"e": {"f": "deep"}}}}}
+        });
+        let data = encode_message(&nested);
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        let received = rx.recv().unwrap();
+        assert_eq!(received["a"]["b"]["c"]["d"]["e"]["f"], "deep");
+    }
+
+    #[test]
+    fn interleaved_valid_invalid_zero_messages() {
+        let mut data = Vec::new();
+        // zero-length (skipped)
+        data.extend_from_slice(&0u32.to_be_bytes());
+        // valid
+        data.extend(encode_message(&json!({"n": 1})));
+        // invalid JSON (skipped)
+        data.extend(encode_raw(b"{{bad json!!"));
+        // 1-byte too small (skipped)
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.push(b'x');
+        // valid
+        data.extend(encode_message(&json!({"n": 2})));
+
+        let mut reader = Cursor::new(data);
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        assert_eq!(rx.recv().unwrap()["n"], 1);
+        assert_eq!(rx.recv().unwrap()["n"], 2);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn large_valid_message_near_limit() {
+        // Create a message just under MAX_MESSAGE_SIZE
+        let big_string = "x".repeat(10_000);
+        let cmd = json!({"data": big_string});
+        let data = encode_message(&cmd);
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        let received = rx.recv().unwrap();
+        assert_eq!(received["data"].as_str().unwrap().len(), 10_000);
+    }
+
+    #[test]
+    fn round_trip_with_protocol_write() {
+        // Use protocol::write_message_to to encode, then read_commands_from to decode
+        use crate::protocol;
+
+        let value = json!({"cmd": "route_add", "destination": "10.0.0.0/24", "gateway": "10.0.0.1"});
+        let mut buf = Vec::new();
+        protocol::write_message_to(&mut buf, &value).unwrap();
+
+        let mut reader = Cursor::new(buf);
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        let received = rx.recv().unwrap();
+        assert_eq!(received, value);
+    }
 }

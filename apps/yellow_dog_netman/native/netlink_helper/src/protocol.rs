@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 
 /// Write a JSON message with 4-byte big-endian length prefix to the given writer.
-fn write_message_to(writer: &mut dyn Write, value: &serde_json::Value) -> io::Result<()> {
+pub(crate) fn write_message_to(writer: &mut dyn Write, value: &serde_json::Value) -> io::Result<()> {
     let json = serde_json::to_vec(value)?;
     let len = (json.len() as u32).to_be_bytes();
 
