@@ -33,6 +33,15 @@ COPY config config
 
 RUN mix deps.get
 
+# Pre-fetch Rust dependencies for better layer caching
+COPY apps/yellow_dog_netman/native/netlink_helper/Cargo.toml \
+     apps/yellow_dog_netman/native/netlink_helper/Cargo.lock \
+     apps/yellow_dog_netman/native/netlink_helper/
+RUN cd apps/yellow_dog_netman/native/netlink_helper && \
+    mkdir -p src && echo 'fn main() {}' > src/main.rs && \
+    cargo build --release --quiet 2>/dev/null; \
+    rm -rf src target/release/netlink_helper target/release/deps/netlink_helper*
+
 # Copy full source
 COPY . .
 
