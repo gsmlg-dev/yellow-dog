@@ -1164,4 +1164,87 @@ mod tests {
     fn rule_action_prohibit() {
         assert_eq!(format_rule_action(&RuleAction::Prohibit), "prohibit");
     }
+
+    // --- default/unknown branch tests for format_* functions ---
+
+    #[test]
+    fn address_family_unknown_returns_unknown() {
+        assert_eq!(format_address_family(&AddressFamily::Other(99)), "unknown");
+    }
+
+    #[test]
+    fn route_scope_unknown_returns_unknown() {
+        assert_eq!(format_route_scope(&RouteScope::Other(250)), "unknown");
+    }
+
+    #[test]
+    fn route_protocol_unknown_returns_unspec() {
+        assert_eq!(format_route_protocol(&RouteProtocol::Other(200)), "unspec");
+    }
+
+    #[test]
+    fn address_scope_unknown_returns_unknown() {
+        assert_eq!(format_address_scope(&AddressScope::Other(254)), "unknown");
+    }
+
+    #[test]
+    fn rule_action_unknown_returns_unspec() {
+        assert_eq!(format_rule_action(&RuleAction::Other(255)), "unspec");
+    }
+
+    #[test]
+    fn route_address_unknown_uses_debug_format() {
+        let addr = RouteAddress::Other(vec![1, 2, 3]);
+        let result = format_route_address(&addr);
+        assert!(result.contains("Other"), "expected Debug format, got: {}", result);
+    }
+
+    // --- ifindex_to_name with invalid index ---
+
+    #[test]
+    fn ifindex_to_name_zero_returns_none() {
+        // Interface index 0 is invalid
+        assert!(ifindex_to_name(0).is_none());
+    }
+
+    #[test]
+    fn ifindex_to_name_nonexistent_returns_none() {
+        // Very large index that doesn't correspond to any interface
+        assert!(ifindex_to_name(999999).is_none());
+    }
+
+    // --- format_neighbour_address ---
+
+    #[test]
+    fn neighbour_address_ipv4_formats_correctly() {
+        let addr = NeighbourAddress::Inet(std::net::Ipv4Addr::new(10, 0, 0, 1));
+        assert_eq!(format_neighbour_address(&addr), "10.0.0.1");
+    }
+
+    #[test]
+    fn neighbour_address_ipv6_formats_correctly() {
+        let addr = NeighbourAddress::Inet6(std::net::Ipv6Addr::LOCALHOST);
+        assert_eq!(format_neighbour_address(&addr), "::1");
+    }
+
+    #[test]
+    fn neighbour_address_unknown_uses_debug_format() {
+        let addr = NeighbourAddress::Other(vec![0xde, 0xad]);
+        let result = format_neighbour_address(&addr);
+        assert!(result.contains("Other"), "expected Debug format, got: {}", result);
+    }
+
+    // --- format_rule_address ---
+
+    #[test]
+    fn rule_address_ipv4_formats_correctly() {
+        let addr = std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 1));
+        assert_eq!(format_rule_address(&addr), "192.168.1.1");
+    }
+
+    #[test]
+    fn rule_address_ipv6_formats_correctly() {
+        let addr = std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+        assert_eq!(format_rule_address(&addr), "::1");
+    }
 }
