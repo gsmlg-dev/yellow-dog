@@ -47,6 +47,36 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     end
   end
 
+  property "higher priority connection gets strictly lower metric" do
+    check all(
+            conn1 <- connection_gen(),
+            conn2 <- connection_gen()
+          ) do
+      # Give unique IDs to avoid map key collision
+      c1 = %{conn1 | id: "a-#{conn1.id}"}
+      c2 = %{conn2 | id: "b-#{conn2.id}"}
+
+      metrics = PolicyEngine.route_metrics([c1, c2])
+      m1 = metrics[c1.id]
+      m2 = metrics[c2.id]
+
+      p1 = PolicyEngine.effective_priority(c1)
+      p2 = PolicyEngine.effective_priority(c2)
+
+      if p1 > p2 do
+        assert m1 < m2, "Priority #{p1} > #{p2} but metric #{m1} >= #{m2}"
+      end
+
+      if p1 < p2 do
+        assert m1 > m2, "Priority #{p1} < #{p2} but metric #{m1} <= #{m2}"
+      end
+
+      if p1 == p2 do
+        assert m1 == m2, "Same priority #{p1} but different metrics #{m1} vs #{m2}"
+      end
+    end
+  end
+
   property "effective_priority is deterministic" do
     check all(conn <- connection_gen()) do
       p1 = PolicyEngine.effective_priority(conn)
