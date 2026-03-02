@@ -19,16 +19,30 @@ defmodule YellowDog.Netman.EventBus do
     Registry.child_spec(keys: :duplicate, name: @registry)
   end
 
+  @wildcard_key "__wildcards__"
+
   @doc "Subscribe the current process to a topic."
   @spec subscribe(String.t()) :: {:ok, pid()} | {:error, term()}
   def subscribe(topic) when is_binary(topic) do
-    Registry.register(@registry, topic, [])
+    result = Registry.register(@registry, topic, [])
+
+    if String.ends_with?(topic, "*") do
+      prefix = String.trim_trailing(topic, "*")
+      Registry.register(@registry, @wildcard_key, prefix)
+    end
+
+    result
   end
 
   @doc "Unsubscribe the current process from a topic."
   @spec unsubscribe(String.t()) :: :ok
   def unsubscribe(topic) when is_binary(topic) do
     Registry.unregister(@registry, topic)
+
+    if String.ends_with?(topic, "*") do
+      prefix = String.trim_trailing(topic, "*")
+      Registry.unregister_match(@registry, @wildcard_key, prefix)
+    end
   end
 
   @doc """
@@ -66,18 +80,13 @@ defmodule YellowDog.Netman.EventBus do
     end)
   end
 
-  # Find all wildcard subscriptions (topics ending with "*") that match
-  # the published topic by prefix. For example, "netman:link:*" matches
-  # "netman:link:eth0".
+  # Dispatch to wildcard subscribers using the dedicated __wildcards__ key.
+  # Each wildcard entry stores the prefix (e.g., "netman:link:" for "netman:link:*").
+  # This is O(W) where W = wildcard subscribers, instead of O(N) for all subscriptions.
   defp dispatch_to_wildcards(topic, message) do
-    Registry.select(@registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.each(fn {subscribed_topic, pid} ->
-      if String.ends_with?(subscribed_topic, "*") do
-        prefix = String.trim_trailing(subscribed_topic, "*")
-
-        if String.starts_with?(topic, prefix) do
-          send(pid, {:netman_event, topic, message})
-        end
+    Registry.dispatch(@registry, @wildcard_key, fn entries ->
+      for {pid, prefix} <- entries, String.starts_with?(topic, prefix) do
+        send(pid, {:netman_event, topic, message})
       end
     end)
   end
