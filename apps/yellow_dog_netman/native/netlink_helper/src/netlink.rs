@@ -261,6 +261,7 @@ fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
     if let Ok(buf) = RouteMessageBuffer::new_checked(&payload_owned) {
         if let Ok(msg) = RouteMessage::parse(&buf) {
             let prefix_len = msg.header.destination_prefix_length;
+            event["family"] = json!(format_address_family(&msg.header.address_family));
             event["table"] = json!(msg.header.table as u32);
             event["scope"] = json!(format_route_scope(&msg.header.scope));
             event["protocol"] = json!(format_route_protocol(&msg.header.protocol));

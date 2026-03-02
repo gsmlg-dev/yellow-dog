@@ -166,7 +166,18 @@ fn handle_addr_del(cmd: &Value) -> io::Result<()> {
 
 fn handle_route_add(cmd: &Value) -> io::Result<()> {
     let dest = validate_destination(cmd["destination"].as_str().unwrap_or("default"))?;
-    let mut args = vec!["route", "add", dest];
+
+    // Build args: ip [-4|-6] route add ...
+    // The family flag is required for "default" destination with IPv6 gateways,
+    // since `ip route add default` defaults to IPv4.
+    let mut args: Vec<&str> = Vec::new();
+    let family = cmd["family"].as_str();
+    match family {
+        Some("inet") => args.push("-4"),
+        Some("inet6") => args.push("-6"),
+        _ => {}
+    }
+    args.extend_from_slice(&["route", "add", dest]);
 
     if let Some(gw) = cmd["gateway"].as_str() {
         let gw = validate_address(gw)?;
@@ -201,7 +212,15 @@ fn handle_route_add(cmd: &Value) -> io::Result<()> {
 
 fn handle_route_del(cmd: &Value) -> io::Result<()> {
     let dest = validate_destination(cmd["destination"].as_str().unwrap_or("default"))?;
-    let mut args = vec!["route", "del", dest];
+
+    let mut args: Vec<&str> = Vec::new();
+    let family = cmd["family"].as_str();
+    match family {
+        Some("inet") => args.push("-4"),
+        Some("inet6") => args.push("-6"),
+        _ => {}
+    }
+    args.extend_from_slice(&["route", "del", dest]);
 
     if let Some(gw) = cmd["gateway"].as_str() {
         let gw = validate_address(gw)?;
@@ -619,6 +638,69 @@ mod tests {
         let result = handle(&cmd);
         if let Err(ref e) = result {
             assert!(!e.to_string().contains("route metric exceeds maximum"));
+        }
+    }
+
+    // --- address family flag tests ---
+
+    #[test]
+    fn route_add_inet_family_does_not_cause_validation_error() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "default",
+            "gateway": "192.168.1.1",
+            "interface": "eth0",
+            "family": "inet"
+        });
+        let result = handle(&cmd);
+        // May fail because ip command can't find eth0, but should not fail
+        // due to family validation
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("invalid"));
+        }
+    }
+
+    #[test]
+    fn route_add_inet6_family_does_not_cause_validation_error() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "default",
+            "gateway": "fe80::1",
+            "interface": "eth0",
+            "family": "inet6"
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("invalid"));
+        }
+    }
+
+    #[test]
+    fn route_del_with_family_does_not_cause_validation_error() {
+        let cmd = serde_json::json!({
+            "cmd": "route_del",
+            "destination": "default",
+            "gateway": "fe80::1",
+            "family": "inet6"
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("invalid"));
+        }
+    }
+
+    #[test]
+    fn route_add_unknown_family_is_ignored() {
+        // Unknown family values should be silently ignored (no -4/-6 flag)
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "10.0.0.0/24",
+            "interface": "eth0",
+            "family": "unknown"
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("family"));
         }
     }
 }

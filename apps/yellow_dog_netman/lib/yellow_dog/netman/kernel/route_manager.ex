@@ -66,12 +66,16 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   @doc "Remove a route via netlink."
   @spec remove_route(map()) :: :ok | {:error, term()}
   def remove_route(route) do
-    Netlink.command(%{
-      "cmd" => "route_del",
-      "destination" => Map.get(route, :destination, "default"),
-      "gateway" => Map.get(route, :gateway),
-      "interface" => Map.get(route, :interface)
-    })
+    cmd =
+      %{
+        "cmd" => "route_del",
+        "destination" => Map.get(route, :destination, "default"),
+        "gateway" => Map.get(route, :gateway),
+        "interface" => Map.get(route, :interface)
+      }
+      |> maybe_put_family(Map.get(route, :family))
+
+    Netlink.command(cmd)
   end
 
   @doc "Remove all routes for an interface. Returns counts of removed and failed operations."
@@ -153,10 +157,15 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
       interface: Map.get(event, "interface", ""),
       metric: Map.get(event, "metric", 0),
       table: Map.get(event, "table", 254),
+      family: parse_family(Map.get(event, "family", "inet")),
       protocol: parse_protocol(Map.get(event, "protocol", "unspec")),
       scope: parse_scope(Map.get(event, "scope", "universe"))
     }
   end
+
+  defp parse_family("inet"), do: :inet
+  defp parse_family("inet6"), do: :inet6
+  defp parse_family(_), do: :inet
 
   defp parse_protocol("boot"), do: :boot
   defp parse_protocol("static"), do: :static
