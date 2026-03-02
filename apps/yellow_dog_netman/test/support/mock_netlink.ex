@@ -102,6 +102,7 @@ defmodule YellowDog.Netman.Test.MockNetlink do
       "interface" => Keyword.get(opts, :interface, "eth0"),
       "metric" => Keyword.get(opts, :metric, 100),
       "table" => Keyword.get(opts, :table, 254),
+      "family" => Keyword.get(opts, :family, "inet"),
       "protocol" => Keyword.get(opts, :protocol, "dhcp"),
       "scope" => Keyword.get(opts, :scope, "universe")
     }
@@ -116,7 +117,8 @@ defmodule YellowDog.Netman.Test.MockNetlink do
       "action" => "del",
       "destination" => Keyword.get(opts, :destination, "default"),
       "gateway" => Keyword.get(opts, :gateway),
-      "interface" => Keyword.get(opts, :interface, "eth0")
+      "interface" => Keyword.get(opts, :interface, "eth0"),
+      "family" => Keyword.get(opts, :family, "inet")
     }
 
     send_event(event)

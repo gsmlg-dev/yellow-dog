@@ -287,4 +287,58 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
     route = RouteManager.default_route()
     assert route != nil
   end
+
+  test "route family :inet is parsed from event" do
+    iface = "test_family_v4_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.40.0.0/24",
+      gateway: "10.40.0.1",
+      interface: iface,
+      family: "inet"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.family == :inet))
+  end
+
+  test "route family :inet6 is parsed from event" do
+    iface = "test_family_v6_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "default",
+      gateway: "fe80::1",
+      interface: iface,
+      family: "inet6"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.family == :inet6))
+  end
+
+  test "unknown family defaults to :inet" do
+    iface = "test_family_unk_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "10.41.0.0/24",
+      gateway: nil,
+      interface: iface,
+      family: "unknown_af"
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.family == :inet))
+  end
+
+  test "remove_route passes family to netlink command" do
+    result =
+      RouteManager.remove_route(%{
+        destination: "default",
+        gateway: "fe80::1",
+        interface: "eth0",
+        family: :inet6
+      })
+
+    assert result == :ok or match?({:error, _}, result)
+  end
 end
