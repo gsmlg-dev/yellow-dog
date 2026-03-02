@@ -159,6 +159,16 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert msg =~ "valid CIDR"
     end
 
+    test "rejects manual ipv4 with non-string address (valid_cidr? catch-all, line 284)" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => 12345}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "valid CIDR"
+    end
+
     test "accepts manual ipv4 with valid CIDR" do
       toml = %{
         "connection" => %{"id" => "test", "type" => "ethernet"},
