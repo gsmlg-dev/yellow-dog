@@ -105,9 +105,7 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   def handle_info({port, :closed}, %{port: port} = state) do
     delay = reconnect_delay(0)
 
-    Logger.warning(
-      "Netlink port closed unexpectedly, scheduling reconnect in #{delay}ms"
-    )
+    Logger.warning("Netlink port closed unexpectedly, scheduling reconnect in #{delay}ms")
 
     Process.send_after(self(), :reconnect_port, delay)
     {:noreply, %{state | port: nil, reconnect_attempts: 1}}
