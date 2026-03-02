@@ -50,6 +50,10 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     StreamData.member_of(["universe", "link", "host", "site", "random_scope"])
   end
 
+  defp family_gen do
+    StreamData.member_of(["inet", "inet6", "unknown"])
+  end
+
   # Properties
 
   property "add then get_routes returns the route" do
@@ -158,6 +162,27 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
       result = RouteManager.get_routes(iface)
       assert is_list(result)
+    end
+  end
+
+  property "family is always one of known atoms" do
+    check all(
+            iface <- iface_gen(),
+            family <- family_gen()
+          ) do
+      MockNetlink.route_added(
+        destination: "10.102.0.0/24",
+        gateway: "10.102.0.1",
+        interface: iface,
+        family: family
+      )
+
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      route = Enum.find(routes, &(&1.destination == "10.102.0.0/24"))
+      assert route != nil
+      assert route.family in [:inet, :inet6]
     end
   end
 
