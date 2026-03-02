@@ -93,4 +93,36 @@ defmodule YellowDog.Netman.EventBusTest do
     assert_receive {:netman_event, "test:both:specific", :msg}
     assert_receive {:netman_event, "test:both:specific", :msg}
   end
+
+  test "nested wildcards at different depths both match" do
+    EventBus.subscribe("test:nested:*")
+    EventBus.subscribe("test:nested:sub:*")
+    EventBus.publish("test:nested:sub:deep", :nested_msg)
+
+    # Both wildcards should match since "test:nested:sub:deep" starts with both prefixes
+    assert_receive {:netman_event, "test:nested:sub:deep", :nested_msg}
+    assert_receive {:netman_event, "test:nested:sub:deep", :nested_msg}
+  end
+
+  test "shallow wildcard does not match shorter topic" do
+    EventBus.subscribe("test:shallow:longer:*")
+    EventBus.publish("test:shallow:x", :msg)
+
+    refute_receive {:netman_event, _, _}, 50
+  end
+
+  test "unsubscribe is idempotent" do
+    EventBus.subscribe("test:idempotent:1")
+    EventBus.unsubscribe("test:idempotent:1")
+    # Second unsubscribe should not error
+    EventBus.unsubscribe("test:idempotent:1")
+    EventBus.publish("test:idempotent:1", :msg)
+    refute_receive {:netman_event, _, _}, 50
+  end
+
+  test "unsubscribe from never-subscribed topic is safe" do
+    EventBus.unsubscribe("test:never:subscribed:#{:rand.uniform(100_000)}")
+    # No error, no crash
+    assert true
+  end
 end
