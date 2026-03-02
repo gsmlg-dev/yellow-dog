@@ -436,4 +436,63 @@ mod tests {
             assert!(!e.to_string().contains("MTU out of valid range"));
         }
     }
+
+    // --- route_add with optional params ---
+
+    #[test]
+    fn route_add_with_invalid_interface_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "10.0.0.0/24",
+            "interface": "eth0;whoami"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn route_del_with_invalid_interface_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "route_del",
+            "destination": "10.0.0.0/24",
+            "interface": "../etc"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn route_del_with_invalid_gateway_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "route_del",
+            "destination": "default",
+            "gateway": "-flag"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn addr_del_with_invalid_interface_returns_err() {
+        let cmd = serde_json::json!({
+            "cmd": "addr_del",
+            "interface": "eth0 && rm -rf",
+            "address": "10.0.0.1/24"
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn link_set_with_no_mtu_or_state_returns_ok() {
+        // link_set with only interface, no mtu or state — valid no-op
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0"
+        });
+        assert!(handle(&cmd).is_ok());
+    }
+
+    #[test]
+    fn address_with_only_colons_is_valid() {
+        // IPv6 shorthand like "::" should be valid
+        assert!(validate_address("::").is_ok());
+        assert!(validate_address("::1").is_ok());
+    }
 }
