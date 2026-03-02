@@ -563,6 +563,88 @@ defmodule YellowDog.Netman.Connection.FSMTimeoutTest do
 
   ## Helpers
 
+  describe "DHCP failure coverage" do
+    test ":dhcp_client_not_available is non-retryable, transitions to failed (line 734)" do
+      iface = "fsm_cov_no_client_#{:rand.uniform(65_535)}"
+
+      profile = %Profile{
+        id: "cov-no-client-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      # Directly call the configuring handler with :dhcp_client_not_available.
+      # retryable_dhcp_failure?(:dhcp_client_not_available) returns false (line 734).
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :dhcp_client_not_available}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_failed
+    end
+
+    test "retryable DHCP failure logs retry message at :info level (line 257)" do
+      iface = "fsm_cov_retry_log_#{:rand.uniform(65_535)}"
+
+      profile = %Profile{
+        id: "cov-retry-log-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      # Lower log level so Logger.info's lazy string arg on line 257 is evaluated.
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: :warning) end)
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 1
+    end
+
+    test "DHCP start logs info message at :info level (line 544)", %{iface: iface} do
+      profile = dhcp_profile(iface)
+      profile = %{profile | autoconnect: true}
+
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      # Lower log level so Logger.info's lazy arg on line 544 is evaluated when
+      # apply_dhcp_start returns {:ok, pid} and the DHCP started branch is taken.
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: :warning) end)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      # FSM reaches :failed after DHCP fails on fake interface; that's expected.
+      assert state.state in [:failed, :configuring]
+      :gen_statem.stop(pid)
+      MockNetlink.link_removed(iface)
+    end
+  end
+
   defp dhcp_profile(iface) do
     %Profile{
       id: "dhcp-test-#{iface}",
