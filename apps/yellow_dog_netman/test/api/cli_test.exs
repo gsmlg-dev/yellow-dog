@@ -179,6 +179,26 @@ defmodule YellowDog.Netman.API.CLITest do
       result = CLI.handle_command(%{"no_method" => true})
       assert %{"error" => "invalid command format"} = result
     end
+
+    test "connection.up without params returns specific error" do
+      result = CLI.handle_command(%{"method" => "connection.up"})
+      assert %{"error" => "connection.up requires 'id' parameter"} = result
+    end
+
+    test "connection.down without params returns specific error" do
+      result = CLI.handle_command(%{"method" => "connection.down"})
+      assert %{"error" => "connection.down requires 'id' parameter"} = result
+    end
+
+    test "connection.add without params returns specific error" do
+      result = CLI.handle_command(%{"method" => "connection.add"})
+      assert %{"error" => "connection.add requires 'file' parameter"} = result
+    end
+
+    test "connection.delete without params returns specific error" do
+      result = CLI.handle_command(%{"method" => "connection.delete"})
+      assert %{"error" => "connection.delete requires 'id' parameter"} = result
+    end
   end
 
   describe "GenServer handle_info" do

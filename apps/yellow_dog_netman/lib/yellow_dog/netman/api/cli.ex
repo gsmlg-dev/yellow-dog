@@ -303,6 +303,15 @@ defmodule YellowDog.Netman.API.CLI do
     end
   end
 
+  def handle_command(%{"method" => method})
+      when method in ["connection.up", "connection.down", "connection.delete"] do
+    %{"error" => "#{method} requires 'id' parameter"}
+  end
+
+  def handle_command(%{"method" => "connection.add"}) do
+    %{"error" => "connection.add requires 'file' parameter"}
+  end
+
   def handle_command(%{"method" => method}) do
     %{"error" => "unknown method: #{method}"}
   end
