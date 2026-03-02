@@ -63,19 +63,21 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
     })
   end
 
-  @doc "Flush all addresses on an interface."
-  @spec flush(String.t()) :: :ok
+  @doc "Flush all addresses on an interface. Returns counts of removed and failed operations."
+  @spec flush(String.t()) :: {non_neg_integer(), non_neg_integer()}
   def flush(interface) do
     get_addresses(interface)
-    |> Enum.each(fn addr ->
+    |> Enum.reduce({0, 0}, fn addr, {removed, failed} ->
       case remove_address(interface, addr.address, addr.prefix_len) do
         :ok ->
-          :ok
+          {removed + 1, failed}
 
         {:error, reason} ->
           Logger.warning(
             "Failed to remove address #{addr.address}/#{addr.prefix_len} from #{interface}: #{inspect(reason)}"
           )
+
+          {removed, failed + 1}
       end
     end)
   end

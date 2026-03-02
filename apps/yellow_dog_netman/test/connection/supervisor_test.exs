@@ -114,12 +114,18 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
     {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
     Process.sleep(30)
 
-    # Kill the FSM process — list_connections should handle the error gracefully
+    # Verify connection is listed before killing
+    connections_before = ConnSupervisor.list_connections()
+    assert Enum.any?(connections_before, &(&1[:interface] == iface))
+
+    # Kill the FSM process — DynamicSupervisor will restart it
     Process.exit(pid, :kill)
     Process.sleep(50)
 
-    # Should not crash, returns a list (possibly without the killed connection)
-    connections = ConnSupervisor.list_connections()
-    assert is_list(connections)
+    # Should not crash even if FSM is mid-restart; connection may reappear
+    connections_after = ConnSupervisor.list_connections()
+    assert is_list(connections_after)
+
+    ConnSupervisor.stop_connection(iface)
   end
 end

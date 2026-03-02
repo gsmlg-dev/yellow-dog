@@ -70,19 +70,21 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
     })
   end
 
-  @doc "Remove all routes for an interface."
-  @spec flush(String.t()) :: :ok
+  @doc "Remove all routes for an interface. Returns counts of removed and failed operations."
+  @spec flush(String.t()) :: {non_neg_integer(), non_neg_integer()}
   def flush(interface) do
     get_routes(interface)
-    |> Enum.each(fn route ->
+    |> Enum.reduce({0, 0}, fn route, {removed, failed} ->
       case remove_route(route) do
         :ok ->
-          :ok
+          {removed + 1, failed}
 
         {:error, reason} ->
           Logger.warning(
             "Failed to remove route #{route.destination} via #{route.gateway} on #{interface}: #{inspect(reason)}"
           )
+
+          {removed, failed + 1}
       end
     end)
   end
