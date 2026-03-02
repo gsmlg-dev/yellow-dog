@@ -421,6 +421,62 @@ defmodule YellowDog.Netman.Connection.FSMTimeoutTest do
     end
   end
 
+  describe "IPv6 gateway route installation" do
+    test "dual-stack profile with IPv6 gateway reaches activated", %{iface: iface} do
+      ipv6_gw_profile = %Profile{
+        id: "ipv6gw-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.100/24", gateway: "10.0.0.1", dns: []},
+        ipv6: %{method: :manual, address: nil, gateway: "fe80::1", dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      MockNetlink.address_added(iface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: ipv6_gw_profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+      :gen_statem.stop(pid)
+    end
+
+    test "IPv6-only gateway profile reaches activated without crash", %{iface: iface} do
+      ipv6_only_profile = %Profile{
+        id: "ipv6only-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.100/24", gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: nil, gateway: "2001:db8::1", dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      MockNetlink.address_added(iface, "10.0.0.100/24")
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: ipv6_only_profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+      :gen_statem.stop(pid)
+    end
+  end
+
   describe "push_dns with IPv6 addresses" do
     test "IPv6 DNS addresses are included in state_info", %{iface: iface} do
       ipv6_dns_profile = %Profile{

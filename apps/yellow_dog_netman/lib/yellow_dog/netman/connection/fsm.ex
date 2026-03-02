@@ -532,16 +532,37 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   defp install_routes(data) do
+    metrics = YellowDog.Netman.PolicyEngine.route_metrics([state_info(data, :activated)])
+    metric = Map.get(metrics, data.profile.id, 100)
+
+    install_ipv4_route(data, metric)
+    install_ipv6_route(data, metric)
+  end
+
+  defp install_ipv4_route(data, metric) do
     case data.profile.ipv4 do
       %{gateway: gw} when is_binary(gw) ->
-        metrics = YellowDog.Netman.PolicyEngine.route_metrics([state_info(data, :activated)])
-        metric = Map.get(metrics, data.profile.id, 100)
-
         RouteManager.add_route(%{
           destination: "default",
           gateway: gw,
           interface: data.interface,
           metric: metric
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp install_ipv6_route(data, metric) do
+    case data.profile.ipv6 do
+      %{gateway: gw} when is_binary(gw) ->
+        RouteManager.add_route(%{
+          destination: "default",
+          gateway: gw,
+          interface: data.interface,
+          metric: metric,
+          family: :inet6
         })
 
       _ ->
