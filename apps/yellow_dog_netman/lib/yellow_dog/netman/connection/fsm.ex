@@ -473,20 +473,35 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## State: failed
 
   def failed(:cast, :activate, data) do
-    transition(%{data | error: nil}, :failed, :disconnected, [
-      {:next_event, :internal, :auto_activate}
-    ])
+    transition(
+      %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0},
+      :failed,
+      :disconnected,
+      [
+        {:next_event, :internal, :auto_activate}
+      ]
+    )
   end
 
   def failed(:info, {:netman_event, _, {:link_update, %{carrier: true}}}, data) do
-    transition(%{data | error: nil}, :failed, :disconnected, [
-      {:next_event, :internal, :auto_activate}
-    ])
+    transition(
+      %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0},
+      :failed,
+      :disconnected,
+      [
+        {:next_event, :internal, :auto_activate}
+      ]
+    )
   end
 
   def failed(:cast, :deactivate, data) do
     release_dhcp(data)
-    transition(%{data | error: nil, lease: nil}, :failed, :disconnected)
+
+    transition(
+      %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0},
+      :failed,
+      :disconnected
+    )
   end
 
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do

@@ -20,7 +20,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   @default_interval 30_000
   @debounce_ms 100
 
-  defstruct [:timer_ref, :debounce_ref, :last_default_route, reconciling: false]
+  defstruct [:timer_ref, :debounce_ref, :last_default_route, :interval, reconciling: false]
 
   ## Client API
 
@@ -63,7 +63,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     # Schedule periodic reconciliation
     timer_ref = Process.send_after(self(), :periodic_reconcile, interval)
 
-    {:ok, %__MODULE__{timer_ref: timer_ref}}
+    {:ok, %__MODULE__{timer_ref: timer_ref, interval: interval}}
   end
 
   @impl true
@@ -114,10 +114,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   def handle_info(:periodic_reconcile, %{reconciling: true} = state) do
     # Skip overlapping reconciliation; reschedule
-    interval =
-      Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
-
-    timer_ref = Process.send_after(self(), :periodic_reconcile, interval)
+    timer_ref = Process.send_after(self(), :periodic_reconcile, state.interval)
     {:noreply, %{state | timer_ref: timer_ref}}
   end
 
@@ -133,10 +130,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
           state
       end
 
-    interval =
-      Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
-
-    timer_ref = Process.send_after(self(), :periodic_reconcile, interval)
+    timer_ref = Process.send_after(self(), :periodic_reconcile, state.interval)
     {:noreply, %{state | timer_ref: timer_ref, reconciling: false}}
   end
 
@@ -187,8 +181,12 @@ defmodule YellowDog.Netman.ReconciliationEngine do
       %{}
     )
 
-    observed = observe()
-    desired = compute_desired()
+    # Cache link list once per cycle — avoids repeated ETS reads in
+    # observe(), compute_desired(), and find_matching_interface()
+    links = LinkMonitor.list_links()
+
+    observed = observe(links)
+    desired = compute_desired(links)
     diffs = diff(desired, observed)
 
     {applied, failed} =
@@ -208,20 +206,22 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
     duration = System.monotonic_time(:millisecond) - start_time
 
+    diffs_count = length(diffs)
+
     :telemetry.execute(
       [:yellow_dog, :netman, :reconciliation, :stop],
       %{
         duration_ms: duration,
-        diffs_count: length(diffs),
+        diffs_count: diffs_count,
         applied_count: applied,
         failed_count: failed
       },
       %{}
     )
 
-    if length(diffs) > 0 do
+    if diffs_count > 0 do
       Logger.info(
-        "Reconciliation complete: #{length(diffs)} diffs, #{applied} applied in #{duration}ms"
+        "Reconciliation complete: #{diffs_count} diffs, #{applied} applied in #{duration}ms"
       )
     end
 
@@ -258,21 +258,18 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   @doc false
-  def observe do
-    links =
-      LinkMonitor.list_links()
-      |> Enum.into(%{}, fn link -> {link.interface, link} end)
+  def observe(links \\ LinkMonitor.list_links()) do
+    links_map = Enum.into(links, %{}, fn link -> {link.interface, link} end)
 
     addresses = AddressManager.list_all()
     routes = RouteManager.list_all()
 
-    %ObservedState{links: links, addresses: addresses, routes: routes}
+    %ObservedState{links: links_map, addresses: addresses, routes: routes}
   end
 
   @doc false
-  def compute_desired do
+  def compute_desired(links \\ LinkMonitor.list_links()) do
     profiles = ProfileStore.list()
-    links = LinkMonitor.list_links()
 
     matched =
       for profile <- profiles,
