@@ -110,7 +110,7 @@ fn run_ip(args: &[&str]) -> io::Result<()> {
                     stderr.trim()
                 );
                 eprintln!("{}", msg);
-                Err(io::Error::new(io::ErrorKind::Other, msg))
+                Err(io::Error::other(msg))
             }
         }
         Err(e) => {
@@ -124,7 +124,7 @@ fn handle_link_set(cmd: &Value) -> io::Result<()> {
     let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
 
     if let Some(mtu) = cmd["mtu"].as_u64() {
-        if mtu < MIN_MTU || mtu > MAX_MTU {
+        if !(MIN_MTU..=MAX_MTU).contains(&mtu) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("MTU out of valid range ({}-{}): {}", MIN_MTU, MAX_MTU, mtu),
