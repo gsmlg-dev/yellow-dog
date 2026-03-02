@@ -123,7 +123,15 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   def handle_info(:periodic_reconcile, state) do
     state = %{state | reconciling: true}
-    state = do_reconcile(state)
+
+    state =
+      try do
+        do_reconcile(state)
+      rescue
+        e ->
+          Logger.error("Reconciliation crashed: #{Exception.message(e)}")
+          state
+      end
 
     interval =
       Application.get_env(:yellow_dog_netman, :reconciliation_interval_ms, @default_interval)
@@ -139,7 +147,16 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   def handle_info(:debounced_reconcile, state) do
     state = %{state | reconciling: true}
-    state = do_reconcile(state)
+
+    state =
+      try do
+        do_reconcile(state)
+      rescue
+        e ->
+          Logger.error("Reconciliation crashed: #{Exception.message(e)}")
+          state
+      end
+
     {:noreply, %{state | debounce_ref: nil, reconciling: false}}
   end
 

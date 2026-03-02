@@ -85,8 +85,12 @@ defmodule YellowDog.Netman.Kernel.Netlink do
 
   @impl true
   def handle_cast({:subscribe, pid}, state) do
-    ref = Process.monitor(pid)
-    {:noreply, %{state | subscribers: [{pid, ref} | state.subscribers]}}
+    if Enum.any?(state.subscribers, fn {p, _} -> p == pid end) do
+      {:noreply, state}
+    else
+      ref = Process.monitor(pid)
+      {:noreply, %{state | subscribers: [{pid, ref} | state.subscribers]}}
+    end
   end
 
   @impl true

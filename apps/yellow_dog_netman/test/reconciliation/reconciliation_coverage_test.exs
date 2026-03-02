@@ -190,6 +190,52 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
   end
 
+  describe "reconciliation exception safety" do
+    @tag :capture_log
+    test "periodic_reconcile recovers when do_reconcile raises" do
+      pid = Process.whereis(ReconciliationEngine)
+
+      # Suspend LinkMonitor so observe/0 raises when accessing ETS
+      link_pid = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      :sys.suspend(link_pid)
+
+      # Rename the ETS table to force an ArgumentError in observe/0
+      :ets.rename(:netman_links, :netman_links_tmp_test)
+
+      # Trigger periodic reconcile — do_reconcile will raise
+      send(pid, :periodic_reconcile)
+      Process.sleep(200)
+
+      # Restore ETS table name
+      :ets.rename(:netman_links_tmp_test, :netman_links)
+      :sys.resume(link_pid)
+
+      # Engine must still be alive and reconciling must be false
+      assert Process.alive?(pid)
+      state = :sys.get_state(pid)
+      assert state.reconciling == false
+    end
+
+    @tag :capture_log
+    test "debounced_reconcile recovers when do_reconcile raises" do
+      pid = Process.whereis(ReconciliationEngine)
+
+      link_pid = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      :sys.suspend(link_pid)
+      :ets.rename(:netman_links, :netman_links_tmp_test2)
+
+      send(pid, :debounced_reconcile)
+      Process.sleep(200)
+
+      :ets.rename(:netman_links_tmp_test2, :netman_links)
+      :sys.resume(link_pid)
+
+      assert Process.alive?(pid)
+      state = :sys.get_state(pid)
+      assert state.reconciling == false
+    end
+  end
+
   describe "diff struct validation" do
     test "Diff.new creates valid diffs for all supported action types" do
       for action <- [

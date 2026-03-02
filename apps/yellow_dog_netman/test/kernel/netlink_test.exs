@@ -118,6 +118,31 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
     end
   end
 
+  describe "duplicate subscriber protection" do
+    test "subscribing the same process twice does not duplicate the monitor" do
+      pid = Process.whereis(Netlink)
+      state_before = :sys.get_state(pid)
+      count_before = length(state_before.subscribers)
+
+      Netlink.subscribe()
+      Process.sleep(20)
+
+      state_after_first = :sys.get_state(pid)
+      count_after_first = length(state_after_first.subscribers)
+
+      # Subscribe again from the same process
+      Netlink.subscribe()
+      Process.sleep(20)
+
+      state_after_second = :sys.get_state(pid)
+      count_after_second = length(state_after_second.subscribers)
+
+      # Should have added exactly one subscriber, not two
+      assert count_after_first == count_before + 1
+      assert count_after_second == count_after_first
+    end
+  end
+
   describe "handle_info catch-all" do
     test "unknown messages are silently ignored" do
       pid = Process.whereis(Netlink)
