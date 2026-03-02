@@ -106,6 +106,9 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
             addr <- ipv4_gen(),
             prefix <- prefix_v4_gen()
           ) do
+      # Remove any existing entry for this address to avoid deduplication
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(30)
       MockNetlink.address_added(iface, "#{addr}/#{prefix}")
       Process.sleep(50)
 
@@ -123,6 +126,9 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
             addr <- ipv6_gen(),
             prefix <- prefix_v6_gen()
           ) do
+      # Remove any existing entry for this address to avoid deduplication
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(30)
       MockNetlink.address_added(iface, "#{addr}/#{prefix}", family: "inet6")
       Process.sleep(50)
 
