@@ -50,6 +50,51 @@ defmodule YellowDog.Netman.Connection.FSMTimeoutTest do
     end
   end
 
+  describe "DHCP retryable failure" do
+    test "retryable failure keeps FSM in configuring (direct handler test)", %{profile: profile} do
+      # Test the state handler directly since we can't reach configuring
+      # with a DHCP profile on fake interfaces (MAC detection is fatal)
+      data = %FSM{
+        interface: "test_retry",
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 1
+    end
+
+    test "fatal failure goes straight to failed (direct handler test)", %{profile: profile} do
+      data = %FSM{
+        interface: "test_fatal",
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, {:mac_detection_failed, :test}}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_failed
+    end
+
+    test "retryable failure exhausts retries then transitions to failed", %{profile: profile} do
+      # Start with dhcp_retries at max (3)
+      data = %FSM{
+        interface: "test_exhaust",
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 3
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_failed
+      assert new_data.dhcp_retries == 0
+    end
+  end
+
   describe "DHCP lease lifecycle in activated state" do
     test "lease renewal updates lease data without state change", %{
       iface: iface,

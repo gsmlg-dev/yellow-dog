@@ -33,6 +33,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   @configuring_timeout_ms 120_000
   @prepare_timeout_ms 10_000
   @deactivating_timeout_ms 30_000
+  @max_dhcp_retries 3
+  @dhcp_base_retry_ms 2_000
 
   defstruct [
     :interface,
@@ -40,7 +42,8 @@ defmodule YellowDog.Netman.Connection.FSM do
     :lease,
     current_state: :unavailable,
     error: nil,
-    ip_check_retries: 0
+    ip_check_retries: 0,
+    dhcp_retries: 0
   ]
 
   ## Client API
@@ -232,13 +235,40 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def configuring(:info, {:dhcp_lease_acquired, lease}, data) do
     emit_dhcp_event(data, :lease_acquired, %{lease: lease})
-    data = %{data | lease: lease}
+    data = %{data | lease: lease, dhcp_retries: 0}
     transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
   end
 
   def configuring(:info, {:dhcp_lease_failed, reason}, data) do
     emit_dhcp_event(data, :lease_failed, %{reason: reason})
-    transition(%{data | error: :dhcp_failed}, :configuring, :failed)
+
+    if retryable_dhcp_failure?(reason) and data.dhcp_retries < @max_dhcp_retries do
+      retry = data.dhcp_retries + 1
+      delay = @dhcp_base_retry_ms * Bitwise.bsl(1, retry - 1)
+
+      Logger.info(
+        "DHCP failed for #{data.interface} (attempt #{retry}/#{@max_dhcp_retries}), retrying in #{delay}ms"
+      )
+
+      Process.send_after(self(), :retry_dhcp, delay)
+      {:keep_state, %{data | dhcp_retries: retry}}
+    else
+      if not retryable_dhcp_failure?(reason) do
+        Logger.warning("DHCP fatal error for #{data.interface}: #{inspect(reason)}")
+      else
+        Logger.warning(
+          "DHCP failed for #{data.interface} after #{@max_dhcp_retries} retries, giving up"
+        )
+      end
+
+      transition(%{data | error: :dhcp_failed, dhcp_retries: 0}, :configuring, :failed)
+    end
+  end
+
+  def configuring(:info, :retry_dhcp, data) do
+    Logger.info("Retrying DHCP for #{data.interface} (attempt #{data.dhcp_retries})")
+    start_dhcp(data)
+    {:keep_state, data}
   end
 
   def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
@@ -576,6 +606,11 @@ defmodule YellowDog.Netman.Connection.FSM do
       Map.merge(%{interface: data.interface, profile_id: data.profile.id}, metadata)
     )
   end
+
+  # Fatal DHCP failures that should not be retried
+  defp retryable_dhcp_failure?(:dhcp_client_not_available), do: false
+  defp retryable_dhcp_failure?({:mac_detection_failed, _}), do: false
+  defp retryable_dhcp_failure?(_), do: true
 
   defp parse_cidr(cidr) do
     case String.split(cidr, "/") do
