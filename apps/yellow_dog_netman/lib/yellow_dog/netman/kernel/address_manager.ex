@@ -160,7 +160,9 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
             {addr, n}
 
           _ ->
-            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default_prefix}")
+            Logger.warning(
+              "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default_prefix}"
+            )
             {addr, default_prefix}
         end
 
