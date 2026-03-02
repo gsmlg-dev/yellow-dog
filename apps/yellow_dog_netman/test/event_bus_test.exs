@@ -125,4 +125,20 @@ defmodule YellowDog.Netman.EventBusTest do
     # No error, no crash
     assert true
   end
+
+  test "wildcard unsubscribe stops delivery" do
+    EventBus.subscribe("test:wc_unsub:*")
+    EventBus.publish("test:wc_unsub:foo", :before)
+    assert_receive {:netman_event, "test:wc_unsub:foo", :before}
+
+    EventBus.unsubscribe("test:wc_unsub:*")
+    EventBus.publish("test:wc_unsub:bar", :after)
+    refute_receive {:netman_event, _, _}, 50
+  end
+
+  test "wildcard does not match across different namespace prefixes" do
+    EventBus.subscribe("test:ns_a:*")
+    EventBus.publish("test:ns_ab:event", :msg)
+    refute_receive {:netman_event, _, _}, 50
+  end
 end

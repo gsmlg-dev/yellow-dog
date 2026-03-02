@@ -100,4 +100,47 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     conn = desired.connections["mixed-dns"]
     assert conn.dns == ["2001:4860:4860::8844"]
   end
+
+  test "from_profiles/1 with duplicate profile IDs, last one wins" do
+    p1 = %Profile{
+      id: "shared-id",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: 1500},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: ["8.8.8.8"]},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    p2 = %Profile{
+      id: "shared-id",
+      type: :ethernet,
+      autoconnect_priority: 200,
+      ethernet: %{mtu: 9000},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: ["1.1.1.1"]},
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    desired = DesiredState.from_profiles([{p1, "eth0"}, {p2, "eth1"}])
+    # Duplicate key: last entry wins in `for ... into: %{}`
+    assert map_size(desired.connections) == 1
+    conn = desired.connections["shared-id"]
+    assert conn.interface == "eth1"
+    assert conn.priority == 200
+    assert conn.mtu == 9000
+  end
+
+  test "from_profiles/1 preserves DNS ordering (IPv4 before IPv6)" do
+    profile = %Profile{
+      id: "dns-order",
+      type: :ethernet,
+      autoconnect_priority: 0,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: ["1.1.1.1", "8.8.8.8"]},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: ["2606:4700:4700::1111"]}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["dns-order"]
+    assert conn.dns == ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"]
+  end
 end
