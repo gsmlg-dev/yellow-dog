@@ -115,6 +115,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     test "prepare :deactivate transitions to deactivating", %{data: data} do
       result = FSM.prepare(:cast, :deactivate, data)
       assert {:next_state, :deactivating, _new_data, actions} = result
+
       assert Enum.any?(actions, fn
                {:state_timeout, _, :cleanup_timeout} -> true
                _ -> false
@@ -322,7 +323,12 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
         autoconnect: false,
         autoconnect_priority: 100,
         ethernet: %{mtu: nil},
-        ipv4: %{method: :manual, address: "10.0.0.100/24", gateway: "10.0.0.1", dns: ["not.an.ip"]},
+        ipv4: %{
+          method: :manual,
+          address: "10.0.0.100/24",
+          gateway: "10.0.0.1",
+          dns: ["not.an.ip"]
+        },
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
@@ -453,7 +459,9 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
   describe "configuring retry_dhcp message (direct)" do
     test "retry_dhcp message triggers another DHCP start" do
       iface = "hdlr_rdhcp_#{:rand.uniform(65535)}"
-      profile = base_profile(iface, %{ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}})
+
+      profile =
+        base_profile(iface, %{ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}})
 
       data = %FSM{
         interface: iface,
@@ -562,7 +570,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     test "link removal in ip_check flushes addresses and goes unavailable" do
       iface = "hdlr_ipc_rm_#{:rand.uniform(65535)}"
       profile = base_profile(iface)
-      data = %FSM{interface: iface, profile: profile, current_state: :ip_check, ip_check_retries: 2}
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :ip_check,
+        ip_check_retries: 2
+      }
 
       result =
         FSM.ip_check(:info, {:netman_event, "netman:link:#{iface}", {:removed, iface}}, data)
