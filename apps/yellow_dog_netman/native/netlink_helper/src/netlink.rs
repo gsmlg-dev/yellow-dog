@@ -1586,4 +1586,257 @@ mod tests {
         assert_eq!(events[0]["type"], "rule_change");
         assert_eq!(events[0]["action"], "del");
     }
+
+    // --- Comprehensive link NLA extraction test ---
+
+    /// Build a RTM_NEWLINK with all NLA types: IfName, MTU, Carrier, OperState, Address (MAC).
+    fn make_rtm_newlink_full(
+        index: u32,
+        name: &str,
+        mtu: u32,
+        carrier: u8,
+        oper_state: u8,
+        mac: &[u8; 6],
+    ) -> Vec<u8> {
+        // ifinfomsg (16 bytes)
+        let mut payload = vec![0u8; 16];
+        payload[4..8].copy_from_slice(&index.to_ne_bytes());
+
+        let append_str_nla = |buf: &mut Vec<u8>, nla_type: u16, s: &str| {
+            let data = s.as_bytes();
+            let nla_data_len = data.len() + 1; // +1 for null terminator
+            let nla_len = (4 + nla_data_len) as u16;
+            let nla_aligned = (nla_len as usize + 3) & !3;
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4..4 + data.len()].copy_from_slice(data);
+            buf.extend_from_slice(&nla);
+        };
+
+        let append_u32_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u32| {
+            let nla_len = 8u16; // 4 header + 4 data
+            buf.extend_from_slice(&nla_len.to_ne_bytes());
+            buf.extend_from_slice(&nla_type.to_ne_bytes());
+            buf.extend_from_slice(&val.to_ne_bytes());
+        };
+
+        let append_u8_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u8| {
+            let nla_len = 5u16; // 4 header + 1 data
+            let nla_aligned = 8; // align to 4 bytes
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4] = val;
+            buf.extend_from_slice(&nla);
+        };
+
+        let append_bytes_nla = |buf: &mut Vec<u8>, nla_type: u16, data: &[u8]| {
+            let nla_len = (4 + data.len()) as u16;
+            let nla_aligned = (nla_len as usize + 3) & !3;
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4..4 + data.len()].copy_from_slice(data);
+            buf.extend_from_slice(&nla);
+        };
+
+        // IFLA_IFNAME = 3
+        append_str_nla(&mut payload, 3, name);
+        // IFLA_MTU = 4
+        append_u32_nla(&mut payload, 4, mtu);
+        // IFLA_CARRIER = 33
+        append_u8_nla(&mut payload, 33, carrier);
+        // IFLA_OPERSTATE = 16
+        append_u8_nla(&mut payload, 16, oper_state);
+        // IFLA_ADDRESS = 1
+        append_bytes_nla(&mut payload, 1, mac);
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&16u16.to_ne_bytes()); // RTM_NEWLINK
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newlink_full_extracts_all_attributes() {
+        let mac = [0x02, 0x42, 0xac, 0x11, 0x00, 0x02];
+        // oper_state: 6 = IF_OPER_UP
+        let msg = make_rtm_newlink_full(5, "enp0s3", 9000, 1, 6, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["interface"], "enp0s3");
+        assert_eq!(events[0]["index"], 5);
+        assert_eq!(events[0]["mtu"], 9000);
+        assert_eq!(events[0]["carrier"], true);
+        assert_eq!(events[0]["state"], "up");
+        assert_eq!(events[0]["mac"], "02:42:ac:11:00:02");
+    }
+
+    #[test]
+    fn rtm_newlink_full_carrier_zero_is_false() {
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        // carrier=0, oper_state=2 = IF_OPER_DOWN
+        let msg = make_rtm_newlink_full(3, "eth1", 1500, 0, 2, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["carrier"], false);
+        assert_eq!(events[0]["state"], "down");
+        assert_eq!(events[0]["mtu"], 1500);
+    }
+
+    #[test]
+    fn rtm_newlink_full_dormant_state() {
+        let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        // oper_state=5 = IF_OPER_DORMANT
+        let msg = make_rtm_newlink_full(2, "wlan0", 1500, 0, 5, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "dormant");
+    }
+
+    // --- Rule with Source and Destination NLAs ---
+
+    /// Build an RTM_NEWRULE with source and destination NLAs.
+    fn make_rtm_newrule_with_src_dst(
+        family: u8,
+        dst_len: u8,
+        src_len: u8,
+        table: u8,
+        action: u8,
+        priority: Option<u32>,
+        src_bytes: Option<&[u8]>,
+        dst_bytes: Option<&[u8]>,
+        iifname: Option<&str>,
+    ) -> Vec<u8> {
+        let mut payload = vec![0u8; 12];
+        payload[0] = family;
+        payload[1] = dst_len;
+        payload[2] = src_len;
+        payload[4] = table;
+        payload[7] = action;
+
+        let append_u32_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u32| {
+            let nla_len = 8u16;
+            buf.extend_from_slice(&nla_len.to_ne_bytes());
+            buf.extend_from_slice(&nla_type.to_ne_bytes());
+            buf.extend_from_slice(&val.to_ne_bytes());
+        };
+
+        let append_bytes_nla = |buf: &mut Vec<u8>, nla_type: u16, data: &[u8]| {
+            let nla_len = (4 + data.len()) as u16;
+            let nla_aligned = (nla_len as usize + 3) & !3;
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4..4 + data.len()].copy_from_slice(data);
+            buf.extend_from_slice(&nla);
+        };
+
+        let append_str_nla = |buf: &mut Vec<u8>, nla_type: u16, s: &str| {
+            let data = s.as_bytes();
+            let nla_data_len = data.len() + 1;
+            let nla_len = (4 + nla_data_len) as u16;
+            let nla_aligned = (nla_len as usize + 3) & !3;
+            let mut nla = vec![0u8; nla_aligned];
+            nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+            nla[2..4].copy_from_slice(&nla_type.to_ne_bytes());
+            nla[4..4 + data.len()].copy_from_slice(data);
+            buf.extend_from_slice(&nla);
+        };
+
+        // FRA_PRIORITY = 6
+        if let Some(p) = priority {
+            append_u32_nla(&mut payload, 6, p);
+        }
+        // FRA_SRC = 2
+        if let Some(src) = src_bytes {
+            append_bytes_nla(&mut payload, 2, src);
+        }
+        // FRA_DST = 1
+        if let Some(dst) = dst_bytes {
+            append_bytes_nla(&mut payload, 1, dst);
+        }
+        // FRA_IIFNAME = 3
+        if let Some(name) = iifname {
+            append_str_nla(&mut payload, 3, name);
+        }
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&32u16.to_ne_bytes()); // RTM_NEWRULE
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newrule_with_source_and_destination() {
+        let src = [192u8, 168, 1, 0]; // 192.168.1.0
+        let dst = [10u8, 0, 0, 0]; // 10.0.0.0
+        let msg = make_rtm_newrule_with_src_dst(
+            2, 8, 24, 100, 1,
+            Some(1000),
+            Some(&src),
+            Some(&dst),
+            Some("eth0"),
+        );
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "rule_change");
+        assert_eq!(events[0]["priority"], 1000);
+        assert_eq!(events[0]["source"], "192.168.1.0/24");
+        assert_eq!(events[0]["destination"], "10.0.0.0/8");
+        assert_eq!(events[0]["interface"], "eth0");
+        assert_eq!(events[0]["table"], 100);
+    }
+
+    #[test]
+    fn rtm_newrule_with_only_source() {
+        let src = [172u8, 16, 0, 0]; // 172.16.0.0
+        let msg = make_rtm_newrule_with_src_dst(
+            2, 0, 16, 200, 1,
+            None,
+            Some(&src),
+            None,
+            None,
+        );
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["source"], "172.16.0.0/16");
+        assert!(events[0].get("destination").is_none() || events[0]["destination"].is_null());
+        assert!(events[0].get("interface").is_none() || events[0]["interface"].is_null());
+    }
+
+    // --- Route with extended table NLA ---
+
+    #[test]
+    fn rtm_newroute_extended_table_overrides_header() {
+        // Build a route message, then append a RTA_TABLE (15) NLA
+        // Header table is 0, extended table NLA = 1000
+        let dst = [10u8, 0, 0, 0];
+        let mut msg = make_rtm_newroute(2, 24, 4, 0, Some(&dst), None, None);
+
+        // Calculate current payload size and insert RTA_TABLE NLA
+        let old_len = msg.len();
+        // RTA_TABLE = 15, u32 NLA
+        let nla_len = 8u16;
+        let mut table_nla = vec![0u8; 8];
+        table_nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+        table_nla[2..4].copy_from_slice(&15u16.to_ne_bytes()); // RTA_TABLE
+        table_nla[4..8].copy_from_slice(&1000u32.to_ne_bytes());
+        msg.extend_from_slice(&table_nla);
+
+        // Update total length in header
+        let new_len = msg.len() as u32;
+        msg[0..4].copy_from_slice(&new_len.to_ne_bytes());
+
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        // Extended table attribute (1000) should override header table (0)
+        assert_eq!(events[0]["table"], 1000);
+        // Verify we still got the old_len > 0 sanity check
+        assert!(old_len > 0);
+    }
 }
