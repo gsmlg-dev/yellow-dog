@@ -1017,4 +1017,151 @@ mod tests {
             );
         }
     }
+
+    // --- format_link_state unit tests ---
+
+    #[test]
+    fn link_state_up() {
+        assert_eq!(format_link_state(&State::Up), "up");
+    }
+
+    #[test]
+    fn link_state_down() {
+        assert_eq!(format_link_state(&State::Down), "down");
+    }
+
+    #[test]
+    fn link_state_dormant() {
+        assert_eq!(format_link_state(&State::Dormant), "dormant");
+    }
+
+    #[test]
+    fn link_state_lower_layer_down() {
+        assert_eq!(format_link_state(&State::LowerLayerDown), "lowerlayerdown");
+    }
+
+    #[test]
+    fn link_state_testing() {
+        assert_eq!(format_link_state(&State::Testing), "testing");
+    }
+
+    #[test]
+    fn link_state_not_present() {
+        assert_eq!(format_link_state(&State::NotPresent), "notpresent");
+    }
+
+    #[test]
+    fn link_state_unknown() {
+        assert_eq!(format_link_state(&State::Unknown), "unknown");
+    }
+
+    // --- format_address_family unit tests ---
+
+    #[test]
+    fn address_family_inet() {
+        assert_eq!(format_address_family(&AddressFamily::Inet), "inet");
+    }
+
+    #[test]
+    fn address_family_inet6() {
+        assert_eq!(format_address_family(&AddressFamily::Inet6), "inet6");
+    }
+
+    // --- format_route_scope unit tests ---
+
+    #[test]
+    fn route_scope_universe() {
+        assert_eq!(format_route_scope(&RouteScope::Universe), "universe");
+    }
+
+    #[test]
+    fn route_scope_site() {
+        assert_eq!(format_route_scope(&RouteScope::Site), "site");
+    }
+
+    #[test]
+    fn route_scope_link() {
+        assert_eq!(format_route_scope(&RouteScope::Link), "link");
+    }
+
+    #[test]
+    fn route_scope_host() {
+        assert_eq!(format_route_scope(&RouteScope::Host), "host");
+    }
+
+    #[test]
+    fn route_scope_nowhere() {
+        assert_eq!(format_route_scope(&RouteScope::NoWhere), "nowhere");
+    }
+
+    // --- format_route_protocol unit tests ---
+
+    #[test]
+    fn route_protocol_kernel() {
+        assert_eq!(format_route_protocol(&RouteProtocol::Kernel), "kernel");
+    }
+
+    #[test]
+    fn route_protocol_boot() {
+        assert_eq!(format_route_protocol(&RouteProtocol::Boot), "boot");
+    }
+
+    #[test]
+    fn route_protocol_static() {
+        assert_eq!(format_route_protocol(&RouteProtocol::Static), "static");
+    }
+
+    #[test]
+    fn route_protocol_dhcp() {
+        assert_eq!(format_route_protocol(&RouteProtocol::Dhcp), "dhcp");
+    }
+
+    // --- format_address_scope unit tests ---
+
+    #[test]
+    fn address_scope_universe() {
+        assert_eq!(format_address_scope(&AddressScope::Universe), "global");
+    }
+
+    #[test]
+    fn address_scope_link() {
+        assert_eq!(format_address_scope(&AddressScope::Link), "link");
+    }
+
+    #[test]
+    fn address_scope_host() {
+        assert_eq!(format_address_scope(&AddressScope::Host), "host");
+    }
+
+    #[test]
+    fn address_scope_site() {
+        assert_eq!(format_address_scope(&AddressScope::Site), "site");
+    }
+
+    #[test]
+    fn address_scope_nowhere() {
+        assert_eq!(format_address_scope(&AddressScope::Nowhere), "nowhere");
+    }
+
+    // --- format_rule_action unit tests ---
+
+    #[test]
+    fn rule_action_to_table() {
+        assert_eq!(format_rule_action(&RuleAction::ToTable), "to_table");
+    }
+
+    #[test]
+    fn rule_action_blackhole() {
+        assert_eq!(format_rule_action(&RuleAction::Blackhole), "blackhole");
+    }
+
+    #[test]
+    fn rule_action_unreachable() {
+        assert_eq!(format_rule_action(&RuleAction::Unreachable), "unreachable");
+    }
+
+    #[test]
+    fn rule_action_prohibit() {
+        assert_eq!(format_rule_action(&RuleAction::Prohibit), "prohibit");
+    }
 }
