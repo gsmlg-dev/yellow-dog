@@ -17,7 +17,12 @@ defmodule YellowDog.Netman do
   ## Status
 
   @doc "Returns system status overview."
-  @spec status() :: map()
+  @spec status() :: %{
+          running: boolean(),
+          interfaces: [map()],
+          connections: [map()],
+          default_route: {:ok, String.t()} | :none
+        }
   def status do
     %{
       running: Process.whereis(YellowDog.Netman.Supervisor) != nil,

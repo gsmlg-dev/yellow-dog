@@ -30,6 +30,12 @@ defmodule YellowDog.Netman.Types.DiffTest do
     end
   end
 
+  test "new/1 rejects invalid action atoms" do
+    assert_raise FunctionClauseError, fn ->
+      Diff.new(:invalid_action)
+    end
+  end
+
   test "all action types can be created" do
     actions = [
       :add_address,

@@ -21,12 +21,26 @@ defmodule YellowDog.Netman.Types.Diff do
           params: map()
         }
 
+  @valid_actions [
+    :add_address,
+    :remove_address,
+    :add_route,
+    :remove_route,
+    :activate_connection,
+    :deactivate_connection,
+    :update_dns,
+    :set_mtu,
+    :set_link_up,
+    :set_link_down
+  ]
+
   @enforce_keys [:action]
   defstruct [:action, :interface, params: %{}]
 
   @doc "Creates a new diff."
   @spec new(action(), String.t() | nil, map()) :: t()
-  def new(action, interface \\ nil, params \\ %{}) do
+  def new(action, interface \\ nil, params \\ %{})
+      when action in @valid_actions do
     %__MODULE__{action: action, interface: interface, params: params}
   end
 end
