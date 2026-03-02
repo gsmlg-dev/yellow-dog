@@ -1839,4 +1839,228 @@ mod tests {
         // Verify we still got the old_len > 0 sanity check
         assert!(old_len > 0);
     }
+
+    // --- Neighbor IPv6 address via full message parse ---
+
+    #[test]
+    fn rtm_newneigh_ipv6_address_formats_correctly() {
+        // IPv6 neighbor: family=10 (AF_INET6), fe80::1
+        let dst = [0xfeu8, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let mac = [0x02, 0x42, 0xac, 0x11, 0x00, 0x02];
+        let msg = make_rtm_newneigh(10, 0, NUD_REACHABLE, &dst, Some(mac));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "neighbor_change");
+        assert_eq!(events[0]["address"], "fe80::1");
+        assert_eq!(events[0]["state"], "reachable");
+        assert_eq!(events[0]["mac"], "02:42:ac:11:00:02");
+    }
+
+    // --- Neighbor NUD states via full message parse pipeline ---
+
+    #[test]
+    fn rtm_newneigh_stale_state_via_message() {
+        let dst = [10u8, 0, 0, 1];
+        let msg = make_rtm_newneigh(2, 0, NUD_STALE, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "stale");
+    }
+
+    #[test]
+    fn rtm_newneigh_failed_state_via_message() {
+        let dst = [10u8, 0, 0, 2];
+        let msg = make_rtm_newneigh(2, 0, NUD_FAILED, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "failed");
+    }
+
+    #[test]
+    fn rtm_newneigh_permanent_state_via_message() {
+        let dst = [10u8, 0, 0, 3];
+        let msg = make_rtm_newneigh(2, 0, NUD_PERMANENT, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "permanent");
+    }
+
+    #[test]
+    fn rtm_newneigh_incomplete_state_via_message() {
+        let dst = [10u8, 0, 0, 4];
+        let msg = make_rtm_newneigh(2, 0, NUD_INCOMPLETE, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "incomplete");
+    }
+
+    #[test]
+    fn rtm_newneigh_none_state_via_message() {
+        let dst = [10u8, 0, 0, 5];
+        let msg = make_rtm_newneigh(2, 0, 0, &dst, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "none");
+    }
+
+    // --- Route with Oif pointing to loopback (ifindex_to_name success) ---
+
+    #[test]
+    fn rtm_newroute_with_oif_loopback_resolves_interface_name() {
+        // Build route with dst, then append RTA_OIF=4 NLA pointing to index 1 (loopback)
+        let dst = [127u8, 0, 0, 0];
+        let mut msg = make_rtm_newroute(2, 8, 2, 254, Some(&dst), None, None);
+
+        // Append RTA_OIF NLA (u32, type=4)
+        let nla_len = 8u16;
+        let mut oif_nla = vec![0u8; 8];
+        oif_nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+        oif_nla[2..4].copy_from_slice(&4u16.to_ne_bytes()); // RTA_OIF = 4
+        oif_nla[4..8].copy_from_slice(&1u32.to_ne_bytes()); // ifindex 1 = lo
+        msg.extend_from_slice(&oif_nla);
+
+        // Update total length
+        let new_len = msg.len() as u32;
+        msg[0..4].copy_from_slice(&new_len.to_ne_bytes());
+
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["destination"], "127.0.0.0/8");
+        assert_eq!(events[0]["interface"], "lo");
+        assert_eq!(events[0]["scope"], "host"); // scope 254 = RouteScope::Host
+    }
+
+    // --- Route with IPv6 gateway ---
+
+    #[test]
+    fn rtm_newroute_ipv6_gateway() {
+        // IPv6 route with gateway
+        let dst = [0x20u8, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let gw = [0xfeu8, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let msg = make_rtm_newroute(10, 48, 4, 0, Some(&dst), Some(&gw), Some(200));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["destination"], "2001:db8::/48");
+        assert_eq!(events[0]["gateway"], "fe80::1");
+        assert_eq!(events[0]["metric"], 200);
+    }
+
+    // --- Address event with host scope ---
+
+    #[test]
+    fn rtm_newaddr_host_scope() {
+        // scope=254 = host (for loopback addresses)
+        let addr = [127u8, 0, 0, 1];
+        let msg = make_rtm_newaddr_with_label(2, 8, 254, "lo", &addr);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["address"], "127.0.0.1/8");
+        assert_eq!(events[0]["scope"], "host");
+        assert_eq!(events[0]["family"], "inet");
+        assert_eq!(events[0]["interface"], "lo");
+    }
+
+    // --- Address event with site scope ---
+
+    #[test]
+    fn rtm_newaddr_site_scope() {
+        // scope=200 = site
+        let addr = [0xfeu8, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let msg = make_rtm_newaddr_with_label(10, 48, 200, "eth0", &addr);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["scope"], "site");
+        assert_eq!(events[0]["family"], "inet6");
+    }
+
+    // --- Rule with Oifname NLA ---
+
+    #[test]
+    fn rtm_newrule_with_oifname() {
+        // Build rule with Oifname (FRA_OIFNAME = 17)
+        let mut payload = vec![0u8; 12];
+        payload[0] = 2; // family = AF_INET
+        payload[4] = 100; // table
+        payload[7] = 1; // action = to_table
+
+        // FRA_OIFNAME = 17, null-terminated string NLA
+        let name = "eth1";
+        let name_bytes = name.as_bytes();
+        let nla_data_len = name_bytes.len() + 1;
+        let nla_len = (4 + nla_data_len) as u16;
+        let nla_aligned = (nla_len as usize + 3) & !3;
+        let mut nla = vec![0u8; nla_aligned];
+        nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+        nla[2..4].copy_from_slice(&17u16.to_ne_bytes()); // FRA_OIFNAME = 17
+        nla[4..4 + name_bytes.len()].copy_from_slice(name_bytes);
+        payload.extend_from_slice(&nla);
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&32u16.to_ne_bytes()); // RTM_NEWRULE
+        msg[16..].copy_from_slice(&payload);
+
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["oif"], "eth1");
+        assert_eq!(events[0]["table"], 100);
+    }
+
+    // --- Rule with extended FRA_TABLE NLA overriding header ---
+
+    #[test]
+    fn rtm_newrule_extended_table_overrides_header() {
+        // Build rule with header table=10, then FRA_TABLE NLA=2000
+        let mut payload = vec![0u8; 12];
+        payload[0] = 2; // family
+        payload[4] = 10; // header table = 10
+        payload[7] = 1; // action = to_table
+
+        // FRA_TABLE = 15, u32 NLA
+        let nla_len = 8u16;
+        payload.extend_from_slice(&nla_len.to_ne_bytes());
+        payload.extend_from_slice(&15u16.to_ne_bytes()); // FRA_TABLE
+        payload.extend_from_slice(&2000u32.to_ne_bytes());
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&32u16.to_ne_bytes()); // RTM_NEWRULE
+        msg[16..].copy_from_slice(&payload);
+
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        // Extended FRA_TABLE (2000) should override header table (10)
+        assert_eq!(events[0]["table"], 2000);
+    }
+
+    // --- Route scope host ---
+
+    #[test]
+    fn rtm_newroute_host_scope() {
+        let dst = [10u8, 0, 0, 1];
+        // scope=254 = Host
+        let msg = make_rtm_newroute(2, 32, 2, 254, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["destination"], "10.0.0.1/32");
+        assert_eq!(events[0]["scope"], "host"); // 254 = RouteScope::Host
+    }
+
+    // --- Route protocol static ---
+
+    #[test]
+    fn rtm_newroute_static_protocol() {
+        let dst = [10u8, 0, 0, 0];
+        // protocol=4 = RTPROT_STATIC
+        let msg = make_rtm_newroute(2, 24, 4, 0, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["protocol"], "static");
+    }
+
+    // --- Route scope universe ---
+
+    #[test]
+    fn rtm_newroute_universe_scope() {
+        let dst = [10u8, 0, 0, 0];
+        // scope=0 = Universe
+        let msg = make_rtm_newroute(2, 24, 4, 0, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["scope"], "universe");
+    }
 }
