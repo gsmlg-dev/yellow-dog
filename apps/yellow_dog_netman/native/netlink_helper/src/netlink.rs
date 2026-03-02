@@ -21,6 +21,21 @@ use serde_json::{json, Value};
 // Netlink receive buffer size (64 KB — matches typical kernel socket buffer)
 const NETLINK_RECV_BUFFER_SIZE: usize = 65536;
 
+// Netlink header size (nlmsghdr: len + type + flags + seq + pid)
+const NLMSG_HDRLEN: usize = 16;
+
+// RTM message types (from linux/rtnetlink.h)
+const RTM_NEWLINK: u16 = 16;
+const RTM_DELLINK: u16 = 17;
+const RTM_NEWADDR: u16 = 20;
+const RTM_DELADDR: u16 = 21;
+const RTM_NEWROUTE: u16 = 24;
+const RTM_DELROUTE: u16 = 25;
+const RTM_NEWNEIGH: u16 = 28;
+const RTM_DELNEIGH: u16 = 29;
+const RTM_NEWRULE: u16 = 32;
+const RTM_DELRULE: u16 = 33;
+
 // Multicast groups
 const RTNLGRP_LINK: u32 = 1;
 const RTNLGRP_IPV4_IFADDR: u32 = 5;
@@ -84,27 +99,21 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
     let mut events = Vec::new();
     let mut offset = 0;
 
-    while offset + 16 <= buf.len() {
+    while offset + NLMSG_HDRLEN <= buf.len() {
         let len = u32::from_ne_bytes([buf[offset], buf[offset + 1], buf[offset + 2], buf[offset + 3]]) as usize;
-        if len < 16 || offset + len > buf.len() {
+        if len < NLMSG_HDRLEN || offset + len > buf.len() {
             break;
         }
 
         let msg_type = u16::from_ne_bytes([buf[offset + 4], buf[offset + 5]]);
-        // Netlink header is 16 bytes; payload follows
-        let payload = &buf[offset + 16..offset + len];
+        let payload = &buf[offset + NLMSG_HDRLEN..offset + len];
 
         let event = match msg_type {
-            // RTM_NEWLINK = 16, RTM_DELLINK = 17
-            16 | 17 => parse_link_event(msg_type, payload),
-            // RTM_NEWADDR = 20, RTM_DELADDR = 21
-            20 | 21 => parse_address_event(msg_type, payload),
-            // RTM_NEWROUTE = 24, RTM_DELROUTE = 25
-            24 | 25 => parse_route_event(msg_type, payload),
-            // RTM_NEWNEIGH = 28, RTM_DELNEIGH = 29
-            28 | 29 => parse_neighbour_event(msg_type, payload),
-            // RTM_NEWRULE = 32, RTM_DELRULE = 33
-            32 | 33 => parse_rule_event(msg_type, payload),
+            RTM_NEWLINK | RTM_DELLINK => parse_link_event(msg_type, payload),
+            RTM_NEWADDR | RTM_DELADDR => parse_address_event(msg_type, payload),
+            RTM_NEWROUTE | RTM_DELROUTE => parse_route_event(msg_type, payload),
+            RTM_NEWNEIGH | RTM_DELNEIGH => parse_neighbour_event(msg_type, payload),
+            RTM_NEWRULE | RTM_DELRULE => parse_rule_event(msg_type, payload),
             _ => None,
         };
 
@@ -126,7 +135,7 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
 /// (e.g. empty payload in unit tests), returns a minimal event with
 /// only `type` and `action`.
 fn parse_link_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
-    let action = if msg_type == 16 { "add" } else { "del" };
+    let action = if msg_type == RTM_NEWLINK { "add" } else { "del" };
 
     let mut event = json!({
         "type": "link_change",
@@ -175,7 +184,7 @@ fn parse_link_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
 /// length, address family (inet/inet6), and scope. If parsing fails,
 /// returns a minimal event with only `type` and `action`.
 fn parse_address_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
-    let action = if msg_type == 20 { "add" } else { "del" };
+    let action = if msg_type == RTM_NEWADDR { "add" } else { "del" };
 
     let mut event = json!({
         "type": "address_change",
@@ -237,7 +246,7 @@ fn format_address_family(family: &AddressFamily) -> &'static str {
 /// and protocol from the route message. If parsing fails, returns a minimal
 /// event with only `type` and `action`.
 fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
-    let action = if msg_type == 24 { "add" } else { "del" };
+    let action = if msg_type == RTM_NEWROUTE { "add" } else { "del" };
 
     let mut event = json!({
         "type": "route_change",
@@ -300,7 +309,7 @@ fn parse_route_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
 /// Extracts priority, routing table, source prefix, destination prefix,
 /// incoming interface name, and action from the rule message.
 fn parse_rule_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
-    let action = if msg_type == 32 { "add" } else { "del" };
+    let action = if msg_type == RTM_NEWRULE { "add" } else { "del" };
 
     let mut event = json!({
         "type": "rule_change",
@@ -380,7 +389,7 @@ const NUD_PERMANENT: u16 = 0x80;
 /// (as colon-separated hex), and NUD state string. If parsing fails, returns
 /// a minimal event with only `type` and `action`.
 fn parse_neighbour_event(msg_type: u16, payload: &[u8]) -> Option<Value> {
-    let action = if msg_type == 28 { "add" } else { "del" };
+    let action = if msg_type == RTM_NEWNEIGH { "add" } else { "del" };
 
     let mut event = json!({
         "type": "neighbor_change",
