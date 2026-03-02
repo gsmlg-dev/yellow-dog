@@ -140,8 +140,19 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   defp parse_address(event) do
-    family = parse_family(Map.get(event, "family", "inet"))
-    {address, prefix_len} = parse_cidr(Map.get(event, "address", "0.0.0.0/0"), family)
+    addr_str = Map.get(event, "address", "0.0.0.0/0")
+
+    # Auto-detect family from address if event doesn't specify it
+    family =
+      case Map.get(event, "family") do
+        nil ->
+          if String.contains?(addr_str, ":"), do: :inet6, else: :inet
+
+        f ->
+          parse_family(f)
+      end
+
+    {address, prefix_len} = parse_cidr(addr_str, family)
 
     %{
       interface: Map.get(event, "interface"),
@@ -153,24 +164,26 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   defp parse_cidr(cidr, family) do
-    default_prefix = if family == :inet6, do: 128, else: 32
-    max_prefix = default_prefix
-
     case String.split(cidr, "/") do
       [addr, prefix] ->
+        # Auto-detect IPv6 from address string to handle mismatched family field
+        effective_family = if String.contains?(addr, ":"), do: :inet6, else: family
+        max_prefix = if effective_family == :inet6, do: 128, else: 32
+
         case Integer.parse(prefix) do
           {n, ""} when n >= 0 and n <= max_prefix ->
             {addr, n}
 
           _ ->
             Logger.warning(
-              "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default_prefix}"
+              "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
             )
 
-            {addr, default_prefix}
+            {addr, max_prefix}
         end
 
       [addr] ->
+        default_prefix = if family == :inet6 or String.contains?(addr, ":"), do: 128, else: 32
         Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /#{default_prefix}")
         {addr, default_prefix}
     end
