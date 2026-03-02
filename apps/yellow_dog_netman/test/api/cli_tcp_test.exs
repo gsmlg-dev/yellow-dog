@@ -13,6 +13,27 @@ defmodule YellowDog.Netman.API.CLITcpTest do
     ])
   end
 
+  # Read events until a keepalive is received or attempts are exhausted.
+  # Other tests may emit telemetry events that stream through the monitor
+  # connection before the keepalive timeout fires.
+  defp await_keepalive(socket, attempts \\ 20) do
+    assert attempts > 0, "keepalive not received within expected attempt window"
+
+    case :gen_tcp.recv(socket, 0, 500) do
+      {:ok, line} ->
+        event = Jason.decode!(String.trim(line))
+
+        if event["event"] == "keepalive" do
+          :ok
+        else
+          await_keepalive(socket, attempts - 1)
+        end
+
+      {:error, reason} ->
+        flunk("socket error while waiting for keepalive: #{inspect(reason)}")
+    end
+  end
+
   describe "Unix socket accept loop" do
     test "CLI accepts a JSON command and returns a response" do
       {:ok, socket} = connect_to_cli()
@@ -80,6 +101,46 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       :gen_tcp.close(socket)
 
       YellowDog.Netman.Test.MockNetlink.link_removed(iface)
+    end
+  end
+
+  describe "monitor keepalive" do
+    setup do
+      Application.put_env(:yellow_dog_netman, :cli_monitor_keepalive_ms, 50)
+      on_exit(fn -> Application.delete_env(:yellow_dog_netman, :cli_monitor_keepalive_ms) end)
+      :ok
+    end
+
+    test "keepalive is sent when no events arrive within the timeout" do
+      {:ok, socket} = connect_to_cli()
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+
+      {:ok, started_line} = :gen_tcp.recv(socket, 0, 2000)
+      assert %{"event" => "monitor_started"} = Jason.decode!(String.trim(started_line))
+
+      # Drain any concurrent telemetry events until the keepalive arrives.
+      # Other tests running in parallel may emit link/address events that
+      # stream to this monitor client before the 50ms keepalive fires.
+      assert :ok = await_keepalive(socket)
+
+      :gen_tcp.close(socket)
+    end
+
+    test "keepalive error path exits monitor loop when socket is closed" do
+      {:ok, socket} = connect_to_cli()
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+
+      {:ok, started_line} = :gen_tcp.recv(socket, 0, 2000)
+      assert %{"event" => "monitor_started"} = Jason.decode!(String.trim(started_line))
+
+      # Close socket from client side; keepalive fires, send fails → {:error, _} branch
+      :gen_tcp.close(socket)
+
+      # Give the server task time to process the closed socket + keepalive
+      Process.sleep(200)
+
+      # Server CLI GenServer should still be alive
+      assert Process.alive?(Process.whereis(CLI))
     end
   end
 

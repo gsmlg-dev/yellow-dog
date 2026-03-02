@@ -4,7 +4,6 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
   - handle_info(:accept, %{listen_socket: nil}) — socket creation failed
   - handle_info(:accept) when active_clients >= max_concurrent_clients
   - handle_info(:accept) with non-timeout accept error
-  - monitor_loop keepalive after 30s (skipped — impractical timeout)
   - init/1 mkdir_p error (lines 37-38) and listen failure (line 61)
   """
   use ExUnit.Case

@@ -199,7 +199,7 @@ defmodule YellowDog.Netman.API.CLI do
           {:error, _} -> :ok
         end
     after
-      @monitor_keepalive_ms ->
+      Application.get_env(:yellow_dog_netman, :cli_monitor_keepalive_ms, @monitor_keepalive_ms) ->
         case :gen_tcp.send(socket, Jason.encode!(%{"event" => "keepalive"}) <> "\n") do
           :ok -> monitor_loop(socket)
           {:error, _} -> :ok
