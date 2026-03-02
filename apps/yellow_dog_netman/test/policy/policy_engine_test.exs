@@ -60,6 +60,25 @@ defmodule YellowDog.Netman.PolicyEngineTest do
 
       assert {:ok, "my-conn"} = PolicyEngine.default_route(connections)
     end
+
+    test "equal priority is broken deterministically by profile_id" do
+      connections_order1 = [
+        %{id: "zebra", type: :ethernet, autoconnect_priority: 0},
+        %{id: "alpha", type: :ethernet, autoconnect_priority: 0}
+      ]
+
+      connections_order2 = [
+        %{id: "alpha", type: :ethernet, autoconnect_priority: 0},
+        %{id: "zebra", type: :ethernet, autoconnect_priority: 0}
+      ]
+
+      # Both orderings should produce the same result
+      assert PolicyEngine.default_route(connections_order1) ==
+               PolicyEngine.default_route(connections_order2)
+
+      # Alphabetically first ID wins
+      assert {:ok, "alpha"} = PolicyEngine.default_route(connections_order1)
+    end
   end
 
   describe "route_metrics/1" do
