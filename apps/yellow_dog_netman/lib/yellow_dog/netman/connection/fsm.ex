@@ -219,6 +219,9 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## State: configuring
 
   def configuring(:internal, :configure_ip, data) do
+    # Apply IPv6 static address if configured (independent of IPv4 method)
+    apply_static_ipv6(data)
+
     case data.profile.ipv4.method do
       :auto ->
         start_dhcp(data)
@@ -558,6 +561,17 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
+  defp apply_static_ipv6(data) do
+    case data.profile.ipv6 do
+      %{method: :manual, address: addr} when is_binary(addr) ->
+        {ip, prefix} = parse_cidr(addr)
+        AddressManager.add_address(data.interface, ip, prefix)
+
+      _ ->
+        :ok
+    end
+  end
+
   defp release_dhcp(data) do
     if data.lease != nil and Code.ensure_loaded?(YellowDog.DhcpClient) do
       YellowDog.DhcpClient.release(data.interface)
@@ -702,13 +716,19 @@ defmodule YellowDog.Netman.Connection.FSM do
             {addr, n}
 
           _ ->
-            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /24")
-            {addr, 24}
+            default = default_prefix(addr)
+            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default}")
+            {addr, default}
         end
 
       [addr] ->
-        Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /24")
-        {addr, 24}
+        default = default_prefix(addr)
+        Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /#{default}")
+        {addr, default}
     end
+  end
+
+  defp default_prefix(addr) do
+    if String.contains?(addr, ":"), do: 128, else: 32
   end
 end
