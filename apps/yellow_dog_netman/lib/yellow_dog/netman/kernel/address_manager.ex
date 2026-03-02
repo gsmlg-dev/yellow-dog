@@ -107,7 +107,8 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   ## Internal
 
-  defp handle_address_event(%{"action" => action, "interface" => iface, "address" => _} = event) do
+  defp handle_address_event(%{"action" => action, "interface" => iface, "address" => _} = event)
+       when is_binary(action) and is_binary(iface) do
     addr = parse_address(event)
 
     case action do

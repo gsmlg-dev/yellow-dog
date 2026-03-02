@@ -114,9 +114,9 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
 
   ## Internal
 
-  defp handle_route_event(%{"action" => action} = event) do
+  defp handle_route_event(%{"action" => action} = event) when is_binary(action) do
     route = parse_route(event)
-    route_key = {route.destination, route.gateway, route.interface}
+    route_key = {route.table, route.destination, route.gateway, route.interface}
 
     case action do
       "add" ->

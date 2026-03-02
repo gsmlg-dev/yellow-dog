@@ -64,7 +64,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
 
   ## Internal
 
-  defp handle_link_event(%{"action" => "del", "interface" => iface}) do
+  defp handle_link_event(%{"action" => "del", "interface" => iface}) when is_binary(iface) do
     :ets.delete(@table, iface)
 
     :telemetry.execute(
@@ -76,7 +76,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
     EventBus.publish("netman:link:#{iface}", {:removed, iface})
   end
 
-  defp handle_link_event(%{"interface" => iface} = event) do
+  defp handle_link_event(%{"interface" => iface} = event) when is_binary(iface) do
     carrier = Map.get(event, "carrier", false)
     mtu = Map.get(event, "mtu", 1500)
 
