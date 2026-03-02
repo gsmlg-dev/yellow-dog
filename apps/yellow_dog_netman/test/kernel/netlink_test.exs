@@ -216,5 +216,41 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       # Restore original state
       :sys.replace_state(pid, fn _state -> original_state end)
     end
+
+    @tag :capture_log
+    test "reconnect_attempts counter increases on each failed reconnect" do
+      pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(pid)
+
+      fake_port = make_ref()
+      :sys.replace_state(pid, fn state -> %{state | port: fake_port, backend: :port} end)
+
+      # Trigger port close — sets reconnect_attempts to 1
+      send(pid, {fake_port, :closed})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_attempts == 1
+      assert state.port == nil
+
+      # Manually trigger reconnect — port binary doesn't exist, so it fails
+      # This should increment reconnect_attempts
+      send(pid, :reconnect_port)
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_attempts == 2
+      assert state.port == nil
+
+      # Another failed reconnect
+      send(pid, :reconnect_port)
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_attempts == 3
+
+      # Restore original state
+      :sys.replace_state(pid, fn _state -> original_state end)
+    end
   end
 end
