@@ -134,6 +134,69 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     assert Process.alive?(pid)
   end
 
+  test "string carrier value is coerced to boolean" do
+    iface = "to_coerce#{:rand.uniform(65535)}"
+
+    # Send a link event with string "true" carrier (simulating buggy netlink backend)
+    pid = Process.whereis(LinkMonitor)
+
+    send(pid, {:netlink_event, {:link_change, %{
+      "action" => "add",
+      "interface" => iface,
+      "state" => "up",
+      "carrier" => "true",
+      "mtu" => 1500
+    }}})
+
+    Process.sleep(50)
+
+    links = LinkMonitor.list_links()
+    link = Enum.find(links, &(&1.interface == iface))
+    assert link != nil
+    assert link.carrier == true
+    assert is_boolean(link.carrier)
+  end
+
+  test "non-boolean carrier defaults to false" do
+    iface = "to_coerce#{:rand.uniform(65535)}"
+    pid = Process.whereis(LinkMonitor)
+
+    send(pid, {:netlink_event, {:link_change, %{
+      "action" => "add",
+      "interface" => iface,
+      "state" => "up",
+      "carrier" => "false",
+      "mtu" => 1500
+    }}})
+
+    Process.sleep(50)
+
+    links = LinkMonitor.list_links()
+    link = Enum.find(links, &(&1.interface == iface))
+    assert link != nil
+    assert link.carrier == false
+  end
+
+  test "string mtu value is coerced to default" do
+    iface = "to_mtu#{:rand.uniform(65535)}"
+    pid = Process.whereis(LinkMonitor)
+
+    send(pid, {:netlink_event, {:link_change, %{
+      "action" => "add",
+      "interface" => iface,
+      "state" => "up",
+      "carrier" => true,
+      "mtu" => "not_a_number"
+    }}})
+
+    Process.sleep(50)
+
+    links = LinkMonitor.list_links()
+    link = Enum.find(links, &(&1.interface == iface))
+    assert link != nil
+    assert link.mtu == 1500
+  end
+
   test "malformed link event with no interface key is handled gracefully" do
     pid = Process.whereis(LinkMonitor)
     send(pid, {:netlink_event, {:link_change, %{"action" => "add", "state" => "up"}}})

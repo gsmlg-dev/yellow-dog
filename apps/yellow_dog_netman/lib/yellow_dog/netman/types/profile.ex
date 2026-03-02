@@ -285,6 +285,7 @@ defmodule YellowDog.Netman.Types.Profile do
   defp require_string(map, key) do
     case Map.get(map, key) do
       nil -> {:error, "#{key} is required"}
+      "" -> {:error, "#{key} must not be empty"}
       val when is_binary(val) -> {:ok, val}
       other -> {:error, "#{key} must be a string, got: #{inspect(other)}"}
     end

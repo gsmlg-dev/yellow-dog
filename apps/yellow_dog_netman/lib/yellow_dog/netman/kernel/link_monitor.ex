@@ -77,12 +77,30 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
   end
 
   defp handle_link_event(%{"interface" => iface} = event) do
+    carrier = Map.get(event, "carrier", false)
+    mtu = Map.get(event, "mtu", 1500)
+
+    # Coerce carrier to boolean — netlink may send string "true"/"false"
+    carrier =
+      case carrier do
+        b when is_boolean(b) -> b
+        "true" -> true
+        _ -> false
+      end
+
+    # Coerce mtu to integer
+    mtu =
+      case mtu do
+        n when is_integer(n) and n > 0 -> n
+        _ -> 1500
+      end
+
     link = %{
       interface: iface,
       index: Map.get(event, "index", 0),
       state: parse_state(Map.get(event, "state", "unknown")),
-      carrier: Map.get(event, "carrier", false),
-      mtu: Map.get(event, "mtu", 1500),
+      carrier: carrier,
+      mtu: mtu,
       mac: Map.get(event, "mac"),
       kind: Map.get(event, "kind")
     }

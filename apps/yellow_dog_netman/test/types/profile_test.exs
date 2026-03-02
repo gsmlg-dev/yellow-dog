@@ -74,6 +74,12 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert {:error, _} = Profile.from_toml(toml)
     end
 
+    test "rejects empty connection.id" do
+      toml = %{"connection" => %{"id" => "", "type" => "ethernet"}}
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "must not be empty"
+    end
+
     test "rejects missing connection.type" do
       toml = %{"connection" => %{"id" => "test"}}
       assert {:error, _} = Profile.from_toml(toml)
