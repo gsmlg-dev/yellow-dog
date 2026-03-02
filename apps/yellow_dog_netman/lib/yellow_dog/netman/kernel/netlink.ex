@@ -21,9 +21,10 @@ defmodule YellowDog.Netman.Kernel.Netlink do
           | {:rule_change, map()}
           | {:neighbor_change, map()}
 
-  @port_reconnect_delay_ms 5_000
+  @port_reconnect_base_ms 5_000
+  @port_reconnect_max_ms 60_000
 
-  defstruct [:port, :backend, subscribers: []]
+  defstruct [:port, :backend, subscribers: [], reconnect_attempts: 0]
 
   ## Client API
 
@@ -102,24 +103,31 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   end
 
   def handle_info({port, :closed}, %{port: port} = state) do
+    delay = reconnect_delay(0)
+
     Logger.warning(
-      "Netlink port closed unexpectedly, scheduling reconnect in #{@port_reconnect_delay_ms}ms"
+      "Netlink port closed unexpectedly, scheduling reconnect in #{delay}ms"
     )
 
-    Process.send_after(self(), :reconnect_port, @port_reconnect_delay_ms)
-    {:noreply, %{state | port: nil}}
+    Process.send_after(self(), :reconnect_port, delay)
+    {:noreply, %{state | port: nil, reconnect_attempts: 1}}
   end
 
   def handle_info(:reconnect_port, %{backend: :port, port: nil} = state) do
     case open_port() do
       nil ->
-        Logger.warning("Port reconnect failed, retrying in #{@port_reconnect_delay_ms}ms")
-        Process.send_after(self(), :reconnect_port, @port_reconnect_delay_ms)
-        {:noreply, state}
+        delay = reconnect_delay(state.reconnect_attempts)
+
+        Logger.warning(
+          "Port reconnect failed (attempt #{state.reconnect_attempts}), retrying in #{delay}ms"
+        )
+
+        Process.send_after(self(), :reconnect_port, delay)
+        {:noreply, %{state | reconnect_attempts: state.reconnect_attempts + 1}}
 
       port ->
         Logger.info("Netlink port reconnected successfully")
-        {:noreply, %{state | port: port}}
+        {:noreply, %{state | port: port, reconnect_attempts: 0}}
     end
   end
 
@@ -176,6 +184,10 @@ defmodule YellowDog.Netman.Kernel.Netlink do
     for {pid, _ref} <- subscribers do
       send(pid, {:netlink_event, parsed})
     end
+  end
+
+  defp reconnect_delay(attempts) do
+    min(@port_reconnect_base_ms * Bitwise.bsl(1, attempts), @port_reconnect_max_ms)
   end
 
   defp parse_event(%{"type" => "link_change"} = e), do: {:link_change, e}

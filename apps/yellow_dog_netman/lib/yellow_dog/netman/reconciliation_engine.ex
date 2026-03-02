@@ -174,18 +174,18 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     desired = compute_desired()
     diffs = diff(desired, observed)
 
-    applied =
-      Enum.count(diffs, fn d ->
+    {applied, failed} =
+      Enum.reduce(diffs, {0, 0}, fn d, {ok, err} ->
         case apply_diff(d) do
           :ok ->
-            true
+            {ok + 1, err}
 
           {:error, reason} ->
             Logger.warning(
               "Failed to apply diff #{d.action} on #{d.interface || "global"}: #{inspect(reason)}"
             )
 
-            false
+            {ok, err + 1}
         end
       end)
 
@@ -193,7 +193,12 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
     :telemetry.execute(
       [:yellow_dog, :netman, :reconciliation, :stop],
-      %{duration_ms: duration, diffs_count: length(diffs), applied_count: applied},
+      %{
+        duration_ms: duration,
+        diffs_count: length(diffs),
+        applied_count: applied,
+        failed_count: failed
+      },
       %{}
     )
 

@@ -214,7 +214,8 @@ defmodule YellowDog.Netman.Integration.DriftRecoveryTest do
     assert_receive {:recon_stop, measurements}, 1000
     assert is_integer(measurements.diffs_count)
     assert is_integer(measurements.applied_count)
-    assert is_integer(measurements.duration_ms)
+    assert is_integer(measurements.failed_count)
+    assert measurements.failed_count >= 0
     assert measurements.duration_ms >= 0
 
     :telemetry.detach(handler_id)

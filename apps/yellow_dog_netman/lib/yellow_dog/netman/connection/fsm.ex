@@ -553,8 +553,18 @@ defmodule YellowDog.Netman.Connection.FSM do
     case data.profile.ipv4 do
       %{address: addr} when is_binary(addr) ->
         {ip, prefix} = parse_cidr(addr)
-        AddressManager.add_address(data.interface, ip, prefix)
-        transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
+
+        case AddressManager.add_address(data.interface, ip, prefix) do
+          :ok ->
+            transition(data, :configuring, :ip_check, [{:next_event, :internal, :check_ip}])
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to add static IPv4 address for #{data.interface}: #{inspect(reason)}"
+            )
+
+            transition(%{data | error: {:address_failed, reason}}, :configuring, :failed)
+        end
 
       _ ->
         transition(%{data | error: :no_address_configured}, :configuring, :failed)
@@ -565,7 +575,16 @@ defmodule YellowDog.Netman.Connection.FSM do
     case data.profile.ipv6 do
       %{method: :manual, address: addr} when is_binary(addr) ->
         {ip, prefix} = parse_cidr(addr)
-        AddressManager.add_address(data.interface, ip, prefix)
+
+        case AddressManager.add_address(data.interface, ip, prefix) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to add static IPv6 address for #{data.interface}: #{inspect(reason)}"
+            )
+        end
 
       _ ->
         :ok
