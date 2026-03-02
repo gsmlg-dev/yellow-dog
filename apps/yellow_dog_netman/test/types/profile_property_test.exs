@@ -98,6 +98,37 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  property "IPv4 CIDR prefix must be 0-32" do
+    check all(
+            id <- profile_id_gen(),
+            prefix <- StreamData.integer(33..128)
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "10.0.0.1/#{prefix}"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "valid CIDR"
+    end
+  end
+
+  property "IPv4 CIDR with valid prefix 0-32 is accepted" do
+    check all(
+            id <- profile_id_gen(),
+            prefix <- StreamData.integer(0..32),
+            a <- StreamData.integer(1..254),
+            d <- StreamData.integer(1..254)
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "#{a}.0.0.#{d}/#{prefix}"}
+      }
+
+      assert {:ok, %Profile{}} = Profile.from_toml(toml)
+    end
+  end
+
   property "from_toml preserves all fields" do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)

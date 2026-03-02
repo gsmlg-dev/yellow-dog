@@ -158,6 +158,24 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "same address with different prefix lengths coexist" do
+    check all(addr <- address_gen(), prefix2 <- integer(1..32), addr.prefix_len != prefix2) do
+      addr2 = %{addr | prefix_len: prefix2}
+
+      state =
+        ObservedState.new()
+        |> ObservedState.add_address(addr)
+        |> ObservedState.add_address(addr2)
+
+      assert length(state.addresses[addr.interface]) == 2
+
+      # Removing with specific prefix_len only removes one
+      after_remove = ObservedState.remove_address(state, addr.interface, addr.address, prefix2)
+      assert length(after_remove.addresses[addr.interface]) == 1
+      assert hd(after_remove.addresses[addr.interface]).prefix_len == addr.prefix_len
+    end
+  end
+
   property "removing non-existent address creates empty list entry" do
     check all(
             iface <- interface_gen(),
