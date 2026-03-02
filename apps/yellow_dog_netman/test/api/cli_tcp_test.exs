@@ -183,5 +183,36 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
       :gen_tcp.close(socket)
     end
+
+    @tag :capture_log
+    test "client handler rescue clause fires and CLI survives when monitor crashes" do
+      {:ok, socket} = connect_to_cli()
+
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+      {:ok, _started} = :gen_tcp.recv(socket, 0, 2000)
+
+      # Functions are not JSON-serializable; stringify_value/1 has no clause for
+      # them so the value passes through as-is and Jason.encode! raises
+      # Protocol.UndefinedError inside monitor_loop. The Task's rescue clause
+      # (L93-95) catches this, logs a warning, and closes the client socket.
+      :telemetry.execute(
+        [:yellow_dog, :netman, :kernel, :link_change],
+        %{count: 1},
+        %{action: :up, bad_value: fn -> :crash end}
+      )
+
+      # Give the monitor task time to process the event and crash
+      Process.sleep(200)
+
+      # CLI GenServer must still be alive despite the monitor task crash
+      assert Process.alive?(Process.whereis(CLI))
+
+      # CLI must still serve new connections after the crash
+      {:ok, socket2} = connect_to_cli()
+      :gen_tcp.send(socket2, Jason.encode!(%{"method" => "status"}) <> "\n")
+      {:ok, response} = :gen_tcp.recv(socket2, 0, 2000)
+      :gen_tcp.close(socket2)
+      assert {:ok, %{"result" => _}} = Jason.decode(response)
+    end
   end
 end
