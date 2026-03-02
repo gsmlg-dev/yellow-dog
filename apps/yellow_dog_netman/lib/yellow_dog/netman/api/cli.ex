@@ -84,6 +84,10 @@ defmodule YellowDog.Netman.API.CLI do
         Task.start(fn ->
           try do
             handle_client(client)
+          rescue
+            e ->
+              Logger.warning("CLI client handler crashed: #{Exception.message(e)}")
+              :gen_tcp.close(client)
           after
             send(cli_pid, :client_done)
           end
@@ -117,7 +121,10 @@ defmodule YellowDog.Netman.API.CLI do
       :gen_tcp.close(state.listen_socket)
     end
 
-    File.rm(state.socket_path)
+    case File.rm(state.socket_path) do
+      :ok -> :ok
+      {:error, reason} -> Logger.info("Could not remove CLI socket file: #{inspect(reason)}")
+    end
   end
 
   ## Command handling
