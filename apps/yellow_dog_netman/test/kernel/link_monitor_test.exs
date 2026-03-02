@@ -140,13 +140,18 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     # Send a link event with string "true" carrier (simulating buggy netlink backend)
     pid = Process.whereis(LinkMonitor)
 
-    send(pid, {:netlink_event, {:link_change, %{
-      "action" => "add",
-      "interface" => iface,
-      "state" => "up",
-      "carrier" => "true",
-      "mtu" => 1500
-    }}})
+    send(
+      pid,
+      {:netlink_event,
+       {:link_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "state" => "up",
+          "carrier" => "true",
+          "mtu" => 1500
+        }}}
+    )
 
     Process.sleep(50)
 
@@ -161,13 +166,18 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     iface = "to_coerce#{:rand.uniform(65535)}"
     pid = Process.whereis(LinkMonitor)
 
-    send(pid, {:netlink_event, {:link_change, %{
-      "action" => "add",
-      "interface" => iface,
-      "state" => "up",
-      "carrier" => "false",
-      "mtu" => 1500
-    }}})
+    send(
+      pid,
+      {:netlink_event,
+       {:link_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "state" => "up",
+          "carrier" => "false",
+          "mtu" => 1500
+        }}}
+    )
 
     Process.sleep(50)
 
@@ -181,13 +191,18 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     iface = "to_mtu#{:rand.uniform(65535)}"
     pid = Process.whereis(LinkMonitor)
 
-    send(pid, {:netlink_event, {:link_change, %{
-      "action" => "add",
-      "interface" => iface,
-      "state" => "up",
-      "carrier" => true,
-      "mtu" => "not_a_number"
-    }}})
+    send(
+      pid,
+      {:netlink_event,
+       {:link_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "state" => "up",
+          "carrier" => true,
+          "mtu" => "not_a_number"
+        }}}
+    )
 
     Process.sleep(50)
 
