@@ -50,6 +50,12 @@ defmodule YellowDog.Netman.API.CLI do
            ifaddr: {:local, String.to_charlist(socket_path)}
          ]) do
       {:ok, listen_socket} ->
+        # Restrict socket file permissions to owner only (0600)
+        case File.chmod(socket_path, 0o600) do
+          :ok -> :ok
+          {:error, reason} -> Logger.warning("Cannot chmod socket: #{inspect(reason)}")
+        end
+
         # Accept connections asynchronously
         Process.send_after(self(), :accept, 0)
 

@@ -102,6 +102,9 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
     while offset + NLMSG_HDRLEN <= buf.len() {
         let len = u32::from_ne_bytes([buf[offset], buf[offset + 1], buf[offset + 2], buf[offset + 3]]) as usize;
         if len < NLMSG_HDRLEN || offset + len > buf.len() {
+            if len < NLMSG_HDRLEN {
+                eprintln!("warning: netlink message length {} < header size {}, stopping parse", len, NLMSG_HDRLEN);
+            }
             break;
         }
 

@@ -103,8 +103,15 @@ fn read_commands_from(
     loop {
         // Read 4-byte length prefix
         let mut len_buf = [0u8; 4];
-        if reader.read_exact(&mut len_buf).is_err() {
-            return Ok(()); // Port closed
+        match reader.read_exact(&mut len_buf) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Ok(()); // Port closed cleanly
+            }
+            Err(e) => {
+                eprintln!("error reading command header: {}", e);
+                return Ok(()); // Treat as port closure
+            }
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;

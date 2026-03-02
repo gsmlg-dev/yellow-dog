@@ -521,6 +521,19 @@ mod tests {
         assert!(validate_address("::1").is_ok());
     }
 
+    #[test]
+    fn ipv6_address_uppercase_accepted() {
+        // RFC 5952 permits uppercase hex digits in IPv6 addresses
+        assert!(validate_address("FE80::1").is_ok());
+        assert!(validate_address("2001:DB8::ABCD/64").is_ok());
+        assert!(validate_address("FF02::1").is_ok());
+    }
+
+    #[test]
+    fn ipv6_address_mixed_case_accepted() {
+        assert!(validate_address("Fe80::aB01").is_ok());
+    }
+
     // --- constant boundary tests ---
 
     #[test]
