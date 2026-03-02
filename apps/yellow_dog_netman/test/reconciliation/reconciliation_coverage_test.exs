@@ -210,4 +210,98 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       end
     end
   end
+
+  describe "connection_active? with failed FSM (lines 374, 302)" do
+    test "reconcile generates activate diff for failed connection and reactivates FSM" do
+      iface = "recfail_#{:rand.uniform(65535)}"
+      profile_id = "recfail-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+
+      # Profile with ipv4: :auto — DHCP fails immediately on fake interface → FSM → :failed
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Insert link into ETS directly (no EventBus, no auto-reconcile)
+      :ets.insert(:netman_links, {iface,
+        %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}})
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+      end)
+
+      # Start connection — DHCP fails on fake interface → FSM reaches :failed
+      {:ok, fsm_pid} = Connection.Supervisor.start_connection(iface, profile)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(500)
+
+      # Verify FSM is in :failed state
+      {:ok, fsm_state} = Connection.FSM.get_state(fsm_pid)
+      assert fsm_state.state == :failed
+
+      # Reconcile:
+      #   connection_active?(iface) → FSM.get_state → {:ok, %{state: :failed}} → false (line 374)
+      #   → diff generated → apply_diff → find_connection finds existing FSM
+      #   → Connection.FSM.activate(pid) called (line 302)
+      send(recon_pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      assert Process.alive?(recon_pid)
+    end
+  end
+
+  describe "reconciliation with diffs logs completion (line 207)" do
+    test "do_reconcile logs completion when diffs are applied" do
+      iface = "recon_log_#{:rand.uniform(65535)}"
+      profile_id = "recon-log-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Insert link directly into ETS — bypasses EventBus so no auto-reconcile fires
+      :ets.insert(:netman_links, {iface,
+        %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}})
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+      end)
+
+      # Temporarily lower log level so Logger.info's lazy string argument (line 207)
+      # is actually evaluated. Tests run at :warning level by default which skips
+      # Logger.info evaluation entirely.
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: :warning) end)
+
+      # Put profile (sends {netman_event, profile:changed} to ReconciliationEngine mailbox),
+      # then immediately queue :periodic_reconcile after that event.
+      # ReconciliationEngine processes in order:
+      #   1. profile:changed → schedule_debounced_reconcile
+      #   2. :periodic_reconcile → do_reconcile with profile+link+no-connection → diffs → line 207
+      ProfileStore.put(profile_id, profile)
+      send(recon_pid, :periodic_reconcile)
+
+      Process.sleep(300)
+      assert Process.alive?(recon_pid)
+    end
+  end
 end
