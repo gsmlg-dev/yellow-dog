@@ -57,7 +57,10 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
     assert state.dns == ["8.8.8.8", "8.8.4.4"]
   end
 
-  test "DNS servers from both IPv4 and IPv6 are combined in state_info", %{iface: iface, profile: profile} do
+  test "DNS servers from both IPv4 and IPv6 are combined in state_info", %{
+    iface: iface,
+    profile: profile
+  } do
     # Remove setup profile to avoid ReconciliationEngine auto-starting FSM with it
     ProfileStore.delete(profile.id)
 
