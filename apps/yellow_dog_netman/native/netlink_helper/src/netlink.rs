@@ -2063,4 +2063,155 @@ mod tests {
         let events = parse_netlink_messages(&msg);
         assert_eq!(events[0]["scope"], "universe");
     }
+
+    // --- Route scope nowhere ---
+
+    #[test]
+    fn rtm_newroute_nowhere_scope() {
+        let dst = [10u8, 0, 0, 0];
+        // scope=255 = NoWhere
+        let msg = make_rtm_newroute(2, 24, 4, 255, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["scope"], "nowhere");
+    }
+
+    // --- Route scope site ---
+
+    #[test]
+    fn rtm_newroute_site_scope() {
+        let dst = [10u8, 0, 0, 0];
+        // scope=200 = Site
+        let msg = make_rtm_newroute(2, 24, 4, 200, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["scope"], "site");
+    }
+
+    // --- Route protocol dhcp ---
+
+    #[test]
+    fn rtm_newroute_dhcp_protocol() {
+        let dst = [10u8, 0, 0, 0];
+        // protocol=16 = RTPROT_DHCP
+        let msg = make_rtm_newroute(2, 24, 16, 0, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["protocol"], "dhcp");
+    }
+
+    // --- Route protocol unspec ---
+
+    #[test]
+    fn rtm_newroute_unspec_protocol() {
+        let dst = [10u8, 0, 0, 0];
+        // protocol=99 = unknown, should map to "unspec"
+        let msg = make_rtm_newroute(2, 24, 99, 0, Some(&dst), None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["protocol"], "unspec");
+    }
+
+    // --- Route Oif with invalid ifindex (ifindex_to_name returns None) ---
+
+    #[test]
+    fn rtm_newroute_oif_invalid_ifindex_omits_interface() {
+        let dst = [10u8, 0, 0, 0];
+        let mut msg = make_rtm_newroute(2, 24, 2, 0, Some(&dst), None, None);
+        // Append RTA_OIF NLA pointing to ifindex 99999 (doesn't exist)
+        let mut oif_nla = vec![0u8; 8];
+        oif_nla[0..2].copy_from_slice(&8u16.to_ne_bytes());
+        oif_nla[2..4].copy_from_slice(&4u16.to_ne_bytes()); // RTA_OIF = 4
+        oif_nla[4..8].copy_from_slice(&99999u32.to_ne_bytes());
+        msg.extend_from_slice(&oif_nla);
+        let new_len = msg.len() as u32;
+        msg[0..4].copy_from_slice(&new_len.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["destination"], "10.0.0.0/24");
+        // Interface should NOT be present since ifindex_to_name fails
+        assert!(events[0].get("interface").is_none() || events[0]["interface"].is_null());
+    }
+
+    // --- Link state: lowerlayerdown ---
+
+    #[test]
+    fn rtm_newlink_lowerlayerdown_state() {
+        let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        // oper_state=3 = IF_OPER_LOWERLAYERDOWN
+        let msg = make_rtm_newlink_full(2, "eth0", 1500, 0, 3, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "lowerlayerdown");
+    }
+
+    // --- Link state: testing ---
+
+    #[test]
+    fn rtm_newlink_testing_state() {
+        let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        // oper_state=4 = IF_OPER_TESTING
+        let msg = make_rtm_newlink_full(2, "eth0", 1500, 0, 4, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "testing");
+    }
+
+    // --- Link state: notpresent ---
+
+    #[test]
+    fn rtm_newlink_notpresent_state() {
+        let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        // oper_state=1 = IF_OPER_NOTPRESENT
+        let msg = make_rtm_newlink_full(2, "eth0", 1500, 0, 1, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "notpresent");
+    }
+
+    // --- Link state: unknown ---
+
+    #[test]
+    fn rtm_newlink_unknown_state() {
+        let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        // oper_state=0 = IF_OPER_UNKNOWN
+        let msg = make_rtm_newlink_full(2, "eth0", 1500, 0, 0, &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["state"], "unknown");
+    }
+
+    // --- Address scope: nowhere ---
+
+    #[test]
+    fn rtm_newaddr_nowhere_scope() {
+        let addr = [10u8, 0, 0, 1];
+        // scope=255 = Nowhere
+        let msg = make_rtm_newaddr_with_label(2, 24, 255, "eth0", &addr);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["scope"], "nowhere");
+    }
+
+    // --- Rule action: unreachable ---
+
+    #[test]
+    fn rtm_newrule_unreachable_action() {
+        // action byte 7 = FR_ACT_UNREACHABLE
+        let msg = make_rtm_newrule_with_src_dst(2, 0, 0, 254, 7, Some(200), None, None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["rule_action"], "unreachable");
+    }
+
+    // --- Rule action: prohibit ---
+
+    #[test]
+    fn rtm_newrule_prohibit_action() {
+        // action byte 8 = FR_ACT_PROHIBIT
+        let msg = make_rtm_newrule_with_src_dst(2, 0, 0, 254, 8, Some(300), None, None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["rule_action"], "prohibit");
+    }
+
+    // --- Rule action: unspec (catch-all) ---
+
+    #[test]
+    fn rtm_newrule_unspec_action() {
+        // action byte 99 = unknown, maps to "unspec"
+        let msg = make_rtm_newrule_with_src_dst(2, 0, 0, 254, 99, None, None, None, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["rule_action"], "unspec");
+    }
+
 }
