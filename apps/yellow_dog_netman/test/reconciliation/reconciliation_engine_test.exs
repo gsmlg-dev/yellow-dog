@@ -815,6 +815,62 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
   end
 
+  describe "performance" do
+    @tag :capture_log
+    test "reconciliation cycle completes in < 100ms for 2-interface setup" do
+      # PRD non-functional requirement: < 100ms for typical 2-interface setup
+      ifaces =
+        for i <- 1..2 do
+          iface = "recon_perf_#{i}_#{:rand.uniform(65535)}"
+          profile_id = "perf-#{iface}"
+
+          profile = %Profile{
+            id: profile_id,
+            type: :ethernet,
+            interface: iface,
+            autoconnect: true,
+            autoconnect_priority: 100 * i,
+            ethernet: %{mtu: nil},
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+          }
+
+          MockNetlink.link_up(iface, carrier: true)
+          ProfileStore.put(profile_id, profile)
+          {iface, profile_id}
+        end
+
+      Process.sleep(50)
+
+      test_pid = self()
+      handler_id = {__MODULE__, :perf, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_perf, measurements.duration_ms})
+        end,
+        nil
+      )
+
+      # Trigger reconciliation via periodic message for accurate timing
+      pid = Process.whereis(ReconciliationEngine)
+      send(pid, :periodic_reconcile)
+
+      assert_receive {:recon_perf, duration_ms}, 2000
+      assert duration_ms < 100, "Reconciliation took #{duration_ms}ms, expected < 100ms"
+
+      :telemetry.detach(handler_id)
+
+      Enum.each(ifaces, fn {iface, profile_id} ->
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+        MockNetlink.link_removed(iface)
+      end)
+    end
+  end
+
   describe "debounce coalescing" do
     @tag :capture_log
     test "many rapid events result in a single reconciliation cycle" do
