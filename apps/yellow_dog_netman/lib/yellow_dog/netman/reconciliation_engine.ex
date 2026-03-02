@@ -291,9 +291,17 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   defp apply_diff(%Diff{action: :activate_connection, interface: iface, params: params}) do
     case ProfileStore.get(params.profile_id) do
       {:ok, profile} ->
-        case Connection.Supervisor.start_connection(iface, profile) do
-          {:ok, _pid} -> :ok
-          {:error, _} = error -> error
+        # If a failed FSM exists, re-activate it instead of starting a new one
+        case Connection.Supervisor.find_connection(iface) do
+          {:ok, pid} ->
+            Connection.FSM.activate(pid)
+            :ok
+
+          :error ->
+            case Connection.Supervisor.start_connection(iface, profile) do
+              {:ok, _pid} -> :ok
+              {:error, _} = error -> error
+            end
         end
 
       {:error, _} = error ->
@@ -356,8 +364,15 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp connection_active?(interface) do
     case Connection.Supervisor.find_connection(interface) do
-      {:ok, _pid} -> true
-      :error -> false
+      {:ok, pid} ->
+        case Connection.FSM.get_state(pid) do
+          {:ok, %{state: :failed}} -> false
+          {:ok, _} -> true
+          {:error, _} -> false
+        end
+
+      :error ->
+        false
     end
   end
 
