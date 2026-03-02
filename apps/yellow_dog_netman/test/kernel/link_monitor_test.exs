@@ -218,4 +218,24 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorTest do
     Process.sleep(20)
     assert Process.alive?(pid)
   end
+
+  test "netlink event to EventBus publish latency is under threshold" do
+    # PRD target: < 10ms in production.
+    # Docker/CI overhead adds ~5-10ms, so we use 25ms threshold for test reliability.
+    iface = "latency_#{:rand.uniform(65535)}"
+    alias YellowDog.Netman.EventBus
+    EventBus.subscribe("netman:link:#{iface}")
+
+    start_time = System.monotonic_time(:microsecond)
+    MockNetlink.link_up(iface, carrier: true)
+
+    assert_receive {:netman_event, _, {:link_update, _}}, 1000
+    end_time = System.monotonic_time(:microsecond)
+
+    latency_us = end_time - start_time
+    latency_ms = latency_us / 1000
+
+    assert latency_ms < 25,
+           "Netlink event latency was #{Float.round(latency_ms, 2)}ms, expected < 25ms"
+  end
 end
