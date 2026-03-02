@@ -199,6 +199,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(%{data | error: :setup_timeout}, :prepare, :failed)
   end
 
+  def prepare(:info, {:netman_event, _, {:removed, _}}, data) do
+    transition(data, :prepare, :unavailable)
+  end
+
   def prepare(:cast, :deactivate, data) do
     transition(data, :prepare, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -289,6 +293,11 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(%{data | error: :configuring_timeout}, :configuring, :failed)
   end
 
+  def configuring(:info, {:netman_event, _, {:removed, _}}, data) do
+    release_dhcp(data)
+    transition(data, :configuring, :unavailable)
+  end
+
   def configuring(:cast, :deactivate, data) do
     transition(data, :configuring, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -329,6 +338,12 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def ip_check(:state_timeout, :retry_check, data) do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
+  end
+
+  def ip_check(:info, {:netman_event, _, {:removed, _}}, data) do
+    release_dhcp(data)
+    AddressManager.flush(data.interface)
+    transition(%{data | ip_check_retries: 0}, :ip_check, :unavailable)
   end
 
   def ip_check(:cast, :deactivate, data) do
@@ -396,6 +411,15 @@ defmodule YellowDog.Netman.Connection.FSM do
     ])
   end
 
+  def activated(:info, {:netman_event, _, {:removed, _}}, data) do
+    Logger.info("Interface #{data.interface} removed while activated, cleaning up")
+    release_dhcp(data)
+    reset_dns(data)
+    RouteManager.flush(data.interface)
+    AddressManager.flush(data.interface)
+    transition(%{data | lease: nil}, :activated, :unavailable)
+  end
+
   def activated(:cast, :deactivate, data) do
     transition(data, :activated, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -448,6 +472,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(%{data | error: nil}, :failed, :disconnected, [
       {:next_event, :internal, :auto_activate}
     ])
+  end
+
+  def failed(:info, {:netman_event, _, {:removed, _}}, data) do
+    transition(%{data | error: nil}, :failed, :unavailable)
   end
 
   def failed({:call, from}, :get_state, data) do
@@ -572,24 +600,35 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   defp push_dns(data) do
-    dns_servers = (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
+    profile_dns = (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
 
-    if dns_servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
-      servers =
-        Enum.flat_map(dns_servers, fn s ->
-          case :inet.parse_address(String.to_charlist(s)) do
-            {:ok, ip} ->
-              [ip]
+    profile_servers =
+      Enum.flat_map(profile_dns, fn s ->
+        case :inet.parse_address(String.to_charlist(s)) do
+          {:ok, ip} ->
+            [ip]
 
-            {:error, _} ->
-              Logger.warning(
-                "Invalid DNS server address #{inspect(s)} for #{data.interface}, skipping"
-              )
+          {:error, _} ->
+            Logger.warning(
+              "Invalid DNS server address #{inspect(s)} for #{data.interface}, skipping"
+            )
 
-              []
-          end
-        end)
+            []
+        end
+      end)
 
+    # Include DHCP-provided DNS servers (already IP tuples)
+    lease_dns =
+      case data.lease do
+        %{dns_servers: servers} when is_list(servers) -> servers
+        _ -> []
+      end
+
+    # Profile DNS takes precedence, DHCP DNS is appended
+    servers = profile_servers ++ lease_dns
+    servers = Enum.uniq(servers)
+
+    if servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
       apply(YellowDog.Resolved, :set_link_dns, [
         data.interface,
         %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
@@ -617,8 +656,25 @@ defmodule YellowDog.Netman.Connection.FSM do
       priority: data.profile.autoconnect_priority,
       lease: data.lease,
       error: data.error,
-      dns: (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
+      dns: collect_dns_strings(data)
     }
+  end
+
+  defp collect_dns_strings(data) do
+    profile_dns = (data.profile.ipv4.dns || []) ++ (data.profile.ipv6.dns || [])
+
+    lease_dns =
+      case data.lease do
+        %{dns_servers: servers} when is_list(servers) ->
+          Enum.map(servers, fn ip ->
+            ip |> :inet.ntoa() |> List.to_string()
+          end)
+
+        _ ->
+          []
+      end
+
+    Enum.uniq(profile_dns ++ lease_dns)
   end
 
   defp emit_dhcp_event(data, action, metadata) do

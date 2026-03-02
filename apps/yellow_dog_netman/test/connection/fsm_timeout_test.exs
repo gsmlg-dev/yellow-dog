@@ -517,6 +517,50 @@ defmodule YellowDog.Netman.Connection.FSMTimeoutTest do
     end
   end
 
+  describe "link removal transitions to unavailable" do
+    test "link removal from activated cleans up and goes unavailable", %{
+      iface: iface,
+      profile: profile
+    } do
+      pid = start_and_activate!(iface, profile)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :activated
+
+      # Simulate interface removal
+      MockNetlink.link_down(iface)
+      send(pid, {:netman_event, "netman:link:#{iface}", {:removed, iface}})
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :unavailable
+      :gen_statem.stop(pid)
+    end
+
+    test "link removal from failed goes unavailable", %{iface: iface} do
+      profile = dhcp_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      Process.sleep(50)
+
+      FSM.activate(pid)
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :failed
+
+      send(pid, {:netman_event, "netman:link:#{iface}", {:removed, iface}})
+      Process.sleep(100)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :unavailable
+      :gen_statem.stop(pid)
+    end
+  end
+
   ## Helpers
 
   defp dhcp_profile(iface) do
