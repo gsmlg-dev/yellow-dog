@@ -215,6 +215,48 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
     assert Enum.any?(addresses, &(&1.address == "10.8.0.1" and &1.prefix_len == 32))
   end
 
+  @tag :capture_log
+  test "IPv6 address without CIDR prefix defaults to /128" do
+    iface = "addr_v6_noprefix_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "address" => "fe80::1",
+          "family" => "inet6"
+        }}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.address == "fe80::1" and &1.prefix_len == 128))
+  end
+
+  @tag :capture_log
+  test "IPv6 address with invalid CIDR prefix defaults to /128" do
+    iface = "addr_v6_badcidr_#{:rand.uniform(65535)}"
+
+    send(
+      Process.whereis(AddressManager),
+      {:netlink_event,
+       {:address_change,
+        %{
+          "action" => "add",
+          "interface" => iface,
+          "address" => "2001:db8::1/xyz",
+          "family" => "inet6"
+        }}}
+    )
+
+    Process.sleep(50)
+    addresses = AddressManager.get_addresses(iface)
+    assert Enum.any?(addresses, &(&1.address == "2001:db8::1" and &1.prefix_len == 128))
+  end
+
   test "address with host scope is parsed correctly" do
     iface = "addr_host_scope_#{:rand.uniform(65535)}"
 

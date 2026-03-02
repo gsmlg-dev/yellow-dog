@@ -55,4 +55,49 @@ defmodule YellowDog.Netman.Types.DesiredStateTest do
     assert desired.connections["eth0-profile"].priority == 100
     assert desired.connections["eth1-profile"].priority == 50
   end
+
+  test "from_profiles/1 concatenates DNS from both IPv4 and IPv6" do
+    profile = %Profile{
+      id: "dual-dns",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: ["8.8.8.8", "8.8.4.4"]},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: ["2001:4860:4860::8888"]}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["dual-dns"]
+    assert conn.dns == ["8.8.8.8", "8.8.4.4", "2001:4860:4860::8888"]
+  end
+
+  test "from_profiles/1 handles nil DNS fields gracefully" do
+    profile = %Profile{
+      id: "nil-dns",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: nil},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: nil}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["nil-dns"]
+    assert conn.dns == []
+  end
+
+  test "from_profiles/1 handles mixed nil and populated DNS" do
+    profile = %Profile{
+      id: "mixed-dns",
+      type: :ethernet,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{method: :auto, address: nil, gateway: nil, dns: nil},
+      ipv6: %{method: :auto, address: nil, gateway: nil, dns: ["2001:4860:4860::8844"]}
+    }
+
+    desired = DesiredState.from_profiles([{profile, "eth0"}])
+    conn = desired.connections["mixed-dns"]
+    assert conn.dns == ["2001:4860:4860::8844"]
+  end
 end

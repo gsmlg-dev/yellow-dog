@@ -138,27 +138,35 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   defp parse_address(event) do
-    {address, prefix_len} = parse_cidr(Map.get(event, "address", "0.0.0.0/0"))
+    family = parse_family(Map.get(event, "family", "inet"))
+    {address, prefix_len} = parse_cidr(Map.get(event, "address", "0.0.0.0/0"), family)
 
     %{
       interface: Map.get(event, "interface"),
       address: address,
       prefix_len: prefix_len,
-      family: parse_family(Map.get(event, "family", "inet")),
+      family: family,
       scope: parse_scope(Map.get(event, "scope", "global"))
     }
   end
 
-  defp parse_cidr(cidr) do
+  defp parse_cidr(cidr, family) do
+    default_prefix = if family == :inet6, do: 128, else: 32
+
     case String.split(cidr, "/") do
       [addr, prefix] ->
         case Integer.parse(prefix) do
-          {n, ""} -> {addr, n}
-          _ -> {addr, 32}
+          {n, ""} when n >= 0 and n <= 128 ->
+            {addr, n}
+
+          _ ->
+            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default_prefix}")
+            {addr, default_prefix}
         end
 
       [addr] ->
-        {addr, 32}
+        Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /#{default_prefix}")
+        {addr, default_prefix}
     end
   end
 
