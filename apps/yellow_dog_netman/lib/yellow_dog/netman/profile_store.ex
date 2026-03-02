@@ -131,8 +131,8 @@ defmodule YellowDog.Netman.ProfileStore do
           (p.interface == nil or p.interface == interface)
       end)
       |> Enum.sort_by(fn p ->
-        # Prefer exact interface match, then by priority
-        {if(p.interface == interface, do: 0, else: 1), -p.autoconnect_priority}
+        # Prefer exact interface match, then by priority, then by id for determinism
+        {if(p.interface == interface, do: 0, else: 1), -p.autoconnect_priority, p.id}
       end)
       |> List.first()
 
