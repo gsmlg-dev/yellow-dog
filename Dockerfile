@@ -33,8 +33,16 @@ COPY config config
 
 RUN mix deps.get
 
-# Copy full source and build release
+# Copy full source
 COPY . .
+
+# Build Rust netlink_helper port binary for netman
+RUN cd apps/yellow_dog_netman/native/netlink_helper && \
+    cargo build --release --quiet && \
+    mkdir -p ../../priv/native && \
+    cp target/release/netlink_helper ../../priv/native/ && \
+    chmod 755 ../../priv/native/netlink_helper
+
 RUN mix release yellow_dog --version "${RELEASE_VERSION}"
 
 FROM docker.io/library/alpine:3.23
