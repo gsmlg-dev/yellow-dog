@@ -312,13 +312,15 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
     end
 
     test "status returns nil default_route when no connections are running" do
-      # Calling status with empty connections list exercises the :none -> nil branch (line 374)
-      # This test relies on running in a state where no FSMs are registered in the supervisor
-      # (other tests clean up after themselves)
+      # Deterministically stop all active connections so list_connections() returns [],
+      # causing PolicyEngine.default_route([]) → :none → format_system_status L374 → nil.
+      for %{interface: iface} <- Connection.Supervisor.list_connections(), is_binary(iface) do
+        Connection.Supervisor.stop_connection(iface)
+      end
+
       result = CLI.handle_command(%{"method" => "status"})
       assert %{"result" => status} = result
-      # Either nil (no connections) or binary (leftover from concurrent tests) are valid
-      assert is_nil(status["default_route"]) or is_binary(status["default_route"])
+      assert is_nil(status["default_route"])
     end
   end
 end

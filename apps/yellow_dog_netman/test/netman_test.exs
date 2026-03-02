@@ -99,6 +99,14 @@ defmodule YellowDog.NetmanTest do
     end
   end
 
+  describe "start_link/1 delegation" do
+    test "start_link delegates to Supervisor and returns already_started when running" do
+      # The supervisor is already running; calling start_link again returns :already_started,
+      # which exercises the defdelegate start_link/1 line (line 14).
+      assert {:error, {:already_started, _pid}} = Netman.start_link([])
+    end
+  end
+
   describe "import_profile/1" do
     test "returns error for non-existent file" do
       assert {:error, _} = Netman.import_profile("/tmp/nonexistent_#{:rand.uniform(65535)}.toml")
