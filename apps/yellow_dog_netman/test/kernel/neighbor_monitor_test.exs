@@ -148,7 +148,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorTest do
 
   test "unknown action in neighbor event is handled gracefully" do
     pid = Process.whereis(NeighborMonitor)
-    send(pid, {:netlink_event, {:neighbor_change, %{"action" => "flush", "address" => "10.99.9.9"}}})
+
+    send(
+      pid,
+      {:netlink_event, {:neighbor_change, %{"action" => "flush", "address" => "10.99.9.9"}}}
+    )
+
     Process.sleep(20)
     assert Process.alive?(pid)
   end

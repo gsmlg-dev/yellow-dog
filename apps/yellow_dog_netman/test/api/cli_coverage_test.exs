@@ -275,7 +275,9 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
 
       # validate_profile_path passes (file exists, .toml, not symlink)
       # import_profile fails (missing id) → {:error, reason} hits line 285
-      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => tmp_path}})
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => tmp_path}})
+
       assert %{"error" => _} = result
     end
   end

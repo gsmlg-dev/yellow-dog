@@ -230,8 +230,11 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       }
 
       # Insert link into ETS directly (no EventBus, no auto-reconcile)
-      :ets.insert(:netman_links, {iface,
-        %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}})
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
+      )
 
       on_exit(fn ->
         :ets.delete(:netman_links, iface)
@@ -277,8 +280,11 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       }
 
       # Insert link directly into ETS — bypasses EventBus so no auto-reconcile fires
-      :ets.insert(:netman_links, {iface,
-        %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}})
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
+      )
 
       on_exit(fn ->
         :ets.delete(:netman_links, iface)

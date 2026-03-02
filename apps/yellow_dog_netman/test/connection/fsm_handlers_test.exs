@@ -714,7 +714,13 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       iface: iface,
       profile: profile
     } do
-      data = %FSM{interface: iface, profile: profile, current_state: :configuring, dhcp_retries: 0}
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
       # :timeout is retryable and dhcp_retries(0) < max(3)
       result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
       assert {:keep_state, new_data} = result
@@ -725,9 +731,17 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       iface: iface,
       profile: profile
     } do
-      data = %FSM{interface: iface, profile: profile, current_state: :configuring, dhcp_retries: 0}
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
       # {:mac_detection_failed, _} hits retryable_dhcp_failure?/1 line 734 → false
-      result = FSM.configuring(:info, {:dhcp_lease_failed, {:mac_detection_failed, :eth_read}}, data)
+      result =
+        FSM.configuring(:info, {:dhcp_lease_failed, {:mac_detection_failed, :eth_read}}, data)
+
       assert {:next_state, :failed, new_data, _} = result
       assert new_data.error == :dhcp_failed
     end

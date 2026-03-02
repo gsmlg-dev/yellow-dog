@@ -52,6 +52,9 @@ pub fn listen(tx: mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>>
         if n == 0 {
             continue;
         }
+        if n == buf.len() {
+            eprintln!("warning: netlink recv filled buffer ({} bytes), message may be truncated", n);
+        }
 
         // Parse netlink messages from the buffer
         let messages = parse_netlink_messages(&buf[..n]);
@@ -448,12 +451,21 @@ fn format_route_address(addr: &RouteAddress) -> String {
 }
 
 /// Resolve a network interface index to its name via libc.
+///
+/// # Safety
+/// Uses `libc::if_indextoname` which writes a null-terminated C string into
+/// `buf`. On success (non-null return), POSIX guarantees the buffer contains
+/// a valid interface name of at most IFNAMSIZ-1 chars plus a null terminator.
+/// The `CStr::from_ptr` call is safe because the null check above ensures the
+/// buffer was written successfully.
 fn ifindex_to_name(index: u32) -> Option<String> {
     let mut buf = [0i8; libc::IFNAMSIZ];
+    // SAFETY: buf is IFNAMSIZ bytes, which is the required minimum for if_indextoname
     let result = unsafe { libc::if_indextoname(index, buf.as_mut_ptr()) };
     if result.is_null() {
         return None;
     }
+    // SAFETY: if_indextoname succeeded, so buf contains a valid null-terminated string
     let cstr = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
     Some(cstr.to_string_lossy().into_owned())
 }
@@ -754,7 +766,7 @@ mod tests {
         payload[6] = scope;
 
         // Helper to append a u32 NLA
-        let mut append_u32_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u32| {
+        let append_u32_nla = |buf: &mut Vec<u8>, nla_type: u16, val: u32| {
             let nla_len = 8u16; // 4 header + 4 data
             buf.extend_from_slice(&nla_len.to_ne_bytes());
             buf.extend_from_slice(&nla_type.to_ne_bytes());
@@ -762,7 +774,7 @@ mod tests {
         };
 
         // Helper to append a bytes NLA
-        let mut append_bytes_nla = |buf: &mut Vec<u8>, nla_type: u16, data: &[u8]| {
+        let append_bytes_nla = |buf: &mut Vec<u8>, nla_type: u16, data: &[u8]| {
             let nla_len = (4 + data.len()) as u16;
             let nla_aligned = (nla_len as usize + 3) & !3;
             let mut nla = vec![0u8; nla_aligned];

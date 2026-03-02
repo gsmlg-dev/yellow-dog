@@ -99,6 +99,14 @@ fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;
+        if len < 2 {
+            // Minimum valid JSON is "{}" (2 bytes); skip degenerate messages
+            eprintln!("message too small: {} bytes (minimum 2 for valid JSON)", len);
+            // Drain the (possibly zero-length) payload and continue
+            let mut buf = vec![0u8; len];
+            let _ = stdin.read_exact(&mut buf);
+            continue;
+        }
         if len > MAX_MESSAGE_SIZE {
             eprintln!("message too large: {} bytes (max {})", len, MAX_MESSAGE_SIZE);
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "message too large"));
