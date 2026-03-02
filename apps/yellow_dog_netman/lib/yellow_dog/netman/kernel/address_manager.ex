@@ -135,7 +135,7 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   defp handle_address_event(event) do
-    Logger.debug("Ignoring address event with missing fields: #{inspect(event)}")
+    Logger.warning("Ignoring address event with missing fields: #{inspect(event)}")
     :ok
   end
 

@@ -280,7 +280,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     # Carrier lost during configuration
-    Logger.info("Carrier lost during configuring for #{data.interface}")
+    Logger.warning("Carrier lost during configuring for #{data.interface}")
 
     transition(data, :configuring, :deactivating, [
       {:next_event, :internal, :cleanup},
