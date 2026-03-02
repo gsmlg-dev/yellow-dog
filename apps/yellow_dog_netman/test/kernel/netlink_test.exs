@@ -54,11 +54,25 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
   end
 
   describe "command/1" do
-    test "command in degraded mode returns error or ok" do
-      # In test env the port binary doesn't exist, so command may return
-      # :ok (mock backend) or {:error, :not_connected} (degraded port mode)
+    test "command in mock mode returns :ok" do
       result = Netlink.command(%{"cmd" => "link_set", "interface" => "eth0", "state" => "up"})
-      assert result == :ok or result == {:error, :not_connected}
+      assert result == :ok
+    end
+
+    test "command when port is nil returns {:error, :not_connected}" do
+      pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(pid)
+
+      # Simulate a disconnected port backend
+      :sys.replace_state(pid, fn state ->
+        %{state | backend: :port, port: nil}
+      end)
+
+      result = Netlink.command(%{"cmd" => "link_set", "interface" => "eth0", "state" => "up"})
+      assert result == {:error, :not_connected}
+
+      # Restore original state
+      :sys.replace_state(pid, fn _state -> original_state end)
     end
   end
 
