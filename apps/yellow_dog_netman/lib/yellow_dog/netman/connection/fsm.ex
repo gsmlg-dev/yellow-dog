@@ -581,11 +581,16 @@ defmodule YellowDog.Netman.Connection.FSM do
     case String.split(cidr, "/") do
       [addr, prefix] ->
         case Integer.parse(prefix) do
-          {n, ""} -> {addr, n}
-          _ -> {addr, 24}
+          {n, ""} when n >= 0 and n <= 128 ->
+            {addr, n}
+
+          _ ->
+            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /24")
+            {addr, 24}
         end
 
       [addr] ->
+        Logger.warning("No CIDR prefix in #{inspect(addr)}, defaulting to /24")
         {addr, 24}
     end
   end

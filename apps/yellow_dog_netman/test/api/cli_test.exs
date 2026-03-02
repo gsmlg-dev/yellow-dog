@@ -195,7 +195,7 @@ defmodule YellowDog.Netman.API.CLITest do
     @moduletag :capture_log
 
     test "handle_info(:accept, %{listen_socket: nil}) is a no-op" do
-      state = %CLI{socket_path: "/tmp/cli_test_nil.sock", listen_socket: nil, clients: []}
+      state = %CLI{socket_path: "/tmp/cli_test_nil.sock", listen_socket: nil, active_clients: 0}
       assert {:noreply, ^state} = CLI.handle_info(:accept, state)
     end
 
@@ -208,7 +208,7 @@ defmodule YellowDog.Netman.API.CLITest do
       File.write!(socket_path, "")
       on_exit(fn -> File.rm(socket_path) end)
 
-      state = %CLI{socket_path: socket_path, listen_socket: listen_socket, clients: []}
+      state = %CLI{socket_path: socket_path, listen_socket: listen_socket, active_clients: 0}
 
       CLI.terminate(:normal, state)
 
@@ -224,7 +224,7 @@ defmodule YellowDog.Netman.API.CLITest do
       File.write!(socket_path, "")
       on_exit(fn -> File.rm(socket_path) end)
 
-      state = %CLI{socket_path: socket_path, listen_socket: nil, clients: []}
+      state = %CLI{socket_path: socket_path, listen_socket: nil, active_clients: 0}
 
       # Should not raise
       CLI.terminate(:shutdown, state)

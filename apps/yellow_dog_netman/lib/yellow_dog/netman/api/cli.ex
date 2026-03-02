@@ -12,8 +12,9 @@ defmodule YellowDog.Netman.API.CLI do
   require Logger
 
   @default_socket_path "/run/yellowdog/netman.sock"
+  @max_concurrent_clients 100
 
-  defstruct [:socket_path, :listen_socket, clients: []]
+  defstruct [:socket_path, :listen_socket, active_clients: 0]
 
   ## Client API
 
@@ -67,12 +68,27 @@ defmodule YellowDog.Netman.API.CLI do
     {:noreply, state}
   end
 
+  def handle_info(:accept, %{active_clients: n} = state) when n >= @max_concurrent_clients do
+    Logger.warning("CLI connection limit reached (#{@max_concurrent_clients}), delaying accept")
+    Process.send_after(self(), :accept, 1000)
+    {:noreply, state}
+  end
+
   def handle_info(:accept, state) do
     case :gen_tcp.accept(state.listen_socket, 100) do
       {:ok, client} ->
-        Task.start(fn -> handle_client(client) end)
+        cli_pid = self()
+
+        Task.start(fn ->
+          try do
+            handle_client(client)
+          after
+            send(cli_pid, :client_done)
+          end
+        end)
+
         Process.send_after(self(), :accept, 0)
-        {:noreply, state}
+        {:noreply, %{state | active_clients: state.active_clients + 1}}
 
       {:error, :timeout} ->
         Process.send_after(self(), :accept, 100)
@@ -83,6 +99,10 @@ defmodule YellowDog.Netman.API.CLI do
         Process.send_after(self(), :accept, 1000)
         {:noreply, state}
     end
+  end
+
+  def handle_info(:client_done, state) do
+    {:noreply, %{state | active_clients: max(state.active_clients - 1, 0)}}
   end
 
   def handle_info(_msg, state) do
