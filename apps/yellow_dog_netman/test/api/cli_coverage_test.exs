@@ -157,13 +157,13 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
       :sys.replace_state(pid, fn state -> %{state | active_clients: original_active} end)
     end
 
-    test "client_done decrements active_clients" do
+    test "DOWN message decrements active_clients" do
       pid = Process.whereis(CLI)
 
       original_active = :sys.get_state(pid).active_clients
       :sys.replace_state(pid, fn state -> %{state | active_clients: 5} end)
 
-      send(pid, :client_done)
+      send(pid, {:DOWN, make_ref(), :process, self(), :normal})
       Process.sleep(20)
 
       new_active = :sys.get_state(pid).active_clients
@@ -173,13 +173,13 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
       :sys.replace_state(pid, fn state -> %{state | active_clients: original_active} end)
     end
 
-    test "client_done does not go below 0 active_clients" do
+    test "DOWN message does not go below 0 active_clients" do
       pid = Process.whereis(CLI)
 
       original_active = :sys.get_state(pid).active_clients
       :sys.replace_state(pid, fn state -> %{state | active_clients: 0} end)
 
-      send(pid, :client_done)
+      send(pid, {:DOWN, make_ref(), :process, self(), :normal})
       Process.sleep(20)
 
       new_active = :sys.get_state(pid).active_clients

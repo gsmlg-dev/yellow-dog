@@ -234,24 +234,26 @@ defmodule YellowDog.Netman.API.CLITest do
       :gen_tcp.close(sock)
     end
 
-    test "handle_info(:client_done, ...) decrements active_clients" do
+    test "handle_info(:DOWN, ...) decrements active_clients" do
       state = %CLI{
         socket_path: "/tmp/cli_client_done.sock",
         listen_socket: nil,
         active_clients: 5
       }
 
-      assert {:noreply, %CLI{active_clients: 4}} = CLI.handle_info(:client_done, state)
+      down_msg = {:DOWN, make_ref(), :process, self(), :normal}
+      assert {:noreply, %CLI{active_clients: 4}} = CLI.handle_info(down_msg, state)
     end
 
-    test "handle_info(:client_done, ...) does not go below zero" do
+    test "handle_info(:DOWN, ...) does not go below zero" do
       state = %CLI{
         socket_path: "/tmp/cli_client_done_0.sock",
         listen_socket: nil,
         active_clients: 0
       }
 
-      assert {:noreply, %CLI{active_clients: 0}} = CLI.handle_info(:client_done, state)
+      down_msg = {:DOWN, make_ref(), :process, self(), :normal}
+      assert {:noreply, %CLI{active_clients: 0}} = CLI.handle_info(down_msg, state)
     end
 
     test "terminate/2 cleans up listen_socket and socket file" do

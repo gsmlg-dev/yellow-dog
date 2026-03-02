@@ -85,20 +85,18 @@ defmodule YellowDog.Netman.API.CLI do
   def handle_info(:accept, state) do
     case :gen_tcp.accept(state.listen_socket, 100) do
       {:ok, client} ->
-        cli_pid = self()
+        {:ok, pid} =
+          Task.start(fn ->
+            try do
+              handle_client(client)
+            rescue
+              e ->
+                Logger.warning("CLI client handler crashed: #{Exception.message(e)}")
+                :gen_tcp.close(client)
+            end
+          end)
 
-        Task.start(fn ->
-          try do
-            handle_client(client)
-          rescue
-            e ->
-              Logger.warning("CLI client handler crashed: #{Exception.message(e)}")
-              :gen_tcp.close(client)
-          after
-            send(cli_pid, :client_done)
-          end
-        end)
-
+        Process.monitor(pid)
         Process.send_after(self(), :accept, 0)
         {:noreply, %{state | active_clients: state.active_clients + 1}}
 
@@ -113,7 +111,7 @@ defmodule YellowDog.Netman.API.CLI do
     end
   end
 
-  def handle_info(:client_done, state) do
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
     {:noreply, %{state | active_clients: max(state.active_clients - 1, 0)}}
   end
 
