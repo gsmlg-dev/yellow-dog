@@ -141,7 +141,7 @@ defmodule YellowDog.Netman.ProfileStore do
 
   @impl true
   def handle_info({:file_event, _watcher_pid, {path, events}}, state) do
-    if Path.extname(path) == ".toml" and :modified in events do
+    if Path.extname(path) == ".toml" and :modified in events and not symlink?(path) do
       Logger.info("Profile file changed: #{path}")
       state = reload_profile(state, path)
       {:noreply, state}
@@ -164,16 +164,25 @@ defmodule YellowDog.Netman.ProfileStore do
   defp valid_profile_path?(path) when is_binary(path) do
     not String.contains?(path, "\0") and
       Path.extname(path) == ".toml" and
-      byte_size(path) <= 4096
+      byte_size(path) <= 4096 and
+      not symlink?(path)
   end
 
   defp valid_profile_path?(_), do: false
+
+  defp symlink?(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :symlink}} -> true
+      _ -> false
+    end
+  end
 
   defp load_profiles(dir) do
     if File.dir?(dir) do
       dir
       |> Path.join("*.toml")
       |> Path.wildcard()
+      |> Enum.reject(&symlink?/1)
       |> Enum.reduce(%{}, fn path, acc ->
         case parse_toml_file(path) do
           {:ok, profile} ->

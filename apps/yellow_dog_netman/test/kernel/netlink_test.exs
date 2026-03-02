@@ -181,4 +181,40 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       :sys.replace_state(pid, fn _state -> original_state end)
     end
   end
+
+  describe "port reconnect" do
+    @tag :capture_log
+    test "reconnect_port message in mock mode is ignored" do
+      pid = Process.whereis(Netlink)
+      send(pid, :reconnect_port)
+      Process.sleep(50)
+      assert Process.alive?(pid)
+    end
+
+    @tag :capture_log
+    test "port closed schedules reconnect attempt" do
+      pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(pid)
+
+      fake_port = make_ref()
+      :sys.replace_state(pid, fn state -> %{state | port: fake_port, backend: :port} end)
+
+      send(pid, {fake_port, :closed})
+      Process.sleep(50)
+
+      # Port should be nil after close
+      state = :sys.get_state(pid)
+      assert state.port == nil
+
+      # A reconnect_port message should be scheduled
+      # We can't easily verify the timer, but we can send the message manually
+      # and verify it's handled without crash
+      send(pid, :reconnect_port)
+      Process.sleep(50)
+      assert Process.alive?(pid)
+
+      # Restore original state
+      :sys.replace_state(pid, fn _state -> original_state end)
+    end
+  end
 end

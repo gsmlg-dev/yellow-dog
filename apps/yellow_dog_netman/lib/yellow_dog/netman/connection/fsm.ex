@@ -32,6 +32,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   @max_ip_check_retries 30
   @configuring_timeout_ms 120_000
   @prepare_timeout_ms 10_000
+  @deactivating_timeout_ms 30_000
 
   defstruct [
     :interface,
@@ -196,7 +197,10 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def prepare(:cast, :deactivate, data) do
-    transition(data, :prepare, :deactivating, [{:next_event, :internal, :cleanup}])
+    transition(data, :prepare, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def prepare({:call, from}, :get_state, data) do
@@ -240,7 +244,11 @@ defmodule YellowDog.Netman.Connection.FSM do
   def configuring(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     # Carrier lost during configuration
     Logger.info("Carrier lost during configuring for #{data.interface}")
-    transition(data, :configuring, :deactivating, [{:next_event, :internal, :cleanup}])
+
+    transition(data, :configuring, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def configuring(:state_timeout, :configuring_timeout, data) do
@@ -252,7 +260,10 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def configuring(:cast, :deactivate, data) do
-    transition(data, :configuring, :deactivating, [{:next_event, :internal, :cleanup}])
+    transition(data, :configuring, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def configuring({:call, from}, :get_state, data) do
@@ -292,7 +303,8 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def ip_check(:cast, :deactivate, data) do
     transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
-      {:next_event, :internal, :cleanup}
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
     ])
   end
 
@@ -313,7 +325,10 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def activated(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
     # Carrier lost
-    transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+    transition(data, :activated, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def activated(:info, {:netman_event, _, {:remove, %{scope: :global}}}, data) do
@@ -326,7 +341,11 @@ defmodule YellowDog.Netman.Connection.FSM do
         {:keep_state, data}
       else
         Logger.info("All global addresses lost for #{data.interface}, deactivating")
-        transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+
+        transition(data, :activated, :deactivating, [
+          {:next_event, :internal, :cleanup},
+          {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+        ])
       end
     else
       {:keep_state, data}
@@ -340,11 +359,18 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def activated(:info, {:dhcp_lease_expired, reason}, data) do
     emit_dhcp_event(data, :lease_expired, %{reason: reason})
-    transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+
+    transition(data, :activated, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def activated(:cast, :deactivate, data) do
-    transition(data, :activated, :deactivating, [{:next_event, :internal, :cleanup}])
+    transition(data, :activated, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def activated({:call, from}, :get_state, data) do
@@ -361,6 +387,15 @@ defmodule YellowDog.Netman.Connection.FSM do
     AddressManager.flush(data.interface)
     RouteManager.flush(data.interface)
     EventBus.publish("netman:connection:#{data.profile.id}", {:deactivated, data.interface})
+    data = %{data | lease: nil}
+    transition(data, :deactivating, :disconnected)
+  end
+
+  def deactivating(:state_timeout, :cleanup_timeout, data) do
+    Logger.warning(
+      "Deactivation timed out for #{data.interface}, forcing transition to disconnected"
+    )
+
     data = %{data | lease: nil}
     transition(data, :deactivating, :disconnected)
   end

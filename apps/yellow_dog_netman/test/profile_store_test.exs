@@ -292,6 +292,38 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
       refute_receive {:netman_event, "netman:profile:changed", _}, 200
     end
+
+    test "symlink TOML files are ignored during hot-reload" do
+      tmp_dir = System.tmp_dir!()
+      target = Path.join(tmp_dir, "reload_target_#{:rand.uniform(65535)}.toml")
+      link = Path.join(tmp_dir, "reload_link_#{:rand.uniform(65535)}.toml")
+
+      File.write!(target, """
+      [connection]
+      id = "reload-symlink-test"
+      type = "ethernet"
+      [ipv4]
+      method = "auto"
+      [ipv6]
+      method = "auto"
+      """)
+
+      File.ln_s!(target, link)
+
+      on_exit(fn ->
+        File.rm(link)
+        File.rm(target)
+      end)
+
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      send(ProfileStore, {:file_event, self(), {link, [:modified]}})
+      Process.sleep(100)
+
+      # Symlink should be ignored — no profile change event
+      refute_receive {:netman_event, "netman:profile:changed", _}, 200
+      assert {:error, :not_found} = ProfileStore.get("reload-symlink-test")
+    end
   end
 
   describe "import_file edge cases" do
@@ -327,6 +359,31 @@ defmodule YellowDog.Netman.ProfileStoreTest do
     test "import_file rejects extremely long path" do
       long_path = "/" <> String.duplicate("a", 5000) <> ".toml"
       assert {:error, :invalid_path} = ProfileStore.import_file(long_path)
+    end
+
+    test "import_file rejects symlinks" do
+      tmp_dir = System.tmp_dir!()
+      target = Path.join(tmp_dir, "symlink_target_#{:rand.uniform(65535)}.toml")
+      link = Path.join(tmp_dir, "symlink_link_#{:rand.uniform(65535)}.toml")
+
+      File.write!(target, """
+      [connection]
+      id = "symlink-test"
+      type = "ethernet"
+      [ipv4]
+      method = "auto"
+      [ipv6]
+      method = "auto"
+      """)
+
+      File.ln_s!(target, link)
+
+      on_exit(fn ->
+        File.rm(link)
+        File.rm(target)
+      end)
+
+      assert {:error, :invalid_path} = ProfileStore.import_file(link)
     end
   end
 

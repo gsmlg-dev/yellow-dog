@@ -21,6 +21,8 @@ defmodule YellowDog.Netman.Kernel.Netlink do
           | {:rule_change, map()}
           | {:neighbor_change, map()}
 
+  @port_reconnect_delay_ms 5_000
+
   defstruct [:port, :backend, subscribers: []]
 
   ## Client API
@@ -100,8 +102,30 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   end
 
   def handle_info({port, :closed}, %{port: port} = state) do
-    Logger.warning("Netlink port closed unexpectedly, running in degraded mode")
+    Logger.warning(
+      "Netlink port closed unexpectedly, scheduling reconnect in #{@port_reconnect_delay_ms}ms"
+    )
+
+    Process.send_after(self(), :reconnect_port, @port_reconnect_delay_ms)
     {:noreply, %{state | port: nil}}
+  end
+
+  def handle_info(:reconnect_port, %{backend: :port, port: nil} = state) do
+    case open_port() do
+      nil ->
+        Logger.warning("Port reconnect failed, retrying in #{@port_reconnect_delay_ms}ms")
+        Process.send_after(self(), :reconnect_port, @port_reconnect_delay_ms)
+        {:noreply, state}
+
+      port ->
+        Logger.info("Netlink port reconnected successfully")
+        {:noreply, %{state | port: port}}
+    end
+  end
+
+  def handle_info(:reconnect_port, state) do
+    # Port already reconnected or not in port mode — ignore
+    {:noreply, state}
   end
 
   def handle_info({:mock_event, event}, state) do
