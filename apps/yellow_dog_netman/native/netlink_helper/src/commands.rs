@@ -11,6 +11,9 @@ const MAX_INTERFACE_NAME_LEN: usize = 15;
 const MIN_MTU: u64 = 68;
 const MAX_MTU: u64 = 65535;
 
+// Linux route metrics are u32
+const MAX_ROUTE_METRIC: u64 = u32::MAX as u64;
+
 /// Handle a command from the Elixir side.
 ///
 /// In Phase 1, we delegate to `ip` commands for simplicity.
@@ -177,7 +180,17 @@ fn handle_route_add(cmd: &Value) -> io::Result<()> {
     }
 
     // Hoist metric_str so its lifetime covers the run_ip call
-    let metric_str = cmd["metric"].as_u64().map(|m| m.to_string());
+    let metric_str = if let Some(m) = cmd["metric"].as_u64() {
+        if m > MAX_ROUTE_METRIC {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("route metric exceeds maximum ({}): {}", MAX_ROUTE_METRIC, m),
+            ));
+        }
+        Some(m.to_string())
+    } else {
+        None
+    };
     if let Some(ref s) = metric_str {
         args.push("metric");
         args.push(s);
@@ -553,5 +566,46 @@ mod tests {
             "mtu": MAX_MTU + 1
         });
         assert!(handle(&cmd).is_err());
+    }
+
+    // --- route metric validation ---
+
+    #[test]
+    fn route_metric_at_u32_max_is_valid_input() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "10.0.0.0/24",
+            "interface": "eth0",
+            "metric": MAX_ROUTE_METRIC
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("route metric exceeds maximum"));
+        }
+    }
+
+    #[test]
+    fn route_metric_above_u32_max_is_rejected() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "10.0.0.0/24",
+            "interface": "eth0",
+            "metric": MAX_ROUTE_METRIC + 1
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn route_metric_zero_is_valid_input() {
+        let cmd = serde_json::json!({
+            "cmd": "route_add",
+            "destination": "10.0.0.0/24",
+            "interface": "eth0",
+            "metric": 0
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("route metric exceeds maximum"));
+        }
     }
 }
