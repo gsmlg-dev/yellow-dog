@@ -137,4 +137,99 @@ defmodule YellowDog.Netman.Types.ObservedStateTest do
 
     assert state.routes == []
   end
+
+  test "remove_address/3 with nil prefix removes all prefixes of same address" do
+    addr24 = %{
+      interface: "eth0",
+      address: "10.0.0.1",
+      prefix_len: 24,
+      family: :inet,
+      scope: :global
+    }
+
+    addr32 = %{
+      interface: "eth0",
+      address: "10.0.0.1",
+      prefix_len: 32,
+      family: :inet,
+      scope: :global
+    }
+
+    state =
+      ObservedState.new()
+      |> ObservedState.add_address(addr24)
+      |> ObservedState.add_address(addr32)
+      |> ObservedState.remove_address("eth0", "10.0.0.1")
+
+    # nil prefix_len removes ALL matching addresses regardless of prefix
+    assert state.addresses["eth0"] == []
+  end
+
+  test "remove_address on nonexistent interface returns empty list" do
+    state = ObservedState.new() |> ObservedState.remove_address("eth99", "10.0.0.1")
+    assert state.addresses["eth99"] == []
+  end
+
+  test "add_route with nil gateway" do
+    route = %{
+      destination: "10.0.0.0/24",
+      gateway: nil,
+      interface: "eth0",
+      metric: 100,
+      table: 254,
+      protocol: :kernel,
+      scope: :link
+    }
+
+    state = ObservedState.new() |> ObservedState.add_route(route)
+    assert length(state.routes) == 1
+    assert hd(state.routes).gateway == nil
+  end
+
+  test "remove_route with nil gateway matches nil gateway route" do
+    route = %{
+      destination: "10.0.0.0/24",
+      gateway: nil,
+      interface: "eth0",
+      metric: 100,
+      table: 254,
+      protocol: :kernel,
+      scope: :link
+    }
+
+    state =
+      ObservedState.new()
+      |> ObservedState.add_route(route)
+      |> ObservedState.remove_route("10.0.0.0/24", nil)
+
+    assert state.routes == []
+  end
+
+  test "put_link/2 replaces existing link" do
+    link1 = %{interface: "eth0", index: 1, state: :down, carrier: false, mtu: 1500, mac: nil, kind: nil}
+    link2 = %{interface: "eth0", index: 1, state: :up, carrier: true, mtu: 9000, mac: "aa:bb:cc:dd:ee:ff", kind: nil}
+
+    state =
+      ObservedState.new()
+      |> ObservedState.put_link(link1)
+      |> ObservedState.put_link(link2)
+
+    assert map_size(state.links) == 1
+    assert state.links["eth0"].state == :up
+    assert state.links["eth0"].mtu == 9000
+  end
+
+  test "multiple addresses on same interface" do
+    addr1 = %{interface: "eth0", address: "10.0.0.1", prefix_len: 24, family: :inet, scope: :global}
+    addr2 = %{interface: "eth0", address: "192.168.1.1", prefix_len: 24, family: :inet, scope: :global}
+    addr3 = %{interface: "eth0", address: "fe80::1", prefix_len: 64, family: :inet6, scope: :link}
+
+    state =
+      ObservedState.new()
+      |> ObservedState.add_address(addr1)
+      |> ObservedState.add_address(addr2)
+      |> ObservedState.add_address(addr3)
+
+    assert length(state.addresses["eth0"]) == 3
+  end
 end

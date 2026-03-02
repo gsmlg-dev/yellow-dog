@@ -141,4 +141,17 @@ defmodule YellowDog.Netman.EventBusTest do
     EventBus.publish("test:ns_ab:event", :msg)
     refute_receive {:netman_event, _, _}, 50
   end
+
+  test "bare wildcard '*' matches all topics as catch-all" do
+    EventBus.subscribe("*")
+    EventBus.publish("any:topic:at:all", :catch_all)
+    assert_receive {:netman_event, "any:topic:at:all", :catch_all}
+    EventBus.unsubscribe("*")
+  end
+
+  test "publish to topic with no subscribers does not crash" do
+    unique = "test:no_sub:#{System.unique_integer([:positive])}"
+    assert :ok = EventBus.publish(unique, :orphan)
+    refute_receive {:netman_event, _, _}, 50
+  end
 end
