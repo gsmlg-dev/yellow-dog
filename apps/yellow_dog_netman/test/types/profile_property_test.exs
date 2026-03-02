@@ -38,6 +38,45 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     ])
   end
 
+  defp iface_gen do
+    StreamData.one_of([
+      StreamData.constant(nil),
+      StreamData.string(:alphanumeric, min_length: 1, max_length: 12)
+      |> StreamData.map(&("pi_" <> &1))
+      |> StreamData.map(&String.slice(&1, 0, 15))
+    ])
+  end
+
+  defp zone_gen do
+    StreamData.member_of(["default", "trusted", "untrusted", "dmz"])
+  end
+
+  defp gateway_gen do
+    StreamData.one_of([
+      StreamData.constant(nil),
+      gen all(
+            a <- StreamData.integer(10..10),
+            b <- StreamData.integer(0..255),
+            c <- StreamData.integer(0..255),
+            d <- StreamData.integer(1..254)
+          ) do
+        "#{a}.#{b}.#{c}.#{d}"
+      end
+    ])
+  end
+
+  defp dns_gen do
+    StreamData.one_of([
+      StreamData.constant([]),
+      gen all(
+            count <- StreamData.integer(1..3),
+            octets <- StreamData.list_of(StreamData.integer(1..254), length: count)
+          ) do
+        Enum.map(octets, &"8.8.#{&1}.#{&1}")
+      end
+    ])
+  end
+
   defp valid_toml_gen do
     gen all(
           id <- profile_id_gen(),
@@ -46,7 +85,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           mtu <- mtu_gen(),
           priority <- StreamData.integer(0..1000),
           autoconnect <- StreamData.boolean(),
-          ipv4_address <- ipv4_address_gen()
+          ipv4_address <- ipv4_address_gen(),
+          iface <- iface_gen(),
+          zone <- zone_gen(),
+          ipv4_gw <- gateway_gen(),
+          ipv4_dns <- dns_gen()
         ) do
       ipv4 =
         if ipv4_method == "manual" do
@@ -55,13 +98,22 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           %{"method" => ipv4_method}
         end
 
-      toml = %{
-        "connection" => %{
+      ipv4 = if ipv4_gw, do: Map.put(ipv4, "gateway", ipv4_gw), else: ipv4
+      ipv4 = if ipv4_dns != [], do: Map.put(ipv4, "dns", ipv4_dns), else: ipv4
+
+      conn =
+        %{
           "id" => id,
           "type" => "ethernet",
           "autoconnect" => autoconnect,
-          "autoconnect_priority" => priority
-        },
+          "autoconnect_priority" => priority,
+          "zone" => zone
+        }
+
+      conn = if iface, do: Map.put(conn, "interface", iface), else: conn
+
+      toml = %{
+        "connection" => conn,
         "ipv4" => ipv4,
         "ipv6" => %{"method" => ipv6_method}
       }
@@ -88,13 +140,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       toml2 = Profile.to_toml(profile1)
       {:ok, profile2} = Profile.from_toml(toml2)
 
-      assert profile1.id == profile2.id
-      assert profile1.type == profile2.type
-      assert profile1.autoconnect == profile2.autoconnect
-      assert profile1.autoconnect_priority == profile2.autoconnect_priority
-      assert profile1.ipv4.method == profile2.ipv4.method
-      assert profile1.ipv6.method == profile2.ipv6.method
-      assert profile1.ethernet.mtu == profile2.ethernet.mtu
+      assert profile1 == profile2
     end
   end
 
@@ -137,6 +183,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert profile.type == :ethernet
       assert profile.autoconnect == toml["connection"]["autoconnect"]
       assert profile.autoconnect_priority == toml["connection"]["autoconnect_priority"]
+      assert profile.interface == Map.get(toml["connection"], "interface")
+      assert profile.zone == Map.get(toml["connection"], "zone", "default")
+      assert profile.ethernet.mtu == get_in(toml, ["ethernet", "mtu"])
     end
   end
 
