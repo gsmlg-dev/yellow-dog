@@ -1,7 +1,7 @@
 FROM docker.io/library/elixir:1.19-alpine AS builder
 
-# Install git for fetching hex from GitHub, and Rust/Cargo for Rustler NIFs
-RUN apk add --no-cache git rust cargo
+# Install Rust/Cargo for Rustler NIFs (netlink_helper port binary)
+RUN apk add --no-cache rust cargo
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ ARG MIX_ENV=prod
 ARG RELEASE_VERSION=1.1.1
 
 # Install hex and rebar (cached unless base image changes)
-RUN mix archive.install github hexpm/hex branch latest --force && \
+RUN mix local.hex --force && \
     mix local.rebar --force
 
 # Copy dependency manifests first for better layer caching
