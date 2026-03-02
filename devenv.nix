@@ -26,6 +26,8 @@ in
   languages.javascript.bun.enable = true;
   languages.javascript.bun.package = pkgs-stable.bun;
 
+  languages.rust.enable = true;
+
   scripts.hello.exec = ''
     figlet -w 120 $GREET | lolcat
   '';
