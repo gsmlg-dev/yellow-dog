@@ -18,6 +18,9 @@ use netlink_packet_route::AddressFamily;
 use netlink_sys::{protocols::NETLINK_ROUTE, Socket, SocketAddr};
 use serde_json::{json, Value};
 
+// Netlink receive buffer size (64 KB — matches typical kernel socket buffer)
+const NETLINK_RECV_BUFFER_SIZE: usize = 65536;
+
 // Multicast groups
 const RTNLGRP_LINK: u32 = 1;
 const RTNLGRP_IPV4_IFADDR: u32 = 5;
@@ -45,7 +48,7 @@ pub fn listen(tx: mpsc::Sender<Value>) -> Result<(), Box<dyn std::error::Error>>
     let addr = SocketAddr::new(0, multicast_groups());
     socket.bind(&addr)?;
 
-    let mut buf = vec![0u8; 65536];
+    let mut buf = vec![0u8; NETLINK_RECV_BUFFER_SIZE];
 
     loop {
         let n = socket.recv(&mut buf, 0)?;

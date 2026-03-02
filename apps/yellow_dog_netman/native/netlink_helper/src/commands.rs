@@ -4,6 +4,13 @@ use serde_json::Value;
 use std::io;
 use std::process::Command;
 
+// Linux IFNAMSIZ limit (excluding null terminator)
+const MAX_INTERFACE_NAME_LEN: usize = 15;
+
+// Valid MTU range per RFC 791 (IPv4 minimum) and Linux maximum
+const MIN_MTU: u64 = 68;
+const MAX_MTU: u64 = 65535;
+
 /// Handle a command from the Elixir side.
 ///
 /// In Phase 1, we delegate to `ip` commands for simplicity.
@@ -32,7 +39,7 @@ fn validate_interface(name: &str) -> io::Result<&str> {
             "empty interface name",
         ));
     }
-    if name.len() > 15 {
+    if name.len() > MAX_INTERFACE_NAME_LEN {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "interface name too long",
@@ -60,10 +67,10 @@ fn validate_address(addr: &str) -> io::Result<&str> {
             "empty address",
         ));
     }
-    if addr.starts_with('-') {
+    if addr.starts_with('-') || addr.contains('\0') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "address must not start with '-'",
+            "address contains invalid characters",
         ));
     }
     // Only allow characters valid in IPv4/IPv6 addresses with optional CIDR prefix
@@ -117,10 +124,10 @@ fn handle_link_set(cmd: &Value) -> io::Result<()> {
     let iface = validate_interface(cmd["interface"].as_str().unwrap_or(""))?;
 
     if let Some(mtu) = cmd["mtu"].as_u64() {
-        if mtu < 68 || mtu > 65535 {
+        if mtu < MIN_MTU || mtu > MAX_MTU {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("MTU out of valid range (68-65535): {}", mtu),
+                format!("MTU out of valid range ({}-{}): {}", MIN_MTU, MAX_MTU, mtu),
             ));
         }
         let mtu_str = mtu.to_string();
@@ -288,6 +295,11 @@ mod tests {
     #[test]
     fn address_with_space_is_rejected() {
         assert!(validate_address("10.0.0.1 ").is_err());
+    }
+
+    #[test]
+    fn address_with_null_byte_is_rejected() {
+        assert!(validate_address("10.0.0\x001").is_err());
     }
 
     // --- validate_destination ---
@@ -494,5 +506,52 @@ mod tests {
         // IPv6 shorthand like "::" should be valid
         assert!(validate_address("::").is_ok());
         assert!(validate_address("::1").is_ok());
+    }
+
+    // --- constant boundary tests ---
+
+    #[test]
+    fn interface_at_max_length_is_accepted() {
+        let name = "a".repeat(MAX_INTERFACE_NAME_LEN);
+        assert!(validate_interface(&name).is_ok());
+    }
+
+    #[test]
+    fn interface_over_max_length_is_rejected() {
+        let name = "a".repeat(MAX_INTERFACE_NAME_LEN + 1);
+        assert!(validate_interface(&name).is_err());
+    }
+
+    #[test]
+    fn mtu_at_min_constant_is_valid_input() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": MIN_MTU
+        });
+        let result = handle(&cmd);
+        if let Err(ref e) = result {
+            assert!(!e.to_string().contains("MTU out of valid range"));
+        }
+    }
+
+    #[test]
+    fn mtu_below_min_constant_is_rejected() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": MIN_MTU - 1
+        });
+        assert!(handle(&cmd).is_err());
+    }
+
+    #[test]
+    fn mtu_above_max_constant_is_rejected() {
+        let cmd = serde_json::json!({
+            "cmd": "link_set",
+            "interface": "eth0",
+            "mtu": MAX_MTU + 1
+        });
+        assert!(handle(&cmd).is_err());
     }
 }

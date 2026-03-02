@@ -13,6 +13,8 @@ defmodule YellowDog.Netman.API.CLI do
 
   @default_socket_path "/run/yellowdog/netman.sock"
   @max_concurrent_clients 100
+  @client_recv_timeout_ms 5_000
+  @monitor_keepalive_ms 30_000
 
   defstruct [:socket_path, :listen_socket, active_clients: 0]
 
@@ -34,7 +36,7 @@ defmodule YellowDog.Netman.API.CLI do
 
     case File.mkdir_p(socket_dir) do
       :ok -> :ok
-      {:error, :eacces} -> Logger.info("Cannot create socket directory: #{socket_dir}")
+      {:error, :eacces} -> Logger.warning("Cannot create socket directory: #{socket_dir}")
       {:error, reason} -> Logger.warning("Socket dir error: #{inspect(reason)}")
     end
 
@@ -121,7 +123,7 @@ defmodule YellowDog.Netman.API.CLI do
   ## Command handling
 
   defp handle_client(socket) do
-    case :gen_tcp.recv(socket, 0, 5000) do
+    case :gen_tcp.recv(socket, 0, @client_recv_timeout_ms) do
       {:ok, data} ->
         case data |> String.trim() |> Jason.decode() do
           {:ok, %{"method" => "monitor"}} ->
@@ -186,7 +188,7 @@ defmodule YellowDog.Netman.API.CLI do
           {:error, _} -> :ok
         end
     after
-      30_000 ->
+      @monitor_keepalive_ms ->
         case :gen_tcp.send(socket, Jason.encode!(%{"event" => "keepalive"}) <> "\n") do
           :ok -> monitor_loop(socket)
           {:error, _} -> :ok
