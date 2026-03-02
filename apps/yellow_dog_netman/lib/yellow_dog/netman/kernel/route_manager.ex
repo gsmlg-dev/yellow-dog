@@ -137,7 +137,10 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
     EventBus.publish("netman:route:#{table_id}", {action_atom, route})
   end
 
-  defp handle_route_event(_), do: :ok
+  defp handle_route_event(event) do
+    Logger.warning("Ignoring route event with missing fields: #{inspect(event)}")
+    :ok
+  end
 
   defp parse_route(event) do
     %{

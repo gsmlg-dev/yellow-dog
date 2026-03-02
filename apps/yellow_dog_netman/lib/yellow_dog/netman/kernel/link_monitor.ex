@@ -116,7 +116,10 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
     EventBus.publish("netman:link:#{iface}", {:link_update, link})
   end
 
-  defp handle_link_event(_), do: :ok
+  defp handle_link_event(event) do
+    Logger.warning("Ignoring link event with missing fields: #{inspect(event)}")
+    :ok
+  end
 
   defp parse_state("up"), do: :up
   defp parse_state("down"), do: :down
