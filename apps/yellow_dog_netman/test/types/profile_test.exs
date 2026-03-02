@@ -173,6 +173,35 @@ defmodule YellowDog.Netman.Types.ProfileTest do
       assert profile.ipv4.address == "192.168.1.100/24"
     end
 
+    test "rejects IPv4 CIDR with prefix > 32" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "192.168.1.1/64"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "valid CIDR"
+    end
+
+    test "accepts IPv6 CIDR with prefix <= 128" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet"},
+        "ipv6" => %{"method" => "manual", "address" => "2001:db8::1/64"}
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv6.address == "2001:db8::1/64"
+    end
+
+    test "rejects interface name with colons" do
+      toml = %{
+        "connection" => %{"id" => "test", "type" => "ethernet", "interface" => "eth0:0"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+
     test "rejects invalid MTU" do
       toml = %{
         "connection" => %{"id" => "test", "type" => "ethernet"},

@@ -221,7 +221,7 @@ defmodule YellowDog.Netman.Types.Profile do
       byte_size(name) > @max_ifname_len ->
         {:error, "connection.interface must be at most #{@max_ifname_len} characters"}
 
-      String.contains?(name, [" ", "/", "\t", "\n"]) ->
+      String.contains?(name, [" ", "/", ":", "\t", "\n"]) ->
         {:error, "connection.interface contains invalid characters"}
 
       true ->
@@ -271,7 +271,8 @@ defmodule YellowDog.Netman.Types.Profile do
     case String.split(cidr, "/") do
       [addr, prefix] ->
         case {Integer.parse(prefix), :inet.parse_address(String.to_charlist(addr))} do
-          {{n, ""}, {:ok, _}} when n >= 0 and n <= 128 -> true
+          {{n, ""}, {:ok, {_, _, _, _}}} when n >= 0 and n <= 32 -> true
+          {{n, ""}, {:ok, {_, _, _, _, _, _, _, _}}} when n >= 0 and n <= 128 -> true
           _ -> false
         end
 

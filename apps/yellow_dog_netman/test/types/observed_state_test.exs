@@ -77,6 +77,33 @@ defmodule YellowDog.Netman.Types.ObservedStateTest do
     assert state.addresses["eth0"] == []
   end
 
+  test "remove_address/4 with prefix_len only removes matching prefix" do
+    addr24 = %{
+      interface: "eth0",
+      address: "10.0.0.1",
+      prefix_len: 24,
+      family: :inet,
+      scope: :global
+    }
+
+    addr32 = %{
+      interface: "eth0",
+      address: "10.0.0.1",
+      prefix_len: 32,
+      family: :inet,
+      scope: :global
+    }
+
+    state =
+      ObservedState.new()
+      |> ObservedState.add_address(addr24)
+      |> ObservedState.add_address(addr32)
+      |> ObservedState.remove_address("eth0", "10.0.0.1", 32)
+
+    assert length(state.addresses["eth0"]) == 1
+    assert hd(state.addresses["eth0"]).prefix_len == 24
+  end
+
   test "add_route/2 adds a route" do
     route = %{
       destination: "default",

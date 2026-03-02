@@ -65,11 +65,13 @@ defmodule YellowDog.Netman.Types.ObservedState do
   end
 
   @doc "Removes an address from observed state."
-  @spec remove_address(t(), String.t(), String.t()) :: t()
-  def remove_address(%__MODULE__{} = state, interface, address) do
+  @spec remove_address(t(), String.t(), String.t(), non_neg_integer() | nil) :: t()
+  def remove_address(%__MODULE__{} = state, interface, address, prefix_len \\ nil) do
     addresses =
       Map.update(state.addresses, interface, [], fn addrs ->
-        Enum.reject(addrs, &(&1.address == address))
+        Enum.reject(addrs, fn a ->
+          a.address == address and (prefix_len == nil or a.prefix_len == prefix_len)
+        end)
       end)
 
     %{state | addresses: addresses}
