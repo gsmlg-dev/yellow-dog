@@ -1408,6 +1408,66 @@ mod tests {
 
     // --- IPv6 address test ---
 
+    // --- Rule event with attributes ---
+
+    /// Build an RTM_NEWRULE message with fib_rule_hdr and NLAs.
+    ///
+    /// fib_rule_hdr (12 bytes):
+    ///   u8 family, u8 dst_len, u8 src_len, u8 tos,
+    ///   u8 table, u8 res1, u8 res2, u8 action, u32 flags
+    ///
+    /// NLA types: FRA_PRIORITY=6, FRA_TABLE=15
+    fn make_rtm_newrule(
+        family: u8,
+        dst_len: u8,
+        src_len: u8,
+        table: u8,
+        action: u8,
+        priority: Option<u32>,
+    ) -> Vec<u8> {
+        let mut payload = vec![0u8; 12];
+        payload[0] = family;
+        payload[1] = dst_len;
+        payload[2] = src_len;
+        payload[4] = table;
+        payload[7] = action;
+
+        // FRA_PRIORITY = 6 (u32 NLA)
+        if let Some(p) = priority {
+            let nla_len = 8u16;
+            payload.extend_from_slice(&nla_len.to_ne_bytes());
+            payload.extend_from_slice(&6u16.to_ne_bytes());
+            payload.extend_from_slice(&p.to_ne_bytes());
+        }
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&32u16.to_ne_bytes()); // RTM_NEWRULE
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newrule_with_priority_extracts_fields() {
+        let msg = make_rtm_newrule(2, 0, 0, 254, 1, Some(32766));
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "rule_change");
+        assert_eq!(events[0]["action"], "add");
+        assert_eq!(events[0]["table"], 254);
+        assert_eq!(events[0]["priority"], 32766);
+        assert_eq!(events[0]["rule_action"], "to_table"); // action=1 is FR_ACT_TO_TBL
+    }
+
+    #[test]
+    fn rtm_newrule_blackhole_action() {
+        // action=6 is FR_ACT_BLACKHOLE
+        let msg = make_rtm_newrule(2, 0, 0, 0, 6, None);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events[0]["rule_action"], "blackhole");
+    }
+
     #[test]
     fn rtm_newaddr_ipv6_link_local() {
         // family=10 (AF_INET6), prefix_len=64, scope=253 (link)
