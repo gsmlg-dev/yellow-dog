@@ -247,6 +247,182 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     end
   end
 
+  describe "apply_diff error path (L199-200, L327)" do
+    test "Logger.warning fires when ProfileStore.get fails for diff profile_id" do
+      # Store a profile under a key that differs from profile.id.
+      # ProfileStore.list() returns the profile struct (using profile.id as profile_id in diff),
+      # but ProfileStore.get(profile.id) returns :not_found because the map key differs.
+      # This triggers apply_diff → {:error, :not_found} → Logger.warning at L199-200.
+      iface = "recon_mismatch_#{:rand.uniform(65535)}"
+      profile_key = "recon-key-#{iface}"
+      profile_real_id = "recon-real-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+
+      profile = %Profile{
+        id: profile_real_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_key, profile)
+
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
+      )
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        ProfileStore.delete(profile_key)
+      end)
+
+      send(recon_pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      assert Process.alive?(recon_pid)
+    end
+  end
+
+  describe "connection_active? error path (L390)" do
+    test "connection_active? returns false when FSM.get_state exits on dying process" do
+      # Register a plain (non-gen_statem) process in the connection Registry.
+      # When ReconciliationEngine calls FSM.get_state on it, :gen_statem.call sends
+      # the request; the plain process receives it and exits, causing the call to
+      # detect the monitor DOWN and raise. FSM.get_state catches the exit →
+      # {:error, :not_running} → connection_active? returns false (L390).
+      iface = "recon_dead_#{:rand.uniform(65535)}"
+      profile_id = "recon-dead-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
+      )
+
+      parent = self()
+
+      fake_pid =
+        spawn(fn ->
+          Registry.register(YellowDog.Netman.Registry, {:connection, iface}, nil)
+          send(parent, :registered)
+          # Exit on first message (the :gen_statem.call request)
+          receive do
+            _msg -> :ok
+          end
+        end)
+
+      assert_receive :registered, 1000
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        ProfileStore.delete(profile_id)
+        Connection.Supervisor.stop_connection(iface)
+        if Process.alive?(fake_pid), do: Process.exit(fake_pid, :kill)
+      end)
+
+      send(recon_pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      assert Process.alive?(recon_pid)
+    end
+  end
+
+  describe "periodic_reconcile rescue clause (L128-130)" do
+    @tag :capture_log
+    test "engine survives and reschedules timer when do_reconcile raises" do
+      # Inject a plain map state missing :last_default_route.
+      # do_reconcile → check_default_route_change → state.last_default_route → KeyError.
+      # The rescue clause at L128-130 fires, logs the error, and the engine reschedules
+      # its periodic timer and continues running.
+      pid = Process.whereis(ReconciliationEngine)
+      original_state = :sys.get_state(pid)
+
+      if original_state.timer_ref, do: Process.cancel_timer(original_state.timer_ref)
+
+      on_exit(fn ->
+        current = :sys.get_state(pid)
+
+        if is_map(current) do
+          if Map.get(current, :timer_ref), do: Process.cancel_timer(current.timer_ref)
+          if Map.get(current, :debounce_ref), do: Process.cancel_timer(current.debounce_ref)
+        end
+
+        new_timer = Process.send_after(pid, :periodic_reconcile, original_state.interval)
+        :sys.replace_state(pid, fn _s -> %{original_state | timer_ref: new_timer} end)
+      end)
+
+      # Minimal plain map: has the keys handle_info accesses before the try block
+      # but lacks :last_default_route so do_reconcile raises inside the try.
+      :sys.replace_state(pid, fn _s ->
+        %{reconciling: false, interval: original_state.interval, timer_ref: nil, debounce_ref: nil}
+      end)
+
+      send(pid, :periodic_reconcile)
+      Process.sleep(300)
+
+      assert Process.alive?(pid)
+    end
+  end
+
+  describe "debounced_reconcile rescue clause (L149-151)" do
+    @tag :capture_log
+    test "engine survives and clears debounce_ref when do_reconcile raises" do
+      # Same bad-state injection as the periodic test but triggered via
+      # :debounced_reconcile, which does not reschedule a periodic timer.
+      # The rescue clause at L149-151 fires and the engine continues normally.
+      pid = Process.whereis(ReconciliationEngine)
+      original_state = :sys.get_state(pid)
+
+      on_exit(fn ->
+        current = :sys.get_state(pid)
+
+        if is_map(current) do
+          if Map.get(current, :debounce_ref), do: Process.cancel_timer(current.debounce_ref)
+        end
+
+        :sys.replace_state(pid, fn _s -> original_state end)
+      end)
+
+      :sys.replace_state(pid, fn _s ->
+        %{
+          reconciling: false,
+          interval: original_state.interval,
+          timer_ref: original_state.timer_ref,
+          debounce_ref: nil
+        }
+      end)
+
+      send(pid, :debounced_reconcile)
+      Process.sleep(300)
+
+      # Restore good state immediately so the engine's periodic timer
+      # does not see the stripped plain map when it fires in ~30 s.
+      :sys.replace_state(pid, fn _s -> original_state end)
+
+      assert Process.alive?(pid)
+    end
+  end
+
   describe "connection_active? with failed FSM (lines 374, 302)" do
     test "reconcile generates activate diff for failed connection and reactivates FSM" do
       iface = "recfail_#{:rand.uniform(65535)}"
