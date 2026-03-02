@@ -90,11 +90,20 @@ const MAX_MESSAGE_SIZE: usize = 1_000_000; // 1 MB max
 fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
+    read_commands_from(&mut stdin, tx)
+}
 
+/// Read length-prefixed JSON commands from any reader.
+///
+/// Extracted from `read_commands` for testability.
+fn read_commands_from(
+    reader: &mut dyn io::Read,
+    tx: mpsc::Sender<serde_json::Value>,
+) -> io::Result<()> {
     loop {
         // Read 4-byte length prefix
         let mut len_buf = [0u8; 4];
-        if stdin.read_exact(&mut len_buf).is_err() {
+        if reader.read_exact(&mut len_buf).is_err() {
             return Ok(()); // Port closed
         }
 
@@ -104,7 +113,7 @@ fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
             eprintln!("message too small: {} bytes (minimum 2 for valid JSON)", len);
             // Drain the (possibly zero-length) payload and continue
             let mut buf = vec![0u8; len];
-            let _ = stdin.read_exact(&mut buf);
+            let _ = reader.read_exact(&mut buf);
             continue;
         }
         if len > MAX_MESSAGE_SIZE {
@@ -113,7 +122,7 @@ fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
         }
 
         let mut buf = vec![0u8; len];
-        stdin.read_exact(&mut buf)?;
+        reader.read_exact(&mut buf)?;
 
         match serde_json::from_slice::<serde_json::Value>(&buf) {
             Ok(cmd) => {
@@ -125,5 +134,168 @@ fn read_commands(tx: mpsc::Sender<serde_json::Value>) -> io::Result<()> {
                 eprintln!("json parse error: {}", e);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::io::Cursor;
+
+    /// Helper: encode a JSON value as a length-prefixed message.
+    fn encode_message(value: &serde_json::Value) -> Vec<u8> {
+        let json = serde_json::to_vec(value).unwrap();
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&(json.len() as u32).to_be_bytes());
+        buf.extend_from_slice(&json);
+        buf
+    }
+
+    /// Helper: encode a raw byte slice as a length-prefixed message.
+    fn encode_raw(data: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        buf.extend_from_slice(data);
+        buf
+    }
+
+    #[test]
+    fn valid_command_is_received() {
+        let cmd = json!({"cmd": "link_set", "interface": "eth0", "state": "up"});
+        let data = encode_message(&cmd);
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        let received = rx.recv().unwrap();
+        assert_eq!(received["cmd"], "link_set");
+        assert_eq!(received["interface"], "eth0");
+    }
+
+    #[test]
+    fn multiple_commands_are_received() {
+        let cmd1 = json!({"cmd": "link_set"});
+        let cmd2 = json!({"cmd": "addr_add"});
+        let mut data = encode_message(&cmd1);
+        data.extend(encode_message(&cmd2));
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        assert_eq!(rx.recv().unwrap()["cmd"], "link_set");
+        assert_eq!(rx.recv().unwrap()["cmd"], "addr_add");
+    }
+
+    #[test]
+    fn empty_reader_returns_ok() {
+        let mut reader = Cursor::new(Vec::<u8>::new());
+        let (tx, _rx) = mpsc::channel();
+        let result = read_commands_from(&mut reader, tx);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn message_too_small_is_skipped() {
+        // First: a 1-byte message (too small), then a valid command
+        let mut data = Vec::new();
+        // Message with len=1 (too small)
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.push(b'x'); // 1 byte of payload
+        // Followed by a valid command
+        data.extend(encode_message(&json!({"ok": true})));
+
+        let mut reader = Cursor::new(data);
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        // The small message should be skipped, valid one received
+        let received = rx.recv().unwrap();
+        assert_eq!(received["ok"], true);
+    }
+
+    #[test]
+    fn zero_length_message_is_skipped() {
+        let mut data = Vec::new();
+        // Message with len=0
+        data.extend_from_slice(&0u32.to_be_bytes());
+        // Followed by a valid command
+        data.extend(encode_message(&json!({"after_zero": true})));
+
+        let mut reader = Cursor::new(data);
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        let received = rx.recv().unwrap();
+        assert_eq!(received["after_zero"], true);
+    }
+
+    #[test]
+    fn message_too_large_returns_error() {
+        // Message claiming to be larger than MAX_MESSAGE_SIZE
+        let len = (MAX_MESSAGE_SIZE + 1) as u32;
+        let data: Vec<u8> = len.to_be_bytes().to_vec();
+        let mut reader = Cursor::new(data);
+
+        let (tx, _rx) = mpsc::channel();
+        let result = read_commands_from(&mut reader, tx);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn invalid_json_is_skipped() {
+        // First: valid length but invalid JSON, then a valid command
+        let mut data = encode_raw(b"not json at all!!!");
+        data.extend(encode_message(&json!({"after_bad": true})));
+
+        let mut reader = Cursor::new(data);
+        let (tx, rx) = mpsc::channel();
+        let _ = read_commands_from(&mut reader, tx);
+
+        // Invalid JSON should be skipped, valid one received
+        let received = rx.recv().unwrap();
+        assert_eq!(received["after_bad"], true);
+    }
+
+    #[test]
+    fn dropped_receiver_returns_ok() {
+        let cmd = json!({"cmd": "test"});
+        let data = encode_message(&cmd);
+        let mut reader = Cursor::new(data);
+
+        let (tx, rx) = mpsc::channel();
+        drop(rx); // Drop the receiver
+
+        let result = read_commands_from(&mut reader, tx);
+        assert!(result.is_ok()); // Should exit gracefully
+    }
+
+    #[test]
+    fn truncated_payload_returns_ok() {
+        // Length says 100 bytes but only 5 bytes of payload available
+        let mut data = Vec::new();
+        data.extend_from_slice(&100u32.to_be_bytes());
+        data.extend_from_slice(b"hello"); // Only 5 bytes, not 100
+
+        let mut reader = Cursor::new(data);
+        let (tx, _rx) = mpsc::channel();
+        let result = read_commands_from(&mut reader, tx);
+        // read_exact fails → returns the io error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn partial_length_prefix_returns_ok() {
+        // Only 2 bytes of the 4-byte length prefix
+        let data = vec![0u8, 5];
+        let mut reader = Cursor::new(data);
+
+        let (tx, _rx) = mpsc::channel();
+        let result = read_commands_from(&mut reader, tx);
+        // read_exact for length fails → returns Ok (port closed)
+        assert!(result.is_ok());
     }
 }
