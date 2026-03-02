@@ -38,11 +38,12 @@ defmodule YellowDog.Netman.Kernel.SupervisorTest do
     end
 
     test "crashing LinkMonitor does not restart Netlink" do
-      # Wait for any prior restart cascades to settle
-      Process.sleep(300)
+      # Wait for any prior restart cascades to fully settle
+      Process.sleep(500)
 
+      # Capture the stable Netlink PID after all restarts are done
       netlink_pid = Process.whereis(Netlink)
-      netlink_ref = Process.monitor(netlink_pid)
+      assert netlink_pid != nil
       link_pid = Process.whereis(LinkMonitor)
 
       ref = Process.monitor(link_pid)
@@ -52,15 +53,16 @@ defmodule YellowDog.Netman.Kernel.SupervisorTest do
       Process.sleep(200)
 
       # Netlink is upstream — should NOT restart when downstream child crashes
-      # Verify by checking it hasn't received a DOWN signal
-      refute_receive {:DOWN, ^netlink_ref, :process, ^netlink_pid, _}, 100
+      # Verify by checking the PID is unchanged
+      current_netlink = Process.whereis(Netlink)
 
-      # LinkMonitor should be restarted
+      assert current_netlink == netlink_pid,
+             "Netlink should not restart when downstream LinkMonitor crashes"
+
+      # LinkMonitor should be restarted with a new PID
       new_link = Process.whereis(LinkMonitor)
       assert new_link != link_pid
       assert new_link != nil
-
-      Process.demonitor(netlink_ref, [:flush])
     end
 
     test "monitors recover state after restart" do
