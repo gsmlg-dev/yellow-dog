@@ -139,7 +139,10 @@ defmodule YellowDog.Netman.Integration.DnsConfigurationTest do
     assert Enum.at(result, 0).priority > Enum.at(result, 2).priority
   end
 
-  test "connection with no DNS servers still activates", %{iface: iface} do
+  test "connection with no DNS servers still activates", %{iface: iface, profile: profile} do
+    # Remove setup profile to avoid ReconciliationEngine auto-starting FSM with it
+    ProfileStore.delete(profile.id)
+
     no_dns_profile = %Profile{
       id: "no-dns-#{iface}",
       type: :ethernet,
