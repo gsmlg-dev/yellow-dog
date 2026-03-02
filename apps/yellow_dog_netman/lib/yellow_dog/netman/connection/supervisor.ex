@@ -69,11 +69,16 @@ defmodule YellowDog.Netman.Connection.Supervisor do
   @doc "Find a connection FSM by profile ID."
   @spec find_connection_by_profile(String.t()) :: {:ok, pid()} | :error
   def find_connection_by_profile(profile_id) do
-    list_connections()
-    |> Enum.find(fn conn -> conn[:profile_id] == profile_id end)
-    |> case do
-      nil -> :error
-      conn -> find_connection(conn[:interface])
-    end
+    DynamicSupervisor.which_children(__MODULE__)
+    |> Enum.find_value(:error, fn
+      {_id, pid, _type, _modules} when is_pid(pid) ->
+        case FSM.get_state(pid) do
+          {:ok, %{profile_id: ^profile_id}} -> {:ok, pid}
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end)
   end
 end
