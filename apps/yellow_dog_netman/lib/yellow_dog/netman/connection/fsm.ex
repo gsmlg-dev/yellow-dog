@@ -474,6 +474,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     ])
   end
 
+  def failed(:cast, :deactivate, data) do
+    transition(%{data | error: nil}, :failed, :disconnected)
+  end
+
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do
     transition(%{data | error: nil}, :failed, :unavailable)
   end

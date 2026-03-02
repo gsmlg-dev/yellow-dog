@@ -1590,7 +1590,7 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
   describe "deactivate in failed state" do
     @tag :capture_log
-    test "deactivate cast in failed state is a no-op (catch-all)" do
+    test "deactivate cast in failed state transitions to disconnected" do
       interface = "fsm_fdeact_#{:rand.uniform(100_000)}"
 
       profile = %Profile{
@@ -1619,12 +1619,12 @@ defmodule YellowDog.Netman.Connection.FSMTest do
       {:ok, state} = FSM.get_state(pid)
       assert state.state == :failed
 
-      # Deactivate in failed state — should be a no-op (catch-all keeps state)
+      # Deactivate in failed state — transitions to disconnected
       FSM.deactivate(pid)
       Process.sleep(100)
 
       {:ok, state} = FSM.get_state(pid)
-      assert state.state == :failed
+      assert state.state == :disconnected
 
       GenServer.stop(pid, :normal)
     end
