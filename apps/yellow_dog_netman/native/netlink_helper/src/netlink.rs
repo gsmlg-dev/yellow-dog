@@ -1481,4 +1481,109 @@ mod tests {
         assert_eq!(events[0]["scope"], "link");
         assert_eq!(events[0]["interface"], "eth0");
     }
+
+    // --- ifindex_to_name success case ---
+
+    #[test]
+    fn ifindex_to_name_loopback_returns_lo() {
+        // The loopback interface (index 1) should exist in all Linux environments
+        let name = ifindex_to_name(1);
+        assert!(name.is_some(), "loopback interface (index 1) should exist");
+        assert_eq!(name.unwrap(), "lo");
+    }
+
+    // --- format_route_address direct unit tests ---
+
+    #[test]
+    fn format_route_address_ipv4() {
+        use netlink_packet_route::route::RouteAddress;
+        let addr = RouteAddress::Inet(std::net::Ipv4Addr::new(192, 168, 1, 1));
+        assert_eq!(format_route_address(&addr), "192.168.1.1");
+    }
+
+    #[test]
+    fn format_route_address_ipv6() {
+        use netlink_packet_route::route::RouteAddress;
+        let addr = RouteAddress::Inet6(std::net::Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        assert_eq!(format_route_address(&addr), "2001:db8::1");
+    }
+
+    // --- format_neighbour_address direct unit tests ---
+
+    #[test]
+    fn format_neighbour_address_ipv4_direct() {
+        use netlink_packet_route::neighbour::NeighbourAddress;
+        let addr = NeighbourAddress::Inet(std::net::Ipv4Addr::new(10, 0, 0, 1));
+        assert_eq!(format_neighbour_address(&addr), "10.0.0.1");
+    }
+
+    #[test]
+    fn format_neighbour_address_ipv6_direct() {
+        use netlink_packet_route::neighbour::NeighbourAddress;
+        let addr = NeighbourAddress::Inet6(std::net::Ipv6Addr::LOCALHOST);
+        assert_eq!(format_neighbour_address(&addr), "::1");
+    }
+
+    // --- RTM_DELROUTE / RTM_DELNEIGH / RTM_DELADDR / RTM_DELLINK / RTM_DELRULE ---
+
+    #[test]
+    fn rtm_delroute_has_remove_action() {
+        let dst = [10u8, 0, 0, 0];
+        // Build a RTM_DELROUTE (msg type 25) instead of RTM_NEWROUTE (24)
+        let mut msg = make_rtm_newroute(2, 24, 2, 0, Some(&dst), None, None);
+        // Patch message type from RTM_NEWROUTE (24) to RTM_DELROUTE (25)
+        msg[4..6].copy_from_slice(&25u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "route_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_delneigh_has_del_action() {
+        let dst = [192u8, 168, 1, 1];
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let mut msg = make_rtm_newneigh(2, 3, 2, &dst, Some(mac));
+        // Patch message type from RTM_NEWNEIGH (28) to RTM_DELNEIGH (29)
+        msg[4..6].copy_from_slice(&29u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "neighbor_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_deladdr_has_del_action() {
+        let addr = [10u8, 0, 0, 1];
+        let mut msg = make_rtm_newaddr_with_label(2, 24, 0, "eth0", &addr);
+        // Patch message type from RTM_NEWADDR (20) to RTM_DELADDR (21)
+        msg[4..6].copy_from_slice(&21u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "address_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_dellink_has_del_action() {
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let mut msg = make_rtm_newlink_with_mac(1, "eth0", &mac);
+        // Patch message type from RTM_NEWLINK (16) to RTM_DELLINK (17)
+        msg[4..6].copy_from_slice(&17u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "link_change");
+        assert_eq!(events[0]["action"], "del");
+    }
+
+    #[test]
+    fn rtm_delrule_has_del_action() {
+        let mut msg = make_rtm_newrule(2, 0, 0, 254, 1, Some(100));
+        // Patch message type from RTM_NEWRULE (32) to RTM_DELRULE (33)
+        msg[4..6].copy_from_slice(&33u16.to_ne_bytes());
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "rule_change");
+        assert_eq!(events[0]["action"], "del");
+    }
 }
