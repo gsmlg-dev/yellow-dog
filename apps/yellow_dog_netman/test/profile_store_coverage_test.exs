@@ -78,4 +78,50 @@ defmodule YellowDog.Netman.ProfileStoreCoverageTest do
       assert length(ProfileStore.list()) == initial_count
     end
   end
+
+  describe "load_profiles with a real profile directory" do
+    test "loads valid TOML files and skips invalid ones" do
+      tmp_dir = System.tmp_dir!() |> Path.join("ps_load_#{:rand.uniform(65535)}")
+      File.mkdir_p!(tmp_dir)
+
+      File.write!(Path.join(tmp_dir, "valid.toml"), """
+      [connection]
+      id = "ps-load-valid"
+      type = "ethernet"
+      [ipv4]
+      method = "auto"
+      [ipv6]
+      method = "auto"
+      """)
+
+      File.write!(Path.join(tmp_dir, "invalid.toml"), "not valid toml {{")
+
+      old_env = Application.get_env(:yellow_dog_netman, :profile_dir)
+
+      on_exit(fn ->
+        File.rm_rf(tmp_dir)
+
+        if old_env do
+          Application.put_env(:yellow_dog_netman, :profile_dir, old_env)
+        else
+          Application.delete_env(:yellow_dog_netman, :profile_dir)
+        end
+      end)
+
+      Application.put_env(:yellow_dog_netman, :profile_dir, tmp_dir)
+
+      # Start an isolated ProfileStore without a registered name to cover load_profiles
+      # and start_watcher branches (File.dir? is true, FileSystem.start_link may succeed)
+      {:ok, test_pid} = GenServer.start_link(YellowDog.Netman.ProfileStore, [])
+
+      on_exit(fn ->
+        if Process.alive?(test_pid), do: GenServer.stop(test_pid, :normal)
+      end)
+
+      profiles = GenServer.call(test_pid, :list)
+      assert Enum.any?(profiles, &(&1.id == "ps-load-valid"))
+      # The invalid.toml should be silently skipped (only 1 profile loaded)
+      assert length(profiles) == 1
+    end
+  end
 end
