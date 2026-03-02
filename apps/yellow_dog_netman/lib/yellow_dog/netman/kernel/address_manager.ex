@@ -154,11 +154,12 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
   defp parse_cidr(cidr, family) do
     default_prefix = if family == :inet6, do: 128, else: 32
+    max_prefix = default_prefix
 
     case String.split(cidr, "/") do
       [addr, prefix] ->
         case Integer.parse(prefix) do
-          {n, ""} when n >= 0 and n <= 128 ->
+          {n, ""} when n >= 0 and n <= max_prefix ->
             {addr, n}
 
           _ ->

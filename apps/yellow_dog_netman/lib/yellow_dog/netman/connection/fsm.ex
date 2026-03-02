@@ -293,7 +293,8 @@ defmodule YellowDog.Netman.Connection.FSM do
       "Configuration timed out for #{data.interface} after #{@configuring_timeout_ms}ms"
     )
 
-    transition(%{data | error: :configuring_timeout}, :configuring, :failed)
+    release_dhcp(data)
+    transition(%{data | error: :configuring_timeout, lease: nil}, :configuring, :failed)
   end
 
   def configuring(:info, {:netman_event, _, {:removed, _}}, data) do
@@ -331,7 +332,13 @@ defmodule YellowDog.Netman.Connection.FSM do
           "IP check for #{data.interface} exhausted #{@max_ip_check_retries} retries, failing"
         )
 
-        transition(%{data | error: :ip_check_timeout, ip_check_retries: 0}, :ip_check, :failed)
+        release_dhcp(data)
+
+        transition(
+          %{data | error: :ip_check_timeout, ip_check_retries: 0, lease: nil},
+          :ip_check,
+          :failed
+        )
       else
         {:keep_state, %{data | ip_check_retries: data.ip_check_retries + 1},
          [{:state_timeout, 2000, :retry_check}]}
@@ -478,7 +485,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   def failed(:cast, :deactivate, data) do
-    transition(%{data | error: nil}, :failed, :disconnected)
+    release_dhcp(data)
+    transition(%{data | error: nil, lease: nil}, :failed, :disconnected)
   end
 
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do
