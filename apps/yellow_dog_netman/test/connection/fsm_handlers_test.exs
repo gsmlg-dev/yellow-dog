@@ -10,6 +10,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
   alias YellowDog.Netman.Connection.FSM
   alias YellowDog.Netman.Types.Profile
   alias YellowDog.Netman.Test.MockNetlink
+  alias YellowDog.Netman.Kernel.Netlink
 
   @moduletag :capture_log
 
@@ -668,6 +669,170 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       profile = base_profile(iface)
       data = %FSM{interface: iface, profile: profile, current_state: :unavailable}
       assert :ok = FSM.terminate(:normal, :unavailable, data)
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # deactivating: get_state handler (line 468)
+  # ----------------------------------------------------------------
+
+  describe "deactivating get_state (direct)" do
+    test "get_state in deactivating returns deactivating state info" do
+      iface = "hdlr_deact_gs_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :deactivating}
+
+      result = FSM.deactivating({:call, {self(), make_ref()}}, :get_state, data)
+      assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
+      assert state.state == :deactivating
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # configuring: DHCP retry path (line 257) and mac_detection_failed (line 734)
+  # ----------------------------------------------------------------
+
+  describe "configuring DHCP failure paths (direct)" do
+    setup do
+      iface = "hdlr_dhcp_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "dhcp-fail-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      {:ok, iface: iface, profile: profile}
+    end
+
+    test "retryable DHCP failure with retries remaining schedules retry", %{
+      iface: iface,
+      profile: profile
+    } do
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring, dhcp_retries: 0}
+      # :timeout is retryable and dhcp_retries(0) < max(3)
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 1
+    end
+
+    test "mac_detection_failed is non-retryable and transitions to failed", %{
+      iface: iface,
+      profile: profile
+    } do
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring, dhcp_retries: 0}
+      # {:mac_detection_failed, _} hits retryable_dhcp_failure?/1 line 734 → false
+      result = FSM.configuring(:info, {:dhcp_lease_failed, {:mac_detection_failed, :eth_read}}, data)
+      assert {:next_state, :failed, new_data, _} = result
+      assert new_data.error == :dhcp_failed
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # activated: push_dns with lease DNS servers (line 668)
+  # ----------------------------------------------------------------
+
+  describe "activated post_activate with lease dns_servers (direct)" do
+    test "post_activate with lease containing dns_servers uses lease DNS" do
+      iface = "hdlr_pdns_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      # Setting data.lease with dns_servers causes push_dns to hit line 668
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :activated,
+        lease: %{dns_servers: [{8, 8, 8, 8}]}
+      }
+
+      result = FSM.activated(:internal, :post_activate, data)
+      assert {:keep_state, ^data} = result
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # configuring: apply_static_ip error path (lines 570-574)
+  # ----------------------------------------------------------------
+
+  describe "configuring apply_static_ip error path" do
+    @moduletag :capture_log
+
+    test "static IP address failure transitions to failed when Netlink is down" do
+      iface = "hdlr_sip_err_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "sip-err-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.60.0.1/24", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      netlink_pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(netlink_pid)
+
+      on_exit(fn ->
+        :sys.replace_state(netlink_pid, fn _state -> original_state end)
+      end)
+
+      :sys.replace_state(netlink_pid, fn state -> %{state | backend: :unavailable, port: nil} end)
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      :sys.replace_state(netlink_pid, fn _state -> original_state end)
+
+      assert {:next_state, :failed, new_data, _} = result
+      assert match?({:address_failed, _}, new_data.error)
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # configuring: apply_static_ipv6 error path (lines 592-593)
+  # ----------------------------------------------------------------
+
+  describe "configuring apply_static_ipv6 error path" do
+    @moduletag :capture_log
+
+    test "static IPv6 address failure is logged and continues when Netlink is down" do
+      iface = "hdlr_sipv6_err_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "sipv6-err-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        # IPv4 auto so that apply_static_ip is not called; ipv6 manual triggers apply_static_ipv6
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1/64", gateway: nil, dns: []}
+      }
+
+      netlink_pid = Process.whereis(Netlink)
+      original_state = :sys.get_state(netlink_pid)
+
+      on_exit(fn ->
+        :sys.replace_state(netlink_pid, fn _state -> original_state end)
+      end)
+
+      :sys.replace_state(netlink_pid, fn state -> %{state | backend: :unavailable, port: nil} end)
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      :sys.replace_state(netlink_pid, fn _state -> original_state end)
+
+      # After IPv6 failure (logged), falls through to :auto IPv4 path → {:keep_state, data}
+      assert {:keep_state, ^data} = result
     end
   end
 end

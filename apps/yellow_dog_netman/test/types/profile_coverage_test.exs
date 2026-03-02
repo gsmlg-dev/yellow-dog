@@ -114,4 +114,29 @@ defmodule YellowDog.Netman.Types.ProfileCoverageTest do
       assert parsed.ipv6.method == :link_local
     end
   end
+
+  describe "validate_dns_list with non-string element" do
+    test "DNS list containing a non-string entry returns invalid address error" do
+      # The inner Enum.reject fn has a _ -> false catch-all (line 255) for non-string elements
+      toml = %{
+        "connection" => %{"id" => "dns-nonstr", "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto", "dns" => [123, "8.8.8.8"]}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid addresses"
+    end
+  end
+
+  describe "valid_cidr? with IPv6 address" do
+    test "IPv6 CIDR as ipv4.address value is accepted (hits IPv6 branch in valid_cidr?)" do
+      # valid_cidr?/1 has an IPv6 case (line 275) that is hit when addr parses as 8-tuple
+      toml = %{
+        "connection" => %{"id" => "ipv6-cidr", "type" => "ethernet"},
+        "ipv4" => %{"method" => "manual", "address" => "2001:db8::1/64"}
+      }
+
+      assert {:ok, _profile} = Profile.from_toml(toml)
+    end
+  end
 end
