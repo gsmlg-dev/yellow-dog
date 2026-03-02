@@ -1247,4 +1247,135 @@ mod tests {
         let addr = std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
         assert_eq!(format_rule_address(&addr), "::1");
     }
+
+    // --- Non-Ethernet MAC tests (mac.len() != 6) ---
+
+    /// Build a RTM_NEWNEIGH with variable-length MAC (NDA_LLADDR).
+    fn make_rtm_newneigh_var_mac(
+        family: u8,
+        ifindex: u32,
+        state: u16,
+        dst_bytes: &[u8],
+        mac: &[u8],
+    ) -> Vec<u8> {
+        let mut payload = vec![0u8; 12];
+        payload[0] = family;
+        payload[4..8].copy_from_slice(&ifindex.to_ne_bytes());
+        payload[8..10].copy_from_slice(&state.to_ne_bytes());
+
+        // NDA_DST = 1
+        let dst_nla_len = (4 + dst_bytes.len()) as u16;
+        let dst_nla_aligned = (dst_nla_len as usize + 3) & !3;
+        let mut dst_nla = vec![0u8; dst_nla_aligned];
+        dst_nla[0..2].copy_from_slice(&dst_nla_len.to_ne_bytes());
+        dst_nla[2..4].copy_from_slice(&1u16.to_ne_bytes());
+        dst_nla[4..4 + dst_bytes.len()].copy_from_slice(dst_bytes);
+        payload.extend_from_slice(&dst_nla);
+
+        // NDA_LLADDR = 2 with variable-length MAC
+        let mac_nla_len = (4 + mac.len()) as u16;
+        let mac_nla_aligned = (mac_nla_len as usize + 3) & !3;
+        let mut mac_nla = vec![0u8; mac_nla_aligned];
+        mac_nla[0..2].copy_from_slice(&mac_nla_len.to_ne_bytes());
+        mac_nla[2..4].copy_from_slice(&2u16.to_ne_bytes());
+        mac_nla[4..4 + mac.len()].copy_from_slice(mac);
+        payload.extend_from_slice(&mac_nla);
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&28u16.to_ne_bytes()); // RTM_NEWNEIGH
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newneigh_with_4byte_mac_omits_mac_field() {
+        // PPP-like interfaces may have 4-byte link-layer addresses
+        let dst = [10u8, 0, 0, 1];
+        let short_mac = [0xaa, 0xbb, 0xcc, 0xdd];
+        let msg = make_rtm_newneigh_var_mac(2, 0, 2, &dst, &short_mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["type"], "neighbor_change");
+        assert_eq!(events[0]["address"], "10.0.0.1");
+        // Non-6-byte MAC should be silently ignored
+        assert!(events[0].get("mac").is_none() || events[0]["mac"].is_null());
+    }
+
+    #[test]
+    fn rtm_newneigh_with_8byte_mac_omits_mac_field() {
+        // InfiniBand has 20-byte link-layer addresses; test with 8 bytes
+        let dst = [192u8, 168, 1, 1];
+        let long_mac = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let msg = make_rtm_newneigh_var_mac(2, 0, 4, &dst, &long_mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert!(events[0].get("mac").is_none() || events[0]["mac"].is_null());
+    }
+
+    /// Build a RTM_NEWLINK with a variable-length IFLA_ADDRESS NLA.
+    fn make_rtm_newlink_with_mac(index: u32, name: &str, mac: &[u8]) -> Vec<u8> {
+        // ifinfomsg (16 bytes)
+        let mut payload = vec![0u8; 16];
+        payload[4..8].copy_from_slice(&index.to_ne_bytes());
+
+        // IFLA_IFNAME = 3
+        let name_bytes = name.as_bytes();
+        let nla_data_len = name_bytes.len() + 1;
+        let nla_len = (4 + nla_data_len) as u16;
+        let nla_len_aligned = (nla_len as usize + 3) & !3;
+        let mut nla = vec![0u8; nla_len_aligned];
+        nla[0..2].copy_from_slice(&nla_len.to_ne_bytes());
+        nla[2..4].copy_from_slice(&3u16.to_ne_bytes());
+        nla[4..4 + name_bytes.len()].copy_from_slice(name_bytes);
+        payload.extend_from_slice(&nla);
+
+        // IFLA_ADDRESS = 1 (variable-length MAC)
+        let mac_nla_len = (4 + mac.len()) as u16;
+        let mac_nla_aligned = (mac_nla_len as usize + 3) & !3;
+        let mut mac_nla = vec![0u8; mac_nla_aligned];
+        mac_nla[0..2].copy_from_slice(&mac_nla_len.to_ne_bytes());
+        mac_nla[2..4].copy_from_slice(&1u16.to_ne_bytes()); // IFLA_ADDRESS = 1
+        mac_nla[4..4 + mac.len()].copy_from_slice(mac);
+        payload.extend_from_slice(&mac_nla);
+
+        let total_len = 16 + payload.len();
+        let mut msg = vec![0u8; total_len];
+        msg[0..4].copy_from_slice(&(total_len as u32).to_ne_bytes());
+        msg[4..6].copy_from_slice(&16u16.to_ne_bytes()); // RTM_NEWLINK
+        msg[16..].copy_from_slice(&payload);
+        msg
+    }
+
+    #[test]
+    fn rtm_newlink_with_6byte_mac_includes_mac_field() {
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let msg = make_rtm_newlink_with_mac(1, "eth0", &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["mac"], "aa:bb:cc:dd:ee:ff");
+    }
+
+    #[test]
+    fn rtm_newlink_with_4byte_mac_omits_mac_field() {
+        // PPP or tunnel interface with non-Ethernet address
+        let mac = [0xaa, 0xbb, 0xcc, 0xdd];
+        let msg = make_rtm_newlink_with_mac(1, "ppp0", &mac);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["interface"], "ppp0");
+        // Non-6-byte address should be silently ignored
+        assert!(events[0].get("mac").is_none() || events[0]["mac"].is_null());
+    }
+
+    #[test]
+    fn rtm_newlink_with_empty_mac_omits_mac_field() {
+        // Loopback has empty address
+        let msg = make_rtm_newlink_with_mac(1, "lo", &[]);
+        let events = parse_netlink_messages(&msg);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["interface"], "lo");
+        assert!(events[0].get("mac").is_none() || events[0]["mac"].is_null());
+    }
 }
