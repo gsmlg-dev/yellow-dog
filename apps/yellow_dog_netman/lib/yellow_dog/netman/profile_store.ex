@@ -200,15 +200,20 @@ defmodule YellowDog.Netman.ProfileStore do
   end
 
   defp parse_toml_file(path) do
-    case File.read(path) do
-      {:ok, content} ->
-        case Toml.decode(content) do
-          {:ok, toml} -> Profile.from_toml(toml)
-          {:error, reason} -> {:error, {:toml_parse, reason}}
-        end
+    # Defense-in-depth: re-check symlink right before reading to narrow TOCTOU window
+    if symlink?(path) do
+      {:error, {:symlink_rejected, path}}
+    else
+      case File.read(path) do
+        {:ok, content} ->
+          case Toml.decode(content) do
+            {:ok, toml} -> Profile.from_toml(toml)
+            {:error, reason} -> {:error, {:toml_parse, reason}}
+          end
 
-      {:error, reason} ->
-        {:error, {:file_read, reason}}
+        {:error, reason} ->
+          {:error, {:file_read, reason}}
+      end
     end
   end
 

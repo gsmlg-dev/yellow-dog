@@ -139,4 +139,138 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert profile.autoconnect_priority == toml["connection"]["autoconnect_priority"]
     end
   end
+
+  # --- Interface validation properties ---
+
+  property "interface names longer than 15 chars are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            name <- StreamData.string(:alphanumeric, min_length: 16, max_length: 64)
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet", "interface" => name}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "at most 15"
+    end
+  end
+
+  property "interface names with forbidden chars are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            base <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            bad_char <- StreamData.member_of([" ", "/", ":", "\t", "\n"])
+          ) do
+      name = base <> bad_char
+      # Ensure name is within IFNAMSIZ
+      name = String.slice(name, 0, 15)
+
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet", "interface" => name}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+  end
+
+  property "valid short interface names are accepted" do
+    check all(
+            id <- profile_id_gen(),
+            name <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet", "interface" => name}
+      }
+
+      assert {:ok, %Profile{interface: ^name}} = Profile.from_toml(toml)
+    end
+  end
+
+  # --- Gateway validation properties ---
+
+  property "invalid gateway strings are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            bad_gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      # Filter out strings that happen to be valid IPs
+      case :inet.parse_address(String.to_charlist(bad_gw)) do
+        {:ok, _} ->
+          :ok
+
+        {:error, _} ->
+          toml = %{
+            "connection" => %{"id" => id, "type" => "ethernet"},
+            "ipv4" => %{"method" => "auto", "gateway" => bad_gw}
+          }
+
+          assert {:error, msg} = Profile.from_toml(toml)
+          assert msg =~ "not a valid IP address"
+      end
+    end
+  end
+
+  # --- DNS list validation properties ---
+
+  property "DNS lists with invalid entries are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            bad_dns <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      case :inet.parse_address(String.to_charlist(bad_dns)) do
+        {:ok, _} ->
+          :ok
+
+        {:error, _} ->
+          toml = %{
+            "connection" => %{"id" => id, "type" => "ethernet"},
+            "ipv4" => %{"method" => "auto", "dns" => [bad_dns]}
+          }
+
+          assert {:error, msg} = Profile.from_toml(toml)
+          assert msg =~ "invalid addresses"
+      end
+    end
+  end
+
+  property "valid DNS IP lists are accepted" do
+    check all(
+            id <- profile_id_gen(),
+            count <- StreamData.integer(0..5),
+            octets <-
+              StreamData.list_of(StreamData.integer(1..254), length: count)
+          ) do
+      dns = Enum.map(octets, &"8.8.#{&1}.#{&1}")
+
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv4" => %{"method" => "auto", "dns" => dns}
+      }
+
+      assert {:ok, %Profile{}} = Profile.from_toml(toml)
+    end
+  end
+
+  # --- MTU validation properties ---
+
+  property "MTU outside 68-65535 is rejected" do
+    check all(
+            id <- profile_id_gen(),
+            mtu <-
+              StreamData.one_of([
+                StreamData.integer(-100..67),
+                StreamData.integer(65536..100_000)
+              ])
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ethernet" => %{"mtu" => mtu}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "mtu"
+    end
+  end
 end
