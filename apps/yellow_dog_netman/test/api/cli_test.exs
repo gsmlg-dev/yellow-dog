@@ -219,6 +219,41 @@ defmodule YellowDog.Netman.API.CLITest do
       assert {:noreply, ^state} = CLI.handle_info(:accept, state)
     end
 
+    test "handle_info(:accept, ...) at max_concurrent_clients delays accept" do
+      # Create a real socket so the state is valid
+      {:ok, sock} =
+        :gen_tcp.listen(0, [:binary, packet: :line, active: false, reuseaddr: true])
+
+      state = %CLI{
+        socket_path: "/tmp/cli_max_clients.sock",
+        listen_socket: sock,
+        active_clients: 100
+      }
+
+      assert {:noreply, ^state} = CLI.handle_info(:accept, state)
+      :gen_tcp.close(sock)
+    end
+
+    test "handle_info(:client_done, ...) decrements active_clients" do
+      state = %CLI{
+        socket_path: "/tmp/cli_client_done.sock",
+        listen_socket: nil,
+        active_clients: 5
+      }
+
+      assert {:noreply, %CLI{active_clients: 4}} = CLI.handle_info(:client_done, state)
+    end
+
+    test "handle_info(:client_done, ...) does not go below zero" do
+      state = %CLI{
+        socket_path: "/tmp/cli_client_done_0.sock",
+        listen_socket: nil,
+        active_clients: 0
+      }
+
+      assert {:noreply, %CLI{active_clients: 0}} = CLI.handle_info(:client_done, state)
+    end
+
     test "terminate/2 cleans up listen_socket and socket file" do
       # Create a real TCP listen socket to verify terminate closes it
       {:ok, listen_socket} =

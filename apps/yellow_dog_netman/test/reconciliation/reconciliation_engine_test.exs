@@ -562,6 +562,20 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
   end
 
+  describe "debounced_reconcile while reconciling" do
+    test "debounced_reconcile during active reconciliation is skipped" do
+      # Simulate state where reconciling=true and a debounce fires
+      state = %ReconciliationEngine{
+        timer_ref: nil,
+        debounce_ref: make_ref(),
+        reconciling: true
+      }
+
+      assert {:noreply, %{debounce_ref: nil, reconciling: true}} =
+               ReconciliationEngine.handle_info(:debounced_reconcile, state)
+    end
+  end
+
   describe "reconciling flag prevents overlapping cycles" do
     test "rapid periodic_reconcile messages do not cause concurrent reconciliation" do
       pid = Process.whereis(ReconciliationEngine)
@@ -902,6 +916,72 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       assert count < 20, "Expected coalesced reconciliation, got #{count} cycles for 20 events"
 
       :telemetry.detach(handler_id)
+    end
+  end
+
+  describe "failed FSM re-activation" do
+    @tag :capture_log
+    test "connection_active? returns false for failed FSMs, enabling re-activation" do
+      iface = "recon_fail_#{:rand.uniform(65535)}"
+      profile_id = "recon-fail-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+
+      # Start the FSM
+      {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      # The FSM should exist
+      assert {:ok, ^pid} = Connection.Supervisor.find_connection(iface)
+
+      # Get the FSM state — it should be in some non-failed state
+      {:ok, fsm_state} = YellowDog.Netman.Connection.FSM.get_state(pid)
+
+      # When we compute diff with this running FSM:
+      # connection_active? should return true for non-failed states
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled},
+            ipv6: %{method: :disabled},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{iface => %{interface: iface, index: 1, state: :up}}
+      }
+
+      # Active FSM means no activation diff generated
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      activate_for_iface =
+        Enum.filter(diffs, &(&1.action == :activate_connection and &1.interface == iface))
+
+      assert activate_for_iface == [],
+             "Active (non-failed) FSM should not produce activation diff, but state=#{inspect(fsm_state.state)}"
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
     end
   end
 end
