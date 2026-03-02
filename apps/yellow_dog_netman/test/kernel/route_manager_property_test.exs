@@ -1,0 +1,183 @@
+defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
+  use ExUnit.Case
+  use ExUnitProperties
+
+  alias YellowDog.Netman.Kernel.RouteManager
+  alias YellowDog.Netman.Test.MockNetlink
+
+  # Generators
+
+  defp iface_gen do
+    StreamData.string(:alphanumeric, min_length: 3, max_length: 12)
+    |> StreamData.map(&("prop_rm_" <> &1))
+    |> StreamData.map(&String.slice(&1, 0, 15))
+  end
+
+  defp gateway_gen do
+    gen all(
+          a <- StreamData.integer(10..10),
+          b <- StreamData.integer(0..255),
+          c <- StreamData.integer(0..255),
+          d <- StreamData.integer(1..254)
+        ) do
+      "#{a}.#{b}.#{c}.#{d}"
+    end
+  end
+
+  defp destination_gen do
+    StreamData.one_of([
+      StreamData.constant("default"),
+      gen all(
+            a <- StreamData.integer(10..10),
+            b <- StreamData.integer(0..255),
+            c <- StreamData.integer(0..255),
+            prefix <- StreamData.integer(8..30)
+          ) do
+        "#{a}.#{b}.#{c}.0/#{prefix}"
+      end
+    ])
+  end
+
+  defp metric_gen do
+    StreamData.integer(0..9999)
+  end
+
+  defp protocol_gen do
+    StreamData.member_of(["boot", "static", "dhcp", "kernel", "ospf", "bgp", "unknown"])
+  end
+
+  defp scope_gen do
+    StreamData.member_of(["universe", "link", "host", "site", "random_scope"])
+  end
+
+  # Properties
+
+  property "add then get_routes returns the route" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(
+        destination: dest,
+        gateway: gw,
+        interface: iface,
+        metric: metric
+      )
+
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      assert Enum.any?(routes, &(&1.destination == dest and &1.gateway == gw))
+    end
+  end
+
+  property "add then remove then get_routes does not contain the route" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface)
+      Process.sleep(30)
+      MockNetlink.route_removed(destination: dest, gateway: gw, interface: iface)
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      refute Enum.any?(routes, &(&1.destination == dest and &1.gateway == gw))
+    end
+  end
+
+  property "list_all is always sorted by metric" do
+    check all(
+            iface <- iface_gen(),
+            metrics <- StreamData.list_of(metric_gen(), min_length: 2, max_length: 5)
+          ) do
+      for {metric, i} <- Enum.with_index(metrics) do
+        MockNetlink.route_added(
+          destination: "10.#{rem(i, 256)}.#{div(i, 256)}.0/24",
+          gateway: "10.0.0.#{rem(i + 1, 255)}",
+          interface: iface,
+          metric: metric
+        )
+      end
+
+      Process.sleep(50)
+
+      routes = RouteManager.list_all()
+      iface_routes = Enum.filter(routes, &(&1.interface == iface))
+      metrics_list = Enum.map(iface_routes, & &1.metric)
+      assert metrics_list == Enum.sort(metrics_list)
+    end
+  end
+
+  property "protocol is always one of known atoms" do
+    check all(
+            iface <- iface_gen(),
+            protocol <- protocol_gen()
+          ) do
+      MockNetlink.route_added(
+        destination: "10.100.0.0/24",
+        gateway: "10.100.0.1",
+        interface: iface,
+        protocol: protocol
+      )
+
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      route = Enum.find(routes, &(&1.destination == "10.100.0.0/24"))
+      assert route != nil
+      assert route.protocol in [:boot, :static, :dhcp, :kernel, :unspec]
+    end
+  end
+
+  property "scope is always one of known atoms" do
+    check all(
+            iface <- iface_gen(),
+            scope <- scope_gen()
+          ) do
+      MockNetlink.route_added(
+        destination: "10.101.0.0/24",
+        gateway: nil,
+        interface: iface,
+        scope: scope
+      )
+
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      route = Enum.find(routes, &(&1.destination == "10.101.0.0/24"))
+      assert route != nil
+      assert route.scope in [:universe, :link, :host]
+    end
+  end
+
+  property "get_routes never crashes for any interface name" do
+    check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
+      result = RouteManager.get_routes(iface)
+      assert is_list(result)
+    end
+  end
+
+  property "same route key (dest+gw+iface) is deduplicated to last write" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric1 <- metric_gen(),
+            metric2 <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric1)
+      Process.sleep(20)
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric2)
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+      matching = Enum.filter(routes, &(&1.destination == dest and &1.gateway == gw))
+      assert length(matching) == 1
+      assert hd(matching).metric == metric2
+    end
+  end
+end
