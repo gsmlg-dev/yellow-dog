@@ -113,7 +113,9 @@ fn read_commands_from(
             eprintln!("message too small: {} bytes (minimum 2 for valid JSON)", len);
             // Drain the (possibly zero-length) payload and continue
             let mut buf = vec![0u8; len];
-            let _ = reader.read_exact(&mut buf);
+            if reader.read_exact(&mut buf).is_err() {
+                return Ok(()); // Stream ended mid-message
+            }
             continue;
         }
         if len > MAX_MESSAGE_SIZE {
