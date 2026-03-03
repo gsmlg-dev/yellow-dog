@@ -292,7 +292,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     activate_diffs = compute_activation_diffs(desired, observed)
     deactivate_diffs = compute_deactivation_diffs(desired, observed)
     address_diffs = compute_address_diffs(desired, observed)
-    activate_diffs ++ deactivate_diffs ++ address_diffs
+    mtu_diffs = compute_mtu_diffs(desired, observed)
+    activate_diffs ++ deactivate_diffs ++ address_diffs ++ mtu_diffs
   end
 
   defp compute_activation_diffs(desired, observed) do
@@ -336,6 +337,17 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     addresses
     |> Map.get(interface, [])
     |> Enum.any?(&(&1.address == addr))
+  end
+
+  defp compute_mtu_diffs(desired, observed) do
+    for {_id, conn} <- desired.connections,
+        conn.mtu != nil,
+        connection_active?(conn.interface),
+        link = Map.get(observed.links, conn.interface),
+        link != nil,
+        link.mtu != conn.mtu do
+      Diff.new(:set_mtu, conn.interface, %{mtu: conn.mtu})
+    end
   end
 
   defp apply_diff(%Diff{action: :activate_connection, interface: iface, params: params}) do
