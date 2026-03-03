@@ -1050,4 +1050,263 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       assert Process.alive?(recon_pid)
     end
   end
+
+  describe "route drift detection" do
+    alias YellowDog.Netman.Types.{DesiredState, ObservedState}
+
+    test "diff generates :add_route when static IP gateway route is missing" do
+      iface = "route_drift_#{:rand.uniform(65535)}"
+      profile_id = "route-drift-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.55.0.1/24", gateway: "10.55.0.254", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.55.0.1/24", gateway: "10.55.0.254", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Observed: no routes
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: "aa:bb:cc:dd:ee:ff", kind: nil
+          }
+        },
+        addresses: %{
+          iface => [
+            %{interface: iface, address: "10.55.0.1", prefix_len: 24, family: :inet, scope: :global}
+          ]
+        },
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      route_diffs = Enum.filter(diffs, &(&1.action == :add_route and &1.interface == iface))
+      assert length(route_diffs) == 1
+
+      diff = hd(route_diffs)
+      assert diff.params.destination == "default"
+      assert diff.params.gateway == "10.55.0.254"
+      assert diff.params.interface == iface
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff does NOT generate :add_route when gateway route already exists" do
+      iface = "route_ok_#{:rand.uniform(65535)}"
+      profile_id = "route-ok-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.44.0.1/24", gateway: "10.44.0.254", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.44.0.1/24", gateway: "10.44.0.254", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Observed: default route via gateway already present
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: "aa:bb:cc:dd:ee:ff", kind: nil
+          }
+        },
+        addresses: %{
+          iface => [
+            %{interface: iface, address: "10.44.0.1", prefix_len: 24, family: :inet, scope: :global}
+          ]
+        },
+        routes: [
+          %{destination: "default", gateway: "10.44.0.254", interface: iface,
+            metric: 900, table: 254, protocol: :static, scope: :global}
+        ]
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      route_diffs = Enum.filter(diffs, &(&1.action == :add_route))
+      assert route_diffs == []
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff skips :add_route for DHCP connections" do
+      iface = "route_dhcp_#{:rand.uniform(65535)}"
+      profile_id = "route-dhcp-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: nil, kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      route_diffs = Enum.filter(diffs, &(&1.action == :add_route))
+      assert route_diffs == [], "DHCP connections should not generate route diffs"
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff skips :add_route when static IP has no gateway" do
+      iface = "route_nogw_#{:rand.uniform(65535)}"
+      profile_id = "route-nogw-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.33.0.1/24", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.33.0.1/24", gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: nil, kind: nil
+          }
+        },
+        addresses: %{
+          iface => [
+            %{interface: iface, address: "10.33.0.1", prefix_len: 24, family: :inet, scope: :global}
+          ]
+        },
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      route_diffs = Enum.filter(diffs, &(&1.action == :add_route))
+      assert route_diffs == [], "No gateway means no default route diff"
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+  end
 end

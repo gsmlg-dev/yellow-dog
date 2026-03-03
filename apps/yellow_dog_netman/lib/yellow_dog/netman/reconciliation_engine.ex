@@ -293,7 +293,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     deactivate_diffs = compute_deactivation_diffs(desired, observed)
     address_diffs = compute_address_diffs(desired, observed)
     mtu_diffs = compute_mtu_diffs(desired, observed)
-    activate_diffs ++ deactivate_diffs ++ address_diffs ++ mtu_diffs
+    route_diffs = compute_route_diffs(desired, observed)
+    activate_diffs ++ deactivate_diffs ++ address_diffs ++ mtu_diffs ++ route_diffs
   end
 
   defp compute_activation_diffs(desired, observed) do
@@ -337,6 +338,33 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     addresses
     |> Map.get(interface, [])
     |> Enum.any?(&(&1.address == addr))
+  end
+
+  defp compute_route_diffs(desired, observed) do
+    for {_id, conn} <- desired.connections,
+        connection_active?(conn.interface),
+        conn.ipv4.method == :manual,
+        conn.ipv4[:gateway] != nil,
+        not route_present?(observed.routes, "default", conn.ipv4.gateway) do
+      metric = PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
+      conn_metric = Map.get(metric, conn.profile_id, 100)
+
+      Diff.new(:add_route, conn.interface, %{
+        destination: "default",
+        gateway: conn.ipv4.gateway,
+        interface: conn.interface,
+        metric: conn_metric,
+        table: 254,
+        protocol: :static,
+        scope: :global
+      })
+    end
+  end
+
+  defp route_present?(routes, destination, gateway) do
+    Enum.any?(routes, fn r ->
+      r.destination == destination and r.gateway == gateway
+    end)
   end
 
   defp compute_mtu_diffs(desired, observed) do
