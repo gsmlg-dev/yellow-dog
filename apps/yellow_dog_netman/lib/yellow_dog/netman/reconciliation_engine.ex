@@ -291,7 +291,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   def diff(%DesiredState{} = desired, %ObservedState{} = observed) do
     activate_diffs = compute_activation_diffs(desired, observed)
     deactivate_diffs = compute_deactivation_diffs(desired, observed)
-    activate_diffs ++ deactivate_diffs
+    address_diffs = compute_address_diffs(desired, observed)
+    activate_diffs ++ deactivate_diffs ++ address_diffs
   end
 
   defp compute_activation_diffs(desired, observed) do
@@ -305,6 +306,36 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   defp compute_deactivation_diffs(_desired, _observed) do
     # In Phase 1, we don't auto-deactivate — only explicit user action
     []
+  end
+
+  defp compute_address_diffs(desired, observed) do
+    for {_id, conn} <- desired.connections,
+        connection_active?(conn.interface),
+        conn.ipv4.method == :manual,
+        conn.ipv4.address != nil,
+        {addr, prefix_len} = parse_desired_cidr(conn.ipv4.address),
+        not address_present?(observed.addresses, conn.interface, addr) do
+      Diff.new(:add_address, conn.interface, %{address: addr, prefix_len: prefix_len})
+    end
+  end
+
+  defp parse_desired_cidr(cidr) do
+    case String.split(cidr, "/") do
+      [addr, prefix] ->
+        case Integer.parse(prefix) do
+          {n, ""} -> {addr, n}
+          _ -> {addr, 32}
+        end
+
+      [addr] ->
+        {addr, 32}
+    end
+  end
+
+  defp address_present?(addresses, interface, addr) do
+    addresses
+    |> Map.get(interface, [])
+    |> Enum.any?(&(&1.address == addr))
   end
 
   defp apply_diff(%Diff{action: :activate_connection, interface: iface, params: params}) do

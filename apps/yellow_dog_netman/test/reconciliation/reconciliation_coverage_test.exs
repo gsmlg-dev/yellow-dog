@@ -522,4 +522,299 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       assert Process.alive?(recon_pid)
     end
   end
+
+  describe "address drift detection" do
+    alias YellowDog.Netman.Types.{DesiredState, ObservedState}
+
+    test "diff generates :add_address when static IP is missing from observed addresses" do
+      iface = "drift_add_#{:rand.uniform(65535)}"
+      profile_id = "drift-add-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.99.0.1/24", gateway: "10.99.0.254", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      # Start a connection FSM with :disabled IP so it reaches :activated quickly
+      # Then use a manual profile for the desired state computation
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      # Build desired state with the static IP profile
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.99.0.1/24", gateway: "10.99.0.254", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Observed state: link exists but NO addresses for this interface
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: "aa:bb:cc:dd:ee:ff", kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address and &1.interface == iface))
+      assert length(add_addr_diffs) == 1
+
+      diff = hd(add_addr_diffs)
+      assert diff.params.address == "10.99.0.1"
+      assert diff.params.prefix_len == 24
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff does NOT generate :add_address when address already present in observed" do
+      iface = "drift_ok_#{:rand.uniform(65535)}"
+      profile_id = "drift-ok-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.88.0.5/24", gateway: "10.88.0.1", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.88.0.5/24", gateway: "10.88.0.1", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Observed state: address IS present
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: "aa:bb:cc:dd:ee:ff", kind: nil
+          }
+        },
+        addresses: %{
+          iface => [
+            %{interface: iface, address: "10.88.0.5", prefix_len: 24, family: :inet, scope: :global}
+          ]
+        },
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address))
+      assert add_addr_diffs == []
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff skips :add_address for DHCP (auto) connections" do
+      iface = "drift_dhcp_#{:rand.uniform(65535)}"
+      profile_id = "drift-dhcp-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: "aa:bb:cc:dd:ee:ff", kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address))
+      assert add_addr_diffs == [], "DHCP connections should not generate address diffs"
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff skips :add_address for inactive (not yet activated) connections" do
+      iface = "drift_inact_#{:rand.uniform(65535)}"
+      profile_id = "drift-inact-#{iface}"
+
+      # No FSM started — connection_active? returns false, so no address diff
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.77.0.1/24", gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface, index: 1, state: :up, carrier: true,
+            mtu: 1500, mac: nil, kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      # Should have an :activate_connection diff but no :add_address
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address))
+      assert add_addr_diffs == [], "Inactive connections should not generate address diffs"
+
+      activate_diffs = Enum.filter(diffs, &(&1.action == :activate_connection))
+      assert length(activate_diffs) == 1
+    end
+
+    test "full reconciliation cycle detects and applies address drift" do
+      iface = "drift_full_#{:rand.uniform(65535)}"
+      profile_id = "drift-full-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+      test_pid = self()
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.66.0.1/24", gateway: "10.66.0.254", dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Insert link and profile directly into ETS to avoid auto-reconcile races
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
+      )
+
+      ProfileStore.put(profile_id, profile)
+
+      # Start connection FSM with :disabled so it activates immediately
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, %{profile |
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      })
+      Process.sleep(100)
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+      end)
+
+      # Listen for reconciliation telemetry
+      handler_id = {__MODULE__, :drift_full, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Trigger reconciliation — should detect missing address and apply :add_address
+      send(recon_pid, :periodic_reconcile)
+
+      assert_receive {:recon_done, %{diffs_count: count}}, 2000
+      # Should have at least 1 diff (the :add_address for the missing static IP)
+      assert count >= 1, "Expected diffs for address drift but got #{count}"
+
+      assert Process.alive?(recon_pid)
+    end
+  end
 end
