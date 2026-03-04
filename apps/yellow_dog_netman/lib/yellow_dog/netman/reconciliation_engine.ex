@@ -294,7 +294,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     address_diffs = compute_address_diffs(desired, observed)
     mtu_diffs = compute_mtu_diffs(desired, observed)
     route_diffs = compute_route_diffs(desired, observed)
-    activate_diffs ++ deactivate_diffs ++ address_diffs ++ mtu_diffs ++ route_diffs
+    dns_diffs = compute_dns_diffs(desired, observed)
+    activate_diffs ++ deactivate_diffs ++ address_diffs ++ mtu_diffs ++ route_diffs ++ dns_diffs
   end
 
   defp compute_activation_diffs(desired, observed) do
@@ -346,7 +347,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
         conn.ipv4.method == :manual,
         conn.ipv4[:gateway] != nil,
         not route_present?(observed.routes, "default", conn.ipv4.gateway) do
-      metric = PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
+      metric =
+        PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
+
       conn_metric = Map.get(metric, conn.profile_id, 100)
 
       Diff.new(:add_route, conn.interface, %{
@@ -364,6 +367,30 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   defp route_present?(routes, destination, gateway) do
     Enum.any?(routes, fn r ->
       r.destination == destination and r.gateway == gateway
+    end)
+  end
+
+  defp compute_dns_diffs(desired, _observed) do
+    for {_id, conn} <- desired.connections,
+        connection_active?(conn.interface),
+        conn.dns != nil,
+        conn.dns != [],
+        servers = parse_dns_servers(conn.dns),
+        servers != [] do
+      Diff.new(:update_dns, conn.interface, %{
+        servers: servers,
+        search: [],
+        priority: conn.priority
+      })
+    end
+  end
+
+  defp parse_dns_servers(dns_strings) do
+    Enum.flat_map(dns_strings, fn s ->
+      case :inet.parse_address(String.to_charlist(s)) do
+        {:ok, addr} -> [addr]
+        _ -> []
+      end
     end)
   end
 
