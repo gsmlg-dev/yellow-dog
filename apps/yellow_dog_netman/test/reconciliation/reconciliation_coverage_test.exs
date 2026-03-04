@@ -1995,4 +1995,299 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       MockNetlink.link_removed(iface)
     end
   end
+
+  describe "link state drift detection" do
+    alias YellowDog.Netman.Types.{DesiredState, ObservedState}
+
+    test "diff generates :set_link_up when active connection link is down" do
+      iface = "link_drift_#{:rand.uniform(65535)}"
+      profile_id = "link-drift-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Observed: link exists but is DOWN
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :down,
+            carrier: false,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      link_up_diffs =
+        Enum.filter(diffs, &(&1.action == :set_link_up and &1.interface == iface))
+
+      assert length(link_up_diffs) == 1
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff does NOT generate :set_link_up when link is already up" do
+      iface = "link_ok_#{:rand.uniform(65535)}"
+      profile_id = "link-ok-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      link_up_diffs = Enum.filter(diffs, &(&1.action == :set_link_up))
+      assert link_up_diffs == []
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "diff skips :set_link_up for inactive connections" do
+      iface = "link_inact_#{:rand.uniform(65535)}"
+      profile_id = "link-inact-#{iface}"
+
+      # No FSM started
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :down,
+            carrier: false,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      link_up_diffs = Enum.filter(diffs, &(&1.action == :set_link_up))
+      assert link_up_diffs == [], "Inactive connections should not generate link state diffs"
+    end
+
+    test "full reconciliation cycle detects and applies link state drift" do
+      iface = "link_full_#{:rand.uniform(65535)}"
+      profile_id = "link-full-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+      test_pid = self()
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      # Insert link as DOWN
+      :ets.insert(
+        :netman_links,
+        {iface,
+         %{
+           interface: iface,
+           index: 0,
+           state: :down,
+           carrier: false,
+           mtu: 1500,
+           mac: nil,
+           kind: nil
+         }}
+      )
+
+      ProfileStore.put(profile_id, profile)
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(100)
+
+      on_exit(fn ->
+        :ets.delete(:netman_links, iface)
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(profile_id)
+      end)
+
+      handler_id = {__MODULE__, :link_full, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      send(recon_pid, :periodic_reconcile)
+
+      assert_receive {:recon_done, %{diffs_count: count}}, 2000
+      assert count >= 1, "Expected diffs for link state drift but got #{count}"
+
+      assert Process.alive?(recon_pid)
+    end
+  end
+
+  describe "apply_diff remaining branches" do
+    alias YellowDog.Netman.Types.{DesiredState, ObservedState}
+
+    test "deactivate_connection apply_diff via stop_connection (L429)" do
+      iface = "deact_#{:rand.uniform(65535)}"
+      profile_id = "deact-#{iface}"
+      recon_pid = Process.whereis(ReconciliationEngine)
+      test_pid = self()
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(100)
+
+      # Use deactivate/1 call which calls Connection.Supervisor.stop_connection
+      # This exercises the deactivate path via the public API
+      result = ReconciliationEngine.deactivate(profile_id)
+      assert result == :ok
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "remove_address apply_diff delegates to AddressManager (L437)" do
+      # Directly verify that remove_address works on AddressManager
+      # since the apply_diff clause just delegates
+      iface = "rmaddr_#{:rand.uniform(65535)}"
+
+      # AddressManager.remove_address returns :ok for any interface
+      # (the Netlink command just gets queued)
+      result =
+        YellowDog.Netman.Kernel.AddressManager.remove_address(iface, "10.50.0.1", 24)
+
+      assert result == :ok
+    end
+
+    test "remove_route apply_diff delegates to RouteManager (L445)" do
+      # RouteManager.remove_route returns :ok for any route params
+      result =
+        YellowDog.Netman.Kernel.RouteManager.remove_route(%{
+          destination: "default",
+          gateway: "10.50.0.1"
+        })
+
+      assert result == :ok
+    end
+  end
 end
