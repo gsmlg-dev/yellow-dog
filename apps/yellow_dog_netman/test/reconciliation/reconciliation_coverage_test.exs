@@ -1470,6 +1470,214 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       assert Process.alive?(recon_pid)
     end
+
+    test "diff filters out invalid DNS strings (parse_dns_servers error branch)" do
+      iface = "dns_bad_#{:rand.uniform(65535)}"
+      profile_id = "dns-bad-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.46.0.1/24", gateway: nil, dns: ["not-an-ip"]},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(iface, carrier: true)
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} =
+        Connection.Supervisor.start_connection(iface, %{
+          profile
+          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        })
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.46.0.1/24", gateway: nil, dns: ["not-an-ip"]},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: ["not-an-ip"]
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns))
+
+      assert dns_diffs == [],
+             "Invalid DNS strings should be filtered out, resulting in no update_dns diff"
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+  end
+
+  describe "parse_desired_cidr edge cases" do
+    alias YellowDog.Netman.Types.{DesiredState, ObservedState}
+
+    test "address without slash defaults to /32 prefix (L333)" do
+      iface = "cidr_noslash_#{:rand.uniform(65535)}"
+      profile_id = "cidr-noslash-#{iface}"
+
+      MockNetlink.link_up(iface, carrier: true)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.47.0.1", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} =
+        Connection.Supervisor.start_connection(iface, %{
+          profile
+          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        })
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.47.0.1", gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address and &1.interface == iface))
+      assert length(add_addr_diffs) == 1
+      assert hd(add_addr_diffs).params.prefix_len == 32
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
+
+    test "address with invalid prefix defaults to /32 (L330)" do
+      iface = "cidr_bad_#{:rand.uniform(65535)}"
+      profile_id = "cidr-bad-#{iface}"
+
+      MockNetlink.link_up(iface, carrier: true)
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.48.0.1/abc", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      Process.sleep(50)
+
+      {:ok, _pid} =
+        Connection.Supervisor.start_connection(iface, %{
+          profile
+          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        })
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          profile_id => %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.48.0.1/abc", gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      observed = %ObservedState{
+        links: %{
+          iface => %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: []
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      add_addr_diffs = Enum.filter(diffs, &(&1.action == :add_address and &1.interface == iface))
+      assert length(add_addr_diffs) == 1
+      assert hd(add_addr_diffs).params.prefix_len == 32
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+      MockNetlink.link_removed(iface)
+    end
   end
 
   describe "route drift detection" do

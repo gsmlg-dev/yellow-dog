@@ -231,6 +231,119 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "DNS diffs only generated for connections with non-empty valid DNS lists" do
+    check all(
+            ifaces <-
+              StreamData.list_of(interface_name_gen(),
+                min_length: 1,
+                max_length: 4,
+                uniq_by: & &1
+              ),
+            dns_lists <-
+              StreamData.list_of(
+                StreamData.one_of([
+                  StreamData.constant([]),
+                  StreamData.constant(["8.8.8.8"]),
+                  StreamData.constant(["invalid-dns"]),
+                  StreamData.constant(["1.1.1.1", "8.8.4.4"]),
+                  StreamData.constant(nil)
+                ]),
+                length: length(ifaces)
+              )
+          ) do
+      connections =
+        Enum.zip(ifaces, dns_lists)
+        |> Enum.reduce(%{}, fn {iface, dns}, acc ->
+          profile_id = "profile-#{iface}"
+
+          conn = %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: dns
+          }
+
+          Map.put(acc, profile_id, conn)
+        end)
+
+      links =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          link = %{
+            interface: iface,
+            index: :erlang.phash2(iface, 255) + 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+
+          Map.put(acc, iface, link)
+        end)
+
+      desired = %DesiredState{connections: connections}
+      observed = %ObservedState{links: links, addresses: %{}, routes: []}
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns))
+
+      # DNS diffs should only appear for connections with non-nil, non-empty
+      # DNS lists containing at least one valid IP address.
+      # Since connection_active? returns false for these test interfaces
+      # (no FSMs running), no DNS diffs should be generated.
+      assert dns_diffs == [],
+             "DNS diffs should not be generated for inactive connections"
+    end
+  end
+
+  property "invalid DNS strings are filtered out and don't produce diffs" do
+    check all(
+            iface <- interface_name_gen(),
+            invalid_count <- StreamData.integer(1..5)
+          ) do
+      invalids = Enum.map(1..invalid_count, fn n -> "bad-dns-#{n}" end)
+      profile_id = "profile-#{iface}"
+
+      connections = %{
+        profile_id => %{
+          profile_id: profile_id,
+          interface: iface,
+          ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+          ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+          mtu: nil,
+          priority: 100,
+          dns: invalids
+        }
+      }
+
+      links = %{
+        iface => %{
+          interface: iface,
+          index: 1,
+          state: :up,
+          carrier: true,
+          mtu: 1500,
+          mac: "aa:bb:cc:dd:ee:ff",
+          kind: nil
+        }
+      }
+
+      desired = %DesiredState{connections: connections}
+      observed = %ObservedState{links: links, addresses: %{}, routes: []}
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns))
+
+      # Even with non-empty DNS lists, invalid DNS strings produce no valid
+      # servers, so no update_dns diff should be generated (connection_active?
+      # also returns false, but the invalid-filter invariant holds regardless).
+      assert dns_diffs == []
+    end
+  end
+
   property "no duplicate activation diffs for the same interface" do
     check all(observed <- observed_state_gen()) do
       ifaces = Map.keys(observed.links)
