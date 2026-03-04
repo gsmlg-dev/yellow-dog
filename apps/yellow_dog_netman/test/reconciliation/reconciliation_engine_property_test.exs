@@ -344,6 +344,69 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "diff only produces activation diffs for inactive connections (no DNS/MTU/route/link)" do
+    # When no FSMs are running, the only diffs should be :activate_connection.
+    # DNS, MTU, route, and link state diffs require connection_active? to be true.
+    check all(
+            ifaces <-
+              StreamData.list_of(interface_name_gen(),
+                min_length: 1,
+                max_length: 4,
+                uniq_by: & &1
+              ),
+            dns_mode <-
+              StreamData.one_of([
+                StreamData.constant([]),
+                StreamData.constant(["8.8.8.8"]),
+                StreamData.constant(["1.1.1.1", "8.8.4.4"])
+              ]),
+            mtu <- StreamData.one_of([StreamData.constant(nil), StreamData.constant(9000)])
+          ) do
+      connections =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          profile_id = "profile-#{iface}"
+
+          conn = %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :manual, address: "10.0.0.1/24", gateway: "10.0.0.1", dns: dns_mode},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: mtu,
+            priority: 100,
+            dns: dns_mode
+          }
+
+          Map.put(acc, profile_id, conn)
+        end)
+
+      links =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          link = %{
+            interface: iface,
+            index: :erlang.phash2(iface, 255) + 1,
+            state: :down,
+            carrier: false,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+
+          Map.put(acc, iface, link)
+        end)
+
+      desired = %DesiredState{connections: connections}
+      observed = %ObservedState{links: links, addresses: %{}, routes: []}
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      # With no FSMs running, only :activate_connection diffs should be produced
+      non_activate_diffs = Enum.reject(diffs, &(&1.action == :activate_connection))
+
+      assert non_activate_diffs == [],
+             "Expected only activation diffs for inactive connections, got: #{inspect(Enum.map(non_activate_diffs, & &1.action))}"
+    end
+  end
+
   property "no duplicate activation diffs for the same interface" do
     check all(observed <- observed_state_gen()) do
       ifaces = Map.keys(observed.links)
