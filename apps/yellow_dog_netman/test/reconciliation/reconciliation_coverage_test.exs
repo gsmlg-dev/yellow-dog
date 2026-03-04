@@ -2235,8 +2235,6 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
     test "deactivate_connection apply_diff via stop_connection (L429)" do
       iface = "deact_#{:rand.uniform(65535)}"
       profile_id = "deact-#{iface}"
-      recon_pid = Process.whereis(ReconciliationEngine)
-      test_pid = self()
 
       profile = %Profile{
         id: profile_id,

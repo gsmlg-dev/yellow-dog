@@ -214,8 +214,9 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       YellowDog.Netman.Test.MockNetlink.link_up(iface)
 
       # Both monitors must receive the link_change event for our interface
-      link_change? = &(&1["event"] == "yellow_dog.netman.kernel.link_change" and
-                       &1["metadata"]["interface"] == iface)
+      link_change? =
+        &(&1["event"] == "yellow_dog.netman.kernel.link_change" and
+            &1["metadata"]["interface"] == iface)
 
       assert {:ok, _} = await_event(socket1, link_change?)
       assert {:ok, _} = await_event(socket2, link_change?)
