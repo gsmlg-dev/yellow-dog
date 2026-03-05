@@ -603,7 +603,9 @@ defmodule YellowDog.Netman.Connection.FSM do
   end
 
   defp release_dhcp(data) do
-    if data.lease != nil and Code.ensure_loaded?(YellowDog.DhcpClient) do
+    should_release? = data.lease != nil or data.profile.ipv4.method == :auto
+
+    if should_release? and Code.ensure_loaded?(YellowDog.DhcpClient) do
       YellowDog.DhcpClient.release(data.interface)
     end
   end

@@ -670,6 +670,14 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       data = %FSM{interface: iface, profile: profile, current_state: :unavailable}
       assert :ok = FSM.terminate(:normal, :unavailable, data)
     end
+
+    test "terminate in configuring state handles DHCP auto profile without lease" do
+      iface = "hdlr_term_auto_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}})
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring, lease: nil}
+
+      assert :ok = FSM.terminate(:normal, :configuring, data)
+    end
   end
 
   # ----------------------------------------------------------------
