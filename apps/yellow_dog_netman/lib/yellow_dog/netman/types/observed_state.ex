@@ -37,9 +37,7 @@ defmodule YellowDog.Netman.Types.ObservedState do
           routes: [route()]
         }
 
-  defstruct links: %{},
-            addresses: %{},
-            routes: []
+  defstruct links: %{}, addresses: %{}, routes: []
 
   @doc "Creates an empty observed state."
   @spec new() :: t()

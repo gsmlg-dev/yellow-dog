@@ -506,8 +506,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## Graceful shutdown
 
   @impl true
-  def terminate(_reason, state, data)
-      when state in [:activated, :configuring, :ip_check, :deactivating] do
+  def terminate(_reason, state, data) when state in [:activated, :configuring, :ip_check, :deactivating] do
     Logger.info("FSM terminating in #{state} for #{data.interface}, cleaning up")
     release_dhcp(data)
     reset_dns(data)
