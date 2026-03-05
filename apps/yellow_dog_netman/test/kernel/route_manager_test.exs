@@ -255,14 +255,20 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
 
   test "unknown action in route event is handled gracefully" do
     pid = Process.whereis(RouteManager)
+    iface = "test_rt_unknown_action_#{:rand.uniform(65535)}"
+    YellowDog.Netman.EventBus.subscribe("netman:route:254")
 
     send(
       pid,
-      {:netlink_event, {:route_change, %{"action" => "flush", "destination" => "default"}}}
+      {:netlink_event,
+       {:route_change,
+        %{"action" => "flush", "destination" => "10.250.0.0/24", "interface" => iface}}}
     )
 
     Process.sleep(20)
     assert Process.alive?(pid)
+    refute_receive {:netman_event, "netman:route:254", _}, 100
+    refute Enum.any?(RouteManager.get_routes(iface), &(&1.destination == "10.250.0.0/24"))
   end
 
   test "malformed route event is handled gracefully" do

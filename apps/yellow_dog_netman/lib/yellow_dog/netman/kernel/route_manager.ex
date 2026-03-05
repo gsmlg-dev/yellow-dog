@@ -121,28 +121,21 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   defp handle_route_event(%{"action" => action} = event) when is_binary(action) do
     route = parse_route(event)
     route_key = {route.table, route.destination, route.gateway, route.interface}
+    table_id = Map.get(event, "table", 254)
 
     case action do
       "add" ->
         :ets.insert(@table, {route_key, route})
+        emit_route_change(:add, route, table_id)
 
       "del" ->
         :ets.delete(@table, route_key)
+        emit_route_change(:remove, route, table_id)
 
       _ ->
+        Logger.warning("Ignoring route event with unknown action #{inspect(action)}")
         :ok
     end
-
-    action_atom = if action == "add", do: :add, else: :remove
-
-    :telemetry.execute(
-      [:yellow_dog, :netman, :kernel, :route_change],
-      %{count: 1},
-      %{action: action_atom, destination: route.destination, gateway: route.gateway}
-    )
-
-    table_id = Map.get(event, "table", 254)
-    EventBus.publish("netman:route:#{table_id}", {action_atom, route})
   end
 
   defp handle_route_event(event) do
@@ -181,4 +174,14 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   defp maybe_put_family(cmd, :inet), do: Map.put(cmd, "family", "inet")
   defp maybe_put_family(cmd, :inet6), do: Map.put(cmd, "family", "inet6")
   defp maybe_put_family(cmd, _), do: cmd
+
+  defp emit_route_change(action_atom, route, table_id) do
+    :telemetry.execute(
+      [:yellow_dog, :netman, :kernel, :route_change],
+      %{count: 1},
+      %{action: action_atom, destination: route.destination, gateway: route.gateway}
+    )
+
+    EventBus.publish("netman:route:#{table_id}", {action_atom, route})
+  end
 end
