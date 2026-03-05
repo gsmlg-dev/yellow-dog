@@ -303,7 +303,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       ProfileStore.put(profile_id, profile)
 
       result = ReconciliationEngine.activate(profile_id)
-      assert result == :ok or result == {:error, :no_matching_interface}
+      assert result == {:error, :no_matching_interface}
 
       ProfileStore.delete(profile_id)
     end

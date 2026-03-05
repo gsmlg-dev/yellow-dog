@@ -74,8 +74,10 @@ defmodule YellowDog.Netman.ReconciliationEngine do
           interface = profile.interface || find_matching_interface(profile)
 
           if interface do
-            Connection.Supervisor.start_connection(interface, profile)
-            :ok
+            case Connection.Supervisor.start_connection(interface, profile) do
+              {:ok, _pid} -> :ok
+              {:error, _} = error -> error
+            end
           else
             {:error, :no_matching_interface}
           end
