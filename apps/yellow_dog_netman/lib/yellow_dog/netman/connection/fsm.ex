@@ -323,7 +323,9 @@ defmodule YellowDog.Netman.Connection.FSM do
     has_global = Enum.any?(addresses, &(&1.scope == :global))
 
     if has_global or data.profile.ipv4.method == :disabled do
-      transition(%{data | ip_check_retries: 0}, :ip_check, :activated, [
+      data = %{data | ip_check_retries: 0}
+
+      transition(data, :ip_check, :activated, [
         {:next_event, :internal, :post_activate}
       ])
     else
@@ -473,35 +475,22 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## State: failed
 
   def failed(:cast, :activate, data) do
-    transition(
-      %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0},
-      :failed,
-      :disconnected,
-      [
-        {:next_event, :internal, :auto_activate}
-      ]
-    )
+    data = %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0}
+
+    transition(data, :failed, :disconnected, [{:next_event, :internal, :auto_activate}])
   end
 
   def failed(:info, {:netman_event, _, {:link_update, %{carrier: true}}}, data) do
-    transition(
-      %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0},
-      :failed,
-      :disconnected,
-      [
-        {:next_event, :internal, :auto_activate}
-      ]
-    )
+    data = %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0}
+
+    transition(data, :failed, :disconnected, [{:next_event, :internal, :auto_activate}])
   end
 
   def failed(:cast, :deactivate, data) do
     release_dhcp(data)
 
-    transition(
-      %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0},
-      :failed,
-      :disconnected
-    )
+    data = %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0}
+    transition(data, :failed, :disconnected)
   end
 
   def failed(:info, {:netman_event, _, {:removed, _}}, data) do
