@@ -249,6 +249,26 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.error == :no_address_configured
     end
 
+    test "manual IP with malformed CIDR transitions to failed instead of crashing" do
+      iface = "hdlr_badcidr_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "badcidr-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.100/24/1", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == {:invalid_cidr, "10.0.0.100/24/1"}
+    end
+
     test "get_state in configuring returns configuring state info", %{data: data} do
       result = FSM.configuring({:call, {self(), make_ref()}}, :get_state, data)
       assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
