@@ -167,6 +167,38 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     test "deactivate with no active connection returns error" do
       assert {:error, :not_found} = ReconciliationEngine.deactivate("nonexistent-profile-xyz")
     end
+
+    test "activate with existing FSM triggers activation instead of no-op" do
+      iface = "recon_exist_#{:rand.uniform(65535)}"
+      profile_id = "recon-exist-#{iface}"
+
+      profile = %Profile{
+        id: profile_id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      ProfileStore.put(profile_id, profile)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+      Process.sleep(50)
+
+      assert :ok = ReconciliationEngine.activate(profile_id)
+      Process.sleep(150)
+
+      {:ok, state} = Connection.FSM.get_state(pid)
+      assert state.state != :disconnected
+
+      Connection.Supervisor.stop_connection(iface)
+      ProfileStore.delete(profile_id)
+    end
   end
 
   describe "observe/0" do
