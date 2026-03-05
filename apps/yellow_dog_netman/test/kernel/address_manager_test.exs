@@ -126,10 +126,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
     assert Process.alive?(pid)
   end
 
-  test "address event with unknown action emits telemetry as :remove" do
+  test "address event with unknown action is ignored" do
     iface = "addr_unknown_action_#{:rand.uniform(65535)}"
     test_pid = self()
     handler_id = {__MODULE__, :addr_unknown, :rand.uniform(1_000_000)}
+    YellowDog.Netman.EventBus.subscribe("netman:address:#{iface}")
 
     :telemetry.attach(
       handler_id,
@@ -151,7 +152,9 @@ defmodule YellowDog.Netman.Kernel.AddressManagerTest do
         }}}
     )
 
-    assert_receive {:telem, %{action: :remove, interface: ^iface}}, 500
+    refute_receive {:telem, %{interface: ^iface}}, 200
+    refute_receive {:netman_event, "netman:address:" <> ^iface, _}, 200
+    assert AddressManager.get_addresses(iface) == []
     :telemetry.detach(handler_id)
   end
 

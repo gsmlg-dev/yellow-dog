@@ -119,29 +119,36 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
           :ets.insert(@table, {iface, [addr | existing]})
         end
 
+        emit_address_change(iface, :add, addr)
+
       "del" ->
         existing = get_addresses(iface)
         updated = Enum.reject(existing, &(&1.address == addr.address))
         :ets.insert(@table, {iface, updated})
 
+        emit_address_change(iface, :remove, addr)
+
       _ ->
+        Logger.warning("Ignoring address event with unknown action #{inspect(action)}")
         :ok
     end
-
-    action_atom = if action == "add", do: :add, else: :remove
-
-    :telemetry.execute(
-      [:yellow_dog, :netman, :kernel, :address_change],
-      %{count: 1},
-      %{interface: iface, action: action_atom, address: addr.address}
-    )
-
-    EventBus.publish("netman:address:#{iface}", {action_atom, addr})
   end
 
   defp handle_address_event(event) do
     Logger.warning("Ignoring address event with missing fields: #{inspect(event)}")
     :ok
+  end
+
+  defp emit_address_change(interface, action, addr) do
+    action_atom = action
+
+    :telemetry.execute(
+      [:yellow_dog, :netman, :kernel, :address_change],
+      %{count: 1},
+      %{interface: interface, action: action_atom, address: addr.address}
+    )
+
+    EventBus.publish("netman:address:#{interface}", {action_atom, addr})
   end
 
   defp parse_address(event) do
