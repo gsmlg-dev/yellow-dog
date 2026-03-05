@@ -17,7 +17,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   require Logger
 
   alias YellowDog.Netman.EventBus
-  alias YellowDog.Netman.Kernel.{AddressManager, LinkMonitor, RouteManager}
+  alias YellowDog.Netman.Kernel.{AddressManager, LinkMonitor, Netlink, RouteManager}
 
   @type state ::
           :unavailable
@@ -172,26 +172,17 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## State: prepare
 
   def prepare(:internal, :setup_link, data) do
-    # Set MTU if configured
-    if mtu = data.profile.ethernet.mtu do
-      YellowDog.Netman.Kernel.Netlink.command(%{
-        "cmd" => "link_set",
-        "interface" => data.interface,
-        "mtu" => mtu
-      })
+    case setup_link(data) do
+      :ok ->
+        transition(data, :prepare, :configuring, [
+          {:next_event, :internal, :configure_ip},
+          {:state_timeout, @configuring_timeout_ms, :configuring_timeout}
+        ])
+
+      {:error, reason} ->
+        Logger.warning("Link setup failed for #{data.interface}: #{inspect(reason)}")
+        transition(%{data | error: {:setup_link_failed, reason}}, :prepare, :failed)
     end
-
-    # Bring link up
-    YellowDog.Netman.Kernel.Netlink.command(%{
-      "cmd" => "link_set",
-      "interface" => data.interface,
-      "state" => "up"
-    })
-
-    transition(data, :prepare, :configuring, [
-      {:next_event, :internal, :configure_ip},
-      {:state_timeout, @configuring_timeout_ms, :configuring_timeout}
-    ])
   end
 
   def prepare(:state_timeout, :setup_timeout, data) do
@@ -506,7 +497,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## Graceful shutdown
 
   @impl true
-  def terminate(_reason, state, data) when state in [:activated, :configuring, :ip_check, :deactivating] do
+  def terminate(_reason, state, data)
+      when state in [:activated, :configuring, :ip_check, :deactivating] do
     Logger.info("FSM terminating in #{state} for #{data.interface}, cleaning up")
     release_dhcp(data)
     reset_dns(data)
@@ -518,6 +510,44 @@ defmodule YellowDog.Netman.Connection.FSM do
   def terminate(_reason, _state, _data), do: :ok
 
   ## Internal helpers
+
+  @doc false
+  def setup_link(data, command_fun \\ &Netlink.command/1) do
+    with :ok <- maybe_set_mtu(data, command_fun),
+         :ok <- set_link_up(data, command_fun) do
+      :ok
+    end
+  end
+
+  defp maybe_set_mtu(%{profile: %{ethernet: %{mtu: nil}}}, _command_fun), do: :ok
+
+  defp maybe_set_mtu(data, command_fun) do
+    execute_link_command(
+      command_fun,
+      %{
+        "cmd" => "link_set",
+        "interface" => data.interface,
+        "mtu" => data.profile.ethernet.mtu
+      }
+    )
+  end
+
+  defp set_link_up(data, command_fun) do
+    execute_link_command(
+      command_fun,
+      %{
+        "cmd" => "link_set",
+        "interface" => data.interface,
+        "state" => "up"
+      }
+    )
+  end
+
+  defp execute_link_command(command_fun, command) do
+    command_fun.(command)
+  catch
+    :exit, reason -> {:error, {:netlink_exit, reason}}
+  end
 
   defp transition(data, from, to, actions \\ []) do
     emit_state_change(data, from, to)

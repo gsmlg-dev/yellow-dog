@@ -133,6 +133,39 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       result = FSM.prepare(:info, :unknown_event, data)
       assert {:keep_state, ^data} = result
     end
+
+    test "setup_link succeeds with no mtu and link-up command", %{data: data, iface: iface} do
+      command_fun = fn cmd ->
+        send(self(), {:setup_link_cmd, cmd})
+        :ok
+      end
+
+      assert :ok = FSM.setup_link(data, command_fun)
+
+      assert_received {:setup_link_cmd,
+                       %{"cmd" => "link_set", "interface" => ^iface, "state" => "up"}}
+    end
+
+    test "setup_link returns error when mtu command fails", %{data: data, iface: iface} do
+      mtu_profile = put_in(data.profile.ethernet.mtu, 9000)
+      data = %{data | profile: mtu_profile}
+
+      command_fun = fn
+        %{"mtu" => 9000, "interface" => ^iface} -> {:error, :mtu_unsupported}
+        _ -> :ok
+      end
+
+      assert {:error, :mtu_unsupported} = FSM.setup_link(data, command_fun)
+    end
+
+    test "setup_link returns error when link-up command exits", %{data: data} do
+      command_fun = fn
+        %{"state" => "up"} -> exit(:netlink_down)
+        _ -> :ok
+      end
+
+      assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, command_fun)
+    end
   end
 
   # ----------------------------------------------------------------
@@ -673,7 +706,10 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
 
     test "terminate in configuring state handles DHCP auto profile without lease" do
       iface = "hdlr_term_auto_#{:rand.uniform(65535)}"
-      profile = base_profile(iface, %{ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}})
+
+      profile =
+        base_profile(iface, %{ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}})
+
       data = %FSM{interface: iface, profile: profile, current_state: :configuring, lease: nil}
 
       assert :ok = FSM.terminate(:normal, :configuring, data)
