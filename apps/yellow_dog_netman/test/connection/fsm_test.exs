@@ -249,7 +249,9 @@ defmodule YellowDog.Netman.Connection.FSMTest do
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    YellowDog.Netman.ReconciliationEngine.reconcile()
+    # Bypass the 100ms debounce (which concurrent async tests keep resetting)
+    # by sending :debounced_reconcile directly to the process mailbox.
+    send(YellowDog.Netman.ReconciliationEngine, :debounced_reconcile)
 
     assert_receive {:recon_stop, %{duration_ms: dur, diffs_count: _, applied_count: _}}, 5000
     assert is_integer(dur)
