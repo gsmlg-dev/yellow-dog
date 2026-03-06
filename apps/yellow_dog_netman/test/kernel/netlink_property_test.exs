@@ -168,6 +168,40 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
     end
   end
 
+  property "dispatch remains functional after a subscriber process exits" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      parent = self()
+
+      # Spawn a subscriber that will die
+      sub =
+        Task.async(fn ->
+          Netlink.subscribe()
+          send(parent, :subscribed)
+          # Block until killed
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      assert_receive :subscribed, 500
+      Process.sleep(20)
+
+      # Kill the subscriber
+      Task.shutdown(sub, :brutal_kill)
+      Process.sleep(50)
+
+      # Main process subscribes and verifies dispatch still works
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      expected_atom = String.to_atom(event_type)
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}}, 500
+    end
+  end
+
   property "events without type field always dispatch as :unknown" do
     check all(extra <- extra_field_gen()) do
       Netlink.subscribe()

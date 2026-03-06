@@ -148,6 +148,32 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     end
   end
 
+  property "two connections at distinct interfaces coexist and are independently findable" do
+    check all(
+            seed1 <- StreamData.integer(1..49_999),
+            seed2 <- StreamData.integer(50_000..99_999)
+          ) do
+      iface1 = "csp_co1_#{seed1}"
+      iface2 = "csp_co2_#{seed2}"
+      profile1 = make_profile(iface1)
+      profile2 = make_profile(iface2)
+
+      MockNetlink.link_up(iface1, carrier: false)
+      MockNetlink.link_up(iface2, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid1} = ConnSupervisor.start_connection(iface1, profile1)
+      {:ok, pid2} = ConnSupervisor.start_connection(iface2, profile2)
+
+      assert {:ok, ^pid1} = ConnSupervisor.find_connection(iface1)
+      assert {:ok, ^pid2} = ConnSupervisor.find_connection(iface2)
+      assert pid1 != pid2
+
+      ConnSupervisor.stop_connection(iface1)
+      ConnSupervisor.stop_connection(iface2)
+    end
+  end
+
   property "find_connection_by_profile returns :error after stop_connection" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
       iface = "csp_bpstop_#{seed}"

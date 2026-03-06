@@ -162,4 +162,27 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert String.contains?(error, "connection.add") and String.contains?(error, "'file' parameter")
     end
   end
+
+  property "device.show with short valid interface name does not return a validation error" do
+    check all(
+            name <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => name}})
+
+      # Should not be a validation error — either result or device-not-found
+      case result do
+        %{"error" => msg} ->
+          refute msg in [
+                   "identifier cannot be empty",
+                   "identifier too long",
+                   "identifier contains invalid characters"
+                 ],
+                 "Unexpected validation error for valid interface #{inspect(name)}: #{msg}"
+
+        %{"result" => _} ->
+          :ok
+      end
+    end
+  end
 end
