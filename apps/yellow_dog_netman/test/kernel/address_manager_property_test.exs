@@ -206,4 +206,38 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "list_all missing address #{addr2} on #{iface2}"
     end
   end
+
+  property "add_address always returns :ok or {:error, _} for valid args" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      result = AddressManager.add_address(iface, addr, prefix)
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected add_address result: #{inspect(result)}"
+    end
+  end
+
+  property "remove_address always returns :ok or {:error, _} for valid args" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      result = AddressManager.remove_address(iface, addr, prefix)
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected remove_address result: #{inspect(result)}"
+    end
+  end
+
+  property "flush always returns a tuple of two non-negative integers" do
+    check all(iface <- iface_gen()) do
+      result = AddressManager.flush(iface)
+      assert is_tuple(result) and tuple_size(result) == 2
+      {removed, failed} = result
+      assert is_integer(removed) and removed >= 0
+      assert is_integer(failed) and failed >= 0
+    end
+  end
 end

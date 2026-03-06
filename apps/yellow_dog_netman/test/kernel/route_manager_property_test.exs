@@ -230,4 +230,54 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "list_all missing route for #{iface2}"
     end
   end
+
+  property "add_route always returns :ok or {:error, _} for any route map" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      result =
+        RouteManager.add_route(%{
+          destination: dest,
+          gateway: gw,
+          interface: iface,
+          metric: metric
+        })
+
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected add_route result: #{inspect(result)}"
+    end
+  end
+
+  property "remove_route always returns :ok or {:error, _} for any route map" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      result = RouteManager.remove_route(%{destination: dest, gateway: gw, interface: iface})
+
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected remove_route result: #{inspect(result)}"
+    end
+  end
+
+  property "flush always returns a tuple of two non-negative integers" do
+    check all(iface <- iface_gen()) do
+      result = RouteManager.flush(iface)
+      assert is_tuple(result) and tuple_size(result) == 2
+      {removed, failed} = result
+      assert is_integer(removed) and removed >= 0
+      assert is_integer(failed) and failed >= 0
+    end
+  end
+
+  property "default_route always returns nil or a map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = RouteManager.default_route()
+      assert is_nil(result) or is_map(result)
+    end
+  end
 end
