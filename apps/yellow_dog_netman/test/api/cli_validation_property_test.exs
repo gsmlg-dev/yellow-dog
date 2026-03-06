@@ -163,6 +163,14 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "connection.show without id param always returns an error map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.show"})
+      assert is_map(result), "Expected map, got: #{inspect(result)}"
+      assert Map.has_key?(result, "error"), "Expected error key, got: #{inspect(result)}"
+    end
+  end
+
   property "device.show with short valid interface name does not return a validation error" do
     check all(
             name <-

@@ -241,6 +241,28 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
     end
   end
 
+  property "address count on iface increases by 1 after adding a new unique address" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      # Remove any pre-existing instance to ensure clean count
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(30)
+
+      before_count = length(AddressManager.get_addresses(iface))
+
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      after_count = length(AddressManager.get_addresses(iface))
+
+      assert after_count == before_count + 1,
+             "Expected address count to increase by 1: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "address added to iface1 is not visible in get_addresses(iface2)" do
     check all(
             iface1 <- iface_gen(),
