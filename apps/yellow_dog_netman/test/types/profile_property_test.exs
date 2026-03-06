@@ -302,6 +302,120 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  # --- Profile ID validation properties ---
+
+  property "profile IDs with invalid characters are rejected" do
+    check all(
+            bad_char <- StreamData.member_of([" ", "/", "@", "!", "#", "$", "%", "^", "&", "*"]),
+            base <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
+      id = base <> bad_char
+
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+  end
+
+  property "profile IDs longer than 128 characters are rejected" do
+    check all(extra <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      id = String.duplicate("a", 129) <> extra
+
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "too long"
+    end
+  end
+
+  property "valid profile IDs with allowed chars are accepted" do
+    check all(
+            base <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            suffix <-
+              StreamData.one_of([
+                StreamData.constant(""),
+                StreamData.constant("-suffix"),
+                StreamData.constant("_suffix"),
+                StreamData.constant(".v2")
+              ])
+          ) do
+      id = base <> suffix
+
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+
+      assert {:ok, %Profile{}} = Profile.from_toml(toml)
+    end
+  end
+
+  # --- Zone validation properties ---
+
+  property "zones with invalid characters are rejected" do
+    check all(
+            bad_char <- StreamData.member_of([" ", "/", "@", "!", "#", "+"]),
+            base <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
+      zone = base <> bad_char
+
+      toml = %{
+        "connection" => %{"id" => "test-zone-#{base}", "type" => "ethernet", "zone" => zone}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "zone"
+    end
+  end
+
+  property "zones longer than 64 characters are rejected" do
+    check all(extra <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      zone = String.duplicate("z", 65) <> extra
+
+      toml = %{
+        "connection" => %{"id" => "test-longzone", "type" => "ethernet", "zone" => zone}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "zone"
+    end
+  end
+
+  # --- Priority validation properties ---
+
+  property "priorities outside -1000..10000 are rejected" do
+    check all(
+            bad_priority <-
+              StreamData.one_of([
+                StreamData.integer(-10_000..-1001),
+                StreamData.integer(10_001..100_000)
+              ])
+          ) do
+      toml = %{
+        "connection" => %{
+          "id" => "test-priority",
+          "type" => "ethernet",
+          "autoconnect_priority" => bad_priority
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "priority"
+    end
+  end
+
+  property "priorities within -1000..10000 are accepted" do
+    check all(priority <- StreamData.integer(-1000..10_000)) do
+      toml = %{
+        "connection" => %{
+          "id" => "test-priority-valid",
+          "type" => "ethernet",
+          "autoconnect_priority" => priority
+        }
+      }
+
+      assert {:ok, %Profile{autoconnect_priority: ^priority}} = Profile.from_toml(toml)
+    end
+  end
+
   # --- MTU validation properties ---
 
   property "MTU outside 68-65535 is rejected" do
