@@ -493,6 +493,54 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "observe maps input links by interface name" do
+    check all(
+            ifaces <-
+              StreamData.list_of(interface_name_gen(),
+                min_length: 0,
+                max_length: 5,
+                uniq_by: & &1
+              )
+          ) do
+      links =
+        Enum.map(ifaces, fn iface ->
+          %{
+            interface: iface,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+        end)
+
+      observed = ReconciliationEngine.observe(links)
+      assert Map.keys(observed.links) |> Enum.sort() == Enum.sort(ifaces)
+    end
+  end
+
+  property "observe always returns ObservedState with map addresses and list routes" do
+    check all(
+            ifaces <-
+              StreamData.list_of(interface_name_gen(),
+                min_length: 0,
+                max_length: 4,
+                uniq_by: & &1
+              )
+          ) do
+      links =
+        Enum.map(ifaces, fn iface ->
+          %{interface: iface, index: 1, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}
+        end)
+
+      state = ReconciliationEngine.observe(links)
+      assert %ObservedState{} = state
+      assert is_map(state.addresses)
+      assert is_list(state.routes)
+    end
+  end
+
   property "all activation diff profile IDs reference connections in desired state" do
     check all(observed <- observed_state_gen()) do
       ifaces = Map.keys(observed.links)
