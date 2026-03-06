@@ -353,4 +353,24 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "put with specific interface then match_interface returns that interface's profile" do
+    check all(
+            profile <- profile_gen(),
+            iface <-
+              StreamData.string(:alphanumeric, min_length: 3, max_length: 9)
+              |> StreamData.map(&("mxif_" <> &1))
+              |> StreamData.map(&String.slice(&1, 0, 15))
+          ) do
+      profile = %{profile | interface: iface, id: "mxif-#{profile.id}"}
+      ProfileStore.put(profile.id, profile)
+
+      result = ProfileStore.match_interface(iface)
+      assert result != nil, "Expected a match for interface #{iface}"
+      assert result.interface == iface,
+             "Expected interface #{iface}, got: #{inspect(result.interface)}"
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end

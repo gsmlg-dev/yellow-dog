@@ -118,4 +118,16 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.get(key2) == {:error, :not_found}
     end
   end
+
+  property "multiple gets for the same key all return {:error, :not_found}" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            count <- StreamData.integer(2..5)
+          ) do
+      results = for _ <- 1..count, do: SecretStore.get(key)
+
+      assert Enum.all?(results, &(&1 == {:error, :not_found})),
+             "Expected all gets to return :not_found, got: #{inspect(results)}"
+    end
+  end
 end

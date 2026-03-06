@@ -307,4 +307,16 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       end
     end
   end
+
+  property "identifier over 128 chars always fails with identifier too long" do
+    check all(
+            char <- StreamData.member_of(Enum.to_list(?a..?z)),
+            len <- StreamData.integer(129..200)
+          ) do
+      id = String.duplicate(<<char>>, len)
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+      assert %{"error" => "identifier too long"} = result,
+             "Expected identifier too long for #{len}-char id, got: #{inspect(result)}"
+    end
+  end
 end
