@@ -217,7 +217,10 @@ defmodule YellowDog.Netman.API.CLI do
 
   defp stringify_value(v) when is_atom(v), do: to_string(v)
   defp stringify_value(v) when is_tuple(v), do: inspect(v)
-  defp stringify_value(v), do: v
+  defp stringify_value(v) when is_binary(v) or is_number(v) or is_boolean(v), do: v
+  defp stringify_value(v) when is_list(v), do: Enum.map(v, &stringify_value/1)
+  defp stringify_value(v) when is_map(v), do: stringify_map(v)
+  defp stringify_value(v), do: inspect(v)
 
   def handle_command(%{"method" => "status"}) do
     status = YellowDog.Netman.status()

@@ -226,46 +226,29 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       YellowDog.Netman.Test.MockNetlink.link_removed(iface)
     end
 
-    @tag :capture_log
-    test "client handler rescue clause fires and CLI survives when monitor crashes" do
+    test "monitor handles non-serializable telemetry values without crashing" do
       {:ok, socket} = connect_to_cli()
 
       :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
       {:ok, _started} = :gen_tcp.recv(socket, 0, 2000)
 
-      # Functions are not JSON-serializable; stringify_value/1 has no clause for
-      # them so the value passes through as-is and Jason.encode! raises
-      # Protocol.UndefinedError inside monitor_loop. The Task's rescue clause
-      # (L93-95) catches this, logs a warning, and closes the client socket.
+      # Functions, pids, and other non-JSON types are now inspect()'ed
+      # instead of crashing the monitor task.
       :telemetry.execute(
         [:yellow_dog, :netman, :kernel, :link_change],
         %{count: 1},
-        %{action: :up, bad_value: fn -> :crash end}
+        %{action: :up, bad_value: fn -> :crash end, pid_val: self()}
       )
 
-      # Give the monitor task time to process the event and crash
-      Process.sleep(200)
+      # Monitor should send the event with inspect'd values, not crash
+      {:ok, event_line} = :gen_tcp.recv(socket, 0, 2000)
+      event = Jason.decode!(String.trim(event_line))
+      assert event["event"] == "yellow_dog.netman.kernel.link_change"
+      assert is_binary(event["metadata"]["bad_value"])
+      assert String.starts_with?(event["metadata"]["bad_value"], "#Function")
+      assert String.starts_with?(event["metadata"]["pid_val"], "#PID")
 
-      # CLI GenServer must still be alive despite the monitor task crash
-      assert Process.alive?(Process.whereis(CLI))
-
-      # CLI must still serve new connections after the crash
-      {:ok, socket2} = connect_to_cli()
-      :gen_tcp.send(socket2, Jason.encode!(%{"method" => "status"}) <> "\n")
-      {:ok, response} = :gen_tcp.recv(socket2, 0, 2000)
-      :gen_tcp.close(socket2)
-      assert {:ok, %{"result" => _}} = Jason.decode(response)
-
-      # Telemetry handler must be cleaned up after crash (no leak)
-      handlers = :telemetry.list_handlers([:yellow_dog, :netman, :kernel, :link_change])
-
-      monitor_handlers =
-        Enum.filter(handlers, fn h ->
-          match?({YellowDog.Netman.API.CLI, :monitor, _}, h.id)
-        end)
-
-      assert monitor_handlers == [],
-             "Telemetry handler leaked after monitor crash: #{inspect(monitor_handlers)}"
+      :gen_tcp.close(socket)
     end
   end
 end
