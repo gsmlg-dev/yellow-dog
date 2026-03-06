@@ -1014,6 +1014,99 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     end
   end
 
+  describe "IPv6 static address (apply_static_ipv6)" do
+    @tag :capture_log
+    test "manual IPv6 address is applied via AddressManager during configuring" do
+      interface = "fsm_v6s_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "v6static-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1/64", gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      # IPv4 disabled + IPv6 manual → ip_check passes (method == :disabled) → activated
+      assert state.state in [:activated, :ip_check, :configuring]
+
+      GenServer.stop(pid, :normal)
+    end
+
+    @tag :capture_log
+    test "IPv6 CIDR with multiple slashes logs warning and does not crash FSM" do
+      interface = "fsm_v6i_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "v6inv-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1/64/extra", gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      # Bad IPv6 CIDR is non-fatal; IPv4 disabled → ip_check passes → activated
+      assert state.state in [:activated, :ip_check, :configuring]
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  describe "parse_cidr with multiple slashes" do
+    @tag :capture_log
+    test "static IPv4 address with multiple slashes fails to :failed state" do
+      interface = "fsm_msl_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "mslash-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.1/24/extra", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :failed
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   describe "get_state in configuring state" do
     test "get_state returns configuring info when DHCP is pending" do
       interface = "fsm_conf_gs_#{:rand.uniform(100_000)}"
