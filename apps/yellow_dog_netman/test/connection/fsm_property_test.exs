@@ -330,6 +330,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM dns field in get_state is always a list" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fdns_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert is_list(state.dns),
+             "Expected dns to be a list, got: #{inspect(state.dns)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "autoconnect: false profile stays in :disconnected after link_up with carrier" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fnoac_#{seed}"

@@ -161,6 +161,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "new/3 always returns a %Diff{} struct (not a plain map)" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert is_struct(diff, Diff),
+             "Expected %Diff{} struct, got: #{inspect(diff)}"
+    end
+  end
+
   property "diffs with same action but different non-nil interfaces are never equal" do
     check all(
             action <- action_gen(),

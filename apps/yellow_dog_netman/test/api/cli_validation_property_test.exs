@@ -171,6 +171,17 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "list and status commands never produce identifier validation errors" do
+    check all(
+            method <- StreamData.member_of(["connection.list", "device.list", "status"])
+          ) do
+      result = CLI.handle_command(%{"method" => method})
+
+      refute match?(%{"error" => "identifier" <> _}, result),
+             "#{method} gave unexpected validation error: #{inspect(result)}"
+    end
+  end
+
   property "device.show with short valid interface name does not return a validation error" do
     check all(
             name <-
