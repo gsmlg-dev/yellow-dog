@@ -14,7 +14,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   alias YellowDog.Netman.{EventBus, PolicyEngine, ProfileStore}
   alias YellowDog.Netman.Connection
-  alias YellowDog.Netman.Kernel.{LinkMonitor, AddressManager, Netlink, RouteManager}
+  alias YellowDog.Netman.Kernel.{LinkMonitor, AddressManager, RouteManager}
   alias YellowDog.Netman.Types.{Diff, DesiredState, ObservedState}
 
   @default_interval 30_000
@@ -482,15 +482,15 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   defp apply_diff(%Diff{action: :set_mtu, interface: iface, params: %{mtu: mtu}}) do
-    Netlink.command(%{"cmd" => "link_set", "interface" => iface, "mtu" => mtu})
+    LinkMonitor.set_mtu(iface, mtu)
   end
 
   defp apply_diff(%Diff{action: :set_link_up, interface: iface}) do
-    Netlink.command(%{"cmd" => "link_set", "interface" => iface, "state" => "up"})
+    LinkMonitor.set_link_up(iface)
   end
 
   defp apply_diff(%Diff{action: :set_link_down, interface: iface}) do
-    Netlink.command(%{"cmd" => "link_set", "interface" => iface, "state" => "down"})
+    LinkMonitor.set_link_down(iface)
   end
 
   defp apply_diff(%Diff{action: action}) do

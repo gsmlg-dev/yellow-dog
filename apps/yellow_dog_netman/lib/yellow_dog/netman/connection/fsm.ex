@@ -17,7 +17,7 @@ defmodule YellowDog.Netman.Connection.FSM do
   require Logger
 
   alias YellowDog.Netman.EventBus
-  alias YellowDog.Netman.Kernel.{AddressManager, LinkMonitor, Netlink, RouteManager}
+  alias YellowDog.Netman.Kernel.{AddressManager, LinkMonitor, RouteManager}
 
   @type state ::
           :unavailable
@@ -512,41 +512,23 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## Internal helpers
 
   @doc false
-  def setup_link(data, command_fun \\ &Netlink.command/1) do
-    with :ok <- maybe_set_mtu(data, command_fun),
-         :ok <- set_link_up(data, command_fun) do
+  def setup_link(data, link_mod \\ LinkMonitor) do
+    with :ok <- maybe_set_mtu(data, link_mod),
+         :ok <- do_set_link_up(data, link_mod) do
       :ok
     end
-  end
-
-  defp maybe_set_mtu(%{profile: %{ethernet: %{mtu: nil}}}, _command_fun), do: :ok
-
-  defp maybe_set_mtu(data, command_fun) do
-    execute_link_command(
-      command_fun,
-      %{
-        "cmd" => "link_set",
-        "interface" => data.interface,
-        "mtu" => data.profile.ethernet.mtu
-      }
-    )
-  end
-
-  defp set_link_up(data, command_fun) do
-    execute_link_command(
-      command_fun,
-      %{
-        "cmd" => "link_set",
-        "interface" => data.interface,
-        "state" => "up"
-      }
-    )
-  end
-
-  defp execute_link_command(command_fun, command) do
-    command_fun.(command)
   catch
     :exit, reason -> {:error, {:netlink_exit, reason}}
+  end
+
+  defp maybe_set_mtu(%{profile: %{ethernet: %{mtu: nil}}}, _link_mod), do: :ok
+
+  defp maybe_set_mtu(data, link_mod) do
+    link_mod.set_mtu(data.interface, data.profile.ethernet.mtu)
+  end
+
+  defp do_set_link_up(data, link_mod) do
+    link_mod.set_link_up(data.interface)
   end
 
   defp transition(data, from, to, actions \\ []) do

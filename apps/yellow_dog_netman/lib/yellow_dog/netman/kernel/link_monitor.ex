@@ -43,6 +43,24 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
     ArgumentError -> nil
   end
 
+  @doc "Set a network interface link state to up."
+  @spec set_link_up(String.t()) :: :ok | {:error, term()}
+  def set_link_up(interface) do
+    Netlink.command(%{"cmd" => "link_set", "interface" => interface, "state" => "up"})
+  end
+
+  @doc "Set a network interface link state to down."
+  @spec set_link_down(String.t()) :: :ok | {:error, term()}
+  def set_link_down(interface) do
+    Netlink.command(%{"cmd" => "link_set", "interface" => interface, "state" => "down"})
+  end
+
+  @doc "Set the MTU on a network interface."
+  @spec set_mtu(String.t(), pos_integer()) :: :ok | {:error, term()}
+  def set_mtu(interface, mtu) do
+    Netlink.command(%{"cmd" => "link_set", "interface" => interface, "mtu" => mtu})
+  end
+
   ## Server callbacks
 
   @impl true

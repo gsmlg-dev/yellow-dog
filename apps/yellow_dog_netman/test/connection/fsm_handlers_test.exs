@@ -10,9 +10,38 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
   alias YellowDog.Netman.Connection.FSM
   alias YellowDog.Netman.Types.Profile
   alias YellowDog.Netman.Test.MockNetlink
-  alias YellowDog.Netman.Kernel.Netlink
 
   @moduletag :capture_log
+
+  # Creates a dynamic module implementing set_link_up/1, set_link_down/1, set_mtu/2
+  defp mock_link_module(funs) do
+    mod_name = :"MockLinkMod_#{:erlang.unique_integer([:positive])}"
+
+    set_link_up_fn = Map.get(funs, :set_link_up, fn _ -> :ok end)
+    set_link_down_fn = Map.get(funs, :set_link_down, fn _ -> :ok end)
+    set_mtu_fn = Map.get(funs, :set_mtu, fn _, _ -> :ok end)
+
+    :persistent_term.put({mod_name, :set_link_up}, set_link_up_fn)
+    :persistent_term.put({mod_name, :set_link_down}, set_link_down_fn)
+    :persistent_term.put({mod_name, :set_mtu}, set_mtu_fn)
+
+    Module.create(
+      mod_name,
+      quote do
+        def set_link_up(iface),
+          do: :persistent_term.get({unquote(mod_name), :set_link_up}).(iface)
+
+        def set_link_down(iface),
+          do: :persistent_term.get({unquote(mod_name), :set_link_down}).(iface)
+
+        def set_mtu(iface, mtu),
+          do: :persistent_term.get({unquote(mod_name), :set_mtu}).(iface, mtu)
+      end,
+      Macro.Env.location(__ENV__)
+    )
+
+    mod_name
+  end
 
   defp base_profile(iface, overrides \\ %{}) do
     base = %Profile{
@@ -135,35 +164,38 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     end
 
     test "setup_link succeeds with no mtu and link-up command", %{data: data, iface: iface} do
-      command_fun = fn cmd ->
-        send(self(), {:setup_link_cmd, cmd})
-        :ok
-      end
+      test_pid = self()
 
-      assert :ok = FSM.setup_link(data, command_fun)
+      mock = mock_link_module(%{
+        set_link_up: fn ^iface ->
+          send(test_pid, {:setup_link_cmd, :set_link_up, iface})
+          :ok
+        end,
+        set_mtu: fn _, _ -> :ok end
+      })
 
-      assert_received {:setup_link_cmd,
-                       %{"cmd" => "link_set", "interface" => ^iface, "state" => "up"}}
+      assert :ok = FSM.setup_link(data, mock)
+      assert_received {:setup_link_cmd, :set_link_up, ^iface}
     end
 
     test "setup_link returns error when mtu command fails", %{data: data, iface: iface} do
       data = put_in(data.profile.ethernet.mtu, 9000)
 
-      command_fun = fn
-        %{"mtu" => 9000, "interface" => ^iface} -> {:error, :mtu_unsupported}
-        _ -> :ok
-      end
+      mock = mock_link_module(%{
+        set_mtu: fn ^iface, 9000 -> {:error, :mtu_unsupported} end,
+        set_link_up: fn _ -> :ok end
+      })
 
-      assert {:error, :mtu_unsupported} = FSM.setup_link(data, command_fun)
+      assert {:error, :mtu_unsupported} = FSM.setup_link(data, mock)
     end
 
     test "setup_link returns error when link-up command exits", %{data: data} do
-      command_fun = fn
-        %{"state" => "up"} -> exit(:netlink_down)
-        _ -> :ok
-      end
+      mock = mock_link_module(%{
+        set_mtu: fn _, _ -> :ok end,
+        set_link_up: fn _ -> exit(:netlink_down) end
+      })
 
-      assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, command_fun)
+      assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, mock)
     end
   end
 
@@ -853,7 +885,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
         ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
       }
 
-      netlink_pid = Process.whereis(Netlink)
+      netlink_pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
       original_state = :sys.get_state(netlink_pid)
 
       on_exit(fn ->
@@ -894,7 +926,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
         ipv6: %{method: :manual, address: "2001:db8::1/64", gateway: nil, dns: []}
       }
 
-      netlink_pid = Process.whereis(Netlink)
+      netlink_pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
       original_state = :sys.get_state(netlink_pid)
 
       on_exit(fn ->
