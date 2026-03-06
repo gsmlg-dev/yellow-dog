@@ -154,4 +154,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert String.contains?(error, "requires") and String.contains?(error, "'id' parameter")
     end
   end
+
+  property "connection.add without file param always returns descriptive error" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.add"})
+      assert %{"error" => error} = result
+      assert String.contains?(error, "connection.add") and String.contains?(error, "'file' parameter")
+    end
+  end
 end

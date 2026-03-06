@@ -194,4 +194,35 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok
     end
   end
+
+  property "multiple subscribers on same topic each receive the same message" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      parent = self()
+
+      task =
+        Task.async(fn ->
+          {:ok, _} = EventBus.subscribe(topic)
+          send(parent, :subscribed)
+
+          receive do
+            {:netman_event, ^topic, ^message} -> :received
+          after
+            200 -> :timeout
+          end
+        end)
+
+      assert_receive :subscribed, 500
+      {:ok, _} = EventBus.subscribe(topic)
+
+      EventBus.publish(topic, message)
+
+      assert_receive {:netman_event, ^topic, ^message}, 200
+      assert Task.await(task, 1000) == :received
+
+      EventBus.unsubscribe(topic)
+    end
+  end
 end
