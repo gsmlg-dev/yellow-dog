@@ -247,4 +247,21 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected ethernet? true after link_removed then link_up on #{iface}"
     end
   end
+
+  property "consecutive link_up calls with different mtus store the last mtu" do
+    check all(
+            iface <- iface_gen(),
+            mtu1 <- StreamData.integer(68..9000),
+            mtu2 <- StreamData.integer(68..9000),
+            mtu1 != mtu2
+          ) do
+      MockNetlink.link_up(iface, mtu: mtu1)
+      Process.sleep(30)
+      MockNetlink.link_up(iface, mtu: mtu2)
+      Process.sleep(50)
+
+      assert Ethernet.mtu(iface) == mtu2,
+             "Expected mtu #{mtu2} after second link_up on #{iface}, got: #{Ethernet.mtu(iface)}"
+    end
+  end
 end

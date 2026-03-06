@@ -182,4 +182,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.get(key) == {:error, :not_found}
     end
   end
+
+  property "put with list value always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.list_of(StreamData.integer(), max_length: 10)
+          ) do
+      assert SecretStore.put(key, value) == :ok
+    end
+  end
 end

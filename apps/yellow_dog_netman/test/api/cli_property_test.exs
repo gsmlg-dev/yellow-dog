@@ -280,4 +280,16 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert %{"error" => "path too long"} = result
     end
   end
+
+  property "connection.add with dot-dot path always returns a path error" do
+    check all(segment <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      path = "../#{segment}.toml"
+
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+
+      assert %{"error" => _} = result,
+             "Expected error for dot-dot path #{path}, got: #{inspect(result)}"
+    end
+  end
 end
