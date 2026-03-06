@@ -199,4 +199,21 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected carrier? false after link_removed on #{iface}"
     end
   end
+
+  property "mtu returns nil after link_removed" do
+    check all(
+            iface <- iface_gen(),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      MockNetlink.link_up(iface, mtu: mtu)
+      Process.sleep(50)
+      assert Ethernet.mtu(iface) == mtu
+
+      MockNetlink.link_removed(iface)
+      Process.sleep(50)
+
+      assert Ethernet.mtu(iface) == nil,
+             "Expected nil mtu after link_removed on #{iface}"
+    end
+  end
 end

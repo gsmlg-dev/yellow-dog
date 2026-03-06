@@ -263,4 +263,17 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "list_links contains duplicate interface entries: #{inspect(ifaces)}"
     end
   end
+
+  property "get_link mtu field is always nil or a positive integer" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+
+      assert is_nil(link.mtu) or (is_integer(link.mtu) and link.mtu > 0),
+             "Expected nil or positive integer mtu, got: #{inspect(link.mtu)}"
+    end
+  end
 end
