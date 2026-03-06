@@ -228,6 +228,21 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "link_removed then link_up restores the link entry" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_removed(iface)
+      Process.sleep(30)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil, "Expected link to be restored after link_removed then link_up on #{iface}"
+      assert link.state == :up
+    end
+  end
+
   property "set_mtu always returns :ok or {:error, _} for valid positive MTU" do
     check all(
             iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),

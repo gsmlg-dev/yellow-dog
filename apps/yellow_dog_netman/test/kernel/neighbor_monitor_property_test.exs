@@ -348,6 +348,29 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "del action never increases the neighbor count" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      before_count = length(NeighborMonitor.get_neighbors(iface))
+
+      send_neighbor_event(%{
+        "action" => "del",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      after_count = length(NeighborMonitor.get_neighbors(iface))
+
+      assert after_count <= before_count,
+             "del action increased neighbor count on #{iface}: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "all entries in get_neighbors have :interface field matching the queried interface" do
     check all(
             iface <- iface_gen(),

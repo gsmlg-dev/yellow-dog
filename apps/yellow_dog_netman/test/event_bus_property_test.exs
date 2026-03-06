@@ -254,6 +254,32 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     end
   end
 
+  property "concurrent subscribes from two processes both receive {:ok, _}" do
+    check all(topic <- topic_gen()) do
+      parent = self()
+
+      t1 =
+        Task.async(fn ->
+          result = EventBus.subscribe(topic)
+          send(parent, {:sub1, result})
+          EventBus.unsubscribe(topic)
+        end)
+
+      t2 =
+        Task.async(fn ->
+          result = EventBus.subscribe(topic)
+          send(parent, {:sub2, result})
+          EventBus.unsubscribe(topic)
+        end)
+
+      Task.await(t1, 1000)
+      Task.await(t2, 1000)
+
+      assert_receive {:sub1, {:ok, _}}, 500
+      assert_receive {:sub2, {:ok, _}}, 500
+    end
+  end
+
   property "re-subscribe after unsubscribe resumes delivery" do
     check all(
             topic <- topic_gen(),
