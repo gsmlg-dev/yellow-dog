@@ -206,4 +206,16 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "route_metrics with empty list always returns empty map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert PolicyEngine.route_metrics([]) == %{}
+    end
+  end
+
+  property "dns_priority with empty list always returns empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert PolicyEngine.dns_priority([]) == []
+    end
+  end
 end

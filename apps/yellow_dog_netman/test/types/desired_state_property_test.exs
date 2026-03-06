@@ -202,4 +202,18 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected #{count} connections but got #{map_size(desired.connections)}"
     end
   end
+
+  property "profiles with duplicate IDs produce at most 1 connection" do
+    check all(
+            profile <- profile_gen(),
+            iface1 <- interface_gen(),
+            iface2 <- interface_gen()
+          ) do
+      pairs = [{profile, iface1}, {profile, iface2}]
+      desired = DesiredState.from_profiles(pairs)
+
+      assert map_size(desired.connections) == 1,
+             "Expected 1 connection for duplicate profile ID, got #{map_size(desired.connections)}"
+    end
+  end
 end

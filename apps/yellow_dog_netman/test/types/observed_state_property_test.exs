@@ -245,4 +245,26 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert state.routes == []
     end
   end
+
+  property "remove_link leaves the interface's addresses unchanged" do
+    check all(
+            link <- link_gen(),
+            addr <- address_gen()
+          ) do
+      addr = %{addr | interface: link.interface}
+
+      state =
+        ObservedState.new()
+        |> ObservedState.put_link(link)
+        |> ObservedState.add_address(addr)
+        |> ObservedState.remove_link(link.interface)
+
+      assert not Map.has_key?(state.links, link.interface)
+
+      addresses = state.addresses[link.interface] || []
+
+      assert Enum.any?(addresses, &(&1.address == addr.address)),
+             "Address #{addr.address} should still be present after remove_link"
+    end
+  end
 end
