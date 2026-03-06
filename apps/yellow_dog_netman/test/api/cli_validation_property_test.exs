@@ -114,4 +114,44 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "connection.up and connection.down gave different results for #{inspect(id)}"
     end
   end
+
+  @known_methods ~w(status device device.list connection connection.list
+                    connection.up connection.down connection.delete connection.add)
+
+  property "random unknown method always returns 'unknown method' error" do
+    check all(
+            method <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.filter(&(&1 not in @known_methods))
+          ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert %{"error" => "unknown method: " <> ^method} = result
+    end
+  end
+
+  property "command without method key always returns invalid command format" do
+    check all(
+            extra <-
+              StreamData.map_of(
+                StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+                |> StreamData.filter(&(&1 != "method")),
+                StreamData.string(:alphanumeric, max_length: 10),
+                max_length: 3
+              )
+          ) do
+      result = CLI.handle_command(extra)
+      assert result == %{"error" => "invalid command format"}
+    end
+  end
+
+  property "connection methods requiring id return descriptive error when id param missing" do
+    check all(
+            method <-
+              StreamData.member_of(["connection.up", "connection.down", "connection.delete"])
+          ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert %{"error" => error} = result
+      assert String.contains?(error, "requires") and String.contains?(error, "'id' parameter")
+    end
+  end
 end

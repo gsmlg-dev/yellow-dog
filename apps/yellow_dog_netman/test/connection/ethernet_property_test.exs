@@ -94,4 +94,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Ethernet.ethernet?(iface) == false
     end
   end
+
+  property "link with carrier: false always returns false for carrier?" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      assert Ethernet.carrier?(iface) == false
+    end
+  end
 end
