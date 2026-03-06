@@ -307,4 +307,26 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "all connections in list_connections have valid FSM state fields" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+      valid_states = [:unavailable, :disconnected, :prepare, :configuring,
+                      :ip_check, :activated, :deactivating, :failed]
+
+      for conn <- connections do
+        assert is_map(conn),
+               "Expected map in list_connections, got: #{inspect(conn)}"
+
+        assert Map.has_key?(conn, :interface),
+               "Connection missing :interface field"
+
+        assert Map.has_key?(conn, :state),
+               "Connection missing :state field"
+
+        assert conn.state in valid_states,
+               "Invalid state #{inspect(conn.state)} in connection"
+      end
+    end
+  end
 end

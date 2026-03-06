@@ -172,6 +172,21 @@ defmodule YellowDog.NetmanPropertyTest do
     end
   end
 
+  property "list_connections always returns a list of maps with :interface field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+      assert is_list(connections)
+
+      for conn <- connections do
+        assert is_map(conn),
+               "Expected map in list_connections, got: #{inspect(conn)}"
+
+        assert Map.has_key?(conn, :interface),
+               "Connection missing :interface field: #{inspect(conn)}"
+      end
+    end
+  end
+
   property "every profile in list_profiles is retrievable via get_profile" do
     check all(_ <- StreamData.constant(:ok)) do
       profiles = Netman.list_profiles()

@@ -325,4 +325,16 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "event with float type value always dispatches as :unknown" do
+    check all(float_type <- StreamData.float()) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => float_type, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end
