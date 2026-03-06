@@ -626,6 +626,17 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "observe/0 links map keys are all binary strings" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ReconciliationEngine.observe()
+
+      for {key, _} <- state.links do
+        assert is_binary(key),
+               "Expected binary interface key in observe/0 links, got: #{inspect(key)}"
+      end
+    end
+  end
+
   property "every activation diff has non-nil binary interface and profile_id in params" do
     check all(observed <- observed_state_gen()) do
       ifaces = Map.keys(observed.links)

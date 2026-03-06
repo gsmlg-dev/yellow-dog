@@ -318,6 +318,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "add_route creates exactly one entry in routes when starting from empty" do
+    check all(route <- route_gen()) do
+      state = ObservedState.new() |> ObservedState.add_route(route)
+      assert length(state.routes) == 1,
+             "Expected 1 route after add_route, got #{length(state.routes)}"
+    end
+  end
+
   property "remove_address for a different address value leaves original address intact" do
     check all(
             addr1 <- address_gen(),
