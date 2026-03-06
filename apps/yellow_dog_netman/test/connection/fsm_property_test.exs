@@ -372,6 +372,32 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM transitions to :unavailable after link_removed from :disconnected" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      interface = "flinkrm_#{seed}"
+      profile = make_profile(interface)
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state1} = FSM.get_state(pid)
+      assert state1.state == :disconnected
+
+      MockNetlink.link_removed(interface)
+      Process.sleep(50)
+
+      {:ok, state2} = FSM.get_state(pid)
+
+      assert state2.state == :unavailable,
+             "Expected :unavailable after link_removed, got: #{state2.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "autoconnect: false profile stays in :disconnected after link_up with carrier" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fnoac_#{seed}"

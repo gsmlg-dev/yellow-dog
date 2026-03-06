@@ -265,6 +265,16 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
     end
   end
 
+  property "list_rules entries are all unique by priority" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      priorities = Enum.map(rules, & &1.priority)
+
+      assert length(priorities) == length(Enum.uniq(priorities)),
+             "list_rules contains duplicate priorities: #{inspect(priorities)}"
+    end
+  end
+
   property "all rules in list_rules always have a non-nil integer table field" do
     check all(
             priority <- priority_gen(),

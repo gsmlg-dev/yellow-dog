@@ -347,4 +347,27 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "all entries in get_neighbors have :interface field matching the queried interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+
+      for n <- neighbors do
+        assert n.interface == iface,
+               "Neighbor has interface #{inspect(n.interface)}, expected #{iface}"
+      end
+    end
+  end
 end
