@@ -454,6 +454,29 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "neighbor mac field is always a binary string" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      entry = Enum.find(neighbors, &(&1.address == addr))
+      assert entry != nil
+
+      assert is_binary(entry.mac),
+             "Expected binary mac field, got: #{inspect(entry.mac)}"
+    end
+  end
+
   property "get_neighbors entries always have non-nil address and mac fields" do
     check all(
             iface <- iface_gen(),

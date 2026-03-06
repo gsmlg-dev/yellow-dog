@@ -342,6 +342,16 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
     end
   end
 
+  property "flush on a fresh interface always returns {0, 0}" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "am_flush_#{seed}"
+      result = AddressManager.flush(fresh_iface)
+
+      assert result == {0, 0},
+             "Expected {0, 0} for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
+
   property "address_removed event decrements get_addresses count by 1 when address was present" do
     check all(
             iface <- iface_gen(),

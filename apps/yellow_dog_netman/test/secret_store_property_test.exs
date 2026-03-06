@@ -64,6 +64,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     end
   end
 
+  property "get with empty string key always returns {:error, :not_found}" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert SecretStore.get("") == {:error, :not_found}
+    end
+  end
+
   property "delete-put-delete sequence always returns :not_found for get" do
     check all(
             key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
