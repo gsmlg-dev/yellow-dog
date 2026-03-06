@@ -87,6 +87,20 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     end
   end
 
+  property "subscription to topic A never receives messages on unrelated topic B" do
+    check all(
+            topic_a <- topic_gen(),
+            topic_b <- topic_gen(),
+            topic_a != topic_b,
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic_a)
+      EventBus.publish(topic_b, message)
+      refute_receive {:netman_event, ^topic_b, _}, 30
+      EventBus.unsubscribe(topic_a)
+    end
+  end
+
   property "unsubscribe stops delivery for exact subscriptions" do
     check all(
             topic <- topic_gen(),

@@ -163,6 +163,18 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "list always contains recently put profile" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+      profiles = ProfileStore.list()
+
+      assert Enum.any?(profiles, &(&1.id == profile.id)),
+             "Expected profile #{profile.id} in list/0 result"
+
+      ProfileStore.delete(profile.id)
+    end
+  end
+
   property "second put overwrites first (last write wins)" do
     check all(
             p1 <- profile_gen(),

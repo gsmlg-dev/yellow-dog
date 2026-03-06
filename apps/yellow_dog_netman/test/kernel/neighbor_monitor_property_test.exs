@@ -108,6 +108,29 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "neighbors on iface1 do not appear in iface2 get_neighbors" do
+    check all(
+            iface1 <- iface_gen(),
+            iface2 <- iface_gen(),
+            iface1 != iface2,
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface1,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      neighbors2 = NeighborMonitor.get_neighbors(iface2)
+
+      refute Enum.any?(neighbors2, &(&1.address == addr and &1.interface == iface1)),
+             "Neighbor on #{iface1} must not appear in #{iface2}'s list"
+    end
+  end
+
   property "NUD state is always normalized to a known atom" do
     check all(
             iface <- iface_gen(),
