@@ -146,4 +146,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_map(diff.params), "Expected params to be a map, got: #{inspect(diff.params)}"
     end
   end
+
+  property "diffs with same action but different non-nil interfaces are never equal" do
+    check all(
+            action <- action_gen(),
+            i1 <- interface_gen(),
+            i2 <- interface_gen(),
+            i1 != i2
+          ) do
+      d1 = Diff.new(action, i1)
+      d2 = Diff.new(action, i2)
+      assert d1 != d2,
+             "Expected diffs with different interfaces (#{i1}, #{i2}) to be unequal"
+    end
+  end
 end

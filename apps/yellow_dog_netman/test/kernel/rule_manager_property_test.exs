@@ -184,6 +184,28 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
     end
   end
 
+  property "rule added without source/destination/interface has those fields as nil" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+      rule = Enum.find(rules, &(&1.priority == priority))
+      assert rule != nil
+
+      assert rule.source == nil,
+             "Expected nil source when not in event, got: #{inspect(rule.source)}"
+
+      assert rule.destination == nil,
+             "Expected nil destination when not in event, got: #{inspect(rule.destination)}"
+
+      assert rule.interface == nil,
+             "Expected nil interface when not in event, got: #{inspect(rule.interface)}"
+    end
+  end
+
   property "add N rules at distinct priorities produces N entries in list" do
     check all(
             priorities <-

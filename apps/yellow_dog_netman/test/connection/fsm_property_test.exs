@@ -247,6 +247,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM lease and error are nil in initial state before activation" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "flease_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.lease == nil, "Expected nil lease in initial state, got: #{inspect(state.lease)}"
+      assert state.error == nil, "Expected nil error in initial state, got: #{inspect(state.error)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "FSM priority always matches profile's autoconnect_priority" do
     check all(
             seed <- StreamData.integer(1..99_999),
