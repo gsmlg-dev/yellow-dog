@@ -193,6 +193,22 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "list count increases by exactly 1 after putting a new unique profile" do
+    check all(profile <- profile_gen()) do
+      unique_id = "pscount-#{:erlang.unique_integer([:monotonic, :positive])}"
+      profile = %{profile | id: unique_id}
+
+      before_count = length(ProfileStore.list())
+      ProfileStore.put(profile.id, profile)
+      after_count = length(ProfileStore.list())
+
+      assert after_count == before_count + 1,
+             "Expected list to grow by 1: #{before_count} -> #{after_count}"
+
+      ProfileStore.delete(profile.id)
+    end
+  end
+
   property "import_file on a valid TOML file returns {:ok, profile}" do
     check all(_ <- StreamData.constant(:ok), max_runs: 3) do
       uid = :rand.uniform(999_999)

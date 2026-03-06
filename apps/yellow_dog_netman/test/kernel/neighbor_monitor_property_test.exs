@@ -199,6 +199,32 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "unknown action type is silently ignored and does not add a neighbor" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen(),
+            unknown_action <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+              |> StreamData.filter(&(&1 not in ["add", "del"]))
+          ) do
+      before_count = length(NeighborMonitor.get_neighbors(iface))
+
+      send_neighbor_event(%{
+        "action" => unknown_action,
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      after_count = length(NeighborMonitor.get_neighbors(iface))
+
+      assert after_count == before_count,
+             "Unknown action '#{unknown_action}' changed neighbor count: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "neighbor entries always have required fields after add" do
     check all(
             iface <- iface_gen(),
