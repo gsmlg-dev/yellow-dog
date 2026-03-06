@@ -253,4 +253,21 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "re-subscribe after unsubscribe resumes delivery" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.unsubscribe(topic)
+
+      # After unsubscribe, re-subscribe should restore delivery
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.publish(topic, message)
+      assert_receive {:netman_event, ^topic, ^message}, 100
+
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

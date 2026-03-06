@@ -277,6 +277,16 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "links map size equals number of distinct interfaces added" do
+    check all(links <- StreamData.list_of(link_gen(), min_length: 1, max_length: 5)) do
+      state = Enum.reduce(links, ObservedState.new(), &ObservedState.put_link(&2, &1))
+      unique_ifaces = links |> Enum.map(& &1.interface) |> Enum.uniq() |> length()
+
+      assert map_size(state.links) == unique_ifaces,
+             "Expected #{unique_ifaces} links, got #{map_size(state.links)}"
+    end
+  end
+
   property "remove_link leaves the interface's addresses unchanged" do
     check all(
             link <- link_gen(),

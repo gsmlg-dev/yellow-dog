@@ -218,4 +218,21 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert PolicyEngine.dns_priority([]) == []
     end
   end
+
+  property "route_metrics map size equals number of input connections" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_gen(), min_length: 1, max_length: 8)
+          ) do
+      indexed =
+        connections
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> %{c | id: "sz-#{i}-#{c.id}"} end)
+
+      metrics = PolicyEngine.route_metrics(indexed)
+
+      assert map_size(metrics) == length(indexed),
+             "Expected #{length(indexed)} metrics but got #{map_size(metrics)}"
+    end
+  end
 end
