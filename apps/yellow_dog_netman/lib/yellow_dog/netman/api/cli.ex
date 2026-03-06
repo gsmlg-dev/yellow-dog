@@ -326,7 +326,7 @@ defmodule YellowDog.Netman.API.CLI do
     %{"error" => "connection.add requires 'file' parameter"}
   end
 
-  def handle_command(%{"method" => method}) do
+  def handle_command(%{"method" => method}) when is_binary(method) do
     %{"error" => "unknown method: #{method}"}
   end
 

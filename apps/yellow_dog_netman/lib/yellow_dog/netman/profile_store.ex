@@ -14,6 +14,7 @@ defmodule YellowDog.Netman.ProfileStore do
   alias YellowDog.Netman.Types.Profile
 
   @default_profile_dir "/etc/yellowdog/netman/profiles"
+  @max_profile_file_bytes 1_048_576
 
   defstruct [:profile_dir, :watcher_pid, profiles: %{}]
 
@@ -204,12 +205,15 @@ defmodule YellowDog.Netman.ProfileStore do
     if symlink?(path) do
       {:error, {:symlink_rejected, path}}
     else
-      case File.read(path) do
-        {:ok, content} ->
-          case Toml.decode(content) do
-            {:ok, toml} -> Profile.from_toml(toml)
-            {:error, reason} -> {:error, {:toml_parse, reason}}
-          end
+      with {:ok, %{size: size}} when size <= @max_profile_file_bytes <- File.stat(path),
+           {:ok, content} <- File.read(path) do
+        case Toml.decode(content) do
+          {:ok, toml} -> Profile.from_toml(toml)
+          {:error, reason} -> {:error, {:toml_parse, reason}}
+        end
+      else
+        {:ok, %{size: size}} ->
+          {:error, {:file_too_large, size, @max_profile_file_bytes}}
 
         {:error, reason} ->
           {:error, {:file_read, reason}}
