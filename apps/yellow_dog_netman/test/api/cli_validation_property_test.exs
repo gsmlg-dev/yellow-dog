@@ -288,4 +288,23 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected error map for device.show with no params, got: #{inspect(result)}"
     end
   end
+
+  property "connection.down with valid ID does not produce identifier validation error" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => id}})
+
+      case result do
+        %{"error" => msg} ->
+          refute msg in [
+                   "identifier cannot be empty",
+                   "identifier too long",
+                   "identifier contains invalid characters"
+                 ],
+                 "Unexpected validation error for valid id #{inspect(id)}: #{msg}"
+
+        %{"result" => _} ->
+          :ok
+      end
+    end
+  end
 end

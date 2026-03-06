@@ -296,4 +296,15 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected count to return to #{initial_count} after start+stop, got #{final_count}"
     end
   end
+
+  property "every connection in list_connections is findable by interface" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+
+      for {iface, _pid} <- connections do
+        assert match?({:ok, _}, ConnSupervisor.find_connection(iface)),
+               "Interface #{iface} from list_connections is not findable"
+      end
+    end
+  end
 end
