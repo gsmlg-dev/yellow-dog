@@ -100,4 +100,12 @@ defmodule YellowDog.NetmanPropertyTest do
              "Unexpected delete_profile result: #{inspect(result)}"
     end
   end
+
+  property "default_route always returns {:ok, _} or :none" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.default_route()
+      assert result == :none or match?({:ok, _}, result),
+             "Unexpected default_route result: #{inspect(result)}"
+    end
+  end
 end

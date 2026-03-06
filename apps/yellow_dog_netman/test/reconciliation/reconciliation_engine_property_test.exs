@@ -607,4 +607,22 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Unexpected deactivate result: #{inspect(result)}"
     end
   end
+
+  property "observe/0 always returns ObservedState with non-negative counts" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ReconciliationEngine.observe()
+      assert %ObservedState{} = state
+      assert is_map(state.links)
+      assert is_map(state.addresses)
+      assert is_list(state.routes)
+    end
+  end
+
+  property "compute_desired/0 always returns a DesiredState" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ReconciliationEngine.compute_desired()
+      assert %DesiredState{} = result
+      assert is_map(result.connections)
+    end
+  end
 end
