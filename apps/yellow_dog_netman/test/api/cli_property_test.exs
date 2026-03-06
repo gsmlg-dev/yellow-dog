@@ -162,4 +162,30 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert %{"error" => _} = result
     end
   end
+
+  property "connection.add with non-.toml extension always returns profile must be toml error" do
+    check all(name <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      path = "/tmp/test_#{name}.json"
+      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+      assert %{"error" => "profile must be a .toml file"} = result
+    end
+  end
+
+  property "connection.add with path outside profile dir always returns path error" do
+    check all(name <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      path = "/tmp/outside_#{name}.toml"
+      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+      assert %{"error" => "path must be within the profile directory"} = result
+    end
+  end
+
+  property "connection.add with any file path always returns a map with one key" do
+    check all(path <- StreamData.string(:printable, min_length: 1, max_length: 100)) do
+      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+      assert is_map(result)
+      keys = Map.keys(result)
+      assert length(keys) == 1
+      assert hd(keys) in ["error", "result"]
+    end
+  end
 end
