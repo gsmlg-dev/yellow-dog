@@ -193,6 +193,42 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "import_file on a valid TOML file returns {:ok, profile}" do
+    check all(_ <- StreamData.constant(:ok), max_runs: 3) do
+      uid = :rand.uniform(999_999)
+      id = "ps_import_#{uid}"
+      path = "/tmp/#{id}.toml"
+
+      toml = """
+      [connection]
+      id = "#{id}"
+      type = "ethernet"
+      autoconnect = false
+
+      [ipv4]
+      method = "disabled"
+
+      [ipv6]
+      method = "disabled"
+      """
+
+      File.write!(path, toml)
+
+      try do
+        result = ProfileStore.import_file(path)
+
+        assert match?({:ok, %Profile{}}, result),
+               "Expected {:ok, %Profile{}}, got: #{inspect(result)}"
+
+        {:ok, profile} = result
+        assert profile.id == id
+        ProfileStore.delete(id)
+      after
+        File.rm(path)
+      end
+    end
+  end
+
   property "import_file on a file larger than 1MB returns file_too_large error" do
     check all(_ <- StreamData.constant(:ok), max_runs: 1) do
       path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"
