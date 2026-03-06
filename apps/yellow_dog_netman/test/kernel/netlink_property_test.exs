@@ -141,4 +141,16 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Netlink.subscribe() == :ok
     end
   end
+
+  property "command always returns :ok or {:error, _} for any map command" do
+    check all(
+            cmd_type <-
+              StreamData.member_of(["link_set", "addr_add", "addr_del", "route_add", "route_del"]),
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
+      result = Netlink.command(%{"cmd" => cmd_type, "interface" => iface})
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected command result: #{inspect(result)}"
+    end
+  end
 end

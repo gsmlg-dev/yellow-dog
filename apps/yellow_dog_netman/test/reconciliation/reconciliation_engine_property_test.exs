@@ -571,4 +571,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       end
     end
   end
+
+  property "reconcile always returns :ok and keeps engine alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ReconciliationEngine.reconcile()
+      assert result == :ok
+      # Give debounce time to fire
+      Process.sleep(150)
+      assert Process.alive?(Process.whereis(ReconciliationEngine))
+    end
+  end
 end
