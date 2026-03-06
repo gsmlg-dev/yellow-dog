@@ -154,6 +154,20 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
     end
   end
 
+  property "command with unknown cmd type always returns :ok or {:error, _}" do
+    check all(
+            unknown_cmd <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.filter(
+                &(&1 not in ["link_set", "addr_add", "addr_del", "route_add", "route_del"])
+              )
+          ) do
+      result = Netlink.command(%{"cmd" => unknown_cmd})
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected command result for #{inspect(unknown_cmd)}: #{inspect(result)}"
+    end
+  end
+
   property "events without type field always dispatch as :unknown" do
     check all(extra <- extra_field_gen()) do
       Netlink.subscribe()

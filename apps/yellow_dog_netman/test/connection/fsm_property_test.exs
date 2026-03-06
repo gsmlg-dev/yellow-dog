@@ -247,6 +247,26 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM priority always matches profile's autoconnect_priority" do
+    check all(
+            seed <- StreamData.integer(1..99_999),
+            priority <- StreamData.integer(0..1000),
+            max_runs: 30
+          ) do
+      interface = "fprio_#{seed}"
+      profile = %{make_profile(interface) | autoconnect_priority: priority}
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.priority == priority,
+             "FSM priority #{state.priority} != profile priority #{priority}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()
