@@ -171,6 +171,30 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "identifier of exactly 64 chars always passes validation without error" do
+    check all(char <- StreamData.member_of(Enum.to_list(?a..?z))) do
+      id = String.duplicate(<<char>>, 64)
+
+      result =
+        CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
+      case result do
+        %{"error" => "profile not found"} ->
+          :ok
+
+        %{"result" => _} ->
+          :ok
+
+        %{"error" => msg} ->
+          refute msg == "identifier too long",
+                 "Unexpected too-long error for 64-char id: #{msg}"
+
+        other ->
+          flunk("Unexpected result: #{inspect(other)}")
+      end
+    end
+  end
+
   property "connection.delete and connection.up produce identical validation errors for same invalid ID" do
     check all(id <- invalid_id_gen()) do
       delete_result =

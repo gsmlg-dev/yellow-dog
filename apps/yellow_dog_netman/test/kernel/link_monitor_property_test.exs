@@ -55,6 +55,19 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "get_link result always has :interface field matching the queried interface" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+
+      assert link.interface == iface,
+             "Expected link.interface == #{iface}, got #{inspect(link.interface)}"
+    end
+  end
+
   property "link_up then link_down then link_up state is :up" do
     check all(iface <- iface_gen()) do
       MockNetlink.link_up(iface, carrier: true)
