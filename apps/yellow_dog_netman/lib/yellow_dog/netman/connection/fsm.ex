@@ -608,9 +608,7 @@ defmodule YellowDog.Netman.Connection.FSM do
             end
 
           {:error, {:invalid_cidr, invalid}} ->
-            Logger.warning(
-              "Invalid static IPv4 CIDR for #{data.interface}: #{inspect(invalid)}"
-            )
+            Logger.warning("Invalid static IPv4 CIDR for #{data.interface}: #{inspect(invalid)}")
 
             transition(%{data | error: {:invalid_cidr, invalid}}, :configuring, :failed)
         end
@@ -636,9 +634,7 @@ defmodule YellowDog.Netman.Connection.FSM do
             end
 
           {:error, {:invalid_cidr, invalid}} ->
-            Logger.warning(
-              "Invalid static IPv6 CIDR for #{data.interface}: #{inspect(invalid)}"
-            )
+            Logger.warning("Invalid static IPv6 CIDR for #{data.interface}: #{inspect(invalid)}")
         end
 
       _ ->
