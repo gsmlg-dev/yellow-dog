@@ -359,4 +359,24 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "route_removed event removes route from get_routes" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
+      Process.sleep(50)
+
+      assert Enum.any?(RouteManager.get_routes(iface), &(&1.destination == dest and &1.gateway == gw))
+
+      MockNetlink.route_removed(destination: dest, gateway: gw, interface: iface)
+      Process.sleep(50)
+
+      refute Enum.any?(RouteManager.get_routes(iface), &(&1.destination == dest and &1.gateway == gw)),
+             "Route #{dest} via #{gw} should be absent after route_removed"
+    end
+  end
 end

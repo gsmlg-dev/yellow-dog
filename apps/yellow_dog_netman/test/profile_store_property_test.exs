@@ -338,4 +338,19 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected error for non-existent path #{path}, got: #{inspect(result)}"
     end
   end
+
+  property "get always returns the same value across repeated calls for same id" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+
+      result1 = ProfileStore.get(profile.id)
+      result2 = ProfileStore.get(profile.id)
+      result3 = ProfileStore.get(profile.id)
+
+      assert result1 == result2 and result2 == result3,
+             "get returned inconsistent results for #{profile.id}"
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end
