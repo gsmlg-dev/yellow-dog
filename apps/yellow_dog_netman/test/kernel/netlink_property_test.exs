@@ -202,6 +202,14 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
     end
   end
 
+  property "command with empty map always returns :ok or {:error, _}" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netlink.command(%{})
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected result for empty command map: #{inspect(result)}"
+    end
+  end
+
   property "two different event types dispatched sequentially are both received" do
     check all(
             type1 <- StreamData.member_of(@known_event_types),

@@ -276,6 +276,18 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "all entries in list_neighbors always have valid state atoms" do
+    check all(_ <- StreamData.constant(:ok)) do
+      valid_states = [:reachable, :stale, :delay, :probe, :failed, :permanent, :none]
+      neighbors = NeighborMonitor.list_neighbors()
+
+      for n <- neighbors do
+        assert n.state in valid_states,
+               "Invalid state atom: #{inspect(n.state)} in entry #{inspect(n)}"
+      end
+    end
+  end
+
   property "two distinct addresses on same interface both appear in get_neighbors" do
     check all(
             iface <- iface_gen(),

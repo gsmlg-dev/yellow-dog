@@ -161,6 +161,13 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "Diff with empty string interface stores it without modification" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action, "", %{})
+      assert diff.interface == ""
+    end
+  end
+
   property "new/3 always returns a %Diff{} struct (not a plain map)" do
     check all(
             action <- action_gen(),
