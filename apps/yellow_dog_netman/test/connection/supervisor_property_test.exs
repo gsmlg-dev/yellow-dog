@@ -340,4 +340,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "list_connections never contains duplicate interface names" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+      ifaces = Enum.map(connections, & &1.interface)
+
+      assert length(ifaces) == length(Enum.uniq(ifaces)),
+             "list_connections contains duplicate interfaces: #{inspect(ifaces)}"
+    end
+  end
 end

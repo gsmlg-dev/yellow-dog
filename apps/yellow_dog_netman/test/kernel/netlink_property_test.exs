@@ -337,4 +337,27 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "extra event fields are always preserved in the dispatched payload" do
+    check all(
+            event_type <- StreamData.member_of(@known_event_types),
+            extra <- extra_field_gen()
+          ) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      event = Map.merge(extra, %{"type" => event_type, "_tag" => tag})
+      send(Netlink, {:mock_event, event})
+
+      expected_atom = String.to_atom(event_type)
+
+      assert_receive {:netlink_event, {^expected_atom, received}}, 500
+
+      for {key, value} <- extra do
+        assert received[key] == value,
+               "Expected extra field #{key}=#{inspect(value)} to be preserved in dispatched event"
+      end
+    end
+  end
 end
