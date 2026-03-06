@@ -324,4 +324,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       refute_receive {:netman_event, ^topic, ^message}, 50
     end
   end
+
+  property "after unsubscribe, subscribe to same topic still succeeds" do
+    check all(topic <- topic_gen()) do
+      EventBus.unsubscribe(topic)
+      result = EventBus.subscribe(topic)
+      assert match?({:ok, _}, result),
+             "Expected subscribe to succeed after unsubscribe, got: #{inspect(result)}"
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

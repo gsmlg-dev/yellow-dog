@@ -107,4 +107,15 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, value) == :ok
     end
   end
+
+  property "delete of one key does not affect another key's get result" do
+    check all(
+            key1 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            key2 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            key1 != key2
+          ) do
+      SecretStore.delete(key1)
+      assert SecretStore.get(key2) == {:error, :not_found}
+    end
+  end
 end

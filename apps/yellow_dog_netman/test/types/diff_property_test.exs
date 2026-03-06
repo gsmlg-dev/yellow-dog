@@ -251,4 +251,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected diffs with different actions (#{a1}, #{a2}) to be unequal"
     end
   end
+
+  property "Diff struct always has exactly 3 fields: action, interface, params" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      struct_keys = diff |> Map.from_struct() |> Map.keys() |> Enum.sort()
+
+      assert struct_keys == [:action, :interface, :params],
+             "Expected exactly [:action, :interface, :params], got: #{inspect(struct_keys)}"
+    end
+  end
 end
