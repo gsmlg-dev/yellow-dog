@@ -64,6 +64,18 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     end
   end
 
+  property "delete-put-delete sequence always returns :not_found for get" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.string(:alphanumeric, max_length: 64)
+          ) do
+      SecretStore.delete(key)
+      SecretStore.put(key, value)
+      SecretStore.delete(key)
+      assert SecretStore.get(key) == {:error, :not_found}
+    end
+  end
+
   property "put then delete then get always returns {:error, :not_found}" do
     check all(
             key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),

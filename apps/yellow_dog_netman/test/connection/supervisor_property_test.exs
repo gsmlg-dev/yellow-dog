@@ -308,6 +308,17 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     end
   end
 
+  property "list_connections entries always have binary :interface field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+
+      for conn <- connections do
+        assert is_binary(conn[:interface]),
+               "Expected binary :interface in connection, got: #{inspect(conn[:interface])}"
+      end
+    end
+  end
+
   property "all connections in list_connections have valid FSM state fields" do
     check all(_ <- StreamData.constant(:ok)) do
       connections = ConnSupervisor.list_connections()

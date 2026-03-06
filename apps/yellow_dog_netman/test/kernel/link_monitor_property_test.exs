@@ -264,6 +264,20 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "link_up then link_removed removes interface from list_links" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_removed(iface)
+      Process.sleep(50)
+
+      links = LinkMonitor.list_links()
+
+      refute Enum.any?(links, &(&1.interface == iface)),
+             "Expected #{iface} to be absent from list_links after link_removed"
+    end
+  end
+
   property "get_link mtu field is always nil or a positive integer" do
     check all(iface <- iface_gen()) do
       MockNetlink.link_up(iface, carrier: true)
