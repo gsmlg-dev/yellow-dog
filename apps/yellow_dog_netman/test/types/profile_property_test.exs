@@ -451,6 +451,39 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  # --- IPv4 method validation ---
+
+  property "invalid IPv4 methods are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            bad_method <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+              |> StreamData.filter(&(&1 not in ["auto", "manual", "disabled"]))
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv4" => %{"method" => bad_method}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "ipv4.method"
+    end
+  end
+
+  property "non-ethernet connection types are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            bad_type <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.filter(&(&1 != "ethernet"))
+          ) do
+      toml = %{"connection" => %{"id" => id, "type" => bad_type}}
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "connection.type"
+    end
+  end
+
   # --- IPv6 validation properties ---
 
   property "invalid IPv6 methods are rejected" do
