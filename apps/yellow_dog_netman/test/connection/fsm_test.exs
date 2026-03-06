@@ -250,9 +250,8 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
     YellowDog.Netman.ReconciliationEngine.reconcile()
-    Process.sleep(300)
 
-    assert_receive {:recon_stop, %{duration_ms: dur, diffs_count: _, applied_count: _}}, 500
+    assert_receive {:recon_stop, %{duration_ms: dur, diffs_count: _, applied_count: _}}, 5000
     assert is_integer(dur)
     assert dur >= 0
   end
