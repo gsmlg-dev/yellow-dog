@@ -483,7 +483,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp apply_diff(%Diff{action: :set_mtu, interface: iface, params: %{mtu: mtu}}) do
     case LinkMonitor.set_mtu(iface, mtu) do
-      :ok -> :ok
+      :ok ->
+        :ok
+
       {:error, reason} ->
         Logger.warning("Failed to set MTU on #{iface}: #{inspect(reason)}")
         :ok
@@ -492,7 +494,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp apply_diff(%Diff{action: :set_link_up, interface: iface}) do
     case LinkMonitor.set_link_up(iface) do
-      :ok -> :ok
+      :ok ->
+        :ok
+
       {:error, reason} ->
         Logger.warning("Failed to set link up on #{iface}: #{inspect(reason)}")
         :ok
@@ -501,7 +505,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp apply_diff(%Diff{action: :set_link_down, interface: iface}) do
     case LinkMonitor.set_link_down(iface) do
-      :ok -> :ok
+      :ok ->
+        :ok
+
       {:error, reason} ->
         Logger.warning("Failed to set link down on #{iface}: #{inspect(reason)}")
         :ok
