@@ -202,6 +202,28 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
     end
   end
 
+  property "two different event types dispatched sequentially are both received" do
+    check all(
+            type1 <- StreamData.member_of(@known_event_types),
+            type2 <- StreamData.member_of(@known_event_types),
+            type1 != type2
+          ) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag1 = unique_tag()
+      tag2 = unique_tag()
+      atom1 = String.to_atom(type1)
+      atom2 = String.to_atom(type2)
+
+      send(Netlink, {:mock_event, %{"type" => type1, "_tag" => tag1}})
+      send(Netlink, {:mock_event, %{"type" => type2, "_tag" => tag2}})
+
+      assert_receive {:netlink_event, {^atom1, %{"_tag" => ^tag1}}}, 500
+      assert_receive {:netlink_event, {^atom2, %{"_tag" => ^tag2}}}, 500
+    end
+  end
+
   property "event with type value nil always dispatches as :unknown" do
     check all(extra <- extra_field_gen()) do
       Netlink.subscribe()

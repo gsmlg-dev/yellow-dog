@@ -224,6 +224,25 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
     end
   end
 
+  property "adding to unused priority increases list count by exactly 1" do
+    check all(
+            priority <- StreamData.integer(90_000..99_999),
+            table <- table_gen()
+          ) do
+      # Remove any pre-existing entry at this priority
+      send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
+
+      before_count = length(RuleManager.list_rules())
+
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      after_count = length(RuleManager.list_rules())
+
+      assert after_count == before_count + 1,
+             "Expected count to increase by 1: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "add N rules at distinct priorities produces N entries in list" do
     check all(
             priorities <-
