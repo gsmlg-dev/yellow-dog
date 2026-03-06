@@ -235,4 +235,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert result == state
     end
   end
+
+  property "new always returns empty ObservedState with no links, addresses, or routes" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert %ObservedState{} = state
+      assert state.links == %{}
+      assert state.addresses == %{}
+      assert state.routes == []
+    end
+  end
 end

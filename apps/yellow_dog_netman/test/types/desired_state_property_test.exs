@@ -182,4 +182,24 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       end
     end
   end
+
+  property "N profiles with distinct IDs always produce exactly N connections" do
+    check all(
+            count <- StreamData.integer(1..8),
+            profiles <- StreamData.list_of(profile_gen(), length: count),
+            ifaces <- StreamData.list_of(interface_gen(), length: count)
+          ) do
+      # Give each profile a unique prefix to guarantee unique IDs
+      indexed_profiles =
+        profiles
+        |> Enum.with_index()
+        |> Enum.map(fn {p, i} -> %{p | id: "uniq-#{i}-#{p.id}"} end)
+
+      pairs = Enum.zip(indexed_profiles, ifaces)
+      desired = DesiredState.from_profiles(pairs)
+
+      assert map_size(desired.connections) == count,
+             "Expected #{count} connections but got #{map_size(desired.connections)}"
+    end
+  end
 end
