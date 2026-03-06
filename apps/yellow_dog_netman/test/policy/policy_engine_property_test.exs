@@ -235,4 +235,19 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected #{length(indexed)} metrics but got #{map_size(metrics)}"
     end
   end
+
+  property "route_metrics for a single connection returns a size-1 map with valid metric" do
+    check all(conn <- connection_gen()) do
+      c = %{conn | id: "single-#{conn.id}"}
+      metrics = PolicyEngine.route_metrics([c])
+
+      assert map_size(metrics) == 1,
+             "Expected size-1 map for single connection, got #{map_size(metrics)}"
+
+      {_id, metric} = Enum.at(metrics, 0)
+
+      assert is_integer(metric) and metric >= 1 and metric <= 9999,
+             "Expected metric in [1, 9999], got: #{inspect(metric)}"
+    end
+  end
 end

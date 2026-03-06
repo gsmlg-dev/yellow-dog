@@ -160,4 +160,15 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_profiles never contains nil entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = Netman.list_profiles()
+
+      for p <- profiles do
+        assert p != nil,
+               "Unexpected nil entry in list_profiles result"
+      end
+    end
+  end
 end

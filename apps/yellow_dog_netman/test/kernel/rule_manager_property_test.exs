@@ -309,4 +309,16 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules always returns a list of maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      assert is_list(rules)
+
+      for r <- rules do
+        assert is_map(r),
+               "Expected map in list_rules, got: #{inspect(r)}"
+      end
+    end
+  end
 end
