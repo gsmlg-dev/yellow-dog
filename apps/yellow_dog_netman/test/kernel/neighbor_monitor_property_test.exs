@@ -156,4 +156,16 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Unexpected state atom: #{entry.state}"
     end
   end
+
+  property "get_neighbors result is always a subset of list_neighbors" do
+    check all(iface <- iface_gen()) do
+      all_neighbors = NeighborMonitor.list_neighbors()
+      iface_neighbors = NeighborMonitor.get_neighbors(iface)
+
+      for n <- iface_neighbors do
+        assert Enum.member?(all_neighbors, n),
+               "Neighbor #{inspect(n)} from get_neighbors not in list_neighbors"
+      end
+    end
+  end
 end
