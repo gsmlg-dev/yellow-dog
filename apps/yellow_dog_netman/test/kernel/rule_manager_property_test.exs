@@ -321,4 +321,22 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "each added rule is findable by its exact priority in list_rules" do
+    check all(
+            priority <- StreamData.integer(20_000..24_999),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+      match = Enum.find(rules, &(&1.priority == priority))
+
+      assert match != nil,
+             "Expected rule at priority #{priority} to be findable in list_rules"
+
+      assert match.table == table,
+             "Expected table #{table} for priority #{priority}, got #{match.table}"
+    end
+  end
 end

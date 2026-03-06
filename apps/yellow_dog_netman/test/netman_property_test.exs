@@ -171,4 +171,20 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "every profile in list_profiles is retrievable via get_profile" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = Netman.list_profiles()
+
+      for p <- profiles do
+        id = if is_map(p), do: Map.get(p, :id) || Map.get(p, "id"), else: nil
+
+        if id != nil do
+          result = Netman.get_profile(id)
+          assert match?({:ok, _}, result),
+                 "Expected {:ok, _} for profile #{inspect(id)} from list_profiles, got: #{inspect(result)}"
+        end
+      end
+    end
+  end
 end

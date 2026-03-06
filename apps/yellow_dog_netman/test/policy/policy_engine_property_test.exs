@@ -250,4 +250,23 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected metric in [1, 9999], got: #{inspect(metric)}"
     end
   end
+
+  property "route_metrics never includes nil keys" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_gen(), min_length: 1, max_length: 6)
+          ) do
+      indexed =
+        connections
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> %{c | id: "nilkey-#{i}-#{c.id}"} end)
+
+      metrics = PolicyEngine.route_metrics(indexed)
+
+      for {key, _val} <- metrics do
+        assert key != nil,
+               "route_metrics contains a nil key"
+      end
+    end
+  end
 end
