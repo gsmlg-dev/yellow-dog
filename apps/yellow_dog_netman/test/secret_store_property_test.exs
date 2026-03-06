@@ -161,4 +161,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.get(key) == {:error, :not_found}
     end
   end
+
+  property "put with arbitrary binary value always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.binary(max_length: 128)
+          ) do
+      assert SecretStore.put(key, value) == :ok
+    end
+  end
 end

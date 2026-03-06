@@ -301,4 +301,18 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected #{total_dns} DNS entries, got #{length(result)}"
     end
   end
+
+  property "dns_priority entries always have non-nil interface field" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_with_dns_gen(), min_length: 1, max_length: 5)
+          ) do
+      result = PolicyEngine.dns_priority(connections)
+
+      for entry <- result do
+        assert entry.interface != nil,
+               "Expected non-nil interface in dns_priority entry: #{inspect(entry)}"
+      end
+    end
+  end
 end

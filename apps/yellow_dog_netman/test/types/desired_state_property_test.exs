@@ -308,4 +308,20 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       end
     end
   end
+
+  property "DesiredState struct always has exactly the :connections field" do
+    check all(
+            count <- StreamData.integer(0..3),
+            profiles <- StreamData.list_of(profile_gen(), length: count),
+            ifaces <- StreamData.list_of(interface_gen(), length: count)
+          ) do
+      pairs = Enum.zip(profiles, ifaces)
+      desired = DesiredState.from_profiles(pairs)
+
+      struct_keys = desired |> Map.from_struct() |> Map.keys()
+
+      assert struct_keys == [:connections],
+             "Expected exactly [:connections] in DesiredState, got: #{inspect(struct_keys)}"
+    end
+  end
 end
