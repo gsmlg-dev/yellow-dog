@@ -171,4 +171,23 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "list_links missing recently added link #{iface}"
     end
   end
+
+  property "set_link_down always returns :ok or {:error, _} for any interface" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      result = LinkMonitor.set_link_down(iface)
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected set_link_down result: #{inspect(result)}"
+    end
+  end
+
+  property "set_mtu always returns :ok or {:error, _} for valid positive MTU" do
+    check all(
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      result = LinkMonitor.set_mtu(iface, mtu)
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected set_mtu result: #{inspect(result)}"
+    end
+  end
 end
