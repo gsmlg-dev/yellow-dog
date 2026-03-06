@@ -188,4 +188,31 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert hd(keys) in ["error", "result"]
     end
   end
+
+  property "connection.up with valid id always returns result or error map" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => id}})
+      assert is_map(result)
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+    end
+  end
+
+  property "connection.down with valid id always returns result or error map" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => id}})
+      assert is_map(result)
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+    end
+  end
+
+  property "connection.delete with valid id always returns deleted or error" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.delete", "params" => %{"id" => id}})
+      case result do
+        %{"result" => "deleted"} -> :ok
+        %{"error" => _} -> :ok
+        other -> flunk("Unexpected connection.delete result: #{inspect(other)}")
+      end
+    end
+  end
 end
