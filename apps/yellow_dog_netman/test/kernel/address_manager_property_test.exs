@@ -322,4 +322,23 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Address #{addr} on #{iface1} should not appear in #{iface2}'s address list"
     end
   end
+
+  property "get_addresses result is always a subset of list_all entries for that interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      per_iface = AddressManager.get_addresses(iface)
+      all_for_iface = AddressManager.list_all()[iface] || []
+
+      for a <- per_iface do
+        assert Enum.any?(all_for_iface, &(&1 == a)),
+               "Address #{inspect(a)} in get_addresses but not in list_all[#{iface}]"
+      end
+    end
+  end
 end

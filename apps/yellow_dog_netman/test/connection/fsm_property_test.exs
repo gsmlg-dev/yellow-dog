@@ -450,6 +450,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM profile_id always matches the profile's id field" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fpid_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.profile_id == profile.id,
+             "Expected profile_id #{profile.id}, got: #{inspect(state.profile_id)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()

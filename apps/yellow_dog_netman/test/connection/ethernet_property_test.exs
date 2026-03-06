@@ -185,4 +185,18 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected ethernet? false for #{kind} link"
     end
   end
+
+  property "link_removed causes carrier? to return false" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      assert Ethernet.carrier?(iface) == true
+
+      MockNetlink.link_removed(iface)
+      Process.sleep(50)
+
+      assert Ethernet.carrier?(iface) == false,
+             "Expected carrier? false after link_removed on #{iface}"
+    end
+  end
 end
