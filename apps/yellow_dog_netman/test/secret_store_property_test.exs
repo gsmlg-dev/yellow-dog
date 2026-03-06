@@ -64,6 +64,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     end
   end
 
+  property "get with unicode string key always returns {:error, :not_found}" do
+    check all(key <- StreamData.string(:utf8, max_length: 64)) do
+      assert SecretStore.get(key) == {:error, :not_found}
+    end
+  end
+
   property "get with empty string key always returns {:error, :not_found}" do
     check all(_ <- StreamData.constant(:ok)) do
       assert SecretStore.get("") == {:error, :not_found}

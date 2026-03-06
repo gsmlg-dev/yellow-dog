@@ -360,6 +360,16 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     end
   end
 
+  property "flush on a fresh interface always returns {0, 0}" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "rm_flush_#{seed}"
+      result = RouteManager.flush(fresh_iface)
+
+      assert result == {0, 0},
+             "Expected {0, 0} for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
+
   property "route_removed event removes route from get_routes" do
     check all(
             iface <- iface_gen(),
