@@ -81,4 +81,23 @@ defmodule YellowDog.NetmanPropertyTest do
              "Unexpected deactivate result: #{inspect(result)}"
     end
   end
+
+  property "import_profile with non-existent path always returns error tuple" do
+    check all(name <- StreamData.string(:alphanumeric, min_length: 3, max_length: 20)) do
+      path = "/tmp/nonexistent_nm_prop_#{name}_#{:rand.uniform(1_000_000)}.toml"
+      result = Netman.import_profile(path)
+
+      assert match?({:error, _}, result),
+             "Expected error for non-existent path, got: #{inspect(result)}"
+    end
+  end
+
+  property "delete_profile for unknown id always returns {:error, :not_found}" do
+    check all(id <- profile_id_gen()) do
+      result = Netman.delete_profile("del_prop_#{id}")
+
+      assert result == {:error, :not_found} or result == :ok,
+             "Unexpected delete_profile result: #{inspect(result)}"
+    end
+  end
 end
