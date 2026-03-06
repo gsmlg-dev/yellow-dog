@@ -210,6 +210,43 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM without link starts in :unavailable state" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      # Use an interface name that was never registered by MockNetlink
+      interface = "funavail_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :unavailable,
+             "Expected :unavailable for unregistered interface, got: #{state.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "FSM with link up starts in :disconnected state" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fdisc_#{seed}"
+      profile = make_profile(interface)
+
+      # Pre-register link so FSM starts in disconnected
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected,
+             "Expected :disconnected for link-up interface, got: #{state.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()

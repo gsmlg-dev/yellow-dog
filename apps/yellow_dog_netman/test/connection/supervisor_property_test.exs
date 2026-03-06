@@ -109,4 +109,42 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface)
     end
   end
+
+  property "start_connection increments list_connections count by 1" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_cnt_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      before_count = length(ConnSupervisor.list_connections())
+      {:ok, _pid} = ConnSupervisor.start_connection(iface, profile)
+      after_count = length(ConnSupervisor.list_connections())
+
+      assert after_count == before_count + 1,
+             "Expected count to increase by 1: #{before_count} -> #{after_count}"
+
+      ConnSupervisor.stop_connection(iface)
+    end
+  end
+
+  property "stop_connection decrements list_connections count by 1" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_dcnt_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, _pid} = ConnSupervisor.start_connection(iface, profile)
+      before_count = length(ConnSupervisor.list_connections())
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(30)
+      after_count = length(ConnSupervisor.list_connections())
+
+      assert after_count == before_count - 1,
+             "Expected count to decrease by 1: #{before_count} -> #{after_count}"
+    end
+  end
 end
