@@ -156,6 +156,20 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     end
   end
 
+  property "carrier? returns consistent result across repeated calls" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      r1 = Ethernet.carrier?(iface)
+      r2 = Ethernet.carrier?(iface)
+      r3 = Ethernet.carrier?(iface)
+
+      assert r1 == r2 and r2 == r3,
+             "carrier? returned inconsistent results for #{iface}: #{r1}, #{r2}, #{r3}"
+    end
+  end
+
   property "non-ethernet kind with carrier: true has carrier? true but ethernet? false" do
     check all(
             iface <- iface_gen(),

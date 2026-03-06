@@ -398,6 +398,20 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM is alive immediately after start_link returns" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "falive2_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+
+      assert Process.alive?(pid),
+             "FSM should be alive immediately after start_link on #{interface}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "FSM get_state always returns {:ok, _} when pid is alive" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fgsok_#{seed}"

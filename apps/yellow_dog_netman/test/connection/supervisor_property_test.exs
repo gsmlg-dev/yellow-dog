@@ -277,4 +277,23 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface2)
     end
   end
+
+  property "start then stop leaves list_connections count unchanged" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_cycle_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      initial_count = length(ConnSupervisor.list_connections())
+      {:ok, _} = ConnSupervisor.start_connection(iface, profile)
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(30)
+      final_count = length(ConnSupervisor.list_connections())
+
+      assert final_count == initial_count,
+             "Expected count to return to #{initial_count} after start+stop, got #{final_count}"
+    end
+  end
 end
