@@ -414,4 +414,43 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected #{addr} on #{iface} in list_neighbors"
     end
   end
+
+  property "add then del returns neighbor count to original for that interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "del",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      before_count = length(NeighborMonitor.get_neighbors(iface))
+
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      send_neighbor_event(%{
+        "action" => "del",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      after_count = length(NeighborMonitor.get_neighbors(iface))
+
+      assert after_count == before_count,
+             "Expected count to return to #{before_count} after add+del, got #{after_count}"
+    end
+  end
 end

@@ -253,4 +253,14 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Unexpected set_mtu result: #{inspect(result)}"
     end
   end
+
+  property "list_links never contains duplicate interface entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      links = LinkMonitor.list_links()
+      ifaces = Enum.map(links, & &1.interface)
+
+      assert length(ifaces) == length(Enum.uniq(ifaces)),
+             "list_links contains duplicate interface entries: #{inspect(ifaces)}"
+    end
+  end
 end

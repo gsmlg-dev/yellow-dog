@@ -340,4 +340,23 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "get_routes result is always a subset of list_all for that interface" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface)
+      Process.sleep(50)
+
+      per_iface = RouteManager.get_routes(iface)
+      all_routes = RouteManager.list_all()
+
+      for r <- per_iface do
+        assert Enum.any?(all_routes, &(&1 == r)),
+               "Route #{inspect(r)} in get_routes but not in list_all"
+      end
+    end
+  end
 end
