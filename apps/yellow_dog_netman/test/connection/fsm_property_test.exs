@@ -330,6 +330,32 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM in :disconnected state after explicit deactivate remains disconnected" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      interface = "fdeact_#{seed}"
+      profile = make_profile(interface)
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state == :disconnected
+
+      FSM.deactivate(pid)
+      Process.sleep(50)
+
+      {:ok, state2} = FSM.get_state(pid)
+
+      assert state2.state == :disconnected,
+             "Expected :disconnected after deactivate from :disconnected, got: #{state2.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "FSM dns field in get_state is always a list" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fdns_#{seed}"

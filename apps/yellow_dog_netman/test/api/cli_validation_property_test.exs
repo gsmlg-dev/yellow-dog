@@ -171,6 +171,19 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "connection.delete and connection.up produce identical validation errors for same invalid ID" do
+    check all(id <- invalid_id_gen()) do
+      delete_result =
+        CLI.handle_command(%{"method" => "connection.delete", "params" => %{"id" => id}})
+
+      up_result =
+        CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => id}})
+
+      assert delete_result == up_result,
+             "connection.delete and connection.up gave different errors for #{inspect(id)}"
+    end
+  end
+
   property "list and status commands never produce identifier validation errors" do
     check all(
             method <- StreamData.member_of(["connection.list", "device.list", "status"])

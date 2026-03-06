@@ -226,6 +226,20 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     end
   end
 
+  property "publish to topic with no active subscribers always returns :ok" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      # Ensure no subscriber by unsubscribing first
+      EventBus.unsubscribe(topic)
+
+      result = EventBus.publish(topic, message)
+      assert result == :ok,
+             "Expected :ok when publishing to unsubscribed topic, got: #{inspect(result)}"
+    end
+  end
+
   property "late subscriber does not receive messages published before subscription" do
     check all(
             topic <- topic_gen(),
