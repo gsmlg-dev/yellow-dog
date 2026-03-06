@@ -180,9 +180,12 @@ defmodule YellowDog.Netman.API.CLI do
     )
 
     :gen_tcp.send(socket, Jason.encode!(%{"event" => "monitor_started"}) <> "\n")
-    result = monitor_loop(socket)
-    :telemetry.detach(handler_id)
-    result
+
+    try do
+      monitor_loop(socket)
+    after
+      :telemetry.detach(handler_id)
+    end
   end
 
   defp monitor_loop(socket) do

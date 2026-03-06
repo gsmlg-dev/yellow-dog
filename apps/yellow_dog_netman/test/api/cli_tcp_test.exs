@@ -255,6 +255,17 @@ defmodule YellowDog.Netman.API.CLITcpTest do
       {:ok, response} = :gen_tcp.recv(socket2, 0, 2000)
       :gen_tcp.close(socket2)
       assert {:ok, %{"result" => _}} = Jason.decode(response)
+
+      # Telemetry handler must be cleaned up after crash (no leak)
+      handlers = :telemetry.list_handlers([:yellow_dog, :netman, :kernel, :link_change])
+
+      monitor_handlers =
+        Enum.filter(handlers, fn h ->
+          match?({YellowDog.Netman.API.CLI, :monitor, _}, h.id)
+        end)
+
+      assert monitor_handlers == [],
+             "Telemetry handler leaked after monitor crash: #{inspect(monitor_handlers)}"
     end
   end
 end
