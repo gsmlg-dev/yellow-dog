@@ -167,4 +167,42 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "all list_rules entries have non-negative priority" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+
+      for rule <- rules do
+        assert is_integer(rule.priority) and rule.priority >= 0,
+               "Rule has invalid priority: #{inspect(rule.priority)}"
+      end
+    end
+  end
+
+  property "add N rules at distinct priorities produces N entries in list" do
+    check all(
+            priorities <-
+              StreamData.list_of(
+                StreamData.integer(80_000..89_999),
+                min_length: 2,
+                max_length: 5
+              )
+              |> StreamData.map(&Enum.uniq/1)
+              |> StreamData.filter(&(length(&1) >= 2))
+          ) do
+      for p <- priorities do
+        send_rule_event(%{"action" => "add", "priority" => p, "table" => 150})
+      end
+
+      rules = RuleManager.list_rules()
+      matching = Enum.filter(rules, &(&1.priority in priorities))
+      assert length(matching) == length(priorities),
+             "Expected #{length(priorities)} rules but found #{length(matching)}"
+    end
+  end
 end

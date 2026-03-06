@@ -451,6 +451,39 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  # --- IPv6 validation properties ---
+
+  property "invalid IPv6 methods are rejected" do
+    check all(
+            id <- profile_id_gen(),
+            bad_method <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+              |> StreamData.filter(&(&1 not in ["auto", "manual", "disabled", "link-local"]))
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv6" => %{"method" => bad_method}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "ipv6.method"
+    end
+  end
+
+  property "valid IPv6 methods are accepted" do
+    check all(
+            id <- profile_id_gen(),
+            method <- StreamData.member_of(["auto", "manual", "disabled", "link-local"])
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ipv6" => %{"method" => method}
+      }
+
+      assert {:ok, %Profile{}} = Profile.from_toml(toml)
+    end
+  end
+
   property "to_toml always produces a map with a connection key" do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)
