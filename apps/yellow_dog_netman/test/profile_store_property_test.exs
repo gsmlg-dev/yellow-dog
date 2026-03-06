@@ -373,4 +373,19 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "all profiles returned by list() always have a non-nil id field" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+
+      profiles = ProfileStore.list()
+
+      for p <- profiles do
+        assert p.id != nil,
+               "Found profile with nil id in list(): #{inspect(p)}"
+      end
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end

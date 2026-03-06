@@ -360,4 +360,19 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       end
     end
   end
+
+  property "event with tuple type value always dispatches as :unknown" do
+    check all(
+            a <- StreamData.integer(),
+            b <- StreamData.integer()
+          ) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => {a, b}, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end

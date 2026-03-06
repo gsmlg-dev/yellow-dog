@@ -212,4 +212,12 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_interfaces never contains duplicate interface names" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ifaces = Netman.list_interfaces()
+      assert length(ifaces) == length(Enum.uniq(ifaces)),
+             "list_interfaces contains duplicate names: #{inspect(ifaces)}"
+    end
+  end
 end
