@@ -264,4 +264,23 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected #{length(priorities)} rules but found #{length(matching)}"
     end
   end
+
+  property "all rules in list_rules always have a non-nil integer table field" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+
+      for rule <- rules do
+        assert rule.table != nil,
+               "Rule at priority #{rule.priority} has nil table"
+
+        assert is_integer(rule.table),
+               "Rule table is not an integer: #{inspect(rule.table)}"
+      end
+    end
+  end
 end

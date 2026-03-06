@@ -207,4 +207,25 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface)
     end
   end
+
+  property "stop_connection then start_connection returns a new different pid" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_restart_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid1} = ConnSupervisor.start_connection(iface, profile)
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(30)
+
+      {:ok, pid2} = ConnSupervisor.start_connection(iface, profile)
+
+      assert pid1 != pid2,
+             "Expected a new pid after stop+start, got the same pid #{inspect(pid1)}"
+
+      ConnSupervisor.stop_connection(iface)
+    end
+  end
 end
