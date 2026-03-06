@@ -294,4 +294,23 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "event with map type value always dispatches as :unknown" do
+    check all(
+            map_type <-
+              StreamData.map_of(
+                StreamData.atom(:alphanumeric),
+                StreamData.integer(),
+                max_length: 3
+              )
+          ) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => map_type, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end

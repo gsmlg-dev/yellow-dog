@@ -393,4 +393,25 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "added neighbor always appears in list_neighbors global list" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      all_neighbors = NeighborMonitor.list_neighbors()
+
+      assert Enum.any?(all_neighbors, &(&1.address == addr and &1.interface == iface)),
+             "Expected #{addr} on #{iface} in list_neighbors"
+    end
+  end
 end

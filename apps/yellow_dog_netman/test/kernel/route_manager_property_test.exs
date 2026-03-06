@@ -328,4 +328,16 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Route for #{iface1} should not appear in #{iface2}'s route list"
     end
   end
+
+  property "list_all always returns a list of maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      assert is_list(routes)
+
+      for r <- routes do
+        assert is_map(r),
+               "Expected map in list_all, got: #{inspect(r)}"
+      end
+    end
+  end
 end
