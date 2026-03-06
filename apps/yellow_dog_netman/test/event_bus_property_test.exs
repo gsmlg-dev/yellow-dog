@@ -114,4 +114,48 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       refute_receive {:netman_event, ^topic, _}, 30
     end
   end
+
+  property "broadcast always returns :ok regardless of subscriber count" do
+    check all(
+            prefix <- topic_segment(),
+            message <- term()
+          ) do
+      result = EventBus.broadcast("bc_prop:#{prefix}:", message)
+      assert result == :ok
+    end
+  end
+
+  property "broadcast delivers to subscriber whose topic starts with the prefix" do
+    check all(
+            prefix <- topic_segment(),
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      topic = "bc_prop:#{prefix}:#{suffix}"
+
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.broadcast("bc_prop:#{prefix}:", message)
+
+      assert_receive {:netman_event, ^topic, ^message}, 100
+      EventBus.unsubscribe(topic)
+    end
+  end
+
+  property "broadcast does not deliver to subscriber with non-matching prefix" do
+    check all(
+            prefix_a <- topic_segment(),
+            prefix_b <- topic_segment(),
+            prefix_a != prefix_b,
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      topic = "bc_prop:#{prefix_a}:#{suffix}"
+
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.broadcast("bc_prop:#{prefix_b}:", message)
+
+      refute_receive {:netman_event, ^topic, _}, 30
+      EventBus.unsubscribe(topic)
+    end
+  end
 end
