@@ -206,6 +206,24 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
     end
   end
 
+  property "del then re-add same priority restores the rule with new table" do
+    check all(
+            priority <- priority_gen(),
+            table1 <- table_gen(),
+            table2 <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table1})
+      send_rule_event(%{"action" => "del", "priority" => priority, "table" => table1})
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table2})
+
+      rules = RuleManager.list_rules()
+      rule = Enum.find(rules, &(&1.priority == priority))
+
+      assert rule != nil, "Expected rule at priority #{priority} to be re-added"
+      assert rule.table == table2, "Expected table #{table2} after re-add, got #{rule.table}"
+    end
+  end
+
   property "add N rules at distinct priorities produces N entries in list" do
     check all(
             priorities <-

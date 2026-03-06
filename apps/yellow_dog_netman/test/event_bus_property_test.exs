@@ -225,4 +225,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "late subscriber does not receive messages published before subscription" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      EventBus.publish(topic, message)
+      {:ok, _} = EventBus.subscribe(topic)
+
+      refute_receive {:netman_event, ^topic, ^message}, 50
+
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

@@ -245,6 +245,18 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "list after delete never contains the deleted profile" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+      ProfileStore.delete(profile.id)
+
+      profiles = ProfileStore.list()
+
+      refute Enum.any?(profiles, &(&1.id == profile.id)),
+             "Profile #{profile.id} should not appear in list after delete"
+    end
+  end
+
   property "import_file on a file larger than 1MB returns file_too_large error" do
     check all(_ <- StreamData.constant(:ok), max_runs: 1) do
       path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"
