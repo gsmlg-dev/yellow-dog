@@ -106,4 +106,24 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d1 != d2
     end
   end
+
+  property "invalid action atoms always raise FunctionClauseError" do
+    invalid_action_gen =
+      atom(:alphanumeric)
+      |> filter(&(&1 not in @actions))
+
+    check all(action <- invalid_action_gen) do
+      assert_raise FunctionClauseError, fn ->
+        Diff.new(action)
+      end
+    end
+  end
+
+  property "new/2 with explicit nil interface is equivalent to new/1 default" do
+    check all(action <- action_gen()) do
+      d1 = Diff.new(action)
+      d2 = Diff.new(action, nil)
+      assert d1 == d2
+    end
+  end
 end
