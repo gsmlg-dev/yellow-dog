@@ -190,4 +190,21 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected find_connection_by_profile to return :error after stop"
     end
   end
+
+  property "start_connection returns {:ok, pid} where pid is alive" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_alive_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
+
+      assert is_pid(pid), "Expected pid, got: #{inspect(pid)}"
+      assert Process.alive?(pid), "Expected started pid to be alive"
+
+      ConnSupervisor.stop_connection(iface)
+    end
+  end
 end

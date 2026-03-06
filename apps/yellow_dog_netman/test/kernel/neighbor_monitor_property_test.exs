@@ -237,6 +237,45 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "del then re-add same address restores the neighbor" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac1 <- mac_gen(),
+            mac2 <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac1,
+        "state" => "reachable"
+      })
+
+      send_neighbor_event(%{
+        "action" => "del",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac1,
+        "state" => "reachable"
+      })
+
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac2,
+        "state" => "reachable"
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      entry = Enum.find(neighbors, &(&1.address == addr))
+
+      assert entry != nil, "Expected #{addr} to be present after re-add"
+      assert entry.mac == mac2, "Expected mac #{mac2} after re-add, got: #{entry.mac}"
+    end
+  end
+
   property "neighbor entries always have required fields after add" do
     check all(
             iface <- iface_gen(),

@@ -309,6 +309,27 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "get_state autoconnect_priority always equals profile autoconnect_priority" do
+    check all(
+            seed <- StreamData.integer(1..99_999),
+            priority <- StreamData.integer(0..1000),
+            max_runs: 30
+          ) do
+      interface = "facp_#{seed}"
+      profile = %{make_profile(interface) | autoconnect_priority: priority}
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      assert Map.get(state, :autoconnect_priority) == priority,
+             "autoconnect_priority #{Map.get(state, :autoconnect_priority)} != profile #{priority}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "autoconnect: false profile stays in :disconnected after link_up with carrier" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fnoac_#{seed}"
