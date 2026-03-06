@@ -257,6 +257,15 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "get for never-put profile always returns {:error, :not_found}" do
+    check all(_ <- StreamData.constant(:ok)) do
+      unique_id = "fresh-#{:erlang.unique_integer([:monotonic, :positive])}"
+      result = ProfileStore.get(unique_id)
+      assert result == {:error, :not_found},
+             "Expected not_found for fresh ID, got: #{inspect(result)}"
+    end
+  end
+
   property "import_file on a file larger than 1MB returns file_too_large error" do
     check all(_ <- StreamData.constant(:ok), max_runs: 1) do
       path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"

@@ -130,6 +130,13 @@ defmodule YellowDog.NetmanPropertyTest do
     end
   end
 
+  property "status.running is always true when Netman is running" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Netman.status().running == true,
+             "Expected status.running to be true in test environment"
+    end
+  end
+
   property "list_profiles always returns a list of maps with id field" do
     check all(_ <- StreamData.constant(:ok)) do
       profiles = Netman.list_profiles()

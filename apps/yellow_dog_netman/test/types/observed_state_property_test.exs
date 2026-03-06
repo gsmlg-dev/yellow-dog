@@ -246,6 +246,37 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "adding N routes with distinct destinations produces N-entry route list" do
+    check all(
+            count <- StreamData.integer(1..5),
+            gws <-
+              StreamData.list_of(
+                gen all(last <- StreamData.integer(1..254)) do
+                  "10.0.0.#{last}"
+                end,
+                length: count
+              )
+          ) do
+      routes =
+        Enum.with_index(gws)
+        |> Enum.map(fn {gw, i} ->
+          %{
+            destination: "10.#{i}.0.0/8",
+            gateway: gw,
+            interface: "lo",
+            metric: 100,
+            table: 254,
+            protocol: :static,
+            scope: :universe
+          }
+        end)
+
+      state = Enum.reduce(routes, ObservedState.new(), &ObservedState.add_route(&2, &1))
+      assert length(state.routes) == count,
+             "Expected #{count} routes, got #{length(state.routes)}"
+    end
+  end
+
   property "remove_link leaves the interface's addresses unchanged" do
     check all(
             link <- link_gen(),
