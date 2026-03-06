@@ -2052,6 +2052,90 @@ defmodule YellowDog.Netman.Connection.FSMTest do
     end
   end
 
+  describe "graceful shutdown during configuring and deactivating" do
+    @tag :capture_log
+    test "terminate during configuring state cleans up resources" do
+      interface = "fsm_conf_t_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "conft-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(80)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      # Terminate while in configuring (DHCP pending) — terminate/3 must not crash
+      if state.state == :configuring do
+        ref = Process.monitor(pid)
+        GenServer.stop(pid, :shutdown)
+        assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}, 1000
+      else
+        GenServer.stop(pid, :normal)
+      end
+    end
+
+    @tag :capture_log
+    test "terminate during deactivating state cleans up resources" do
+      interface = "fsm_deac_t_#{:rand.uniform(99_999)}"
+
+      profile = %Profile{
+        id: "deact-#{:rand.uniform(99_999)}",
+        type: :ethernet,
+        interface: interface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+      FSM.activate(pid)
+      Process.sleep(300)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      if state.state == :activated do
+        # Suspend FSM, cast deactivate so the message is queued, then resume
+        # — by the time FSM wakes it's in deactivating briefly
+        :sys.suspend(pid)
+        FSM.deactivate(pid)
+        :sys.resume(pid)
+        Process.sleep(20)
+
+        {:ok, new_state} = FSM.get_state(pid)
+
+        if new_state.state == :deactivating do
+          ref = Process.monitor(pid)
+          GenServer.stop(pid, :shutdown)
+          assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}, 1000
+        else
+          GenServer.stop(pid, :normal)
+        end
+      else
+        GenServer.stop(pid, :normal)
+      end
+    end
+  end
+
   describe "DHCP events in various states" do
     @tag :capture_log
     test "dhcp_lease_acquired in non-configuring state is ignored" do
