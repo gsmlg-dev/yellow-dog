@@ -341,4 +341,25 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "address_removed event decrements get_addresses count by 1 when address was present" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      before_count = length(AddressManager.get_addresses(iface))
+
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      after_count = length(AddressManager.get_addresses(iface))
+
+      assert after_count == before_count - 1,
+             "Expected count to decrease by 1: #{before_count} -> #{after_count}"
+    end
+  end
 end

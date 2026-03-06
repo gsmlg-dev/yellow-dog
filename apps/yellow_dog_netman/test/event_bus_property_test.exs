@@ -310,4 +310,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "after unsubscribe, published messages are not received" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.unsubscribe(topic)
+
+      EventBus.publish(topic, message)
+
+      refute_receive {:netman_event, ^topic, ^message}, 50
+    end
+  end
 end

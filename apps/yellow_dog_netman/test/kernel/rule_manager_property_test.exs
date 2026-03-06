@@ -339,4 +339,28 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected table #{table} for priority #{priority}, got #{match.table}"
     end
   end
+
+  property "add rule with non-nil source preserves source value in list_rules" do
+    check all(
+            priority <- StreamData.integer(25_000..29_999),
+            table <- table_gen(),
+            src <- cidr_gen()
+          ) do
+      send_rule_event(%{
+        "action" => "add",
+        "priority" => priority,
+        "table" => table,
+        "source" => src
+      })
+
+      rules = RuleManager.list_rules()
+      match = Enum.find(rules, &(&1.priority == priority))
+
+      assert match != nil,
+             "Expected rule at priority #{priority} to be present"
+
+      assert match.source == src,
+             "Expected source #{src}, got: #{inspect(match.source)}"
+    end
+  end
 end
