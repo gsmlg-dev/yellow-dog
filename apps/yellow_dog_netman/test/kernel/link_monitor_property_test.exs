@@ -184,6 +184,14 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "set_link_up always returns :ok or {:error, _} for any interface" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      result = LinkMonitor.set_link_up(iface)
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected set_link_up result: #{inspect(result)}"
+    end
+  end
+
   property "set_link_down always returns :ok or {:error, _} for any interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = LinkMonitor.set_link_down(iface)
