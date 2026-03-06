@@ -187,6 +187,44 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "multiple distinct addresses on same interface accumulate correctly" do
+    check all(
+            addr1 <- address_gen(),
+            addr2 <- address_gen(),
+            addr1.address != addr2.address
+          ) do
+      addr2 = %{addr2 | interface: addr1.interface}
+
+      state =
+        ObservedState.new()
+        |> ObservedState.add_address(addr1)
+        |> ObservedState.add_address(addr2)
+
+      addresses = state.addresses[addr1.interface]
+      assert is_list(addresses)
+      assert length(addresses) == 2
+      assert Enum.any?(addresses, &(&1.address == addr1.address))
+      assert Enum.any?(addresses, &(&1.address == addr2.address))
+    end
+  end
+
+  property "multiple distinct routes accumulate in route list" do
+    check all(
+            route1 <- route_gen(),
+            route2 <- route_gen(),
+            route1.destination != route2.destination
+          ) do
+      state =
+        ObservedState.new()
+        |> ObservedState.add_route(route1)
+        |> ObservedState.add_route(route2)
+
+      assert length(state.routes) == 2
+      assert Enum.any?(state.routes, &(&1.destination == route1.destination))
+      assert Enum.any?(state.routes, &(&1.destination == route2.destination))
+    end
+  end
+
   property "removing non-existent route is a no-op" do
     check all(
             dest <- member_of(["default", "10.0.0.0/8", "192.168.0.0/16"]),

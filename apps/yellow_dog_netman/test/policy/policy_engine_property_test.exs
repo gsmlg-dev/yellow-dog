@@ -177,4 +177,33 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(priority) and priority >= 0
     end
   end
+
+  property "route_metrics always returns a map with positive integer values" do
+    check all(connections <- StreamData.list_of(connection_gen(), min_length: 1, max_length: 8)) do
+      metrics = PolicyEngine.route_metrics(connections)
+      assert is_map(metrics)
+
+      for {_id, metric} <- metrics do
+        assert is_integer(metric) and metric > 0,
+               "Expected positive integer metric, got: #{inspect(metric)}"
+      end
+    end
+  end
+
+  property "default_route returns an ID present in the input connections" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_gen(), min_length: 1, max_length: 10)
+          ) do
+      case PolicyEngine.default_route(connections) do
+        {:ok, id} ->
+          all_ids = Enum.map(connections, &(&1[:profile_id] || &1[:id]))
+          assert id in all_ids,
+                 "default_route returned #{inspect(id)} not in input connections"
+
+        :none ->
+          flunk("Expected {:ok, id} for non-empty list, got :none")
+      end
+    end
+  end
 end

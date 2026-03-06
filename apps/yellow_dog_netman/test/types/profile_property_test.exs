@@ -418,6 +418,20 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
 
   # --- MTU validation properties ---
 
+  property "MTU within 68-65535 is accepted" do
+    check all(
+            id <- profile_id_gen(),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet"},
+        "ethernet" => %{"mtu" => mtu}
+      }
+
+      assert {:ok, %Profile{ethernet: %{mtu: ^mtu}}} = Profile.from_toml(toml)
+    end
+  end
+
   property "MTU outside 68-65535 is rejected" do
     check all(
             id <- profile_id_gen(),
@@ -434,6 +448,40 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
 
       assert {:error, msg} = Profile.from_toml(toml)
       assert msg =~ "mtu"
+    end
+  end
+
+  property "to_toml always produces a map with a connection key" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert is_map(result)
+      assert Map.has_key?(result, "connection"), "to_toml missing 'connection' key"
+    end
+  end
+
+  property "to_toml with disabled IPv4 always includes the ipv4 key" do
+    check all(
+            id <- profile_id_gen(),
+            zone <- zone_gen()
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet", "zone" => zone},
+        "ipv4" => %{"method" => "disabled"}
+      }
+
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert Map.has_key?(result, "ipv4"),
+             "to_toml must include ipv4 section for disabled method"
+    end
+  end
+
+  property "to_toml connection id always matches the original profile id" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert result["connection"]["id"] == profile.id
     end
   end
 end

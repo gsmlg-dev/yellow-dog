@@ -172,6 +172,18 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "get_link result is always a subset of list_links" do
+    check all(iface <- iface_gen()) do
+      all_links = LinkMonitor.list_links()
+      link = LinkMonitor.get_link(iface)
+
+      if link != nil do
+        assert Enum.member?(all_links, link),
+               "get_link result not found in list_links for #{iface}"
+      end
+    end
+  end
+
   property "set_link_down always returns :ok or {:error, _} for any interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = LinkMonitor.set_link_down(iface)

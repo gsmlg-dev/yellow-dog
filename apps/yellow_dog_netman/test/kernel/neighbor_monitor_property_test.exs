@@ -175,6 +175,30 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "duplicate add is idempotent — same neighbor added twice appears only once" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen(),
+            repeats <- StreamData.integer(2..4)
+          ) do
+      for _i <- 1..repeats do
+        send_neighbor_event(%{
+          "action" => "add",
+          "interface" => iface,
+          "address" => addr,
+          "mac" => mac,
+          "state" => "reachable"
+        })
+      end
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      matching = Enum.filter(neighbors, &(&1.address == addr))
+      assert length(matching) == 1,
+             "Expected exactly 1 entry for #{addr} on #{iface}, got #{length(matching)}"
+    end
+  end
+
   property "neighbor entries always have required fields after add" do
     check all(
             iface <- iface_gen(),

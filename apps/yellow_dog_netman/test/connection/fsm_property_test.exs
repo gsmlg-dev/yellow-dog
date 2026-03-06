@@ -174,6 +174,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "get_state type field always matches the profile type" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "ftype_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.type == profile.type,
+             "type mismatch: #{state.type} != #{profile.type}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "get_state always contains all required fields" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "ffields_#{seed}"
