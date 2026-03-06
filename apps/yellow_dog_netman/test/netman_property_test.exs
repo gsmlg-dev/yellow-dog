@@ -187,6 +187,16 @@ defmodule YellowDog.NetmanPropertyTest do
     end
   end
 
+  property "list_profiles never contains duplicate profile IDs" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = Netman.list_profiles()
+      ids = for p <- profiles, id = Map.get(p, :id) || Map.get(p, "id"), id != nil, do: id
+
+      assert ids == Enum.uniq(ids),
+             "list_profiles contains duplicate IDs: #{inspect(ids)}"
+    end
+  end
+
   property "every profile in list_profiles is retrievable via get_profile" do
     check all(_ <- StreamData.constant(:ok)) do
       profiles = Netman.list_profiles()

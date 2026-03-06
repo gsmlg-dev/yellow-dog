@@ -466,6 +466,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM initial dns field is always an empty list before any activation" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fdns2_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+      assert state.dns == [],
+             "Expected empty dns list in initial state, got: #{inspect(state.dns)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "FSM interface in get_state always matches the interface passed to start_link" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fiface_#{seed}"

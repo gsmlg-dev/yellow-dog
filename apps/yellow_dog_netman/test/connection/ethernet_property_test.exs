@@ -200,6 +200,23 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     end
   end
 
+  property "link_down resets mtu to the default value of 1500" do
+    check all(
+            iface <- iface_gen(),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      MockNetlink.link_up(iface, mtu: mtu)
+      Process.sleep(50)
+      assert Ethernet.mtu(iface) == mtu
+
+      MockNetlink.link_down(iface)
+      Process.sleep(50)
+
+      assert Ethernet.mtu(iface) == 1500,
+             "Expected mtu 1500 (default) after link_down on #{iface}"
+    end
+  end
+
   property "mtu returns nil after link_removed" do
     check all(
             iface <- iface_gen(),
