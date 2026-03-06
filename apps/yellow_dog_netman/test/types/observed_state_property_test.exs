@@ -317,4 +317,24 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected addresses to contain key #{addr.interface}"
     end
   end
+
+  property "add_address is additive — address count never decreases after adding another" do
+    check all(
+            iface <- interface_gen(),
+            addr1 <- address_gen(),
+            addr2 <- address_gen()
+          ) do
+      a1 = %{addr1 | interface: iface}
+      a2 = %{addr2 | interface: iface}
+
+      state_one = ObservedState.new() |> ObservedState.add_address(a1)
+      state_two = state_one |> ObservedState.add_address(a2)
+
+      count_one = length(state_one.addresses[iface] || [])
+      count_two = length(state_two.addresses[iface] || [])
+
+      assert count_two >= count_one,
+             "Expected address count to be non-decreasing after add_address"
+    end
+  end
 end

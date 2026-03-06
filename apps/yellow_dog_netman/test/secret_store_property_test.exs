@@ -41,4 +41,19 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.get(key) == {:error, :not_found}
     end
   end
+
+  property "multiple puts with the same key always return :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            values <-
+              StreamData.list_of(StreamData.string(:alphanumeric, max_length: 64),
+                min_length: 2,
+                max_length: 5
+              )
+          ) do
+      for value <- values do
+        assert SecretStore.put(key, value) == :ok
+      end
+    end
+  end
 end

@@ -625,4 +625,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_map(result.connections)
     end
   end
+
+  property "diff with empty desired and empty observed always returns an empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = %DesiredState{connections: %{}}
+      observed = %ObservedState{links: %{}, addresses: %{}, routes: []}
+      assert ReconciliationEngine.diff(desired, observed) == []
+    end
+  end
 end
