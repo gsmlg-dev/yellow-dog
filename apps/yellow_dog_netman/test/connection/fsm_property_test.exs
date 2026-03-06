@@ -498,6 +498,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM terminates cleanly on GenServer.stop(:normal)" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fstop_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      assert Process.alive?(pid)
+
+      GenServer.stop(pid, :normal)
+      Process.sleep(20)
+
+      refute Process.alive?(pid),
+             "Expected FSM to be dead after GenServer.stop(:normal)"
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()

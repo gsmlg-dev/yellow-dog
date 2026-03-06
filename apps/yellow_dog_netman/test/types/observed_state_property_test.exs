@@ -365,4 +365,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected address count to be non-decreasing after add_address"
     end
   end
+
+  property "put_link creates an entry for the interface in state.links" do
+    check all(link <- link_gen()) do
+      state = ObservedState.new() |> ObservedState.put_link(link)
+
+      assert Map.has_key?(state.links, link.interface),
+             "Expected links to contain key #{link.interface}"
+    end
+  end
 end

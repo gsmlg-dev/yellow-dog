@@ -170,4 +170,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, value) == :ok
     end
   end
+
+  property "delete with a very long key always returns :ok" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 128, max_length: 256)) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
 end
