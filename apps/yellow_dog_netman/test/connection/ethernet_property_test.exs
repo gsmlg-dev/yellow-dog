@@ -143,6 +143,19 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     end
   end
 
+  property "link with nil kind and carrier: true is both ethernet and carrier-present" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true, kind: nil)
+      Process.sleep(50)
+
+      assert Ethernet.ethernet?(iface) == true,
+             "Expected ethernet? true for nil-kind link on #{iface}"
+
+      assert Ethernet.carrier?(iface) == true,
+             "Expected carrier? true for carrier:true link on #{iface}"
+    end
+  end
+
   property "non-ethernet kind with carrier: true has carrier? true but ethernet? false" do
     check all(
             iface <- iface_gen(),

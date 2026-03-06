@@ -275,6 +275,22 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
     end
   end
 
+  property "del decreases list count by exactly 1 when rule was present" do
+    check all(
+            priority <- StreamData.integer(32_000..34_999),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+      before_count = length(RuleManager.list_rules())
+
+      send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
+      after_count = length(RuleManager.list_rules())
+
+      assert after_count == before_count - 1,
+             "Expected count to decrease by 1: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "all rules in list_rules always have a non-nil integer table field" do
     check all(
             priority <- priority_gen(),

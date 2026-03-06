@@ -219,6 +219,34 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "connection.show with single-character valid ID does not produce validation error" do
+    check all(char <- StreamData.member_of(Enum.to_list(?a..?z))) do
+      id = <<char>>
+
+      result =
+        CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
+      case result do
+        %{"error" => "profile not found"} ->
+          :ok
+
+        %{"result" => _} ->
+          :ok
+
+        %{"error" => msg} ->
+          refute msg in [
+                   "identifier cannot be empty",
+                   "identifier too long",
+                   "identifier contains invalid characters"
+                 ],
+                 "Unexpected validation error for 1-char id #{inspect(id)}: #{msg}"
+
+        other ->
+          flunk("Unexpected result for 1-char id #{inspect(id)}: #{inspect(other)}")
+      end
+    end
+  end
+
   property "device.show with short valid interface name does not return a validation error" do
     check all(
             name <-
