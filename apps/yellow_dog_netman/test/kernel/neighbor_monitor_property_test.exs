@@ -276,6 +276,41 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "two distinct addresses on same interface both appear in get_neighbors" do
+    check all(
+            iface <- iface_gen(),
+            addr1 <- ipv4_gen(),
+            addr2 <- ipv4_gen(),
+            addr1 != addr2,
+            mac1 <- mac_gen(),
+            mac2 <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr1,
+        "mac" => mac1,
+        "state" => "reachable"
+      })
+
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr2,
+        "mac" => mac2,
+        "state" => "reachable"
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+
+      assert Enum.any?(neighbors, &(&1.address == addr1)),
+             "Expected #{addr1} in neighbors for #{iface}"
+
+      assert Enum.any?(neighbors, &(&1.address == addr2)),
+             "Expected #{addr2} in neighbors for #{iface}"
+    end
+  end
+
   property "neighbor entries always have required fields after add" do
     check all(
             iface <- iface_gen(),

@@ -55,6 +55,21 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
     end
   end
 
+  property "link_up then link_down then link_up state is :up" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_down(iface)
+      Process.sleep(30)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+      assert link.state == :up
+    end
+  end
+
   property "get_link never crashes for any interface name" do
     check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
       result = LinkMonitor.get_link(iface)
