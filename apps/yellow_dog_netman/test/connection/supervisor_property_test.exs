@@ -228,4 +228,34 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface)
     end
   end
+
+  property "stopping one of two connections decrements count by exactly 1" do
+    check all(
+            seed1 <- StreamData.integer(1..49_999),
+            seed2 <- StreamData.integer(50_000..99_999),
+            max_runs: 20
+          ) do
+      iface1 = "csp_d1c_#{seed1}"
+      iface2 = "csp_d2c_#{seed2}"
+      profile1 = make_profile(iface1)
+      profile2 = make_profile(iface2)
+
+      MockNetlink.link_up(iface1, carrier: false)
+      MockNetlink.link_up(iface2, carrier: false)
+      Process.sleep(30)
+
+      {:ok, _} = ConnSupervisor.start_connection(iface1, profile1)
+      {:ok, _} = ConnSupervisor.start_connection(iface2, profile2)
+      before_count = length(ConnSupervisor.list_connections())
+
+      :ok = ConnSupervisor.stop_connection(iface1)
+      Process.sleep(30)
+      after_count = length(ConnSupervisor.list_connections())
+
+      assert after_count == before_count - 1,
+             "Expected count -1 after stopping one of two: #{before_count} -> #{after_count}"
+
+      ConnSupervisor.stop_connection(iface2)
+    end
+  end
 end

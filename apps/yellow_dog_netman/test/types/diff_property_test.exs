@@ -161,6 +161,14 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "action field in created Diff is always one of the known action atoms" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert diff.action in @actions,
+             "Unexpected action: #{inspect(diff.action)}"
+    end
+  end
+
   property "Diff with empty string interface stores it without modification" do
     check all(action <- action_gen()) do
       diff = Diff.new(action, "", %{})

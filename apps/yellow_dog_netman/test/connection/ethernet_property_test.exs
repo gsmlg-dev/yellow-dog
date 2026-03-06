@@ -115,6 +115,20 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     end
   end
 
+  property "link_down then link_up sequence restores carrier? to true" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_down(iface)
+      Process.sleep(30)
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      assert Ethernet.carrier?(iface) == true,
+             "Expected carrier? true after link_down then link_up on #{iface}"
+    end
+  end
+
   property "repeated calls to ethernet? return the same stable result" do
     check all(iface <- iface_gen()) do
       MockNetlink.link_up(iface, carrier: true)
