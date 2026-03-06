@@ -240,4 +240,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_integer(failed) and failed >= 0
     end
   end
+
+  property "address added to iface1 is not visible in get_addresses(iface2)" do
+    check all(
+            iface1 <- iface_gen(),
+            iface2 <- iface_gen(),
+            iface1 != iface2,
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface1, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses2 = AddressManager.get_addresses(iface2)
+
+      refute Enum.any?(addresses2, &(&1.address == addr and &1.interface == iface1)),
+             "Address #{addr} on #{iface1} should not appear in #{iface2}'s address list"
+    end
+  end
 end

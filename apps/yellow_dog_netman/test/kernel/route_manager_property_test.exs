@@ -280,4 +280,22 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert is_nil(result) or is_map(result)
     end
   end
+
+  property "route added to iface1 is not visible in get_routes(iface2)" do
+    check all(
+            iface1 <- iface_gen(),
+            iface2 <- iface_gen(),
+            iface1 != iface2,
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface1)
+      Process.sleep(50)
+
+      routes2 = RouteManager.get_routes(iface2)
+
+      refute Enum.any?(routes2, &(&1.interface == iface1)),
+             "Route for #{iface1} should not appear in #{iface2}'s route list"
+    end
+  end
 end

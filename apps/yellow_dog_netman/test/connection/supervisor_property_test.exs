@@ -147,4 +147,21 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected count to decrease by 1: #{before_count} -> #{after_count}"
     end
   end
+
+  property "find_connection_by_profile returns :error after stop_connection" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_bpstop_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, _pid} = ConnSupervisor.start_connection(iface, profile)
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(30)
+
+      assert ConnSupervisor.find_connection_by_profile(profile.id) == :error,
+             "Expected find_connection_by_profile to return :error after stop"
+    end
+  end
 end
