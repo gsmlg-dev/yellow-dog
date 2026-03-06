@@ -143,4 +143,23 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       end
     end
   end
+
+  property "device.show with valid interface always returns result or interface-not-found" do
+    check all(iface <- valid_id_gen() |> StreamData.map(&String.slice(&1, 0, 15))) do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}})
+
+      case result do
+        %{"result" => _} -> :ok
+        %{"error" => "interface not found"} -> :ok
+        other -> flunk("Unexpected device.show response for #{inspect(iface)}: #{inspect(other)}")
+      end
+    end
+  end
+
+  property "device.show without interface param returns error" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device.show"})
+      assert %{"error" => _} = result
+    end
+  end
 end
