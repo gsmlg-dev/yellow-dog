@@ -130,4 +130,27 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert desired.connections == %{}
     end
   end
+
+  property "connection profile_id always matches the profile's id" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert conn.profile_id == profile.id
+    end
+  end
+
+  property "connection ipv6 config is preserved exactly from profile" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn.ipv6 == profile.ipv6
+    end
+  end
 end

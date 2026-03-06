@@ -74,4 +74,44 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       end
     end
   end
+
+  property "device.show with interface name longer than 15 chars always fails validation" do
+    check all(
+            extra <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
+      iface = String.duplicate("a", 16) <> extra
+
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}})
+
+      assert %{"error" => "identifier too long"} = result
+    end
+  end
+
+  property "identifier validation error messages are always one of three fixed strings" do
+    check all(id <- invalid_id_gen()) do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.show",
+          "params" => %{"id" => id}
+        })
+
+      assert %{"error" => msg} = result
+
+      assert msg in [
+               "identifier cannot be empty",
+               "identifier too long",
+               "identifier contains invalid characters"
+             ]
+    end
+  end
+
+  property "connection.up and connection.down produce identical validation errors for the same invalid ID" do
+    check all(id <- invalid_id_gen()) do
+      up_result = CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => id}})
+      down_result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => id}})
+
+      assert up_result == down_result,
+             "connection.up and connection.down gave different results for #{inspect(id)}"
+    end
+  end
 end
