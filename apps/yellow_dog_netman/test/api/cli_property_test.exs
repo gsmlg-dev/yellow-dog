@@ -223,4 +223,61 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(status)
     end
   end
+
+  property "connection.show with non-string id always returns invalid identifier error" do
+    check all(
+            id <-
+              StreamData.one_of([
+                StreamData.integer(),
+                StreamData.boolean(),
+                StreamData.constant(nil)
+              ])
+          ) do
+      result =
+        CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
+      assert %{"error" => "invalid identifier"} = result
+    end
+  end
+
+  property "connection.add with non-binary path always returns invalid path error" do
+    check all(
+            path <-
+              StreamData.one_of([
+                StreamData.integer(),
+                StreamData.boolean(),
+                StreamData.constant(nil)
+              ])
+          ) do
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+
+      assert %{"error" => "invalid path"} = result
+    end
+  end
+
+  property "connection.add with path containing null byte always returns null byte error" do
+    check all(
+            prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      path = prefix <> "\0" <> suffix <> ".toml"
+
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+
+      assert %{"error" => "path contains null byte"} = result
+    end
+  end
+
+  property "connection.add with path longer than 4096 bytes always returns path too long error" do
+    check all(extra <- StreamData.string(:alphanumeric, min_length: 1, max_length: 50)) do
+      path = String.duplicate("a", 4097) <> extra <> ".toml"
+
+      result =
+        CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => path}})
+
+      assert %{"error" => "path too long"} = result
+    end
+  end
 end

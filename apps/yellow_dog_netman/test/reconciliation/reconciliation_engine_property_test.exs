@@ -581,4 +581,30 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Process.alive?(Process.whereis(ReconciliationEngine))
     end
   end
+
+  property "activate always returns :ok or {:error, _} for any profile id" do
+    check all(
+            id <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.map(&("re_act_" <> &1))
+          ) do
+      result = ReconciliationEngine.activate(id)
+
+      assert result == :ok or match?({:error, _}, result),
+             "Unexpected activate result: #{inspect(result)}"
+    end
+  end
+
+  property "deactivate always returns :ok or {:error, :not_found} for any profile id" do
+    check all(
+            id <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.map(&("re_deact_" <> &1))
+          ) do
+      result = ReconciliationEngine.deactivate(id)
+
+      assert result == :ok or result == {:error, :not_found},
+             "Unexpected deactivate result: #{inspect(result)}"
+    end
+  end
 end
