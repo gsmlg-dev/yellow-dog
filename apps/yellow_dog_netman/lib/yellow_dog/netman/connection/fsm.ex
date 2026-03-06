@@ -702,10 +702,14 @@ defmodule YellowDog.Netman.Connection.FSM do
     servers = Enum.uniq(servers)
 
     if servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
-      apply(YellowDog.Resolved, :set_link_dns, [
-        data.interface,
-        %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
-      ])
+      try do
+        apply(YellowDog.Resolved, :set_link_dns, [
+          data.interface,
+          %{servers: servers, search: [], priority: data.profile.autoconnect_priority}
+        ])
+      rescue
+        _ -> :ok
+      end
     else
       :ok
     end
@@ -713,7 +717,11 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   defp reset_dns(data) do
     if Code.ensure_loaded?(YellowDog.Resolved) do
-      apply(YellowDog.Resolved, :reset_link_dns, [data.interface])
+      try do
+        apply(YellowDog.Resolved, :reset_link_dns, [data.interface])
+      rescue
+        _ -> :ok
+      end
     else
       :ok
     end

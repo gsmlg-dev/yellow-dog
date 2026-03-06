@@ -201,23 +201,26 @@ defmodule YellowDog.Netman.ProfileStore do
   end
 
   defp parse_toml_file(path) do
-    # Defense-in-depth: re-check symlink right before reading to narrow TOCTOU window
-    if symlink?(path) do
-      {:error, {:symlink_rejected, path}}
-    else
-      with {:ok, %{size: size}} when size <= @max_profile_file_bytes <- File.stat(path),
-           {:ok, content} <- File.read(path) do
-        case Toml.decode(content) do
-          {:ok, toml} -> Profile.from_toml(toml)
-          {:error, reason} -> {:error, {:toml_parse, reason}}
-        end
-      else
-        {:ok, %{size: size}} ->
-          {:error, {:file_too_large, size, @max_profile_file_bytes}}
-
-        {:error, reason} ->
-          {:error, {:file_read, reason}}
+    # Use lstat (not stat) to detect symlinks atomically with size check
+    with {:ok, %{type: :regular, size: size}} when size <= @max_profile_file_bytes <-
+           File.lstat(path),
+         {:ok, content} <- File.read(path) do
+      case Toml.decode(content) do
+        {:ok, toml} -> Profile.from_toml(toml)
+        {:error, reason} -> {:error, {:toml_parse, reason}}
       end
+    else
+      {:ok, %{type: :symlink}} ->
+        {:error, {:symlink_rejected, path}}
+
+      {:ok, %{size: size}} ->
+        {:error, {:file_too_large, size, @max_profile_file_bytes}}
+
+      {:ok, %{type: type}} ->
+        {:error, {:not_regular_file, type}}
+
+      {:error, reason} ->
+        {:error, {:file_read, reason}}
     end
   end
 

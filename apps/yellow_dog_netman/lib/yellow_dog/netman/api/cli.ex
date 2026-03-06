@@ -371,11 +371,8 @@ defmodule YellowDog.Netman.API.CLI do
           not String.starts_with?(expanded, profile_dir <> "/") ->
             {:error, "path must be within the profile directory"}
 
-          not File.regular?(expanded) ->
-            {:error, "file not found"}
-
-          match?({:ok, _}, File.read_link(expanded)) ->
-            {:error, "symlinks are not allowed"}
+          not match?({:ok, %{type: :regular}}, File.lstat(expanded)) ->
+            {:error, "file not found or is a symlink"}
 
           true ->
             :ok

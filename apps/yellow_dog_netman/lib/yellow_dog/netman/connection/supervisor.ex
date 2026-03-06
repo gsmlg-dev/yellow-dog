@@ -33,8 +33,10 @@ defmodule YellowDog.Netman.Connection.Supervisor do
   def stop_connection(interface) do
     case find_connection(interface) do
       {:ok, pid} ->
-        DynamicSupervisor.terminate_child(__MODULE__, pid)
-        :ok
+        case DynamicSupervisor.terminate_child(__MODULE__, pid) do
+          :ok -> :ok
+          {:error, :not_found} -> :ok
+        end
 
       :error ->
         {:error, :not_found}

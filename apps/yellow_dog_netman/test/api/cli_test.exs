@@ -498,7 +498,7 @@ defmodule YellowDog.Netman.API.CLITest do
           "params" => %{"file" => Path.join(profile_dir, "nonexistent.toml")}
         })
 
-      assert %{"error" => "file not found"} = result
+      assert %{"error" => "file not found or is a symlink"} = result
     end
 
     test "valid identifiers with hyphens and dots pass validation" do
@@ -725,7 +725,7 @@ defmodule YellowDog.Netman.API.CLITest do
           "params" => %{"file" => link_path}
         })
 
-      assert %{"error" => "symlinks are not allowed"} = result
+      assert %{"error" => "file not found or is a symlink"} = result
     end
   end
 end
