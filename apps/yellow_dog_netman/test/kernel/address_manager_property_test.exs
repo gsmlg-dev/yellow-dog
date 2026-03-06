@@ -178,4 +178,32 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_list(result)
     end
   end
+
+  property "list_all includes addresses from multiple distinct interfaces" do
+    check all(
+            iface1 <- iface_gen(),
+            iface2 <- iface_gen(),
+            iface1 != iface2,
+            addr1 <- ipv4_gen(),
+            addr2 <- ipv4_gen()
+          ) do
+      MockNetlink.address_added(iface1, "#{addr1}/24")
+      MockNetlink.address_added(iface2, "#{addr2}/24")
+      Process.sleep(50)
+
+      all_addresses = AddressManager.list_all()
+
+      assert Map.has_key?(all_addresses, iface1),
+             "list_all missing interface #{iface1}"
+
+      assert Enum.any?(all_addresses[iface1] || [], &(&1.address == addr1)),
+             "list_all missing address #{addr1} on #{iface1}"
+
+      assert Map.has_key?(all_addresses, iface2),
+             "list_all missing interface #{iface2}"
+
+      assert Enum.any?(all_addresses[iface2] || [], &(&1.address == addr2)),
+             "list_all missing address #{addr2} on #{iface2}"
+    end
+  end
 end

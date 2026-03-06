@@ -1,0 +1,126 @@
+defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
+  use ExUnit.Case
+  use ExUnitProperties
+
+  alias YellowDog.Netman.Kernel.{Netlink, NeighborMonitor}
+
+  # Generators
+
+  defp iface_gen do
+    StreamData.string(:alphanumeric, min_length: 3, max_length: 12)
+    |> StreamData.map(&("prop_nm_" <> &1))
+    |> StreamData.map(&String.slice(&1, 0, 15))
+  end
+
+  defp ipv4_gen do
+    gen all(
+          a <- StreamData.integer(10..10),
+          b <- StreamData.integer(0..255),
+          c <- StreamData.integer(0..255),
+          d <- StreamData.integer(1..254)
+        ) do
+      "#{a}.#{b}.#{c}.#{d}"
+    end
+  end
+
+  defp mac_gen do
+    gen all(octets <- StreamData.list_of(StreamData.integer(0..255), length: 6)) do
+      Enum.map_join(octets, ":", &Integer.to_string(&1, 16) |> String.pad_leading(2, "0"))
+    end
+  end
+
+  defp nud_state_gen do
+    # includes known states + "incomplete" which triggers the catch-all (→ :none)
+    StreamData.member_of(["reachable", "stale", "delay", "probe", "failed", "permanent", "incomplete"])
+  end
+
+  defp send_neighbor_event(event) do
+    send(Netlink, {:mock_event, Map.put(event, "type", "neighbor_change")})
+    Process.sleep(50)
+  end
+
+  # Properties
+
+  property "add then get_neighbors always returns the neighbor" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen(),
+            state <- nud_state_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => state
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      assert Enum.any?(neighbors, &(&1.address == addr)),
+             "Expected #{addr} in neighbors for #{iface}"
+    end
+  end
+
+  property "add then delete then get does not contain the neighbor" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      # NeighborMonitor uses "del" (not "delete") to match handle_neighbor_event/1
+      send_neighbor_event(%{
+        "action" => "del",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => "reachable"
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      refute Enum.any?(neighbors, &(&1.address == addr)),
+             "Expected #{addr} to be removed from #{iface}"
+    end
+  end
+
+  property "get_neighbors never crashes for any interface name" do
+    check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
+      result = NeighborMonitor.get_neighbors(iface)
+      assert is_list(result)
+    end
+  end
+
+  property "NUD state is always normalized to a known atom" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen(),
+            state <- nud_state_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => state
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      entry = Enum.find(neighbors, &(&1.address == addr))
+      assert entry != nil
+
+      # parse_nud_state/1 handles: reachable, stale, delay, probe, failed, permanent
+      # Everything else (including "noarp", "incomplete", etc.) → :none
+      assert entry.state in [:reachable, :stale, :delay, :probe, :failed, :permanent, :none],
+             "Unexpected state atom: #{entry.state}"
+    end
+  end
+end

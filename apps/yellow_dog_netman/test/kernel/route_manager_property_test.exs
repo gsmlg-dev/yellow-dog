@@ -205,4 +205,29 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert hd(matching).metric == metric2
     end
   end
+
+  property "list_all includes routes from multiple distinct interfaces" do
+    check all(
+            iface1 <- iface_gen(),
+            iface2 <- iface_gen(),
+            iface1 != iface2,
+            gw1 <- gateway_gen(),
+            gw2 <- gateway_gen()
+          ) do
+      dest1 = "10.201.1.0/24"
+      dest2 = "10.202.2.0/24"
+
+      MockNetlink.route_added(destination: dest1, gateway: gw1, interface: iface1, metric: 100)
+      MockNetlink.route_added(destination: dest2, gateway: gw2, interface: iface2, metric: 200)
+      Process.sleep(50)
+
+      all_routes = RouteManager.list_all()
+
+      assert Enum.any?(all_routes, &(&1.interface == iface1 and &1.destination == dest1)),
+             "list_all missing route for #{iface1}"
+
+      assert Enum.any?(all_routes, &(&1.interface == iface2 and &1.destination == dest2)),
+             "list_all missing route for #{iface2}"
+    end
+  end
 end
