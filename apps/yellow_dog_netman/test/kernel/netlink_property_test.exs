@@ -116,4 +116,29 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Task.await(task, 3000) == :received
     end
   end
+
+  property "subscribe is idempotent — subscribing twice delivers events exactly once" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Netlink.subscribe()
+      # Allow both casts to be processed
+      Process.sleep(20)
+
+      tag = unique_tag()
+      expected_atom = String.to_atom(event_type)
+
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}}, 500
+
+      # Should NOT receive a second copy (idempotent subscribe)
+      refute_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}}, 50
+    end
+  end
+
+  property "subscribe always returns :ok" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Netlink.subscribe() == :ok
+    end
+  end
 end
