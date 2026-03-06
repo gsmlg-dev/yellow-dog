@@ -202,6 +202,15 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "new/1 is equivalent to new/3 with nil interface and empty params" do
+    check all(action <- action_gen()) do
+      d1 = Diff.new(action)
+      d3 = Diff.new(action, nil, %{})
+      assert d1 == d3,
+             "Expected new/1 and new/3(nil, %{}) to be equivalent for action #{action}"
+    end
+  end
+
   property "diffs with same action but different non-nil interfaces are never equal" do
     check all(
             action <- action_gen(),

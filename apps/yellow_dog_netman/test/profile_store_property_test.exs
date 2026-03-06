@@ -289,6 +289,30 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "put for one profile does not affect another profile's get result" do
+    check all(
+            p1 <- profile_gen(),
+            p2 <- profile_gen()
+          ) do
+      p1 = %{p1 | id: "iso1-#{p1.id}"}
+      p2 = %{p2 | id: "iso2-#{p2.id}"}
+
+      ProfileStore.put(p1.id, p1)
+      ProfileStore.put(p2.id, p2)
+
+      # Overwrite p1 with a modified version
+      p1_updated = %{p1 | autoconnect: not p1.autoconnect}
+      ProfileStore.put(p1.id, p1_updated)
+
+      # p2 must be unaffected
+      assert {:ok, ^p2} = ProfileStore.get(p2.id),
+             "p2 was unexpectedly changed when p1 was overwritten"
+
+      ProfileStore.delete(p1.id)
+      ProfileStore.delete(p2.id)
+    end
+  end
+
   property "import_file on a file larger than 1MB returns file_too_large error" do
     check all(_ <- StreamData.constant(:ok), max_runs: 1) do
       path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"

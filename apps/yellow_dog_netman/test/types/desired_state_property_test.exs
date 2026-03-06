@@ -234,6 +234,19 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
+  property "connection interface is always a binary string" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert is_binary(conn.interface),
+             "Expected binary interface, got: #{inspect(conn.interface)}"
+    end
+  end
+
   property "profiles with duplicate IDs produce at most 1 connection" do
     check all(
             profile <- profile_gen(),
