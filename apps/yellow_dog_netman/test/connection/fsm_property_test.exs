@@ -155,6 +155,45 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "get_state always preserves interface and profile_id identity" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fpid_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      assert state.interface == interface,
+             "interface mismatch: #{state.interface} != #{interface}"
+
+      assert state.profile_id == profile.id, "profile_id mismatch: #{state.profile_id}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "get_state always contains all required fields" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "ffields_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      for key <- [:interface, :state, :profile_id, :type, :priority, :lease, :error, :dns] do
+        assert Map.has_key?(state, key), "get_state missing required key: #{key}"
+      end
+
+      assert state.state in @valid_states
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()
