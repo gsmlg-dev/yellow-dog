@@ -136,4 +136,16 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, "") == :ok
     end
   end
+
+  property "sequential puts with alternating keys always return :ok" do
+    check all(
+            key1 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            key2 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            key1 != key2
+          ) do
+      assert SecretStore.put(key1, "v1") == :ok
+      assert SecretStore.put(key2, "v2") == :ok
+      assert SecretStore.put(key1, "v3") == :ok
+    end
+  end
 end

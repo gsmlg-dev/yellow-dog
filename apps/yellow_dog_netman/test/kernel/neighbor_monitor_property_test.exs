@@ -502,4 +502,14 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Neighbor entry has nil mac"
     end
   end
+
+  property "list_neighbors never contains duplicate (interface, address) pairs" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      keys = Enum.map(neighbors, &{&1.interface, &1.address})
+
+      assert length(keys) == length(Enum.uniq(keys)),
+             "list_neighbors contains duplicate (interface, address) pairs: #{inspect(keys)}"
+    end
+  end
 end
