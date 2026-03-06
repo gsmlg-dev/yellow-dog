@@ -269,4 +269,22 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "dns_priority result count equals total DNS entries across all connections" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_gen(), min_length: 0, max_length: 5)
+          ) do
+      indexed =
+        connections
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> %{c | id: "dns-#{i}-#{c.id}", dns: ["8.8.#{i}.#{i}"]} end)
+
+      result = PolicyEngine.dns_priority(indexed)
+      total_dns = Enum.sum(Enum.map(indexed, &length(&1.dns)))
+
+      assert length(result) == total_dns,
+             "Expected #{total_dns} DNS entries, got #{length(result)}"
+    end
+  end
 end

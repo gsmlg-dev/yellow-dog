@@ -273,4 +273,25 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected profile_id #{inspect(profile.id)}, got: #{inspect(conn[:profile_id])}"
     end
   end
+
+  property "from_profiles result only contains IDs from the input profiles" do
+    check all(
+            count <- StreamData.integer(1..5),
+            profiles <- StreamData.list_of(profile_gen(), length: count),
+            ifaces <- StreamData.list_of(interface_gen(), length: count)
+          ) do
+      indexed_profiles = profiles |> Enum.with_index()
+        |> Enum.map(fn {p, i} -> %{p | id: "check-#{i}-#{p.id}"} end)
+
+      pairs = Enum.zip(indexed_profiles, ifaces)
+      desired = DesiredState.from_profiles(pairs)
+
+      input_ids = MapSet.new(indexed_profiles, & &1.id)
+
+      for {conn_id, _conn} <- desired.connections do
+        assert MapSet.member?(input_ids, conn_id),
+               "Connection #{conn_id} not in input profiles"
+      end
+    end
+  end
 end
