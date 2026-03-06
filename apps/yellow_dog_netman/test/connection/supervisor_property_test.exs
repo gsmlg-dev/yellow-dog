@@ -66,4 +66,32 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface)
     end
   end
+
+  property "list_connections always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert is_list(ConnSupervisor.list_connections())
+    end
+  end
+
+  property "stop_connection for unknown interface always returns {:error, :not_found}" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      assert ConnSupervisor.stop_connection("unk_stop_#{iface}") == {:error, :not_found}
+    end
+  end
+
+  property "stop_connection then find_connection returns :error" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_stop_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, _pid} = ConnSupervisor.start_connection(iface, profile)
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(30)
+
+      assert ConnSupervisor.find_connection(iface) == :error
+    end
+  end
 end
