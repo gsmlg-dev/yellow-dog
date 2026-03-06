@@ -147,6 +147,20 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "new/3 with non-empty params differs from new/3 with empty params" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            key <- atom(:alphanumeric),
+            value <- integer()
+          ) do
+      d_empty = Diff.new(action, interface, %{})
+      d_nonempty = Diff.new(action, interface, %{key => value})
+      assert d_empty != d_nonempty,
+             "Expected diffs to differ when params differ"
+    end
+  end
+
   property "diffs with same action but different non-nil interfaces are never equal" do
     check all(
             action <- action_gen(),

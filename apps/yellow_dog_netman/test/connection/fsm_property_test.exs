@@ -283,6 +283,32 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "autoconnect: true with disabled IP always reaches :activated state" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      interface = "fautoact_#{seed}"
+
+      profile = %{
+        make_profile(interface)
+        | autoconnect: true,
+          ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+          ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      MockNetlink.link_up(interface, carrier: true)
+      Process.sleep(50)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(500)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      assert state.state == :activated,
+             "Expected :activated for autoconnect:true + disabled IP, got: #{state.state}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "autoconnect: false profile stays in :disconnected after link_up with carrier" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fnoac_#{seed}"

@@ -225,6 +225,18 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     end
   end
 
+  property "get_neighbors for a fresh interface with no events returns empty list" do
+    check all(
+            # Use a unique prefix that was never registered by any other test
+            seed <- StreamData.integer(1..999_999)
+          ) do
+      fresh_iface = "nm_fresh_#{seed}"
+      neighbors = NeighborMonitor.get_neighbors(fresh_iface)
+      assert neighbors == [],
+             "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(neighbors)}"
+    end
+  end
+
   property "neighbor entries always have required fields after add" do
     check all(
             iface <- iface_gen(),
