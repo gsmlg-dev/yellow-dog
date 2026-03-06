@@ -25,6 +25,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     end
   end
 
+  property "delete is idempotent — double delete always returns :ok" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
+      assert SecretStore.delete(key) == :ok
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
   property "put then get still returns :not_found (stub never persists)" do
     check all(
             key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),

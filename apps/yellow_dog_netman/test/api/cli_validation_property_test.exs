@@ -247,6 +247,16 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "non-string id type always produces an error" do
+    check all(id <- StreamData.integer()) do
+      result =
+        CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
+      assert %{"error" => _} = result,
+             "Expected error map for non-string id #{inspect(id)}, got: #{inspect(result)}"
+    end
+  end
+
   property "device.show with short valid interface name does not return a validation error" do
     check all(
             name <-

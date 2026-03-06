@@ -293,6 +293,18 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
     end
   end
 
+  property "list_all always returns a map with list values" do
+    check all(_ <- StreamData.constant(:ok)) do
+      all = AddressManager.list_all()
+      assert is_map(all)
+
+      for {_iface, addrs} <- all do
+        assert is_list(addrs),
+               "Expected list value in list_all map, got: #{inspect(addrs)}"
+      end
+    end
+  end
+
   property "address added to iface1 is not visible in get_addresses(iface2)" do
     check all(
             iface1 <- iface_gen(),
