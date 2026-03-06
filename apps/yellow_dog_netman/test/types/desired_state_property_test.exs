@@ -221,6 +221,19 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
+  property "connection priority is always a non-negative integer" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert is_integer(conn.priority) and conn.priority >= 0,
+             "Expected non-negative integer priority, got: #{inspect(conn.priority)}"
+    end
+  end
+
   property "profiles with duplicate IDs produce at most 1 connection" do
     check all(
             profile <- profile_gen(),

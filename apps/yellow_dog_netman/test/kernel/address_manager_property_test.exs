@@ -283,6 +283,16 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
     end
   end
 
+  property "get_addresses for a fresh interface with no events returns empty list" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "am_fresh_#{seed}"
+      result = AddressManager.get_addresses(fresh_iface)
+
+      assert result == [],
+             "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
+
   property "address added to iface1 is not visible in get_addresses(iface2)" do
     check all(
             iface1 <- iface_gen(),
