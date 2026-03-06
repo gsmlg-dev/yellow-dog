@@ -550,4 +550,36 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert result["connection"]["id"] == profile.id
     end
   end
+
+  property "to_toml then from_toml roundtrip preserves core profile fields" do
+    check all(
+            id <- profile_id_gen(),
+            iface <- iface_gen(),
+            autoconnect <- StreamData.boolean(),
+            priority <- StreamData.integer(-1000..10_000),
+            zone <- zone_gen()
+          ) do
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: autoconnect,
+        autoconnect_priority: priority,
+        zone: zone,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      toml_map = Profile.to_toml(profile)
+      assert {:ok, roundtrip} = Profile.from_toml(toml_map)
+
+      assert roundtrip.id == profile.id
+      assert roundtrip.type == profile.type
+      assert roundtrip.autoconnect == profile.autoconnect
+      assert roundtrip.autoconnect_priority == profile.autoconnect_priority
+      assert roundtrip.zone == profile.zone
+      assert roundtrip.interface == profile.interface
+    end
+  end
 end
