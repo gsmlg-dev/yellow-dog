@@ -192,4 +192,20 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(shared_id)
     end
   end
+
+  property "import_file on a file larger than 1MB returns file_too_large error" do
+    check all(_ <- StreamData.constant(:ok), max_runs: 1) do
+      path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"
+      # Write 1MB + 1 byte (just over the limit)
+      File.write!(path, String.duplicate("# x\n", 262_145))
+
+      try do
+        result = ProfileStore.import_file(path)
+        assert match?({:error, {:file_too_large, _, _}}, result),
+               "Expected file_too_large error, got: #{inspect(result)}"
+      after
+        File.rm(path)
+      end
+    end
+  end
 end
