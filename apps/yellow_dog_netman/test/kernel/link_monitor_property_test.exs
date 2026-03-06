@@ -153,4 +153,22 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected MTU=#{mtu} to be preserved, got #{link.mtu}"
     end
   end
+
+  property "list_links always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert is_list(LinkMonitor.list_links())
+    end
+  end
+
+  property "list_links includes recently added links" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      links = LinkMonitor.list_links()
+
+      assert Enum.any?(links, &(&1.interface == iface)),
+             "list_links missing recently added link #{iface}"
+    end
+  end
 end
