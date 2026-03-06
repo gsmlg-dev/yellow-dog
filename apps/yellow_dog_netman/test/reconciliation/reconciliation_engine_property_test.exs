@@ -439,4 +439,88 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Duplicate activation diffs for same interface"
     end
   end
+
+  property "activation diff count exactly matches connections with observed links when no FSMs running" do
+    check all(
+            ifaces <-
+              StreamData.list_of(interface_name_gen(),
+                min_length: 1,
+                max_length: 4,
+                uniq_by: & &1
+              )
+          ) do
+      connections =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          profile_id = "profile-#{iface}"
+
+          conn = %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+
+          Map.put(acc, profile_id, conn)
+        end)
+
+      links =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          link = %{
+            interface: iface,
+            index: :erlang.phash2(iface, 255) + 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: "aa:bb:cc:dd:ee:ff",
+            kind: nil
+          }
+
+          Map.put(acc, iface, link)
+        end)
+
+      desired = %DesiredState{connections: connections}
+      observed = %ObservedState{links: links, addresses: %{}, routes: []}
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      activate_diffs = Enum.filter(diffs, &(&1.action == :activate_connection))
+
+      # With no FSMs running, exactly one activation diff per connection-link pair
+      assert length(activate_diffs) == length(ifaces),
+             "Expected #{length(ifaces)} activation diffs but got #{length(activate_diffs)}"
+    end
+  end
+
+  property "all activation diff profile IDs reference connections in desired state" do
+    check all(observed <- observed_state_gen()) do
+      ifaces = Map.keys(observed.links)
+
+      connections =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          profile_id = "profile-#{iface}"
+
+          conn = %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+
+          Map.put(acc, profile_id, conn)
+        end)
+
+      desired = %DesiredState{connections: connections}
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      for diff <- diffs, diff.action == :activate_connection do
+        assert Map.has_key?(desired.connections, diff.params.profile_id),
+               "Diff profile_id #{diff.params.profile_id} not in desired connections"
+      end
+    end
+  end
 end
