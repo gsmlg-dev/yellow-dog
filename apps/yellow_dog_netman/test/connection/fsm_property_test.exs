@@ -398,6 +398,24 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM get_state always returns {:ok, _} when pid is alive" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
+      interface = "fgsok_#{seed}"
+      profile = make_profile(interface)
+
+      {:ok, pid} = FSM.start_link(interface: interface, profile: profile)
+      Process.sleep(50)
+
+      assert Process.alive?(pid)
+      result = FSM.get_state(pid)
+
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from get_state on alive FSM, got: #{inspect(result)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   property "autoconnect: false profile stays in :disconnected after link_up with carrier" do
     check all(seed <- StreamData.integer(1..99_999), max_runs: 30) do
       interface = "fnoac_#{seed}"

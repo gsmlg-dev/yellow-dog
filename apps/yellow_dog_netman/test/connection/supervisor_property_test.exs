@@ -229,6 +229,25 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     end
   end
 
+  property "stop_connection terminates the started pid" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_kill_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
+      assert Process.alive?(pid)
+
+      :ok = ConnSupervisor.stop_connection(iface)
+      Process.sleep(50)
+
+      refute Process.alive?(pid),
+             "Expected pid #{inspect(pid)} to be dead after stop_connection"
+    end
+  end
+
   property "stopping one of two connections decrements count by exactly 1" do
     check all(
             seed1 <- StreamData.integer(1..49_999),

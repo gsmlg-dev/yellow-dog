@@ -269,6 +269,18 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
     end
   end
 
+  property "event with list type value always dispatches as :unknown" do
+    check all(items <- StreamData.list_of(StreamData.integer(), max_length: 3)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => items, "_tag" => tag}})
+
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
+
   property "events without type field always dispatch as :unknown" do
     check all(extra <- extra_field_gen()) do
       Netlink.subscribe()
