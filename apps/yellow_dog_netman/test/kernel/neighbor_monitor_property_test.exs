@@ -168,4 +168,35 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "list_neighbors always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert is_list(NeighborMonitor.list_neighbors())
+    end
+  end
+
+  property "neighbor entries always have required fields after add" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            mac <- mac_gen(),
+            state <- nud_state_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => mac,
+        "state" => state
+      })
+
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      entry = Enum.find(neighbors, &(&1.address == addr))
+      assert entry != nil
+
+      for field <- [:address, :interface, :mac, :state] do
+        assert Map.has_key?(entry, field), "Neighbor entry missing field: #{field}"
+      end
+    end
+  end
 end

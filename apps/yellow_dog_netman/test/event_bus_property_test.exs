@@ -158,4 +158,22 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "wildcard unsubscribe stops delivery for wildcard subscriptions" do
+    check all(
+            prefix <- topic_segment(),
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      wildcard_topic = "prop_wu:#{prefix}:*"
+      specific_topic = "prop_wu:#{prefix}:#{suffix}"
+
+      {:ok, _} = EventBus.subscribe(wildcard_topic)
+      EventBus.unsubscribe(wildcard_topic)
+
+      # Publish after unsubscribe — wildcard should no longer receive it
+      EventBus.publish(specific_topic, message)
+      refute_receive {:netman_event, ^specific_topic, _}, 30
+    end
+  end
 end

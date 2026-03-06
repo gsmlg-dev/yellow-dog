@@ -215,4 +215,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       end
     end
   end
+
+  property "status method always returns a result map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert %{"result" => status} = result
+      assert is_map(status)
+    end
+  end
 end

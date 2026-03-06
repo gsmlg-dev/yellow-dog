@@ -164,4 +164,17 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "default_route with empty list always returns :none" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert PolicyEngine.default_route([]) == :none
+    end
+  end
+
+  property "effective_priority is always a non-negative integer" do
+    check all(conn <- connection_gen()) do
+      priority = PolicyEngine.effective_priority(conn)
+      assert is_integer(priority) and priority >= 0
+    end
+  end
 end

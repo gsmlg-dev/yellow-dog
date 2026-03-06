@@ -75,4 +75,23 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Ethernet.mtu(iface) == mtu
     end
   end
+
+  property "link with 'veth' kind is always treated as ethernet" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, kind: "veth")
+      Process.sleep(50)
+      assert Ethernet.ethernet?(iface) == true
+    end
+  end
+
+  property "link with non-ethernet kind is never treated as ethernet" do
+    check all(
+            iface <- iface_gen(),
+            kind <- StreamData.member_of(["bridge", "bond", "loopback", "dummy", "tun"])
+          ) do
+      MockNetlink.link_up(iface, kind: kind)
+      Process.sleep(50)
+      assert Ethernet.ethernet?(iface) == false
+    end
+  end
 end

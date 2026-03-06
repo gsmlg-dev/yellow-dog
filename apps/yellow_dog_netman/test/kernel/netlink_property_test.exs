@@ -153,4 +153,18 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Unexpected command result: #{inspect(result)}"
     end
   end
+
+  property "events without type field always dispatch as :unknown" do
+    check all(extra <- extra_field_gen()) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag = unique_tag()
+      # Send event map with no "type" key (only extra fields + tag)
+      event = Map.merge(extra, %{"_tag" => tag})
+      send(Netlink, {:mock_event, event})
+
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end
