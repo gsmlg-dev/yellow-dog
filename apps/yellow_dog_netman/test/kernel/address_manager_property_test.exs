@@ -372,4 +372,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected count to decrease by 1: #{before_count} -> #{after_count}"
     end
   end
+
+  property "list_all always returns a map where all keys are binary strings" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      all = AddressManager.list_all()
+
+      for {key, _} <- all do
+        assert is_binary(key),
+               "Expected binary key in list_all map, got: #{inspect(key)}"
+      end
+    end
+  end
 end

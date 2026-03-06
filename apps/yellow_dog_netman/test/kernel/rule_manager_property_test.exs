@@ -387,4 +387,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected source #{src}, got: #{inspect(match.source)}"
     end
   end
+
+  property "list_rules returns consistent results on consecutive calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = RuleManager.list_rules()
+      r2 = RuleManager.list_rules()
+      assert r1 == r2, "list_rules returned different results on consecutive calls"
+    end
+  end
 end

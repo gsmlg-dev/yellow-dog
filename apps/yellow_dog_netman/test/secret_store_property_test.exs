@@ -176,4 +176,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.delete(key) == :ok
     end
   end
+
+  property "get with a very long key always returns {:error, :not_found}" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 128, max_length: 256)) do
+      assert SecretStore.get(key) == {:error, :not_found}
+    end
+  end
 end
