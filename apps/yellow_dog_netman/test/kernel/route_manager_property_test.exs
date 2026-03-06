@@ -281,6 +281,26 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     end
   end
 
+  property "all routes in list_all always have required fields" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface)
+      Process.sleep(50)
+
+      all_routes = RouteManager.list_all()
+
+      for r <- all_routes do
+        for field <- [:destination, :gateway, :interface, :metric, :protocol, :scope, :family] do
+          assert Map.has_key?(r, field),
+                 "Route entry missing required field :#{field} in #{inspect(r)}"
+        end
+      end
+    end
+  end
+
   property "route added to iface1 is not visible in get_routes(iface2)" do
     check all(
             iface1 <- iface_gen(),

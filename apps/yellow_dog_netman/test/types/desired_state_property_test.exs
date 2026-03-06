@@ -203,6 +203,24 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
+  property "connection dns is always a list of strings" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert is_list(conn.dns),
+             "Expected dns to be a list, got: #{inspect(conn.dns)}"
+
+      for item <- conn.dns do
+        assert is_binary(item),
+               "Expected dns item to be a string, got: #{inspect(item)}"
+      end
+    end
+  end
+
   property "profiles with duplicate IDs produce at most 1 connection" do
     check all(
             profile <- profile_gen(),

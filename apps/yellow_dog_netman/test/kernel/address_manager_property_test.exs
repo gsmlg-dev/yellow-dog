@@ -263,6 +263,26 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
     end
   end
 
+  property "all entries returned by get_addresses have required fields" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses = AddressManager.get_addresses(iface)
+
+      for a <- addresses do
+        for field <- [:address, :interface, :prefix_len, :family, :scope] do
+          assert Map.has_key?(a, field),
+                 "Address entry missing required field :#{field} in #{inspect(a)}"
+        end
+      end
+    end
+  end
+
   property "address added to iface1 is not visible in get_addresses(iface2)" do
     check all(
             iface1 <- iface_gen(),
