@@ -160,7 +160,8 @@ defmodule YellowDog.Netman.API.CLITest do
       method = "auto"
       """
 
-      tmp_path = System.tmp_dir!() |> Path.join("cli-import-test.toml")
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+      tmp_path = Path.join(profile_dir, "cli-import-test.toml")
       File.write!(tmp_path, toml)
       on_exit(fn -> File.rm(tmp_path) end)
 
@@ -489,10 +490,12 @@ defmodule YellowDog.Netman.API.CLITest do
     end
 
     test "connection.add with nonexistent toml file returns error" do
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+
       result =
         CLI.handle_command(%{
           "method" => "connection.add",
-          "params" => %{"file" => "/nonexistent/path.toml"}
+          "params" => %{"file" => Path.join(profile_dir, "nonexistent.toml")}
         })
 
       assert %{"error" => "file not found"} = result
@@ -675,8 +678,9 @@ defmodule YellowDog.Netman.API.CLITest do
     end
 
     test "connection.add with symlink is rejected" do
-      real_path = Path.join(System.tmp_dir!(), "real_profile_#{:rand.uniform(100_000)}.toml")
-      link_path = Path.join(System.tmp_dir!(), "link_profile_#{:rand.uniform(100_000)}.toml")
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+      real_path = Path.join(profile_dir, "real_profile_#{:rand.uniform(100_000)}.toml")
+      link_path = Path.join(profile_dir, "link_profile_#{:rand.uniform(100_000)}.toml")
 
       File.write!(real_path, """
       [connection]

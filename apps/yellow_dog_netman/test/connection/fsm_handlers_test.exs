@@ -166,13 +166,14 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     test "setup_link succeeds with no mtu and link-up command", %{data: data, iface: iface} do
       test_pid = self()
 
-      mock = mock_link_module(%{
-        set_link_up: fn ^iface ->
-          send(test_pid, {:setup_link_cmd, :set_link_up, iface})
-          :ok
-        end,
-        set_mtu: fn _, _ -> :ok end
-      })
+      mock =
+        mock_link_module(%{
+          set_link_up: fn ^iface ->
+            send(test_pid, {:setup_link_cmd, :set_link_up, iface})
+            :ok
+          end,
+          set_mtu: fn _, _ -> :ok end
+        })
 
       assert :ok = FSM.setup_link(data, mock)
       assert_received {:setup_link_cmd, :set_link_up, ^iface}
@@ -181,19 +182,21 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     test "setup_link returns error when mtu command fails", %{data: data, iface: iface} do
       data = put_in(data.profile.ethernet.mtu, 9000)
 
-      mock = mock_link_module(%{
-        set_mtu: fn ^iface, 9000 -> {:error, :mtu_unsupported} end,
-        set_link_up: fn _ -> :ok end
-      })
+      mock =
+        mock_link_module(%{
+          set_mtu: fn ^iface, 9000 -> {:error, :mtu_unsupported} end,
+          set_link_up: fn _ -> :ok end
+        })
 
       assert {:error, :mtu_unsupported} = FSM.setup_link(data, mock)
     end
 
     test "setup_link returns error when link-up command exits", %{data: data} do
-      mock = mock_link_module(%{
-        set_mtu: fn _, _ -> :ok end,
-        set_link_up: fn _ -> exit(:netlink_down) end
-      })
+      mock =
+        mock_link_module(%{
+          set_mtu: fn _, _ -> :ok end,
+          set_link_up: fn _ -> exit(:netlink_down) end
+        })
 
       assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, mock)
     end

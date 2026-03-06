@@ -108,16 +108,19 @@ defmodule YellowDog.Netman.Types.Profile do
     conn = Map.get(toml, "connection", %{})
 
     with {:ok, id} <- require_string(conn, "id"),
+         :ok <- validate_id(id),
          {:ok, type} <- parse_type(conn),
-         {:ok, interface} <- validate_interface(Map.get(conn, "interface")) do
+         {:ok, interface} <- validate_interface(Map.get(conn, "interface")),
+         {:ok, priority} <- validate_priority(Map.get(conn, "autoconnect_priority", 0)),
+         {:ok, zone} <- validate_zone(Map.get(conn, "zone", "default")) do
       {:ok,
        %{
          id: id,
          type: type,
          interface: interface,
          autoconnect: Map.get(conn, "autoconnect", true),
-         autoconnect_priority: Map.get(conn, "autoconnect_priority", 0),
-         zone: Map.get(conn, "zone", "default")
+         autoconnect_priority: priority,
+         zone: zone
        }}
     end
   end
@@ -282,6 +285,51 @@ defmodule YellowDog.Netman.Types.Profile do
   end
 
   defp valid_cidr?(_), do: false
+
+  @max_id_length 128
+  @id_pattern ~r/^[a-zA-Z0-9_\-\.]+$/
+
+  defp validate_id(id) do
+    cond do
+      byte_size(id) > @max_id_length ->
+        {:error, "connection.id is too long (max #{@max_id_length} characters)"}
+
+      not Regex.match?(@id_pattern, id) ->
+        {:error, "connection.id contains invalid characters (only alphanumeric, _, -, . allowed)"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_priority(priority)
+       when is_integer(priority) and priority >= -1000 and priority <= 10_000 do
+    {:ok, priority}
+  end
+
+  defp validate_priority(priority) when is_integer(priority) do
+    {:error, "autoconnect_priority must be between -1000 and 10000"}
+  end
+
+  defp validate_priority(_), do: {:ok, 0}
+
+  @max_zone_length 64
+  @zone_pattern ~r/^[a-zA-Z0-9_\-\.]+$/
+
+  defp validate_zone(zone) when is_binary(zone) do
+    cond do
+      byte_size(zone) > @max_zone_length ->
+        {:error, "zone is too long (max #{@max_zone_length} characters)"}
+
+      not Regex.match?(@zone_pattern, zone) ->
+        {:error, "zone contains invalid characters"}
+
+      true ->
+        {:ok, zone}
+    end
+  end
+
+  defp validate_zone(_), do: {:ok, "default"}
 
   defp require_string(map, key) do
     case Map.get(map, key) do

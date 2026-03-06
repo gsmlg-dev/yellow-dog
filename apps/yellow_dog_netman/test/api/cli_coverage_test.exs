@@ -237,10 +237,12 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
     end
 
     test "connection.add with non-existent file path returns error" do
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+
       result =
         CLI.handle_command(%{
           "method" => "connection.add",
-          "params" => %{"file" => "/nonexistent/path/profile_cov.toml"}
+          "params" => %{"file" => Path.join(profile_dir, "nonexistent_cov.toml")}
         })
 
       assert %{"error" => _} = result
@@ -263,7 +265,8 @@ defmodule YellowDog.Netman.API.CLICoverageTest do
 
     test "connection.add with valid file but invalid profile data returns error" do
       # Create a temp .toml file with valid TOML syntax but missing required 'id' field
-      tmp_path = System.tmp_dir!() |> Path.join("invalid_profile_#{:rand.uniform(65535)}.toml")
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+      tmp_path = Path.join(profile_dir, "invalid_profile_#{:rand.uniform(65535)}.toml")
 
       File.write!(tmp_path, """
       [connection]

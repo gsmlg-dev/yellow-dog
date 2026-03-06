@@ -46,6 +46,7 @@ defmodule YellowDog.Netman.API.CLI do
     case :gen_tcp.listen(0, [
            :binary,
            packet: :line,
+           packet_size: 65_536,
            active: false,
            ifaddr: {:local, String.to_charlist(socket_path)}
          ]) do
@@ -346,6 +347,8 @@ defmodule YellowDog.Netman.API.CLI do
     end
   end
 
+  @default_profile_dir "/etc/yellowdog/netman/profiles"
+
   defp validate_profile_path(path) do
     cond do
       not is_binary(path) ->
@@ -362,8 +365,12 @@ defmodule YellowDog.Netman.API.CLI do
 
       true ->
         expanded = Path.expand(path)
+        profile_dir = profile_dir()
 
         cond do
+          not String.starts_with?(expanded, profile_dir <> "/") ->
+            {:error, "path must be within the profile directory"}
+
           not File.regular?(expanded) ->
             {:error, "file not found"}
 
@@ -374,6 +381,11 @@ defmodule YellowDog.Netman.API.CLI do
             :ok
         end
     end
+  end
+
+  defp profile_dir do
+    Application.get_env(:yellow_dog_netman, :profile_dir, @default_profile_dir)
+    |> Path.expand()
   end
 
   defp format_system_status(status) do
