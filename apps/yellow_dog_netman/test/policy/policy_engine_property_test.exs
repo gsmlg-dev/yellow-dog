@@ -151,4 +151,16 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == []
     end
   end
+
+  property "route_metrics keys cover all input connection IDs" do
+    check all(connections <- StreamData.list_of(connection_gen(), min_length: 1, max_length: 8)) do
+      metrics = PolicyEngine.route_metrics(connections)
+
+      for conn <- connections do
+        id = conn[:profile_id] || conn[:id]
+        assert Map.has_key?(metrics, id),
+               "route_metrics missing entry for connection #{id}"
+      end
+    end
+  end
 end

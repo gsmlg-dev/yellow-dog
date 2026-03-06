@@ -86,4 +86,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "unsubscribe stops delivery for exact subscriptions" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.unsubscribe(topic)
+
+      # Publish after unsubscribe — should NOT be received
+      EventBus.publish(topic, message)
+      refute_receive {:netman_event, ^topic, _}, 30
+    end
+  end
 end

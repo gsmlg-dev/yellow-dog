@@ -162,4 +162,22 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert {:error, :not_found} = ProfileStore.delete(profile.id)
     end
   end
+
+  property "second put overwrites first (last write wins)" do
+    check all(
+            p1 <- profile_gen(),
+            p2 <- profile_gen()
+          ) do
+      shared_id = "overwrite-#{p1.id}"
+      p1 = %{p1 | id: shared_id}
+      p2 = %{p2 | id: shared_id}
+
+      ProfileStore.put(p1.id, p1)
+      ProfileStore.put(p2.id, p2)
+
+      assert {:ok, ^p2} = ProfileStore.get(shared_id)
+
+      ProfileStore.delete(shared_id)
+    end
+  end
 end
