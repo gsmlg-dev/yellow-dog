@@ -188,6 +188,20 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "new/3 with integer params values preserves them exactly" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            key <- atom(:alphanumeric),
+            value <- integer()
+          ) do
+      params = %{key => value}
+      diff = Diff.new(action, interface, params)
+      assert diff.params[key] == value,
+             "Expected params[#{key}] == #{value}, got: #{inspect(diff.params[key])}"
+    end
+  end
+
   property "diffs with same action but different non-nil interfaces are never equal" do
     check all(
             action <- action_gen(),

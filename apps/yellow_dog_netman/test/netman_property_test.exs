@@ -148,4 +148,16 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_interfaces always returns a list of binary strings" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ifaces = Netman.list_interfaces()
+      assert is_list(ifaces)
+
+      for iface <- ifaces do
+        assert is_binary(iface),
+               "Expected string interface name, got: #{inspect(iface)}"
+      end
+    end
+  end
 end

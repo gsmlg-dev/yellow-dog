@@ -266,6 +266,29 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "list count decreases by exactly 1 after deleting an existing profile" do
+    check all(_ <- StreamData.constant(:ok)) do
+      uid = :erlang.unique_integer([:monotonic, :positive])
+      id = "psdel-#{uid}"
+
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: nil,
+        autoconnect: false,
+        autoconnect_priority: 0
+      }
+
+      ProfileStore.put(id, profile)
+      before_count = length(ProfileStore.list())
+      ProfileStore.delete(id)
+      after_count = length(ProfileStore.list())
+
+      assert after_count == before_count - 1,
+             "Expected list to shrink by 1: #{before_count} -> #{after_count}"
+    end
+  end
+
   property "import_file on a file larger than 1MB returns file_too_large error" do
     check all(_ <- StreamData.constant(:ok), max_runs: 1) do
       path = "/tmp/ps_prop_large_#{:rand.uniform(999_999)}.toml"
