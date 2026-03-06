@@ -147,8 +147,7 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     end
 
     test "setup_link returns error when mtu command fails", %{data: data, iface: iface} do
-      mtu_profile = put_in(data.profile.ethernet.mtu, 9000)
-      data = %{data | profile: mtu_profile}
+      data = put_in(data.profile.ethernet.mtu, 9000)
 
       command_fun = fn
         %{"mtu" => 9000, "interface" => ^iface} -> {:error, :mtu_unsupported}
