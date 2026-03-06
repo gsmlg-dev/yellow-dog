@@ -65,15 +65,17 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
   property "link state is always normalized to :up, :down, or :unknown" do
     check all(
             iface <- iface_gen(),
-            state <- StreamData.one_of([
-              StreamData.member_of(["up", "down"]),
-              StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-            ])
+            state <-
+              StreamData.one_of([
+                StreamData.member_of(["up", "down"]),
+                StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+              ])
           ) do
       send_link_event(%{"action" => "update", "interface" => iface, "state" => state})
 
       link = LinkMonitor.get_link(iface)
       assert link != nil
+
       assert link.state in [:up, :down, :unknown],
              "Unexpected state atom: #{link.state} (from string: #{state})"
     end
@@ -82,13 +84,14 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
   property "carrier is always coerced to boolean" do
     check all(
             iface <- iface_gen(),
-            carrier <- StreamData.one_of([
-              StreamData.boolean(),
-              StreamData.constant("true"),
-              StreamData.constant("false"),
-              StreamData.integer(),
-              StreamData.constant(nil)
-            ])
+            carrier <-
+              StreamData.one_of([
+                StreamData.boolean(),
+                StreamData.constant("true"),
+                StreamData.constant("false"),
+                StreamData.integer(),
+                StreamData.constant(nil)
+              ])
           ) do
       send_link_event(%{
         "action" => "update",
@@ -99,6 +102,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
 
       link = LinkMonitor.get_link(iface)
       assert link != nil
+
       assert is_boolean(link.carrier),
              "Expected boolean carrier, got: #{inspect(link.carrier)}"
     end
@@ -124,6 +128,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
 
       link = LinkMonitor.get_link(iface)
       assert link != nil
+
       assert link.mtu == 1500,
              "Expected MTU=1500 default for #{inspect(bad_mtu)}, got #{link.mtu}"
     end
@@ -143,6 +148,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
 
       link = LinkMonitor.get_link(iface)
       assert link != nil
+
       assert link.mtu == mtu,
              "Expected MTU=#{mtu} to be preserved, got #{link.mtu}"
     end

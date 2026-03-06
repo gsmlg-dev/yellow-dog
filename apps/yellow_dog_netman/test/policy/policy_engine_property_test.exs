@@ -158,6 +158,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
 
       for conn <- connections do
         id = conn[:profile_id] || conn[:id]
+
         assert Map.has_key?(metrics, id),
                "route_metrics missing entry for connection #{id}"
       end

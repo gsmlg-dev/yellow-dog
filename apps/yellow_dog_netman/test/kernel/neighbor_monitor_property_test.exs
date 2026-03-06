@@ -25,13 +25,21 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
   defp mac_gen do
     gen all(octets <- StreamData.list_of(StreamData.integer(0..255), length: 6)) do
-      Enum.map_join(octets, ":", &Integer.to_string(&1, 16) |> String.pad_leading(2, "0"))
+      Enum.map_join(octets, ":", &(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
     end
   end
 
   defp nud_state_gen do
     # includes known states + "incomplete" which triggers the catch-all (→ :none)
-    StreamData.member_of(["reachable", "stale", "delay", "probe", "failed", "permanent", "incomplete"])
+    StreamData.member_of([
+      "reachable",
+      "stale",
+      "delay",
+      "probe",
+      "failed",
+      "permanent",
+      "incomplete"
+    ])
   end
 
   defp send_neighbor_event(event) do
@@ -57,6 +65,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       })
 
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       assert Enum.any?(neighbors, &(&1.address == addr)),
              "Expected #{addr} in neighbors for #{iface}"
     end
@@ -86,6 +95,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       })
 
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       refute Enum.any?(neighbors, &(&1.address == addr)),
              "Expected #{addr} to be removed from #{iface}"
     end
