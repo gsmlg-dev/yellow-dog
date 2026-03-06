@@ -677,6 +677,30 @@ defmodule YellowDog.Netman.API.CLITest do
       assert %{"error" => _} = result
     end
 
+    test "connection.add with path traversal outside profile_dir is rejected" do
+      profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
+
+      traversal_path = Path.join(profile_dir, "../../../etc/passwd.toml")
+
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => traversal_path}
+        })
+
+      assert %{"error" => "path must be within the profile directory"} = result
+    end
+
+    test "connection.add with absolute path outside profile_dir is rejected" do
+      result =
+        CLI.handle_command(%{
+          "method" => "connection.add",
+          "params" => %{"file" => "/tmp/outside_profile.toml"}
+        })
+
+      assert %{"error" => "path must be within the profile directory"} = result
+    end
+
     test "connection.add with symlink is rejected" do
       profile_dir = Application.get_env(:yellow_dog_netman, :profile_dir)
       real_path = Path.join(profile_dir, "real_profile_#{:rand.uniform(100_000)}.toml")

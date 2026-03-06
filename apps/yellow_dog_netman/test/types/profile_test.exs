@@ -271,6 +271,142 @@ defmodule YellowDog.Netman.Types.ProfileTest do
     end
   end
 
+  describe "connection.id validation" do
+    test "rejects id longer than 128 characters" do
+      long_id = String.duplicate("a", 129)
+      toml = %{"connection" => %{"id" => long_id, "type" => "ethernet"}}
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "too long"
+    end
+
+    test "accepts id of exactly 128 characters" do
+      id = String.duplicate("a", 128)
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.id == id
+    end
+
+    test "rejects id with slashes" do
+      toml = %{"connection" => %{"id" => "path/traversal", "type" => "ethernet"}}
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+
+    test "rejects id with spaces" do
+      toml = %{"connection" => %{"id" => "has spaces", "type" => "ethernet"}}
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "invalid characters"
+    end
+
+    test "accepts id with dots, hyphens, underscores" do
+      toml = %{"connection" => %{"id" => "my-profile_v1.0", "type" => "ethernet"}}
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.id == "my-profile_v1.0"
+    end
+  end
+
+  describe "autoconnect_priority validation" do
+    test "accepts minimum boundary (-1000)" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-min",
+          "type" => "ethernet",
+          "autoconnect_priority" => -1000
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.autoconnect_priority == -1000
+    end
+
+    test "accepts maximum boundary (10000)" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-max",
+          "type" => "ethernet",
+          "autoconnect_priority" => 10_000
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.autoconnect_priority == 10_000
+    end
+
+    test "rejects priority below minimum (-1001)" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-low",
+          "type" => "ethernet",
+          "autoconnect_priority" => -1001
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect_priority"
+    end
+
+    test "rejects priority above maximum (10001)" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-high",
+          "type" => "ethernet",
+          "autoconnect_priority" => 10_001
+        }
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "autoconnect_priority"
+    end
+
+    test "defaults non-integer priority to 0" do
+      toml = %{
+        "connection" => %{
+          "id" => "pri-str",
+          "type" => "ethernet",
+          "autoconnect_priority" => "high"
+        }
+      }
+
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.autoconnect_priority == 0
+    end
+  end
+
+  describe "zone validation" do
+    test "rejects zone longer than 64 characters" do
+      long_zone = String.duplicate("a", 65)
+
+      toml = %{
+        "connection" => %{"id" => "zone-long", "type" => "ethernet", "zone" => long_zone}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "zone"
+    end
+
+    test "accepts zone of exactly 64 characters" do
+      zone = String.duplicate("a", 64)
+      toml = %{"connection" => %{"id" => "zone-ok", "type" => "ethernet", "zone" => zone}}
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.zone == zone
+    end
+
+    test "rejects zone with spaces" do
+      toml = %{
+        "connection" => %{"id" => "zone-sp", "type" => "ethernet", "zone" => "my zone"}
+      }
+
+      assert {:error, msg} = Profile.from_toml(toml)
+      assert msg =~ "zone"
+    end
+
+    test "defaults non-string zone to default" do
+      toml = %{"connection" => %{"id" => "zone-int", "type" => "ethernet", "zone" => 42}}
+      assert {:ok, profile} = Profile.from_toml(toml)
+      assert profile.zone == "default"
+    end
+  end
+
   describe "gateway validation" do
     test "rejects invalid gateway IP address" do
       toml = %{
