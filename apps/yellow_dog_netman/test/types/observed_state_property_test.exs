@@ -186,4 +186,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert result.addresses[iface] == []
     end
   end
+
+  property "removing non-existent route is a no-op" do
+    check all(
+            dest <- member_of(["default", "10.0.0.0/8", "192.168.0.0/16"]),
+            gw_last <- integer(1..254)
+          ) do
+      state = ObservedState.new()
+      result = ObservedState.remove_route(state, dest, "10.0.0.#{gw_last}")
+      assert result == state
+    end
+  end
 end

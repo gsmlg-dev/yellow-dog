@@ -112,4 +112,22 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Map.has_key?(desired.connections, p2.id)
     end
   end
+
+  property "connection ipv4 config is preserved exactly from profile" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn.ipv4 == profile.ipv4
+    end
+  end
+
+  property "from_profiles with empty list produces empty desired state" do
+    check all(_ <- StreamData.constant(nil)) do
+      desired = DesiredState.from_profiles([])
+      assert desired.connections == %{}
+    end
+  end
 end
