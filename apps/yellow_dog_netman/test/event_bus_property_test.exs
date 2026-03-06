@@ -334,4 +334,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "subscriber receives exactly one message per single publish call" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.publish(topic, message)
+
+      assert_receive {:netman_event, ^topic, ^message}, 100
+      refute_receive {:netman_event, ^topic, _}, 30
+
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

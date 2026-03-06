@@ -319,4 +319,17 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected identifier too long for #{len}-char id, got: #{inspect(result)}"
     end
   end
+
+  property "handle_command always returns a map with 'result' or 'error' key" do
+    check all(
+            method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            id <- valid_id_gen()
+          ) do
+      result = CLI.handle_command(%{"method" => method, "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map result, got: #{inspect(result)}"
+      assert Map.has_key?(result, "error") or Map.has_key?(result, "result"),
+             "Expected 'error' or 'result' key in #{inspect(result)}"
+    end
+  end
 end

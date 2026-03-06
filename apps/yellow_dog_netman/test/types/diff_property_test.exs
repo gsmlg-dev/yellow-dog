@@ -265,4 +265,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected exactly [:action, :interface, :params], got: #{inspect(struct_keys)}"
     end
   end
+
+  property "new/3 with string param values preserves them exactly" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            key <- atom(:alphanumeric),
+            value <- string(:alphanumeric)
+          ) do
+      params = %{key => value}
+      diff = Diff.new(action, interface, params)
+      assert diff.params[key] == value,
+             "Expected string param #{key}=#{inspect(value)} to be preserved, got: #{inspect(diff.params[key])}"
+    end
+  end
 end
