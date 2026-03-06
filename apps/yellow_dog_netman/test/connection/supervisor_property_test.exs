@@ -94,4 +94,19 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert ConnSupervisor.find_connection(iface) == :error
     end
   end
+
+  property "start_connection then find_connection_by_profile returns ok with the same pid" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "csp_byp_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
+      assert {:ok, ^pid} = ConnSupervisor.find_connection_by_profile(profile.id)
+
+      ConnSupervisor.stop_connection(iface)
+    end
+  end
 end
