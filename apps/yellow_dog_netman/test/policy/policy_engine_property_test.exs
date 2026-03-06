@@ -270,6 +270,20 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     end
   end
 
+  property "dns_priority result never contains nil server entries" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_with_dns_gen(), min_length: 1, max_length: 5)
+          ) do
+      result = PolicyEngine.dns_priority(connections)
+
+      for entry <- result do
+        assert entry.server != nil,
+               "Expected non-nil server in dns_priority entry: #{inspect(entry)}"
+      end
+    end
+  end
+
   property "dns_priority result count equals total DNS entries across all connections" do
     check all(
             connections <-

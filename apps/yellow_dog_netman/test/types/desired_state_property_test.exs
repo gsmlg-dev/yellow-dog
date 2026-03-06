@@ -274,6 +274,20 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
+  property "connection mtu is always nil or a positive integer" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+
+      assert is_nil(conn.mtu) or (is_integer(conn.mtu) and conn.mtu > 0),
+             "Expected nil or positive integer mtu, got: #{inspect(conn.mtu)}"
+    end
+  end
+
   property "from_profiles result only contains IDs from the input profiles" do
     check all(
             count <- StreamData.integer(1..5),

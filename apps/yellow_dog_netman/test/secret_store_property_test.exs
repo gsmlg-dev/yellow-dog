@@ -98,4 +98,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.get(key) == {:error, :not_found}
     end
   end
+
+  property "put with large value string always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.string(:alphanumeric, min_length: 100, max_length: 256)
+          ) do
+      assert SecretStore.put(key, value) == :ok
+    end
+  end
 end
