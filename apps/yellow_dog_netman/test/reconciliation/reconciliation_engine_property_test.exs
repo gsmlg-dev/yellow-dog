@@ -678,4 +678,33 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert ReconciliationEngine.diff(desired, observed) == []
     end
   end
+
+  property "all diffs returned by diff/2 are Diff structs with a valid action field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = ReconciliationEngine.compute_desired()
+      observed = ReconciliationEngine.observe()
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      valid_actions = [
+        :add_address,
+        :remove_address,
+        :add_route,
+        :remove_route,
+        :activate_connection,
+        :deactivate_connection,
+        :update_dns,
+        :set_mtu,
+        :set_link_up,
+        :set_link_down
+      ]
+
+      for diff <- diffs do
+        assert is_struct(diff, YellowDog.Netman.Types.Diff),
+               "Expected %Diff{} struct, got: #{inspect(diff)}"
+
+        assert diff.action in valid_actions,
+               "Unexpected action #{inspect(diff.action)} in diff"
+      end
+    end
+  end
 end

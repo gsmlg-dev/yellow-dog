@@ -350,4 +350,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "list_connections contains duplicate interfaces: #{inspect(ifaces)}"
     end
   end
+
+  property "list_connections returns identical results on two consecutive calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = ConnSupervisor.list_connections()
+      c2 = ConnSupervisor.list_connections()
+
+      assert c1 == c2,
+             "list_connections returned different results on consecutive calls"
+    end
+  end
 end
