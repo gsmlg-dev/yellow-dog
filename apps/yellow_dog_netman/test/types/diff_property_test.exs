@@ -126,4 +126,24 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d1 == d2
     end
   end
+
+  property "Diff struct always has action, interface, params keys" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert Map.has_key?(diff, :action), "Diff missing :action key"
+      assert Map.has_key?(diff, :interface), "Diff missing :interface key"
+      assert Map.has_key?(diff, :params), "Diff missing :params key"
+    end
+  end
+
+  property "params is always a map (never nil)" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert is_map(diff.params), "Expected params to be a map, got: #{inspect(diff.params)}"
+    end
+  end
 end

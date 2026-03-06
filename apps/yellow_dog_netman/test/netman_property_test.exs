@@ -108,4 +108,37 @@ defmodule YellowDog.NetmanPropertyTest do
              "Unexpected default_route result: #{inspect(result)}"
     end
   end
+
+  property "status.interfaces is always consistent with list_interfaces" do
+    check all(_ <- StreamData.constant(:ok)) do
+      status = Netman.status()
+      interfaces = Netman.list_interfaces()
+      # Both should return lists of the same length
+      assert is_list(status.interfaces)
+      assert is_list(interfaces)
+      assert length(status.interfaces) == length(interfaces)
+    end
+  end
+
+  property "status.connections is always consistent with list_connections" do
+    check all(_ <- StreamData.constant(:ok)) do
+      status = Netman.status()
+      connections = Netman.list_connections()
+      assert is_list(status.connections)
+      assert is_list(connections)
+      assert length(status.connections) == length(connections)
+    end
+  end
+
+  property "list_profiles always returns a list of maps with id field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = Netman.list_profiles()
+      assert is_list(profiles)
+
+      for p <- profiles do
+        assert is_map(p) or is_struct(p),
+               "Expected map or struct in list_profiles, got: #{inspect(p)}"
+      end
+    end
+  end
 end

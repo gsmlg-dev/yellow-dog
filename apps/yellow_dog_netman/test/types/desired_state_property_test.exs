@@ -153,4 +153,33 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert conn.ipv6 == profile.ipv6
     end
   end
+
+  property "autoconnect: false profiles still appear in desired state" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      non_autoconnect = %{profile | autoconnect: false}
+      desired = DesiredState.from_profiles([{non_autoconnect, iface}])
+      # Profiles with autoconnect: false are still included — activation is decided by the FSM
+      conn = desired.connections[non_autoconnect.id]
+      assert conn != nil,
+             "autoconnect: false profile #{non_autoconnect.id} missing from desired state"
+    end
+  end
+
+  property "each connection always has all required keys" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+
+      for key <- [:profile_id, :interface, :ipv4, :ipv6, :mtu, :priority, :dns] do
+        assert Map.has_key?(conn, key), "Connection missing required key: #{key}"
+      end
+    end
+  end
 end

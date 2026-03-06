@@ -176,4 +176,22 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       refute_receive {:netman_event, ^specific_topic, _}, 30
     end
   end
+
+  property "subscribe always returns {:ok, _}" do
+    check all(topic <- topic_gen()) do
+      result = EventBus.subscribe(topic)
+      assert match?({:ok, _}, result), "subscribe should return {:ok, _}, got: #{inspect(result)}"
+      EventBus.unsubscribe(topic)
+    end
+  end
+
+  property "publish always returns :ok" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      result = EventBus.publish(topic, message)
+      assert result == :ok
+    end
+  end
 end
