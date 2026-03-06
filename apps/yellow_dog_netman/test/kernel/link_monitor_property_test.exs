@@ -290,4 +290,15 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected nil or positive integer mtu, got: #{inspect(link.mtu)}"
     end
   end
+
+  property "link_removed for never-added interface is a no-op — get_link returns nil" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "lm_nr_#{seed}"
+      MockNetlink.link_removed(fresh_iface)
+      Process.sleep(50)
+
+      assert LinkMonitor.get_link(fresh_iface) == nil,
+             "Expected nil for fresh interface #{fresh_iface} after link_removed on never-added iface"
+    end
+  end
 end

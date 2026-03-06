@@ -389,4 +389,23 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Route #{dest} via #{gw} should be absent after route_removed"
     end
   end
+
+  property "all routes in list_all always have non-negative integer metric" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
+      Process.sleep(50)
+
+      all_routes = RouteManager.list_all()
+
+      for r <- all_routes do
+        assert is_integer(r.metric) and r.metric >= 0,
+               "Route has invalid metric: #{inspect(r.metric)}"
+      end
+    end
+  end
 end

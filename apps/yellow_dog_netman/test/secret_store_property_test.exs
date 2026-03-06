@@ -148,4 +148,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key1, "v3") == :ok
     end
   end
+
+  property "get after interleaved puts and gets always returns :not_found" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.string(:alphanumeric, max_length: 64)
+          ) do
+      assert SecretStore.get(key) == {:error, :not_found}
+      assert SecretStore.put(key, value) == :ok
+      assert SecretStore.get(key) == {:error, :not_found}
+      assert SecretStore.put(key, value <> "_2") == :ok
+      assert SecretStore.get(key) == {:error, :not_found}
+    end
+  end
 end
