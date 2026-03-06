@@ -318,6 +318,26 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
+  property "remove_address for a different address value leaves original address intact" do
+    check all(
+            addr1 <- address_gen(),
+            addr2 <- address_gen(),
+            addr1.address != addr2.address
+          ) do
+      a2 = %{addr2 | interface: addr1.interface}
+
+      state =
+        ObservedState.new()
+        |> ObservedState.add_address(addr1)
+        |> ObservedState.remove_address(addr1.interface, a2.address)
+
+      addresses = state.addresses[addr1.interface] || []
+
+      assert Enum.any?(addresses, &(&1.address == addr1.address)),
+             "Expected #{addr1.address} to survive removal of #{a2.address}"
+    end
+  end
+
   property "add_address is additive — address count never decreases after adding another" do
     check all(
             iface <- interface_gen(),

@@ -626,6 +626,40 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "every activation diff has non-nil binary interface and profile_id in params" do
+    check all(observed <- observed_state_gen()) do
+      ifaces = Map.keys(observed.links)
+
+      connections =
+        Enum.reduce(ifaces, %{}, fn iface, acc ->
+          profile_id = "profile-#{iface}"
+
+          conn = %{
+            profile_id: profile_id,
+            interface: iface,
+            ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+
+          Map.put(acc, profile_id, conn)
+        end)
+
+      desired = %DesiredState{connections: connections}
+      diffs = ReconciliationEngine.diff(desired, observed)
+
+      for diff <- diffs, diff.action == :activate_connection do
+        assert is_binary(diff.interface),
+               "Expected binary interface in diff, got: #{inspect(diff.interface)}"
+
+        assert is_binary(diff.params.profile_id),
+               "Expected binary profile_id in params, got: #{inspect(diff.params.profile_id)}"
+      end
+    end
+  end
+
   property "diff with empty desired and empty observed always returns an empty list" do
     check all(_ <- StreamData.constant(:ok)) do
       desired = %DesiredState{connections: %{}}
