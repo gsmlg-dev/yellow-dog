@@ -328,4 +328,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       end
     end
   end
+
+  property "import_file on a non-existent path always returns an error tuple" do
+    check all(name <- StreamData.string(:alphanumeric, min_length: 3, max_length: 20)) do
+      path = "/tmp/ps_prop_missing_#{name}_#{:rand.uniform(999_999)}.toml"
+      result = ProfileStore.import_file(path)
+
+      assert match?({:error, _}, result),
+             "Expected error for non-existent path #{path}, got: #{inspect(result)}"
+    end
+  end
 end

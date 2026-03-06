@@ -260,4 +260,17 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected 1 connection for duplicate profile ID, got #{map_size(desired.connections)}"
     end
   end
+
+  property "connection profile_id always equals the profile id" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert conn[:profile_id] == profile.id,
+             "Expected profile_id #{inspect(profile.id)}, got: #{inspect(conn[:profile_id])}"
+    end
+  end
 end

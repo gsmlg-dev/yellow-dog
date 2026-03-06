@@ -224,4 +224,16 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected diffs with different interfaces (#{i1}, #{i2}) to be unequal"
     end
   end
+
+  property "new/2 is equivalent to new/3 with empty params" do
+    check all(
+            action <- action_gen(),
+            iface <- interface_gen()
+          ) do
+      d2 = Diff.new(action, iface)
+      d3 = Diff.new(action, iface, %{})
+      assert d2 == d3,
+             "Expected new/2 and new/3(iface, %{}) to be equivalent for action #{action}"
+    end
+  end
 end
