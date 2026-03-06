@@ -279,4 +279,13 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       end
     end
   end
+
+  property "device.show with no params always returns an error map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{}})
+
+      assert %{"error" => _} = result,
+             "Expected error map for device.show with no params, got: #{inspect(result)}"
+    end
+  end
 end

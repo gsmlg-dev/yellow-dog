@@ -296,4 +296,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "publish with atom message always delivers the atom unchanged" do
+    check all(
+            topic <- topic_gen(),
+            atom <- StreamData.atom(:alphanumeric)
+          ) do
+      {:ok, _} = EventBus.subscribe(topic)
+      EventBus.publish(topic, atom)
+
+      assert_receive {:netman_event, ^topic, ^atom}, 100
+
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

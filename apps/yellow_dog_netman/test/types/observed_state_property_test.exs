@@ -308,4 +308,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Address #{addr.address} should still be present after remove_link"
     end
   end
+
+  property "add_address creates an entry for the interface in state.addresses" do
+    check all(addr <- address_gen()) do
+      state = ObservedState.new() |> ObservedState.add_address(addr)
+
+      assert Map.has_key?(state.addresses, addr.interface),
+             "Expected addresses to contain key #{addr.interface}"
+    end
+  end
 end
