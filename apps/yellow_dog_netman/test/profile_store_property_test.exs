@@ -987,4 +987,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(fns, :get) or Keyword.has_key?(fns, :list)
     end
   end
+
+  property "profile_store list is always a list type (r93)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result)
+    end
+  end
 end

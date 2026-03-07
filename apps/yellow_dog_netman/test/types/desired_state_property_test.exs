@@ -915,4 +915,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState)
     end
   end
+
+  property "desired_state struct has __struct__ key (r93)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert is_struct(ds)
+      assert Map.has_key?(ds, :__struct__)
+      assert is_atom(ds.__struct__)
+    end
+  end
 end

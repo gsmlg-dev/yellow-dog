@@ -854,4 +854,13 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       end)
     end
   end
+
+  property "diff all actions contain only underscore and lowercase letters (r93)" do
+    check all _x <- boolean() do
+      assert Enum.all?(@actions, fn a ->
+        s = Atom.to_string(a)
+        s =~ ~r/^[a-z_]+$/
+      end)
+    end
+  end
 end

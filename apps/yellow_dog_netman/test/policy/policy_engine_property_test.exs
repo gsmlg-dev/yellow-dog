@@ -914,4 +914,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(fns, :dns_priority)
     end
   end
+
+  property "policy_engine default_route stable on second call (r93)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.PolicyEngine.default_route([])
+      r2 = YellowDog.Netman.PolicyEngine.default_route([])
+      assert r1 == r2
+      assert r1 == :none
+    end
+  end
 end

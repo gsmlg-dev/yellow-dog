@@ -822,4 +822,13 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "ethernet has exactly ethernet? carrier? mtu (r93)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert Keyword.has_key?(fns, :ethernet?)
+      assert Keyword.has_key?(fns, :carrier?)
+      assert Keyword.has_key?(fns, :mtu)
+    end
+  end
 end

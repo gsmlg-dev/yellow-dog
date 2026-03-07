@@ -1135,4 +1135,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or is_nil(result) or match?({:error, _}, result)
     end
   end
+
+  property "event_bus broadcast with list payload is ok (r93)" do
+    check all topic <- string(:alphanumeric, min_length: 1),
+              items <- list_of(integer(), max_length: 5) do
+      result = YellowDog.Netman.EventBus.broadcast(topic, items)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end

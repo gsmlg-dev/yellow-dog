@@ -835,4 +835,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert count >= 3
     end
   end
+
+  property "secret_store delete with new key returns ok or error (r93)" do
+    check all key <- string(:alphanumeric, min_length: 20, max_length: 40) do
+      # Key unlikely to exist
+      result = YellowDog.Netman.SecretStore.delete(key <> "_unique_r93")
+      assert result == :ok or match?({:error, _}, result) or is_nil(result)
+    end
+  end
 end

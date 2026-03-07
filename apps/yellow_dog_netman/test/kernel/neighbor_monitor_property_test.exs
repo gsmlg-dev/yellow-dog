@@ -1108,4 +1108,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "neighbor_monitor list_neighbors returns list (r93)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(result)
+    end
+  end
 end

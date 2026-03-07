@@ -867,4 +867,12 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "link_monitor module attributes are valid (r93)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
+    end
+  end
 end

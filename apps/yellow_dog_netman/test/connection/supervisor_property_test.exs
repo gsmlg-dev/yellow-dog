@@ -896,4 +896,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "connection supervisor has start_link and child_spec (r93)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+      assert Keyword.has_key?(fns, :child_spec)
+    end
+  end
 end

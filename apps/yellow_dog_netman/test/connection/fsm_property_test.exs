@@ -1286,4 +1286,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "fsm has disconnected and configuring state functions (r93)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert Keyword.has_key?(fns, :disconnected)
+      assert Keyword.has_key?(fns, :configuring)
+    end
+  end
 end

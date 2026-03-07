@@ -987,4 +987,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "rule_manager module attributes are valid (r93)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
+      assert is_list(attrs)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
+    end
+  end
 end

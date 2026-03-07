@@ -992,4 +992,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s1 == s2
     end
   end
+
+  property "observed_state all keys are atoms (r93)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      keys = Map.keys(state)
+      assert Enum.all?(keys, &is_atom/1)
+    end
+  end
 end

@@ -1233,4 +1233,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "reconciliation_engine and policy modules are loaded (r93)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.ReconciliationEngine)
+      assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
+    end
+  end
 end

@@ -990,4 +990,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "route_manager list_all returns list (r93)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.RouteManager.list_all()
+      assert is_list(result)
+    end
+  end
 end

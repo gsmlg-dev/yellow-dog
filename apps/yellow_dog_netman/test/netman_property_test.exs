@@ -734,4 +734,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "netman and cli modules are both loaded (r93)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman)
+      assert Code.ensure_loaded?(YellowDog.Netman.API.CLI)
+      assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
+    end
+  end
 end
