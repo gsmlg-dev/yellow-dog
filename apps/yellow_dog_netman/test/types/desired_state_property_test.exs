@@ -586,5 +586,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected map/struct from from_profiles, got: #{inspect(ds)}"
     end
   end
+  property "DesiredState from_profiles with empty always returns same value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds1 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      ds2 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert ds1 == ds2,
+             "Expected deterministic from_profiles results to be equal"
+    end
+  end
 
 end

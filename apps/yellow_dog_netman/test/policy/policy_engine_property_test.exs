@@ -565,5 +565,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected integer/nil/atom/list from dns_priority, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine route_metrics returns map for any list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert is_map(result) or is_list(result),
+             "Expected map or list from route_metrics, got: #{inspect(result)}"
+    end
+  end
 
 end

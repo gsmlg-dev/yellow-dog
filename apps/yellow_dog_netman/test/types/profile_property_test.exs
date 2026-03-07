@@ -895,5 +895,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or boolean for autoconnect"
     end
   end
+  property "Profile id field is always a string" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_binary(p.id),
+             "Expected binary id, got: #{inspect(p.id)}"
+    end
+  end
 
 end

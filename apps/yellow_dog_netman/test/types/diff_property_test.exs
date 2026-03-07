@@ -531,5 +531,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       refute is_nil(diff), "Expected non-nil struct from Diff.new"
     end
   end
+  property "Diff struct is always a map with action key" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_map(diff) and Map.has_key?(diff, :action),
+             "Expected map with :action key, got: #{inspect(diff)}"
+    end
+  end
 
 end

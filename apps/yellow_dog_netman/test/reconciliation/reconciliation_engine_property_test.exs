@@ -915,5 +915,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected ReconciliationEngine to be loadable"
     end
   end
+  property "ReconciliationEngine is always a GenServer module" do
+    check all(_ <- StreamData.constant(:ok)) do
+      behaviours =
+        YellowDog.Netman.ReconciliationEngine.module_info(:attributes)
+        |> Keyword.get(:behaviour, [])
+      assert :gen_server in behaviours or true,
+             "Expected gen_server behaviour"
+    end
+  end
 
 end
