@@ -781,4 +781,35 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM does not crash on repeated get_state calls" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 10) do
+      iface = "fsm_rep_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+
+      for _ <- 1..5 do
+        assert {:ok, _} = FSM.get_state(pid), "get_state should always succeed"
+      end
+
+      assert Process.alive?(pid), "Expected FSM to still be alive"
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "FSM get_state returns map with :state key" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 10) do
+      iface = "fsm_key_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state_map} = FSM.get_state(pid)
+      assert Map.has_key?(state_map, :state),
+             "Expected :state key in FSM state map, got: #{inspect(Map.keys(state_map))}"
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

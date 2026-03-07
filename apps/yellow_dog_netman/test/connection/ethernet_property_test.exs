@@ -376,4 +376,24 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected boolean from ethernet? for #{iface}, got: #{inspect(result)}"
     end
   end
+
+  property "carrier? for link_up with carrier true always returns true" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_ct_#{seed}"
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      assert Ethernet.carrier?(iface) == true,
+             "Expected carrier? true for #{iface} after link_up with carrier: true"
+    end
+  end
+
+  property "carrier? returns false for link_down interface" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_down_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      assert Ethernet.carrier?(iface) == false,
+             "Expected carrier? false for #{iface} with carrier: false"
+    end
+  end
 end

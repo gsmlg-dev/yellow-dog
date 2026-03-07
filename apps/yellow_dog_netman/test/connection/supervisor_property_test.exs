@@ -479,4 +479,25 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "find_connection returns :error for very long interface name" do
+    check all(
+            seed <- StreamData.integer(1..999_999)
+          ) do
+      long_iface = String.duplicate("x", 16) <> "#{seed}"
+      assert ConnSupervisor.find_connection(long_iface) == :error,
+             "Expected :error for overlong interface name"
+    end
+  end
+
+  property "list_connections returns list of maps with :profile_id key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+      assert is_list(connections)
+      for conn <- connections do
+        assert Map.has_key?(conn, :profile_id),
+               "Expected :profile_id key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end
