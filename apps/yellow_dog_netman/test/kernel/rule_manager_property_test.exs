@@ -577,4 +577,47 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules result rules all have :table key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for rule <- rules do
+        assert Map.has_key?(rule, :table),
+               "Expected :table key in rule, got: #{inspect(rule)}"
+      end
+    end
+  end
+
+  property "adding a rule always increases or maintains the count" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      before_count = length(RuleManager.list_rules())
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+      after_count = length(RuleManager.list_rules())
+      assert after_count >= before_count,
+             "Expected count to not decrease after add: #{before_count} -> #{after_count}"
+    end
+  end
+
+  property "list_rules result all have :priority key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for rule <- rules do
+        assert Map.has_key?(rule, :priority),
+               "Expected :priority key in rule, got: #{inspect(rule)}"
+      end
+    end
+  end
+
+  property "list_rules result entries always have :priority key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :priority),
+               "Expected :priority key in rule entry, got: \#{inspect(r)}"
+      end
+    end
+  end
 end

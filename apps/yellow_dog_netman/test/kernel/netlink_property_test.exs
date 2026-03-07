@@ -542,4 +542,53 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "dispatch event with integer value for type always dispatches as :unknown" do
+    check all(_ <- StreamData.constant(:ok)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => 42, "_tag" => tag}})
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
+
+  property "subscribe always returns :ok on every call" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netlink.subscribe()
+      assert result == :ok,
+             "Expected :ok from Netlink.subscribe, got: #{inspect(result)}"
+    end
+  end
+
+  property "two distinct subscribers both receive dispatched event" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      tag = unique_tag()
+      expected_atom = String.to_atom(event_type)
+
+      Netlink.subscribe()
+      task =
+        Task.async(fn ->
+          Netlink.subscribe()
+          receive do
+            {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}} -> :ok
+          after
+            1000 -> :timeout
+          end
+        end)
+
+      Process.sleep(20)
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}}, 1000
+      assert Task.await(task, 2000) == :ok
+    end
+  end
+
+  property "Netlink process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert pid != nil, "Expected Netlink to be registered"
+      assert Process.alive?(pid), "Expected Netlink to be alive"
+    end
+  end
 end

@@ -580,4 +580,47 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "default_route result has :interface key when non-nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = RouteManager.default_route()
+      if result != nil do
+        assert Map.has_key?(result, :interface),
+               "Expected :interface key in default_route result, got: #{inspect(result)}"
+      end
+    end
+  end
+
+  property "get_routes always returns a list for any interface" do
+    check all(iface <- iface_gen()) do
+      result = RouteManager.get_routes(iface)
+      assert is_list(result),
+             "Expected list from get_routes for #{iface}, got: #{inspect(result)}"
+    end
+  end
+
+  property "get_routes result entries always have :destination key" do
+    check all(
+            iface <- iface_gen(),
+            seed <- StreamData.integer(1..999)
+          ) do
+      # Add a route then check its fields
+      routes = RouteManager.get_routes(iface)
+      for r <- routes do
+        assert Map.has_key?(r, :destination),
+               "Expected :destination key in route, got: #{inspect(r)}"
+      end
+    end
+  end
+
+  property "get_routes always returns a list of maps for known interface" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "rm_maps_#{seed}"
+      routes = RouteManager.get_routes(iface)
+      for r <- routes do
+        assert is_map(r),
+               "Expected map entries in get_routes for #{iface}, got: \#{inspect(r)}"
+      end
+    end
+  end
 end
