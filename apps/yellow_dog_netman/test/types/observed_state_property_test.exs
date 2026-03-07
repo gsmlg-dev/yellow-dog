@@ -718,4 +718,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_list(info)
     end
   end
+  property "ObservedState always has links field as map (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert is_map(state.links)
+    end
+  end
 end

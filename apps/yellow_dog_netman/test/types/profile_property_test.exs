@@ -1061,4 +1061,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert is_struct(p) or is_tuple(p) or is_map(p)
     end
   end
+  property "Profile from_toml with valid map returns ok or error tuple (r61)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      priority <- StreamData.integer(1..100)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => priority, "zone" => "default"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

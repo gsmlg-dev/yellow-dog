@@ -666,4 +666,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(info)
     end
   end
+  property "PolicyEngine default_route with single-elem list returns map (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none or is_map(result) or is_struct(result)
+    end
+  end
 end

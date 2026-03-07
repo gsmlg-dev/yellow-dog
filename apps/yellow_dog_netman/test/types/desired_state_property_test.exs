@@ -692,4 +692,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_list(info)
     end
   end
+  property "DesiredState connections field is always a map (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_map(state.connections)
+    end
+  end
 end
