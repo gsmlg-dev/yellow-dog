@@ -329,4 +329,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "dns_priority with empty connections always returns empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = PolicyEngine.dns_priority([])
+      assert result == [],
+             "Expected [] for empty connections, got: #{inspect(result)}"
+    end
+  end
 end

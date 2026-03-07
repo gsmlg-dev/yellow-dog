@@ -403,4 +403,21 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "put then get returns a profile with matching id" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+
+      case ProfileStore.get(profile.id) do
+        {:ok, retrieved} ->
+          assert retrieved.id == profile.id,
+                 "Expected id #{profile.id}, got: #{inspect(retrieved.id)}"
+
+        {:error, reason} ->
+          flunk("Expected {:ok, _} after put, got {:error, #{inspect(reason)}}")
+      end
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end

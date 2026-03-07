@@ -231,4 +231,12 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_profiles is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.list_profiles()
+      assert is_list(result),
+             "Expected list from list_profiles, got: #{inspect(result)}"
+    end
+  end
 end
