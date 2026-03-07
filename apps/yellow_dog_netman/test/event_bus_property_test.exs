@@ -677,5 +677,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       :ok
     end
   end
+  property "EventBus wildcard subscribe never crashes" do
+    check all(prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      result =
+        try do
+          EventBus.subscribe(prefix <> ".*")
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

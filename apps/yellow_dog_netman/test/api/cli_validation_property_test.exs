@@ -569,5 +569,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from connection.add, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with connection.delete and any id returns map" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result = CLI.handle_command(%{"method" => "connection.delete", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from connection.delete, got: #{inspect(result)}"
+    end
+  end
 
 end
