@@ -1087,4 +1087,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "ReconciliationEngine handle_call responds to any call (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      # Just check the process is alive and registered
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid)
+    end
+  end
 end

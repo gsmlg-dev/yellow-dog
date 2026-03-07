@@ -711,4 +711,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :deactivate_connection
     end
   end
+  property "Diff new with set_link_down has correct action (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:set_link_down)
+      assert diff.action == :set_link_down
+    end
+  end
 end

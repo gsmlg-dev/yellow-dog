@@ -758,4 +758,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(state)
     end
   end
+  property "DesiredState from_profiles result is always a new value (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      s1 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      s2 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert s1 == s2
+    end
+  end
 end

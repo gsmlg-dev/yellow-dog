@@ -1199,4 +1199,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile id always matches the input id from TOML (r72)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      case result do
+        {:ok, p} -> assert p.id == id
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

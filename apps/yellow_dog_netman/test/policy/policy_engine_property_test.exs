@@ -760,4 +760,14 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == %{}
     end
   end
+  property "PolicyEngine dns_priority returns list for any list of conns (r72)" do
+    check all(
+      n <- StreamData.integer(0..3)
+    ) do
+      conns = Enum.map(1..max(n,1), fn i -> %{dns: ["1.1.1.#{i}"], profile: %{autoconnect_priority: i * 10}} end)
+      conns = if n == 0, do: [], else: conns
+      result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
+      assert is_list(result)
+    end
+  end
 end

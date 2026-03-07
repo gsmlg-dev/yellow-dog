@@ -811,4 +811,17 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Keyword.has_key?(fns, :new)
     end
   end
+  property "ObservedState put_link with same interface updates existing (r72)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link1 = %{interface: iface, flags: [], mtu: 1500, mac: nil}
+      link2 = %{interface: iface, flags: [:up], mtu: 9000, mac: nil}
+      state1 = YellowDog.Netman.Types.ObservedState.put_link(state, link1)
+      state2 = YellowDog.Netman.Types.ObservedState.put_link(state1, link2)
+      # Should have 1 entry for this interface
+      assert map_size(state2.links) == 1
+    end
+  end
 end
