@@ -753,4 +753,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "diff action always from valid set (r79)" do
+    check all d <- action_gen() do
+      assert d in @actions
+    end
+  end
 end

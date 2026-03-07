@@ -880,4 +880,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile_store get unknown key returns error (r79)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      result = YellowDog.Netman.ProfileStore.get(key <> "_unknown_r79")
+      assert match?({:error, _}, result)
+    end
+  end
 end

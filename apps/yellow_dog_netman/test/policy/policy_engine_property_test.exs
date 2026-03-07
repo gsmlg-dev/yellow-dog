@@ -812,4 +812,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "policy_engine default_route with no profiles is none (r79)" do
+    check all _x <- integer() do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none
+    end
+  end
 end
