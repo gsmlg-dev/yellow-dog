@@ -535,4 +535,29 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected list from get_addresses, got: #{inspect(addresses)}"
     end
   end
+
+  property "all addresses in get_addresses have :prefix_len as non-negative integer" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      for a <- addresses do
+        assert is_integer(a.prefix_len) and a.prefix_len >= 0,
+               "Expected non-negative prefix_len, got: #{inspect(a.prefix_len)}"
+      end
+    end
+  end
+
+  property "get_addresses for interface with no events returns empty list" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "am_no_ev_#{seed}"
+      result = AddressManager.get_addresses(fresh_iface)
+      assert result == [],
+             "Expected empty list for fresh interface, got: #{inspect(result)}"
+    end
+  end
 end

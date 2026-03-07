@@ -437,4 +437,25 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected link count to not decrease after link_up: #{before_count} -> #{after_count}"
     end
   end
+
+  property "link_up then link_down: link is still tracked (not removed)" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      send_link_event(%{"interface" => iface, "state" => "down", "carrier" => false})
+      link = LinkMonitor.get_link(iface)
+      assert link != nil,
+             "Expected link to remain tracked after link_down for #{iface}"
+    end
+  end
+
+  property "list_links never contains nil entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      links = LinkMonitor.list_links()
+      for link <- links do
+        assert link != nil,
+               "Expected non-nil entry in list_links"
+      end
+    end
+  end
 end

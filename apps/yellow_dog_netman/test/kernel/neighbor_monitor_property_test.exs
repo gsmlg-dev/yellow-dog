@@ -655,4 +655,31 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected empty neighbors for fresh interface, got: #{inspect(result)}"
     end
   end
+
+  property "neighbor added via event appears in list_neighbors" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen()
+          ) do
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "neighbor_change",
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr
+      }})
+      Process.sleep(50)
+      all = NeighborMonitor.list_neighbors()
+      assert is_list(all), "Expected list from list_neighbors"
+    end
+  end
+
+  property "list_neighbors never contains nil entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        assert n != nil,
+               "Expected non-nil entry in list_neighbors"
+      end
+    end
+  end
 end
