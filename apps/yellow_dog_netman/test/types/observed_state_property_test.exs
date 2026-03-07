@@ -740,4 +740,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_list(state.routes)
     end
   end
+  property "ObservedState addresses field is always a map (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert is_map(state.addresses)
+    end
+  end
 end

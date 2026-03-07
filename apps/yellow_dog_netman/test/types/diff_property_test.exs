@@ -661,4 +661,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert length(keys) > 0
     end
   end
+  property "Diff action is always one of the valid actions (r64)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      # Use @actions module attribute for the valid list
+      assert diff.action in @actions
+    end
+  end
 end

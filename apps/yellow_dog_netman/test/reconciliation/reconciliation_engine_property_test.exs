@@ -1039,4 +1039,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "ReconciliationEngine accepts reconcile/0 call without crashing (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.ReconciliationEngine.reconcile()
+      assert result == :ok or is_tuple(result)
+    end
+  end
 end

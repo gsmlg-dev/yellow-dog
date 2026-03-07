@@ -710,4 +710,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert state.connections == %{}
     end
   end
+  property "DesiredState is always a struct (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_struct(state, YellowDog.Netman.Types.DesiredState)
+    end
+  end
 end
