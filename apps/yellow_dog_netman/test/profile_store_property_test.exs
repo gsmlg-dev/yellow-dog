@@ -420,4 +420,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "delete then get returns {:error, :not_found}" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+      ProfileStore.delete(profile.id)
+
+      assert ProfileStore.get(profile.id) == {:error, :not_found},
+             "Expected {:error, :not_found} after delete for id #{profile.id}"
+    end
+  end
 end

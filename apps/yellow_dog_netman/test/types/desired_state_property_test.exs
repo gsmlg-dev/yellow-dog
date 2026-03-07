@@ -351,4 +351,17 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected empty connections map for empty profile list, got: #{inspect(desired.connections)}"
     end
   end
+
+  property "from_profiles always produces a DesiredState struct" do
+    check all(
+            count <- StreamData.integer(0..4),
+            profiles <- StreamData.list_of(profile_gen(), length: count),
+            ifaces <- StreamData.list_of(interface_gen(), length: count)
+          ) do
+      pairs = Enum.zip(profiles, ifaces)
+      desired = DesiredState.from_profiles(pairs)
+      assert %DesiredState{} = desired,
+             "Expected %DesiredState{} struct, got: #{inspect(desired)}"
+    end
+  end
 end
