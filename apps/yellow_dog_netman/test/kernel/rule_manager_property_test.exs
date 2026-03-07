@@ -513,4 +513,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Rule count decreased after add event: #{before_count} -> #{after_count}"
     end
   end
+
+  property "RuleManager process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+      assert pid != nil, "Expected RuleManager to be registered"
+      assert Process.alive?(pid), "Expected RuleManager process to be alive"
+    end
+  end
 end

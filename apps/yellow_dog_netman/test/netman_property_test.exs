@@ -296,4 +296,12 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected boolean :running in status, got: #{inspect(result[:running])}"
     end
   end
+
+  property "get_profile for unknown id always returns {:error, :not_found}" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      result = Netman.get_profile("netman_never_#{seed}")
+      assert result == {:error, :not_found},
+             "Expected {:error, :not_found} for unknown id, got: #{inspect(result)}"
+    end
+  end
 end

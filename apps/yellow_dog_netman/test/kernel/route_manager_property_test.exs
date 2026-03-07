@@ -517,4 +517,18 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
   end
+
+  property "list_all always returns a list of route maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      assert is_list(routes),
+             "Expected list from list_all, got: #{inspect(routes)}"
+      for route <- routes do
+        assert is_map(route),
+               "Expected map in list_all, got: #{inspect(route)}"
+        assert Map.has_key?(route, :interface),
+               "Expected :interface key in route, got: #{inspect(route)}"
+      end
+    end
+  end
 end
