@@ -879,4 +879,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "observed_state routes field is list (r79)" do
+    check all _x <- integer() do
+      state = ObservedState.new()
+      assert is_list(state.routes)
+    end
+  end
 end

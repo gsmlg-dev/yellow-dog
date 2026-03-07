@@ -1260,4 +1260,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "profile autoconnect_priority is integer or nil (r79)" do
+    check all profile_map <- map_of(string(:alphanumeric, min_length: 1), string(:alphanumeric)) do
+      result = Profile.from_toml(profile_map)
+      case result do
+        {:ok, p} -> assert is_nil(p.autoconnect_priority) or is_integer(p.autoconnect_priority)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end

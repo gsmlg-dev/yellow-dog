@@ -804,4 +804,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "desired_state from_profiles with empty list is ok (r79)" do
+    check all _x <- integer() do
+      ds = DesiredState.from_profiles([])
+      assert is_struct(ds)
+    end
+  end
 end
