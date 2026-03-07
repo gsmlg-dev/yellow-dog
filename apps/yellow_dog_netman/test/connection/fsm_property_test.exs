@@ -562,6 +562,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM get_state always returns a map with :type field" do
+    check all(seed <- StreamData.integer(1..999_999), max_runs: 50) do
+      iface = "ftyp_#{seed}"
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      Process.sleep(20)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      assert Map.has_key?(state, :type),
+             "Expected :type key in FSM get_state map, got keys: #{inspect(Map.keys(state))}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()

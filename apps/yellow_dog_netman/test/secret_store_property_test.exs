@@ -224,4 +224,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, value) == :ok
     end
   end
+
+  property "put with nil value always returns :ok" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
+      assert SecretStore.put(key, nil) == :ok
+    end
+  end
 end
