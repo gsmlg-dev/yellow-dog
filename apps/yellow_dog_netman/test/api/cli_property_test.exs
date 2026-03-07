@@ -819,4 +819,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command with route subcommand returns result (r88)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["route"])
+      assert not is_nil(result)
+    end
+  end
 end

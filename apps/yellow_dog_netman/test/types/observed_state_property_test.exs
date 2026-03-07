@@ -949,4 +949,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
     end
   end
+
+  property "observed_state route entries are maps or structs (r88)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert length(state.routes) == 0 or
+             Enum.all?(state.routes, &(is_map(&1) or is_struct(&1)))
+    end
+  end
 end

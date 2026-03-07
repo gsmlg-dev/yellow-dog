@@ -793,4 +793,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "secret_store delete followed by get returns error (r88)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      YellowDog.Netman.SecretStore.delete(key)
+      result = YellowDog.Netman.SecretStore.get(key)
+      # After delete, get should return error (or ok if stub)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

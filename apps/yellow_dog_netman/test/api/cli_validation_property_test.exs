@@ -862,4 +862,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation returns non-nil for any command (r88)" do
+    check all cmd <- string(:alphanumeric, min_length: 1, max_length: 50) do
+      result = CLI.handle_command([cmd])
+      assert not is_nil(result)
+    end
+  end
 end

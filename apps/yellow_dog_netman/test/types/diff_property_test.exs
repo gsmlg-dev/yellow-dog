@@ -818,4 +818,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert :set_link_down in @actions
     end
   end
+
+  property "diff actions include activate_connection (r88)" do
+    check all _x <- boolean() do
+      assert :activate_connection in @actions
+      assert :deactivate_connection in @actions
+      assert :update_dns in @actions
+    end
+  end
 end

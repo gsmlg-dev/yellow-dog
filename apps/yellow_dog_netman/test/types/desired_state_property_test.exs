@@ -876,4 +876,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert ds.__struct__ == YellowDog.Netman.Types.DesiredState
     end
   end
+
+  property "desired_state __struct__ name is an atom (r88)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert is_atom(ds.__struct__)
+      name = Atom.to_string(ds.__struct__)
+      assert String.starts_with?(name, "Elixir.")
+    end
+  end
 end

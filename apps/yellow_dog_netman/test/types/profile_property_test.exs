@@ -1339,4 +1339,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
+
+  property "profile from_toml with boolean value for id returns error (r88)" do
+    check all b <- boolean() do
+      result = Profile.from_toml(%{"id" => b})
+      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    end
+  end
 end

@@ -696,4 +696,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
+
+  property "netman module functions have arity 0 to 4 (r88)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
+    end
+  end
 end

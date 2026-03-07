@@ -946,4 +946,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "profile_store list returns stable results (r88)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.ProfileStore.list()
+      r2 = YellowDog.Netman.ProfileStore.list()
+      assert length(r1) == length(r2)
+    end
+  end
 end

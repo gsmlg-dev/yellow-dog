@@ -953,4 +953,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
+
+  property "address_manager functions have arity 0 to 10 (r88)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
+    end
+  end
 end
