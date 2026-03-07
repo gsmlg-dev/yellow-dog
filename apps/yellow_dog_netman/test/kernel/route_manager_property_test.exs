@@ -698,29 +698,29 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected RouteManager to be alive"
     end
   end
-  property "RouteManager list_routes always returns list for 'lo'" do
+  property "RouteManager list_all returns list for 'lo'" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = YellowDog.Netman.Kernel.RouteManager.list_routes("lo")
+      result = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
       assert is_list(result),
-             "Expected list from list_routes for lo, got: #{inspect(result)}"
+             "Expected list from list_all for lo, got: #{inspect(result)}"
     end
   end
-  property "RouteManager list_routes always returns list for any interface" do
+  property "RouteManager list_all always returns list for any interface" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "rm50_#{n}"
       result =
         try do
-          YellowDog.Netman.Kernel.RouteManager.list_routes(iface)
+          Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == iface))
         rescue
           _ -> []
         end
       assert is_list(result)
     end
   end
-  property "RouteManager list_routes and get_routes return same type for same interface" do
+  property "RouteManager list_all and get_routes return same type for same interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       r1 = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
-      r2 = YellowDog.Netman.Kernel.RouteManager.list_routes(iface)
+      r2 = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == iface))
       assert is_list(r1) and is_list(r2),
              "Expected lists from both route queries"
     end
@@ -746,17 +746,17 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected list from get_routes for lo (r54)"
     end
   end
-  property "RouteManager list_routes entries are non-nil for lo" do
+  property "RouteManager list_all entries are non-nil for lo" do
     check all(_ <- StreamData.constant(:ok)) do
-      routes = YellowDog.Netman.Kernel.RouteManager.list_routes("lo")
+      routes = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
       for route <- routes do
         refute is_nil(route), "Expected non-nil route entry"
       end
     end
   end
-  property "RouteManager list_routes entries are non-nil for lo (r56)" do
+  property "RouteManager list_all entries are non-nil for lo (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
-      routes = YellowDog.Netman.Kernel.RouteManager.list_routes("lo")
+      routes = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
       assert is_list(routes),
              "Expected list from list_routes for lo (r56)"
     end
@@ -981,6 +981,13 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all _x <- boolean() do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
+
+  property "route_manager attribute keys are atoms (r92)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 end

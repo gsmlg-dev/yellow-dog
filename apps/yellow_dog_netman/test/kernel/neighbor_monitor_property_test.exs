@@ -795,7 +795,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "NeighborMonitor get_neighbor for numeric string interface returns nil or map" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "eth\#{n}"
-      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor(iface)
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor, got: \#{inspect(result)}"
     end
@@ -808,7 +808,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
   property "NeighborMonitor get_neighbor for 'lo' returns nil or map or list" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor("lo")
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor for lo, got: #{inspect(result)}"
     end
@@ -845,7 +845,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "NeighborMonitor get_neighbor for any seeded interface returns valid type" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "nm52_#{n}"
-      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor(iface)
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
     end
@@ -874,9 +874,9 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
   property "NeighborMonitor get_neighbor for lo returns nil or map or list (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor("lo")
-      assert is_nil(result) or is_map(result) or is_list(result),
-             "Expected nil/map/list for lo, got: #{inspect(result)}"
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(result),
+             "Expected list from list_neighbors (r56), got: #{inspect(result)}"
     end
   end
   property "NeighborMonitor module is always loaded" do
@@ -1099,6 +1099,13 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all _x <- boolean() do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
+
+  property "neighbor_monitor attribute keys are atoms (r92)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 end

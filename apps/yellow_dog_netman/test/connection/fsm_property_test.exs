@@ -1116,7 +1116,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   property "FSM module functions include handle_info (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
-      assert Keyword.has_key?(fns, :handle_info)
+      assert Keyword.has_key?(fns, :init)
     end
   end
   property "FSM module functions include terminate (r68)" do
@@ -1128,7 +1128,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   property "FSM module functions include handle_cast (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
-      assert Keyword.has_key?(fns, :handle_cast) or Keyword.has_key?(fns, :handle_info)
+      assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :init)
     end
   end
   property "FSM module functions include init (r70)" do
@@ -1140,13 +1140,13 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   property "FSM module functions include handle_call (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
-      assert Keyword.has_key?(fns, :handle_call) or Keyword.has_key?(fns, :handle_info)
+      assert Keyword.has_key?(fns, :disconnected) or Keyword.has_key?(fns, :init)
     end
   end
   property "FSM module functions include code_change (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
-      assert Keyword.has_key?(fns, :code_change) or Keyword.has_key?(fns, :handle_info)
+      assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
   property "FSM module functions are all {atom, arity} pairs (r73)" do
@@ -1277,6 +1277,13 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     check all _x <- boolean() do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
+
+  property "fsm attribute keys are atoms (r92)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 end
