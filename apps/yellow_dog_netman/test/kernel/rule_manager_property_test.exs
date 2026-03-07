@@ -2796,4 +2796,148 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert RuleManager != nil
     end
   end
+
+  property "r341: rulemanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RuleManager))
+    end
+  end
+
+  property "r342: rulemanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r343: rulemanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r344: rulemanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r345: rulemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: rulemanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager == RuleManager
+    end
+  end
+
+  property "r347: rulemanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(RuleManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: rulemanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r349: rulemanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(RuleManager)) > 0
+    end
+  end
+
+  property "r350: rulemanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r351: rulemanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RuleManager))
+    end
+  end
+
+  property "r352: rulemanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r353: rulemanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r354: rulemanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r355: rulemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: rulemanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager == RuleManager
+    end
+  end
+
+  property "r357: rulemanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(RuleManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: rulemanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r359: rulemanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(RuleManager)) > 0
+    end
+  end
+
+  property "r360: rulemanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
 end

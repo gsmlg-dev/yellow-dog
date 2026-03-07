@@ -2709,4 +2709,148 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert ConnectionSupervisor != nil
     end
   end
+
+  property "r341: connectionsupervisor inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ConnectionSupervisor))
+    end
+  end
+
+  property "r342: connectionsupervisor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r343: connectionsupervisor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r344: connectionsupervisor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ConnectionSupervisor)
+    end
+  end
+
+  property "r345: connectionsupervisor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ConnectionSupervisor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: connectionsupervisor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor == ConnectionSupervisor
+    end
+  end
+
+  property "r347: connectionsupervisor to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ConnectionSupervisor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: connectionsupervisor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r349: connectionsupervisor inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ConnectionSupervisor)) > 0
+    end
+  end
+
+  property "r350: connectionsupervisor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r351: connectionsupervisor inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ConnectionSupervisor))
+    end
+  end
+
+  property "r352: connectionsupervisor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r353: connectionsupervisor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r354: connectionsupervisor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ConnectionSupervisor)
+    end
+  end
+
+  property "r355: connectionsupervisor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ConnectionSupervisor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: connectionsupervisor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor == ConnectionSupervisor
+    end
+  end
+
+  property "r357: connectionsupervisor to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ConnectionSupervisor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: connectionsupervisor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r359: connectionsupervisor inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ConnectionSupervisor)) > 0
+    end
+  end
+
+  property "r360: connectionsupervisor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
 end

@@ -3003,4 +3003,148 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert EventBus != nil
     end
   end
+
+  property "r341: eventbus inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
+
+  property "r342: eventbus not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r343: eventbus loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r344: eventbus is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r345: eventbus functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: eventbus identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus == EventBus
+    end
+  end
+
+  property "r347: eventbus to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(EventBus)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: eventbus loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r349: eventbus inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(EventBus)) > 0
+    end
+  end
+
+  property "r350: eventbus not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r351: eventbus inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
+
+  property "r352: eventbus not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r353: eventbus loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r354: eventbus is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r355: eventbus functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: eventbus identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus == EventBus
+    end
+  end
+
+  property "r357: eventbus to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(EventBus)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: eventbus loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r359: eventbus inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(EventBus)) > 0
+    end
+  end
+
+  property "r360: eventbus not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
 end

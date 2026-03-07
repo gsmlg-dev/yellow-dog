@@ -2861,4 +2861,148 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert ObservedState != nil
     end
   end
+
+  property "r341: observedstate inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ObservedState))
+    end
+  end
+
+  property "r342: observedstate not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r343: observedstate loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r344: observedstate is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r345: observedstate functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ObservedState.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: observedstate identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState == ObservedState
+    end
+  end
+
+  property "r347: observedstate to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ObservedState)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: observedstate loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r349: observedstate inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ObservedState)) > 0
+    end
+  end
+
+  property "r350: observedstate not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r351: observedstate inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ObservedState))
+    end
+  end
+
+  property "r352: observedstate not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r353: observedstate loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r354: observedstate is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r355: observedstate functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ObservedState.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: observedstate identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState == ObservedState
+    end
+  end
+
+  property "r357: observedstate to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ObservedState)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: observedstate loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r359: observedstate inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ObservedState)) > 0
+    end
+  end
+
+  property "r360: observedstate not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
 end

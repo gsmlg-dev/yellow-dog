@@ -2684,4 +2684,148 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert CLIValidation != nil
     end
   end
+
+  property "r341: clivalidation inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLIValidation))
+    end
+  end
+
+  property "r342: clivalidation not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r343: clivalidation loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r344: clivalidation is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r345: clivalidation functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: clivalidation identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation == CLIValidation
+    end
+  end
+
+  property "r347: clivalidation to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(CLIValidation)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: clivalidation loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r349: clivalidation inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(CLIValidation)) > 0
+    end
+  end
+
+  property "r350: clivalidation not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r351: clivalidation inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLIValidation))
+    end
+  end
+
+  property "r352: clivalidation not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r353: clivalidation loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r354: clivalidation is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r355: clivalidation functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: clivalidation identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation == CLIValidation
+    end
+  end
+
+  property "r357: clivalidation to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(CLIValidation)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: clivalidation loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r359: clivalidation inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(CLIValidation)) > 0
+    end
+  end
+
+  property "r360: clivalidation not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
 end

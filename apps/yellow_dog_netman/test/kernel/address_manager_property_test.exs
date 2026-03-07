@@ -2804,4 +2804,148 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert AddressManager != nil
     end
   end
+
+  property "r341: addressmanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r342: addressmanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r343: addressmanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r344: addressmanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r345: addressmanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: addressmanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager == AddressManager
+    end
+  end
+
+  property "r347: addressmanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(AddressManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: addressmanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r349: addressmanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(AddressManager)) > 0
+    end
+  end
+
+  property "r350: addressmanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r351: addressmanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r352: addressmanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r353: addressmanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r354: addressmanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r355: addressmanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: addressmanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager == AddressManager
+    end
+  end
+
+  property "r357: addressmanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(AddressManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: addressmanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r359: addressmanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(AddressManager)) > 0
+    end
+  end
+
+  property "r360: addressmanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
 end

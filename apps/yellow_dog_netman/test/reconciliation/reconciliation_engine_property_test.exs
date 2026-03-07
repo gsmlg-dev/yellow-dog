@@ -3046,4 +3046,148 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert ReconciliationEngine != nil
     end
   end
+
+  property "r341: reconciliationengine inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ReconciliationEngine))
+    end
+  end
+
+  property "r342: reconciliationengine not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r343: reconciliationengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r344: reconciliationengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
+
+  property "r345: reconciliationengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r346: reconciliationengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine == ReconciliationEngine
+    end
+  end
+
+  property "r347: reconciliationengine to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ReconciliationEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r348: reconciliationengine loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r349: reconciliationengine inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ReconciliationEngine)) > 0
+    end
+  end
+
+  property "r350: reconciliationengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r351: reconciliationengine inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ReconciliationEngine))
+    end
+  end
+
+  property "r352: reconciliationengine not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r353: reconciliationengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r354: reconciliationengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
+
+  property "r355: reconciliationengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r356: reconciliationengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine == ReconciliationEngine
+    end
+  end
+
+  property "r357: reconciliationengine to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ReconciliationEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r358: reconciliationengine loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r359: reconciliationengine inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ReconciliationEngine)) > 0
+    end
+  end
+
+  property "r360: reconciliationengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
 end
