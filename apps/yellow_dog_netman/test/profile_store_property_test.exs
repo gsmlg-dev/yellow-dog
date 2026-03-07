@@ -803,4 +803,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+  property "ProfileStore module functions include list (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.ProfileStore.module_info(:functions)
+      assert Keyword.has_key?(fns, :list)
+    end
+  end
 end

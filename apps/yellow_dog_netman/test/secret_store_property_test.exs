@@ -626,4 +626,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert del_result == :ok
     end
   end
+  property "SecretStore module attributes is a list (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.SecretStore.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end
