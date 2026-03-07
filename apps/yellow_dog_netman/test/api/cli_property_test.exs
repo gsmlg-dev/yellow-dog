@@ -416,4 +416,28 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       end
     end
   end
+
+  property "connection.list result items all have both id and type fields" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.list", "params" => %{}})
+      items = result["result"] || []
+      for item <- items do
+        assert Map.has_key?(item, "id") or Map.has_key?(item, :id),
+               "Expected id in connection list item, got: #{inspect(item)}"
+        assert Map.has_key?(item, "type") or Map.has_key?(item, :type),
+               "Expected type in connection list item, got: #{inspect(item)}"
+      end
+    end
+  end
+
+  property "status command result has version info or error" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "status", "params" => %{}})
+      assert is_map(result),
+             "Expected map from status command"
+      # Either a result map with data or an error map
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
+             "Expected result or error key, got: #{inspect(Map.keys(result))}"
+    end
+  end
 end

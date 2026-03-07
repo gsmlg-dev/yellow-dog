@@ -463,4 +463,26 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected error for too-long id, got: #{inspect(result)}"
     end
   end
+
+  property "connection.down with valid id never returns identifier validation error" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => id}})
+      err = result["error"]
+      if is_binary(err) do
+        refute String.starts_with?(err, "identifier"),
+               "connection.down with valid id #{id} got identifier error: #{err}"
+      end
+    end
+  end
+
+  property "connection.remove with valid id never returns identifier validation error" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.remove", "params" => %{"id" => id}})
+      err = result["error"]
+      if is_binary(err) do
+        refute String.starts_with?(err, "identifier"),
+               "connection.remove with valid id #{id} got identifier error: #{err}"
+      end
+    end
+  end
 end

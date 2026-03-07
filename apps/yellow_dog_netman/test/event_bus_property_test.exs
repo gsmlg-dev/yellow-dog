@@ -534,4 +534,23 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected {:ok, _} from subscribe with empty topic, got: #{inspect(result)}"
     end
   end
+
+  property "publish boolean message always returns :ok" do
+    check all(
+            topic <- topic_gen(),
+            b <- StreamData.boolean()
+          ) do
+      result = EventBus.publish(topic, b)
+      assert result == :ok,
+             "Expected :ok from publish with boolean message, got: #{inspect(result)}"
+    end
+  end
+
+  property "publish with nil message always returns :ok" do
+    check all(topic <- topic_gen()) do
+      result = EventBus.publish(topic, nil)
+      assert result == :ok,
+             "Expected :ok from publish with nil message, got: #{inspect(result)}"
+    end
+  end
 end
