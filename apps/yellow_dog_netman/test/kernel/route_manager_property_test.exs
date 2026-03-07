@@ -997,4 +997,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert is_list(result)
     end
   end
+
+  property "route_manager list_all is stable (r94)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.Kernel.RouteManager.list_all()
+      r2 = YellowDog.Netman.Kernel.RouteManager.list_all()
+      assert length(r1) == length(r2)
+    end
+  end
 end

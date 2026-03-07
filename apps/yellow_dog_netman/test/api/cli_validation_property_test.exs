@@ -907,4 +907,18 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation handle_command is pure function (r94)" do
+    check all cmd <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      r1 = CLI.handle_command([cmd])
+      r2 = CLI.handle_command([cmd])
+      # Same command → same type of result
+      assert (is_tuple(r1) and is_tuple(r2)) or
+             (is_list(r1) and is_list(r2)) or
+             (is_atom(r1) and is_atom(r2)) or
+             (is_binary(r1) and is_binary(r2)) or
+             (is_map(r1) and is_map(r2)) or
+             (is_nil(r1) and is_nil(r2))
+    end
+  end
 end

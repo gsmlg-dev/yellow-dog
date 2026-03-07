@@ -1240,4 +1240,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
     end
   end
+
+  property "reconciliation_engine kernel modules are all loaded (r94)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.AddressManager)
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RouteManager)
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
+    end
+  end
 end

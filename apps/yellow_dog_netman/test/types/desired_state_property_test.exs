@@ -924,4 +924,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_atom(ds.__struct__)
     end
   end
+
+  property "desired_state struct has no nil __struct__ (r94)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      refute is_nil(ds.__struct__)
+    end
+  end
 end

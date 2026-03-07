@@ -904,4 +904,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Keyword.has_key?(fns, :child_spec)
     end
   end
+
+  property "connection supervisor has connection-related exports (r94)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
 end

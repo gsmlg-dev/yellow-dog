@@ -967,4 +967,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "netlink module functions all have arity 0 to 5 (r94)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
+    end
+  end
 end

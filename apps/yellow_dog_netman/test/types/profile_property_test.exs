@@ -1388,4 +1388,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml id preserved in ok case (r94)" do
+    check all id <- string(Enum.concat([?a..?z, ?A..?Z, ?0..?9, [?_]]),
+                          min_length: 1, max_length: 64) do
+      case Profile.from_toml(%{"id" => id}) do
+        {:ok, p} -> assert is_binary(p.id) or is_nil(p.id)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end

@@ -863,4 +863,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       end)
     end
   end
+
+  property "diff actions contains no duplicates by identity (r94)" do
+    check all _x <- boolean() do
+      assert @actions == Enum.uniq(@actions)
+    end
+  end
 end

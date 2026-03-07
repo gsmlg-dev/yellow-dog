@@ -863,4 +863,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command with connection list returns result (r94)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["connection", "list"])
+      assert not is_nil(result)
+    end
+  end
 end

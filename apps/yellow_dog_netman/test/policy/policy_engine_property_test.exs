@@ -923,4 +923,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert r1 == :none
     end
   end
+
+  property "policy_engine exports effective_priority function (r94)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert Keyword.has_key?(fns, :effective_priority)
+    end
+  end
 end

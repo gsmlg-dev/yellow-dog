@@ -742,4 +742,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
     end
   end
+
+  property "netman type modules are all loaded (r94)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Profile)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState)
+    end
+  end
 end

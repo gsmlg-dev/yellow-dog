@@ -1115,4 +1115,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert is_list(result)
     end
   end
+
+  property "neighbor_monitor list_neighbors returns list of maps (r94)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(result)
+      assert Enum.all?(result, &(is_map(&1) or is_struct(&1)))
+    end
+  end
 end

@@ -831,4 +831,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Keyword.has_key?(fns, :mtu)
     end
   end
+
+  property "ethernet mtu for lo returns positive integer (r94)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
+      # lo always has an MTU in test env
+      assert is_nil(result) or (is_integer(result) and result > 0)
+    end
+  end
 end

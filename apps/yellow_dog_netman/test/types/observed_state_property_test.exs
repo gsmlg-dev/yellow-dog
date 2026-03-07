@@ -1000,4 +1000,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Enum.all?(keys, &is_atom/1)
     end
   end
+
+  property "observed_state addresses keys are strings (r94)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert Enum.all?(state.addresses, fn {k, _} -> is_binary(k) end)
+    end
+  end
 end

@@ -1294,4 +1294,13 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Keyword.has_key?(fns, :configuring)
     end
   end
+
+  property "fsm has init deactivate get_state (r94)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert Keyword.has_key?(fns, :init)
+      assert Keyword.has_key?(fns, :deactivate)
+      assert Keyword.has_key?(fns, :get_state)
+    end
+  end
 end

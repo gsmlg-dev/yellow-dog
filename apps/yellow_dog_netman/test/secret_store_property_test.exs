@@ -843,4 +843,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok or match?({:error, _}, result) or is_nil(result)
     end
   end
+
+  property "secret_store get returns consistent types (r94)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      r1 = YellowDog.Netman.SecretStore.get(key)
+      r2 = YellowDog.Netman.SecretStore.get(key)
+      # Same result type
+      assert match?({:ok, _}, r1) == match?({:ok, _}, r2)
+    end
+  end
 end
