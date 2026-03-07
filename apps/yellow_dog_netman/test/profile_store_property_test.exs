@@ -688,5 +688,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected ProfileStore to be alive"
     end
   end
+  property "ProfileStore list always returns a non-nil list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.ProfileStore.list()
+      refute is_nil(result), "Expected non-nil from list"
+    end
+  end
 
 end

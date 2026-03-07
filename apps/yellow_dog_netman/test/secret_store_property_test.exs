@@ -495,5 +495,14 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, val) == :ok
     end
   end
+  property "SecretStore put with map value always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            k <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            v <- StreamData.integer()
+          ) do
+      assert SecretStore.put(key, %{k => v}) == :ok
+    end
+  end
 
 end

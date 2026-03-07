@@ -487,5 +487,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected RouteManager to be loaded"
     end
   end
+  property "Netman Kernel.RuleManager module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager),
+             "Expected RuleManager to be loaded"
+    end
+  end
 
 end
