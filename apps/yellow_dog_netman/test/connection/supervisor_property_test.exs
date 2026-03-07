@@ -644,5 +644,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected ConnSupervisor to be alive"
     end
   end
+  property "ConnSupervisor module_info attributes is always a list (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      assert is_list(attrs),
+             "Expected list from module_info(:attributes)"
+    end
+  end
 
 end

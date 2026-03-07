@@ -739,5 +739,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected list_all/1 in exports"
     end
   end
+  property "AddressManager list_all for 'lo' always returns list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      assert is_list(result),
+             "Expected list from list_all for lo (round-54)"
+    end
+  end
 
 end

@@ -708,5 +708,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected list from module_info(:nifs)"
     end
   end
+  property "Netlink process is alive (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected Netlink to be alive (r54)"
+    end
+  end
 
 end

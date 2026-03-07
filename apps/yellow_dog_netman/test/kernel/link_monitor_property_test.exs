@@ -611,5 +611,11 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected get_link/1 in exports"
     end
   end
+  property "LinkMonitor list_links always returns non-nil result (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      refute is_nil(result), "Expected non-nil from list_links (r54)"
+    end
+  end
 
 end

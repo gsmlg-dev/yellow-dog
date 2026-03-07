@@ -735,5 +735,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected list_rules/0 in exports"
     end
   end
+  property "RuleManager process responds to alive check (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected RuleManager to be alive (r54)"
+    end
+  end
 
 end

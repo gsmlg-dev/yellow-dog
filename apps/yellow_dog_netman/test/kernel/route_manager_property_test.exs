@@ -739,5 +739,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected get_routes/1 in exports"
     end
   end
+  property "RouteManager get_routes for 'lo' always returns list (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+      assert is_list(result),
+             "Expected list from get_routes for lo (r54)"
+    end
+  end
 
 end

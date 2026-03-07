@@ -555,5 +555,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected ethernet?/1 in exports"
     end
   end
+  property "Ethernet module_info exports is always a list (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Ethernet.module_info(:exports)
+      assert is_list(exports),
+             "Expected list from module_info(:exports)"
+    end
+  end
 
 end

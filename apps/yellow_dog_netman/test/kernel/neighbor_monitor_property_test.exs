@@ -857,5 +857,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected list_neighbors/0 in exports"
     end
   end
+  property "NeighborMonitor list_neighbors always returns list (r54)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(result),
+             "Expected list from list_neighbors (r54)"
+    end
+  end
 
 end
