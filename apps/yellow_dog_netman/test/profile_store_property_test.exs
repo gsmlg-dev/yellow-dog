@@ -454,4 +454,19 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       end
     end
   end
+
+  property "all profiles in list() always have a non-negative integer autoconnect_priority" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+
+      profiles = ProfileStore.list()
+
+      for p <- profiles do
+        assert is_integer(p.autoconnect_priority) and p.autoconnect_priority >= 0,
+               "Expected non-negative integer autoconnect_priority, got: #{inspect(p.autoconnect_priority)}"
+      end
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end

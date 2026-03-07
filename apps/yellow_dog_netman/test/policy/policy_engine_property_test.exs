@@ -377,4 +377,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "effective_priority for any connection is always non-negative" do
+    check all(conn <- connection_gen()) do
+      priority = PolicyEngine.effective_priority(conn)
+      assert is_integer(priority) and priority >= 0,
+             "Expected non-negative integer from effective_priority, got: #{inspect(priority)}"
+    end
+  end
 end

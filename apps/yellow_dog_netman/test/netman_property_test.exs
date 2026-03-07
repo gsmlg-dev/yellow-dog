@@ -275,4 +275,15 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_connections always returns maps with :state field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+
+      for conn <- connections do
+        assert Map.has_key?(conn, :state),
+               "Expected connection to have :state field, got: #{inspect(conn)}"
+      end
+    end
+  end
 end
