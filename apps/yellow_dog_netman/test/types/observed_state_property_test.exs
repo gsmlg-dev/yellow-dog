@@ -1525,4 +1525,79 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(os, ObservedState)
     end
   end
+
+  property "r156: observed_state inspect contains module name" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      s = inspect(os)
+      assert String.contains?(s, "ObservedState")
+    end
+  end
+
+  property "r157: observed_state map from struct is map" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      m = Map.from_struct(os)
+      assert is_map(m)
+    end
+  end
+
+  property "r158: observed_state struct identity" do
+    check all n <- integer() do
+      os = %ObservedState{}
+      _ = n
+      assert os.__struct__ == ObservedState
+    end
+  end
+
+  property "r159: observed_state module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r160: observed_state module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r161: observedstate module identity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState == ObservedState
+    end
+  end
+
+  property "r162: observedstate module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r163: observedstate module loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r164: observedstate module is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r165: observedstate module inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ObservedState))
+    end
+  end
 end

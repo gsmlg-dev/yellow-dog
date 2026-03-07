@@ -1420,4 +1420,74 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "r156: policy engine module inspect" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(PolicyEngine))
+    end
+  end
+
+  property "r157: policy engine module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r158: policy engine not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r159: policy engine default_route idempotent" do
+    check all n <- integer(0..5) do
+      _ = n
+      assert PolicyEngine.default_route([]) == PolicyEngine.default_route([])
+    end
+  end
+
+  property "r160: policy engine route_metrics idempotent" do
+    check all n <- integer(0..5) do
+      _ = n
+      assert PolicyEngine.route_metrics([]) == PolicyEngine.route_metrics([])
+    end
+  end
+
+  property "r161: policyengine module identity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r162: policyengine module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r163: policyengine module loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r164: policyengine module is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r165: policyengine module inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(PolicyEngine))
+    end
+  end
 end

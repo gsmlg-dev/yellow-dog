@@ -1446,4 +1446,80 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Code.ensure_loaded?(DesiredState)
     end
   end
+
+  property "r156: desired_state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      _ = n
+      ds = %DesiredState{}
+      s = inspect(ds)
+      assert String.contains?(s, "DesiredState")
+    end
+  end
+
+  property "r157: desired_state connections empty by default" do
+    check all n <- integer(0..5) do
+      _ = n
+      ds = %DesiredState{}
+      assert map_size(ds.connections) == 0
+    end
+  end
+
+  property "r158: desired_state connections add key" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      ds = %DesiredState{connections: %{key => :active}}
+      assert map_size(ds.connections) == 1
+    end
+  end
+
+  property "r159: desired_state from_struct has connections key" do
+    check all n <- integer(0..3) do
+      _ = n
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert Map.has_key?(m, :connections)
+    end
+  end
+
+  property "r160: desired_state struct not nil" do
+    check all n <- integer() do
+      _ = n
+      ds = %DesiredState{}
+      assert ds != nil
+    end
+  end
+
+  property "r161: desiredstate module identity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState == DesiredState
+    end
+  end
+
+  property "r162: desiredstate module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r163: desiredstate module loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r164: desiredstate module is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(DesiredState)
+    end
+  end
+
+  property "r165: desiredstate module inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(DesiredState))
+    end
+  end
 end

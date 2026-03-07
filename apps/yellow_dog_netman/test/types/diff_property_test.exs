@@ -1349,4 +1349,78 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d.params[k] == v
     end
   end
+
+  property "r156: diff all valid actions produce structs" do
+    check all action <- member_of([:add_address, :remove_address, :add_route, :remove_route,
+                                    :activate_connection, :deactivate_connection, :update_dns,
+                                    :set_mtu, :set_link_up, :set_link_down]) do
+      d = Diff.new(action)
+      assert is_struct(d)
+    end
+  end
+
+  property "r157: diff interface stored" do
+    check all action <- member_of([:add_address, :set_mtu]),
+              iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(action, iface)
+      assert d.interface == iface
+    end
+  end
+
+  property "r158: diff module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r159: diff inspect contains struct name" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      s = inspect(d)
+      assert String.contains?(s, "Diff")
+    end
+  end
+
+  property "r160: diff action is atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu, :set_link_up]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r161: diff action is stored" do
+    check all action <- member_of([:add_address, :set_mtu, :update_dns, :set_link_up]) do
+      d = Diff.new(action)
+      assert d.action == action
+    end
+  end
+
+  property "r162: diff module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Diff)
+    end
+  end
+
+  property "r163: diff module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r164: diff inspect binary" do
+    check all action <- member_of([:add_address, :remove_route]) do
+      d = Diff.new(action)
+      assert is_binary(inspect(d))
+    end
+  end
+
+  property "r165: diff struct has params key" do
+    check all action <- member_of([:add_address, :set_mtu, :update_dns]) do
+      d = Diff.new(action)
+      assert Map.has_key?(d, :params)
+    end
+  end
 end

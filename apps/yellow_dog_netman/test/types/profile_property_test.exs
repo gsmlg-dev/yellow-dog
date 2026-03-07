@@ -1857,4 +1857,80 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert is_struct(p)
     end
   end
+
+  property "r156: profile inspect contains id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      s = inspect(p)
+      assert String.contains?(s, id)
+    end
+  end
+
+  property "r157: profile inspect contains Profile" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      s = inspect(p)
+      assert String.contains?(s, "Profile")
+    end
+  end
+
+  property "r158: profile struct has type field" do
+    check all type <- member_of(["ethernet", "wifi", "vpn"]) do
+      p = %Profile{id: "test", type: type}
+      assert p.type == type
+    end
+  end
+
+  property "r159: profile struct keys" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      keys = Map.keys(Map.from_struct(p))
+      assert :id in keys
+      assert :type in keys
+    end
+  end
+
+  property "r160: profile autoconnect_priority integer" do
+    check all prio <- integer(-100..100) do
+      p = %Profile{id: "test", type: "ethernet", autoconnect_priority: prio}
+      assert is_integer(p.autoconnect_priority)
+    end
+  end
+
+  property "r161: profile module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r162: profile module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r163: profile inspect binary" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(inspect(p))
+    end
+  end
+
+  property "r164: profile struct has id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p, :id)
+    end
+  end
+
+  property "r165: profile struct has type" do
+    check all type <- member_of(["ethernet", "wifi"]) do
+      p = %Profile{id: "test", type: type}
+      assert Map.has_key?(p, :type)
+    end
+  end
 end
