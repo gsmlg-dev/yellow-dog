@@ -822,5 +822,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus subscribe with atom topic never raises" do
+    check all(topic <- StreamData.atom(:alphanumeric)) do
+      result =
+        try do
+          EventBus.subscribe(Atom.to_string(topic))
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

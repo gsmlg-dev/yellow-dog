@@ -635,5 +635,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from compound method, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with device.show and any iface returns map" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)) do
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}})
+      assert is_map(result),
+             "Expected map from device.show, got: #{inspect(result)}"
+    end
+  end
 
 end
