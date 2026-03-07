@@ -681,5 +681,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected stable count from list"
     end
   end
+  property "ProfileStore pid is always alive and registered" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ProfileStore)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ProfileStore to be alive"
+    end
+  end
 
 end
