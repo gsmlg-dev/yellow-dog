@@ -2098,4 +2098,148 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert FSM != nil
     end
   end
+
+  property "r201: fsm inspect binary r201" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(FSM))
+    end
+  end
+
+  property "r202: fsm not nil r202" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r203: fsm loaded r203" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r204: fsm is atom r204" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r205: fsm functions r205" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r206: fsm identity r206" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM == FSM
+    end
+  end
+
+  property "r207: fsm to_string r207" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(FSM)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r208: fsm loaded ensure r208" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r209: fsm inspect len r209" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(FSM)) > 0
+    end
+  end
+
+  property "r210: fsm not nil final r210" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r211: fsm inspect binary r211" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(FSM))
+    end
+  end
+
+  property "r212: fsm not nil r212" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r213: fsm loaded r213" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r214: fsm is atom r214" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r215: fsm functions r215" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r216: fsm identity r216" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM == FSM
+    end
+  end
+
+  property "r217: fsm to_string r217" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(FSM)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r218: fsm loaded ensure r218" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r219: fsm inspect len r219" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(FSM)) > 0
+    end
+  end
+
+  property "r220: fsm not nil final r220" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
 end

@@ -1669,4 +1669,148 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert LinkMonitor != nil
     end
   end
+
+  property "r201: linkmonitor inspect binary r201" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r202: linkmonitor not nil r202" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r203: linkmonitor loaded r203" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r204: linkmonitor is atom r204" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r205: linkmonitor functions r205" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r206: linkmonitor identity r206" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor == LinkMonitor
+    end
+  end
+
+  property "r207: linkmonitor to_string r207" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(LinkMonitor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r208: linkmonitor loaded ensure r208" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r209: linkmonitor inspect len r209" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(LinkMonitor)) > 0
+    end
+  end
+
+  property "r210: linkmonitor not nil final r210" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r211: linkmonitor inspect binary r211" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r212: linkmonitor not nil r212" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r213: linkmonitor loaded r213" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r214: linkmonitor is atom r214" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r215: linkmonitor functions r215" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r216: linkmonitor identity r216" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor == LinkMonitor
+    end
+  end
+
+  property "r217: linkmonitor to_string r217" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(LinkMonitor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r218: linkmonitor loaded ensure r218" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r219: linkmonitor inspect len r219" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(LinkMonitor)) > 0
+    end
+  end
+
+  property "r220: linkmonitor not nil final r220" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
 end

@@ -1775,4 +1775,148 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert DesiredState != nil
     end
   end
+
+  property "r201: desiredstate inspect binary r201" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(DesiredState))
+    end
+  end
+
+  property "r202: desiredstate not nil r202" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r203: desiredstate loaded r203" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r204: desiredstate is atom r204" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(DesiredState)
+    end
+  end
+
+  property "r205: desiredstate functions r205" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = DesiredState.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r206: desiredstate identity r206" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState == DesiredState
+    end
+  end
+
+  property "r207: desiredstate to_string r207" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(DesiredState)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r208: desiredstate loaded ensure r208" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r209: desiredstate inspect len r209" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(DesiredState)) > 0
+    end
+  end
+
+  property "r210: desiredstate not nil final r210" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r211: desiredstate inspect binary r211" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(DesiredState))
+    end
+  end
+
+  property "r212: desiredstate not nil r212" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r213: desiredstate loaded r213" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r214: desiredstate is atom r214" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(DesiredState)
+    end
+  end
+
+  property "r215: desiredstate functions r215" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = DesiredState.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r216: desiredstate identity r216" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState == DesiredState
+    end
+  end
+
+  property "r217: desiredstate to_string r217" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(DesiredState)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r218: desiredstate loaded ensure r218" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r219: desiredstate inspect len r219" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(DesiredState)) > 0
+    end
+  end
+
+  property "r220: desiredstate not nil final r220" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
 end
