@@ -631,4 +631,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
     end
   end
+
+  property "netman module exports info function (r79)" do
+    check all _x <- integer() do
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

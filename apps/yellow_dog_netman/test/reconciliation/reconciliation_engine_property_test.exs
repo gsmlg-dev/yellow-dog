@@ -1131,4 +1131,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "reconciliation_engine module exports functions (r79)" do
+    check all _x <- integer() do
+      fns = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

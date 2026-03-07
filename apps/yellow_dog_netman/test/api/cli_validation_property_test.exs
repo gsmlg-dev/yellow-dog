@@ -797,4 +797,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+
+  property "cli validation rejects commands over 512 bytes (r79)" do
+    check all cmd <- string(:alphanumeric, min_length: 513, max_length: 1024) do
+      result = CLI.handle_command([cmd])
+      assert not is_nil(result)
+    end
+  end
 end
