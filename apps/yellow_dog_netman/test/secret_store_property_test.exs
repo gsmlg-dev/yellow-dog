@@ -297,4 +297,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.delete(key) == :ok
     end
   end
+
+  property "get always returns a tagged tuple" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
+      result = SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple from get, got: #{inspect(result)}"
+    end
+  end
 end

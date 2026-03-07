@@ -514,4 +514,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       end
     end
   end
+
+  property "Netlink subscribe always returns :ok" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netlink.subscribe()
+      assert result == :ok,
+             "Expected :ok from Netlink.subscribe, got: #{inspect(result)}"
+    end
+  end
 end

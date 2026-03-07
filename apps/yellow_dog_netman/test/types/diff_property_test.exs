@@ -404,4 +404,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected same action in both diffs"
     end
   end
+
+  property "Diff.new/1 with default interface is nil" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert diff.interface == nil,
+             "Expected nil interface from new/1, got: #{inspect(diff.interface)}"
+    end
+  end
 end
