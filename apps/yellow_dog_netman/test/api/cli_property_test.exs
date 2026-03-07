@@ -366,4 +366,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected error key in response, got: #{inspect(result)}"
     end
   end
+
+  property "device command always returns a map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device"})
+      assert is_map(result),
+             "Expected map from device command, got: #{inspect(result)}"
+    end
+  end
 end

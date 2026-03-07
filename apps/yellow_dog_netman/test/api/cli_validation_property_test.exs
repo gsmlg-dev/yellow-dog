@@ -415,4 +415,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from connection.show, got: #{inspect(result)}"
     end
   end
+
+  property "status command never returns an error map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result"),
+             "Expected result key in status response, got: #{inspect(result)}"
+    end
+  end
 end
