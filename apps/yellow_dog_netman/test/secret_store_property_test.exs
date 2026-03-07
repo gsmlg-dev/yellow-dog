@@ -423,4 +423,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected tagged tuple after put, got: #{inspect(result)}"
     end
   end
+
+  property "SecretStore put with binary key never raises" do
+    check all(key <- StreamData.binary(min_length: 1, max_length: 30)) do
+      result = SecretStore.put(key, "v")
+      assert result == :ok or is_nil(result),
+             "Expected :ok from put, got: #{inspect(result)}"
+    end
+  end
 end

@@ -618,4 +618,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected not_found for unknown id, got: #{inspect(result)}"
     end
   end
+
+  property "ProfileStore list count is stable between two calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = length(ProfileStore.list())
+      c2 = length(ProfileStore.list())
+      assert c1 == c2,
+             "Expected stable ProfileStore.list count: #{c1} vs #{c2}"
+    end
+  end
 end

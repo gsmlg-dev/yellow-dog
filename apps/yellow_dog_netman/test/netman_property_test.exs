@@ -427,4 +427,14 @@ defmodule YellowDog.NetmanPropertyTest do
              "Mismatch: status.interfaces=#{inspect(status.interfaces)} vs list_interfaces=#{inspect(ifaces)}"
     end
   end
+
+  property "get_profile always returns same result for same id in same call" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      id = "nm_stable_#{seed}"
+      r1 = Netman.get_profile(id)
+      r2 = Netman.get_profile(id)
+      assert r1 == r2,
+             "Expected stable get_profile for #{id}: #{inspect(r1)} vs #{inspect(r2)}"
+    end
+  end
 end
