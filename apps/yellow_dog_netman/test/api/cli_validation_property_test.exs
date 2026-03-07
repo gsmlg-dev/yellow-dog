@@ -746,4 +746,10 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with profile.reload returns map (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.reload"})
+      assert is_map(result)
+    end
+  end
 end

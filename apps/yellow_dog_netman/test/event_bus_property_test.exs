@@ -969,4 +969,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus broadcast with empty prefix always returns nil or ok (r72)" do
+    check all(
+      data <- StreamData.integer()
+    ) do
+      result = YellowDog.Netman.EventBus.broadcast("", data)
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end
