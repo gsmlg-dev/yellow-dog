@@ -346,4 +346,13 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected link.mtu == #{mtu}, got: #{inspect(link.mtu)}"
     end
   end
+
+  property "get_link for a fresh unique interface always returns nil" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "lm_nil_#{seed}"
+      result = LinkMonitor.get_link(fresh_iface)
+      assert result == nil,
+             "Expected nil for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
 end

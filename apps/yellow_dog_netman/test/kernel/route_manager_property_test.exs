@@ -455,4 +455,28 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "flush after adding a route always returns non-negative integer pair" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen()
+          ) do
+      RouteManager.add_route(%{
+        interface: iface,
+        destination: dest,
+        gateway: gw,
+        metric: 100,
+        protocol: :static,
+        scope: :global,
+        family: :inet
+      })
+
+      {removed, failed} = RouteManager.flush(iface)
+      assert is_integer(removed) and removed >= 0,
+             "Expected non-negative removed count, got: #{removed}"
+      assert is_integer(failed) and failed >= 0,
+             "Expected non-negative failed count, got: #{failed}"
+    end
+  end
 end
