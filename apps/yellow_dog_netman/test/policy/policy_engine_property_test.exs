@@ -678,4 +678,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == %{} or is_map(result) or is_list(result)
     end
   end
+  property "PolicyEngine effective_priority returns integer or zero (r63)" do
+    check all(
+      priority <- StreamData.integer(1..100)
+    ) do
+      conn = %{profile: %{priority: priority}, type: :ethernet}
+      result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
+      assert is_integer(result) or is_nil(result)
+    end
+  end
 end

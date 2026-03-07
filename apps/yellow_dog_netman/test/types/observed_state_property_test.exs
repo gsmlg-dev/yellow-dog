@@ -734,4 +734,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(updated)
     end
   end
+  property "ObservedState routes field is always a list (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert is_list(state.routes)
+    end
+  end
 end

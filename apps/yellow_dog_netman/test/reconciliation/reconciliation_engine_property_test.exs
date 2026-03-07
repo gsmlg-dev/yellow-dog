@@ -1032,4 +1032,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "ReconciliationEngine is always registered in process registry (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.ReconciliationEngine
+      pid = Process.whereis(name)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
 end

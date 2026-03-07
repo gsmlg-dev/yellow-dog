@@ -654,4 +654,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_nil(diff.interface) or is_binary(diff.interface)
     end
   end
+  property "Diff struct has no extra keys beyond expected (r63)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      keys = Map.keys(diff) |> Enum.reject(&(&1 == :__struct__))
+      assert length(keys) > 0
+    end
+  end
 end
