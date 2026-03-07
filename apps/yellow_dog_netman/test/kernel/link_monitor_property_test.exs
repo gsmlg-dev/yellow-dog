@@ -402,4 +402,16 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected nil for unregistered interface, got: #{inspect(result)}"
     end
   end
+
+  property "list_links entries always have :interface and :state keys" do
+    check all(_ <- StreamData.constant(:ok)) do
+      links = LinkMonitor.list_links()
+      for link <- links do
+        assert Map.has_key?(link, :interface),
+               "Expected :interface in link, got: #{inspect(link)}"
+        assert Map.has_key?(link, :state),
+               "Expected :state in link, got: #{inspect(link)}"
+      end
+    end
+  end
 end

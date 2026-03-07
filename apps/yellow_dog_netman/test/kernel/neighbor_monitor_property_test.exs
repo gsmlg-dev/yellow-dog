@@ -628,4 +628,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "NeighborMonitor process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.NeighborMonitor)
+      assert pid != nil, "Expected NeighborMonitor to be registered"
+      assert Process.alive?(pid), "Expected NeighborMonitor to be alive"
+    end
+  end
 end

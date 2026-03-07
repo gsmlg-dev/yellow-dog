@@ -505,4 +505,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected map from list_all, got: #{inspect(result)}"
     end
   end
+
+  property "AddressManager process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.AddressManager)
+      assert pid != nil, "Expected AddressManager to be registered"
+      assert Process.alive?(pid), "Expected AddressManager to be alive"
+    end
+  end
 end
