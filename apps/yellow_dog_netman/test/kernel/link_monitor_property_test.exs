@@ -922,4 +922,90 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "r100: link monitor module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: link monitor module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r102: link monitor module info is a list" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: link monitor module has functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: link monitor module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: link monitor exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: link monitor module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = LinkMonitor.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: link monitor module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: link monitor compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = LinkMonitor.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: link monitor exports start_link and init" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: link monitor is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
 end

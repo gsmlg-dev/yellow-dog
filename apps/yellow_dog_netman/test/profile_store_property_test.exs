@@ -1041,4 +1041,96 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(result)
     end
   end
+
+  property "r100: profile store module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = ProfileStore.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: profile store list returns a list" do
+    check all n <- integer(0..3) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r102: profile store list result is always a list" do
+    check all n <- integer(0..5) do
+      profiles = ProfileStore.list()
+      assert is_list(profiles)
+      _ = n
+    end
+  end
+
+  property "r103: profile store get with unknown id returns nil or error" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      result = ProfileStore.get(id)
+      assert is_nil(result) or match?({:error, _}, result) or is_struct(result)
+    end
+  end
+
+  property "r104: profile store list length is non-negative" do
+    check all n <- integer(0..5) do
+      profiles = ProfileStore.list()
+      assert length(profiles) >= 0
+      _ = n
+    end
+  end
+
+  property "r105: profile store module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert ProfileStore.__info__(:module) == YellowDog.Netman.ProfileStore
+      _ = n
+    end
+  end
+
+  property "r106: profile store module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = ProfileStore.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: profile store functions include get/1" do
+    check all n <- integer(0..3) do
+      fns = ProfileStore.__info__(:functions)
+      has_get = Enum.any?(fns, fn {name, _} -> name == :get end)
+      assert has_get
+      _ = n
+    end
+  end
+
+  property "r108: profile store functions include list/0" do
+    check all n <- integer(0..3) do
+      fns = ProfileStore.__info__(:functions)
+      has_list = Enum.any?(fns, fn {name, _} -> name == :list end)
+      assert has_list
+      _ = n
+    end
+  end
+
+  property "r109: profile store list does not crash" do
+    check all n <- integer(0..5) do
+      try do
+        _profiles = ProfileStore.list()
+        assert true
+      rescue
+        _ -> assert false, "ProfileStore.list/0 should not raise"
+      end
+      _ = n
+    end
+  end
+
+  property "r110: profile store list does not error" do
+    check all n <- integer(0..3) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
 end

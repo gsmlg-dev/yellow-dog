@@ -1044,4 +1044,92 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert map_size(r1) == map_size(r2)
     end
   end
+
+  property "r100: address manager module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: address manager list_all returns a map" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r102: address manager list_all returns map with lists as values" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      Enum.each(result, fn {_k, v} -> assert is_list(v) end)
+      _ = n
+    end
+  end
+
+  property "r103: address manager module has functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: address manager list_all keys are binary strings" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      Enum.each(Map.keys(result), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r105: address manager exports list_all/0" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r106: address manager module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = AddressManager.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: address manager module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: address manager compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = AddressManager.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: address manager exports list_all/0 that returns map" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r110: address manager list_all always returns map" do
+    check all n <- integer(0..5) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      _ = n
+    end
+  end
 end

@@ -909,4 +909,92 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "r100: cli module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: cli module exports handle_command" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r102: cli module info is a list" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: cli module has functions" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: cli module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: cli module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert CLI.__info__(:module) == YellowDog.Netman.API.CLI
+      _ = n
+    end
+  end
+
+  property "r106: cli module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = CLI.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: cli functions include connect" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      has_fn = Enum.any?(fns, fn {name, _} -> name == :connect or name == :start_link end)
+      assert has_fn
+      _ = n
+    end
+  end
+
+  property "r108: cli module compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = CLI.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: cli module exports handle_command/1" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:handle_command, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: cli handle_command returns a map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert is_map(result)
+      _ = n
+    end
+  end
 end

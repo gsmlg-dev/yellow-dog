@@ -967,4 +967,90 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_nil(result) or is_integer(result) or is_float(result)
     end
   end
+
+  property "r100: policy engine module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(PolicyEngine)
+      _ = n
+    end
+  end
+
+  property "r101: policy engine default_route with empty list returns :none" do
+    check all n <- integer(0..3) do
+      result = PolicyEngine.default_route([])
+      assert result == :none
+      _ = n
+    end
+  end
+
+  property "r102: policy engine module info returns functions list" do
+    check all n <- integer(0..3) do
+      fns = PolicyEngine.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: policy engine module has more than zero functions" do
+    check all n <- integer(0..3) do
+      fns = PolicyEngine.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: policy engine can be called repeatedly" do
+    check all n <- integer(0..5) do
+      _ = PolicyEngine.default_route([])
+      _ = n
+      assert true
+    end
+  end
+
+  property "r105: policy engine module attributes include module name" do
+    check all n <- integer(0..3) do
+      assert PolicyEngine.__info__(:module) == YellowDog.Netman.PolicyEngine
+      _ = n
+    end
+  end
+
+  property "r106: policy engine module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = PolicyEngine.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: policy engine module info attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = PolicyEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: policy engine module info compile is a list" do
+    check all n <- integer(0..3) do
+      compile = PolicyEngine.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: policy engine dns_priority with empty list returns empty" do
+    check all n <- integer(0..3) do
+      result = PolicyEngine.dns_priority([])
+      assert result == [] or is_list(result)
+      _ = n
+    end
+  end
+
+  property "r110: policy engine route_metrics returns a list" do
+    check all n <- integer(0..3) do
+      result = PolicyEngine.route_metrics([])
+      assert is_list(result)
+      _ = n
+    end
+  end
 end

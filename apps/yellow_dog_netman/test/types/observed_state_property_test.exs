@@ -1048,4 +1048,93 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Map.has_key?(state, :addresses)
     end
   end
+
+  property "r100: observed state links map is always a map" do
+    check all n <- integer(0..3) do
+      state = ObservedState.new()
+      links = state.links
+      assert is_map(links)
+      _ = n
+    end
+  end
+
+  property "r101: observed state can be created fresh each iteration" do
+    check all n <- integer(0..5) do
+      s = ObservedState.new()
+      assert is_struct(s)
+      _ = n
+    end
+  end
+
+  property "r102: observed state addresses is a map" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert is_map(s.addresses)
+      _ = n
+    end
+  end
+
+  property "r103: observed state routes is a list" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert is_list(s.routes)
+      _ = n
+    end
+  end
+
+  property "r104: observed state links keys are binary strings" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      Enum.each(Map.keys(s.links), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r105: observed state is a struct" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert is_struct(s, ObservedState)
+      _ = n
+    end
+  end
+
+  property "r106: observed state is a struct of type ObservedState" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert is_struct(s, ObservedState)
+      _ = n
+    end
+  end
+
+  property "r107: new observed states have empty links map" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert map_size(s.links) == 0
+      _ = n
+    end
+  end
+
+  property "r108: new observed states have empty addresses map" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert map_size(s.addresses) == 0
+      _ = n
+    end
+  end
+
+  property "r109: new observed states have empty routes list" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r110: observed state struct name matches module" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.__struct__ == ObservedState
+      _ = n
+    end
+  end
 end

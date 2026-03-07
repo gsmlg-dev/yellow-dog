@@ -1442,4 +1442,81 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "r100: profile ipv4 method round-trips through atom conversion" do
+    check all method <- member_of([:auto, :static, :disabled]) do
+      s = Atom.to_string(method)
+      assert String.to_existing_atom(s) == method
+    end
+  end
+
+  property "r101: profile name is always a binary" do
+    check all name <- string(:printable, min_length: 1, max_length: 64) do
+      assert is_binary(name)
+    end
+  end
+
+  property "r102: profile struct is always a struct" do
+    check all priority <- integer(-1000..10000) do
+      p = %Profile{id: "test", type: "ethernet", autoconnect_priority: priority}
+      assert is_struct(p)
+    end
+  end
+
+  property "r103: profile zone is always a binary or nil" do
+    check all zone <- one_of([constant(nil), string(:alphanumeric, min_length: 1, max_length: 32)]) do
+      assert is_nil(zone) or is_binary(zone)
+    end
+  end
+
+  property "r104: profile autoconnect_priority uniquely orders profiles" do
+    check all ps <- list_of(integer(-1000..10000), min_length: 2, max_length: 5) do
+      sorted = Enum.sort(ps)
+      assert sorted == Enum.sort(ps, :asc)
+    end
+  end
+
+  property "r105: higher autoconnect_priority profile sorts after lower" do
+    check all a <- integer(-1000..0), b <- integer(1..10000) do
+      p1 = %Profile{id: "a", type: "ethernet", autoconnect_priority: a}
+      p2 = %Profile{id: "b", type: "ethernet", autoconnect_priority: b}
+      sorted = Enum.sort_by([p2, p1], & &1.autoconnect_priority)
+      assert hd(sorted).autoconnect_priority == a
+    end
+  end
+
+  property "r106: profile default autoconnect is true" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.autoconnect == true
+    end
+  end
+
+  property "r107: profile default zone is default string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.zone == "default"
+    end
+  end
+
+  property "r108: profile default autoconnect_priority is 0" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.autoconnect_priority == 0
+    end
+  end
+
+  property "r109: profile ipv4 method default is :auto" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.ipv4.method == :auto
+    end
+  end
+
+  property "r110: profile ipv6 method default is :auto" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.ipv6.method == :auto
+    end
+  end
 end

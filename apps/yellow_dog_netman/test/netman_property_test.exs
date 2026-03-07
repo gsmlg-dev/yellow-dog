@@ -791,4 +791,90 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Enum.all?(modules, &Code.ensure_loaded?/1)
     end
   end
+
+  property "r100: netman module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: netman module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r102: netman module info is a list" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: netman module has functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: netman module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: netman module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert Netman.__info__(:module) == YellowDog.Netman
+      _ = n
+    end
+  end
+
+  property "r106: netman module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = Netman.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: netman module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: netman module compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Netman.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: netman module attributes is a non-empty list" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r110: netman module exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

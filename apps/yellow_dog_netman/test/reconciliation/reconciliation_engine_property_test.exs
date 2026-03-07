@@ -1291,4 +1291,89 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Enum.all?(modules, &Code.ensure_loaded?/1)
     end
   end
+
+  property "r100: reconciliation engine module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: reconciliation engine module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r102: reconciliation engine module info is a list" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: reconciliation engine module has functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: reconciliation engine has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: reconciliation engine module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert ReconciliationEngine.__info__(:module) == YellowDog.Netman.ReconciliationEngine
+      _ = n
+    end
+  end
+
+  property "r106: reconciliation engine module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = ReconciliationEngine.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: reconciliation engine module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: reconciliation engine compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = ReconciliationEngine.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: reconciliation engine exports start_link" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: reconciliation engine module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
 end

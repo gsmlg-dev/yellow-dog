@@ -1040,4 +1040,92 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Keyword.get(fns, :start_link) == 1
     end
   end
+
+  property "r100: route manager module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: route manager list_all returns a list" do
+    check all n <- integer(0..3) do
+      result = RouteManager.list_all()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r102: route manager list_all elements are maps" do
+    check all n <- integer(0..3) do
+      routes = RouteManager.list_all()
+      Enum.each(routes, fn r -> assert is_map(r) end)
+      _ = n
+    end
+  end
+
+  property "r103: route manager module has functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: route manager list_all length is non-negative" do
+    check all n <- integer(0..3) do
+      routes = RouteManager.list_all()
+      assert length(routes) >= 0
+      _ = n
+    end
+  end
+
+  property "r105: route manager exports list_all/0" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r106: route manager module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = RouteManager.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: route manager module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: route manager compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = RouteManager.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: route manager exports get_routes/1" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:get_routes, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: route manager get_routes returns list for lo" do
+    check all n <- integer(0..3) do
+      result = RouteManager.get_routes("lo")
+      assert is_list(result)
+      _ = n
+    end
+  end
 end

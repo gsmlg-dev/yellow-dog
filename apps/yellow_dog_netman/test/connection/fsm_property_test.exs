@@ -1348,4 +1348,92 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Keyword.get(fns, :get_state) == 1
     end
   end
+
+  property "r100: fsm module exports deactivate" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:deactivate, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: fsm exports get_state" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:get_state, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r102: fsm exports setup_link" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:setup_link, 1} in fns or {:setup_link, 2} in fns
+      _ = n
+    end
+  end
+
+  property "r103: fsm init function arity is 1" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r104: fsm exports terminate/3" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:terminate, 3} in fns
+      _ = n
+    end
+  end
+
+  property "r105: fsm exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: fsm module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = FSM.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: fsm module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: fsm compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = FSM.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: fsm exports disconnected/3 state handler" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:disconnected, 3} in fns
+      _ = n
+    end
+  end
+
+  property "r110: fsm exports configuring/3 state handler" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:configuring, 3} in fns
+      _ = n
+    end
+  end
 end

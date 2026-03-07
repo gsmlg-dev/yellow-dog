@@ -883,4 +883,90 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Keyword.get(fns, :mtu) == 1
     end
   end
+
+  property "r100: ethernet module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: ethernet module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r102: ethernet module info is a list" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: ethernet module has functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: ethernet module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: ethernet module exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: ethernet module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = Ethernet.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: ethernet module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: ethernet compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Ethernet.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: ethernet module exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: ethernet module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
 end

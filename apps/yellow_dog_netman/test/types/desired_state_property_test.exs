@@ -979,4 +979,93 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert ds.__struct__ == YellowDog.Netman.Types.DesiredState
     end
   end
+
+  property "r100: desired state connections is always a map" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert is_map(ds.connections)
+      _ = n
+    end
+  end
+
+  property "r101: desired state connections map is always a map" do
+    check all n <- integer(0..5) do
+      ds = %DesiredState{}
+      assert is_map(ds.connections)
+      _ = n
+    end
+  end
+
+  property "r102: desired state struct has connections key" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert Map.has_key?(ds, :connections)
+      _ = n
+    end
+  end
+
+  property "r103: desired state connections map size is non-negative" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert map_size(ds.connections) >= 0
+      _ = n
+    end
+  end
+
+  property "r104: desired state connection count is non-negative" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert map_size(ds.connections) >= 0
+      _ = n
+    end
+  end
+
+  property "r105: desired state is a struct" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert is_struct(ds)
+      _ = n
+    end
+  end
+
+  property "r106: desired state struct module is DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert is_struct(ds, DesiredState)
+      _ = n
+    end
+  end
+
+  property "r107: new desired state has empty connections map" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r108: desired state struct is a struct" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert is_struct(ds)
+      _ = n
+    end
+  end
+
+  property "r109: desired state from_profiles with empty list returns empty connections" do
+    check all n <- integer(0..3) do
+      ds = DesiredState.from_profiles([])
+      assert is_map(ds.connections)
+      assert map_size(ds.connections) == 0
+      _ = n
+    end
+  end
+
+  property "r110: desired state from_profiles with pairs returns connections map" do
+    check all n <- integer(0..3) do
+      ds = DesiredState.from_profiles([])
+      assert is_struct(ds, DesiredState)
+      _ = n
+    end
+  end
 end

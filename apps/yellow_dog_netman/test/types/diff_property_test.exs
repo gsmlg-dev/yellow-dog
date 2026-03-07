@@ -907,4 +907,95 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       refute :init in @actions
     end
   end
+
+  property "r100: diff struct has expected keys" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:add_address)
+      assert Map.has_key?(d, :action)
+      assert Map.has_key?(d, :interface)
+      assert Map.has_key?(d, :params)
+      _ = n
+    end
+  end
+
+  property "r101: diff new action is the given action" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:add_route)
+      assert d.action == :add_route
+      _ = n
+    end
+  end
+
+  property "r102: diff new params defaults to empty map" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:set_mtu)
+      assert d.params == %{}
+      _ = n
+    end
+  end
+
+  property "r103: diff new interface defaults to nil" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:set_link_up)
+      assert is_nil(d.interface)
+      _ = n
+    end
+  end
+
+  property "r104: diff with interface sets interface field" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      d = Diff.new(:activate_connection, iface)
+      assert d.interface == iface
+    end
+  end
+
+  property "r105: diff with params stores params" do
+    check all key <- atom(:alphanumeric), val <- integer() do
+      params = %{key => val}
+      d = Diff.new(:add_address, nil, params)
+      assert d.params == params
+    end
+  end
+
+  property "r106: diff action must be from valid set" do
+    valid_actions = [:add_address, :remove_address, :add_route, :remove_route,
+                     :activate_connection, :deactivate_connection, :update_dns,
+                     :set_mtu, :set_link_up, :set_link_down]
+    check all action <- member_of(valid_actions) do
+      d = Diff.new(action)
+      assert d.action in valid_actions
+    end
+  end
+
+  property "r107: diff params are always a map" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_map(d.params)
+    end
+  end
+
+  property "r108: diff interface can be set to any binary string" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15),
+              action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action, iface)
+      assert d.interface == iface
+    end
+  end
+
+  property "r109: diff with custom params preserves all keys" do
+    check all k1 <- atom(:alphanumeric), v1 <- integer(),
+              k2 <- atom(:alphanumeric), v2 <- integer() do
+      params = %{k1 => v1, k2 => v2}
+      d = Diff.new(:add_address, nil, params)
+      Enum.each(params, fn {k, v} -> assert d.params[k] == v end)
+    end
+  end
+
+  property "r110: diff remove_address action sets action field" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:remove_address, iface)
+      assert d.action == :remove_address
+      assert d.interface == iface
+    end
+  end
 end

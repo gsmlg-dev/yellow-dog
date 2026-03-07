@@ -1014,4 +1014,90 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "r100: netlink module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: netlink module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r102: netlink module info is a list" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: netlink module has functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: netlink module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: netlink exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: netlink module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = Netlink.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: netlink module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: netlink compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Netlink.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: netlink exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: netlink is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
 end

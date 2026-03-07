@@ -1042,4 +1042,90 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
+
+  property "r100: rule manager module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: rule manager module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RuleManager)
+      _ = n
+    end
+  end
+
+  property "r102: rule manager module info is a list" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: rule manager module has functions" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: rule manager module has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: rule manager exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: rule manager module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = RuleManager.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: rule manager module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RuleManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: rule manager compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = RuleManager.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: rule manager exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: rule manager is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RuleManager)
+      _ = n
+    end
+  end
 end

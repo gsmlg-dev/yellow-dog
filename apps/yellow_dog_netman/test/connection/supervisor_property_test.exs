@@ -949,4 +949,95 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Keyword.get(fns, :start_link) == 1
     end
   end
+
+  property "r100: connection supervisor module exports start_link" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: connection supervisor module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r102: connection supervisor module info is a list" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: connection supervisor module has functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: connection supervisor has more than zero exported functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r105: connection supervisor exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r106: connection supervisor module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = Connection.Supervisor.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: connection supervisor module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r108: connection supervisor compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Connection.Supervisor.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r109: connection supervisor exports child_spec" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      has_cs = Enum.any?(fns, fn {name, _} -> name == :child_spec end)
+      assert has_cs or {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r110: connection supervisor exports start_child or start_connection" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      has_fn = Enum.any?(fns, fn {name, _} ->
+        name in [:start_child, :start_connection, :start_link]
+      end)
+      assert has_fn
+      _ = n
+    end
+  end
 end

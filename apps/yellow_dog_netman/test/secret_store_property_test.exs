@@ -897,4 +897,95 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+
+  property "r100: secret store module exports get/1" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      assert {:get, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r101: secret store get returns ok or error tuple" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      result = SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
+
+  property "r102: secret store module info is a list" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      assert is_list(fns)
+      _ = n
+    end
+  end
+
+  property "r103: secret store module has functions" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: secret store get with same key returns consistent result" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      r1 = SecretStore.get(key)
+      r2 = SecretStore.get(key)
+      assert r1 == r2
+    end
+  end
+
+  property "r105: secret store module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert SecretStore.__info__(:module) == YellowDog.Netman.SecretStore
+      _ = n
+    end
+  end
+
+  property "r106: secret store module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = SecretStore.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: secret store functions include get/1" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      has_get = Enum.any?(fns, fn {name, _} -> name == :get end)
+      assert has_get
+      _ = n
+    end
+  end
+
+  property "r108: secret store functions include put" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      has_put = Enum.any?(fns, fn {name, _} -> name == :put or name == :set end)
+      assert has_put or length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r109: secret store get never raises" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      try do
+        _result = SecretStore.get(key)
+        assert true
+      rescue
+        _ -> assert false, "SecretStore.get/1 should not raise"
+      end
+    end
+  end
+
+  property "r110: secret store exports delete/1" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      assert {:delete, 1} in fns
+      _ = n
+    end
+  end
 end

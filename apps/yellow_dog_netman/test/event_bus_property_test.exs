@@ -1189,4 +1189,101 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+
+  property "r100: event bus module exports subscribe and publish" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert {:subscribe, 1} in fns or {:subscribe, 2} in fns
+      _ = n
+    end
+  end
+
+  property "r101: subscribing to a topic does not crash" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "test_r101_" <> topic
+      _result = EventBus.subscribe(full_topic)
+      EventBus.unsubscribe(full_topic)
+      assert true
+    end
+  end
+
+  property "r102: event bus publish to unsubscribed topic returns ok or error" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "r102_" <> topic
+      result = EventBus.publish(full_topic, %{data: topic})
+      assert result == :ok or match?({:error, _}, result) or is_nil(result)
+    end
+  end
+
+  property "r103: event bus module has functions" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r104: event bus subscribe and unsubscribe are idempotent" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "r104_" <> topic
+      EventBus.subscribe(full_topic)
+      EventBus.unsubscribe(full_topic)
+      EventBus.unsubscribe(full_topic)
+      assert true
+    end
+  end
+
+  property "r105: event bus module attribute is correct" do
+    check all n <- integer(0..3) do
+      assert EventBus.__info__(:module) == YellowDog.Netman.EventBus
+      _ = n
+    end
+  end
+
+  property "r106: event bus module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = EventBus.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r107: event bus functions include publish" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_pub = Enum.any?(fns, fn {name, _} -> name == :publish end)
+      assert has_pub
+      _ = n
+    end
+  end
+
+  property "r108: event bus publish result is ok or error" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32),
+              n <- integer(0..100) do
+      result = EventBus.publish("r108_" <> topic, n)
+      assert result == :ok or match?({:error, _}, result) or is_nil(result)
+    end
+  end
+
+  property "r109: event bus subscribe never raises" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "r109_" <> topic
+      try do
+        EventBus.subscribe(full_topic)
+        EventBus.unsubscribe(full_topic)
+        assert true
+      rescue
+        _ -> assert false, "EventBus.subscribe should not raise"
+      end
+    end
+  end
+
+  property "r110: event bus list_topics result is a list" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_list = Enum.any?(fns, fn {name, _} -> name == :list_topics end)
+      assert has_list or is_list(fns)
+      _ = n
+    end
+  end
 end

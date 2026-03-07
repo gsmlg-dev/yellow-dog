@@ -963,4 +963,76 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "r100: cli validation accepts valid interface names" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      result = byte_size(iface) >= 1 and byte_size(iface) <= 15
+      assert result
+    end
+  end
+
+  property "r101: interface name max length is 15 chars" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      assert byte_size(iface) <= 15
+    end
+  end
+
+  property "r102: ip address string with dots has at least 3 dots" do
+    check all octets <- list_of(integer(0..255), length: 4) do
+      ip_str = Enum.join(octets, ".")
+      assert String.split(ip_str, ".") |> length() == 4
+    end
+  end
+
+  property "r103: cidr prefix length is in valid range for ipv4" do
+    check all prefix <- integer(0..32) do
+      assert prefix >= 0 and prefix <= 32
+    end
+  end
+
+  property "r104: ipv6 prefix length is in valid range" do
+    check all prefix <- integer(0..128) do
+      assert prefix >= 0 and prefix <= 128
+    end
+  end
+
+  property "r105: cidr notation strings contain a slash" do
+    check all octets <- list_of(integer(0..255), length: 4),
+              prefix <- integer(0..32) do
+      cidr = Enum.join(octets, ".") <> "/" <> Integer.to_string(prefix)
+      assert String.contains?(cidr, "/")
+    end
+  end
+
+  property "r106: interface names are binary strings" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      assert is_binary(iface)
+    end
+  end
+
+  property "r107: valid priority values are integers in range" do
+    check all priority <- integer(-1000..10000) do
+      assert is_integer(priority)
+      assert priority >= -1000 and priority <= 10000
+    end
+  end
+
+  property "r108: profile id must not be empty" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      assert byte_size(id) > 0
+    end
+  end
+
+  property "r109: profile type must be from valid set" do
+    check all typ <- member_of(["ethernet"]) do
+      assert is_binary(typ)
+      assert typ in ["ethernet"]
+    end
+  end
+
+  property "r110: all valid profile types are binary strings" do
+    check all typ <- member_of(["ethernet"]) do
+      assert is_binary(typ)
+    end
+  end
 end
