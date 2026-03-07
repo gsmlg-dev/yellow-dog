@@ -250,5 +250,37 @@ defmodule YellowDog.Netman.API.CLITcpTest do
 
       :gen_tcp.close(socket)
     end
+
+    test "monitor serializes list and map values in telemetry metadata" do
+      {:ok, socket} = connect_to_cli()
+
+      :gen_tcp.send(socket, Jason.encode!(%{"method" => "monitor"}) <> "\n")
+      {:ok, _started} = :gen_tcp.recv(socket, 0, 2000)
+
+      # Emit a telemetry event with list and nested map values
+      # (exercises stringify_value/1 list and map clauses)
+      :telemetry.execute(
+        [:yellow_dog, :netman, :kernel, :link_change],
+        %{count: 1},
+        %{
+          interface: "str_cov_iface",
+          dns_servers: ["8.8.8.8", "1.1.1.1"],
+          nested: %{key: :value}
+        }
+      )
+
+      {:ok, event_line} = :gen_tcp.recv(socket, 0, 2000)
+      event = Jason.decode!(String.trim(event_line))
+      assert event["event"] == "yellow_dog.netman.kernel.link_change"
+
+      # List values should be serialized as JSON arrays
+      assert is_list(event["metadata"]["dns_servers"])
+      assert event["metadata"]["dns_servers"] == ["8.8.8.8", "1.1.1.1"]
+
+      # Map values should be serialized as JSON objects
+      assert is_map(event["metadata"]["nested"])
+
+      :gen_tcp.close(socket)
+    end
   end
 end

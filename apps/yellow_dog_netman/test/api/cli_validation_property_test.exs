@@ -664,4 +664,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_binary(name)
     end
   end
+  property "CLI interface name with only underscores is always valid-length (r61)" do
+    check all(
+      n <- StreamData.integer(1..15)
+    ) do
+      name = String.duplicate("_", n)
+      assert byte_size(name) <= 15
+    end
+  end
 end

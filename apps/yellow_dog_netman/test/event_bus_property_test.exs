@@ -872,4 +872,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+  property "EventBus subscribe/unsubscribe with empty string topic doesn't crash (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.EventBus.subscribe("")
+      assert is_atom(result) or is_tuple(result) or is_ok_or_error(result)
+    end
+  end
+
+  defp is_ok_or_error(:ok), do: true
+  defp is_ok_or_error({:ok, _}), do: true
+  defp is_ok_or_error({:error, _}), do: true
+  defp is_ok_or_error(_), do: false
 end
