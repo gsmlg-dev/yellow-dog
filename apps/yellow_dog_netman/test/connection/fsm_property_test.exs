@@ -668,4 +668,21 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM process is alive immediately after start_link" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "fsm_alive_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+
+      assert Process.alive?(pid),
+             "Expected FSM pid #{inspect(pid)} to be alive after start_link"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

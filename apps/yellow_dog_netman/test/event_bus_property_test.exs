@@ -424,4 +424,21 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
     end
   end
+
+  property "publish always returns :ok regardless of message type" do
+    check all(
+            topic <- topic_gen(),
+            msg <- StreamData.one_of([
+              StreamData.integer(),
+              StreamData.boolean(),
+              StreamData.string(:alphanumeric, max_length: 20),
+              StreamData.constant(nil),
+              StreamData.constant(:ok)
+            ])
+          ) do
+      result = EventBus.publish(topic, msg)
+      assert result == :ok,
+             "Expected :ok from publish, got: #{inspect(result)}"
+    end
+  end
 end

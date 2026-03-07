@@ -415,4 +415,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface2)
     end
   end
+
+  property "find_connection always returns :error for empty string interface" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert ConnSupervisor.find_connection("") == :error
+    end
+  end
 end
