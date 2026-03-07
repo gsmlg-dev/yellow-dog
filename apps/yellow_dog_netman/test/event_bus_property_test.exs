@@ -949,4 +949,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus broadcast never crashes with any message (r70)" do
+    check all(
+      prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      data <- StreamData.integer()
+    ) do
+      result = YellowDog.Netman.EventBus.broadcast(prefix, data)
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end

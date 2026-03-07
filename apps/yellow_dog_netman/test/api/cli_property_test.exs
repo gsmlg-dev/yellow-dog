@@ -688,4 +688,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with device.list always returns map (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device.list"})
+      assert is_map(result)
+    end
+  end
 end
