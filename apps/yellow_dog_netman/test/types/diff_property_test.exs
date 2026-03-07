@@ -845,4 +845,13 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_list(fns) and length(fns) > 0
     end
   end
+
+  property "diff @actions are all lowercase atoms (r92)" do
+    check all _x <- boolean() do
+      assert Enum.all?(@actions, fn a ->
+        s = Atom.to_string(a)
+        s == String.downcase(s)
+      end)
+    end
+  end
 end

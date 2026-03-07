@@ -907,4 +907,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(fns, :route_metrics)
     end
   end
+
+  property "policy_engine exported functions include dns_priority (r92)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert Keyword.has_key?(fns, :dns_priority)
+    end
+  end
 end

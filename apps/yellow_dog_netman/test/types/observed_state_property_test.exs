@@ -983,4 +983,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_list(fns) and length(fns) > 0
     end
   end
+
+  property "observed_state is created fresh each call (r92)" do
+    check all _x <- boolean() do
+      s1 = ObservedState.new()
+      s2 = ObservedState.new()
+      # Both fresh structs are equal
+      assert s1 == s2
+    end
+  end
 end

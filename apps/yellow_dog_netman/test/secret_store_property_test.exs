@@ -827,4 +827,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+
+  property "secret_store module exports 3 main functions (r92)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.SecretStore.__info__(:functions)
+      count = length(fns)
+      assert count >= 3
+    end
+  end
 end

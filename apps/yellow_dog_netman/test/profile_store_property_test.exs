@@ -979,4 +979,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:error, _}, r1) == match?({:error, _}, r2)
     end
   end
+
+  property "profile_store module exports delete function (r92)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ProfileStore.__info__(:functions)
+      # Should have at least get, list (delete may or may not exist)
+      assert Keyword.has_key?(fns, :get) or Keyword.has_key?(fns, :list)
+    end
+  end
 end

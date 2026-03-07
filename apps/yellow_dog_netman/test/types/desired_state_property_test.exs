@@ -909,4 +909,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_list(fns) and length(fns) > 0
     end
   end
+
+  property "desired_state module loaded (r92)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState)
+    end
+  end
 end

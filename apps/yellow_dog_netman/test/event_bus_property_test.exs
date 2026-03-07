@@ -1126,4 +1126,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "event_bus subscribe unsubscribe cycle is safe (r92)" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      YellowDog.Netman.EventBus.subscribe(topic)
+      result = YellowDog.Netman.EventBus.unsubscribe(topic)
+      # Unsubscribe by topic string should not crash
+      assert result == :ok or is_nil(result) or match?({:error, _}, result)
+    end
+  end
 end

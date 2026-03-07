@@ -891,4 +891,13 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "cli validation handle_command with three args returns result (r92)" do
+    check all a <- string(:alphanumeric, min_length: 1),
+              b <- string(:alphanumeric, min_length: 1),
+              c <- string(:alphanumeric, min_length: 1) do
+      result = CLI.handle_command([a, b, c])
+      assert not is_nil(result)
+    end
+  end
 end

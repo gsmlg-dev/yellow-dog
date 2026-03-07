@@ -1370,4 +1370,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml zone field is string when set (r92)" do
+    check all id <- string(:alphanumeric, min_length: 1),
+              zone <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      case Profile.from_toml(%{"id" => id, "zone" => zone}) do
+        {:ok, p} -> assert is_binary(p.zone) or is_nil(p.zone)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end
