@@ -649,5 +649,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected non-negative length, got: #{inspect(result)}"
     end
   end
+  property "ProfileStore list result entries are all maps or structs" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = YellowDog.Netman.ProfileStore.list()
+      for p <- profiles do
+        assert is_map(p) or is_struct(p),
+               "Expected map or struct profile entry, got: #{inspect(p)}"
+      end
+    end
+  end
 
 end

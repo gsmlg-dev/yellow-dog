@@ -457,5 +457,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected EventBus to be loaded"
     end
   end
+  property "Netman ProfileStore module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore),
+             "Expected ProfileStore to be loaded"
+    end
+  end
 
 end

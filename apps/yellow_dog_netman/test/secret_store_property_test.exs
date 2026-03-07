@@ -454,5 +454,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected tagged tuple, got: #{inspect(result)}"
     end
   end
+  property "SecretStore put returns :ok for any printable key value pair" do
+    check all(
+            key <- StreamData.string(:printable, min_length: 1, max_length: 24),
+            val <- StreamData.string(:printable, min_length: 0, max_length: 64)
+          ) do
+      assert SecretStore.put(key, val) == :ok
+    end
+  end
 
 end
