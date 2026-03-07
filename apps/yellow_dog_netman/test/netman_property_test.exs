@@ -619,4 +619,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Connection.Ethernet)
     end
   end
+  property "Netman Policy modules all loaded (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
+    end
+  end
 end

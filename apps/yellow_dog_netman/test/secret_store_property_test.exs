@@ -706,4 +706,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert name == YellowDog.Netman.SecretStore
     end
   end
+  property "SecretStore get always returns {:error, _} in stub (r77)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:error, :not_found}, result)
+    end
+  end
 end

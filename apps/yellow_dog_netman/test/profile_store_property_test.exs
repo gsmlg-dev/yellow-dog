@@ -866,4 +866,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert name == YellowDog.Netman.ProfileStore
     end
   end
+  property "ProfileStore process is always alive (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ProfileStore)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
 end
