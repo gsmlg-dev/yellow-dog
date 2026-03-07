@@ -797,4 +797,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       end
     end
   end
+
+  property "ReconciliationEngine.reconcile always returns :ok" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ReconciliationEngine.reconcile()
+      assert result == :ok,
+             "Expected :ok from reconcile, got: #{inspect(result)}"
+    end
+  end
 end

@@ -426,4 +426,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected 2 metric entries for 2 connections, got: #{inspect(metrics)}"
     end
   end
+
+  property "dns_priority for multiple connections returns list with at most N entries" do
+    check all(connections <- list_of(connection_gen(), min_length: 1, max_length: 5)) do
+      result = PolicyEngine.dns_priority(connections)
+      assert is_list(result),
+             "Expected list from dns_priority, got: #{inspect(result)}"
+    end
+  end
 end

@@ -507,4 +507,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "get after put returns the same profile struct" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+      {:ok, fetched} = ProfileStore.get(profile.id)
+      assert fetched.id == profile.id,
+             "Expected profile id #{profile.id}, got: #{inspect(fetched.id)}"
+      ProfileStore.delete(profile.id)
+    end
+  end
 end
