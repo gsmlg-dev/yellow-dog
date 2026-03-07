@@ -725,4 +725,20 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
              "Expected FSM pid to be dead after GenServer.stop"
     end
   end
+
+  property "FSM initial state is always :unavailable when link is not up" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "fsm_init_#{seed}"
+      profile = make_profile(iface)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      Process.sleep(30)
+      {:ok, state_map} = FSM.get_state(pid)
+
+      assert state_map.state == :unavailable,
+             "Expected :unavailable when link not up, got: #{inspect(state_map.state)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end

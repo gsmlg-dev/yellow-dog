@@ -460,4 +460,36 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
     end
   end
+
+  property "two wildcards on same prefix both receive matching messages" do
+    check all(
+            prefix <- topic_segment(),
+            suffix <- topic_segment(),
+            message <- term()
+          ) do
+      parent = self()
+      wc = "dual_wc:#{prefix}:*"
+      topic = "dual_wc:#{prefix}:#{suffix}"
+
+      task =
+        Task.async(fn ->
+          {:ok, _} = EventBus.subscribe(wc)
+          send(parent, :subscribed)
+          receive do
+            {:netman_event, ^topic, ^message} -> :received
+          after
+            200 -> :timeout
+          end
+        end)
+
+      assert_receive :subscribed, 500
+      {:ok, _} = EventBus.subscribe(wc)
+      EventBus.publish(topic, message)
+
+      assert_receive {:netman_event, ^topic, ^message}, 200
+      assert Task.await(task, 1000) == :received
+
+      EventBus.unsubscribe(wc)
+    end
+  end
 end
