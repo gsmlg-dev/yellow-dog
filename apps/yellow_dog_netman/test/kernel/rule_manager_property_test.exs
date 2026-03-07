@@ -521,4 +521,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert Process.alive?(pid), "Expected RuleManager process to be alive"
     end
   end
+
+  property "list_rules result length is always a non-negative integer" do
+    check all(_ <- StreamData.constant(:ok)) do
+      count = length(RuleManager.list_rules())
+      assert is_integer(count) and count >= 0,
+             "Expected non-negative rule count, got: #{count}"
+    end
+  end
 end

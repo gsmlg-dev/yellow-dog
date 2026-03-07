@@ -531,4 +531,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "RouteManager process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RouteManager)
+      assert pid != nil, "Expected RouteManager to be registered"
+      assert Process.alive?(pid), "Expected RouteManager to be alive"
+    end
+  end
 end

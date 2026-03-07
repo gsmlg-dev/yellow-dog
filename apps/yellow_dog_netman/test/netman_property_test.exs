@@ -304,4 +304,14 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected {:error, :not_found} for unknown id, got: #{inspect(result)}"
     end
   end
+
+  property "list_connections always returns a list of maps with :interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+      for conn <- connections do
+        assert Map.has_key?(conn, :interface),
+               "Expected :interface key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end
