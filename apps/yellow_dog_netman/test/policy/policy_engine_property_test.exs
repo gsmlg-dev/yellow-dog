@@ -361,4 +361,20 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected #{length(unique_conns)} entries in route_metrics, got #{map_size(metrics)}"
     end
   end
+
+  property "route_metrics values are always positive integers" do
+    check all(connections <- StreamData.list_of(connection_gen(), min_length: 1, max_length: 5)) do
+      unique_conns =
+        connections
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> %{c | id: "rv_#{i}_#{c.id}"} end)
+
+      metrics = PolicyEngine.route_metrics(unique_conns)
+
+      for {_id, metric} <- metrics do
+        assert is_integer(metric) and metric > 0,
+               "Expected positive integer metric, got: #{inspect(metric)}"
+      end
+    end
+  end
 end

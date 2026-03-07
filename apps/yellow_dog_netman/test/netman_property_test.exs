@@ -262,4 +262,17 @@ defmodule YellowDog.NetmanPropertyTest do
              "list_connections contains duplicate interfaces: #{inspect(ifaces)}"
     end
   end
+
+  property "status always has required top-level keys" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.status()
+      assert is_map(result),
+             "Expected map from status, got: #{inspect(result)}"
+
+      for key <- [:interfaces, :connections, :running] do
+        assert Map.has_key?(result, key),
+               "Expected status to have key #{inspect(key)}"
+      end
+    end
+  end
 end
