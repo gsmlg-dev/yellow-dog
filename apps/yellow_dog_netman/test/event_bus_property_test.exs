@@ -582,4 +582,26 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok from unsubscribe, got: #{inspect(result2)}"
     end
   end
+
+  property "publish always returns :ok or a tagged tuple" do
+    check all(seed <- StreamData.integer(1..9_999), msg <- StreamData.integer()) do
+      topic = "pub_ret_#{seed}"
+      result = EventBus.publish(topic, msg)
+      assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected ok-ish from publish, got: #{inspect(result)}"
+    end
+  end
+
+  property "subscribe to two different topics always succeeds" do
+    check all(s1 <- StreamData.integer(1..9_999), s2 <- StreamData.integer(1..9_999)) do
+      topic1 = "two_sub_a_#{s1}"
+      topic2 = "two_sub_b_#{s2}"
+      r1 = EventBus.subscribe(topic1)
+      r2 = EventBus.subscribe(topic2)
+      assert match?({:ok, _}, r1) or r1 == :ok or is_nil(r1)
+      assert match?({:ok, _}, r2) or r2 == :ok or is_nil(r2)
+      EventBus.unsubscribe(topic1)
+      EventBus.unsubscribe(topic2)
+    end
+  end
 end

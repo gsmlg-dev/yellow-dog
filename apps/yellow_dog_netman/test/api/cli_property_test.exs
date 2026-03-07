@@ -459,4 +459,23 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected error or result key in response"
     end
   end
+
+  property "handle_command with unknown method returns error map" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      method = "unknown.method_#{seed}"
+      result = CLI.handle_command(%{"method" => method, "params" => %{}})
+      assert is_map(result),
+             "Expected map from handle_command with unknown method"
+      assert Map.has_key?(result, "error") or Map.has_key?(result, "result"),
+             "Expected error or result in response for unknown method"
+    end
+  end
+
+  property "handle_command with empty params map never raises" do
+    check all(method <- StreamData.member_of(["profile.list", "connection.list", "status", "profile.get"])) do
+      result = CLI.handle_command(%{"method" => method, "params" => %{}})
+      assert is_map(result),
+             "Expected map from handle_command with #{method}"
+    end
+  end
 end

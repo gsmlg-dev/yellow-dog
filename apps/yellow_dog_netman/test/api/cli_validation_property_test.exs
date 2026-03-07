@@ -506,4 +506,20 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected string or nil error for whitespace-only id, got: \#{inspect(err)}"
     end
   end
+
+  property "handle_command never raises for any printable string method" do
+    check all(method <- StreamData.string(:printable, min_length: 1, max_length: 30)) do
+      result = CLI.handle_command(%{"method" => method, "params" => %{}})
+      assert is_map(result),
+             "Expected map from handle_command for any string method"
+    end
+  end
+
+  property "handle_command always returns a map for numeric method" do
+    check all(n <- StreamData.integer()) do
+      result = CLI.handle_command(%{"method" => "#{n}", "params" => %{}})
+      assert is_map(result),
+             "Expected map for numeric string method #{n}"
+    end
+  end
 end
