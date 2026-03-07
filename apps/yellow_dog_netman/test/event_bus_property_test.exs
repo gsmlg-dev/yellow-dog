@@ -506,4 +506,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok from publish with complex message, got: #{inspect(result)}"
     end
   end
+
+  property "broadcast to empty prefix always returns :ok" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = EventBus.broadcast("", :any_message)
+      assert result == :ok,
+             "Expected :ok from broadcast with empty prefix, got: #{inspect(result)}"
+    end
+  end
 end

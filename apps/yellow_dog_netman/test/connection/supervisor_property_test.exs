@@ -466,4 +466,17 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected :error for special char interface"
     end
   end
+
+  property "list_connections pid field is always nil or alive pid" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+      for conn <- connections do
+        pid = conn[:pid]
+        if pid != nil do
+          assert is_pid(pid) and Process.alive?(pid),
+                 "Expected alive pid in connection, got: #{inspect(pid)}"
+        end
+      end
+    end
+  end
 end
