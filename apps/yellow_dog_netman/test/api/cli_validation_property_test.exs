@@ -713,4 +713,13 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert Map.keys(result1) == Map.keys(result2)
     end
   end
+  property "CLI handle_command with profile.create returns expected shape (r68)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      params = %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "default"}
+      result = CLI.handle_command(%{"method" => "profile.create", "params" => params})
+      assert is_map(result)
+    end
+  end
 end

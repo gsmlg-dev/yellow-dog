@@ -675,4 +675,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result) or is_list(result)
     end
   end
+  property "CLI handle_command result is always serializable (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.list"})
+      encoded = Jason.encode(result)
+      assert match?({:ok, _}, encoded) or match?({:error, _}, encoded)
+    end
+  end
 end

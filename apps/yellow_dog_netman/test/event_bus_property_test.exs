@@ -931,4 +931,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:ok, _}, result)
     end
   end
+  property "EventBus publish returns nil or ok (r68)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      data <- StreamData.integer()
+    ) do
+      result = YellowDog.Netman.EventBus.publish(topic, data)
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end
