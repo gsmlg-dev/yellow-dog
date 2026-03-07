@@ -672,4 +672,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert byte_size(name) <= 15
     end
   end
+  property "CLI validate: interface name with max length is always 15 or fewer (r62)" do
+    check all(
+      name <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      assert byte_size(name) <= 15
+    end
+  end
 end

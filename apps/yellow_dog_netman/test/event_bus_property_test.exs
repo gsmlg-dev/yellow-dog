@@ -883,4 +883,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   defp is_ok_or_error({:ok, _}), do: true
   defp is_ok_or_error({:error, _}), do: true
   defp is_ok_or_error(_), do: false
+  property "EventBus registry is always running (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.EventBus.Registry)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
 end
