@@ -614,5 +614,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected empty params map, got: #{inspect(diff.params)}"
     end
   end
+  property "Diff new produces struct with correct keys" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert Map.has_key?(diff, :action) and Map.has_key?(diff, :params),
+             "Expected :action and :params keys in Diff"
+    end
+  end
 
 end

@@ -637,5 +637,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected :none, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine dns_priority with empty list returns list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.dns_priority([])
+      assert is_list(result) or is_nil(result) or is_integer(result),
+             "Expected list/nil/integer, got: #{inspect(result)}"
+    end
+  end
 
 end

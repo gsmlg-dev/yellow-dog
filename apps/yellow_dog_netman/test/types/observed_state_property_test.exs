@@ -687,5 +687,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected map after two put_links"
     end
   end
+  property "ObservedState put_link result is non-nil" do
+    check all(
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            up <- StreamData.boolean()
+          ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      result = YellowDog.Netman.Types.ObservedState.put_link(state, %{interface: iface, up: up})
+      refute is_nil(result), "Expected non-nil from put_link"
+    end
+  end
 
 end

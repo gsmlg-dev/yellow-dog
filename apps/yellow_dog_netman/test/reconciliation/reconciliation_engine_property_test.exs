@@ -992,5 +992,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected all alive checks to pass"
     end
   end
+  property "ReconciliationEngine module info lists are non-empty" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      assert is_list(exports) and length(exports) > 0,
+             "Expected non-empty function list"
+    end
+  end
 
 end
