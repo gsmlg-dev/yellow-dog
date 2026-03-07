@@ -368,4 +368,27 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "get_profile for a profile in list_profiles always returns {:ok, _}" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = Netman.list_profiles()
+      for p <- profiles do
+        id = if is_map(p), do: (Map.get(p, :id) || Map.get(p, "id")), else: nil
+        if id != nil do
+          result = Netman.get_profile(id)
+          assert match?({:ok, _}, result),
+                 "Expected {:ok, _} for profile #{inspect(id)}"
+        end
+      end
+    end
+  end
+
+  property "list_profiles result count is consistent across two calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = length(Netman.list_profiles())
+      c2 = length(Netman.list_profiles())
+      assert c1 == c2,
+             "Expected consistent list_profiles count: \#{c1} vs \#{c2}"
+    end
+  end
 end

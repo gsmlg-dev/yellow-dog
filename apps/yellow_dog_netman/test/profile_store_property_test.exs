@@ -563,4 +563,25 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       end
     end
   end
+
+  property "all profiles in list have a non-nil and non-empty id" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = ProfileStore.list()
+      for p <- profiles do
+        assert is_binary(p.id) and byte_size(p.id) > 0,
+               "Expected non-empty binary id in profile, got: #{inspect(p.id)}"
+      end
+    end
+  end
+
+  property "list always returns a list of maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = ProfileStore.list()
+      assert is_list(profiles)
+      for p <- profiles do
+        assert is_map(p) or is_struct(p),
+               "Expected map or struct in list, got: \#{inspect(p)}"
+      end
+    end
+  end
 end

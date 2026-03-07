@@ -481,4 +481,31 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected non-negative effective_priority, got: #{inspect(ep)}"
     end
   end
+
+  property "dns_priority entries always have non-empty :interface field" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_with_dns_gen(), min_length: 1, max_length: 5)
+          ) do
+      result = PolicyEngine.dns_priority(connections)
+      for entry <- result do
+        assert is_binary(entry.interface),
+               "Expected binary interface in dns_priority entry, got: #{inspect(entry)}"
+      end
+    end
+  end
+
+  property "route_metrics always returns a map or list for any connections list" do
+    check all(n <- StreamData.integer(0..3)) do
+      conns = Enum.map(1..max(n, 1), fn i ->
+        %{interface: "rm_iface_#{i}", priority: i, autoconnect_priority: i,
+          state: :activated, profile_id: "p#{i}", type: :ethernet,
+          ipv4: %{method: :static, address: "10.0.#{i}.1", prefix_len: 24, gateway: nil},
+          ipv6: %{method: :disabled}, dns: [], lease: nil, error: nil}
+      end)
+      result = if n == 0, do: PolicyEngine.route_metrics([]), else: PolicyEngine.route_metrics(conns)
+      assert is_map(result) or is_list(result),
+             "Expected map or list from route_metrics, got: #{inspect(result)}"
+    end
+  end
 end
