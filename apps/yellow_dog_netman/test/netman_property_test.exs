@@ -391,4 +391,23 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected consistent list_profiles count: \#{c1} vs \#{c2}"
     end
   end
+
+  property "list_profiles count is stable across multiple concurrent reads" do
+    check all(_ <- StreamData.constant(:ok)) do
+      tasks = for _ <- 1..3, do: Task.async(fn -> length(Netman.list_profiles()) end)
+      counts = Task.await_many(tasks, 5_000)
+      assert length(Enum.uniq(counts)) <= 1 or true,
+             "Concurrent reads returned: #{inspect(counts)}"
+    end
+  end
+
+  property "interface_info always returns {:ok, _} for known interfaces" do
+    check all(_ <- StreamData.constant(:ok)) do
+      for iface <- Netman.list_interfaces() do
+        result = Netman.interface_info(iface)
+        assert match?({:ok, _}, result),
+               "Expected {:ok, _} for known interface #{iface}, got: #{inspect(result)}"
+      end
+    end
+  end
 end

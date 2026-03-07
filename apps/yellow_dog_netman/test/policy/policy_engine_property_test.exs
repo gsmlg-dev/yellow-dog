@@ -508,4 +508,19 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected map or list from route_metrics, got: #{inspect(result)}"
     end
   end
+
+  property "dns_priority with empty list returns empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = PolicyEngine.dns_priority([])
+      assert result == [],
+             "Expected [] from dns_priority([]), got: #{inspect(result)}"
+    end
+  end
+
+  property "default_route always returns :none for an empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert PolicyEngine.default_route([]) == :none,
+             "Expected :none from default_route([]), got something else"
+    end
+  end
 end
