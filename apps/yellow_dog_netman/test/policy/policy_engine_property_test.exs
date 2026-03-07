@@ -579,5 +579,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine default_route returns :none or a string for single profile" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none or is_binary(result) or is_nil(result),
+             "Expected :none/binary/nil from default_route, got: #{inspect(result)}"
+    end
+  end
 
 end

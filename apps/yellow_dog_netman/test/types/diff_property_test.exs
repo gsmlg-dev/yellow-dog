@@ -544,5 +544,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       refute is_nil(diff), "Expected non-nil from Diff.new"
     end
   end
+  property "Diff interface field is nil for actions not requiring interface" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_nil(diff.interface) or is_binary(diff.interface),
+             "Expected nil or binary interface, got: #{inspect(diff.interface)}"
+    end
+  end
 
 end

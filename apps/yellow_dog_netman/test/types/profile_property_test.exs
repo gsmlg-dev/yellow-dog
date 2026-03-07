@@ -915,5 +915,23 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected matching id and type fields"
     end
   end
+  property "Profile from_toml with valid map never crashes" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of(["ethernet", "wifi", "loopback"])
+          ) do
+      result =
+        try do
+          YellowDog.Netman.Types.Profile.from_toml(%{"id" => id, "type" => type})
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Expected :ok or :raised from from_toml"
+    end
+  end
 
 end

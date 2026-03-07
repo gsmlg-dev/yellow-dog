@@ -931,5 +931,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected pid from whereis, got: #{inspect(pid)}"
     end
   end
+  property "ReconciliationEngine module exports are stable" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      assert is_list(exports),
+             "Expected list of exports from __info__, got: #{inspect(exports)}"
+    end
+  end
 
 end

@@ -602,5 +602,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected empty connections, got: #{inspect(conns)}"
     end
   end
+  property "DesiredState module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState),
+             "Expected DesiredState module to be loadable"
+    end
+  end
 
 end
