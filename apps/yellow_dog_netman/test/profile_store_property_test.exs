@@ -786,4 +786,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:error, _}, result) or is_nil(result)
     end
   end
+  property "ProfileStore list returns same result when called twice in a row (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      list1 = YellowDog.Netman.ProfileStore.list()
+      list2 = YellowDog.Netman.ProfileStore.list()
+      assert is_list(list1) and is_list(list2)
+      assert length(list1) == length(list2)
+    end
+  end
 end

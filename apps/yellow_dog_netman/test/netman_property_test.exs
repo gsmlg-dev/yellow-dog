@@ -558,4 +558,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Supervisor)
     end
   end
+  property "Netman.EventBus module is always loaded (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
+    end
+  end
 end

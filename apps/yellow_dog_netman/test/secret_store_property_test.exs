@@ -605,4 +605,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+  property "SecretStore put always returns :ok regardless of value (r65)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      val <- StreamData.integer()
+    ) do
+      result = YellowDog.Netman.SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
 end
