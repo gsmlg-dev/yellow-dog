@@ -414,4 +414,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(wildcard)
     end
   end
+
+  property "unsubscribe after subscribe always returns :ok or nil" do
+    check all(topic <- topic_gen()) do
+      unique_topic = "ev_unsub:#{topic}:#{:rand.uniform(999_999)}"
+      {:ok, _} = EventBus.subscribe(unique_topic)
+      result = EventBus.unsubscribe(unique_topic)
+      assert result == :ok or is_nil(result),
+             "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
+    end
+  end
 end

@@ -389,4 +389,30 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "two distinct interfaces always have distinct pids" do
+    check all(
+            seed1 <- StreamData.integer(1..49_999),
+            seed2 <- StreamData.integer(50_000..99_999),
+            max_runs: 20
+          ) do
+      iface1 = "csp_dp1_#{seed1}"
+      iface2 = "csp_dp2_#{seed2}"
+      profile1 = make_profile(iface1)
+      profile2 = make_profile(iface2)
+
+      MockNetlink.link_up(iface1, carrier: false)
+      MockNetlink.link_up(iface2, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid1} = ConnSupervisor.start_connection(iface1, profile1)
+      {:ok, pid2} = ConnSupervisor.start_connection(iface2, profile2)
+
+      assert pid1 != pid2,
+             "Expected distinct pids for #{iface1} and #{iface2}"
+
+      ConnSupervisor.stop_connection(iface1)
+      ConnSupervisor.stop_connection(iface2)
+    end
+  end
 end

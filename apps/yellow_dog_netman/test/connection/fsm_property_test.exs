@@ -648,4 +648,24 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     assert MapSet.size(missing) == 0,
            "States not reached: #{inspect(MapSet.to_list(missing))}"
   end
+
+  property "FSM get_state always returns a map with :state field" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "fsm_st_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state} = FSM.get_state(pid)
+
+      assert Map.has_key?(state, :state),
+             "Expected :state field in FSM state map, got: #{inspect(state)}"
+      assert state.state in @valid_states,
+             "Expected valid FSM state, got: #{inspect(state.state)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end
