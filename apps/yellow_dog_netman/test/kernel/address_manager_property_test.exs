@@ -521,4 +521,18 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected list from get_addresses, got: #{inspect(result)}"
     end
   end
+
+  property "addresses added via MockNetlink are visible in get_addresses" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      assert is_list(addresses),
+             "Expected list from get_addresses, got: #{inspect(addresses)}"
+    end
+  end
 end

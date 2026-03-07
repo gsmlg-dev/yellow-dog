@@ -646,4 +646,13 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "get_neighbors returns empty list for fresh interface before any events" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "nm_fresh_#{seed}"
+      result = NeighborMonitor.get_neighbors(fresh_iface)
+      assert result == [],
+             "Expected empty neighbors for fresh interface, got: #{inspect(result)}"
+    end
+  end
 end

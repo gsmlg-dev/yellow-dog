@@ -426,4 +426,15 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected :up or :down state, got: #{inspect(link.state)}"
     end
   end
+
+  property "link_up event always increments or maintains link count" do
+    check all(iface <- iface_gen()) do
+      before_count = length(LinkMonitor.list_links())
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      after_count = length(LinkMonitor.list_links())
+      assert after_count >= before_count,
+             "Expected link count to not decrease after link_up: #{before_count} -> #{after_count}"
+    end
+  end
 end
