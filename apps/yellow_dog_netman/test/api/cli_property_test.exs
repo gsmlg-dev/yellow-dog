@@ -322,4 +322,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected 'result' or 'error' key in connection.down response, got: #{inspect(result)}"
     end
   end
+
+  property "device.list result is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      %{"result" => result} = CLI.handle_command(%{"method" => "device.list"})
+      assert is_list(result),
+             "Expected list in device.list result, got: #{inspect(result)}"
+    end
+  end
 end

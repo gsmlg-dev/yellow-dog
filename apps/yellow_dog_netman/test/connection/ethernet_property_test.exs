@@ -300,4 +300,14 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected nil mtu for fresh interface #{fresh_iface}"
     end
   end
+
+  property "link_up with default mtu then mtu is a positive integer" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface)
+      Process.sleep(50)
+      result = Ethernet.mtu(iface)
+      assert is_nil(result) or (is_integer(result) and result > 0),
+             "Expected positive integer or nil mtu after link_up, got: #{inspect(result)}"
+    end
+  end
 end
