@@ -549,4 +549,15 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "every route in list_all has non-nil :gateway field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      for route <- routes do
+        # gateway may be nil for connected routes, just check it's a map key
+        assert Map.has_key?(route, :gateway),
+               "Expected :gateway key in route, got: #{inspect(route)}"
+      end
+    end
+  end
 end

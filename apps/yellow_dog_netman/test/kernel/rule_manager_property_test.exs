@@ -541,4 +541,18 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "adding and deleting a rule leaves count unchanged" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      initial_count = length(RuleManager.list_rules())
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+      send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
+      final_count = length(RuleManager.list_rules())
+      assert final_count == initial_count,
+             "Expected rule count to return to #{initial_count}, got #{final_count}"
+    end
+  end
 end

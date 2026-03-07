@@ -324,4 +324,12 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "status running field is always true" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.status()
+      assert result[:running] == true,
+             "Expected running: true in status, got: #{inspect(result[:running])}"
+    end
+  end
 end
