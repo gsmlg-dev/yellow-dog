@@ -1342,7 +1342,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
   property "r143: desired_state multiple connections" do
     check all k1 <- string(:alphanumeric, min_length: 1, max_length: 5),
               k2 <- string(:alphanumeric, min_length: 1, max_length: 5),
-              filter(k1 != k2) do
+              k1 != k2 do
       ds = %DesiredState{connections: %{k1 => true, k2 => false}}
       assert map_size(ds.connections) == 2
     end
@@ -1376,7 +1376,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
   property "r147: desired_state connections merge" do
     check all k1 <- string(:alphanumeric, min_length: 1, max_length: 5),
               k2 <- string(:alphanumeric, min_length: 1, max_length: 5),
-              filter(k1 != k2) do
+              k1 != k2 do
       ds = %DesiredState{connections: %{k1 => true}}
       merged = %{ds | connections: Map.put(ds.connections, k2, false)}
       assert Map.has_key?(merged.connections, k1)
