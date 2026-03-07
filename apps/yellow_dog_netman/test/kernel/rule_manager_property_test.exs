@@ -417,4 +417,20 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "rule table field is always a non-negative integer after add event" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+
+      for r <- rules do
+        assert is_integer(r.table) and r.table >= 0,
+               "Expected non-negative integer table, got: #{inspect(r.table)}"
+      end
+    end
+  end
 end
