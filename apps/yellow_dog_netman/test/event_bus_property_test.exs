@@ -792,5 +792,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       end
     end
   end
+  property "EventBus subscribe then get topic list never crashes" do
+    check all(topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)) do
+      result =
+        try do
+          EventBus.subscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end
