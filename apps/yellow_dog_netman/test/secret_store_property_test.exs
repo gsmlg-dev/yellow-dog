@@ -819,4 +819,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity <= 2 end)
     end
   end
+
+  property "secret_store put returns ok for any key type (r91)" do
+    check all key <- string(:printable, min_length: 1, max_length: 50),
+              val <- string(:printable) do
+      result = YellowDog.Netman.SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
 end

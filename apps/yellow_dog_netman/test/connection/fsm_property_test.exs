@@ -1272,4 +1272,11 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "fsm all attribute values are lists (r91)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
+      assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

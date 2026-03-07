@@ -884,4 +884,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation module exports functions (r91)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

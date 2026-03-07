@@ -719,4 +719,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "netman all attribute values are lists (r91)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.__info__(:attributes)
+      # All values in attributes keyword list should be wrapped in lists
+      assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

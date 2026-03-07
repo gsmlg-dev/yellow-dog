@@ -1117,4 +1117,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+
+  property "event_bus subscribe wildcard topic ends with star (r91)" do
+    check all prefix <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      topic = prefix <> ".*"
+      result = YellowDog.Netman.EventBus.subscribe(topic)
+      # Wildcard subscriptions should work
+      assert not is_nil(result)
+    end
+  end
 end

@@ -902,4 +902,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(ds)
     end
   end
+
+  property "desired_state module info is non-empty (r91)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Types.DesiredState.__info__(:functions)
+      assert is_list(fns) and length(fns) > 0
+    end
+  end
 end

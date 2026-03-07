@@ -970,4 +970,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(result)
     end
   end
+
+  property "profile_store get result is consistent across calls (r91)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      r1 = YellowDog.Netman.ProfileStore.get("r91_" <> key)
+      r2 = YellowDog.Netman.ProfileStore.get("r91_" <> key)
+      # Same key yields same tag
+      assert match?({:error, _}, r1) == match?({:error, _}, r2)
+    end
+  end
 end

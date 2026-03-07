@@ -1219,4 +1219,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "reconciliation_engine all attribute values are lists (r91)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.ReconciliationEngine.__info__(:attributes)
+      assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

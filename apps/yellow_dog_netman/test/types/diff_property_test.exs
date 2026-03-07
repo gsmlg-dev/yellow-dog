@@ -838,4 +838,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert length(@actions) == length(Enum.uniq(@actions))
     end
   end
+
+  property "diff module info is non-empty (r91)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Types.Diff.__info__(:functions)
+      assert is_list(fns) and length(fns) > 0
+    end
+  end
 end

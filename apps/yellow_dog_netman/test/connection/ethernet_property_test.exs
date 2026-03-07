@@ -808,4 +808,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "ethernet all attribute values are lists (r91)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
+      assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

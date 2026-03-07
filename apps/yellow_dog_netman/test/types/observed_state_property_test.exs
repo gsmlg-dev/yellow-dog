@@ -976,4 +976,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(state.links) >= 0
     end
   end
+
+  property "observed_state module info is non-empty (r91)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Types.ObservedState.__info__(:functions)
+      assert is_list(fns) and length(fns) > 0
+    end
+  end
 end

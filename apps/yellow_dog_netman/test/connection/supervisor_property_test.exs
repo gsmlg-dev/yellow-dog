@@ -882,4 +882,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "connection supervisor all attribute values are lists (r91)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
+      assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

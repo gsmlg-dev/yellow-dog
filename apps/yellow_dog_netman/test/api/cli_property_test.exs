@@ -840,4 +840,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli module exports handle_command (r91)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      assert Keyword.has_key?(fns, :handle_command)
+      # arity 1
+      assert Keyword.get(fns, :handle_command) == 1
+    end
+  end
 end
