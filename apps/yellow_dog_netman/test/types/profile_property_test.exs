@@ -867,4 +867,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "Profile struct zone is always a binary string" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert is_binary(profile.zone),
+                 "Expected binary zone in Profile, got: #{inspect(profile.zone)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

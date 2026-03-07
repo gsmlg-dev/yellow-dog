@@ -542,4 +542,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "effective_priority is always a non-negative number" do
+    check all(p <- StreamData.integer(0..1000), ap <- StreamData.integer(0..1000)) do
+      conn = %{priority: p, autoconnect_priority: ap}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_number(result) and result >= 0,
+             "Expected non-negative number from effective_priority, got: #{inspect(result)}"
+    end
+  end
 end

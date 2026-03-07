@@ -565,4 +565,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected idempotent put_link for #{iface}"
     end
   end
+
+  property "ObservedState.new/0 always returns struct with empty routes" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert state.routes == [],
+             "Expected empty routes list in new ObservedState, got: #{inspect(state.routes)}"
+    end
+  end
 end

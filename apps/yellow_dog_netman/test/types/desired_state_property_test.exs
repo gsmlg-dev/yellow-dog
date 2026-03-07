@@ -562,4 +562,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       end
     end
   end
+
+  property "DesiredState from_profiles always produces consistent result for same input" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds1 = DesiredState.from_profiles([])
+      ds2 = DesiredState.from_profiles([])
+      assert ds1 == ds2,
+             "Expected consistent from_profiles([]) result"
+    end
+  end
 end

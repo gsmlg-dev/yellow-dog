@@ -889,4 +889,16 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected :ok or {:error, _} from deactivate unknown, got: #{inspect(result)}"
     end
   end
+
+  property "ReconciliationEngine always responds to alive check within 100ms" do
+    check all(_ <- StreamData.constant(:ok)) do
+      start = System.monotonic_time(:millisecond)
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      elapsed = System.monotonic_time(:millisecond) - start
+      assert pid != nil and Process.alive?(pid),
+             "Expected ReconciliationEngine alive"
+      assert elapsed < 100,
+             "Expected alive check within 100ms, took #{elapsed}ms"
+    end
+  end
 end

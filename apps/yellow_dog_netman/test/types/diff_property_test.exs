@@ -509,4 +509,13 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected non-nil Diff struct"
     end
   end
+
+  property "Diff.new/1 produces different structs for different actions" do
+    check all(a1 <- action_gen(), a2 <- action_gen(), a1 != a2) do
+      d1 = Diff.new(a1)
+      d2 = Diff.new(a2)
+      assert d1.action != d2.action,
+             "Expected different actions in different Diffs"
+    end
+  end
 end
