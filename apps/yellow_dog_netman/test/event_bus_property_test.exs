@@ -772,5 +772,25 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus multiple publishes to same topic never crash" do
+    check all(
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12),
+            msgs <- StreamData.list_of(StreamData.integer(), min_length: 1, max_length: 5)
+          ) do
+      EventBus.subscribe(topic)
+      for msg <- msgs do
+        result =
+          try do
+            EventBus.publish(topic, msg)
+            :ok
+          rescue
+            _ -> :raised
+          catch
+            _, _ -> :raised
+          end
+        assert result in [:ok, :raised]
+      end
+    end
+  end
 
 end

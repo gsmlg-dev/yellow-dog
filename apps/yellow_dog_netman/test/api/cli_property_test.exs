@@ -570,5 +570,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from status with params, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with integer params always returns map" do
+    check all(n <- StreamData.integer()) do
+      result = CLI.handle_command(%{"method" => "status", "params" => n})
+      assert is_map(result),
+             "Expected map from status with integer params, got: #{inspect(result)}"
+    end
+  end
 
 end
