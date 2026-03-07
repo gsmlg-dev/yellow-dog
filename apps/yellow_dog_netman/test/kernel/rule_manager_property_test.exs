@@ -529,4 +529,16 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected non-negative rule count, got: #{count}"
     end
   end
+
+  property "rules have :priority and :table fields" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for rule <- rules do
+        assert Map.has_key?(rule, :priority),
+               "Expected :priority key in rule, got: #{inspect(rule)}"
+        assert Map.has_key?(rule, :table),
+               "Expected :table key in rule, got: #{inspect(rule)}"
+      end
+    end
+  end
 end

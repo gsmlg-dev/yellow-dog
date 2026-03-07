@@ -314,4 +314,14 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "list_connections always returns maps with :profile_id key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+      for conn <- connections do
+        assert Map.has_key?(conn, :profile_id),
+               "Expected :profile_id key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end

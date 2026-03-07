@@ -539,4 +539,14 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Process.alive?(pid), "Expected RouteManager to be alive"
     end
   end
+
+  property "list_all always returns routes with non-nil :destination" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      for route <- routes do
+        assert route.destination != nil,
+               "Expected non-nil destination in route, got: #{inspect(route)}"
+      end
+    end
+  end
 end
