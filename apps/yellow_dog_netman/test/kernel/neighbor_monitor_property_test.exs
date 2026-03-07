@@ -606,4 +606,16 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected non-negative neighbor count for #{iface}, got: #{count}"
     end
   end
+
+  property "every entry in list_neighbors is a map with :interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        assert is_map(n),
+               "Expected map in list_neighbors, got: #{inspect(n)}"
+        assert Map.has_key?(n, :interface),
+               "Expected :interface key in neighbor map, got: #{inspect(n)}"
+      end
+    end
+  end
 end

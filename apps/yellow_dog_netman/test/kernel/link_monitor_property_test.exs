@@ -381,4 +381,16 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       end
     end
   end
+
+  property "link_down after link_up always sets carrier to false" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      send_link_event(%{"interface" => iface, "state" => "down", "carrier" => false})
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+      assert link.carrier == false,
+             "Expected carrier false after link_down for #{iface}, got: #{inspect(link.carrier)}"
+    end
+  end
 end
