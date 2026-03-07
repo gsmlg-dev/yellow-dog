@@ -715,5 +715,13 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected Netlink to be alive (r54)"
     end
   end
+  property "Netlink process pid is consistent across calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      p1 = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      p2 = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert p1 == p2 and is_pid(p1),
+             "Expected stable pid from whereis"
+    end
+  end
 
 end

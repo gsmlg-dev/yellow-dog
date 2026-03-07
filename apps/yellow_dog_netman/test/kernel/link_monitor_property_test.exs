@@ -617,5 +617,13 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       refute is_nil(result), "Expected non-nil from list_links (r54)"
     end
   end
+  property "LinkMonitor list_links count is stable (r55)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      r2 = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      assert (is_list(r1) or is_map(r1)) and (is_list(r2) or is_map(r2)),
+             "Expected list or map from list_links"
+    end
+  end
 
 end

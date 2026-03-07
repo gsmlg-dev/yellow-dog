@@ -746,5 +746,13 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected list from list_all for lo (round-54)"
     end
   end
+  property "AddressManager list_all for 'lo' entries are non-nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      for addr <- addresses do
+        refute is_nil(addr), "Expected non-nil address entry"
+      end
+    end
+  end
 
 end

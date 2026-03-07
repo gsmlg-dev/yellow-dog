@@ -1042,5 +1042,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
              "Expected list from module_info(:exports)"
     end
   end
+  property "FSM module_info attributes is always a list (r55)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+      assert is_list(attrs),
+             "Expected list from module_info(:attributes)"
+    end
+  end
 
 end

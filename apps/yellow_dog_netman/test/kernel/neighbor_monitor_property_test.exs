@@ -864,5 +864,13 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected list from list_neighbors (r54)"
     end
   end
+  property "NeighborMonitor list_neighbors entries are non-nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        refute is_nil(n), "Expected non-nil neighbor entry"
+      end
+    end
+  end
 
 end

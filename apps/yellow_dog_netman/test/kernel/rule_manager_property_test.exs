@@ -742,5 +742,14 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected RuleManager to be alive (r54)"
     end
   end
+  property "RuleManager list_rules entries have :destination key when present" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :destination),
+               "Expected :destination key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
 
 end
