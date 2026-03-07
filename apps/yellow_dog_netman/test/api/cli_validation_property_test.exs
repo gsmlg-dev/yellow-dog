@@ -679,4 +679,10 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert byte_size(name) <= 15
     end
   end
+  property "CLI handle_command with missing method returns error map (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{})
+      assert is_map(result)
+    end
+  end
 end

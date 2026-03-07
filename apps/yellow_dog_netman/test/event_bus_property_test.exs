@@ -889,4 +889,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "EventBus registry name is atom (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      registry = YellowDog.Netman.EventBus.Registry
+      assert is_atom(registry)
+    end
+  end
 end

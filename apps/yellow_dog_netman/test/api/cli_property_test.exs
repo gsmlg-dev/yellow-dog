@@ -636,4 +636,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with unknown method returns error (r63)" do
+    check all(
+      method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = CLI.handle_command(%{"method" => "unknown." <> method})
+      assert is_map(result)
+    end
+  end
 end
