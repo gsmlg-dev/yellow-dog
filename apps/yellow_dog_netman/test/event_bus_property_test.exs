@@ -987,4 +987,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "EventBus child_spec returns a map (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      spec = YellowDog.Netman.EventBus.child_spec([])
+      assert is_map(spec)
+    end
+  end
 end

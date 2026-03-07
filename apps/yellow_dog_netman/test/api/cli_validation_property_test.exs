@@ -760,4 +760,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with profile.apply returns map (r74)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      result = CLI.handle_command(%{"method" => "profile.apply", "params" => %{"id" => id}})
+      assert is_map(result)
+    end
+  end
 end
