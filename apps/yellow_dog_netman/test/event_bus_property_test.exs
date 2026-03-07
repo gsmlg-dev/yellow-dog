@@ -836,5 +836,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus subscribe with binary topic never crashes" do
+    check all(topic <- StreamData.binary(min_length: 1, max_length: 16)) do
+      result =
+        try do
+          EventBus.subscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

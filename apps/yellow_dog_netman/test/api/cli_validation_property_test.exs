@@ -642,5 +642,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from device.show, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with profile.show and any id returns map with key" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
+      result = CLI.handle_command(%{"method" => "profile.show", "params" => %{"id" => id}})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
+             "Expected result or error key, got: #{inspect(result)}"
+    end
+  end
 
 end
