@@ -548,4 +548,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(exports) and length(exports) > 0
     end
   end
+  property "Netman.Application module is loaded (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Application)
+    end
+  end
 end

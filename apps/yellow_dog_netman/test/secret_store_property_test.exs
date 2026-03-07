@@ -588,4 +588,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore put with binary key always returns ok (r63)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
+    ) do
+      result = YellowDog.Netman.SecretStore.put(key, "value")
+      assert result == :ok
+    end
+  end
 end

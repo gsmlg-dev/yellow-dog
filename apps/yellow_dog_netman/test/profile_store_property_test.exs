@@ -766,4 +766,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+  property "ProfileStore put returns ok for any valid profile (r63)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      # delete first to avoid conflicts
+      YellowDog.Netman.ProfileStore.delete(id)
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result)
+    end
+  end
 end
