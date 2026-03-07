@@ -634,5 +634,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected list from ProfileStore.list, got: \#{inspect(result)}"
     end
   end
+  property "ProfileStore get with any alphanumeric id returns tagged tuple or nil" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result = YellowDog.Netman.ProfileStore.get(id)
+      assert is_nil(result) or is_map(result) or is_struct(result) or
+               match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple or nil from get, got: #{inspect(result)}"
+    end
+  end
 
 end

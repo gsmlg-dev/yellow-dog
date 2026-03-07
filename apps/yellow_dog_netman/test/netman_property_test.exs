@@ -443,5 +443,13 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected YellowDog.Netman to be loaded"
     end
   end
+  property "Netman application is always started" do
+    check all(_ <- StreamData.constant(:ok)) do
+      apps = Application.started_applications()
+      names = Enum.map(apps, fn {name, _, _} -> name end)
+      assert :yellow_dog_netman in names,
+             "Expected yellow_dog_netman to be started"
+    end
+  end
 
 end

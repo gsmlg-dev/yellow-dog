@@ -437,5 +437,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, "v") == :ok
     end
   end
+  property "SecretStore put with very short key always returns :ok" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 3)) do
+      assert SecretStore.put(key, "v") == :ok
+    end
+  end
 
 end
