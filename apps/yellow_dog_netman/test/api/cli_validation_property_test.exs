@@ -555,5 +555,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from device.show with iface \#{name}"
     end
   end
+  property "CLI handle_command with connection.down and integer id always returns map" do
+    check all(n <- StreamData.integer(1..999)) do
+      result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => Integer.to_string(n)}})
+      assert is_map(result),
+             "Expected map result, got: #{inspect(result)}"
+    end
+  end
 
 end
