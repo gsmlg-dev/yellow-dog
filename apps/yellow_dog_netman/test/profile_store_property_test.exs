@@ -488,4 +488,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "ProfileStore is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ProfileStore)
+      assert pid != nil, "Expected ProfileStore to be registered"
+      assert Process.alive?(pid), "Expected ProfileStore to be alive"
+    end
+  end
 end

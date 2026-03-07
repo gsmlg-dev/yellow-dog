@@ -405,4 +405,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected {:ok, _} or :none from default_route, got: #{inspect(result)}"
     end
   end
+
+  property "dns_priority result is always a list" do
+    check all(connections <- list_of(connection_gen(), max_length: 5)) do
+      result = PolicyEngine.dns_priority(connections)
+      assert is_list(result),
+             "Expected list from dns_priority, got: #{inspect(result)}"
+    end
+  end
 end
