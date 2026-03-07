@@ -481,4 +481,30 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected profile_id #{profile.id} to equal the map key"
     end
   end
+
+  property "from_profiles result connections always have :dns as a list" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert is_list(conn.dns),
+             "Expected :dns to be a list in connection, got: \#{inspect(conn.dns)}"
+    end
+  end
+
+  property "from_profiles connections interface is always a non-empty binary" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert is_binary(conn.interface) and byte_size(conn.interface) > 0,
+             "Expected non-empty binary interface, got: #{inspect(conn.interface)}"
+    end
+  end
 end

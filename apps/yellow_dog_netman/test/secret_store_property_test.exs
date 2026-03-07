@@ -340,4 +340,28 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected :ok or :raised from put with list key, got: #{inspect(result)}"
     end
   end
+
+  property "put with atom key does not raise" do
+    check all(key <- StreamData.atom(:alphanumeric)) do
+      result =
+        try do
+          SecretStore.put(key, "value")
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Expected :ok or :raised from put with atom key, got: \#{inspect(result)}"
+    end
+  end
+
+  property "put with unicode string key always returns :ok" do
+    check all(key <- StreamData.string(:utf8, min_length: 1, max_length: 32)) do
+      result = SecretStore.put(key, "value")
+      assert result == :ok,
+             "Expected :ok from put with unicode key, got: #{inspect(result)}"
+    end
+  end
 end

@@ -823,4 +823,22 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       end
     end
   end
+
+  property "ReconciliationEngine.diff/2 always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = DesiredState.from_profiles([])
+      observed = ObservedState.new()
+      result = ReconciliationEngine.diff(desired, observed)
+      assert is_list(result),
+             "Expected list from diff/2, got: \#{inspect(result)}"
+    end
+  end
+
+  property "ReconciliationEngine.reconcile/0 is idempotent" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert ReconciliationEngine.reconcile() == :ok
+      assert ReconciliationEngine.reconcile() == :ok,
+             "Expected :ok on second reconcile call"
+    end
+  end
 end
