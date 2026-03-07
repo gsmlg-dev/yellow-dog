@@ -435,4 +435,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "all get_addresses entries always have a non-negative integer prefix_len" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses = AddressManager.get_addresses(iface)
+
+      for a <- addresses do
+        assert is_integer(a.prefix_len) and a.prefix_len >= 0,
+               "Expected non-negative integer prefix_len, got: #{inspect(a.prefix_len)}"
+      end
+    end
+  end
 end

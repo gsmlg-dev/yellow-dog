@@ -292,4 +292,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected ethernet? false after double link_removed on #{iface}"
     end
   end
+
+  property "mtu for a never-added interface always returns nil" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "ep_nil_#{seed}"
+      assert Ethernet.mtu(fresh_iface) == nil,
+             "Expected nil mtu for fresh interface #{fresh_iface}"
+    end
+  end
 end

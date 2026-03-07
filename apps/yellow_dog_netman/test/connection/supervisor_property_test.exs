@@ -377,4 +377,16 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert ConnSupervisor.find_connection_by_profile("unk2_#{id}") == :error
     end
   end
+
+  property "list_connections result is always a list of maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ConnSupervisor.list_connections()
+      assert is_list(result),
+             "Expected list from list_connections, got: #{inspect(result)}"
+      for conn <- result do
+        assert is_map(conn),
+               "Expected map in list_connections, got: #{inspect(conn)}"
+      end
+    end
+  end
 end
