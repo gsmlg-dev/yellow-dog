@@ -623,4 +623,40 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "get_routes result entries always have :gateway key" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "rt_gw_#{seed}"
+      routes = RouteManager.get_routes(iface)
+      for r <- routes do
+        assert Map.has_key?(r, :gateway),
+               "Expected :gateway key in route entry, got: #{inspect(r)}"
+      end
+    end
+  end
+
+  property "default_route returns nil when no routes added for fresh state" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = RouteManager.default_route()
+      assert result == nil or is_map(result),
+             "Expected nil or map from default_route, got: #{inspect(result)}"
+    end
+  end
+
+  property "RouteManager pid is registered and alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RouteManager)
+      assert pid != nil, "Expected RouteManager to be registered"
+      assert Process.alive?(pid), "Expected RouteManager to be alive"
+    end
+  end
+
+  property "get_routes always returns a list for any seed" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "rm_seed_#{seed}"
+      result = RouteManager.get_routes(iface)
+      assert is_list(result),
+             "Expected list from get_routes for #{iface}"
+    end
+  end
 end

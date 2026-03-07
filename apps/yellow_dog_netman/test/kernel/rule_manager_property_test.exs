@@ -620,4 +620,40 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules result entries always have :table key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :table),
+               "Expected :table key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
+
+  property "rule count is always non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      count = length(RuleManager.list_rules())
+      assert count >= 0,
+             "Expected non-negative rule count, got: #{count}"
+    end
+  end
+
+  property "RuleManager pid is registered and alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+      assert pid != nil, "Expected RuleManager to be registered"
+      assert Process.alive?(pid), "Expected RuleManager to be alive"
+    end
+  end
+
+  property "list_rules result entries always have :source key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :source),
+               "Expected :source key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
 end

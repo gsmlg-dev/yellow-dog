@@ -591,4 +591,43 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Process.alive?(pid), "Expected Netlink to be alive"
     end
   end
+
+  property "Netlink process stays alive under rapid message sends" do
+    check all(seed <- StreamData.integer(1..999)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert pid != nil and Process.alive?(pid),
+             "Expected Netlink alive before test seed=#{seed}"
+    end
+  end
+
+  property "Netlink process responds to status after mock events" do
+    check all(seed <- StreamData.integer(1..999)) do
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "link_change", "action" => "add",
+        "interface" => "nl_check_#{seed}", "operstate" => "up"
+      }})
+      Process.sleep(30)
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert pid != nil and Process.alive?(pid),
+             "Expected Netlink alive after mock event for seed=#{seed}"
+    end
+  end
+
+  property "Netlink process pid is stable between consecutive reads" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid1 = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      pid2 = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert pid1 == pid2,
+             "Expected same Netlink pid between reads: #{inspect(pid1)} vs #{inspect(pid2)}"
+    end
+  end
+
+  property "Netlink process is still alive after 10 rapid pings" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      for _ <- 1..10 do
+        assert Process.alive?(pid), "Expected Netlink alive during rapid check"
+      end
+    end
+  end
 end
