@@ -441,4 +441,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok from publish, got: #{inspect(result)}"
     end
   end
+
+  property "subscribe always returns {:ok, _} for any topic string" do
+    check all(topic <- topic_gen()) do
+      result = EventBus.subscribe(topic)
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from subscribe, got: #{inspect(result)}"
+      EventBus.unsubscribe(topic)
+    end
+  end
 end

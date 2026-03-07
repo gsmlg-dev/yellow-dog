@@ -421,4 +421,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert ConnSupervisor.find_connection("") == :error
     end
   end
+
+  property "find_connection_by_profile always returns :error for empty string id" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert ConnSupervisor.find_connection_by_profile("") == :error
+    end
+  end
 end

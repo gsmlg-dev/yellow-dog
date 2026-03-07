@@ -685,4 +685,27 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM get_state always returns a map with required state fields" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "fsm_gs2_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state_map} = FSM.get_state(pid)
+
+      assert is_map(state_map),
+             "Expected map from get_state, got: #{inspect(state_map)}"
+      assert Map.has_key?(state_map, :state),
+             "get_state map missing :state field"
+      assert state_map.state in [:unavailable, :disconnected, :prepare, :configuring,
+                                  :ip_check, :activated, :deactivating, :failed],
+             "get_state returned unknown state: #{inspect(state_map.state)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
 end
