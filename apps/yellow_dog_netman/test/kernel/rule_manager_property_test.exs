@@ -721,5 +721,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected stable count from list_rules"
     end
   end
+  property "RuleManager list_rules is always non-nil and a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      assert is_list(result) and not is_nil(result),
+             "Expected non-nil list from list_rules"
+    end
+  end
 
 end

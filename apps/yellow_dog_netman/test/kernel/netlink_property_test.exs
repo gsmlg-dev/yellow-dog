@@ -693,5 +693,13 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected list from module_info(:attributes)"
     end
   end
+  property "Netlink module_info module field matches module name" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Kernel.Netlink.module_info()
+      module_kv = Keyword.get(info, :module)
+      assert module_kv == YellowDog.Netman.Kernel.Netlink,
+             "Expected module name in module_info"
+    end
+  end
 
 end

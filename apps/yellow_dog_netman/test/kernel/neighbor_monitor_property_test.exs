@@ -842,5 +842,13 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected lists from repeated list_neighbors"
     end
   end
+  property "NeighborMonitor get_neighbor for any seeded interface returns valid type" do
+    check all(n <- StreamData.integer(0..99)) do
+      iface = "nm52_#{n}"
+      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor(iface)
+      assert is_nil(result) or is_map(result) or is_list(result),
+             "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
+    end
+  end
 
 end

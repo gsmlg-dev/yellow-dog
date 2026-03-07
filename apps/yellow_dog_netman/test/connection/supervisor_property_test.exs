@@ -630,5 +630,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected list from module_info(:exports)"
     end
   end
+  property "ConnSupervisor module exports contain list_connections" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert {:list_connections, 0} in exports,
+             "Expected list_connections/0 in exports"
+    end
+  end
 
 end

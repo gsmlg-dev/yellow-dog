@@ -1021,5 +1021,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
              "Expected list from module_info(:attributes)"
     end
   end
+  property "FSM module exports contain start_link function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert {:start_link, 1} in exports,
+             "Expected start_link/1 in exports"
+    end
+  end
 
 end

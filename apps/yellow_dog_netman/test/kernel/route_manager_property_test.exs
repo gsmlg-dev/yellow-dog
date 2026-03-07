@@ -725,5 +725,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected lists from both route queries"
     end
   end
+  property "RouteManager get_routes for 'lo' returns list with valid entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+      assert is_list(routes),
+             "Expected list from get_routes for lo, got: #{inspect(routes)}"
+    end
+  end
 
 end

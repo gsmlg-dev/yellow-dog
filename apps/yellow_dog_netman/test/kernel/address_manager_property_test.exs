@@ -723,5 +723,14 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected lists from repeated list_all"
     end
   end
+  property "AddressManager list_all for 'lo' always has :family key in entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      for addr <- addresses do
+        assert Map.has_key?(addr, :family),
+               "Expected :family key in address, got: #{inspect(addr)}"
+      end
+    end
+  end
 
 end

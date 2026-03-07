@@ -595,5 +595,14 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected deterministic get_link results for #{iface}"
     end
   end
+  property "LinkMonitor get_link result for any known interface is consistent" do
+    check all(n <- StreamData.integer(0..9)) do
+      iface = "eth#{n}"
+      r1 = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+      r2 = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+      assert r1 == r2,
+             "Expected deterministic result for #{iface}"
+    end
+  end
 
 end
