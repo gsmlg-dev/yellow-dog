@@ -998,5 +998,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or integer autoconnect_priority, got: #{inspect(p.autoconnect_priority)}"
     end
   end
+  property "Profile interface field defaults to nil or string" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.interface) or is_binary(p.interface),
+             "Expected nil or string interface, got: #{inspect(p.interface)}"
+    end
+  end
 
 end

@@ -607,5 +607,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected valid action, got: #{inspect(diff.action)}"
     end
   end
+  property "Diff params field is always an empty map for new/1 (r56)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert diff.params == %{},
+             "Expected empty params map, got: #{inspect(diff.params)}"
+    end
+  end
 
 end

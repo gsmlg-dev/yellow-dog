@@ -982,5 +982,15 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected list from module_info"
     end
   end
+  property "ReconciliationEngine process is stable across many checks (r56)" do
+    check all(n <- StreamData.integer(1..10)) do
+      results = for _ <- 1..n do
+        pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+        is_pid(pid) and Process.alive?(pid)
+      end
+      assert Enum.all?(results),
+             "Expected all alive checks to pass"
+    end
+  end
 
 end

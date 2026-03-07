@@ -630,5 +630,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected non-nil value, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine default_route always returns :none for empty profiles (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none,
+             "Expected :none, got: #{inspect(result)}"
+    end
+  end
 
 end
