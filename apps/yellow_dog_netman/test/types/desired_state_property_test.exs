@@ -752,4 +752,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Map.has_key?(state, :connections)
     end
   end
+  property "DesiredState module has struct? function (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_struct(state)
+    end
+  end
 end

@@ -705,4 +705,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :set_mtu
     end
   end
+  property "Diff new with deactivate_connection has correct action (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:deactivate_connection)
+      assert diff.action == :deactivate_connection
+    end
+  end
 end

@@ -1184,4 +1184,19 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile ipv6 method is nil or known atom (r71)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      case result do
+        {:ok, p} ->
+          if p.ipv6 do
+            assert is_nil(p.ipv6[:method]) or p.ipv6[:method] in [:auto, :manual, :disabled, :link_local]
+          end
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

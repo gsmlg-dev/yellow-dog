@@ -1081,4 +1081,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(exports) and length(exports) > 0
     end
   end
+  property "ReconciliationEngine is always a running process (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
 end

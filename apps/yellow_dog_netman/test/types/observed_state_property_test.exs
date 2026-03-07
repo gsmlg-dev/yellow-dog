@@ -805,4 +805,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert updated.routes == []
     end
   end
+  property "ObservedState module has new function (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Types.ObservedState.module_info(:functions)
+      assert Keyword.has_key?(fns, :new)
+    end
+  end
 end

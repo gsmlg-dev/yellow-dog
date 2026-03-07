@@ -754,4 +754,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result) or is_nil(result)
     end
   end
+  property "PolicyEngine route_metrics for empty input returns empty map (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert result == %{}
+    end
+  end
 end
