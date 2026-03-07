@@ -697,4 +697,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result) and Enum.all?(Map.keys(result), &is_binary/1)
     end
   end
+  property "CLI handle_command with connection.show result has string keys (r66)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+      assert is_map(result) and Enum.all?(Map.keys(result), &is_binary/1)
+    end
+  end
 end

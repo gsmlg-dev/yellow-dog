@@ -912,4 +912,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:ok, _}, result)
     end
   end
+  property "EventBus unsubscribe for non-subscribed topic doesn't crash (r66)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
+    ) do
+      result = YellowDog.Netman.EventBus.unsubscribe(topic)
+      # Returns :ok or nil (nil when topic doesn't end with "*")
+      assert result == :ok or is_nil(result) or is_tuple(result)
+    end
+  end
 end
