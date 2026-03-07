@@ -459,4 +459,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected empty routes list, got: #{inspect(state.routes)}"
     end
   end
+
+  property "new/0 always produces a struct with links, addresses, and routes" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert is_struct(state, ObservedState),
+             "Expected ObservedState struct, got: #{inspect(state)}"
+      assert Map.has_key?(state, :links), "Missing :links field"
+      assert Map.has_key?(state, :addresses), "Missing :addresses field"
+      assert Map.has_key?(state, :routes), "Missing :routes field"
+    end
+  end
 end

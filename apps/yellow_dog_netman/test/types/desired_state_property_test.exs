@@ -435,4 +435,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected #{expected_count} connections, got #{map_size(desired.connections)}"
     end
   end
+
+  property "from_profiles result has connections as a map" do
+    check all(profiles <- list_of(profile_gen(), max_length: 3)) do
+      pairs = Enum.map(profiles, &{&1, "ds2_#{:erlang.unique_integer([:positive])}"})
+      desired = DesiredState.from_profiles(pairs)
+      assert is_map(desired.connections),
+             "Expected map connections, got: #{inspect(desired.connections)}"
+    end
+  end
 end

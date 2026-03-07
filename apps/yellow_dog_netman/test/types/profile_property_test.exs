@@ -725,4 +725,18 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "from_toml result ipv6 is always a map with :method key" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert is_map(profile.ipv6),
+                 "Expected map ipv6, got: #{inspect(profile.ipv6)}"
+          assert Map.has_key?(profile.ipv6, :method),
+                 "Expected :method in ipv6, got: #{inspect(profile.ipv6)}"
+        {:error, _} ->
+          :ok
+      end
+    end
+  end
 end
