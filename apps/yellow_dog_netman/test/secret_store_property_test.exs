@@ -692,4 +692,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
+  property "SecretStore module exports all expected functions (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.SecretStore.module_info(:exports)
+      assert Keyword.has_key?(exports, :get)
+      assert Keyword.has_key?(exports, :put)
+      assert Keyword.has_key?(exports, :delete)
+    end
+  end
 end

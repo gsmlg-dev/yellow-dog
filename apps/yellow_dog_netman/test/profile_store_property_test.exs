@@ -854,4 +854,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+  property "ProfileStore module exports include get (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ProfileStore.module_info(:exports)
+      assert Keyword.has_key?(exports, :get)
+    end
+  end
 end

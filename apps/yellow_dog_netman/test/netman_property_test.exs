@@ -608,4 +608,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
     end
   end
+  property "Netman.Kernel.NeighborMonitor module is loaded (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor)
+    end
+  end
 end
