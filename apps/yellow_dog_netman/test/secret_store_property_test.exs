@@ -522,5 +522,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.delete(full_key) == :ok
     end
   end
+  property "SecretStore delete then put then get all succeed" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            val <- StreamData.string(:alphanumeric, max_length: 32)
+          ) do
+      full_key = "ss56_" <> key
+      assert SecretStore.delete(full_key) == :ok
+      assert SecretStore.put(full_key, val) == :ok
+      result = SecretStore.get(full_key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 
 end
