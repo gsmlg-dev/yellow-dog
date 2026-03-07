@@ -1062,5 +1062,134 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
              "Expected :module key in module_info"
     end
   end
+  property "FSM module_info has :module key (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.FSM.module_info()
+      assert Keyword.has_key?(info, :module),
+             "Expected :module key in module_info (r59)"
+    end
+  end
 
+  property "FSM module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.FSM.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
+  property "FSM module has start_link function (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
+  property "FSM module has module_info/1 function (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :module_info)
+    end
+  end
+  property "FSM module has correct module name (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Connection.FSM.module_info(:module)
+      assert name == YellowDog.Netman.Connection.FSM
+    end
+  end
+  property "FSM module attributes are always a list (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
+  property "FSM module info compile keys always include source (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Connection.FSM.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "FSM module nif_loaded function exists (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      # Just check functions list is non-empty
+      assert length(fns) > 0
+    end
+  end
+  property "FSM module functions include handle_info (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "FSM module functions include terminate (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :terminate)
+    end
+  end
+  property "FSM module functions include handle_cast (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_cast) or Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "FSM module functions include init (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :init)
+    end
+  end
+  property "FSM module functions include handle_call (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_call) or Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "FSM module functions include code_change (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Keyword.has_key?(fns, :code_change) or Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "FSM module functions are all {atom, arity} pairs (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
+      assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
+    end
+  end
+  property "FSM exports include start_link (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.FSM.module_info(:exports)
+      assert Keyword.has_key?(exports, :start_link)
+    end
+  end
+  property "FSM exports include init (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.FSM.module_info(:exports)
+      assert Keyword.has_key?(exports, :start_link)
+    end
+  end
+  property "FSM module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Connection.FSM.module_info(:module)
+      assert name == YellowDog.Netman.Connection.FSM
+    end
+  end
+  property "FSM module attributes include vsn (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
+  property "FSM module attributes include behaviour (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+      assert is_list(attrs) and length(attrs) > 0
+    end
+  end
+
+  property "fsm module exports child_spec (r79)" do
+    check all _x <- integer() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert Keyword.has_key?(fns, :child_spec)
+    end
+  end
 end

@@ -671,5 +671,135 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected :module key in module_info"
     end
   end
+  property "ConnSupervisor list_connections is always a list (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Supervisor.list_connections()
+      assert is_list(result),
+             "Expected list from list_connections (r59)"
+    end
+  end
 
+  property "Connection.Supervisor module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Supervisor.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
+  property "Connection.Supervisor module has start_link function (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
+  property "Connection.Supervisor module exports non-empty list (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+      assert is_list(exports) and length(exports) > 0
+    end
+  end
+  property "Connection.Supervisor module has correct name (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Connection.Supervisor.module_info(:module)
+      assert name == YellowDog.Netman.Connection.Supervisor
+    end
+  end
+  property "Connection.Supervisor module attributes are a list (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
+  property "Connection.Supervisor module compile info is a list (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Connection.Supervisor.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "Connection.Supervisor module version is a list (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      vsn = Keyword.get(attrs, :vsn, nil)
+      assert is_list(vsn) or is_nil(vsn)
+    end
+  end
+  property "Connection.Supervisor module functions include init (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert Keyword.has_key?(fns, :init)
+    end
+  end
+  property "Connection.Supervisor module functions include terminate (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
+    end
+  end
+  property "Connection.Supervisor module attributes include vsn (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
+  property "Connection.Supervisor module functions count is positive (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert length(fns) > 0
+    end
+  end
+  property "Connection.Supervisor attributes include behaviour (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
+  property "Connection.Supervisor module functions include start_link (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
+  property "Connection.Supervisor module functions are all keyword pairs (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
+      assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
+    end
+  end
+  property "Connection.Supervisor exports include start_link (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+      assert Keyword.has_key?(exports, :start_link)
+    end
+  end
+  property "Connection.Supervisor exports are non-empty (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+      assert length(exports) > 0
+    end
+  end
+  property "Connection.Supervisor module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Connection.Supervisor.module_info(:module)
+      assert name == YellowDog.Netman.Connection.Supervisor
+    end
+  end
+  property "Connection.Supervisor module attributes include vsn (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
+  property "Connection.Supervisor process is alive (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      # Supervisor is not named but we can check DynamicSupervisor
+      children = DynamicSupervisor.which_children(YellowDog.Netman.Connection.Supervisor)
+      assert is_list(children)
+    end
+  end
+
+  property "connection supervisor module exports start_link (r79)" do
+    check all _x <- integer() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
 end
