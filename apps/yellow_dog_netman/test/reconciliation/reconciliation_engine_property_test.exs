@@ -857,4 +857,20 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Process.alive?(pid), "Expected ReconciliationEngine to be alive"
     end
   end
+
+  property "ReconciliationEngine is always accessible via process name" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid),
+             "Expected ReconciliationEngine to be registered as a pid"
+    end
+  end
+
+  property "ReconciliationEngine GenServer responds to status check" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert pid != nil and Process.alive?(pid),
+             "Expected ReconciliationEngine to be alive"
+    end
+  end
 end

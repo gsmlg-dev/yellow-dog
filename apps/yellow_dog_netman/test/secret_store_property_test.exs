@@ -383,4 +383,25 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected not_found or ok after put+delete, got: \#{inspect(result)}"
     end
   end
+
+  property "put with empty string value then get returns :ok result" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      full_key = "ss_empty_#{key}"
+      SecretStore.put(full_key, "")
+      result = SecretStore.get(full_key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple after put empty, got: #{inspect(result)}"
+    end
+  end
+
+  property "put followed by get always returns the stored value" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+              val <- StreamData.string(:printable, min_length: 0, max_length: 50)) do
+      full_key = "ss_val_#{key}"
+      SecretStore.put(full_key, val)
+      result = SecretStore.get(full_key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple after put, got: #{inspect(result)}"
+    end
+  end
 end

@@ -528,4 +528,20 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected DesiredState struct from from_profiles([]), got: #{inspect(ds)}"
     end
   end
+
+  property "DesiredState struct always has :connections key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = DesiredState.from_profiles([])
+      assert Map.has_key?(ds, :connections),
+             "Expected :connections key in DesiredState"
+    end
+  end
+
+  property "DesiredState connections field is always a map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = DesiredState.from_profiles([])
+      assert is_map(ds.connections),
+             "Expected map for DesiredState.connections, got: #{inspect(ds.connections)}"
+    end
+  end
 end
