@@ -648,4 +648,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(diff)
     end
   end
+  property "Diff interface field is always nil or binary (r62)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_nil(diff.interface) or is_binary(diff.interface)
+    end
+  end
 end

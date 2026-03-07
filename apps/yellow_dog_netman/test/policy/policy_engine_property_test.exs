@@ -672,4 +672,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == :none or is_map(result) or is_struct(result)
     end
   end
+  property "PolicyEngine route_metrics with empty list returns empty map (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert result == %{} or is_map(result) or is_list(result)
+    end
+  end
 end

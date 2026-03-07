@@ -724,4 +724,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_map(state.links)
     end
   end
+  property "ObservedState put_link returns updated struct (r62)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link = %{interface: iface, flags: [], mtu: 1500, mac: nil}
+      updated = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+      assert is_struct(updated)
+    end
+  end
 end

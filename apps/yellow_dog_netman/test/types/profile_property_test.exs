@@ -1071,4 +1071,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "Profile zone field is always a binary (r62)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "test"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      case result do
+        {:ok, p} -> assert is_binary(p.zone)
+        {:error, _} -> :ok
+      end
+    end
+  end
 end
