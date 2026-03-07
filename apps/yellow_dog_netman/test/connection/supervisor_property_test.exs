@@ -540,4 +540,35 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected all concurrent list_connections to return lists"
     end
   end
+
+  property "list_connections count is always non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      count = length(ConnSupervisor.list_connections())
+      assert count >= 0,
+             "Expected non-negative connection count, got: #{count}"
+    end
+  end
+
+  property "ConnSupervisor is always accessible" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert function_exported?(YellowDog.Netman.Connection.Supervisor, :list_connections, 0),
+             "Expected list_connections/0 to be exported"
+    end
+  end
+
+  property "list_connections never returns nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      conns = ConnSupervisor.list_connections()
+      assert conns != nil,
+             "Expected non-nil from list_connections"
+    end
+  end
+
+  property "ConnSupervisor is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Connection.Supervisor)
+      assert pid != nil, "Expected ConnSupervisor to be registered"
+      assert Process.alive?(pid), "Expected ConnSupervisor to be alive"
+    end
+  end
 end

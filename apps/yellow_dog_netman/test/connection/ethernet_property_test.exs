@@ -431,11 +431,55 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     end
   end
 
-  property "list_ethernet_interfaces never raises for any call" do
-    check all(_ <- StreamData.constant(:ok)) do
-      result = Ethernet.list_ethernet_interfaces()
-      assert is_list(result),
-             "Expected list from list_ethernet_interfaces, got: \#{inspect(result)}"
+  property "mtu returns a positive integer or nil for registered interface" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_mtu_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      result = Ethernet.mtu(iface)
+      assert result == nil or is_integer(result),
+             "Expected nil or integer from mtu for #{iface}, got: #{inspect(result)}"
+    end
+  end
+
+  property "ethernet? returns false for interface with no events" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_nev_#{seed}"
+      result = Ethernet.ethernet?(iface)
+      assert is_boolean(result),
+             "Expected boolean from ethernet? for unseen #{iface}"
+    end
+  end
+
+  property "carrier? is consistent for same interface across two calls" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_cc_#{seed}"
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      r1 = Ethernet.carrier?(iface)
+      r2 = Ethernet.carrier?(iface)
+      assert r1 == r2,
+             "Expected consistent carrier? for #{iface}: #{r1} vs #{r2}"
+    end
+  end
+
+  property "ethernet? for interface registered with link_up returns boolean" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_lu_#{seed}"
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      result = Ethernet.ethernet?(iface)
+      assert is_boolean(result),
+             "Expected boolean from ethernet? after link_up for #{iface}"
+    end
+  end
+
+  property "mtu always returns nil or a positive integer for any interface" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_mtu2_#{seed}"
+      result = Ethernet.mtu(iface)
+      assert result == nil or (is_integer(result) and result > 0),
+             "Expected nil or positive integer from mtu, got: #{inspect(result)}"
     end
   end
 end

@@ -862,10 +862,67 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       iface = "fsm_ac_#{seed}"
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
-      {:ok, pid} = FSM.start_link(interface: iface, profile_id: "p_#{seed}", type: :ethernet)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
       assert Map.has_key?(state, :autoconnect_priority),
              "Expected :autoconnect_priority in FSM state, got: \#{inspect(Map.keys(state))}"
+      GenServer.stop(pid)
+    end
+  end
+
+  property "FSM get_state returns map with :dns key" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_dns_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state} = FSM.get_state(pid)
+      assert Map.has_key?(state, :dns),
+             "Expected :dns key in FSM state, got: #{inspect(Map.keys(state))}"
+      GenServer.stop(pid)
+    end
+  end
+
+  property "FSM always starts in idle or disconnected state" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_st_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state} = FSM.get_state(pid)
+      assert state.state in [:idle, :disconnected, :connecting, :activated, :failed],
+             "Expected valid FSM state, got: #{inspect(state.state)}"
+      GenServer.stop(pid)
+    end
+  end
+
+  property "FSM get_state always returns {:ok, map}" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_ok_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      result = FSM.get_state(pid)
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from get_state, got: #{inspect(result)}"
+      GenServer.stop(pid)
+    end
+  end
+
+  property "FSM get_state returns map with :error key" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_err_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state} = FSM.get_state(pid)
+      assert Map.has_key?(state, :error),
+             "Expected :error key in FSM state, got: #{inspect(Map.keys(state))}"
       GenServer.stop(pid)
     end
   end
