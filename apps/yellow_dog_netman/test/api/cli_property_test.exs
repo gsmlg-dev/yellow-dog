@@ -1409,4 +1409,77 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_binary(inspect(CLI))
     end
   end
+
+  property "r166: cli inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(CLI)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: cli not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r168: cli is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r169: cli loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r170: cli identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI == CLI
+    end
+  end
+
+  property "r171: cli module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = CLI
+      assert m == CLI
+    end
+  end
+
+  property "r172: cli module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r173: cli functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: cli module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r175: cli module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
 end

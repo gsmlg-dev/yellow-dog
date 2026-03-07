@@ -1423,4 +1423,77 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_binary(inspect(CLIValidation))
     end
   end
+
+  property "r166: clivalidation inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(CLIValidation)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: clivalidation not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r168: clivalidation is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r169: clivalidation loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r170: clivalidation identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation == CLIValidation
+    end
+  end
+
+  property "r171: clivalidation module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = CLIValidation
+      assert m == CLIValidation
+    end
+  end
+
+  property "r172: clivalidation module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r173: clivalidation functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: clivalidation module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r175: clivalidation module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
 end

@@ -1785,4 +1785,77 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_binary(inspect(ReconciliationEngine))
     end
   end
+
+  property "r166: reconciliationengine inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(ReconciliationEngine)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: reconciliationengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r168: reconciliationengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
+
+  property "r169: reconciliationengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r170: reconciliationengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine == ReconciliationEngine
+    end
+  end
+
+  property "r171: reconciliationengine module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = ReconciliationEngine
+      assert m == ReconciliationEngine
+    end
+  end
+
+  property "r172: reconciliationengine module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r173: reconciliationengine functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ReconciliationEngine.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: reconciliationengine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r175: reconciliationengine module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
 end

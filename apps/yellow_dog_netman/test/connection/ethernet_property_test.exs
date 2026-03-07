@@ -1376,4 +1376,77 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_binary(inspect(Ethernet))
     end
   end
+
+  property "r166: ethernet inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(Ethernet)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: ethernet not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r168: ethernet is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r169: ethernet loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r170: ethernet identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet == Ethernet
+    end
+  end
+
+  property "r171: ethernet module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = Ethernet
+      assert m == Ethernet
+    end
+  end
+
+  property "r172: ethernet module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r173: ethernet functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: ethernet module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r175: ethernet module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
 end

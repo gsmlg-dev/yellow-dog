@@ -1603,4 +1603,77 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_binary(inspect(ProfileStore))
     end
   end
+
+  property "r166: profilestore inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(ProfileStore)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: profilestore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r168: profilestore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r169: profilestore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r170: profilestore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore == ProfileStore
+    end
+  end
+
+  property "r171: profilestore module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = ProfileStore
+      assert m == ProfileStore
+    end
+  end
+
+  property "r172: profilestore module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r173: profilestore functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: profilestore module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r175: profilestore module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
 end

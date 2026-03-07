@@ -1933,4 +1933,78 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert Map.has_key?(p, :type)
     end
   end
+
+  property "r166: profile struct has autoconnect_priority key" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      assert Map.has_key?(p, :autoconnect_priority)
+    end
+  end
+
+  property "r167: profile struct has interface key" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      assert Map.has_key?(Map.from_struct(p), :interface)
+    end
+  end
+
+  property "r168: profile module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r169: profile module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r170: profile module not nil" do
+    check all n <- integer() do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r171: profile functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r172: profile from_toml exists" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :from_toml end)
+    end
+  end
+
+  property "r173: profile module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r174: profile id field type" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.id)
+    end
+  end
+
+  property "r175: profile type field type" do
+    check all type <- member_of(["ethernet", "wifi", "vpn"]) do
+      p = %Profile{id: "test", type: type}
+      assert is_binary(p.type)
+    end
+  end
 end

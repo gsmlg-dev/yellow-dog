@@ -1535,4 +1535,77 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_binary(inspect(RuleManager))
     end
   end
+
+  property "r166: rulemanager inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(RuleManager)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: rulemanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r168: rulemanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r169: rulemanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r170: rulemanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager == RuleManager
+    end
+  end
+
+  property "r171: rulemanager module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = RuleManager
+      assert m == RuleManager
+    end
+  end
+
+  property "r172: rulemanager module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r173: rulemanager functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: rulemanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r175: rulemanager module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
 end

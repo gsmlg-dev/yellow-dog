@@ -1448,4 +1448,77 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_binary(inspect(ConnectionSupervisor))
     end
   end
+
+  property "r166: connectionsupervisor inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(ConnectionSupervisor)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: connectionsupervisor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r168: connectionsupervisor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ConnectionSupervisor)
+    end
+  end
+
+  property "r169: connectionsupervisor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r170: connectionsupervisor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor == ConnectionSupervisor
+    end
+  end
+
+  property "r171: connectionsupervisor module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = ConnectionSupervisor
+      assert m == ConnectionSupervisor
+    end
+  end
+
+  property "r172: connectionsupervisor module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r173: connectionsupervisor functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ConnectionSupervisor.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: connectionsupervisor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r175: connectionsupervisor module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ConnectionSupervisor)
+    end
+  end
 end

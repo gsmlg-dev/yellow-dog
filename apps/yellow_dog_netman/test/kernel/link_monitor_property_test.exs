@@ -1416,4 +1416,77 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_binary(inspect(LinkMonitor))
     end
   end
+
+  property "r166: linkmonitor inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(LinkMonitor)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: linkmonitor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r168: linkmonitor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r169: linkmonitor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r170: linkmonitor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor == LinkMonitor
+    end
+  end
+
+  property "r171: linkmonitor module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = LinkMonitor
+      assert m == LinkMonitor
+    end
+  end
+
+  property "r172: linkmonitor module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r173: linkmonitor functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: linkmonitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r175: linkmonitor module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
 end

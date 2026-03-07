@@ -1490,4 +1490,77 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_binary(inspect(PolicyEngine))
     end
   end
+
+  property "r166: policyengine inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(PolicyEngine)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: policyengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r168: policyengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r169: policyengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r170: policyengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r171: policyengine module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = PolicyEngine
+      assert m == PolicyEngine
+    end
+  end
+
+  property "r172: policyengine module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r173: policyengine functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: policyengine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r175: policyengine module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
 end

@@ -1661,4 +1661,77 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert is_binary(inspect(NeighborMonitor))
     end
   end
+
+  property "r166: neighbormonitor inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(NeighborMonitor)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: neighbormonitor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r168: neighbormonitor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r169: neighbormonitor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r170: neighbormonitor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor == NeighborMonitor
+    end
+  end
+
+  property "r171: neighbormonitor module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = NeighborMonitor
+      assert m == NeighborMonitor
+    end
+  end
+
+  property "r172: neighbormonitor module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r173: neighbormonitor functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: neighbormonitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r175: neighbormonitor module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
 end

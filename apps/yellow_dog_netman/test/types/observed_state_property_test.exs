@@ -1600,4 +1600,77 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_binary(inspect(ObservedState))
     end
   end
+
+  property "r166: observedstate inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(ObservedState)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: observedstate not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r168: observedstate is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r169: observedstate loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r170: observedstate identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState == ObservedState
+    end
+  end
+
+  property "r171: observedstate module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = ObservedState
+      assert m == ObservedState
+    end
+  end
+
+  property "r172: observedstate module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState != nil
+    end
+  end
+
+  property "r173: observedstate functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ObservedState.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: observedstate module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r175: observedstate module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
 end

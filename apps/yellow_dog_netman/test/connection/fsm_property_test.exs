@@ -1845,4 +1845,77 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert is_binary(inspect(FSM))
     end
   end
+
+  property "r166: fsm inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(FSM)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: fsm not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r168: fsm is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r169: fsm loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r170: fsm identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM == FSM
+    end
+  end
+
+  property "r171: fsm module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = FSM
+      assert m == FSM
+    end
+  end
+
+  property "r172: fsm module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r173: fsm functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: fsm module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r175: fsm module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
 end

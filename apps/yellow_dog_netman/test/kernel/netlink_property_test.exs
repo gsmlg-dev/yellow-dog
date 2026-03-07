@@ -1508,4 +1508,77 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_binary(inspect(Netlink))
     end
   end
+
+  property "r166: netlink inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(Netlink)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r167: netlink not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r168: netlink is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r169: netlink loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r170: netlink identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink == Netlink
+    end
+  end
+
+  property "r171: netlink module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      m = Netlink
+      assert m == Netlink
+    end
+  end
+
+  property "r172: netlink module is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r173: netlink functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r174: netlink module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r175: netlink module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
 end

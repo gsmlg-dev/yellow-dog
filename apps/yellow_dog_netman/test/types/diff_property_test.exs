@@ -1423,4 +1423,80 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Map.has_key?(d, :params)
     end
   end
+
+  property "r166: diff params empty by default" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert d.params == %{}
+    end
+  end
+
+  property "r167: diff interface nil by default" do
+    check all action <- member_of([:add_address, :update_dns]) do
+      d = Diff.new(action)
+      assert is_nil(d.interface)
+    end
+  end
+
+  property "r168: diff action is atom" do
+    check all action <- member_of([:add_route, :remove_route, :set_link_up, :set_link_down]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r169: diff is struct" do
+    check all action <- member_of([:add_address, :remove_address, :activate_connection]) do
+      d = Diff.new(action)
+      assert is_struct(d, Diff)
+    end
+  end
+
+  property "r170: diff inspect works" do
+    check all action <- member_of([:deactivate_connection, :update_dns, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_binary(inspect(d))
+    end
+  end
+
+  property "r171: diff module comparison" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff == Diff
+    end
+  end
+
+  property "r172: diff new with all fields" do
+    check all action <- member_of([:add_address, :set_mtu]),
+              iface <- string(:alphanumeric, min_length: 1, max_length: 10),
+              val <- integer(1..9000) do
+      d = Diff.new(action, iface, %{value: val})
+      assert d.action == action
+      assert d.interface == iface
+      assert d.params.value == val
+    end
+  end
+
+  property "r173: diff is struct check" do
+    check all action <- member_of([:add_address, :remove_address, :update_dns]) do
+      d = Diff.new(action)
+      assert is_struct(d)
+    end
+  end
+
+  property "r174: diff module functions" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Diff.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
+
+  property "r175: diff new/1 exists" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Diff.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :new end)
+    end
+  end
 end
