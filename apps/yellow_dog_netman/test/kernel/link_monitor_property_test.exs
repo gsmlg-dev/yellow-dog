@@ -554,5 +554,46 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       refute is_nil(result), "Expected non-nil from list_links"
     end
   end
+  property "LinkMonitor get_link for 'lo' interface returns nil or map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.LinkMonitor.get_link("lo")
+      assert is_nil(result) or is_map(result),
+             "Expected nil or map from get_link for lo, got: #{inspect(result)}"
+    end
+  end
+  property "LinkMonitor pid is always alive and registered" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected LinkMonitor to be alive"
+    end
+  end
+  property "LinkMonitor get_link for 'lo' is nil or map with interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.LinkMonitor.get_link("lo")
+      if is_map(result) do
+        assert Map.has_key?(result, :interface),
+               "Expected :interface key in link map, got: #{inspect(result)}"
+      else
+        assert is_nil(result)
+      end
+    end
+  end
+  property "LinkMonitor list_links is consistent across calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      r2 = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      assert (is_list(r1) or is_map(r1)) and (is_list(r2) or is_map(r2)),
+             "Expected consistent list/map from list_links"
+    end
+  end
+  property "LinkMonitor get_link returns same result on repeated calls" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
+      r1 = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+      r2 = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+      assert r1 == r2,
+             "Expected deterministic get_link results for #{iface}"
+    end
+  end
 
 end

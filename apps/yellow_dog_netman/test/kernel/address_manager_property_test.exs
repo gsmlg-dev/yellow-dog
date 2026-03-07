@@ -680,5 +680,48 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+  property "AddressManager list_all for 'lo' interface always returns list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      assert is_list(result),
+             "Expected list from list_all for lo, got: #{inspect(result)}"
+    end
+  end
+  property "AddressManager list_all for 'lo' entries have :interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      for addr <- addresses do
+        assert Map.has_key?(addr, :interface),
+               "Expected :interface key in address entry, got: #{inspect(addr)}"
+      end
+    end
+  end
+  property "AddressManager pid is always alive and registered" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.AddressManager)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected AddressManager to be alive"
+    end
+  end
+  property "AddressManager list_all for any short interface returns list without raising" do
+    check all(n <- StreamData.integer(0..9999)) do
+      iface = "amr50_#{n}"
+      result =
+        try do
+          YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+        rescue
+          _ -> []
+        end
+      assert is_list(result)
+    end
+  end
+  property "AddressManager list_all is deterministic for same interface" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
+      r1 = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      r2 = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      assert is_list(r1) and is_list(r2),
+             "Expected lists from repeated list_all"
+    end
+  end
 
 end

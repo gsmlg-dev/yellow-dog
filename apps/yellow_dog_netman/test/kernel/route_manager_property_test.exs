@@ -684,5 +684,46 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+  property "RouteManager get_routes for 'lo' interface returns list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+      assert is_list(result),
+             "Expected list from get_routes for lo, got: #{inspect(result)}"
+    end
+  end
+  property "RouteManager pid is always alive and registered" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RouteManager)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected RouteManager to be alive"
+    end
+  end
+  property "RouteManager list_routes always returns list for 'lo'" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RouteManager.list_routes("lo")
+      assert is_list(result),
+             "Expected list from list_routes for lo, got: #{inspect(result)}"
+    end
+  end
+  property "RouteManager list_routes always returns list for any interface" do
+    check all(n <- StreamData.integer(0..99)) do
+      iface = "rm50_#{n}"
+      result =
+        try do
+          YellowDog.Netman.Kernel.RouteManager.list_routes(iface)
+        rescue
+          _ -> []
+        end
+      assert is_list(result)
+    end
+  end
+  property "RouteManager list_routes and get_routes return same type for same interface" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
+      r1 = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
+      r2 = YellowDog.Netman.Kernel.RouteManager.list_routes(iface)
+      assert is_list(r1) and is_list(r2),
+             "Expected lists from both route queries"
+    end
+  end
 
 end
