@@ -958,4 +958,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus subscribe and then publish doesn't crash (r71)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+      data <- StreamData.integer()
+    ) do
+      YellowDog.Netman.EventBus.subscribe(topic)
+      result = YellowDog.Netman.EventBus.publish(topic, data)
+      YellowDog.Netman.EventBus.unsubscribe(topic)
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end

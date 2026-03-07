@@ -738,4 +738,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with connection.stop returns map (r71)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      result = CLI.handle_command(%{"method" => "connection.stop", "params" => %{"id" => id}})
+      assert is_map(result)
+    end
+  end
 end
