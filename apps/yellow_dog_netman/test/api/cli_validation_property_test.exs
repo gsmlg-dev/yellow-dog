@@ -1035,4 +1035,72 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_binary(typ)
     end
   end
+
+  property "r111: autoconnect_priority in valid range passes" do
+    check all priority <- integer(-1000..10000) do
+      assert priority >= -1000 and priority <= 10000
+    end
+  end
+
+  property "r112: valid zone names are binary strings" do
+    check all zone <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      assert is_binary(zone)
+    end
+  end
+
+  property "r113: socket path length under 108 chars" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 80) do
+      path = "/tmp/" <> name <> ".sock"
+      assert byte_size(path) < 108
+    end
+  end
+
+  property "r114: cidr masks from 0 to 32 are all valid" do
+    check all mask <- integer(0..32) do
+      assert mask >= 0 and mask <= 32
+    end
+  end
+
+  property "r115: ipv4 addresses have 4 octets" do
+    check all octets <- list_of(integer(0..255), length: 4) do
+      ip_str = Enum.join(octets, ".")
+      parts = String.split(ip_str, ".")
+      assert length(parts) == 4
+    end
+  end
+
+  property "r116: mac addresses have 6 octets" do
+    check all octets <- list_of(integer(0..255), length: 6) do
+      mac_str = Enum.map_join(octets, ":", &Integer.to_string(&1, 16))
+      parts = String.split(mac_str, ":")
+      assert length(parts) == 6
+    end
+  end
+
+  property "r117: dns server addresses are valid binaries" do
+    check all ip <- list_of(integer(0..255), length: 4) do
+      dns = Enum.join(ip, ".")
+      assert is_binary(dns)
+      assert String.length(dns) > 0
+    end
+  end
+
+  property "r118: profile id max length is 64 characters" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      assert byte_size(id) <= 64
+    end
+  end
+
+  property "r119: connection id length constraint" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      assert byte_size(id) >= 1
+      assert byte_size(id) <= 64
+    end
+  end
+
+  property "r120: priority range is symmetric around 0" do
+    check all prio <- integer(-1000..1000) do
+      assert abs(prio) <= 1000
+    end
+  end
 end

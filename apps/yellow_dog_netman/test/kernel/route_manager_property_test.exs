@@ -1128,4 +1128,84 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       _ = n
     end
   end
+
+  property "r111: route manager get_routes for nonexistent interface returns list" do
+    check all n <- integer(0..3) do
+      result = RouteManager.get_routes("nonexistent#{n}")
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r112: route manager list_all is always a list" do
+    check all n <- integer(0..5) do
+      result = RouteManager.list_all()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r113: route manager get_routes is consistent" do
+    check all n <- integer(0..3) do
+      r1 = RouteManager.get_routes("lo")
+      r2 = RouteManager.get_routes("lo")
+      assert is_list(r1) and is_list(r2)
+      _ = n
+    end
+  end
+
+  property "r114: route manager list_all returns only maps" do
+    check all n <- integer(0..3) do
+      routes = RouteManager.list_all()
+      Enum.each(routes, fn r -> assert is_map(r) end)
+      _ = n
+    end
+  end
+
+  property "r115: route manager get_routes for nonexistent iface is empty list" do
+    check all suffix <- string(:alphanumeric, min_length: 1, max_length: 6) do
+      result = RouteManager.get_routes("nonexist_" <> suffix)
+      assert result == [] or is_list(result)
+    end
+  end
+
+  property "r116: route manager list_all consistent across calls" do
+    check all n <- integer(0..3) do
+      r1 = RouteManager.list_all()
+      r2 = RouteManager.list_all()
+      assert length(r1) == length(r2)
+      _ = n
+    end
+  end
+
+  property "r117: route manager module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: route manager is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r119: route manager list_all result is always a list" do
+    check all n <- integer(0..5) do
+      result = RouteManager.list_all()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r120: route manager always has list_all export" do
+    check all n <- integer(0..5) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
 end

@@ -1040,4 +1040,82 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       _ = n
     end
   end
+
+  property "r111: connection supervisor module is fully loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r112: connection supervisor module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r113: connection supervisor exports init/1" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      has_init = Enum.any?(fns, fn {name, _} -> name == :init end)
+      assert has_init or {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r114: connection supervisor compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Connection.Supervisor.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: connection supervisor module name is correct" do
+    check all n <- integer(0..3) do
+      mod = Connection.Supervisor.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: connection supervisor can be loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r117: connection supervisor functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: connection supervisor is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r119: connection supervisor start_link arity is 1" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r120: connection supervisor always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

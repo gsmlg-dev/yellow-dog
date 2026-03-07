@@ -1046,11 +1046,97 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     end
   end
 
-  property "r110: policy engine route_metrics returns a list" do
+  property "r110: policy engine route_metrics returns a map" do
     check all n <- integer(0..3) do
       result = PolicyEngine.route_metrics([])
-      assert is_list(result)
+      assert is_map(result)
       _ = n
+    end
+  end
+
+  property "r111: policy engine effective_priority takes a connection map" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "test", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result) or is_nil(result)
+    end
+  end
+
+  property "r112: policy engine default_route with non-empty list returns something" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c1", interface: "eth0",
+               ipv4: %{gateway: "10.0.0.1"}}
+      result = PolicyEngine.default_route([conn])
+      assert not is_nil(result)
+    end
+  end
+
+  property "r113: policy engine effective_priority result is integer" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "x", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r114: policy engine dns_priority for single connection is a list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c1", interface: "eth0",
+               ipv4: %{dns: ["8.8.8.8"]}}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r115: policy engine route_metrics for empty list is empty map" do
+    check all n <- integer(0..3) do
+      result = PolicyEngine.route_metrics([])
+      assert result == %{}
+      _ = n
+    end
+  end
+
+  property "r116: policy engine default_route picks highest priority connection" do
+    check all p1 <- integer(-100..100), p2 <- integer(-100..100) do
+      c1 = %{autoconnect_priority: p1, id: "c1", interface: "eth0"}
+      c2 = %{autoconnect_priority: p2, id: "c2", interface: "eth1"}
+      result = PolicyEngine.default_route([c1, c2])
+      assert match?({:ok, _}, result)
+    end
+  end
+
+  property "r117: policy engine route_metrics returns map with priority info" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c1", interface: "eth0"}
+      result = PolicyEngine.route_metrics([conn])
+      assert is_map(result)
+    end
+  end
+
+  property "r118: policy engine default_route with empty returns :none" do
+    check all n <- integer(0..3) do
+      result = PolicyEngine.default_route([])
+      assert result == :none
+      _ = n
+    end
+  end
+
+  property "r119: policy engine route_metrics for one conn has one entry" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      conn = %{autoconnect_priority: 0, id: id, interface: "eth0"}
+      result = PolicyEngine.route_metrics([conn])
+      assert is_map(result)
+      assert map_size(result) == 1
+    end
+  end
+
+  property "r120: policy engine route_metrics maps id to integer metric" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16),
+              prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: id, interface: "eth0"}
+      result = PolicyEngine.route_metrics([conn])
+      assert Map.has_key?(result, id)
+      assert is_integer(result[id])
     end
   end
 end

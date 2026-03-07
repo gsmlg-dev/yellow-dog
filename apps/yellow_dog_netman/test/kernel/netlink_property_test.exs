@@ -1100,4 +1100,82 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       _ = n
     end
   end
+
+  property "r111: netlink module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r112: netlink module has more than zero functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert Enum.count(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r113: netlink module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r114: netlink compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Netlink.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: netlink module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = Netlink.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: netlink module can be loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r117: netlink module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: netlink is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r119: netlink start_link arity is 1" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r120: netlink always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

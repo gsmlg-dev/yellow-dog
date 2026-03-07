@@ -998,4 +998,82 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d.interface == iface
     end
   end
+
+  property "r111: diff set_link_up action works" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:set_link_up, iface)
+      assert d.action == :set_link_up
+    end
+  end
+
+  property "r112: diff set_link_down action works" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:set_link_down, iface)
+      assert d.action == :set_link_down
+      assert d.interface == iface
+    end
+  end
+
+  property "r113: diff update_dns action works" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:update_dns)
+      assert d.action == :update_dns
+      _ = n
+    end
+  end
+
+  property "r114: diff add_route action works" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:add_route, iface)
+      assert d.action == :add_route
+      assert d.interface == iface
+    end
+  end
+
+  property "r115: diff remove_route action works" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:remove_route, iface)
+      assert d.action == :remove_route
+    end
+  end
+
+  property "r116: diff deactivate_connection action works" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      d = Diff.new(:deactivate_connection, iface)
+      assert d.action == :deactivate_connection
+    end
+  end
+
+  property "r117: diff inspect returns a string" do
+    check all action <- member_of([:add_address, :set_mtu, :update_dns]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert is_binary(inspected)
+    end
+  end
+
+  property "r118: diff activate_connection action works" do
+    check all n <- integer(0..3) do
+      d = Diff.new(:activate_connection)
+      assert d.action == :activate_connection
+      _ = n
+    end
+  end
+
+  property "r119: diff set_mtu action preserves params" do
+    check all mtu <- integer(100..9000) do
+      d = Diff.new(:set_mtu, nil, %{mtu: mtu})
+      assert d.params.mtu == mtu
+    end
+  end
+
+  property "r120: all valid diff actions can be created" do
+    valid_actions = [:add_address, :remove_address, :add_route, :remove_route,
+                     :activate_connection, :deactivate_connection, :update_dns,
+                     :set_mtu, :set_link_up, :set_link_down]
+    check all action <- member_of(valid_actions) do
+      d = Diff.new(action)
+      assert d.action == action
+    end
+  end
 end

@@ -877,4 +877,82 @@ defmodule YellowDog.NetmanPropertyTest do
       _ = n
     end
   end
+
+  property "r111: netman module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r112: netman module has start_link export" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r113: netman start_link is exported" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r114: netman module has compile info" do
+    check all n <- integer(0..3) do
+      compile = Netman.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: netman module attributes non-empty" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r116: netman module has correct module name" do
+    check all n <- integer(0..3) do
+      mod = Netman.__info__(:module)
+      assert mod == YellowDog.Netman
+      _ = n
+    end
+  end
+
+  property "r117: netman module functions is non-empty list" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: netman is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r119: netman module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r120: netman always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

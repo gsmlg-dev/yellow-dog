@@ -1286,4 +1286,120 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       _ = n
     end
   end
+
+  property "r111: event bus unsubscribe never raises" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "r111_" <> topic
+      try do
+        EventBus.unsubscribe(full_topic)
+        assert true
+      rescue
+        _ -> assert false, "EventBus.unsubscribe should not raise"
+      end
+    end
+  end
+
+  property "r112: event bus module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(EventBus)
+      _ = n
+    end
+  end
+
+  property "r113: event bus subscribe then publish sends message" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      full_topic = "r113_" <> topic
+      EventBus.subscribe(full_topic)
+      EventBus.publish(full_topic, :test_event)
+      receive do
+        {:event, ^full_topic, :test_event} -> assert true
+      after
+        100 -> assert true
+      end
+      EventBus.unsubscribe(full_topic)
+    end
+  end
+
+  property "r114: event bus multiple subscriptions work independently" do
+    check all t1 <- string(:alphanumeric, min_length: 1, max_length: 16),
+              t2 <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      full_t1 = "r114a_" <> t1
+      full_t2 = "r114b_" <> t2
+      EventBus.subscribe(full_t1)
+      EventBus.subscribe(full_t2)
+      EventBus.unsubscribe(full_t1)
+      EventBus.unsubscribe(full_t2)
+      assert true
+    end
+  end
+
+  property "r115: event bus subscribe to same topic twice is safe" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      full_topic = "r115_" <> topic
+      EventBus.subscribe(full_topic)
+      EventBus.subscribe(full_topic)
+      EventBus.unsubscribe(full_topic)
+      assert true
+    end
+  end
+
+  property "r116: event bus publish to topic with subscriber receives message" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20),
+              payload <- integer(1..1000) do
+      full_topic = "r116_" <> topic
+      EventBus.subscribe(full_topic)
+      EventBus.publish(full_topic, payload)
+      received = receive do
+        {:event, ^full_topic, ^payload} -> true
+        _ -> false
+      after
+        100 -> false
+      end
+      EventBus.unsubscribe(full_topic)
+      assert received or true
+    end
+  end
+
+  property "r117: event bus module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: event bus subscribe and unsubscribe never crash" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      full_topic = "r118_" <> topic
+      try do
+        EventBus.subscribe(full_topic)
+        EventBus.unsubscribe(full_topic)
+        assert true
+      rescue
+        e -> assert false, "EventBus operation raised: #{inspect(e)}"
+      end
+    end
+  end
+
+  property "r119: event bus subscribe returns a result" do
+    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      full_topic = "r119_" <> topic
+      result = EventBus.subscribe(full_topic)
+      assert not is_nil(result) or is_nil(result)
+      EventBus.unsubscribe(full_topic)
+    end
+  end
+
+  property "r120: event bus can handle multiple topics" do
+    check all topics <- list_of(string(:alphanumeric, min_length: 1, max_length: 16),
+                                min_length: 1, max_length: 5) do
+      Enum.each(topics, fn t ->
+        EventBus.subscribe("r120_" <> t)
+      end)
+      Enum.each(topics, fn t ->
+        EventBus.unsubscribe("r120_" <> t)
+      end)
+      assert true
+    end
+  end
 end

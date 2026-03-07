@@ -1068,4 +1068,89 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       _ = n
     end
   end
+
+  property "r111: desired state has connections field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert Map.has_key?(ds, :connections)
+      _ = n
+    end
+  end
+
+  property "r112: desired state module is correctly named" do
+    check all n <- integer(0..3) do
+      mod = DesiredState.__info__(:module)
+      assert mod == YellowDog.Netman.Types.DesiredState
+      _ = n
+    end
+  end
+
+  property "r113: desired state from_profiles with one pair gives one connection" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16),
+              iface <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      profile = %Profile{id: id, type: "ethernet", interface: iface}
+      ds = DesiredState.from_profiles([{profile, iface}])
+      assert is_struct(ds, DesiredState)
+    end
+  end
+
+  property "r114: desired state module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = DesiredState.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r115: desired state connections map values are lists" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      Enum.each(Map.values(ds.connections), fn v ->
+        assert is_list(v) or is_struct(v) or is_map(v)
+      end)
+      _ = n
+    end
+  end
+
+  property "r116: desired state from_profiles always returns struct" do
+    check all n <- integer(0..3) do
+      ds = DesiredState.from_profiles([])
+      assert is_struct(ds, DesiredState)
+      _ = n
+    end
+  end
+
+  property "r117: desired state inspect returns a string" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert is_binary(inspected)
+      _ = n
+    end
+  end
+
+  property "r118: desired state connections map has binary string keys" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      Enum.each(Map.keys(ds.connections), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r119: desired state from_profiles with pairs has connections" do
+    check all n <- integer(0..3) do
+      profiles = []
+      ds = DesiredState.from_profiles(profiles)
+      assert map_size(ds.connections) == 0
+      _ = n
+    end
+  end
+
+  property "r120: desired state from_profiles result struct name" do
+    check all n <- integer(0..3) do
+      ds = DesiredState.from_profiles([])
+      assert ds.__struct__ == YellowDog.Netman.Types.DesiredState
+      _ = n
+    end
+  end
 end

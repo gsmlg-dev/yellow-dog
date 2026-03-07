@@ -1008,4 +1008,82 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       _ = n
     end
   end
+
+  property "r111: link monitor exports get_links" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      has_fn = Enum.any?(fns, fn {name, _} -> name in [:get_links, :list_links, :get_link] end)
+      assert has_fn or length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r112: link monitor module is always loaded" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r113: link monitor module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r114: link monitor compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = LinkMonitor.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: link monitor module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = LinkMonitor.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: link monitor module can be loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r117: link monitor module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: link monitor is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r119: link monitor start_link arity is 1" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r120: link monitor always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

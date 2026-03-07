@@ -1436,4 +1436,83 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       _ = n
     end
   end
+
+  property "r111: fsm exports failed/3 state handler" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:failed, 3} in fns
+      _ = n
+    end
+  end
+
+  property "r112: fsm exports unavailable/3 state handler" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:unavailable, 3} in fns
+      _ = n
+    end
+  end
+
+  property "r113: fsm exports deactivating/3 state handler" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:deactivating, 3} in fns
+      _ = n
+    end
+  end
+
+  property "r114: fsm state transition functions all have arity 3" do
+    check all state <- member_of([:disconnected, :configuring, :deactivating, :failed, :unavailable]) do
+      fns = FSM.__info__(:functions)
+      assert {state, 3} in fns
+    end
+  end
+
+  property "r115: fsm has all five state handler functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      states = [:disconnected, :configuring, :deactivating, :failed, :unavailable]
+      Enum.each(states, fn s -> assert {s, 3} in fns end)
+      _ = n
+    end
+  end
+
+  property "r116: fsm get_state returns a tuple or atom" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:get_state, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r117: fsm functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: fsm is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r119: fsm attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r120: fsm always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = FSM.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

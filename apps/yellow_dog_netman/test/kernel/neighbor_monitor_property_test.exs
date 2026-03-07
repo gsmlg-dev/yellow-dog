@@ -1251,4 +1251,84 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       _ = n
     end
   end
+
+  property "r111: neighbor monitor list_neighbors can be called repeatedly" do
+    check all n <- integer(0..5) do
+      r1 = NeighborMonitor.list_neighbors()
+      r2 = NeighborMonitor.list_neighbors()
+      assert is_list(r1) and is_list(r2)
+      _ = n
+    end
+  end
+
+  property "r112: neighbor monitor is always loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r113: neighbor monitor module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r114: neighbor monitor compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = NeighborMonitor.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: neighbor monitor module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = NeighborMonitor.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: neighbor monitor list_neighbors length is consistent" do
+    check all n <- integer(0..3) do
+      r1 = NeighborMonitor.list_neighbors()
+      r2 = NeighborMonitor.list_neighbors()
+      assert length(r1) == length(r2)
+      _ = n
+    end
+  end
+
+  property "r117: neighbor monitor module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: neighbor monitor is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r119: neighbor monitor list_neighbors is always safe" do
+    check all n <- integer(0..5) do
+      result = NeighborMonitor.list_neighbors()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r120: neighbor monitor always has list_neighbors export" do
+    check all n <- integer(0..5) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
 end

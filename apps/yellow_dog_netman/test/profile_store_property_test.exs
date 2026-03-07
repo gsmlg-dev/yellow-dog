@@ -1133,4 +1133,106 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       _ = n
     end
   end
+
+  property "r111: profile store get returns nil for missing id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      missing_id = "notexist_" <> id
+      result = ProfileStore.get(missing_id)
+      assert is_nil(result) or match?({:error, _}, result) or is_struct(result)
+    end
+  end
+
+  property "r112: profile store module attribute is correct" do
+    check all n <- integer(0..3) do
+      mod = ProfileStore.__info__(:module)
+      assert mod == YellowDog.Netman.ProfileStore
+      _ = n
+    end
+  end
+
+  property "r113: profile store list always returns a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r114: profile store add profile and list includes it" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      unique_id = "r114_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      profiles = ProfileStore.list()
+      assert Enum.any?(profiles, fn p -> p.id == unique_id end)
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r115: profile store put and delete are inverse operations" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      unique_id = "r115_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      before_count = length(ProfileStore.list())
+      :ok = ProfileStore.put(unique_id, profile)
+      assert length(ProfileStore.list()) == before_count + 1 or
+             Enum.any?(ProfileStore.list(), &(&1.id == unique_id))
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r116: profile store get by id after put works" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      unique_id = "r116_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      result = ProfileStore.get(unique_id)
+      assert match?({:ok, %Profile{}}, result)
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r117: profile store delete non-existent id is safe" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      unique_id = "r117_" <> id
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
+
+  property "r118: profile store operations do not crash" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r118_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      try do
+        ProfileStore.put(unique_id, profile)
+        ProfileStore.get(unique_id)
+        ProfileStore.delete(unique_id)
+        assert true
+      rescue
+        e -> assert false, "ProfileStore operation raised: #{inspect(e)}"
+      end
+    end
+  end
+
+  property "r119: profile store put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      unique_id = "r119_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      result = ProfileStore.put(unique_id, profile)
+      assert result == :ok
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r120: profile store list after put includes new profile" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r120_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      profiles = ProfileStore.list()
+      assert Enum.any?(profiles, &(&1.id == unique_id))
+      ProfileStore.delete(unique_id)
+    end
+  end
 end

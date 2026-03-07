@@ -1128,4 +1128,81 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       _ = n
     end
   end
+
+  property "r111: rule manager exports start_link/1" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r112: rule manager module is loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RuleManager)
+      _ = n
+    end
+  end
+
+  property "r113: rule manager module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RuleManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r114: rule manager compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = RuleManager.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: rule manager module name is an atom" do
+    check all n <- integer(0..3) do
+      mod = RuleManager.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: rule manager module can be loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(RuleManager)
+      _ = n
+    end
+  end
+
+  property "r117: rule manager module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: rule manager is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(RuleManager)
+      _ = n
+    end
+  end
+
+  property "r119: rule manager start_link arity is 1" do
+    check all n <- integer(0..3) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r120: rule manager always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = RuleManager.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

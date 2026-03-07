@@ -1137,4 +1137,92 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       _ = n
     end
   end
+
+  property "r111: observed state has links routes addresses fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert Map.has_key?(s, :links)
+      assert Map.has_key?(s, :routes)
+      assert Map.has_key?(s, :addresses)
+      _ = n
+    end
+  end
+
+  property "r112: two new observed states are equal" do
+    check all n <- integer(0..3) do
+      s1 = ObservedState.new()
+      s2 = ObservedState.new()
+      assert s1 == s2
+      _ = n
+    end
+  end
+
+  property "r113: observed state addresses contains only binary string keys" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      Enum.each(Map.keys(s.addresses), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r114: observed state routes list starts empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert Enum.empty?(s.routes)
+      _ = n
+    end
+  end
+
+  property "r115: observed state links map keys are binary strings" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      Enum.each(Map.keys(s.links), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r116: observed state can be converted to map" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert is_map(m)
+      _ = n
+    end
+  end
+
+  property "r117: observed state struct implements inspect protocol" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert is_binary(inspected)
+      _ = n
+    end
+  end
+
+  property "r118: observed state is equal to a freshly created one" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      fresh = ObservedState.new()
+      assert s == fresh
+      _ = n
+    end
+  end
+
+  property "r119: observed state struct module is correct" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.__struct__ == YellowDog.Netman.Types.ObservedState
+      _ = n
+    end
+  end
+
+  property "r120: observed state new always gives same empty state" do
+    check all n <- integer(0..5) do
+      s = ObservedState.new()
+      assert map_size(s.links) == 0
+      assert map_size(s.addresses) == 0
+      assert Enum.empty?(s.routes)
+      _ = n
+    end
+  end
 end

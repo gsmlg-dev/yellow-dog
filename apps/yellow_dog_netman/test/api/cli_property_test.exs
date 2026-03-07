@@ -997,4 +997,81 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       _ = n
     end
   end
+
+  property "r111: cli handle_command with status returns result map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r112: cli handle_command with device returns map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "device"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r113: cli handle_command with connection returns map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "connection"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r114: cli handle_command with connection.list returns map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "connection.list"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r115: cli handle_command with unknown method returns error map" do
+    check all method <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = CLI.handle_command(%{"method" => "unknown_" <> method})
+      assert is_map(result)
+    end
+  end
+
+  property "r116: cli handle_command with device.list returns map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "device.list"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r117: cli handle_command with profile.list returns map" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "connection.list"})
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r118: cli handle_command with various methods returns maps" do
+    check all method <- member_of(["status", "device", "connection"]) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result)
+    end
+  end
+
+  property "r119: cli handle_command returns success or error map" do
+    check all method <- member_of(["status", "device", "device.list",
+                                   "connection", "connection.list"]) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result)
+    end
+  end
+
+  property "r120: cli handle_command result always has at least one key" do
+    check all method <- member_of(["status", "device.list", "connection.list"]) do
+      result = CLI.handle_command(%{"method" => method})
+      assert map_size(result) > 0
+    end
+  end
 end

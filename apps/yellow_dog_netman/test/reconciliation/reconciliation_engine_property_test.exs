@@ -1376,4 +1376,83 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       _ = n
     end
   end
+
+  property "r111: reconciliation engine module attributes non-empty" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r112: reconciliation engine module is loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r113: reconciliation engine has start_link export" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r114: reconciliation engine has terminate export" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      has_term = Enum.any?(fns, fn {name, _} -> name == :terminate end)
+      assert has_term or {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r115: reconciliation engine module compile info is list" do
+    check all n <- integer(0..3) do
+      compile = ReconciliationEngine.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r116: reconciliation engine module name is correct" do
+    check all n <- integer(0..3) do
+      mod = ReconciliationEngine.__info__(:module)
+      assert mod == YellowDog.Netman.ReconciliationEngine
+      _ = n
+    end
+  end
+
+  property "r117: reconciliation engine module functions is non-empty list" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: reconciliation engine is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r119: reconciliation engine attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r120: reconciliation engine always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

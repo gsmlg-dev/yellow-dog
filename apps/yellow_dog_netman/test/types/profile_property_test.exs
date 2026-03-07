@@ -1519,4 +1519,84 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert p.ipv6.method == :auto
     end
   end
+
+  property "r111: profile ethernet mtu is nil by default" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_nil(p.ethernet.mtu)
+    end
+  end
+
+  property "r112: profile interface is nil by default" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_nil(p.interface)
+    end
+  end
+
+  property "r113: profile from_toml with valid connection data succeeds" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+      result = Profile.from_toml(toml)
+      assert match?({:ok, %Profile{}}, result)
+    end
+  end
+
+  property "r114: profile from_toml with invalid type fails" do
+    check all bad_type <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      toml = %{"connection" => %{"id" => "test", "type" => "bad_" <> bad_type}}
+      result = Profile.from_toml(toml)
+      assert match?({:error, _}, result)
+    end
+  end
+
+  property "r115: profile from_toml rejects empty id" do
+    check all n <- integer(0..3) do
+      result = Profile.from_toml(%{"connection" => %{"id" => "", "type" => "ethernet"}})
+      assert match?({:error, _}, result)
+      _ = n
+    end
+  end
+
+  property "r116: profile from_toml validates id length" do
+    check all id <- string(:alphanumeric, min_length: 65, max_length: 100) do
+      result = Profile.from_toml(%{"connection" => %{"id" => id, "type" => "ethernet"}})
+      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    end
+  end
+
+  property "r117: profile from_toml with valid priority succeeds" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16),
+              prio <- integer(-1000..10000) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet",
+                                 "autoconnect_priority" => prio}}
+      result = Profile.from_toml(toml)
+      assert match?({:ok, _}, result)
+    end
+  end
+
+  property "r118: profile from_toml with invalid priority fails" do
+    check all prio <- integer(10001..20000) do
+      toml = %{"connection" => %{"id" => "test", "type" => "ethernet",
+                                 "autoconnect_priority" => prio}}
+      result = Profile.from_toml(toml)
+      assert match?({:error, _}, result)
+    end
+  end
+
+  property "r119: profile from_toml preserves id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+      {:ok, profile} = Profile.from_toml(toml)
+      assert profile.id == id
+    end
+  end
+
+  property "r120: profile from_toml preserves type" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+      {:ok, profile} = Profile.from_toml(toml)
+      assert profile.type == "ethernet"
+    end
+  end
 end

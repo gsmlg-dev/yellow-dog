@@ -969,4 +969,81 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       _ = n
     end
   end
+
+  property "r111: ethernet module is fully loaded" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r112: ethernet module attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r113: ethernet module has start_link export" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r114: ethernet module compile info is a list" do
+    check all n <- integer(0..3) do
+      compile = Ethernet.__info__(:compile)
+      assert is_list(compile)
+      _ = n
+    end
+  end
+
+  property "r115: ethernet module name is correct" do
+    check all n <- integer(0..3) do
+      mod = Ethernet.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r116: ethernet module can be loaded repeatedly" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r117: ethernet functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: ethernet is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r119: ethernet start_link arity is 1" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r120: ethernet always has start_link export" do
+    check all n <- integer(0..5) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
 end

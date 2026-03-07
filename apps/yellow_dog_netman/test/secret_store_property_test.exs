@@ -988,4 +988,82 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       _ = n
     end
   end
+
+  property "r111: secret store exports put/2" do
+    check all n <- integer(0..3) do
+      fns = SecretStore.__info__(:functions)
+      assert {:put, 2} in fns
+      _ = n
+    end
+  end
+
+  property "r112: secret store get returns not found for random keys" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      missing_key = "missing_r112_" <> key
+      result = SecretStore.get(missing_key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
+
+  property "r113: secret store put always returns ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32),
+              val <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      result = SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
+
+  property "r114: secret store get always returns error tuple (stub)" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      result = SecretStore.get(key)
+      assert match?({:error, _}, result)
+    end
+  end
+
+  property "r115: secret store delete always returns ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      result = SecretStore.delete(key)
+      assert result == :ok
+    end
+  end
+
+  property "r116: secret store get always returns not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r117: secret store put accepts any key and value" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24),
+              val <- string(:printable, min_length: 1, max_length: 64) do
+      result = SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
+
+  property "r118: secret store all operations are safe" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24),
+              val <- string(:printable, min_length: 1, max_length: 64) do
+      assert SecretStore.put(key, val) == :ok
+      assert match?({:error, _}, SecretStore.get(key))
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r119: secret store module is a stub" do
+    check all n <- integer(0..3) do
+      assert SecretStore.__info__(:module) == YellowDog.Netman.SecretStore
+      _ = n
+    end
+  end
+
+  property "r120: secret store is always a stub returning not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 32),
+              val <- string(:alphanumeric, min_length: 1, max_length: 32) do
+      SecretStore.put(key, val)
+      result = SecretStore.get(key)
+      assert match?({:error, :not_found}, result)
+    end
+  end
 end

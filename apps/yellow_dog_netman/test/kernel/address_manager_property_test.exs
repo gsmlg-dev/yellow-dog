@@ -1132,4 +1132,85 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       _ = n
     end
   end
+
+  property "r111: address manager exports add_address/3" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      has_add = Enum.any?(fns, fn {name, _} -> name == :add_address end)
+      assert has_add
+      _ = n
+    end
+  end
+
+  property "r112: address manager list_all returns empty map initially" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r113: address manager list_all is consistent across calls" do
+    check all n <- integer(0..3) do
+      r1 = AddressManager.list_all()
+      r2 = AddressManager.list_all()
+      assert is_map(r1) and is_map(r2)
+      _ = n
+    end
+  end
+
+  property "r114: address manager list_all has binary keys" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      Enum.each(Map.keys(result), fn k -> assert is_binary(k) end)
+      _ = n
+    end
+  end
+
+  property "r115: address manager list_all map size is non-negative" do
+    check all n <- integer(0..3) do
+      result = AddressManager.list_all()
+      assert map_size(result) >= 0
+      _ = n
+    end
+  end
+
+  property "r116: address manager module name is correct" do
+    check all n <- integer(0..3) do
+      mod = AddressManager.__info__(:module)
+      assert is_atom(mod)
+      _ = n
+    end
+  end
+
+  property "r117: address manager module functions list is non-empty" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert length(fns) > 0
+      _ = n
+    end
+  end
+
+  property "r118: address manager is always loadable" do
+    check all n <- integer(0..5) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r119: address manager list_all result is consistent" do
+    check all n <- integer(0..5) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      _ = n
+    end
+  end
+
+  property "r120: address manager always has list_all export" do
+    check all n <- integer(0..5) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
 end
