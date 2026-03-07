@@ -666,4 +666,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with any valid method never throws exception (r67)" do
+    check all(
+      method <- StreamData.member_of(["connection.list", "profile.list", "secret.list",
+                                      "connection.show", "device.show", "profile.get"])
+    ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result) or is_list(result)
+    end
+  end
 end

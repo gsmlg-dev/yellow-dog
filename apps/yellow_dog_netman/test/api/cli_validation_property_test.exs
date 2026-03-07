@@ -705,4 +705,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result) and Enum.all?(Map.keys(result), &is_binary/1)
     end
   end
+  property "CLI handle_command with multiple calls is always consistent (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result1 = CLI.handle_command(%{"method" => "connection.list"})
+      result2 = CLI.handle_command(%{"method" => "connection.list"})
+      assert is_map(result1) and is_map(result2)
+      assert Map.keys(result1) == Map.keys(result2)
+    end
+  end
 end

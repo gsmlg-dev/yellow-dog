@@ -921,4 +921,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or is_nil(result) or is_tuple(result)
     end
   end
+  property "EventBus subscribe with wildcard topic succeeds (r67)" do
+    check all(
+      prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      topic = prefix <> ".*"
+      result = YellowDog.Netman.EventBus.subscribe(topic)
+      YellowDog.Netman.EventBus.unsubscribe(topic)
+      assert result == :ok or match?({:ok, _}, result)
+    end
+  end
 end
