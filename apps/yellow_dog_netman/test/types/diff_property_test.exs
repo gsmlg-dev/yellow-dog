@@ -538,5 +538,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected map with :action key, got: #{inspect(diff)}"
     end
   end
+  property "Diff new never produces nil" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      refute is_nil(diff), "Expected non-nil from Diff.new"
+    end
+  end
 
 end

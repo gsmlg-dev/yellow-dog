@@ -924,5 +924,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected gen_server behaviour"
     end
   end
+  property "ReconciliationEngine process is always a registered pid" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid),
+             "Expected pid from whereis, got: #{inspect(pid)}"
+    end
+  end
 
 end

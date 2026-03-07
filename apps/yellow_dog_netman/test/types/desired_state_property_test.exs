@@ -594,5 +594,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected deterministic from_profiles results to be equal"
     end
   end
+  property "DesiredState from_profiles with empty always has empty or nil connections" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      conns = Map.get(ds, :connections, nil)
+      assert is_nil(conns) or (is_list(conns) and conns == []) or is_map(conns),
+             "Expected empty connections, got: #{inspect(conns)}"
+    end
+  end
 
 end

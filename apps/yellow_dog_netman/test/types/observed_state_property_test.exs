@@ -594,5 +594,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected map or list for routes, got: #{inspect(state.routes)}"
     end
   end
+  property "ObservedState new always returns same empty state" do
+    check all(_ <- StreamData.constant(:ok)) do
+      s1 = YellowDog.Netman.Types.ObservedState.new()
+      s2 = YellowDog.Netman.Types.ObservedState.new()
+      assert s1 == s2,
+             "Expected deterministic empty state"
+    end
+  end
 
 end

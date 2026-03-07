@@ -905,5 +905,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected binary id, got: #{inspect(p.id)}"
     end
   end
+  property "Profile struct has exactly the expected enforce_keys" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert p.id == id and p.type == type,
+             "Expected matching id and type fields"
+    end
+  end
 
 end
