@@ -473,4 +473,16 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected Netlink process to still be alive after dispatching #{event_type}"
     end
   end
+
+  property "dispatched event payload always has 'type' key removed or replaced" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      expected_atom = String.to_atom(event_type)
+      assert_receive {:netlink_event, {^expected_atom, payload}}, 500
+      assert is_map(payload), "Expected map payload, got: #{inspect(payload)}"
+    end
+  end
 end

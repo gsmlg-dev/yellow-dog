@@ -369,4 +369,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected interface #{inspect(interface)}, got: #{inspect(diff.interface)}"
     end
   end
+
+  property "new/3 with atom keys in params always stores them as atoms" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            key <- StreamData.atom(:alphanumeric),
+            val <- StreamData.integer()
+          ) do
+      params = %{key => val}
+      diff = Diff.new(action, interface, params)
+      assert Map.has_key?(diff.params, key),
+             "Expected atom key #{inspect(key)} in params, got: #{inspect(diff.params)}"
+    end
+  end
 end

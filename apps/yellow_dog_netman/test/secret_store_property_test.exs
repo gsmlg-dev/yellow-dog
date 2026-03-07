@@ -255,4 +255,20 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected identical results for repeated get on #{inspect(key)}: #{inspect(result1)} vs #{inspect(result2)}"
     end
   end
+
+  property "put with integer key (non-string) does not raise" do
+    check all(key_int <- StreamData.integer()) do
+      result =
+        try do
+          SecretStore.put(key_int, "value")
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result == :ok or result == :raised,
+             "Unexpected result from put with integer key: #{inspect(result)}"
+    end
+  end
 end
