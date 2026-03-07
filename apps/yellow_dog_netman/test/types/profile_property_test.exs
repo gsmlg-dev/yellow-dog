@@ -631,4 +631,27 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected interface #{iface} in to_toml, got: #{inspect(conn["interface"])}"
     end
   end
+
+  property "to_toml always returns a map (never nil or non-map)" do
+    check all(
+            id <- profile_id_gen(),
+            iface <- iface_gen()
+          ) do
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      toml_map = Profile.to_toml(profile)
+
+      assert is_map(toml_map),
+             "Expected map from to_toml, got: #{inspect(toml_map)}"
+    end
+  end
 end

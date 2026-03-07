@@ -410,4 +410,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected address.interface == #{addr.interface}, got: #{inspect(added.interface)}"
     end
   end
+
+  property "add_route then route in state.routes has matching destination" do
+    check all(route <- route_gen()) do
+      state = ObservedState.new() |> ObservedState.add_route(route)
+      added = Enum.find(state.routes, &(&1.destination == route.destination))
+      assert added != nil,
+             "Expected route with destination #{route.destination} in state.routes"
+    end
+  end
 end
