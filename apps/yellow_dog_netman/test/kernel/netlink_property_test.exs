@@ -952,4 +952,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
+
+  property "netlink attribute keys are atoms (r92)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.Netlink.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
+    end
+  end
 end
