@@ -412,4 +412,25 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected nil interface from new/1, got: #{inspect(diff.interface)}"
     end
   end
+
+  property "new/2 always stores empty map as params" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen()
+          ) do
+      diff = Diff.new(action, interface)
+      assert diff.params == %{},
+             "Expected empty params from new/2, got: #{inspect(diff.params)}"
+    end
+  end
+
+  property "Diff.new/1 always creates a valid Diff struct" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert is_struct(diff, Diff),
+             "Expected Diff struct from Diff.new/1, got: #{inspect(diff)}"
+      assert diff.action == action,
+             "Expected action #{action}, got: #{inspect(diff.action)}"
+    end
+  end
 end

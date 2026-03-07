@@ -478,4 +478,22 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected ObservedState struct from new/0, got: #{inspect(state)}"
     end
   end
+
+  property "new/0 ObservedState is always equal to itself" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert state == state,
+             "Expected ObservedState to be equal to itself"
+    end
+  end
+
+  property "new/0 addresses values are always maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      for {_iface, addrs} <- state.addresses do
+        assert is_list(addrs),
+               "Expected list of addresses per interface, got: #{inspect(addrs)}"
+      end
+    end
+  end
 end

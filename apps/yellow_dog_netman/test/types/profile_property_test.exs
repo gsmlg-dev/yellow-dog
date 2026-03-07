@@ -748,4 +748,24 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected connection.id #{profile.id}, got: #{inspect(result["connection"]["id"])}"
     end
   end
+
+  property "to_toml result connection always has autoconnect key" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert Map.has_key?(result["connection"], "autoconnect"),
+             "Expected autoconnect key in to_toml connection, got: #{inspect(result["connection"])}"
+    end
+  end
+
+  property "from_toml result autoconnect field is always boolean" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert is_boolean(profile.autoconnect),
+                 "Expected boolean autoconnect, got: #{inspect(profile.autoconnect)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
 end
