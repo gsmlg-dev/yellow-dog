@@ -597,5 +597,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from profile.delete, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with any binary method returns map" do
+    check all(m <- StreamData.string(:ascii, min_length: 3, max_length: 20)) do
+      result = CLI.handle_command(%{"method" => m})
+      assert is_map(result),
+             "Expected map from any method, got: #{inspect(result)}"
+    end
+  end
 
 end

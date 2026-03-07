@@ -736,5 +736,23 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       end
     end
   end
+  property "EventBus topics with dots never crash subscribe" do
+    check all(
+            prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
+          ) do
+      topic = "#{prefix}.#{suffix}"
+      result =
+        try do
+          EventBus.subscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end
