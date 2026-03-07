@@ -1112,4 +1112,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert result == :ok
     end
   end
+  property "ReconciliationEngine process responds to alive check (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
 end

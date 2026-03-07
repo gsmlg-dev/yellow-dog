@@ -859,4 +859,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(s2)
     end
   end
+  property "ObservedState struct keys are always the expected ones (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      keys = state |> Map.from_struct() |> Map.keys() |> MapSet.new()
+      expected = MapSet.new([:links, :addresses, :routes])
+      assert MapSet.subset?(expected, keys)
+    end
+  end
 end

@@ -793,4 +793,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(exports, :dns_priority)
     end
   end
+  property "PolicyEngine module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.PolicyEngine.module_info(:module)
+      assert name == YellowDog.Netman.PolicyEngine
+    end
+  end
 end

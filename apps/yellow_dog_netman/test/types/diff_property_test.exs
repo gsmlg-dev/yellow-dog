@@ -735,4 +735,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.__struct__ == YellowDog.Netman.Types.Diff
     end
   end
+  property "Diff module exports new function (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Types.Diff.module_info(:exports)
+      assert Keyword.has_key?(exports, :new)
+    end
+  end
 end

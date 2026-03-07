@@ -1239,4 +1239,13 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "Profile from_toml always returns tagged tuple (r76)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

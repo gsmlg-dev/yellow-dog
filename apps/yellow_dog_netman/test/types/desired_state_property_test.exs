@@ -786,4 +786,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert s1 == s2
     end
   end
+  property "DesiredState module exports from_profiles function (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Types.DesiredState.module_info(:exports)
+      assert Keyword.has_key?(exports, :from_profiles)
+    end
+  end
 end
