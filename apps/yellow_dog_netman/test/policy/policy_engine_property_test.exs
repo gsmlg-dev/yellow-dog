@@ -385,4 +385,15 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected non-negative integer from effective_priority, got: #{inspect(priority)}"
     end
   end
+
+  property "route_metrics with single active connection always returns a map with one entry" do
+    check all(conn <- connection_gen()) do
+      active = [Map.put(conn, :state, :activated)]
+      metrics = PolicyEngine.route_metrics(active)
+      assert is_map(metrics),
+             "Expected map from route_metrics, got: #{inspect(metrics)}"
+      assert map_size(metrics) == 1,
+             "Expected 1 entry in route_metrics for single connection, got: #{inspect(metrics)}"
+    end
+  end
 end

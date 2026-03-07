@@ -754,4 +754,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected list from diff/2, got: #{inspect(result)}"
     end
   end
+
+  property "diff/2 with fully empty state always returns an empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = %DesiredState{connections: %{}}
+      observed = %ObservedState{links: %{}, addresses: %{}, routes: []}
+      result = ReconciliationEngine.diff(desired, observed)
+      assert result == [],
+             "Expected empty diff for fully empty state, got: #{inspect(result)}"
+    end
+  end
 end

@@ -469,4 +469,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "get for a never-added id always returns {:error, :not_found}" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      unique_id = "ps_never_#{seed}"
+      result = ProfileStore.get(unique_id)
+      assert result == {:error, :not_found},
+             "Expected {:error, :not_found} for unknown id, got: #{inspect(result)}"
+    end
+  end
 end
