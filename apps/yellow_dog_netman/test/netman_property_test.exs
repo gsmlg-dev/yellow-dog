@@ -536,4 +536,10 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(info)
     end
   end
+  property "Netman module has module_info/0 function (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
 end

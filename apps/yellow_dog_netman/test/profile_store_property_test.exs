@@ -752,4 +752,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+  property "ProfileStore list always returns a list (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result)
+    end
+  end
 end

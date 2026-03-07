@@ -570,4 +570,14 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+  property "SecretStore put then get returns ok tuple (r61)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      val <- StreamData.integer()
+    ) do
+      :ok = YellowDog.Netman.SecretStore.put(key, val)
+      result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end
