@@ -783,4 +783,18 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Process.alive?(pid), "Expected ReconciliationEngine to be alive"
     end
   end
+
+  property "diff/2 result elements are always Diff structs with known actions" do
+    check all(observed <- observed_state_gen()) do
+      desired = %DesiredState{connections: %{}}
+      diffs = ReconciliationEngine.diff(desired, observed)
+      known_actions = [:add_address, :remove_address, :add_route, :remove_route,
+                       :activate_connection, :deactivate_connection, :update_dns,
+                       :set_mtu, :set_link_up, :set_link_down]
+      for d <- diffs do
+        assert d.action in known_actions,
+               "Unknown action #{inspect(d.action)} in diff result"
+      end
+    end
+  end
 end

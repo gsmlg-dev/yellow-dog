@@ -413,4 +413,17 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected list from dns_priority, got: #{inspect(result)}"
     end
   end
+
+  property "route_metrics for two distinct connections produces two entries" do
+    check all(
+            seed1 <- StreamData.integer(1..49_999),
+            seed2 <- StreamData.integer(50_000..99_999)
+          ) do
+      conn1 = %{profile_id: "pe_a#{seed1}", priority: 100, state: :activated, interface: "eth0", type: :ethernet, autoconnect_priority: 100}
+      conn2 = %{profile_id: "pe_b#{seed2}", priority: 100, state: :activated, interface: "eth1", type: :ethernet, autoconnect_priority: 100}
+      metrics = PolicyEngine.route_metrics([conn1, conn2])
+      assert map_size(metrics) == 2,
+             "Expected 2 metric entries for 2 connections, got: #{inspect(metrics)}"
+    end
+  end
 end

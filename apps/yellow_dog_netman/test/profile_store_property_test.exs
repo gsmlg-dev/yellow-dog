@@ -496,4 +496,15 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Process.alive?(pid), "Expected ProfileStore to be alive"
     end
   end
+
+  property "list count does not decrease after put" do
+    check all(profile <- profile_gen()) do
+      before_count = length(ProfileStore.list())
+      ProfileStore.put(profile.id, profile)
+      after_count = length(ProfileStore.list())
+      assert after_count >= before_count,
+             "Expected count to not decrease after put: #{before_count} -> #{after_count}"
+      ProfileStore.delete(profile.id)
+    end
+  end
 end
