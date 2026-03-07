@@ -512,4 +512,28 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "list_neighbors contains duplicate (interface, address) pairs: #{inspect(keys)}"
     end
   end
+
+  property "get_neighbors result is always a subset of list_neighbors for that interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen()
+          ) do
+      send_neighbor_event(%{
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => "aa:bb:cc:dd:ee:ff",
+        "state" => "reachable"
+      })
+
+      per_iface = NeighborMonitor.get_neighbors(iface)
+      all_neighbors = NeighborMonitor.list_neighbors()
+      all_for_iface = Enum.filter(all_neighbors, &(&1.interface == iface))
+
+      for n <- per_iface do
+        assert Enum.any?(all_for_iface, &(&1 == n)),
+               "Neighbor #{inspect(n)} in get_neighbors but not in list_neighbors for #{iface}"
+      end
+    end
+  end
 end

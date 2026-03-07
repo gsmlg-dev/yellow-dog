@@ -301,4 +301,17 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected nil for fresh interface #{fresh_iface} after link_removed on never-added iface"
     end
   end
+
+  property "get_link result has :interface field matching the queried interface" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+
+      assert link.interface == iface,
+             "Expected link.interface == #{iface}, got: #{inspect(link.interface)}"
+    end
+  end
 end

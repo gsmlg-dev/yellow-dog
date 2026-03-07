@@ -408,4 +408,23 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "all routes in get_routes always have :interface matching the queried interface" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
+      Process.sleep(50)
+
+      routes = RouteManager.get_routes(iface)
+
+      for r <- routes do
+        assert r.interface == iface,
+               "Expected route.interface == #{iface}, got: #{inspect(r.interface)}"
+      end
+    end
+  end
 end
