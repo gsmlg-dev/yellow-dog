@@ -517,4 +517,27 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "put updates existing profile without duplicating" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+      count_after_first = length(ProfileStore.list())
+      ProfileStore.put(profile.id, profile)
+      count_after_second = length(ProfileStore.list())
+      assert count_after_first == count_after_second,
+             "Expected no duplicate after second put for #{profile.id}"
+      ProfileStore.delete(profile.id)
+    end
+  end
+
+  property "delete then put then get returns the newly put profile" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.delete(profile.id)
+      ProfileStore.put(profile.id, profile)
+      {:ok, fetched} = ProfileStore.get(profile.id)
+      assert fetched.id == profile.id,
+             "Expected re-put profile id #{profile.id}, got: #{inspect(fetched.id)}"
+      ProfileStore.delete(profile.id)
+    end
+  end
 end

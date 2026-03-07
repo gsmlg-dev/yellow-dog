@@ -332,4 +332,21 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected running: true in status, got: #{inspect(result[:running])}"
     end
   end
+
+  property "list_connections count does not change between two calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = length(Netman.list_connections())
+      c2 = length(Netman.list_connections())
+      assert c1 == c2,
+             "Expected consistent list_connections count: #{c1} vs #{c2}"
+    end
+  end
+
+  property "status always returns a map with :default_route key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.status()
+      assert Map.has_key?(result, :default_route),
+             "Expected :default_route key in status, got: #{inspect(Map.keys(result))}"
+    end
+  end
 end

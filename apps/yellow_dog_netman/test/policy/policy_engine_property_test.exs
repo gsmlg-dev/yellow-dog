@@ -434,4 +434,30 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected list from dns_priority, got: #{inspect(result)}"
     end
   end
+
+  property "effective_priority with higher autoconnect_priority returns higher value" do
+    check all(
+            p1 <- StreamData.integer(0..500),
+            p2 <- StreamData.integer(501..1000)
+          ) do
+      conn1 = %{autoconnect_priority: p1, type: :ethernet}
+      conn2 = %{autoconnect_priority: p2, type: :ethernet}
+      ep1 = PolicyEngine.effective_priority(conn1)
+      ep2 = PolicyEngine.effective_priority(conn2)
+      assert ep1 <= ep2,
+             "Expected conn with lower priority #{p1} to have ep <= conn with higher priority #{p2}: #{ep1} vs #{ep2}"
+    end
+  end
+
+  property "dns_priority with all connections having empty DNS always returns empty list" do
+    check all(
+            count <- StreamData.integer(1..5),
+            ids <- StreamData.list_of(StreamData.string(:alphanumeric, min_length: 1, max_length: 12), length: count)
+          ) do
+      conns = Enum.map(ids, fn id -> %{id: "empty_dns_#{id}", interface: "eth0", dns: [], priority: 100} end)
+      result = PolicyEngine.dns_priority(conns)
+      assert result == [],
+             "Expected empty dns_priority for zero-DNS connections, got: #{inspect(result)}"
+    end
+  end
 end
