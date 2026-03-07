@@ -798,4 +798,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert name == YellowDog.Netman.Types.DesiredState
     end
   end
+  property "DesiredState module attributes include vsn (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Types.DesiredState.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
 end

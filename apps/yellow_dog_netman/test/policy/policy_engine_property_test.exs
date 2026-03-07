@@ -806,4 +806,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result) or is_nil(result)
     end
   end
+  property "PolicyEngine module attributes include vsn (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.PolicyEngine.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
 end
