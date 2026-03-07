@@ -476,4 +476,20 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected :params key in Diff struct"
     end
   end
+
+  property "Diff.new/1 action is always one of the valid actions" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert diff.action in @actions,
+             "Expected action in @actions, got: #{inspect(diff.action)}"
+    end
+  end
+
+  property "Diff params is always an empty map for new/1" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert is_map(diff.params),
+             "Expected map for Diff.params, got: #{inspect(diff.params)}"
+    end
+  end
 end

@@ -823,4 +823,26 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected tagged tuple from from_toml(%{}), got: #{inspect(result)}"
     end
   end
+
+  property "Profile struct always has :ipv4 field" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert Map.has_key?(profile, :ipv4),
+                 "Expected :ipv4 key in Profile struct, got: #{inspect(Map.keys(profile))}"
+        {:error, _} -> :ok
+      end
+    end
+  end
+
+  property "Profile struct always has :ipv6 field" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert Map.has_key?(profile, :ipv6),
+                 "Expected :ipv6 key in Profile struct, got: #{inspect(Map.keys(profile))}"
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

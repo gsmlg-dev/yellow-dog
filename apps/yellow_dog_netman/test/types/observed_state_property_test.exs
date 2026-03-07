@@ -528,4 +528,22 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected :routes key in ObservedState.new/0 result"
     end
   end
+
+  property "ObservedState.new/0 always returns struct with :addresses key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert Map.has_key?(state, :addresses),
+             "Expected :addresses key in ObservedState.new/0 result"
+    end
+  end
+
+  property "ObservedState put_link/2 always returns updated state with the link" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      state = ObservedState.new()
+      link = %{interface: iface, index: 1, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}
+      updated = ObservedState.put_link(state, link)
+      assert Map.has_key?(updated.links, iface),
+             "Expected link to be stored in state, keys: #{inspect(Map.keys(updated.links))}"
+    end
+  end
 end
