@@ -353,4 +353,16 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected boolean from carrier?, got: #{inspect(result)}"
     end
   end
+
+  property "ethernet? and carrier? always agree: carrier true implies ethernet true" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_agree_#{seed}"
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      if Ethernet.carrier?(iface) do
+        assert Ethernet.ethernet?(iface),
+               "Expected ethernet? true when carrier? is true for #{iface}"
+      end
+    end
+  end
 end

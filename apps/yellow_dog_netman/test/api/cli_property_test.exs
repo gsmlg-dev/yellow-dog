@@ -374,4 +374,15 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from device command, got: #{inspect(result)}"
     end
   end
+
+  property "status command returns a result with version info" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result"),
+             "Expected result key in status, got: #{inspect(result)}"
+      status_map = result["result"]
+      assert is_map(status_map),
+             "Expected map in status result, got: #{inspect(status_map)}"
+    end
+  end
 end
