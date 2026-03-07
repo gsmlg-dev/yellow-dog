@@ -806,5 +806,21 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus subscribe and immediately unsubscribe never leaves junk" do
+    check all(n <- StreamData.integer(0..9999)) do
+      topic = "evb56_#{n}"
+      result =
+        try do
+          EventBus.subscribe(topic)
+          EventBus.unsubscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

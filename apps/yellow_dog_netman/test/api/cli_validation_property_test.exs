@@ -625,5 +625,15 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from status with list params, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with any binary key and string value returns map" do
+    check all(
+            k <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            v <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
+      result = CLI.handle_command(%{"method" => k <> "." <> v})
+      assert is_map(result),
+             "Expected map from compound method, got: #{inspect(result)}"
+    end
+  end
 
 end
