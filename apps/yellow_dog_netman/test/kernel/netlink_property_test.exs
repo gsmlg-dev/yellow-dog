@@ -428,4 +428,17 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "dispatched event payload is always a map" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      expected_atom = String.to_atom(event_type)
+      assert_receive {:netlink_event, {^expected_atom, payload}}, 500
+      assert is_map(payload),
+             "Expected map payload for #{event_type}, got: #{inspect(payload)}"
+    end
+  end
 end

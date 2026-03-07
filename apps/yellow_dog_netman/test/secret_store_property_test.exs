@@ -230,4 +230,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, nil) == :ok
     end
   end
+
+  property "get always returns {:error, :not_found} or {:ok, _} for any key" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 64)) do
+      result = SecretStore.get(key)
+      assert result == {:error, :not_found} or match?({:ok, _}, result),
+             "Expected {:error, :not_found} or {:ok, _} from get, got: #{inspect(result)}"
+    end
+  end
 end

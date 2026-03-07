@@ -333,4 +333,16 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected atom action, got: #{inspect(diff.action)}"
     end
   end
+
+  property "interface field is always a binary string" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert is_binary(diff.interface),
+             "Expected binary interface, got: #{inspect(diff.interface)}"
+    end
+  end
 end
