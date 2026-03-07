@@ -575,5 +575,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected interface to be #{iface}, got: #{inspect(diff.interface)}"
     end
   end
+  property "Diff action field matches the action passed to new/1" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert diff.action == action,
+             "Expected action=#{action}, got: #{inspect(diff.action)}"
+    end
+  end
 
 end

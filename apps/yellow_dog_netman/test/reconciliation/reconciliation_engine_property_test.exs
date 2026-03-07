@@ -959,5 +959,13 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected non-empty function list"
     end
   end
+  property "ReconciliationEngine process stays alive across repeated checks" do
+    check all(n <- StreamData.integer(1..3)) do
+      for _ <- 1..n do
+        pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+        assert is_pid(pid) and Process.alive?(pid)
+      end
+    end
+  end
 
 end

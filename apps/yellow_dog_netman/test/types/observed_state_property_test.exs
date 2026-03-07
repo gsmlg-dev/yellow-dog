@@ -648,5 +648,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected :links field in ObservedState"
     end
   end
+  property "ObservedState addresses field is always map or list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert is_map(state.addresses) or is_list(state.addresses),
+             "Expected map or list for addresses, got: #{inspect(state.addresses)}"
+    end
+  end
 
 end

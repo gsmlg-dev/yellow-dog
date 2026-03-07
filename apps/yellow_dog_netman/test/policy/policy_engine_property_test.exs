@@ -609,5 +609,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected map or list from route_metrics, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine default_route with empty list always returns :none" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none,
+             "Expected :none from default_route([]), got: #{inspect(result)}"
+    end
+  end
 
 end
