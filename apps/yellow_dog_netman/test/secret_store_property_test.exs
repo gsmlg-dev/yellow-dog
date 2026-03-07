@@ -271,4 +271,20 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Unexpected result from put with integer key: #{inspect(result)}"
     end
   end
+
+  property "put with float key does not raise" do
+    check all(key_float <- StreamData.float()) do
+      result =
+        try do
+          SecretStore.put(key_float, "value")
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Unexpected result from put with float key: #{inspect(result)}"
+    end
+  end
 end

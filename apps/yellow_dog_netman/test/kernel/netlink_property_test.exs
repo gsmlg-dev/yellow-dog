@@ -485,4 +485,17 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_map(payload), "Expected map payload, got: #{inspect(payload)}"
     end
   end
+
+  property "subscribing multiple times from same process receives event once" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      expected_atom = String.to_atom(event_type)
+      assert_receive {:netlink_event, {^expected_atom, _}}, 500
+      refute_receive {:netlink_event, _}, 50
+    end
+  end
 end

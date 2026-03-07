@@ -383,4 +383,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected atom key #{inspect(key)} in params, got: #{inspect(diff.params)}"
     end
   end
+
+  property "Diff.new always produces a struct with the correct action" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert diff.action == action,
+             "Expected action #{inspect(action)}, got: #{inspect(diff.action)}"
+    end
+  end
 end
