@@ -496,4 +496,20 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       end
     end
   end
+
+  property "new/0 routes is always a list on fresh state" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert is_list(state.routes),
+             "Expected list routes in ObservedState.new/0, got: \#{inspect(state.routes)}"
+    end
+  end
+
+  property "new/0 addresses map is always empty on fresh state" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert state.addresses == %{},
+             "Expected empty addresses map in ObservedState.new/0, got: #{inspect(state.addresses)}"
+    end
+  end
 end

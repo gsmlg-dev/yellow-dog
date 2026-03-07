@@ -768,4 +768,32 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "from_toml result type is always a known atom" do
+    known_types = [:ethernet, :wifi, :cellular, :vpn, :loopback]
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert profile.type in known_types,
+                 "Expected known type, got: \#{inspect(profile.type)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
+
+  property "to_toml then from_toml preserves profile id" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          toml2 = Profile.to_toml(profile)
+          case Profile.from_toml(toml2) do
+            {:ok, restored} ->
+              assert restored.id == profile.id,
+                     "Expected profile id preserved in round-trip"
+            {:error, _} -> :ok
+          end
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

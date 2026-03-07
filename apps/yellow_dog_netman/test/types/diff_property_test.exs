@@ -433,4 +433,25 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected action #{action}, got: #{inspect(diff.action)}"
     end
   end
+
+  property "Diff with set_mtu action and integer param always creates valid struct" do
+    check all(mtu <- StreamData.integer(68..65535)) do
+      diff = Diff.new(:set_mtu, "eth0", %{mtu: mtu})
+      assert is_struct(diff, Diff),
+             "Expected Diff struct, got: \#{inspect(diff)}"
+      assert diff.action == :set_mtu
+      assert diff.params.mtu == mtu
+    end
+  end
+
+  property "Diff with add_address action always creates a valid struct" do
+    check all(
+            iface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(:add_address, iface, params)
+      assert is_struct(diff, Diff)
+      assert diff.action == :add_address
+    end
+  end
 end
