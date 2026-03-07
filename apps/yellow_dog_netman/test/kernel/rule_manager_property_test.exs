@@ -1035,4 +1035,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert length(fns) >= 2
     end
   end
+
+  property "rule_manager all attribute keys are atoms (r99)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
+    end
+  end
 end

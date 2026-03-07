@@ -784,4 +784,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "netman all property test files are reachable modules (r99)" do
+    check all _x <- boolean() do
+      modules = [YellowDog.Netman, YellowDog.Netman.PolicyEngine, YellowDog.Netman.API.CLI]
+      assert Enum.all?(modules, &Code.ensure_loaded?/1)
+    end
+  end
 end

@@ -1280,4 +1280,15 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
     end
   end
+
+  property "reconciliation_engine all reachable modules loaded (r99)" do
+    check all _x <- boolean() do
+      modules = [
+        YellowDog.Netman.ReconciliationEngine,
+        YellowDog.Netman.Kernel.AddressManager,
+        YellowDog.Netman.Kernel.RouteManager
+      ]
+      assert Enum.all?(modules, &Code.ensure_loaded?/1)
+    end
+  end
 end

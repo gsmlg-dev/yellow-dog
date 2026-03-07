@@ -1341,4 +1341,11 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Keyword.get(fns, :deactivate) == 1
     end
   end
+
+  property "fsm get_state arity is 1 (r99)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert Keyword.get(fns, :get_state) == 1
+    end
+  end
 end

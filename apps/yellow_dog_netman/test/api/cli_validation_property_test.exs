@@ -956,4 +956,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.API.CLI)
     end
   end
+
+  property "cli validation handle_command accepts empty list (r99)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command([])
+      assert not is_nil(result)
+    end
+  end
 end

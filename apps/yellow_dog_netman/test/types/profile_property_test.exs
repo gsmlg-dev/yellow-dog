@@ -1430,4 +1430,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml returns struct with expected keys on success (r99)" do
+    check all id <- string(:alphanumeric, min_length: 1) do
+      case Profile.from_toml(%{"id" => id}) do
+        {:ok, p} ->
+          assert Map.has_key?(p, :id)
+          assert Map.has_key?(p, :ipv4)
+          assert Map.has_key?(p, :ipv6)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end

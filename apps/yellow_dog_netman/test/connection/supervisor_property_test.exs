@@ -942,4 +942,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
+  property "connection supervisor start_link arity is 1 (r99)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Keyword.get(fns, :start_link) == 1
+    end
+  end
 end

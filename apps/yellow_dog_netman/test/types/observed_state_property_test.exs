@@ -1039,4 +1039,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s2.links == %{}
     end
   end
+
+  property "observed_state new has all expected fields (r99)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert Map.has_key?(state, :links)
+      assert Map.has_key?(state, :routes)
+      assert Map.has_key?(state, :addresses)
+    end
+  end
 end

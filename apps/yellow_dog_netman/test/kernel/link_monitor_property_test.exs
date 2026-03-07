@@ -915,4 +915,11 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert length(fns) >= 2
     end
   end
+
+  property "link_monitor all attribute keys are atoms (r99)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.LinkMonitor.__info__(:attributes)
+      assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
+    end
+  end
 end

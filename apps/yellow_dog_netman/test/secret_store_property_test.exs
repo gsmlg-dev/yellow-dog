@@ -890,4 +890,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
     end
   end
+
+  property "secret_store put is safe for edge case key (r99)" do
+    check all key <- member_of(["a", "b", "c_key", "test99"]) do
+      result = YellowDog.Netman.SecretStore.put(key, "test")
+      assert result == :ok
+    end
+  end
 end

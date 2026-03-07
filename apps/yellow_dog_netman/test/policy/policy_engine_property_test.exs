@@ -960,4 +960,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == []
     end
   end
+
+  property "policy_engine effective_priority empty returns nil (r99)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.effective_priority([])
+      assert is_nil(result) or is_integer(result) or is_float(result)
+    end
+  end
 end

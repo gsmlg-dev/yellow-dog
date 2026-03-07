@@ -1152,4 +1152,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Keyword.get(fns, :list_neighbors) == 0
     end
   end
+
+  property "neighbor_monitor start_link arity is 1 (r99)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+      assert Keyword.get(fns, :start_link) == 1
+    end
+  end
 end

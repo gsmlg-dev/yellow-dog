@@ -874,4 +874,13 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_nil(m) or is_integer(m)
     end
   end
+
+  property "ethernet functions all have arity 1 (r99)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert Keyword.get(fns, :ethernet?) == 1
+      assert Keyword.get(fns, :carrier?) == 1
+      assert Keyword.get(fns, :mtu) == 1
+    end
+  end
 end

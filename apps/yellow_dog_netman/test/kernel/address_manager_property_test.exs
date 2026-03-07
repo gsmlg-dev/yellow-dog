@@ -1036,4 +1036,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(result, fn {_k, v} -> length(v) >= 0 end)
     end
   end
+
+  property "address_manager list_all called twice same count (r99)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.Kernel.AddressManager.list_all()
+      r2 = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert map_size(r1) == map_size(r2)
+    end
+  end
 end

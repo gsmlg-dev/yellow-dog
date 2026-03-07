@@ -899,4 +899,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Map.has_key?(d, :action) or Map.has_key?(d, :type) or map_size(d) > 0
     end
   end
+
+  property "diff @actions does not include handle_call or handle_cast (r99)" do
+    check all _x <- boolean() do
+      refute :handle_call in @actions
+      refute :handle_cast in @actions
+      refute :init in @actions
+    end
+  end
 end

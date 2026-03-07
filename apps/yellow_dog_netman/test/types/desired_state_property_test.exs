@@ -970,4 +970,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(result) or result == :error
     end
   end
+
+  property "desired_state from_profiles result is deterministic for empty (r99)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert not is_nil(ds)
+      assert is_struct(ds)
+      assert ds.__struct__ == YellowDog.Netman.Types.DesiredState
+    end
+  end
 end

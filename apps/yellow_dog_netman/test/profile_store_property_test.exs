@@ -1034,4 +1034,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
     end
   end
+
+  property "profile_store list returns list (r99)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result)
+    end
+  end
 end
