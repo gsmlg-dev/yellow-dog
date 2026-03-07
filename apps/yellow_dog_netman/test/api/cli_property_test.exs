@@ -761,4 +761,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_tuple(result) or is_atom(result) or is_map(result)
     end
   end
+
+  property "cli handle_command with profile list returns non-nil (r80)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["profile", "list"])
+      assert not is_nil(result)
+    end
+  end
 end

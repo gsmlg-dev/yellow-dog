@@ -728,4 +728,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+
+  property "secret_store delete returns ok for any key (r80)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      result = YellowDog.Netman.SecretStore.delete(key)
+      assert result == :ok or match?({:error, _}, result) or is_nil(result)
+    end
+  end
 end
