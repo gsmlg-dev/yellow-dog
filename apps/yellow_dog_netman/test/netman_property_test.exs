@@ -523,5 +523,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected Ethernet to be loaded"
     end
   end
+  property "Netman Connection.Supervisor module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.Supervisor),
+             "Expected Supervisor to be loaded"
+    end
+  end
 
 end

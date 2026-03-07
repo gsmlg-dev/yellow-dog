@@ -737,5 +737,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "ProfileStore list and list again return consistent results (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      l1 = YellowDog.Netman.ProfileStore.list()
+      l2 = YellowDog.Netman.ProfileStore.list()
+      assert length(l1) == length(l2),
+             "Expected stable list count"
+    end
+  end
 
 end
