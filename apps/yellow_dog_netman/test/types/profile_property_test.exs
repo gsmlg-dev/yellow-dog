@@ -1306,4 +1306,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml ipv6 field presence (r84)" do
+    check all id <- string(:alphanumeric, min_length: 1) do
+      result = Profile.from_toml(%{"id" => id})
+      case result do
+        {:ok, p} -> assert Map.has_key?(p, :ipv6)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end

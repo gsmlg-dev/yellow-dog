@@ -788,4 +788,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert to_string(a) =~ ~r/^[a-z_]+$/
     end
   end
+
+  property "diff actions do not include unknown atoms (r84)" do
+    check all a <- action_gen() do
+      refute a == :unknown_action
+      refute a == :noop
+      refute a == :none
+    end
+  end
 end

@@ -756,4 +756,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert result == true
     end
   end
+
+  property "ethernet ethernet? is idempotent for same input (r84)" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      r1 = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
+      r2 = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
+      assert r1 == r2
+    end
+  end
 end

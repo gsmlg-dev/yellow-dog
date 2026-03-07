@@ -922,4 +922,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert result == true
     end
   end
+
+  property "address_manager list_all is stable across calls (r84)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.Kernel.AddressManager.list_all()
+      r2 = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert map_size(r1) == map_size(r2)
+    end
+  end
 end

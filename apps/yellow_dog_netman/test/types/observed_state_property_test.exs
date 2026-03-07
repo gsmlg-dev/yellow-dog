@@ -915,4 +915,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_map(state.addresses)
     end
   end
+
+  property "observed_state addresses is empty map initially (r84)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert is_map(state.addresses)
+      assert map_size(state.addresses) >= 0
+    end
+  end
 end

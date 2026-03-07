@@ -761,4 +761,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == true
     end
   end
+
+  property "secret_store put is idempotent (r84)" do
+    check all key <- string(:alphanumeric, min_length: 1),
+              val <- string(:alphanumeric) do
+      r1 = YellowDog.Netman.SecretStore.put(key, val)
+      r2 = YellowDog.Netman.SecretStore.put(key, val)
+      assert r1 == r2
+    end
+  end
 end

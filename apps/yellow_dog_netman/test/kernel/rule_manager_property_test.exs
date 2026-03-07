@@ -922,4 +922,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert result == true
     end
   end
+
+  property "rule_manager module has consistent info (r84)" do
+    check all _x <- boolean() do
+      fns1 = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      fns2 = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert fns1 == fns2
+    end
+  end
 end

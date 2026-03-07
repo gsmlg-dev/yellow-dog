@@ -1061,4 +1061,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == true
     end
   end
+
+  property "event_bus broadcast is idempotent on same topic (r84)" do
+    check all topic <- string(:alphanumeric, min_length: 1) do
+      r1 = YellowDog.Netman.EventBus.broadcast(topic, :test)
+      r2 = YellowDog.Netman.EventBus.broadcast(topic, :test)
+      assert r1 == r2 or (r1 == :ok and r2 == :ok)
+    end
+  end
 end

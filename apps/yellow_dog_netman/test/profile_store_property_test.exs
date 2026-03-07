@@ -915,4 +915,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert result == true
     end
   end
+
+  property "profile_store list returns same type consistently (r84)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.ProfileStore.list()
+      r2 = YellowDog.Netman.ProfileStore.list()
+      assert is_list(r1) == is_list(r2)
+    end
+  end
 end

@@ -667,4 +667,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert result == true
     end
   end
+
+  property "netman module has consistent info (r84)" do
+    check all _x <- boolean() do
+      fns1 = YellowDog.Netman.__info__(:functions)
+      fns2 = YellowDog.Netman.__info__(:functions)
+      assert fns1 == fns2
+    end
+  end
 end

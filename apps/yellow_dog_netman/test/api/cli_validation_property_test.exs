@@ -832,4 +832,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert result == true
     end
   end
+
+  property "cli validation module has handle_command function (r84)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      assert Keyword.has_key?(fns, :handle_command)
+    end
+  end
 end

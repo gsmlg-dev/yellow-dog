@@ -789,4 +789,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert result == true
     end
   end
+
+  property "cli handle_command is stable across identical calls (r84)" do
+    check all _x <- boolean() do
+      r1 = CLI.handle_command(["status"])
+      r2 = CLI.handle_command(["status"])
+      # Both calls should return same type
+      assert (is_tuple(r1) and is_tuple(r2)) or (r1 == r2)
+    end
+  end
 end

@@ -1221,4 +1221,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert result == true
     end
   end
+
+  property "fsm module has consistent info (r84)" do
+    check all _x <- boolean() do
+      fns1 = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      fns2 = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert fns1 == fns2
+    end
+  end
 end
