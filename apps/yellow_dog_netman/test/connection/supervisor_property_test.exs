@@ -500,4 +500,44 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "find_connection for unknown interface always returns :error" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      unknown = "never_started_#{seed}"
+      assert ConnSupervisor.find_connection(unknown) == :error,
+             "Expected :error for unknown interface #{unknown}"
+    end
+  end
+
+  property "start_connection with valid profile and interface returns {:ok, pid}" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 5) do
+      iface = "csp_start_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      result = ConnSupervisor.start_connection(iface, profile)
+      assert match?({:ok, _}, result) or match?({:error, :already_started}, result),
+             "Expected {:ok, pid} or :already_started, got: #{inspect(result)}"
+      ConnSupervisor.stop_connection(iface)
+    end
+  end
+
+  property "list_connections result maps all have :state key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+      for conn <- connections do
+        assert Map.has_key?(conn, :state),
+               "Expected :state key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
+
+  property "list_connections never raises during concurrent reads" do
+    check all(_ <- StreamData.constant(:ok)) do
+      tasks = for _ <- 1..3, do: Task.async(fn -> ConnSupervisor.list_connections() end)
+      results = Task.await_many(tasks, 5_000)
+      assert Enum.all?(results, &is_list/1),
+             "Expected all concurrent list_connections to return lists"
+    end
+  end
 end

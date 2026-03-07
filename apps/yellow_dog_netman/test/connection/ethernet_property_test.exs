@@ -396,4 +396,46 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected carrier? false for #{iface} with carrier: false"
     end
   end
+
+  property "ethernet? always returns a boolean for any registered interface" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_bool_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      result = Ethernet.ethernet?(iface)
+      assert is_boolean(result),
+             "Expected boolean from ethernet? for #{iface}"
+    end
+  end
+
+  property "carrier? returns a boolean for registered interface" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_cs_#{seed}"
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      result = Ethernet.carrier?(iface)
+      assert is_boolean(result),
+             "Expected boolean from carrier? for #{iface}, got: #{inspect(result)}"
+    end
+  end
+
+  property "ethernet? is consistent for the same interface across calls" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_cons_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      result1 = Ethernet.ethernet?(iface)
+      result2 = Ethernet.ethernet?(iface)
+      assert result1 == result2,
+             "Expected consistent ethernet? result for #{iface}: #{result1} vs #{result2}"
+    end
+  end
+
+  property "list_ethernet_interfaces never raises for any call" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Ethernet.list_ethernet_interfaces()
+      assert is_list(result),
+             "Expected list from list_ethernet_interfaces, got: \#{inspect(result)}"
+    end
+  end
 end

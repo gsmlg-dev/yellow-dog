@@ -812,4 +812,61 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM profile_id in state matches the profile id" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 10) do
+      iface = "fsm_pid_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state_map} = FSM.get_state(pid)
+      assert state_map.profile_id == profile.id,
+             "Expected profile_id #{profile.id}, got #{inspect(state_map.profile_id)}"
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "FSM interface in state matches the iface argument" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 10) do
+      iface = "fsm_iface_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state_map} = FSM.get_state(pid)
+      assert state_map.interface == iface,
+             "Expected interface #{iface}, got #{inspect(state_map.interface)}"
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "FSM state map always contains interface and profile_id" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 10) do
+      iface = "fsm_both_#{seed}"
+      profile = make_profile(iface)
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state_map} = FSM.get_state(pid)
+      assert Map.has_key?(state_map, :interface),
+             "Expected :interface key in FSM state"
+      assert Map.has_key?(state_map, :profile_id),
+             "Expected :profile_id key in FSM state"
+      GenServer.stop(pid, :normal)
+    end
+  end
+
+  property "FSM get_state returns map with :autoconnect_priority key" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_ac_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      {:ok, pid} = FSM.start_link(interface: iface, profile_id: "p_#{seed}", type: :ethernet)
+      {:ok, state} = FSM.get_state(pid)
+      assert Map.has_key?(state, :autoconnect_priority),
+             "Expected :autoconnect_priority in FSM state, got: \#{inspect(Map.keys(state))}"
+      GenServer.stop(pid)
+    end
+  end
 end
