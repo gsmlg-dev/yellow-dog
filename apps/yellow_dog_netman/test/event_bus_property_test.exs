@@ -553,4 +553,33 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok from publish with nil message, got: #{inspect(result)}"
     end
   end
+
+  property "publish to two different topics does not cross-deliver" do
+    check all(
+            prefix1 <- topic_segment(),
+            prefix2 <- topic_segment(),
+            prefix1 != prefix2,
+            message1 <- term(),
+            message2 <- term()
+          ) do
+      topic1 = "cross_t1:#{prefix1}"
+      topic2 = "cross_t2:#{prefix2}"
+      {:ok, _} = EventBus.subscribe(topic1)
+      EventBus.publish(topic2, message2)
+      refute_receive {:event_bus, ^topic2, _}, 200
+      EventBus.unsubscribe(topic1)
+    end
+  end
+
+  property "subscribe and unsubscribe never crashes" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      topic = "loop_sub_#{seed}"
+      result1 = EventBus.subscribe(topic)
+      result2 = EventBus.unsubscribe(topic)
+      assert match?({:ok, _}, result1) or result1 == :ok or is_nil(result1),
+             "Expected ok-ish from subscribe, got: #{inspect(result1)}"
+      assert result2 == :ok or is_nil(result2),
+             "Expected :ok from unsubscribe, got: #{inspect(result2)}"
+    end
+  end
 end

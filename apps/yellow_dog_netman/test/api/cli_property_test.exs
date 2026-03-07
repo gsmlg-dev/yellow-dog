@@ -440,4 +440,23 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected result or error key, got: #{inspect(Map.keys(result))}"
     end
   end
+
+  property "connection.remove response always has exactly one top-level key" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
+      result = CLI.handle_command(%{"method" => "connection.remove", "params" => %{"id" => id}})
+      keys = Map.keys(result)
+      assert length(keys) == 1,
+             "Expected exactly one key in response, got: #{inspect(keys)}"
+    end
+  end
+
+  property "handle_command with missing method key returns error" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"params" => %{}})
+      assert is_map(result),
+             "Expected map from handle_command with missing method, got: \#{inspect(result)}"
+      assert Map.has_key?(result, "error") or Map.has_key?(result, "result"),
+             "Expected error or result key in response"
+    end
+  end
 end

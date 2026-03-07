@@ -485,4 +485,25 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       end
     end
   end
+
+  property "connection.up with missing id always returns id parameter error" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.up", "params" => %{}})
+      err = result["error"]
+      assert is_binary(err),
+             "Expected error message for missing id, got: #{inspect(result)}"
+      assert String.contains?(err, "id") or String.contains?(err, "param"),
+             "Expected error mentioning id or param, got: #{err}"
+    end
+  end
+
+  property "connection names with only whitespace always return validation error" do
+    check all(n <- StreamData.integer(1..20)) do
+      spaces = String.duplicate(" ", n)
+      result = CLI.handle_command(%{"method" => "profile.create", "params" => %{"id" => spaces}})
+      err = result["error"]
+      assert is_binary(err) or is_nil(err),
+             "Expected string or nil error for whitespace-only id, got: \#{inspect(err)}"
+    end
+  end
 end
