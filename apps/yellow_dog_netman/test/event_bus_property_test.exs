@@ -349,4 +349,28 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "wildcard subscription receives events from multiple matching sub-topics" do
+    check all(
+            prefix <- topic_segment(),
+            suffix1 <- topic_segment(),
+            suffix2 <- topic_segment(),
+            suffix1 != suffix2,
+            msg1 <- term(),
+            msg2 <- term()
+          ) do
+      wildcard = "wld_multi:#{prefix}:*"
+      topic1 = "wld_multi:#{prefix}:#{suffix1}"
+      topic2 = "wld_multi:#{prefix}:#{suffix2}"
+
+      {:ok, _} = EventBus.subscribe(wildcard)
+      EventBus.publish(topic1, msg1)
+      EventBus.publish(topic2, msg2)
+
+      assert_receive {:netman_event, ^topic1, ^msg1}, 200
+      assert_receive {:netman_event, ^topic2, ^msg2}, 200
+
+      EventBus.unsubscribe(wildcard)
+    end
+  end
 end

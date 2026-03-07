@@ -375,4 +375,21 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
     end
   end
+
+  property "two sequential events of same type are both received in order" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+
+      tag1 = unique_tag()
+      tag2 = unique_tag()
+      expected_atom = String.to_atom(event_type)
+
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag1}})
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag2}})
+
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag1}}}, 500
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag2}}}, 500
+    end
+  end
 end
