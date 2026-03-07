@@ -731,4 +731,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with any known method always returns map (r76)" do
+    check all(
+      method <- StreamData.member_of(["connection.list", "profile.list", "secret.list",
+                                      "status", "device.list", "monitor"])
+    ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result)
+    end
+  end
 end

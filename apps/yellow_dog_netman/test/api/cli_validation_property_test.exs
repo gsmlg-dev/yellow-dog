@@ -776,4 +776,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
     end
   end
+  property "CLI handle_command result is always JSON encodable (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.list"})
+      encoded = Jason.encode(result)
+      assert match?({:ok, _}, encoded)
+    end
+  end
 end

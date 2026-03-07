@@ -1004,4 +1004,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_pid(parent)
     end
   end
+  property "EventBus module info has correct module name (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.EventBus.module_info(:module)
+      assert name == YellowDog.Netman.EventBus
+    end
+  end
 end
