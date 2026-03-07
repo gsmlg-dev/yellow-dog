@@ -518,4 +518,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected different actions in different Diffs"
     end
   end
+  property "Diff struct action field is always a known action" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert diff.action == action,
+             "Expected action \#{inspect(action)}, got: \#{inspect(diff.action)}"
+    end
+  end
+
 end

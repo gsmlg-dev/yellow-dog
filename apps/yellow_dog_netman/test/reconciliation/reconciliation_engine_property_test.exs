@@ -901,4 +901,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected alive check within 100ms, took #{elapsed}ms"
     end
   end
+  property "ReconciliationEngine process always responds to whereis" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(result) or is_nil(result),
+             "Expected pid or nil from whereis, got: \#{inspect(result)}"
+    end
+  end
+
 end

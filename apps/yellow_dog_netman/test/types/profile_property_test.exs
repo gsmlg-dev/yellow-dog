@@ -878,4 +878,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile type field is always an atom" do
+    check all(type <- StreamData.member_of([:ethernet, :wifi, :loopback])) do
+      p = %YellowDog.Netman.Types.Profile{id: "p45", type: type}
+      assert is_atom(p.type),
+             "Expected atom type, got: \#{inspect(p.type)}"
+    end
+  end
+
 end

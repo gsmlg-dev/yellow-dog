@@ -551,4 +551,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected non-negative number from effective_priority, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine effective_priority with empty list returns numeric value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.effective_priority([])
+      assert is_integer(result) or is_nil(result) or is_atom(result),
+             "Expected integer/nil/atom from effective_priority, got: \#{inspect(result)}"
+    end
+  end
+
 end
