@@ -598,4 +598,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected list from get_neighbors, got: #{inspect(result)}"
     end
   end
+
+  property "neighbor count for any interface is always a non-negative integer" do
+    check all(iface <- iface_gen()) do
+      count = length(NeighborMonitor.get_neighbors(iface))
+      assert is_integer(count) and count >= 0,
+             "Expected non-negative neighbor count for #{iface}, got: #{count}"
+    end
+  end
 end

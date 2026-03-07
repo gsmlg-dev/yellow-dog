@@ -477,4 +477,27 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "list_rules has duplicate priorities: #{inspect(priorities)}"
     end
   end
+
+  property "unknown action in rule event does not add any new rule" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen(),
+            unknown_action <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+              |> StreamData.filter(&(&1 not in ["add", "del"]))
+          ) do
+      before_count = length(RuleManager.list_rules())
+
+      send_rule_event(%{
+        "action" => unknown_action,
+        "priority" => priority,
+        "table" => table
+      })
+
+      after_count = length(RuleManager.list_rules())
+
+      assert after_count == before_count,
+             "Unknown action '#{unknown_action}' changed rule count: #{before_count} -> #{after_count}"
+    end
+  end
 end

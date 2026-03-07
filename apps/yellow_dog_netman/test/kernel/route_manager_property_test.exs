@@ -487,4 +487,25 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected list from get_routes, got: #{inspect(result)}"
     end
   end
+
+  property "added route always appears in both get_routes and list_all" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
+      Process.sleep(50)
+
+      per_iface = RouteManager.get_routes(iface)
+      all_routes = RouteManager.list_all()
+
+      assert Enum.any?(per_iface, &(&1.destination == dest and &1.gateway == gw)),
+             "Route #{dest} via #{gw} not found in get_routes(#{iface})"
+
+      assert Enum.any?(all_routes, &(&1.destination == dest and &1.gateway == gw and &1.interface == iface)),
+             "Route #{dest} via #{gw} on #{iface} not found in list_all"
+    end
+  end
 end
