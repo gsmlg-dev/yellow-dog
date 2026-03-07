@@ -879,5 +879,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected nil/map/list for lo, got: #{inspect(result)}"
     end
   end
+  property "NeighborMonitor module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor),
+             "Expected NeighborMonitor module to be loaded"
+    end
+  end
 
 end

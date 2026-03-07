@@ -729,5 +729,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       refute is_nil(pid), "Expected non-nil pid from whereis"
     end
   end
+  property "Netlink module_info always lists module key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Kernel.Netlink.module_info()
+      assert Keyword.has_key?(info, :module),
+             "Expected :module key in module_info"
+    end
+  end
 
 end

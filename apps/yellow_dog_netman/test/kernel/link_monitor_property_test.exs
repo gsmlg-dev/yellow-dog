@@ -639,5 +639,11 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "LinkMonitor module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.LinkMonitor),
+             "Expected LinkMonitor module to be loaded"
+    end
+  end
 
 end

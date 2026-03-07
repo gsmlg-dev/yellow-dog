@@ -761,5 +761,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected list from list_routes for lo (r56)"
     end
   end
+  property "RouteManager module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RouteManager),
+             "Expected RouteManager module to be loaded"
+    end
+  end
 
 end

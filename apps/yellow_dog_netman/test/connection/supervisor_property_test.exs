@@ -664,5 +664,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       refute is_nil(info), "Expected non-nil module_info"
     end
   end
+  property "ConnSupervisor module info has :module key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Supervisor.module_info()
+      assert Keyword.has_key?(info, :module),
+             "Expected :module key in module_info"
+    end
+  end
 
 end

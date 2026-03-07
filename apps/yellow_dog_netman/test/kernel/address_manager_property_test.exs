@@ -763,5 +763,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+  property "AddressManager module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.AddressManager),
+             "Expected AddressManager module to be loaded"
+    end
+  end
 
 end

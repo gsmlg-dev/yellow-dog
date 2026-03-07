@@ -1055,5 +1055,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       refute is_nil(info), "Expected non-nil module_info"
     end
   end
+  property "FSM module info has :module key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.FSM.module_info()
+      assert Keyword.has_key?(info, :module),
+             "Expected :module key in module_info"
+    end
+  end
 
 end
