@@ -451,4 +451,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected empty links map in new ObservedState, got: #{inspect(state.links)}"
     end
   end
+
+  property "new/0 always creates a struct where routes is an empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert is_list(state.routes) and state.routes == [],
+             "Expected empty routes list, got: #{inspect(state.routes)}"
+    end
+  end
 end

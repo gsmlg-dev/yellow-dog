@@ -425,4 +425,14 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected DesiredState struct, got: #{inspect(result)}"
     end
   end
+
+  property "from_profiles result connections size equals unique profile id count" do
+    check all(profiles <- list_of(profile_gen(), min_length: 1, max_length: 3)) do
+      pairs = Enum.map(profiles, &{&1, "ds_iface_#{:erlang.unique_integer([:positive])}"})
+      desired = DesiredState.from_profiles(pairs)
+      expected_count = pairs |> Enum.map(fn {p, _} -> p.id end) |> Enum.uniq() |> length()
+      assert map_size(desired.connections) == expected_count,
+             "Expected #{expected_count} connections, got #{map_size(desired.connections)}"
+    end
+  end
 end

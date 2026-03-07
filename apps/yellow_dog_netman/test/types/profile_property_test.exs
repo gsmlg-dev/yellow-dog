@@ -710,4 +710,19 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected :method key in ipv4 map"
     end
   end
+
+  property "from_toml interface field when present matches toml connection interface" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          conn_iface = get_in(toml, ["connection", "interface"])
+          if is_binary(conn_iface) and byte_size(conn_iface) > 0 do
+            assert profile.interface == conn_iface,
+                   "Expected interface #{inspect(conn_iface)}, got: #{inspect(profile.interface)}"
+          end
+        {:error, _} ->
+          :ok
+      end
+    end
+  end
 end
