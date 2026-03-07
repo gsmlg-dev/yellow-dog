@@ -310,4 +310,19 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected positive integer or nil mtu after link_up, got: #{inspect(result)}"
     end
   end
+
+  property "link_up twice with same mtu still returns that mtu" do
+    check all(
+            iface <- iface_gen(),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      MockNetlink.link_up(iface, mtu: mtu)
+      Process.sleep(30)
+      MockNetlink.link_up(iface, mtu: mtu)
+      Process.sleep(50)
+
+      assert Ethernet.mtu(iface) == mtu,
+             "Expected mtu #{mtu} after two identical link_up calls on #{iface}"
+    end
+  end
 end

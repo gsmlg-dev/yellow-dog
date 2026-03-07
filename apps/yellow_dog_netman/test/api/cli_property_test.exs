@@ -330,4 +330,17 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected list in device.list result, got: #{inspect(result)}"
     end
   end
+
+  property "connection.list result always contains maps with id and type fields" do
+    check all(_ <- StreamData.constant(:ok)) do
+      %{"result" => list} = CLI.handle_command(%{"method" => "connection.list"})
+      assert is_list(list)
+
+      for item <- list do
+        assert is_map(item), "Expected map in connection.list result"
+        assert Map.has_key?(item, "id"), "connection.list item missing 'id'"
+        assert Map.has_key?(item, "type"), "connection.list item missing 'type'"
+      end
+    end
+  end
 end
