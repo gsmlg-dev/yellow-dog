@@ -732,5 +732,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+  property "AddressManager module exports list_all function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert {:list_all, 1} in exports,
+             "Expected list_all/1 in exports"
+    end
+  end
 
 end

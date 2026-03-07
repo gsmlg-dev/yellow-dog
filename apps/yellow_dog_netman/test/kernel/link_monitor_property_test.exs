@@ -604,5 +604,12 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected deterministic result for #{iface}"
     end
   end
+  property "LinkMonitor module exports get_link function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.LinkMonitor.__info__(:functions)
+      assert {:get_link, 1} in exports,
+             "Expected get_link/1 in exports"
+    end
+  end
 
 end

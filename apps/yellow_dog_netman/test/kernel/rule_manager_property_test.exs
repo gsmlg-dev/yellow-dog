@@ -728,5 +728,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Expected non-nil list from list_rules"
     end
   end
+  property "RuleManager module exports list_rules function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert {:list_rules, 0} in exports,
+             "Expected list_rules/0 in exports"
+    end
+  end
 
 end

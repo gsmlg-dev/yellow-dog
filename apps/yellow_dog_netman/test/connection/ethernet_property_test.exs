@@ -548,5 +548,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected carrier?/1 in exports"
     end
   end
+  property "Ethernet module exports contain ethernet? function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert {:ethernet?, 1} in exports,
+             "Expected ethernet?/1 in exports"
+    end
+  end
 
 end

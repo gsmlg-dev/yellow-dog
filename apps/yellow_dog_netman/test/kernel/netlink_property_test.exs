@@ -701,5 +701,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected module name in module_info"
     end
   end
+  property "Netlink module_info native_implemented_functions is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      nifs = YellowDog.Netman.Kernel.Netlink.module_info(:nifs)
+      assert is_list(nifs),
+             "Expected list from module_info(:nifs)"
+    end
+  end
 
 end

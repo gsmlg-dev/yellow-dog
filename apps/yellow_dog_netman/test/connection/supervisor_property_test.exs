@@ -637,5 +637,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected list_connections/0 in exports"
     end
   end
+  property "ConnSupervisor process responds to alive check always" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Connection.Supervisor)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ConnSupervisor to be alive"
+    end
+  end
 
 end

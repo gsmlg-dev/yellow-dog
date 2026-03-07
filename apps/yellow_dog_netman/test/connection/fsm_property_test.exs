@@ -1028,5 +1028,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
              "Expected start_link/1 in exports"
     end
   end
+  property "FSM module exports contain handle_event function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert is_list(exports) and length(exports) > 0,
+             "Expected non-empty exports list"
+    end
+  end
 
 end

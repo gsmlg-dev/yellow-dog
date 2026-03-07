@@ -850,5 +850,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
     end
   end
+  property "NeighborMonitor module exports list_neighbors function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in exports,
+             "Expected list_neighbors/0 in exports"
+    end
+  end
 
 end
