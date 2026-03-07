@@ -562,5 +562,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map result, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with connection.add and any path returns map" do
+    check all(p <- StreamData.string(:printable, min_length: 1, max_length: 40)) do
+      result = CLI.handle_command(%{"method" => "connection.add", "params" => %{"file" => "/tmp/" <> p}})
+      assert is_map(result),
+             "Expected map from connection.add, got: #{inspect(result)}"
+    end
+  end
 
 end

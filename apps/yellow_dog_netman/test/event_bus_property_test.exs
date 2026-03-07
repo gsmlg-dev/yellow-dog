@@ -666,5 +666,16 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus multiple subscribers for same topic never crashes" do
+    check all(
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            n <- StreamData.integer(2..5)
+          ) do
+      for _ <- 1..n do
+        EventBus.subscribe(topic)
+      end
+      :ok
+    end
+  end
 
 end

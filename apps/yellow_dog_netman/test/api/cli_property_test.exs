@@ -518,5 +518,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from status command"
     end
   end
+  property "CLI handle_command connection.show with any id returns map" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from connection.show, got: #{inspect(result)}"
+    end
+  end
 
 end
