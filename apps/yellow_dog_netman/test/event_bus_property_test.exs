@@ -1010,4 +1010,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert name == YellowDog.Netman.EventBus
     end
   end
+  property "EventBus registry child spec is a supervisor-compatible map (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      spec = YellowDog.Netman.EventBus.child_spec([])
+      assert Map.has_key?(spec, :id) or Map.has_key?(spec, :start)
+    end
+  end
 end

@@ -740,4 +740,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command never returns atom for any method (r77)" do
+    check all(
+      method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = CLI.handle_command(%{"method" => method})
+      refute is_atom(result), "Expected non-atom result"
+    end
+  end
 end

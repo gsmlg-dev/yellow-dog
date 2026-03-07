@@ -783,4 +783,10 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert match?({:ok, _}, encoded)
     end
   end
+  property "CLI handle_command with profile.list has expected keys (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.list"})
+      assert is_map(result) and (Map.has_key?(result, "result") or Map.has_key?(result, "error"))
+    end
+  end
 end
