@@ -1069,4 +1069,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Keyword.has_key?(fns, :handle_info)
     end
   end
+  property "ReconciliationEngine module compile info is a list (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.ReconciliationEngine.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
 end

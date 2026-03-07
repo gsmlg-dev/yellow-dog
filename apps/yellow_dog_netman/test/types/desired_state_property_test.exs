@@ -740,4 +740,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Keyword.has_key?(fns, :from_profiles)
     end
   end
+  property "DesiredState module functions include module_info (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Types.DesiredState.module_info(:functions)
+      assert Keyword.has_key?(fns, :module_info)
+    end
+  end
 end

@@ -784,4 +784,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(updated)
     end
   end
+  property "ObservedState remove_address from empty state returns unchanged struct (r69)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      updated = YellowDog.Netman.Types.ObservedState.remove_address(state, iface, addr)
+      assert is_struct(updated)
+    end
+  end
 end

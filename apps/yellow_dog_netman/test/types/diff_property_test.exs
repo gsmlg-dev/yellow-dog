@@ -693,4 +693,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :set_link_up
     end
   end
+  property "Diff new with update_dns has correct action (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:update_dns)
+      assert diff.action == :update_dns
+    end
+  end
 end

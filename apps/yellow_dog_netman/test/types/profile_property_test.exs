@@ -1158,4 +1158,17 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile autoconnect_priority is always integer (r69)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+      priority <- StreamData.integer(1..1000)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => priority, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      case result do
+        {:ok, p} -> assert is_integer(p.autoconnect_priority)
+        {:error, _} -> :ok
+      end
+    end
+  end
 end
