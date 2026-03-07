@@ -1075,4 +1075,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(compile)
     end
   end
+  property "ReconciliationEngine module exports non-empty list (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ReconciliationEngine.module_info(:exports)
+      assert is_list(exports) and length(exports) > 0
+    end
+  end
 end

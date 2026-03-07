@@ -794,4 +794,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(updated)
     end
   end
+  property "ObservedState remove_route from empty state returns unchanged struct (r70)" do
+    check all(
+      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      updated = YellowDog.Netman.Types.ObservedState.remove_route(state, dst, gw)
+      assert is_struct(updated)
+      assert updated.routes == []
+    end
+  end
 end

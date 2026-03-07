@@ -699,4 +699,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :update_dns
     end
   end
+  property "Diff new with set_mtu has correct action (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:set_mtu)
+      assert diff.action == :set_mtu
+    end
+  end
 end
