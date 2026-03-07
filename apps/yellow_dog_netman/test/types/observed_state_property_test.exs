@@ -746,4 +746,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_map(state.addresses)
     end
   end
+  property "ObservedState add_route returns updated struct (r65)" do
+    check all(
+      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      route = %{destination: dst, gateway: gw, interface: "lo"}
+      updated = YellowDog.Netman.Types.ObservedState.add_route(state, route)
+      assert is_struct(updated)
+    end
+  end
 end

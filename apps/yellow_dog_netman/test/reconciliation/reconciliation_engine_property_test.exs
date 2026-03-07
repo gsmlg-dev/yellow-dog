@@ -1045,4 +1045,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert result == :ok or is_tuple(result)
     end
   end
+  property "ReconciliationEngine module attributes include vsn (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.ReconciliationEngine.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

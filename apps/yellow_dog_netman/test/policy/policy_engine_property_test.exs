@@ -696,4 +696,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result) or is_nil(result)
     end
   end
+  property "PolicyEngine dns_priority for single conn returns list (r65)" do
+    check all(
+      priority <- StreamData.integer(1..100)
+    ) do
+      conns = [%{profile: %{autoconnect_priority: priority}, dns: ["8.8.8.8"]}]
+      result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
+      assert is_list(result)
+    end
+  end
 end
