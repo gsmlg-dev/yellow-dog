@@ -560,4 +560,53 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected empty list for fresh interface, got: #{inspect(result)}"
     end
   end
+
+  property "list_all result always has map type" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = AddressManager.list_all()
+      assert is_map(result),
+             "Expected map from list_all, got: #{inspect(result)}"
+    end
+  end
+
+  property "list_all map values are always lists" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      for {_iface, addrs} <- result do
+        assert is_list(addrs),
+               "Expected list of addresses per interface, got: #{inspect(addrs)}"
+      end
+    end
+  end
+
+  property "get_addresses always returns list of maps with :address key" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      for a <- addresses do
+        assert Map.has_key?(a, :address),
+               "Expected :address key in address entry, got: #{inspect(a)}"
+      end
+    end
+  end
+
+  property "get_addresses returns only maps with :address key" do
+    check all(iface <- iface_gen(), addr <- ipv4_gen(), prefix <- prefix_v4_gen()) do
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      for a <- addresses do
+        assert Map.has_key?(a, :address),
+               "Expected :address key in address entry, got: \#{inspect(a)}"
+      end
+    end
+  end
 end

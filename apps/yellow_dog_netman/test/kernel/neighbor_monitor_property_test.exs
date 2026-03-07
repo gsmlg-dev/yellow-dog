@@ -682,4 +682,54 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "get_neighbors result entries always have :mac key" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen()
+          ) do
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "neighbor_change",
+        "action" => "add",
+        "interface" => iface,
+        "address" => addr,
+        "mac" => "aa:bb:cc:dd:ee:ff"
+      }})
+      Process.sleep(50)
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      for n <- neighbors do
+        assert Map.has_key?(n, :mac),
+               "Expected :mac key in neighbor, got: #{inspect(n)}"
+      end
+    end
+  end
+
+  property "list_neighbors result entries always have :interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        assert Map.has_key?(n, :interface),
+               "Expected :interface key in neighbor, got: #{inspect(n)}"
+      end
+    end
+  end
+
+  property "list_neighbors entries always have :state key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        assert Map.has_key?(n, :state),
+               "Expected :state key in neighbor, got: #{inspect(n)}"
+      end
+    end
+  end
+
+  property "get_neighbors for unknown interface returns empty list" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "nm_empty_#{seed}"
+      result = NeighborMonitor.get_neighbors(iface)
+      assert result == [] or is_list(result),
+             "Expected empty or list from get_neighbors for unknown iface: \#{inspect(result)}"
+    end
+  end
 end

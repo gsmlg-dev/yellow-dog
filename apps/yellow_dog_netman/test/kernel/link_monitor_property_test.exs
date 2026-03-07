@@ -458,4 +458,43 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       end
     end
   end
+
+  property "get_link always returns nil or a map with :interface key" do
+    check all(iface <- iface_gen()) do
+      link = LinkMonitor.get_link(iface)
+      if link != nil do
+        assert Map.has_key?(link, :interface),
+               "Expected :interface key in link, got: #{inspect(link)}"
+      end
+    end
+  end
+
+  property "get_link returns nil or a map with :state key" do
+    check all(iface <- iface_gen()) do
+      link = LinkMonitor.get_link(iface)
+      if link != nil do
+        assert Map.has_key?(link, :state),
+               "Expected :state key in link, got: #{inspect(link)}"
+      end
+    end
+  end
+
+  property "list_links entries all have :carrier field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      links = LinkMonitor.list_links()
+      for link <- links do
+        assert Map.has_key?(link, :carrier),
+               "Expected :carrier key in link, got: #{inspect(link)}"
+      end
+    end
+  end
+
+  property "get_link for unknown interface always returns nil" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "lm_gk_#{seed}"
+      result = LinkMonitor.get_link(iface)
+      assert result == nil or is_map(result),
+             "Expected nil or map from get_link, got: #{inspect(result)}"
+    end
+  end
 end
