@@ -539,4 +539,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from empty method string"
     end
   end
+
+  property "handle_command profile.list always returns map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.list", "params" => %{}})
+      assert is_map(result),
+             "Expected map from profile.list command"
+    end
+  end
 end

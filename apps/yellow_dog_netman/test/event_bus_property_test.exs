@@ -623,4 +623,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert r2 == :ok or is_nil(r2)
     end
   end
+
+  property "EventBus survives publish to same topic multiple times" do
+    check all(seed <- StreamData.integer(1..9_999), n <- StreamData.integer(1..5)) do
+      topic = "multi_pub_#{seed}"
+      for i <- 1..n do
+        result = EventBus.publish(topic, i)
+        assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result)
+      end
+    end
+  end
 end
