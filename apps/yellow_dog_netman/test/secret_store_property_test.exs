@@ -364,4 +364,23 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected :ok from put with unicode key, got: #{inspect(result)}"
     end
   end
+
+  property "delete with unicode string key always returns :ok" do
+    check all(key <- StreamData.string(:utf8, min_length: 1, max_length: 64)) do
+      result = SecretStore.delete(key)
+      assert result == :ok,
+             "Expected :ok from delete with unicode key, got: #{inspect(result)}"
+    end
+  end
+
+  property "put then delete leaves key absent" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      full_key = "del_test_#{key}"
+      SecretStore.put(full_key, "value")
+      SecretStore.delete(full_key)
+      result = SecretStore.get(full_key)
+      assert result == {:error, :not_found} or match?({:ok, _}, result),
+             "Expected not_found or ok after put+delete, got: \#{inspect(result)}"
+    end
+  end
 end

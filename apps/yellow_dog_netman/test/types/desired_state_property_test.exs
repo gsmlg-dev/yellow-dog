@@ -507,4 +507,25 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected non-empty binary interface, got: #{inspect(conn.interface)}"
     end
   end
+
+  property "from_profiles result connections values all have non-nil ipv4" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert conn.ipv4 != nil,
+             "Expected non-nil ipv4 in connection"
+    end
+  end
+
+  property "DesiredState.from_profiles/1 with empty list returns struct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = DesiredState.from_profiles([])
+      assert is_struct(ds, DesiredState),
+             "Expected DesiredState struct from from_profiles([]), got: #{inspect(ds)}"
+    end
+  end
 end

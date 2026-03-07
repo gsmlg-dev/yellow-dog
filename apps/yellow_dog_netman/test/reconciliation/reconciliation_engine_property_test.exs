@@ -841,4 +841,20 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected :ok on second reconcile call"
     end
   end
+
+  property "compute_desired result always has non-nil connections field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = ReconciliationEngine.compute_desired()
+      assert desired.connections != nil,
+             "Expected non-nil connections field in compute_desired result"
+    end
+  end
+
+  property "ReconciliationEngine process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert pid != nil, "Expected ReconciliationEngine to be registered"
+      assert Process.alive?(pid), "Expected ReconciliationEngine to be alive"
+    end
+  end
 end
