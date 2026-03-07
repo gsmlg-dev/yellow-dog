@@ -532,5 +532,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from device.list, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with profile.add and any file path returns map" do
+    check all(p <- StreamData.string(:printable, min_length: 1, max_length: 30)) do
+      result = CLI.handle_command(%{"method" => "profile.add", "params" => %{"file" => "/tmp/" <> p}})
+      assert is_map(result),
+             "Expected map from profile.add, got: #{inspect(result)}"
+    end
+  end
 
 end

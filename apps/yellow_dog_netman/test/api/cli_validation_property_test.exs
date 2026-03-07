@@ -576,5 +576,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from connection.delete, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with connection.up and any integer id returns map" do
+    check all(n <- StreamData.integer(1..9999)) do
+      result = CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => Integer.to_string(n)}})
+      assert is_map(result),
+             "Expected map from connection.up, got: #{inspect(result)}"
+    end
+  end
 
 end
