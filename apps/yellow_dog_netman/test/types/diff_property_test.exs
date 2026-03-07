@@ -869,4 +869,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert @actions == Enum.uniq(@actions)
     end
   end
+
+  property "diff @actions all representable as strings (r95)" do
+    check all _x <- boolean() do
+      strings = Enum.map(@actions, &Atom.to_string/1)
+      assert Enum.all?(strings, &is_binary/1)
+      assert length(strings) == length(@actions)
+    end
+  end
 end

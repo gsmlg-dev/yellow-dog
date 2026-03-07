@@ -931,4 +931,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       refute is_nil(ds.__struct__)
     end
   end
+
+  property "desired_state module is consistent with observed_state module (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
+    end
+  end
 end

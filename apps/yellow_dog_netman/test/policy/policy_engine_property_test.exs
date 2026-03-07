@@ -930,4 +930,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(fns, :effective_priority)
     end
   end
+
+  property "policy_engine exports at least 4 functions (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert length(fns) >= 4
+    end
+  end
 end

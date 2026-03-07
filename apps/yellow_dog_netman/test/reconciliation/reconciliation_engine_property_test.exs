@@ -1248,4 +1248,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
     end
   end
+
+  property "reconciliation_engine connection modules are loaded (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.FSM)
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.Supervisor)
+    end
+  end
 end

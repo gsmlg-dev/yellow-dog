@@ -1007,4 +1007,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Enum.all?(state.addresses, fn {k, _} -> is_binary(k) end)
     end
   end
+
+  property "observed_state addresses values are lists (r95)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert Enum.all?(state.addresses, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

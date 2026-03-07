@@ -1398,4 +1398,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml with autoconnect boolean is ok or error (r95)" do
+    check all id <- string(:alphanumeric, min_length: 1),
+              auto <- boolean() do
+      result = Profile.from_toml(%{"id" => id, "autoconnect" => auto})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

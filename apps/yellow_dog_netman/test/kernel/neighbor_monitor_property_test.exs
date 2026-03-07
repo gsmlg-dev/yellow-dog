@@ -1123,4 +1123,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Enum.all?(result, &(is_map(&1) or is_struct(&1)))
     end
   end
+
+  property "neighbor_monitor list_neighbors is stable (r95)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      r2 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert length(r1) == length(r2)
+    end
+  end
 end

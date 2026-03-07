@@ -974,4 +974,12 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "netlink module loaded and accessible (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink)
+      info = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert is_list(info)
+    end
+  end
 end

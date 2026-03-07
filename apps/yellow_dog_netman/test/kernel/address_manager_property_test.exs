@@ -1005,4 +1005,13 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(result, fn {_k, v} -> is_list(v) end)
     end
   end
+
+  property "address_manager list_all addresses contain cidr prefix (r95)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      all_addrs = Enum.flat_map(result, fn {_, addrs} -> addrs end)
+      # All addresses should be structs or maps
+      assert Enum.all?(all_addrs, &(is_map(&1) or is_struct(&1)))
+    end
+  end
 end

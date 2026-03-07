@@ -921,4 +921,14 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              (is_nil(r1) and is_nil(r2))
     end
   end
+
+  property "cli validation module has at least one public function (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      public_fns = Enum.filter(fns, fn {name, _} ->
+        name not in [:__info__, :module_info]
+      end)
+      assert length(public_fns) >= 1
+    end
+  end
 end

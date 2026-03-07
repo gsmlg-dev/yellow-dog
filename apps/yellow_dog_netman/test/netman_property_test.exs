@@ -750,4 +750,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.DesiredState)
     end
   end
+
+  property "netman kernel modules are all loaded (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.LinkMonitor)
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor)
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink)
+    end
+  end
 end

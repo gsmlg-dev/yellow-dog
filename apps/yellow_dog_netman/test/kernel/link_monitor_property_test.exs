@@ -882,4 +882,12 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "link_monitor module loaded and module info accessible (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.LinkMonitor)
+      info = YellowDog.Netman.Kernel.LinkMonitor.__info__(:functions)
+      assert is_list(info)
+    end
+  end
 end

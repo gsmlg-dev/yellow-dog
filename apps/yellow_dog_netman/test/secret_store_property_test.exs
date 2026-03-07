@@ -852,4 +852,15 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:ok, _}, r1) == match?({:ok, _}, r2)
     end
   end
+
+  property "secret_store functions count is at least 3 (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.SecretStore.__info__(:functions)
+      # At minimum: get/1, put/2, delete/1
+      public_fns = Enum.filter(fns, fn {name, _} ->
+        name not in [:__info__, :module_info]
+      end)
+      assert length(public_fns) >= 3
+    end
+  end
 end

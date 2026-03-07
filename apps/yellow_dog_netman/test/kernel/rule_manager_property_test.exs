@@ -1002,4 +1002,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "rule_manager module loaded and accessible (r95)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
+      info = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert is_list(info)
+    end
+  end
 end

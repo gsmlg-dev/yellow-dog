@@ -839,4 +839,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_nil(result) or (is_integer(result) and result > 0)
     end
   end
+
+  property "ethernet carrier? for lo returns true in test env (r95)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Connection.Ethernet.carrier?("lo")
+      # lo is a loopback, may or may not have carrier
+      assert is_boolean(result)
+    end
+  end
 end

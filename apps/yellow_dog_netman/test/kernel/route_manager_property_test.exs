@@ -1005,4 +1005,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert length(r1) == length(r2)
     end
   end
+
+  property "route_manager exports remove_route function (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+      assert Keyword.has_key?(fns, :remove_route)
+    end
+  end
 end

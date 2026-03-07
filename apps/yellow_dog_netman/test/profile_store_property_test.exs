@@ -1003,4 +1003,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert length(result) >= 0
     end
   end
+
+  property "profile_store list length is non-negative (r95)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result)
+      assert length(result) >= 0
+    end
+  end
 end

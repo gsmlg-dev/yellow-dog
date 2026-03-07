@@ -870,4 +870,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command with profile delete subcommand returns result (r95)" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      result = CLI.handle_command(["profile", "delete", id])
+      assert not is_nil(result)
+    end
+  end
 end

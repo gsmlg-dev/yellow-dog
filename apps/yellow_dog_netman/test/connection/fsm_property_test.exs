@@ -1303,4 +1303,13 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Keyword.has_key?(fns, :get_state)
     end
   end
+
+  property "fsm state machine has at least 5 state functions (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      # State functions have arity 3 in gen_statem
+      state_fns = Enum.filter(fns, fn {_name, arity} -> arity == 3 end)
+      assert length(state_fns) >= 5
+    end
+  end
 end

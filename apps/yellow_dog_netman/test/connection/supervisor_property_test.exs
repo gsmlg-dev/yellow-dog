@@ -911,4 +911,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
+  property "connection supervisor module functions all valid arity (r95)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
+    end
+  end
 end
