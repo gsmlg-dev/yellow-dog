@@ -479,5 +479,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected tagged tuple, got: #{inspect(result)}"
     end
   end
+  property "SecretStore get always returns a tagged tuple for seeded key" do
+    check all(n <- StreamData.integer(1..9999)) do
+      key = "ssget51_#{n}"
+      result = SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple, got: #{inspect(result)}"
+    end
+  end
 
 end

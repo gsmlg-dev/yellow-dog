@@ -673,5 +673,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected atom or tagged tuple from delete, got: #{inspect(result)}"
     end
   end
+  property "ProfileStore list returns same count on repeated calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = length(YellowDog.Netman.ProfileStore.list())
+      c2 = length(YellowDog.Netman.ProfileStore.list())
+      assert c1 == c2,
+             "Expected stable count from list"
+    end
+  end
 
 end

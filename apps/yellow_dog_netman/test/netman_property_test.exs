@@ -475,5 +475,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected ReconciliationEngine to be loaded"
     end
   end
+  property "Netman Kernel.AddressManager module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.AddressManager),
+             "Expected AddressManager to be loaded"
+    end
+  end
 
 end
