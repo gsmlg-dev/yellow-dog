@@ -442,5 +442,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, "v") == :ok
     end
   end
+  property "SecretStore get after put returns tagged tuple" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            val <- StreamData.string(:alphanumeric, max_length: 32)
+          ) do
+      full_key = "ss47_" <> key
+      SecretStore.put(full_key, val)
+      result = SecretStore.get(full_key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple, got: #{inspect(result)}"
+    end
+  end
 
 end

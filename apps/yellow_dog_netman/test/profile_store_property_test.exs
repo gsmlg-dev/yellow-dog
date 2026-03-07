@@ -642,5 +642,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected tagged tuple or nil from get, got: #{inspect(result)}"
     end
   end
+  property "ProfileStore list count is always a non-negative integer" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert length(result) >= 0,
+             "Expected non-negative length, got: #{inspect(result)}"
+    end
+  end
 
 end

@@ -451,5 +451,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected yellow_dog_netman to be started"
     end
   end
+  property "Netman EventBus module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.EventBus),
+             "Expected EventBus to be loaded"
+    end
+  end
 
 end
