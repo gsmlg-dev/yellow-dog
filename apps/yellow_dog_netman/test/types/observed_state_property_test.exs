@@ -908,4 +908,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(state)
     end
   end
+
+  property "observed_state addresses field is map (r83)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert is_map(state.addresses)
+    end
+  end
 end

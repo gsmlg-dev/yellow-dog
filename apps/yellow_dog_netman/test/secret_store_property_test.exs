@@ -754,4 +754,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Keyword.has_key?(fns, :delete)
     end
   end
+
+  property "secret_store module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.SecretStore)
+      assert result == true
+    end
+  end
 end

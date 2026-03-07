@@ -915,4 +915,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Keyword.has_key?(fns, :list_all)
     end
   end
+
+  property "address_manager module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Kernel.AddressManager)
+      assert result == true
+    end
+  end
 end

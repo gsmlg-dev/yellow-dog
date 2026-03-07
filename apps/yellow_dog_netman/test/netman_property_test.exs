@@ -660,4 +660,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert length(fns) >= 0
     end
   end
+
+  property "netman module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman)
+      assert result == true
+    end
+  end
 end

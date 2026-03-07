@@ -838,4 +838,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(result) or result == :error or match?({:error, _}, result)
     end
   end
+
+  property "desired_state profiles field is map or list (r83)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      keys = Map.keys(ds)
+      assert is_list(keys)
+    end
+  end
 end

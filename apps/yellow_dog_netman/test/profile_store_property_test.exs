@@ -908,4 +908,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(fns, :list)
     end
   end
+
+  property "profile_store module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+      assert result == true
+    end
+  end
 end

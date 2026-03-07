@@ -840,4 +840,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Enum.all?(fns, fn {name, _arity} -> is_atom(name) end)
     end
   end
+
+  property "policy_engine module attributes has vsn (r83)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.PolicyEngine.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

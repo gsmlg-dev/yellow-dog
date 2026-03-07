@@ -1036,4 +1036,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
     end
   end
+
+  property "neighbor_monitor module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor)
+      assert result == true
+    end
+  end
 end

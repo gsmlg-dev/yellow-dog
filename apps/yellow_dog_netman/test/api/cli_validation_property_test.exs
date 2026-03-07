@@ -825,4 +825,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.API.CLI)
+      assert result == true
+    end
+  end
 end

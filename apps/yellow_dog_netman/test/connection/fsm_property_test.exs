@@ -1214,4 +1214,11 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert length(fns) >= 0
     end
   end
+
+  property "fsm module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Connection.FSM)
+      assert result == true
+    end
+  end
 end

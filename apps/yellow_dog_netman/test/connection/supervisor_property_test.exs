@@ -824,4 +824,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert length(fns) >= 0
     end
   end
+
+  property "connection supervisor module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Connection.Supervisor)
+      assert result == true
+    end
+  end
 end

@@ -887,4 +887,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
     end
   end
+
+  property "netlink module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink)
+      assert result == true
+    end
+  end
 end

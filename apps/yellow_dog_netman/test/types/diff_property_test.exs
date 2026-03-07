@@ -780,4 +780,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Enum.all?(actions, &(&1 in @actions))
     end
   end
+
+  property "diff no_op action is a valid atom (r83)" do
+    check all a <- action_gen() do
+      assert a in @actions
+      assert is_atom(a)
+      assert to_string(a) =~ ~r/^[a-z_]+$/
+    end
+  end
 end

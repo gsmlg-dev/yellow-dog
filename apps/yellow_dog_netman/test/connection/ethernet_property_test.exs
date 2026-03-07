@@ -749,4 +749,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Keyword.has_key?(fns, :mtu)
     end
   end
+
+  property "ethernet module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.Connection.Ethernet)
+      assert result == true
+    end
+  end
 end

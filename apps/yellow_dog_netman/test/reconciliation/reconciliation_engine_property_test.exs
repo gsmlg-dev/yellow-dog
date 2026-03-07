@@ -1160,4 +1160,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert length(fns) >= 0
     end
   end
+
+  property "reconciliation_engine module is loaded (r83)" do
+    check all _x <- boolean() do
+      result = Code.ensure_loaded?(YellowDog.Netman.ReconciliationEngine)
+      assert result == true
+    end
+  end
 end
