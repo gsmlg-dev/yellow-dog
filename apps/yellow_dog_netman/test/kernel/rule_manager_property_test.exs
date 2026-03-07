@@ -444,4 +444,27 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "rule added with source cidr has binary source field in list_rules" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen(),
+            src <- cidr_gen()
+          ) do
+      send_rule_event(%{
+        "action" => "add",
+        "priority" => priority,
+        "table" => table,
+        "source" => src
+      })
+
+      rules = RuleManager.list_rules()
+      rule = Enum.find(rules, &(&1.priority == priority))
+
+      if rule do
+        assert is_binary(rule.source) or is_nil(rule.source),
+               "Expected binary or nil source, got: #{inspect(rule.source)}"
+      end
+    end
+  end
 end

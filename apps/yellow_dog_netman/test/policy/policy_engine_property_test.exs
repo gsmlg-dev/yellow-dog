@@ -345,4 +345,20 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected :none for empty connection list, got: #{inspect(result)}"
     end
   end
+
+  property "route_metrics always returns a map with one entry per connection" do
+    check all(connections <- StreamData.list_of(connection_gen(), min_length: 1, max_length: 8)) do
+      # Give each connection a unique id to avoid key collisions
+      unique_conns =
+        connections
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> %{c | id: "uniq_#{i}_#{c.id}"} end)
+
+      metrics = PolicyEngine.route_metrics(unique_conns)
+      assert is_map(metrics),
+             "Expected map from route_metrics, got: #{inspect(metrics)}"
+      assert map_size(metrics) == length(unique_conns),
+             "Expected #{length(unique_conns)} entries in route_metrics, got #{map_size(metrics)}"
+    end
+  end
 end
