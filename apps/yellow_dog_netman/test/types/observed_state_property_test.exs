@@ -836,4 +836,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s2.routes == []
     end
   end
+  property "ObservedState put_link then remove_link returns empty links (r74)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link = %{interface: iface, flags: [], mtu: 1500, mac: nil}
+      s1 = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+      s2 = YellowDog.Netman.Types.ObservedState.remove_link(s1, iface)
+      assert s2.links == %{}
+    end
+  end
 end

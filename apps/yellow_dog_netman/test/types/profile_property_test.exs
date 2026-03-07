@@ -1224,4 +1224,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile from_toml with missing id fails (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      toml = %{"connection" => %{"type" => "ethernet"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      assert match?({:error, _}, result)
+    end
+  end
 end

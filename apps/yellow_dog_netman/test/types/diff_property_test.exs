@@ -723,4 +723,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(diff) and diff.action == action
     end
   end
+  property "Diff new never returns nil for any valid action (r74)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      refute is_nil(diff)
+    end
+  end
 end

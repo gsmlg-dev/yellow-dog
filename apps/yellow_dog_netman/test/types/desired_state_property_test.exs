@@ -772,4 +772,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert map_size(state.connections) == 0
     end
   end
+  property "DesiredState from_profiles returns struct matching module (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      mod = YellowDog.Netman.Types.DesiredState
+      state = mod.from_profiles([])
+      assert state.__struct__ == mod
+    end
+  end
 end

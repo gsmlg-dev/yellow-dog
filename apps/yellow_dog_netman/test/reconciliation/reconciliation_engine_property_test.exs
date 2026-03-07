@@ -1100,4 +1100,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert name == YellowDog.Netman.ReconciliationEngine
     end
   end
+  property "ReconciliationEngine exports include reconcile (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ReconciliationEngine.module_info(:exports)
+      assert Keyword.has_key?(exports, :reconcile)
+    end
+  end
 end
