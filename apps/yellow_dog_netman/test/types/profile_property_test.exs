@@ -698,4 +698,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected boolean autoconnect in to_toml, got: \#{inspect(autoconnect)}"
     end
   end
+
+  property "from_toml preserves ipv4 method field" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      assert profile.ipv4 != nil,
+             "Expected non-nil ipv4 field, got nil"
+      assert is_map(profile.ipv4),
+             "Expected map ipv4, got: #{inspect(profile.ipv4)}"
+      assert Map.has_key?(profile.ipv4, :method),
+             "Expected :method key in ipv4 map"
+    end
+  end
 end

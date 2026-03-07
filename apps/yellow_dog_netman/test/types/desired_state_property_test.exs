@@ -416,4 +416,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected empty connections for empty profile list, got: \#{inspect(desired.connections)}"
     end
   end
+
+  property "from_profiles always returns a DesiredState struct" do
+    check all(profiles <- list_of(profile_gen(), max_length: 3)) do
+      pairs = Enum.map(profiles, &{&1, "eth_#{:erlang.unique_integer([:positive])}"})
+      result = DesiredState.from_profiles(pairs)
+      assert is_struct(result, DesiredState),
+             "Expected DesiredState struct, got: #{inspect(result)}"
+    end
+  end
 end
