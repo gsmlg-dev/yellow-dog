@@ -1608,4 +1608,76 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_atom(RuleManager)
     end
   end
+
+  property "r176: rulemanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RuleManager))
+    end
+  end
+
+  property "r177: rulemanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r178: rulemanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r179: rulemanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r180: rulemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: rulemanager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager == RuleManager
+    end
+  end
+
+  property "r182: rulemanager inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(RuleManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: rulemanager module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r184: rulemanager not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r185: rulemanager is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
 end

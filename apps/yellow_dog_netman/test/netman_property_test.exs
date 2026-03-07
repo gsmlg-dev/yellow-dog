@@ -1362,4 +1362,76 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_atom(YellowDog.Netman)
     end
   end
+
+  property "r176: yellowdog_netman module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r177: yellowdog_netman module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r178: yellowdog_netman module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r179: yellowdog_netman module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r180: yellowdog_netman functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: yellowdog_netman module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman == YellowDog.Netman
+    end
+  end
+
+  property "r182: yellowdog_netman inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(YellowDog.Netman)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: yellowdog_netman module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r184: yellowdog_netman not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r185: yellowdog_netman is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
 end

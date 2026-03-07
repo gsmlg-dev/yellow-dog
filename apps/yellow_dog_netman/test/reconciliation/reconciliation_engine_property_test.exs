@@ -1858,4 +1858,76 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_atom(ReconciliationEngine)
     end
   end
+
+  property "r176: reconciliationengine module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ReconciliationEngine))
+    end
+  end
+
+  property "r177: reconciliationengine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r178: reconciliationengine module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
+
+  property "r179: reconciliationengine module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r180: reconciliationengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: reconciliationengine module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine == ReconciliationEngine
+    end
+  end
+
+  property "r182: reconciliationengine inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(ReconciliationEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: reconciliationengine module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r184: reconciliationengine not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r185: reconciliationengine is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
 end

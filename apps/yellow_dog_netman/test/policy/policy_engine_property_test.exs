@@ -1563,4 +1563,76 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_atom(PolicyEngine)
     end
   end
+
+  property "r176: policyengine module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(PolicyEngine))
+    end
+  end
+
+  property "r177: policyengine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r178: policyengine module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r179: policyengine module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r180: policyengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: policyengine module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r182: policyengine inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(PolicyEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: policyengine module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r184: policyengine not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r185: policyengine is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
 end

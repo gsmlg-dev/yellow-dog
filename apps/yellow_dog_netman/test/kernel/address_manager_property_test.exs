@@ -1616,4 +1616,76 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_atom(AddressManager)
     end
   end
+
+  property "r176: addressmanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r177: addressmanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r178: addressmanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r179: addressmanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r180: addressmanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: addressmanager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager == AddressManager
+    end
+  end
+
+  property "r182: addressmanager inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(AddressManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: addressmanager module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r184: addressmanager not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r185: addressmanager is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
 end

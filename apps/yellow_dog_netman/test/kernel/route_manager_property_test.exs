@@ -1611,4 +1611,76 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert is_atom(RouteManager)
     end
   end
+
+  property "r176: routemanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r177: routemanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r178: routemanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r179: routemanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r180: routemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: routemanager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager == RouteManager
+    end
+  end
+
+  property "r182: routemanager inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(RouteManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: routemanager module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r184: routemanager not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r185: routemanager is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
 end

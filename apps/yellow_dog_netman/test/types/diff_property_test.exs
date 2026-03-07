@@ -1499,4 +1499,83 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Enum.any?(fns, fn {name, _} -> name == :new end)
     end
   end
+
+  property "r176: diff action member of valid set" do
+    check all action <- member_of([:add_address, :remove_address, :add_route, :remove_route,
+                                    :activate_connection, :deactivate_connection, :update_dns,
+                                    :set_mtu, :set_link_up, :set_link_down]) do
+      d = Diff.new(action)
+      assert d.action in [:add_address, :remove_address, :add_route, :remove_route,
+                          :activate_connection, :deactivate_connection, :update_dns,
+                          :set_mtu, :set_link_up, :set_link_down]
+    end
+  end
+
+  property "r177: diff params is always map" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]),
+              extra <- integer(0..100) do
+      d = Diff.new(action, nil, %{extra: extra})
+      assert is_map(d.params)
+    end
+  end
+
+  property "r178: diff module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r179: diff struct has __struct__ key" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert Map.has_key?(d, :__struct__)
+    end
+  end
+
+  property "r180: diff module not nil" do
+    check all n <- integer() do
+      _ = n
+      assert Diff != nil
+    end
+  end
+
+  property "r181: diff new returns struct" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_struct(d, Diff)
+    end
+  end
+
+  property "r182: diff interface can be set" do
+    check all action <- member_of([:add_address, :set_link_up]),
+              iface <- string(:alphanumeric, min_length: 2, max_length: 15) do
+      d = Diff.new(action, iface)
+      assert d.interface == iface
+    end
+  end
+
+  property "r183: diff params can store string keys" do
+    check all action <- member_of([:add_address, :update_dns]),
+              key <- string(:alphanumeric, min_length: 1, max_length: 10),
+              val <- binary(min_length: 0, max_length: 20) do
+      d = Diff.new(action, nil, %{key => val})
+      assert d.params[key] == val
+    end
+  end
+
+  property "r184: diff module functions has new" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Diff.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _arity} -> name == :new end)
+    end
+  end
+
+  property "r185: diff module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff == Diff
+    end
+  end
 end

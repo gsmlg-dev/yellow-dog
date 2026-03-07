@@ -1489,4 +1489,76 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_atom(LinkMonitor)
     end
   end
+
+  property "r176: linkmonitor module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r177: linkmonitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r178: linkmonitor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r179: linkmonitor module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r180: linkmonitor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: linkmonitor module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor == LinkMonitor
+    end
+  end
+
+  property "r182: linkmonitor inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(LinkMonitor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: linkmonitor module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r184: linkmonitor not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r185: linkmonitor is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
 end

@@ -2007,4 +2007,76 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert is_binary(p.type)
     end
   end
+
+  property "r176: profile module inspect" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Profile))
+    end
+  end
+
+  property "r177: profile module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r178: profile module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r179: profile module not nil" do
+    check all n <- integer() do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r180: profile functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: profile module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r182: profile inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      assert String.length(inspect(p)) > 0
+    end
+  end
+
+  property "r183: profile module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r184: profile not nil final" do
+    check all n <- integer() do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r185: profile is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
 end

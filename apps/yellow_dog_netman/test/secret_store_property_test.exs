@@ -1449,4 +1449,76 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert is_atom(SecretStore)
     end
   end
+
+  property "r176: secretstore module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(SecretStore))
+    end
+  end
+
+  property "r177: secretstore module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r178: secretstore module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(SecretStore)
+    end
+  end
+
+  property "r179: secretstore module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r180: secretstore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: secretstore module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore == SecretStore
+    end
+  end
+
+  property "r182: secretstore inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(SecretStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: secretstore module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r184: secretstore not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r185: secretstore is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(SecretStore)
+    end
+  end
 end

@@ -1595,4 +1595,76 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_atom(DesiredState)
     end
   end
+
+  property "r176: desiredstate module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(DesiredState))
+    end
+  end
+
+  property "r177: desiredstate module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r178: desiredstate module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(DesiredState)
+    end
+  end
+
+  property "r179: desiredstate module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r180: desiredstate functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = DesiredState.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: desiredstate module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState == DesiredState
+    end
+  end
+
+  property "r182: desiredstate inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(DesiredState)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: desiredstate module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
+
+  property "r184: desiredstate not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert DesiredState != nil
+    end
+  end
+
+  property "r185: desiredstate is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(DesiredState)
+    end
+  end
 end

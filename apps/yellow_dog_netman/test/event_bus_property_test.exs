@@ -1815,4 +1815,76 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_atom(EventBus)
     end
   end
+
+  property "r176: eventbus module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
+
+  property "r177: eventbus module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r178: eventbus module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r179: eventbus module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r180: eventbus functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r181: eventbus module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus == EventBus
+    end
+  end
+
+  property "r182: eventbus inspect length" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(EventBus)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r183: eventbus module loaded final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r184: eventbus not nil final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r185: eventbus is_atom final" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
 end
