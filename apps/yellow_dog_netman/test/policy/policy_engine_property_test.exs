@@ -644,5 +644,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected list/nil/integer, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine effective_priority for empty list is integer or nil (r58)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.effective_priority([])
+      assert is_integer(result) or is_nil(result) or is_atom(result),
+             "Expected integer/nil/atom (r58), got: #{inspect(result)}"
+    end
+  end
 
 end

@@ -621,5 +621,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected :action and :params keys in Diff"
     end
   end
+  property "Diff action field for add_route is correct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:add_route)
+      assert diff.action == :add_route,
+             "Expected :add_route action, got: #{inspect(diff.action)}"
+    end
+  end
 
 end

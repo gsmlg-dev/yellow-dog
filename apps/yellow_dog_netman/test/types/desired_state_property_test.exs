@@ -671,5 +671,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected map from from_profiles, got: #{inspect(ds)}"
     end
   end
+  property "DesiredState from_profiles with empty list returns map (r58)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_map(ds),
+             "Expected map from from_profiles (r58)"
+    end
+  end
 
 end

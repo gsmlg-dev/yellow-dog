@@ -999,5 +999,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected non-empty function list"
     end
   end
+  property "ReconciliationEngine alive check always passes (r58)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ReconciliationEngine to be alive (r58)"
+    end
+  end
 
 end

@@ -697,5 +697,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       refute is_nil(result), "Expected non-nil from put_link"
     end
   end
+  property "ObservedState new always returns a struct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert is_struct(state) or is_map(state),
+             "Expected struct or map from new, got: #{inspect(state)}"
+    end
+  end
 
 end

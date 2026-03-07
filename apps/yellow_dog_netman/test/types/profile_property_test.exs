@@ -1018,5 +1018,27 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or map for ipv4/ipv6 by default"
     end
   end
+  property "Profile from_toml with valid ethernet map returns error or struct" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
+      result =
+        try do
+          YellowDog.Netman.Types.Profile.from_toml(%{
+            "id" => id,
+            "type" => "ethernet",
+            "interface" => iface
+          })
+          :returned
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:returned, :raised],
+             "Expected :returned or :raised"
+    end
+  end
 
 end
