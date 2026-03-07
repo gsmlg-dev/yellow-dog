@@ -860,4 +860,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(exports, :get)
     end
   end
+  property "ProfileStore name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.ProfileStore.module_info(:module)
+      assert name == YellowDog.Netman.ProfileStore
+    end
+  end
 end

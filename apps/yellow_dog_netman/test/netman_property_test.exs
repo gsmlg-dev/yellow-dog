@@ -613,4 +613,10 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor)
     end
   end
+  property "Netman connection modules all loaded (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.FSM)
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.Ethernet)
+    end
+  end
 end

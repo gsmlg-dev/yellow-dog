@@ -700,4 +700,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Keyword.has_key?(exports, :delete)
     end
   end
+  property "SecretStore module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.SecretStore.module_info(:module)
+      assert name == YellowDog.Netman.SecretStore
+    end
+  end
 end
