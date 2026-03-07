@@ -517,5 +517,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected FSM to be loaded"
     end
   end
+  property "Netman Connection.Ethernet module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.Ethernet),
+             "Expected Ethernet to be loaded"
+    end
+  end
 
 end

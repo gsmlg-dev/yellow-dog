@@ -723,5 +723,19 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected delete/1 in exports, got: #{inspect(exports)}"
     end
   end
+  property "ProfileStore delete for any id never raises" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result =
+        try do
+          YellowDog.Netman.ProfileStore.delete(id)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

@@ -546,5 +546,14 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert true, "Should not raise"
     end
   end
+  property "SecretStore put with tuple value always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            a <- StreamData.integer(),
+            b <- StreamData.string(:alphanumeric, max_length: 8)
+          ) do
+      assert SecretStore.put(key, {a, b}) == :ok
+    end
+  end
 
 end
