@@ -340,4 +340,14 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected error map for connection.show with empty params, got: #{inspect(result)}"
     end
   end
+
+  property "connection.list always returns a result map (not an error)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.list", "params" => %{}})
+      assert is_map(result),
+             "Expected map from connection.list, got: #{inspect(result)}"
+      assert Map.has_key?(result, "result"),
+             "Expected 'result' key in connection.list response, got: #{inspect(result)}"
+    end
+  end
 end

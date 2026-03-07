@@ -373,4 +373,23 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(wildcard)
     end
   end
+
+  property "publish without any subscriber does not raise" do
+    check all(
+            topic <- topic_gen(),
+            message <- term()
+          ) do
+      # Publish on a topic that nobody is subscribed to — must not raise
+      result =
+        try do
+          EventBus.publish("nosub:#{topic}", message)
+          :ok
+        rescue
+          e -> {:raised, e}
+        end
+
+      assert result == :ok,
+             "Expected publish to be safe with no subscribers, got: #{inspect(result)}"
+    end
+  end
 end

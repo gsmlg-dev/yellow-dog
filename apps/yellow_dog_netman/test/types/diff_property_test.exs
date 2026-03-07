@@ -293,4 +293,21 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected identical hashes for equal diffs"
     end
   end
+
+  property "new/3 with map params preserves all keys" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+
+      for {k, v} <- params do
+        assert Map.has_key?(diff.params, k),
+               "Expected key #{inspect(k)} in diff.params"
+        assert diff.params[k] == v,
+               "Expected diff.params[#{inspect(k)}] == #{inspect(v)}, got #{inspect(diff.params[k])}"
+      end
+    end
+  end
 end
