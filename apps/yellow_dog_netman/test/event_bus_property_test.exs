@@ -401,4 +401,17 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "wildcard subscribe returns {:ok, _}" do
+    check all(
+            prefix <- topic_segment(),
+            suffix <- topic_segment()
+          ) do
+      wildcard = "wc_sub:#{prefix}:#{suffix}:*"
+      result = EventBus.subscribe(wildcard)
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from wildcard subscribe, got: #{inspect(result)}"
+      EventBus.unsubscribe(wildcard)
+    end
+  end
 end

@@ -360,4 +360,14 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected 'result' key in device.list response, got: #{inspect(result)}"
     end
   end
+
+  property "device always returns a result map (not an error)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device", "params" => %{}})
+      assert is_map(result),
+             "Expected map from device, got: #{inspect(result)}"
+      assert Map.has_key?(result, "result"),
+             "Expected 'result' key in device response, got: #{inspect(result)}"
+    end
+  end
 end

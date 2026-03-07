@@ -321,4 +321,16 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected empty params for new/2, got: #{inspect(diff.params)}"
     end
   end
+
+  property "action field is always an atom" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert is_atom(diff.action),
+             "Expected atom action, got: #{inspect(diff.action)}"
+    end
+  end
 end
