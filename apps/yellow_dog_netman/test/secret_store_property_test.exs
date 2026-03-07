@@ -305,4 +305,39 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected tagged tuple from get, got: #{inspect(result)}"
     end
   end
+
+  property "put with boolean key does not raise" do
+    check all(b <- StreamData.boolean()) do
+      result =
+        try do
+          SecretStore.put(b, "value")
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Expected :ok or :raised, got: #{inspect(result)}"
+    end
+  end
+
+  property "put with list key does not raise" do
+    check all(
+            key <- StreamData.list_of(StreamData.string(:alphanumeric, max_length: 4), max_length: 5),
+            value <- StreamData.string(:alphanumeric, max_length: 32)
+          ) do
+      result =
+        try do
+          SecretStore.put(key, value)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Expected :ok or :raised from put with list key, got: #{inspect(result)}"
+    end
+  end
 end

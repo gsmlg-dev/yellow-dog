@@ -805,4 +805,22 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected :ok from reconcile, got: #{inspect(result)}"
     end
   end
+
+  property "observe/0 always returns an ObservedState struct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ReconciliationEngine.observe()
+      assert is_struct(result, YellowDog.Netman.Types.ObservedState),
+             "Expected ObservedState struct from observe/0, got: #{inspect(result)}"
+    end
+  end
+
+  property "compute_desired/0 result connections values are all maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      desired = ReconciliationEngine.compute_desired()
+      for {_id, conn} <- desired.connections do
+        assert is_map(conn),
+               "Expected map connection in desired state, got: #{inspect(conn)}"
+      end
+    end
+  end
 end

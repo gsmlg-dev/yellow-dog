@@ -457,4 +457,28 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       end
     end
   end
+
+  property "from_profiles result connections all have :mtu key" do
+    check all(profiles <- list_of(profile_gen(), min_length: 1, max_length: 3)) do
+      pairs = Enum.map(profiles, &{&1, "ds4_#{:erlang.unique_integer([:positive])}"})
+      desired = DesiredState.from_profiles(pairs)
+      for {_id, conn} <- desired.connections do
+        assert Map.has_key?(conn, :mtu),
+               "Expected :mtu key in connection, got: #{inspect(Map.keys(conn))}"
+      end
+    end
+  end
+
+  property "from_profiles result connection map key matches the profile_id" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+      assert conn.profile_id == profile.id,
+             "Expected profile_id #{profile.id} to equal the map key"
+    end
+  end
 end
