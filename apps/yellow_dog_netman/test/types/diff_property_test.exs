@@ -357,4 +357,16 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected map params, got: #{inspect(diff.params)}"
     end
   end
+
+  property "new/3 always stores interface as the exact binary given" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert diff.interface == interface,
+             "Expected interface #{inspect(interface)}, got: #{inspect(diff.interface)}"
+    end
+  end
 end

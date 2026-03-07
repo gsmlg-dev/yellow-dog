@@ -246,4 +246,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected :ok from delete with empty key, got: #{inspect(result)}"
     end
   end
+
+  property "repeated gets for the same key always return the same result" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
+      result1 = SecretStore.get(key)
+      result2 = SecretStore.get(key)
+      assert result1 == result2,
+             "Expected identical results for repeated get on #{inspect(key)}: #{inspect(result1)} vs #{inspect(result2)}"
+    end
+  end
 end

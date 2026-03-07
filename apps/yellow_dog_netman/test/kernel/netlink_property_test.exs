@@ -461,4 +461,16 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       end
     end
   end
+
+  property "Netlink process is always alive after dispatching any known event type" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      netlink_pid = Process.whereis(Netlink)
+      assert netlink_pid != nil, "Expected Netlink process to be registered"
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      Process.sleep(10)
+      assert Process.alive?(netlink_pid),
+             "Expected Netlink process to still be alive after dispatching #{event_type}"
+    end
+  end
 end
