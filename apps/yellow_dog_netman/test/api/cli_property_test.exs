@@ -708,4 +708,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with secret.put returns map (r73)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      val <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
+    ) do
+      result = CLI.handle_command(%{"method" => "secret.put", "params" => %{"key" => key, "value" => val}})
+      assert is_map(result)
+    end
+  end
 end

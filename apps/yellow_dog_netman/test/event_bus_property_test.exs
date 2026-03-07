@@ -977,4 +977,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus subscribe with exact same topic twice doesn't crash (r73)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      YellowDog.Netman.EventBus.subscribe(topic)
+      result = YellowDog.Netman.EventBus.subscribe(topic)
+      YellowDog.Netman.EventBus.unsubscribe(topic)
+      assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end
