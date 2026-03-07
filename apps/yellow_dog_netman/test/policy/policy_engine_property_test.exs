@@ -594,5 +594,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected deterministic effective_priority results"
     end
   end
+  property "PolicyEngine dns_priority always returns consistent type" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.PolicyEngine.dns_priority([])
+      r2 = YellowDog.Netman.PolicyEngine.dns_priority([])
+      assert r1 == r2,
+             "Expected deterministic dns_priority results"
+    end
+  end
 
 end

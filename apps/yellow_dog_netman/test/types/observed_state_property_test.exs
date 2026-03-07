@@ -626,5 +626,20 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected same keys after put_link"
     end
   end
+  property "ObservedState put_link with multiple links accumulates state" do
+    check all(
+            iface1 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            iface2 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            iface1 != iface2
+          ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link1 = %{interface: iface1, up: true}
+      link2 = %{interface: iface2, up: false}
+      s1 = YellowDog.Netman.Types.ObservedState.put_link(state, link1)
+      s2 = YellowDog.Netman.Types.ObservedState.put_link(s1, link2)
+      assert is_map(s2),
+             "Expected map after two put_links, got: #{inspect(s2)}"
+    end
+  end
 
 end

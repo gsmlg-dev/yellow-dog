@@ -945,5 +945,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected ReconciliationEngine to be alive"
     end
   end
+  property "ReconciliationEngine is always alive during test run" do
+    check all(n <- StreamData.integer(1..5)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ReconciliationEngine to be alive (check #{n})"
+    end
+  end
 
 end

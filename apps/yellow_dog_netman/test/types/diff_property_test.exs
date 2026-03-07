@@ -558,5 +558,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected map params, got: #{inspect(diff.params)}"
     end
   end
+  property "Diff params field always has zero keys for basic new/1" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert map_size(diff.params) == 0,
+             "Expected empty params map, got: #{inspect(diff.params)}"
+    end
+  end
 
 end

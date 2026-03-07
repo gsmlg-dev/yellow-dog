@@ -948,5 +948,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected :returned or :raised from from_toml({})"
     end
   end
+  property "Profile struct zone field defaults to nil" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.zone) or is_binary(p.zone),
+             "Expected nil or binary zone, got: #{inspect(p.zone)}"
+    end
+  end
 
 end

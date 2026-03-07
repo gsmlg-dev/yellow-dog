@@ -623,5 +623,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected :ok from from_profiles, got: #{inspect(result)}"
     end
   end
+  property "DesiredState from_profiles is idempotent for empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds1 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      ds2 = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert ds1 == ds2,
+             "Expected same result from repeated from_profiles([])"
+    end
+  end
 
 end
