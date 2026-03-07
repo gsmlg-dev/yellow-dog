@@ -325,4 +325,14 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected mtu #{mtu} after two identical link_up calls on #{iface}"
     end
   end
+
+  property "ethernet? and carrier? are both false for a never-registered interface" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "ep_never_#{seed}"
+      assert Ethernet.ethernet?(fresh_iface) == false,
+             "Expected ethernet? false for fresh interface #{fresh_iface}"
+      assert Ethernet.carrier?(fresh_iface) == false,
+             "Expected carrier? false for fresh interface #{fresh_iface}"
+    end
+  end
 end

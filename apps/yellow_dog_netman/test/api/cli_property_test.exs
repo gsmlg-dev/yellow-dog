@@ -343,4 +343,17 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       end
     end
   end
+
+  property "handle_command always returns a map with a string result key" do
+    check all(
+            method <-
+              StreamData.member_of(["device", "device.list", "connection", "connection.list", "status"])
+          ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result),
+             "Expected map from handle_command, got: #{inspect(result)}"
+      assert Map.has_key?(result, "result"),
+             "Expected 'result' key in response for method '#{method}'"
+    end
+  end
 end

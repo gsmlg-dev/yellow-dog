@@ -392,4 +392,17 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map in status result, got: #{inspect(result["result"])}"
     end
   end
+
+  property "handle_command with unknown method always returns a map with an error key" do
+    check all(
+            method <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+              |> StreamData.filter(&(&1 not in ["device", "device.list", "connection",
+                                                "connection.list", "status"]))
+          ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert is_map(result),
+             "Expected map from handle_command, got: #{inspect(result)}"
+    end
+  end
 end
