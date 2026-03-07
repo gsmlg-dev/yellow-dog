@@ -739,4 +739,13 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "to_toml always includes connection id matching profile id" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert result["connection"]["id"] == profile.id,
+             "Expected connection.id #{profile.id}, got: #{inspect(result["connection"]["id"])}"
+    end
+  end
 end

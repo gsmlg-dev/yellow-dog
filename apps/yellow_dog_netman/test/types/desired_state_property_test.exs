@@ -444,4 +444,17 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected map connections, got: #{inspect(desired.connections)}"
     end
   end
+
+  property "from_profiles result connections values always have :interface and :ipv4 fields" do
+    check all(profiles <- list_of(profile_gen(), min_length: 1, max_length: 3)) do
+      pairs = Enum.map(profiles, &{&1, "ds3_#{:erlang.unique_integer([:positive])}"})
+      desired = DesiredState.from_profiles(pairs)
+      for {_id, conn} <- desired.connections do
+        assert Map.has_key?(conn, :interface),
+               "Expected :interface field in connection, got: #{inspect(conn)}"
+        assert Map.has_key?(conn, :ipv4),
+               "Expected :ipv4 field in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end

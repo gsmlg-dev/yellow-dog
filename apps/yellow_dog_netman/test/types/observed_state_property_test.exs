@@ -470,4 +470,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Map.has_key?(state, :routes), "Missing :routes field"
     end
   end
+
+  property "new/0 creates an ObservedState that is a struct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert is_struct(state, ObservedState),
+             "Expected ObservedState struct from new/0, got: #{inspect(state)}"
+    end
+  end
 end
