@@ -765,4 +765,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert s1 == s2
     end
   end
+  property "DesiredState from_profiles always returns struct with connections map (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_map(state.connections)
+      assert map_size(state.connections) == 0
+    end
+  end
 end

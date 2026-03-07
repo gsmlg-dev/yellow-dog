@@ -770,4 +770,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(result)
     end
   end
+  property "PolicyEngine default_route for empty list always :none (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none
+    end
+  end
 end

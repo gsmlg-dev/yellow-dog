@@ -824,4 +824,16 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(state2.links) == 1
     end
   end
+  property "ObservedState add_route then remove_route returns empty routes (r73)" do
+    check all(
+      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      route = %{destination: dst, gateway: gw, interface: "lo"}
+      s1 = YellowDog.Netman.Types.ObservedState.add_route(state, route)
+      s2 = YellowDog.Netman.Types.ObservedState.remove_route(s1, dst, gw)
+      assert s2.routes == []
+    end
+  end
 end

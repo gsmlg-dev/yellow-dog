@@ -1094,4 +1094,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid)
     end
   end
+  property "ReconciliationEngine module name is correct (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.ReconciliationEngine.module_info(:module)
+      assert name == YellowDog.Netman.ReconciliationEngine
+    end
+  end
 end

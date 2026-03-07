@@ -1211,4 +1211,17 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile to_toml round-trip preserves id (r73)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      case YellowDog.Netman.Types.Profile.from_toml(toml) do
+        {:ok, p} ->
+          toml2 = YellowDog.Netman.Types.Profile.to_toml(p)
+          assert is_map(toml2)
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

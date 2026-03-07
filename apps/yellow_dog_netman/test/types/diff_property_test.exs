@@ -717,4 +717,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :set_link_down
     end
   end
+  property "Diff all 11 valid actions produce correct structs (r73)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_struct(diff) and diff.action == action
+    end
+  end
 end
