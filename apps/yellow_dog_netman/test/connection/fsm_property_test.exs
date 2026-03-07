@@ -1192,4 +1192,11 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert Keyword.has_key?(fns, :child_spec)
     end
   end
+
+  property "fsm module info attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

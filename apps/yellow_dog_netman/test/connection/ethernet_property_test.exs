@@ -726,4 +726,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_boolean(result)
     end
   end
+
+  property "ethernet carrier? with alphanumeric returns boolean (r80)" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      result = YellowDog.Netman.Connection.Ethernet.carrier?(name)
+      assert is_boolean(result)
+    end
+  end
 end
