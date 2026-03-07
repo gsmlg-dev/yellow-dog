@@ -604,5 +604,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from any method, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with empty string method returns error map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => ""})
+      assert is_map(result),
+             "Expected map from empty method, got: #{inspect(result)}"
+    end
+  end
 
 end

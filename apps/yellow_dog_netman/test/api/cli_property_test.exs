@@ -560,5 +560,15 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from profile.show, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with nested params always returns map" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            val <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
+          ) do
+      result = CLI.handle_command(%{"method" => "status", "params" => %{key => val}})
+      assert is_map(result),
+             "Expected map from status with params, got: #{inspect(result)}"
+    end
+  end
 
 end

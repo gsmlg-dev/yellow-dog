@@ -754,5 +754,23 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus subscribe with long topic never raises" do
+    check all(
+            prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      topic = String.duplicate(prefix, 3) <> "." <> suffix
+      result =
+        try do
+          EventBus.subscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end
