@@ -723,4 +723,17 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(result)
     end
   end
+  property "PolicyEngine route_metrics for n connections returns n-entry map (r68)" do
+    check all(
+      n <- StreamData.integer(0..5)
+    ) do
+      conns = Enum.map(1..max(n, 1), fn i ->
+        %{profile_id: "conn#{i}", profile: %{autoconnect_priority: i * 10}}
+      end)
+      conns = if n == 0, do: [], else: conns
+      result = YellowDog.Netman.PolicyEngine.route_metrics(conns)
+      assert is_map(result)
+      assert map_size(result) == length(conns)
+    end
+  end
 end

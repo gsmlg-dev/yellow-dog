@@ -1063,4 +1063,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Keyword.has_key?(fns, :reconcile)
     end
   end
+  property "ReconciliationEngine module has handle_info function (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.ReconciliationEngine.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_info)
+    end
+  end
 end

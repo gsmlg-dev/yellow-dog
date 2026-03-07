@@ -773,4 +773,15 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert state.__struct__ == YellowDog.Netman.Types.ObservedState
     end
   end
+  property "ObservedState add_address returns updated struct (r68)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      address = %{interface: iface, address: addr, prefix_len: 24}
+      updated = YellowDog.Netman.Types.ObservedState.add_address(state, address)
+      assert is_struct(updated)
+    end
+  end
 end

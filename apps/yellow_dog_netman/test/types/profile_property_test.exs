@@ -1143,4 +1143,19 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+  property "Profile ipv4 method is always :auto :manual :disabled or :link_local (r68)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      case result do
+        {:ok, p} ->
+          if p.ipv4 do
+            assert p.ipv4[:method] in [:auto, :manual, :disabled, :link_local] or is_nil(p.ipv4[:method])
+          end
+        {:error, _} -> :ok
+      end
+    end
+  end
 end
