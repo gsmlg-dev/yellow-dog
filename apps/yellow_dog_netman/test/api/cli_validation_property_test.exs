@@ -405,4 +405,14 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from handle_command, got: #{inspect(result)}"
     end
   end
+
+  property "connection.show always returns a map" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from connection.show, got: #{inspect(result)}"
+    end
+  end
 end

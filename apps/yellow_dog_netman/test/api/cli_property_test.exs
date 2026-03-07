@@ -356,4 +356,14 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected 'result' key in response for method '#{method}'"
     end
   end
+
+  property "connection.show with missing params returns error map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{}})
+      assert is_map(result),
+             "Expected map from handle_command, got: #{inspect(result)}"
+      assert Map.has_key?(result, "error"),
+             "Expected error key in response, got: #{inspect(result)}"
+    end
+  end
 end

@@ -335,4 +335,13 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected carrier? false for fresh interface #{fresh_iface}"
     end
   end
+
+  property "ethernet? always returns a boolean for any input" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      iface = "eth_bool_#{seed}"
+      result = Ethernet.ethernet?(iface)
+      assert is_boolean(result),
+             "Expected boolean from ethernet?, got: #{inspect(result)}"
+    end
+  end
 end
