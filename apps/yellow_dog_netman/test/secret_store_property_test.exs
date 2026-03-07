@@ -655,4 +655,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore handles list values without crashing (r71)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      vals <- StreamData.list_of(StreamData.integer(), max_length: 5)
+    ) do
+      result = YellowDog.Netman.SecretStore.put(key, vals)
+      assert result == :ok
+    end
+  end
 end

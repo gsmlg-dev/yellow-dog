@@ -828,4 +828,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.Profile)
     end
   end
+  property "ProfileStore and SecretStore are always loaded (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+      assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
+    end
+  end
 end
