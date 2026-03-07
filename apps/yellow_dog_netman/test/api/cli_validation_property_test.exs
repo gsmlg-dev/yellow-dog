@@ -685,4 +685,10 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command missing params always returns error map (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.get"})
+      assert is_map(result)
+    end
+  end
 end

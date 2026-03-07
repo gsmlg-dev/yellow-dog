@@ -644,4 +644,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with profile.get and valid id returns map (r64)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = CLI.handle_command(%{"method" => "profile.get", "params" => %{"id" => id}})
+      assert is_map(result)
+    end
+  end
 end

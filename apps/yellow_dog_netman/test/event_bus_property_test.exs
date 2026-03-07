@@ -895,4 +895,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_atom(registry)
     end
   end
+  property "EventBus publish with any atom topic never crashes (r64)" do
+    check all(
+      topic <- StreamData.atom(:alphanumeric)
+    ) do
+      result = YellowDog.Netman.EventBus.publish(Atom.to_string(topic), %{data: "test"})
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end
