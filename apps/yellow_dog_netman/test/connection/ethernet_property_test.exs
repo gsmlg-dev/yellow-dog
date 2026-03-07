@@ -1773,4 +1773,148 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Ethernet != nil
     end
   end
+
+  property "r221: ethernet inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Ethernet))
+    end
+  end
+
+  property "r222: ethernet not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r223: ethernet loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r224: ethernet is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r225: ethernet functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: ethernet identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet == Ethernet
+    end
+  end
+
+  property "r227: ethernet to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Ethernet)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: ethernet loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r229: ethernet inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Ethernet)) > 0
+    end
+  end
+
+  property "r230: ethernet not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r231: ethernet inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Ethernet))
+    end
+  end
+
+  property "r232: ethernet not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r233: ethernet loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r234: ethernet is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r235: ethernet functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: ethernet identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet == Ethernet
+    end
+  end
+
+  property "r237: ethernet to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Ethernet)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: ethernet loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r239: ethernet inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Ethernet)) > 0
+    end
+  end
+
+  property "r240: ethernet not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
 end

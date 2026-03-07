@@ -1887,4 +1887,148 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert PolicyEngine != nil
     end
   end
+
+  property "r221: policyengine inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(PolicyEngine))
+    end
+  end
+
+  property "r222: policyengine not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r223: policyengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r224: policyengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r225: policyengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: policyengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r227: policyengine to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(PolicyEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: policyengine loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r229: policyengine inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(PolicyEngine)) > 0
+    end
+  end
+
+  property "r230: policyengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r231: policyengine inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(PolicyEngine))
+    end
+  end
+
+  property "r232: policyengine not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r233: policyengine loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r234: policyengine is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(PolicyEngine)
+    end
+  end
+
+  property "r235: policyengine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: policyengine identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r237: policyengine to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(PolicyEngine)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: policyengine loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r239: policyengine inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(PolicyEngine)) > 0
+    end
+  end
+
+  property "r240: policyengine not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
 end

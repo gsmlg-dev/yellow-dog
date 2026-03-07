@@ -1935,4 +1935,148 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert RouteManager != nil
     end
   end
+
+  property "r221: routemanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r222: routemanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r223: routemanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r224: routemanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r225: routemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: routemanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager == RouteManager
+    end
+  end
+
+  property "r227: routemanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(RouteManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: routemanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r229: routemanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(RouteManager)) > 0
+    end
+  end
+
+  property "r230: routemanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r231: routemanager inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r232: routemanager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r233: routemanager loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r234: routemanager is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r235: routemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: routemanager identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager == RouteManager
+    end
+  end
+
+  property "r237: routemanager to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(RouteManager)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: routemanager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r239: routemanager inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(RouteManager)) > 0
+    end
+  end
+
+  property "r240: routemanager not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
 end

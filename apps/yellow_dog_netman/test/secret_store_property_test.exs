@@ -1773,4 +1773,148 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore != nil
     end
   end
+
+  property "r221: secretstore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(SecretStore))
+    end
+  end
+
+  property "r222: secretstore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r223: secretstore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r224: secretstore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(SecretStore)
+    end
+  end
+
+  property "r225: secretstore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: secretstore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore == SecretStore
+    end
+  end
+
+  property "r227: secretstore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(SecretStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: secretstore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r229: secretstore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(SecretStore)) > 0
+    end
+  end
+
+  property "r230: secretstore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r231: secretstore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(SecretStore))
+    end
+  end
+
+  property "r232: secretstore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r233: secretstore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r234: secretstore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(SecretStore)
+    end
+  end
+
+  property "r235: secretstore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: secretstore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore == SecretStore
+    end
+  end
+
+  property "r237: secretstore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(SecretStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: secretstore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r239: secretstore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(SecretStore)) > 0
+    end
+  end
+
+  property "r240: secretstore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
 end

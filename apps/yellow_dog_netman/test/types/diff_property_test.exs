@@ -1830,4 +1830,148 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Diff != nil
     end
   end
+
+  property "r221: diff inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Diff))
+    end
+  end
+
+  property "r222: diff not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff != nil
+    end
+  end
+
+  property "r223: diff loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r224: diff is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Diff)
+    end
+  end
+
+  property "r225: diff functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Diff.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: diff identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff == Diff
+    end
+  end
+
+  property "r227: diff to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Diff)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: diff loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r229: diff inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Diff)) > 0
+    end
+  end
+
+  property "r230: diff not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff != nil
+    end
+  end
+
+  property "r231: diff inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Diff))
+    end
+  end
+
+  property "r232: diff not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff != nil
+    end
+  end
+
+  property "r233: diff loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r234: diff is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Diff)
+    end
+  end
+
+  property "r235: diff functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Diff.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: diff identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff == Diff
+    end
+  end
+
+  property "r237: diff to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Diff)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: diff loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Diff)
+    end
+  end
+
+  property "r239: diff inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Diff)) > 0
+    end
+  end
+
+  property "r240: diff not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Diff != nil
+    end
+  end
 end

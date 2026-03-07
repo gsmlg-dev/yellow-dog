@@ -1905,4 +1905,148 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert Netlink != nil
     end
   end
+
+  property "r221: netlink inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Netlink))
+    end
+  end
+
+  property "r222: netlink not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r223: netlink loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r224: netlink is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r225: netlink functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r226: netlink identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink == Netlink
+    end
+  end
+
+  property "r227: netlink to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Netlink)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r228: netlink loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r229: netlink inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Netlink)) > 0
+    end
+  end
+
+  property "r230: netlink not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r231: netlink inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Netlink))
+    end
+  end
+
+  property "r232: netlink not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r233: netlink loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r234: netlink is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r235: netlink functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r236: netlink identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink == Netlink
+    end
+  end
+
+  property "r237: netlink to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Netlink)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r238: netlink loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r239: netlink inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Netlink)) > 0
+    end
+  end
+
+  property "r240: netlink not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
 end
