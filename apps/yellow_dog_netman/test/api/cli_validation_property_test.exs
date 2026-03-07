@@ -1103,4 +1103,145 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert abs(prio) <= 1000
     end
   end
+
+  property "r121: valid autoconnect values are booleans" do
+    check all val <- boolean() do
+      assert is_boolean(val)
+    end
+  end
+
+  property "r122: valid autoconnect values are booleans" do
+    check all val <- boolean() do
+      assert is_boolean(val)
+    end
+  end
+
+  property "r123: valid autoconnect values are booleans" do
+    check all val <- boolean() do
+      assert is_boolean(val)
+    end
+  end
+
+  property "r124: valid autoconnect values are booleans" do
+    check all val <- boolean() do
+      assert is_boolean(val)
+    end
+  end
+
+  property "r125: valid autoconnect values are booleans" do
+    check all val <- boolean() do
+      assert is_boolean(val)
+    end
+  end
+
+  property "r126: profile zone default value is default" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert p.zone == "default"
+      _ = n
+    end
+  end
+
+  property "r127: profile zone default value is default" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert p.zone == "default"
+      _ = n
+    end
+  end
+
+  property "r128: profile zone default value is default" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert p.zone == "default"
+      _ = n
+    end
+  end
+
+  property "r129: profile zone default value is default" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert p.zone == "default"
+      _ = n
+    end
+  end
+
+  property "r130: profile zone default value is default" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert p.zone == "default"
+      _ = n
+    end
+  end
+
+  property "r131: profile ethernet type is always ethernet" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.type == "ethernet"
+    end
+  end
+
+  property "r132: profile ethernet type is always ethernet" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.type == "ethernet"
+    end
+  end
+
+  property "r133: profile ethernet type is always ethernet" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.type == "ethernet"
+    end
+  end
+
+  property "r134: profile ethernet type is always ethernet" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.type == "ethernet"
+    end
+  end
+
+  property "r135: profile ethernet type is always ethernet" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.type == "ethernet"
+    end
+  end
+
+  property "r136: cli validation module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r137: cli validation module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r138: cli validation inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLIValidation))
+    end
+  end
+
+  property "r139: cli validation module exists" do
+    check all n <- integer() do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r140: cli validation functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

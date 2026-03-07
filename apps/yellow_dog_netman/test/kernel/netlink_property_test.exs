@@ -1178,4 +1178,155 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       _ = n
     end
   end
+
+  property "r121: netlink is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r122: netlink is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r123: netlink is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r124: netlink is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r125: netlink is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netlink)
+      _ = n
+    end
+  end
+
+  property "r126: netlink has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: netlink has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: netlink has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: netlink has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: netlink has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netlink.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: netlink attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: netlink attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: netlink attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: netlink attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: netlink attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Netlink.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: netlink module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r137: netlink module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r138: netlink inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Netlink))
+    end
+  end
+
+  property "r139: netlink module exists" do
+    check all n <- integer() do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r140: netlink functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

@@ -1118,4 +1118,155 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       _ = n
     end
   end
+
+  property "r121: connection supervisor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r122: connection supervisor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r123: connection supervisor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r124: connection supervisor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r125: connection supervisor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Connection.Supervisor)
+      _ = n
+    end
+  end
+
+  property "r126: connection supervisor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: connection supervisor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: connection supervisor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: connection supervisor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: connection supervisor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Connection.Supervisor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: connection supervisor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: connection supervisor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: connection supervisor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: connection supervisor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: connection supervisor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: connection supervisor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ConnectionSupervisor)
+    end
+  end
+
+  property "r137: connection supervisor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ConnectionSupervisor)
+    end
+  end
+
+  property "r138: connection supervisor inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ConnectionSupervisor))
+    end
+  end
+
+  property "r139: connection supervisor module exists" do
+    check all n <- integer() do
+      _ = n
+      assert ConnectionSupervisor != nil
+    end
+  end
+
+  property "r140: connection supervisor functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ConnectionSupervisor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

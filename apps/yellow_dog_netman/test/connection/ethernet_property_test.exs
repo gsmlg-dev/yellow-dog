@@ -1046,4 +1046,155 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       _ = n
     end
   end
+
+  property "r121: ethernet is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r122: ethernet is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r123: ethernet is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r124: ethernet is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r125: ethernet is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Ethernet)
+      _ = n
+    end
+  end
+
+  property "r126: ethernet has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: ethernet has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: ethernet has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: ethernet has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: ethernet has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Ethernet.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: ethernet attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: ethernet attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: ethernet attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: ethernet attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: ethernet attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: ethernet module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r137: ethernet module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r138: ethernet inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Ethernet))
+    end
+  end
+
+  property "r139: ethernet module exists" do
+    check all n <- integer() do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r140: ethernet functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

@@ -1402,4 +1402,165 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert true
     end
   end
+
+  property "r121: event bus module has subscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_sub = Enum.any?(fns, fn {name, _} -> name == :subscribe end)
+      assert has_sub
+      _ = n
+    end
+  end
+
+  property "r122: event bus module has subscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_sub = Enum.any?(fns, fn {name, _} -> name == :subscribe end)
+      assert has_sub
+      _ = n
+    end
+  end
+
+  property "r123: event bus module has subscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_sub = Enum.any?(fns, fn {name, _} -> name == :subscribe end)
+      assert has_sub
+      _ = n
+    end
+  end
+
+  property "r124: event bus module has subscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_sub = Enum.any?(fns, fn {name, _} -> name == :subscribe end)
+      assert has_sub
+      _ = n
+    end
+  end
+
+  property "r125: event bus module has subscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      has_sub = Enum.any?(fns, fn {name, _} -> name == :subscribe end)
+      assert has_sub
+      _ = n
+    end
+  end
+
+  property "r126: event bus module has publish export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :publish end)
+      _ = n
+    end
+  end
+
+  property "r127: event bus module has publish export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :publish end)
+      _ = n
+    end
+  end
+
+  property "r128: event bus module has publish export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :publish end)
+      _ = n
+    end
+  end
+
+  property "r129: event bus module has publish export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :publish end)
+      _ = n
+    end
+  end
+
+  property "r130: event bus module has publish export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :publish end)
+      _ = n
+    end
+  end
+
+  property "r131: event bus module has unsubscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :unsubscribe end)
+      _ = n
+    end
+  end
+
+  property "r132: event bus module has unsubscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :unsubscribe end)
+      _ = n
+    end
+  end
+
+  property "r133: event bus module has unsubscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :unsubscribe end)
+      _ = n
+    end
+  end
+
+  property "r134: event bus module has unsubscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :unsubscribe end)
+      _ = n
+    end
+  end
+
+  property "r135: event bus module has unsubscribe export" do
+    check all n <- integer(0..3) do
+      fns = EventBus.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :unsubscribe end)
+      _ = n
+    end
+  end
+
+  property "r136: event bus module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r137: event bus functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r138: event bus is not nil" do
+    check all n <- integer(0..5) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r139: event bus module atom" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r140: event bus inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
 end

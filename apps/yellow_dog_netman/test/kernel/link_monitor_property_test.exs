@@ -1086,4 +1086,155 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       _ = n
     end
   end
+
+  property "r121: link monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r122: link monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r123: link monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r124: link monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r125: link monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(LinkMonitor)
+      _ = n
+    end
+  end
+
+  property "r126: link monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: link monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: link monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: link monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: link monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = LinkMonitor.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: link monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: link monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: link monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: link monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: link monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: link monitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r137: link monitor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r138: link monitor inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r139: link monitor module exists" do
+    check all n <- integer() do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r140: link monitor functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

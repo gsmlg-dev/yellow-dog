@@ -1208,4 +1208,155 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       _ = n
     end
   end
+
+  property "r121: route manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r122: route manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r123: route manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r124: route manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r125: route manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(RouteManager)
+      _ = n
+    end
+  end
+
+  property "r126: route manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r127: route manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r128: route manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r129: route manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r130: route manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = RouteManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r131: route manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: route manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: route manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: route manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: route manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = RouteManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: route manager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r137: route manager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r138: route manager inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r139: route manager module exists" do
+    check all n <- integer() do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r140: route manager functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

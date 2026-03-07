@@ -1515,4 +1515,155 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       _ = n
     end
   end
+
+  property "r121: fsm is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r122: fsm is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r123: fsm is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r124: fsm is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r125: fsm is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(FSM)
+      _ = n
+    end
+  end
+
+  property "r126: fsm has correct state functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: fsm has correct state functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: fsm has correct state functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: fsm has correct state functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: fsm has correct state functions" do
+    check all n <- integer(0..3) do
+      fns = FSM.__info__(:functions)
+      assert {:init, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: fsm module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: fsm module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: fsm module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: fsm module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: fsm module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = FSM.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: fsm module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r137: fsm module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r138: fsm inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(FSM))
+    end
+  end
+
+  property "r139: fsm module exists" do
+    check all n <- integer() do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r140: fsm functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

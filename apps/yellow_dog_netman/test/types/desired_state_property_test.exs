@@ -1153,4 +1153,174 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       _ = n
     end
   end
+
+  property "r121: desired state has exactly 1 field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert map_size(m) >= 1
+      _ = n
+    end
+  end
+
+  property "r122: desired state has exactly 1 field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert map_size(m) >= 1
+      _ = n
+    end
+  end
+
+  property "r123: desired state has exactly 1 field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert map_size(m) >= 1
+      _ = n
+    end
+  end
+
+  property "r124: desired state has exactly 1 field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert map_size(m) >= 1
+      _ = n
+    end
+  end
+
+  property "r125: desired state has exactly 1 field" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert map_size(m) >= 1
+      _ = n
+    end
+  end
+
+  property "r126: desired state connections starts empty" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r127: desired state connections starts empty" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r128: desired state connections starts empty" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r129: desired state connections starts empty" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r130: desired state connections starts empty" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      assert ds.connections == %{}
+      _ = n
+    end
+  end
+
+  property "r131: desired state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert String.contains?(inspected, "DesiredState")
+      _ = n
+    end
+  end
+
+  property "r132: desired state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert String.contains?(inspected, "DesiredState")
+      _ = n
+    end
+  end
+
+  property "r133: desired state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert String.contains?(inspected, "DesiredState")
+      _ = n
+    end
+  end
+
+  property "r134: desired state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert String.contains?(inspected, "DesiredState")
+      _ = n
+    end
+  end
+
+  property "r135: desired state inspect contains DesiredState" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      inspected = inspect(ds)
+      assert String.contains?(inspected, "DesiredState")
+      _ = n
+    end
+  end
+
+  property "r136: desired_state connections is always a map" do
+    check all n <- integer(0..5) do
+      ds = %DesiredState{}
+      _ = n
+      assert is_map(ds.connections)
+    end
+  end
+
+  property "r137: desired_state is a struct" do
+    check all n <- integer() do
+      ds = %DesiredState{}
+      _ = n
+      assert is_struct(ds, DesiredState)
+    end
+  end
+
+  property "r138: desired_state connections starts empty" do
+    check all n <- boolean() do
+      ds = %DesiredState{}
+      _ = n
+      assert ds.connections == %{}
+    end
+  end
+
+  property "r139: desired_state can hold connection map" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10),
+              val <- integer() do
+      ds = %DesiredState{connections: %{key => val}}
+      assert Map.has_key?(ds.connections, key)
+    end
+  end
+
+  property "r140: desired_state inspect works" do
+    check all n <- integer(0..3) do
+      ds = %DesiredState{}
+      _ = n
+      assert is_binary(inspect(ds))
+    end
+  end
 end

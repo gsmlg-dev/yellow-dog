@@ -1235,4 +1235,188 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(unique_id)
     end
   end
+
+  property "r121: profile store list is always a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r122: profile store list is always a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r123: profile store list is always a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r124: profile store list is always a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r125: profile store list is always a list" do
+    check all n <- integer(0..5) do
+      result = ProfileStore.list()
+      assert is_list(result)
+      _ = n
+    end
+  end
+
+  property "r126: profile store put and get are consistent" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r126_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      {:ok, got} = ProfileStore.get(unique_id)
+      assert got.id == unique_id
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r127: profile store put and get are consistent" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r127_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      {:ok, got} = ProfileStore.get(unique_id)
+      assert got.id == unique_id
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r128: profile store put and get are consistent" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r128_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      {:ok, got} = ProfileStore.get(unique_id)
+      assert got.id == unique_id
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r129: profile store put and get are consistent" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r129_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      {:ok, got} = ProfileStore.get(unique_id)
+      assert got.id == unique_id
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r130: profile store put and get are consistent" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r130_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      :ok = ProfileStore.put(unique_id, profile)
+      {:ok, got} = ProfileStore.get(unique_id)
+      assert got.id == unique_id
+      ProfileStore.delete(unique_id)
+    end
+  end
+
+  property "r131: profile store delete after put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r131_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok
+    end
+  end
+
+  property "r132: profile store delete after put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r132_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok
+    end
+  end
+
+  property "r133: profile store delete after put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r133_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok
+    end
+  end
+
+  property "r134: profile store delete after put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r134_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok
+    end
+  end
+
+  property "r135: profile store delete after put returns ok" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 12) do
+      unique_id = "r135_" <> id
+      profile = %Profile{id: unique_id, type: "ethernet"}
+      ProfileStore.put(unique_id, profile)
+      result = ProfileStore.delete(unique_id)
+      assert result == :ok
+    end
+  end
+
+  property "r136: ProfileStore.list/0 returns list" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = ProfileStore.list()
+      assert is_list(result)
+    end
+  end
+
+  property "r137: ProfileStore.get unknown returns error" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      unique = "nonexistent_" <> id <> "_zz"
+      result = ProfileStore.get(unique)
+      assert match?({:error, :not_found}, result)
+    end
+  end
+
+  property "r138: ProfileStore.delete unknown returns error" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      unique = "nonexistent_" <> id <> "_zz"
+      result = ProfileStore.delete(unique)
+      assert match?({:error, :not_found}, result)
+    end
+  end
+
+  property "r139: ProfileStore module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r140: ProfileStore.list returns list of profiles" do
+    check all n <- integer(0..3) do
+      _ = n
+      list = ProfileStore.list()
+      assert Enum.all?(list, &is_struct(&1, Profile))
+    end
+  end
 end

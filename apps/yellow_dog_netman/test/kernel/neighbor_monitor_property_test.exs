@@ -1331,4 +1331,155 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       _ = n
     end
   end
+
+  property "r121: neighbor monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r122: neighbor monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r123: neighbor monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r124: neighbor monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r125: neighbor monitor is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(NeighborMonitor)
+      _ = n
+    end
+  end
+
+  property "r126: neighbor monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r127: neighbor monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r128: neighbor monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r129: neighbor monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r130: neighbor monitor has correct functions" do
+    check all n <- integer(0..3) do
+      fns = NeighborMonitor.__info__(:functions)
+      assert {:list_neighbors, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r131: neighbor monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: neighbor monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: neighbor monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: neighbor monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: neighbor monitor attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: neighbor monitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r137: neighbor monitor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r138: neighbor monitor inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(NeighborMonitor))
+    end
+  end
+
+  property "r139: neighbor monitor module exists" do
+    check all n <- integer() do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r140: neighbor monitor functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

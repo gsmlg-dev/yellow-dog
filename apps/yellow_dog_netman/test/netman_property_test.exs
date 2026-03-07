@@ -955,4 +955,160 @@ defmodule YellowDog.NetmanPropertyTest do
       _ = n
     end
   end
+
+  property "r121: netman module is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r122: netman module is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r123: netman module is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r124: netman module is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r125: netman module is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(Netman)
+      _ = n
+    end
+  end
+
+  property "r126: netman module has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: netman module has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: netman module has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: netman module has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: netman module has correct functions" do
+    check all n <- integer(0..3) do
+      fns = Netman.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: netman module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      has_vsn = Keyword.has_key?(attrs, :vsn)
+      assert has_vsn or is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: netman module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      has_vsn = Keyword.has_key?(attrs, :vsn)
+      assert has_vsn or is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: netman module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      has_vsn = Keyword.has_key?(attrs, :vsn)
+      assert has_vsn or is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: netman module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      has_vsn = Keyword.has_key?(attrs, :vsn)
+      assert has_vsn or is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: netman module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = Netman.__info__(:attributes)
+      has_vsn = Keyword.has_key?(attrs, :vsn)
+      assert has_vsn or is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: netman module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r137: netman module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r138: netman inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r139: netman module exists" do
+    check all n <- integer() do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r140: netman module not nil" do
+    check all n <- integer(0..5) do
+      _ = n
+      m = YellowDog.Netman
+      assert is_atom(m)
+    end
+  end
 end

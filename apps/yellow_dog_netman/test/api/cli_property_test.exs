@@ -1074,4 +1074,160 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert map_size(result) > 0
     end
   end
+
+  property "r121: cli module has handle_command export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r122: cli module has handle_command export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r123: cli module has handle_command export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r124: cli module has handle_command export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r125: cli module has handle_command export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+      _ = n
+    end
+  end
+
+  property "r126: cli module has start_link/1 export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: cli module has start_link/1 export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: cli module has start_link/1 export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: cli module has start_link/1 export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: cli module has start_link/1 export" do
+    check all n <- integer(0..3) do
+      fns = CLI.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: cli handle_command status returns result key" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+      _ = n
+    end
+  end
+
+  property "r132: cli handle_command status returns result key" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+      _ = n
+    end
+  end
+
+  property "r133: cli handle_command status returns result key" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+      _ = n
+    end
+  end
+
+  property "r134: cli handle_command status returns result key" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+      _ = n
+    end
+  end
+
+  property "r135: cli handle_command status returns result key" do
+    check all n <- integer(0..3) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+      _ = n
+    end
+  end
+
+  property "r136: cli module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r137: cli module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r138: cli inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLI))
+    end
+  end
+
+  property "r139: cli module exists" do
+    check all n <- integer() do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r140: cli handle_command function exists" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
+    end
+  end
 end

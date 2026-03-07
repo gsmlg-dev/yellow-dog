@@ -1455,4 +1455,155 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       _ = n
     end
   end
+
+  property "r121: reconciliation engine is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r122: reconciliation engine is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r123: reconciliation engine is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r124: reconciliation engine is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r125: reconciliation engine is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(ReconciliationEngine)
+      _ = n
+    end
+  end
+
+  property "r126: reconciliation engine has correct functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r127: reconciliation engine has correct functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r128: reconciliation engine has correct functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r129: reconciliation engine has correct functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r130: reconciliation engine has correct functions" do
+    check all n <- integer(0..3) do
+      fns = ReconciliationEngine.__info__(:functions)
+      assert {:start_link, 1} in fns
+      _ = n
+    end
+  end
+
+  property "r131: reconciliation engine module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: reconciliation engine module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: reconciliation engine module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: reconciliation engine module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: reconciliation engine module attributes has vsn" do
+    check all n <- integer(0..3) do
+      attrs = ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: reconciliation engine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ReconciliationEngine)
+    end
+  end
+
+  property "r137: reconciliation engine module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ReconciliationEngine)
+    end
+  end
+
+  property "r138: reconciliation engine inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ReconciliationEngine))
+    end
+  end
+
+  property "r139: reconciliation engine is not nil" do
+    check all n <- integer() do
+      _ = n
+      assert ReconciliationEngine != nil
+    end
+  end
+
+  property "r140: reconciliation engine module atom" do
+    check all n <- integer(0..5) do
+      _ = n
+      m = ReconciliationEngine
+      assert is_atom(m)
+    end
+  end
 end

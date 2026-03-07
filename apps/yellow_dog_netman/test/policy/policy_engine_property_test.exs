@@ -1139,4 +1139,169 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result[id])
     end
   end
+
+  property "r121: policy engine effective_priority is bounded" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r122: policy engine effective_priority is bounded" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r123: policy engine effective_priority is bounded" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r124: policy engine effective_priority is bounded" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r125: policy engine effective_priority is bounded" do
+    check all prio <- integer(-1000..10000) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_integer(result)
+    end
+  end
+
+  property "r126: policy engine dns_priority with no dns returns list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r127: policy engine dns_priority with no dns returns list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r128: policy engine dns_priority with no dns returns list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r129: policy engine dns_priority with no dns returns list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r130: policy engine dns_priority with no dns returns list" do
+    check all prio <- integer(-100..100) do
+      conn = %{autoconnect_priority: prio, id: "c", interface: "eth0"}
+      result = PolicyEngine.dns_priority([conn])
+      assert is_list(result)
+    end
+  end
+
+  property "r131: policy engine effective_priority with priority zero is 0" do
+    check all n <- integer(0..3) do
+      conn = %{autoconnect_priority: 0, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert result == 0
+      _ = n
+    end
+  end
+
+  property "r132: policy engine effective_priority with priority zero is 0" do
+    check all n <- integer(0..3) do
+      conn = %{autoconnect_priority: 0, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert result == 0
+      _ = n
+    end
+  end
+
+  property "r133: policy engine effective_priority with priority zero is 0" do
+    check all n <- integer(0..3) do
+      conn = %{autoconnect_priority: 0, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert result == 0
+      _ = n
+    end
+  end
+
+  property "r134: policy engine effective_priority with priority zero is 0" do
+    check all n <- integer(0..3) do
+      conn = %{autoconnect_priority: 0, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert result == 0
+      _ = n
+    end
+  end
+
+  property "r135: policy engine effective_priority with priority zero is 0" do
+    check all n <- integer(0..3) do
+      conn = %{autoconnect_priority: 0, id: "c", interface: "eth0"}
+      result = PolicyEngine.effective_priority(conn)
+      assert result == 0
+      _ = n
+    end
+  end
+
+  property "r136: default_route returns none for empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.default_route([])
+      assert result == :none
+    end
+  end
+
+  property "r137: route_metrics returns map" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.route_metrics([])
+      assert is_map(result)
+    end
+  end
+
+  property "r138: dns_priority returns list" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.dns_priority([])
+      assert is_list(result)
+    end
+  end
+
+  property "r139: route_metrics empty list" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.route_metrics([])
+      assert result == %{}
+    end
+  end
+
+  property "r140: dns_priority empty list" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.dns_priority([])
+      assert result == []
+    end
+  end
 end

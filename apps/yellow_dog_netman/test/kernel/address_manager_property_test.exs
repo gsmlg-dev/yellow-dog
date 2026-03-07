@@ -1213,4 +1213,155 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       _ = n
     end
   end
+
+  property "r121: address manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r122: address manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r123: address manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r124: address manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r125: address manager is loadable" do
+    check all n <- integer(0..3) do
+      assert Code.ensure_loaded?(AddressManager)
+      _ = n
+    end
+  end
+
+  property "r126: address manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r127: address manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r128: address manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r129: address manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r130: address manager has correct functions" do
+    check all n <- integer(0..3) do
+      fns = AddressManager.__info__(:functions)
+      assert {:list_all, 0} in fns
+      _ = n
+    end
+  end
+
+  property "r131: address manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r132: address manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r133: address manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r134: address manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r135: address manager attributes is a list" do
+    check all n <- integer(0..3) do
+      attrs = AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+      _ = n
+    end
+  end
+
+  property "r136: address manager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r137: address manager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r138: address manager inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r139: address manager module exists" do
+    check all n <- integer() do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r140: address manager functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

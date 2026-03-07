@@ -1066,4 +1066,135 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:error, :not_found}, result)
     end
   end
+
+  property "r121: secret store put is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.put(key, "val") == :ok
+    end
+  end
+
+  property "r122: secret store put is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.put(key, "val") == :ok
+    end
+  end
+
+  property "r123: secret store put is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.put(key, "val") == :ok
+    end
+  end
+
+  property "r124: secret store put is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.put(key, "val") == :ok
+    end
+  end
+
+  property "r125: secret store put is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.put(key, "val") == :ok
+    end
+  end
+
+  property "r126: secret store delete is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r127: secret store delete is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r128: secret store delete is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r129: secret store delete is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r130: secret store delete is always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r131: secret store get error reason is not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r132: secret store get error reason is not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r133: secret store get error reason is not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r134: secret store get error reason is not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r135: secret store get error reason is not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 24) do
+      {:error, reason} = SecretStore.get(key)
+      assert reason == :not_found
+    end
+  end
+
+  property "r136: SecretStore get returns error tuple" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = SecretStore.get(key)
+      assert match?({:error, _}, result)
+    end
+  end
+
+  property "r137: SecretStore module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r138: SecretStore put returns ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20),
+              val <- string(:alphanumeric) do
+      result = SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
+
+  property "r139: SecretStore delete returns ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = SecretStore.delete(key)
+      assert result == :ok
+    end
+  end
+
+  property "r140: SecretStore get returns not_found" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = SecretStore.get(key)
+      assert result == {:error, :not_found}
+    end
+  end
 end

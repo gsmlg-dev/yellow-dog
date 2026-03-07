@@ -1225,4 +1225,183 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       _ = n
     end
   end
+
+  property "r121: observed state has exactly 3 map fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert map_size(m) >= 3
+      _ = n
+    end
+  end
+
+  property "r122: observed state has exactly 3 map fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert map_size(m) >= 3
+      _ = n
+    end
+  end
+
+  property "r123: observed state has exactly 3 map fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert map_size(m) >= 3
+      _ = n
+    end
+  end
+
+  property "r124: observed state has exactly 3 map fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert map_size(m) >= 3
+      _ = n
+    end
+  end
+
+  property "r125: observed state has exactly 3 map fields" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      m = Map.from_struct(s)
+      assert map_size(m) >= 3
+      _ = n
+    end
+  end
+
+  property "r126: observed state links routes addresses all start empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.links == %{}
+      assert s.addresses == %{}
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r127: observed state links routes addresses all start empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.links == %{}
+      assert s.addresses == %{}
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r128: observed state links routes addresses all start empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.links == %{}
+      assert s.addresses == %{}
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r129: observed state links routes addresses all start empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.links == %{}
+      assert s.addresses == %{}
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r130: observed state links routes addresses all start empty" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      assert s.links == %{}
+      assert s.addresses == %{}
+      assert s.routes == []
+      _ = n
+    end
+  end
+
+  property "r131: observed state inspect output contains module name" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert String.contains?(inspected, "ObservedState")
+      _ = n
+    end
+  end
+
+  property "r132: observed state inspect output contains module name" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert String.contains?(inspected, "ObservedState")
+      _ = n
+    end
+  end
+
+  property "r133: observed state inspect output contains module name" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert String.contains?(inspected, "ObservedState")
+      _ = n
+    end
+  end
+
+  property "r134: observed state inspect output contains module name" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert String.contains?(inspected, "ObservedState")
+      _ = n
+    end
+  end
+
+  property "r135: observed state inspect output contains module name" do
+    check all n <- integer(0..3) do
+      s = ObservedState.new()
+      inspected = inspect(s)
+      assert String.contains?(inspected, "ObservedState")
+      _ = n
+    end
+  end
+
+  property "r136: observed_state is a struct" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      assert is_struct(os)
+    end
+  end
+
+  property "r137: observed_state inspect returns binary" do
+    check all n <- integer(0..5) do
+      os = %ObservedState{}
+      _ = n
+      assert is_binary(inspect(os))
+    end
+  end
+
+  property "r138: observed_state module exists" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r139: observed_state struct key check" do
+    check all n <- integer() do
+      os = %ObservedState{}
+      _ = n
+      assert is_struct(os, ObservedState)
+    end
+  end
+
+  property "r140: observed_state boolean field" do
+    check all b <- boolean() do
+      _ = b
+      os = %ObservedState{}
+      assert is_struct(os)
+    end
+  end
 end

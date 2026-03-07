@@ -1076,4 +1076,156 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d.action == action
     end
   end
+
+  property "r121: diff has exactly 3 fields" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      m = Map.from_struct(d)
+      assert map_size(m) == 3
+    end
+  end
+
+  property "r122: diff has exactly 3 fields" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      m = Map.from_struct(d)
+      assert map_size(m) == 3
+    end
+  end
+
+  property "r123: diff has exactly 3 fields" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      m = Map.from_struct(d)
+      assert map_size(m) == 3
+    end
+  end
+
+  property "r124: diff has exactly 3 fields" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      m = Map.from_struct(d)
+      assert map_size(m) == 3
+    end
+  end
+
+  property "r125: diff has exactly 3 fields" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      m = Map.from_struct(d)
+      assert map_size(m) == 3
+    end
+  end
+
+  property "r126: diff action field is always an atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r127: diff action field is always an atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r128: diff action field is always an atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r129: diff action field is always an atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r130: diff action field is always an atom" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r131: diff inspect contains action" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert String.contains?(inspected, Atom.to_string(action))
+    end
+  end
+
+  property "r132: diff inspect contains action" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert String.contains?(inspected, Atom.to_string(action))
+    end
+  end
+
+  property "r133: diff inspect contains action" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert String.contains?(inspected, Atom.to_string(action))
+    end
+  end
+
+  property "r134: diff inspect contains action" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert String.contains?(inspected, Atom.to_string(action))
+    end
+  end
+
+  property "r135: diff inspect contains action" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      inspected = inspect(d)
+      assert String.contains?(inspected, Atom.to_string(action))
+    end
+  end
+
+  property "r136: diff params defaults to empty map" do
+    check all action <- member_of([:add_address, :remove_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert d.params == %{}
+    end
+  end
+
+  property "r137: diff params can be overridden" do
+    check all action <- member_of([:add_address, :set_mtu]),
+              key <- atom(:alphanumeric),
+              val <- integer() do
+      d = Diff.new(action, nil, %{key => val})
+      assert d.params == %{key => val}
+    end
+  end
+
+  property "r138: diff action is stored correctly" do
+    check all action <- member_of([:add_address, :remove_address, :add_route, :remove_route, :set_mtu]) do
+      d = Diff.new(action)
+      assert d.action == action
+    end
+  end
+
+  property "r139: diff interface defaults to nil" do
+    check all action <- member_of([:add_address, :set_mtu, :set_link_up]) do
+      d = Diff.new(action)
+      assert is_nil(d.interface)
+    end
+  end
+
+  property "r140: diff is a struct" do
+    check all action <- member_of([:add_address, :remove_address]) do
+      d = Diff.new(action)
+      assert is_struct(d)
+    end
+  end
 end

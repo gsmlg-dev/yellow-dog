@@ -1599,4 +1599,149 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert profile.type == "ethernet"
     end
   end
+
+  property "r121: profile struct field count is positive" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert map_size(Map.from_struct(p)) > 0
+      _ = n
+    end
+  end
+
+  property "r122: profile struct field count is positive" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert map_size(Map.from_struct(p)) > 0
+      _ = n
+    end
+  end
+
+  property "r123: profile struct field count is positive" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert map_size(Map.from_struct(p)) > 0
+      _ = n
+    end
+  end
+
+  property "r124: profile struct field count is positive" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert map_size(Map.from_struct(p)) > 0
+      _ = n
+    end
+  end
+
+  property "r125: profile struct field count is positive" do
+    check all n <- integer(0..3) do
+      p = %Profile{id: "test", type: "ethernet"}
+      assert map_size(Map.from_struct(p)) > 0
+      _ = n
+    end
+  end
+
+  property "r126: profile zone field is a binary string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.zone)
+    end
+  end
+
+  property "r127: profile zone field is a binary string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.zone)
+    end
+  end
+
+  property "r128: profile zone field is a binary string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.zone)
+    end
+  end
+
+  property "r129: profile zone field is a binary string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.zone)
+    end
+  end
+
+  property "r130: profile zone field is a binary string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.zone)
+    end
+  end
+
+  property "r131: profile ethernet field has mtu key" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p.ethernet, :mtu)
+    end
+  end
+
+  property "r132: profile ethernet field has mtu key" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p.ethernet, :mtu)
+    end
+  end
+
+  property "r133: profile ethernet field has mtu key" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p.ethernet, :mtu)
+    end
+  end
+
+  property "r134: profile ethernet field has mtu key" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p.ethernet, :mtu)
+    end
+  end
+
+  property "r135: profile ethernet field has mtu key" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 16) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert Map.has_key?(p.ethernet, :mtu)
+    end
+  end
+
+  property "r136: profile id is string" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_binary(p.id)
+    end
+  end
+
+  property "r137: profile type field" do
+    check all type <- member_of(["ethernet", "wifi", "vpn"]) do
+      p = %Profile{id: "test", type: type}
+      assert p.type == type
+    end
+  end
+
+  property "r138: profile autoconnect_priority defaults" do
+    check all n <- integer(0..100) do
+      p = %Profile{id: "test", type: "ethernet", autoconnect_priority: n}
+      assert p.autoconnect_priority == n
+    end
+  end
+
+  property "r139: profile is struct" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_struct(p, Profile)
+    end
+  end
+
+  property "r140: profile inspect contains id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert String.contains?(inspect(p), id)
+    end
+  end
 end
