@@ -430,4 +430,16 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected {:error, :not_found} after delete for id #{profile.id}"
     end
   end
+
+  property "list always returns profiles where every id is a binary string" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = ProfileStore.list()
+      assert is_list(profiles)
+
+      for p <- profiles do
+        assert is_binary(p.id),
+               "Expected binary id in profile, got: #{inspect(p.id)}"
+      end
+    end
+  end
 end
