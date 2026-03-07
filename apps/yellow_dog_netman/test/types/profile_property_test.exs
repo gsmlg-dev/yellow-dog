@@ -688,4 +688,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected connection.type == 'ethernet', got: #{inspect(result["connection"]["type"])}"
     end
   end
+
+  property "to_toml autoconnect field is always a boolean" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      autoconnect = result["connection"]["autoconnect"]
+      assert is_boolean(autoconnect),
+             "Expected boolean autoconnect in to_toml, got: \#{inspect(autoconnect)}"
+    end
+  end
 end
