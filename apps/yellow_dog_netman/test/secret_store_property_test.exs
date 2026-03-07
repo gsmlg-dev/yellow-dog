@@ -673,4 +673,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore put followed by delete returns ok both times (r73)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      :ok = YellowDog.Netman.SecretStore.put(key, "test")
+      result = YellowDog.Netman.SecretStore.delete(key)
+      assert result == :ok
+    end
+  end
 end

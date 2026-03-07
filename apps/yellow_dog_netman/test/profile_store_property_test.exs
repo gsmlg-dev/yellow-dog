@@ -842,4 +842,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:error, _}, result) or is_nil(result)
     end
   end
+  property "ProfileStore module name is always correct (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.ProfileStore.module_info(:module)
+      assert name == YellowDog.Netman.ProfileStore
+    end
+  end
 end

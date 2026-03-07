@@ -598,4 +598,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.LinkMonitor)
     end
   end
+  property "Netman.Kernel.RouteManager module is loaded (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RouteManager)
+    end
+  end
 end
