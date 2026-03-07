@@ -809,4 +809,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(fns, :list)
     end
   end
+  property "ProfileStore module version exists (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.ProfileStore.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
 end

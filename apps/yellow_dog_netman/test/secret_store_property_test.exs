@@ -632,4 +632,10 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert is_list(attrs)
     end
   end
+  property "SecretStore module version exists (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.SecretStore.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
 end

@@ -573,4 +573,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.ReconciliationEngine)
     end
   end
+  property "Netman.ProfileStore module is loaded (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+    end
+  end
 end
