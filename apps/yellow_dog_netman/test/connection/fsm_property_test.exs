@@ -741,4 +741,28 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM can be started multiple times on different interfaces" do
+    check all(
+            seed1 <- StreamData.integer(1..49_999),
+            seed2 <- StreamData.integer(50_000..99_999),
+            max_runs: 10
+          ) do
+      iface1 = "fsm_m1_#{seed1}"
+      iface2 = "fsm_m2_#{seed2}"
+      MockNetlink.link_up(iface1, carrier: false)
+      MockNetlink.link_up(iface2, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid1} = FSM.start_link(interface: iface1, profile: make_profile(iface1))
+      {:ok, pid2} = FSM.start_link(interface: iface2, profile: make_profile(iface2))
+
+      assert pid1 != pid2, "Expected distinct pids for distinct interfaces"
+      assert Process.alive?(pid1), "Expected pid1 alive"
+      assert Process.alive?(pid2), "Expected pid2 alive"
+
+      GenServer.stop(pid1, :normal)
+      GenServer.stop(pid2, :normal)
+    end
+  end
 end

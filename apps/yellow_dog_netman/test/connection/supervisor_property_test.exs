@@ -456,4 +456,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       ConnSupervisor.stop_connection(iface)
     end
   end
+
+  property "find_connection returns :error for interface with special chars" do
+    check all(
+            seed <- StreamData.integer(1..999_999)
+          ) do
+      iface = "!bad@iface##{seed}"
+      assert ConnSupervisor.find_connection(iface) == :error,
+             "Expected :error for special char interface"
+    end
+  end
 end

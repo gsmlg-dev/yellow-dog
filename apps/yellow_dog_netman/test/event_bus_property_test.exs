@@ -492,4 +492,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(wc)
     end
   end
+
+  property "publish returns :ok for message types including maps and lists" do
+    check all(
+            topic <- topic_gen(),
+            msg <- StreamData.one_of([
+              StreamData.map_of(StreamData.string(:alphanumeric, max_length: 5), StreamData.integer(), max_length: 3),
+              StreamData.list_of(StreamData.integer(), max_length: 5)
+            ])
+          ) do
+      result = EventBus.publish(topic, msg)
+      assert result == :ok,
+             "Expected :ok from publish with complex message, got: #{inspect(result)}"
+    end
+  end
 end
