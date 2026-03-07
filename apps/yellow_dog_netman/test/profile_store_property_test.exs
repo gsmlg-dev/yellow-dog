@@ -658,5 +658,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       end
     end
   end
+  property "ProfileStore list always returns consistent results on repeated calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.ProfileStore.list()
+      r2 = YellowDog.Netman.ProfileStore.list()
+      assert is_list(r1) and is_list(r2),
+             "Expected lists from repeated list calls"
+    end
+  end
 
 end

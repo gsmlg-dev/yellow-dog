@@ -463,5 +463,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected ProfileStore to be loaded"
     end
   end
+  property "Netman PolicyEngine module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine),
+             "Expected PolicyEngine to be loaded"
+    end
+  end
 
 end
