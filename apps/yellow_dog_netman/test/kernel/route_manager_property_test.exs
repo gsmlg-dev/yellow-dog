@@ -560,4 +560,24 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+
+  property "routes in list_all always have a non-nil :interface field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      for route <- routes do
+        assert is_binary(route.interface) or is_atom(route.interface),
+               "Expected binary or atom interface in route, got: #{inspect(route.interface)}"
+      end
+    end
+  end
+
+  property "list_all never returns nil routes" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = RouteManager.list_all()
+      for route <- routes do
+        assert route != nil,
+               "Expected non-nil entry in list_all routes"
+      end
+    end
+  end
 end

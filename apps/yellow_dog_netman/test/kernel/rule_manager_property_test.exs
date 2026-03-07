@@ -547,12 +547,34 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
             priority <- priority_gen(),
             table <- table_gen()
           ) do
+      # Pre-delete to ensure the key is absent, then measure baseline
+      send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
       initial_count = length(RuleManager.list_rules())
       send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
       send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
       final_count = length(RuleManager.list_rules())
       assert final_count == initial_count,
              "Expected rule count to return to #{initial_count}, got #{final_count}"
+    end
+  end
+
+  property "rule priority is always an integer" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for rule <- rules do
+        assert is_integer(rule.priority),
+               "Expected integer priority in rule, got: #{inspect(rule.priority)}"
+      end
+    end
+  end
+
+  property "list_rules never contains nil entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for rule <- rules do
+        assert rule != nil,
+               "Expected non-nil entry in list_rules"
+      end
     end
   end
 end

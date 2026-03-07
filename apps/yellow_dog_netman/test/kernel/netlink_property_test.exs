@@ -522,4 +522,24 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected :ok from Netlink.subscribe, got: #{inspect(result)}"
     end
   end
+
+  property "event with empty string type always dispatches as :unknown" do
+    check all(_ <- StreamData.constant(:ok)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => "", "_tag" => tag}})
+      assert_receive {:netlink_event, {:unknown, _}}, 500
+    end
+  end
+
+  property "event with missing type field dispatches as :unknown" do
+    check all(_ <- StreamData.constant(:ok)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"_tag" => tag, "interface" => "lo"}})
+      assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end
