@@ -815,4 +815,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+  property "ProfileStore list is always idempotent (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      list1 = YellowDog.Netman.ProfileStore.list()
+      list2 = YellowDog.Netman.ProfileStore.list()
+      assert MapSet.new(list1) == MapSet.new(list2)
+    end
+  end
 end

@@ -638,4 +638,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+  property "SecretStore get with integer key never crashes (r69)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      YellowDog.Netman.SecretStore.put(key, %{nested: "value"})
+      result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end
