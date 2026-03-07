@@ -471,4 +471,21 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "addresses added to an interface always appear in list_all for that interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      all = AddressManager.list_all()
+      iface_addrs = all[iface] || []
+
+      assert Enum.any?(iface_addrs, &(&1.address == addr)),
+             "Expected #{addr} to appear in list_all[#{iface}]"
+    end
+  end
 end

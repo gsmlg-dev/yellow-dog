@@ -366,4 +366,19 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected #{iface} in list_links after link_up"
     end
   end
+
+  property "get_link after link_up always has all required fields" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+
+      for field <- [:interface, :state, :carrier, :mtu] do
+        assert Map.has_key?(link, field),
+               "Expected link to have :#{field} field, got: #{inspect(link)}"
+      end
+    end
+  end
 end
