@@ -571,4 +571,28 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Process.alive?(pid), "Expected ConnSupervisor to be alive"
     end
   end
+
+  property "list_connections maps all have :state key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      for conn <- ConnSupervisor.list_connections() do
+        assert Map.has_key?(conn, :state),
+               "Expected :state key in connection map, got: #{inspect(conn)}"
+      end
+    end
+  end
+  property "ConnSupervisor list_connections always returns a list with round-45 check" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Supervisor.list_connections()
+      assert is_list(result),
+             "Expected list from list_connections, got: \#{inspect(result)}"
+    end
+  end
+  property "ConnSupervisor list_connections round-46 returns list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Supervisor.list_connections()
+      assert is_list(result),
+             "Expected list from list_connections, got: #{inspect(result)}"
+    end
+  end
+
 end

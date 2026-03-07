@@ -926,4 +926,52 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid)
     end
   end
+
+  property "FSM state map never has nil for required keys" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "fsm_nil_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      {:ok, state} = FSM.get_state(pid)
+      for key <- [:interface, :state] do
+        assert Map.get(state, key) != nil,
+               "Expected non-nil #{key} in FSM state, got: #{inspect(state)}"
+      end
+      GenServer.stop(pid)
+    end
+  end
+  property "FSM start_link with valid profile always returns ok or error tuple" do
+    check all(
+            suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            seed <- StreamData.integer(1..999)
+          ) do
+      iface = String.slice("fsm45_\#{suffix}", 0, 15)
+      profile = make_profile(iface)
+      result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+      case result do
+        {:ok, pid} ->
+          assert is_pid(pid)
+          Process.exit(pid, :kill)
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+  property "FSM start_link with unique suffix-based interface always returns ok or error" do
+    check all(n <- StreamData.integer(1..999)) do
+      iface = String.slice("fsm46_#{n}", 0, 15)
+      profile = make_profile(iface)
+      result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+      case result do
+        {:ok, pid} ->
+          assert is_pid(pid)
+          Process.exit(pid, :kill)
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
 end

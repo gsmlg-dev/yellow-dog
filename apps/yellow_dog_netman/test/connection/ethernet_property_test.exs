@@ -482,4 +482,29 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected nil or positive integer from mtu, got: #{inspect(result)}"
     end
   end
+
+  property "ethernet? always returns same result for same interface in same call" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_same_#{seed}"
+      r1 = Ethernet.ethernet?(iface)
+      r2 = Ethernet.ethernet?(iface)
+      assert r1 == r2,
+             "Expected stable ethernet? for #{iface}: #{r1} vs #{r2}"
+    end
+  end
+  property "Ethernet ethernet? for short alphanumeric interface always returns boolean" do
+    check all(s <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      result = YellowDog.Netman.Connection.Ethernet.ethernet?(s)
+      assert is_boolean(result),
+             "Expected boolean from ethernet?, got: \#{inspect(result)}"
+    end
+  end
+  property "Ethernet mtu for 'lo' interface returns a positive integer" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
+      assert is_integer(result) and result > 0,
+             "Expected positive integer mtu for lo, got: #{inspect(result)}"
+    end
+  end
+
 end
