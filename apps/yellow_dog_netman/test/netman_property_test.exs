@@ -583,4 +583,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
     end
   end
+  property "Netman.Kernel.Netlink module is loaded (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink)
+    end
+  end
 end

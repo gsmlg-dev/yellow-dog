@@ -822,4 +822,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert MapSet.new(list1) == MapSet.new(list2)
     end
   end
+  property "ProfileStore modules are all loaded (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Profile)
+    end
+  end
 end

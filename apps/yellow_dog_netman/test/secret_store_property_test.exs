@@ -647,4 +647,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "SecretStore handles nil value without crashing (r70)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = YellowDog.Netman.SecretStore.put(key, nil)
+      assert result == :ok
+    end
+  end
 end
