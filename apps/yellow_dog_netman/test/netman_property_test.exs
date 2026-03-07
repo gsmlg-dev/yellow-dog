@@ -530,4 +530,10 @@ defmodule YellowDog.NetmanPropertyTest do
     end
   end
 
+  property "Netman module has expected functions (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.module_info(:functions)
+      assert is_list(info)
+    end
+  end
 end

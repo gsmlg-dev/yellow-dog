@@ -746,4 +746,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     end
   end
 
+  property "ProfileStore module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.ProfileStore.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
 end
