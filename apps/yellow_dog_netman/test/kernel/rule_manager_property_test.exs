@@ -433,4 +433,15 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules always has non-negative integer priority for all entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+
+      for r <- rules do
+        assert is_integer(r.priority) and r.priority >= 0,
+               "Expected non-negative integer priority, got: #{inspect(r.priority)}"
+      end
+    end
+  end
 end

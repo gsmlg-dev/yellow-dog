@@ -436,4 +436,23 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected [] for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
   end
+
+  property "all routes in list_all always have a binary interface field" do
+    check all(
+            iface <- iface_gen(),
+            dest <- destination_gen(),
+            gw <- gateway_gen(),
+            metric <- metric_gen()
+          ) do
+      MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
+      Process.sleep(50)
+
+      routes = RouteManager.list_all()
+
+      for r <- routes do
+        assert is_binary(r.interface),
+               "Expected binary interface field, got: #{inspect(r.interface)}"
+      end
+    end
+  end
 end
