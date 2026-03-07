@@ -582,5 +582,20 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected action=#{action}, got: #{inspect(diff.action)}"
     end
   end
+  property "Diff new with all actions never raises" do
+    check all(action <- action_gen()) do
+      result =
+        try do
+          YellowDog.Netman.Types.Diff.new(action)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result == :ok,
+             "Expected :ok from Diff.new with #{inspect(action)}"
+    end
+  end
 
 end

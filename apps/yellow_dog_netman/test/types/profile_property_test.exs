@@ -978,5 +978,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or map ipv4, got: #{inspect(p.ipv4)}"
     end
   end
+  property "Profile ipv6 field defaults to nil or map" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.ipv6) or is_map(p.ipv6),
+             "Expected nil or map ipv6, got: #{inspect(p.ipv6)}"
+    end
+  end
 
 end

@@ -616,5 +616,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected :none from default_route([]), got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine effective_priority with empty list is non-nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.effective_priority([])
+      assert not is_nil(result),
+             "Expected non-nil from effective_priority([]), got: nil"
+    end
+  end
 
 end

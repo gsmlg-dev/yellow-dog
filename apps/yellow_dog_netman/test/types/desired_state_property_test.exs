@@ -644,5 +644,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       refute is_nil(ds), "Expected non-nil from from_profiles([])"
     end
   end
+  property "DesiredState from_profiles always returns non-nil value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      refute is_nil(ds), "Expected non-nil result"
+    end
+  end
 
 end

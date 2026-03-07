@@ -967,5 +967,13 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       end
     end
   end
+  property "ReconciliationEngine is always a registered process" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.ReconciliationEngine
+      pid = Process.whereis(name)
+      assert is_pid(pid),
+             "Expected registered pid for ReconciliationEngine"
+    end
+  end
 
 end
