@@ -390,4 +390,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected route count unchanged after remove with wrong gateway"
     end
   end
+
+  property "put_link then get from links map returns the same link" do
+    check all(link <- link_gen()) do
+      state = ObservedState.new() |> ObservedState.put_link(link)
+      assert state.links[link.interface] == link,
+             "Expected links[#{link.interface}] == #{inspect(link)}, got #{inspect(state.links[link.interface])}"
+    end
+  end
 end

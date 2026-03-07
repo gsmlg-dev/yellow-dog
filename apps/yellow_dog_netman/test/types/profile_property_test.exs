@@ -582,4 +582,29 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert roundtrip.interface == profile.interface
     end
   end
+
+  property "to_toml autoconnect field is always a boolean in the connection map" do
+    check all(
+            id <- profile_id_gen(),
+            iface <- iface_gen(),
+            autoconnect <- StreamData.boolean()
+          ) do
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: autoconnect,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      toml_map = Profile.to_toml(profile)
+      conn = toml_map["connection"]
+
+      assert is_boolean(conn["autoconnect"]),
+             "Expected boolean autoconnect in to_toml output, got: #{inspect(conn["autoconnect"])}"
+    end
+  end
 end
