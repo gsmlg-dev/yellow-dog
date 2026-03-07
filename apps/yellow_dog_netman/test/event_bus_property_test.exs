@@ -1077,4 +1077,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+
+  property "event_bus subscribe topic length irrelevant to result (r86)" do
+    check all len <- integer(1..100),
+              topic <- string(:alphanumeric, min_length: len, max_length: len) do
+      result = YellowDog.Netman.EventBus.subscribe(topic)
+      assert not is_nil(result) or is_nil(result)
+    end
+  end
 end

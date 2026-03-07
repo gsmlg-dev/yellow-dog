@@ -931,4 +931,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert length(state.routes) >= 0
     end
   end
+
+  property "observed_state new is deterministic (r86)" do
+    check all _x <- boolean() do
+      s1 = ObservedState.new()
+      s2 = ObservedState.new()
+      assert s1.links == s2.links
+      assert s1.routes == s2.routes
+    end
+  end
 end

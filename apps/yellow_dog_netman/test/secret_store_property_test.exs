@@ -778,4 +778,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+
+  property "secret_store get always returns tagged tuple (r86)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

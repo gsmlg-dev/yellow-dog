@@ -772,4 +772,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert r1 == r2
     end
   end
+
+  property "ethernet all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

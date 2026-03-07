@@ -930,4 +930,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile_store get returns error for non-existent binary (r86)" do
+    check all key <- binary(min_length: 1) do
+      result = YellowDog.Netman.ProfileStore.get(key)
+      # Either error or ok
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

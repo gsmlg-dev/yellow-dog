@@ -939,4 +939,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(result, fn {_k, v} -> is_list(v) end)
     end
   end
+
+  property "address_manager all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

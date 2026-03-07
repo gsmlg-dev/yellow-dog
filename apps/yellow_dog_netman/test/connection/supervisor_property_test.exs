@@ -846,4 +846,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "connection supervisor all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

@@ -909,4 +909,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "netlink all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

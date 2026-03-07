@@ -863,4 +863,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert length(result) >= 0
     end
   end
+
+  property "policy_engine module is loaded and functions accessible (r86)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

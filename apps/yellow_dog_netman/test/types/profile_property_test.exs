@@ -1324,4 +1324,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
+
+  property "profile from_toml with empty map returns error (r86)" do
+    check all _x <- boolean() do
+      result = Profile.from_toml(%{})
+      assert match?({:error, _}, result)
+    end
+  end
 end

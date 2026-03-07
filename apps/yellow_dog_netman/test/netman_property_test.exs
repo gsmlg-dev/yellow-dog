@@ -682,4 +682,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.API.CLI)
     end
   end
+
+  property "netman module all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

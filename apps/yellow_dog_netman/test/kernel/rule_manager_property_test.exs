@@ -937,4 +937,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "rule_manager all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

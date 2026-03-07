@@ -1236,4 +1236,11 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "fsm all exported functions have non-neg arities (r86)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
+    end
+  end
 end

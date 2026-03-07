@@ -861,4 +861,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_atom(ds.__struct__)
     end
   end
+
+  property "desired_state from_profiles is deterministic (r86)" do
+    check all _x <- boolean() do
+      ds1 = DesiredState.from_profiles([])
+      ds2 = DesiredState.from_profiles([])
+      assert Map.keys(ds1) == Map.keys(ds2)
+    end
+  end
 end

@@ -803,4 +803,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert :remove_address in @actions
     end
   end
+
+  property "diff actions include add_route and remove_route (r86)" do
+    check all _x <- boolean() do
+      assert :add_route in @actions
+      assert :remove_route in @actions
+    end
+  end
 end

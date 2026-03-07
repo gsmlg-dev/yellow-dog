@@ -847,4 +847,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert arity == 1
     end
   end
+
+  property "cli validation handle_command with two-arg list returns result (r86)" do
+    check all cmd <- string(:alphanumeric, min_length: 1, max_length: 20),
+              arg <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = CLI.handle_command([cmd, arg])
+      assert not is_nil(result)
+    end
+  end
 end
