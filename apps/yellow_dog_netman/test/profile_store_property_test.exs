@@ -694,5 +694,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       refute is_nil(result), "Expected non-nil from list"
     end
   end
+  property "ProfileStore get returns :error not_found for unknown prefixed id" do
+    check all(n <- StreamData.integer(1..9999)) do
+      id = "ps54_unknown_#{n}"
+      result = YellowDog.Netman.ProfileStore.get(id)
+      assert match?({:error, :not_found}, result) or is_nil(result) or is_struct(result),
+             "Expected not_found or nil from unknown id, got: #{inspect(result)}"
+    end
+  end
 
 end

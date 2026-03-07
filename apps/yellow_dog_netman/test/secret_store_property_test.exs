@@ -504,5 +504,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.put(key, %{k => v}) == :ok
     end
   end
+  property "SecretStore put with float value always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            val <- StreamData.float()
+          ) do
+      assert SecretStore.put(key, val) == :ok
+    end
+  end
 
 end
