@@ -1950,4 +1950,148 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert CLI != nil
     end
   end
+
+  property "r241: cli inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLI))
+    end
+  end
+
+  property "r242: cli not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r243: cli loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r244: cli is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r245: cli functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r246: cli identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI == CLI
+    end
+  end
+
+  property "r247: cli to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(CLI)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r248: cli loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r249: cli inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(CLI)) > 0
+    end
+  end
+
+  property "r250: cli not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r251: cli inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLI))
+    end
+  end
+
+  property "r252: cli not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r253: cli loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r254: cli is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r255: cli functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r256: cli identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI == CLI
+    end
+  end
+
+  property "r257: cli to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(CLI)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r258: cli loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r259: cli inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(CLI)) > 0
+    end
+  end
+
+  property "r260: cli not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
 end

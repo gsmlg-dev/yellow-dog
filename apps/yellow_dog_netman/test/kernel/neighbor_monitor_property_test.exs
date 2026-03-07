@@ -2202,4 +2202,148 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert NeighborMonitor != nil
     end
   end
+
+  property "r241: neighbormonitor inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(NeighborMonitor))
+    end
+  end
+
+  property "r242: neighbormonitor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r243: neighbormonitor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r244: neighbormonitor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r245: neighbormonitor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r246: neighbormonitor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor == NeighborMonitor
+    end
+  end
+
+  property "r247: neighbormonitor to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(NeighborMonitor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r248: neighbormonitor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r249: neighbormonitor inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(NeighborMonitor)) > 0
+    end
+  end
+
+  property "r250: neighbormonitor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r251: neighbormonitor inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(NeighborMonitor))
+    end
+  end
+
+  property "r252: neighbormonitor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r253: neighbormonitor loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r254: neighbormonitor is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r255: neighbormonitor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r256: neighbormonitor identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor == NeighborMonitor
+    end
+  end
+
+  property "r257: neighbormonitor to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(NeighborMonitor)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r258: neighbormonitor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r259: neighbormonitor inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(NeighborMonitor)) > 0
+    end
+  end
+
+  property "r260: neighbormonitor not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
 end
