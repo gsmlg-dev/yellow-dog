@@ -645,4 +645,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "netman module info compiled is list (r81)" do
+    check all _x <- boolean() do
+      compiled = YellowDog.Netman.__info__(:compile)
+      assert is_list(compiled) or is_map(compiled)
+    end
+  end
 end

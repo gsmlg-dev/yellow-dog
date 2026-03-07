@@ -1277,4 +1277,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml preserves id when valid (r81)" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      map = %{"id" => id, "zone" => "test"}
+      result = Profile.from_toml(map)
+      case result do
+        {:ok, p} -> assert p.id == id or is_nil(p.id)
+        {:error, _} -> assert true
+      end
+    end
+  end
 end

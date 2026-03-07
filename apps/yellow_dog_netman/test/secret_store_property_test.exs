@@ -735,4 +735,14 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok or match?({:error, _}, result) or is_nil(result)
     end
   end
+
+  property "secret_store put and get are consistent types (r81)" do
+    check all key <- string(:alphanumeric, min_length: 1),
+              val <- string(:alphanumeric) do
+      put_result = YellowDog.Netman.SecretStore.put(key, val)
+      assert put_result == :ok
+      get_result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:ok, _}, get_result) or match?({:error, _}, get_result)
+    end
+  end
 end

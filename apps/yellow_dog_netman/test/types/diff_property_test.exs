@@ -767,4 +767,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(d) or is_map(d) or not is_nil(d)
     end
   end
+
+  property "diff action is from known set of atoms (r81)" do
+    check all a <- action_gen() do
+      assert is_atom(a)
+      assert a in @actions
+    end
+  end
 end

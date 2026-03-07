@@ -811,4 +811,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation single char command returns result (r81)" do
+    check all c <- string(:alphanumeric, min_length: 1, max_length: 1) do
+      result = CLI.handle_command([c])
+      assert not is_nil(result)
+    end
+  end
 end

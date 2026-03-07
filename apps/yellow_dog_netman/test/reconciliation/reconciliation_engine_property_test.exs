@@ -1145,4 +1145,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "reconciliation_engine module info compile is list or map (r81)" do
+    check all _x <- boolean() do
+      info = YellowDog.Netman.ReconciliationEngine.__info__(:compile)
+      assert is_list(info) or is_map(info)
+    end
+  end
 end

@@ -768,4 +768,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command with help returns result (r81)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["help"])
+      assert not is_nil(result)
+    end
+  end
 end

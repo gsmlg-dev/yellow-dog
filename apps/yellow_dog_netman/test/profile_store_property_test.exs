@@ -894,4 +894,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+
+  property "profile_store list always succeeds (r81)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result) or match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

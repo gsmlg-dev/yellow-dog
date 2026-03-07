@@ -826,4 +826,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(result)
     end
   end
+
+  property "policy_engine route_metrics returns map always (r81)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert is_map(result)
+    end
+  end
 end
