@@ -706,5 +706,22 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus publish to unsubscribed topic never crashes" do
+    check all(
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            msg <- StreamData.string(:alphanumeric, max_length: 20)
+          ) do
+      result =
+        try do
+          EventBus.publish(topic, msg)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

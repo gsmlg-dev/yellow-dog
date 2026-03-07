@@ -583,5 +583,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from connection.up, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with missing method key always returns error map" do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      result = CLI.handle_command(%{key => "value"})
+      assert is_map(result),
+             "Expected map from missing method key, got: #{inspect(result)}"
+    end
+  end
 
 end
