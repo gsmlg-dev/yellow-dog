@@ -441,4 +441,24 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected map payload for #{event_type}, got: #{inspect(payload)}"
     end
   end
+
+  property "event payload always contains the original extra fields" do
+    check all(
+            event_type <- StreamData.member_of(@known_event_types),
+            extra <- extra_field_gen()
+          ) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      event = Map.merge(extra, %{"type" => event_type, "_tag" => tag})
+      send(Netlink, {:mock_event, event})
+      expected_atom = String.to_atom(event_type)
+      assert_receive {:netlink_event, {^expected_atom, payload}}, 500
+
+      for {k, v} <- extra do
+        assert Map.get(payload, k) == v,
+               "Expected extra field #{k} = #{inspect(v)} in payload, got: #{inspect(Map.get(payload, k))}"
+      end
+    end
+  end
 end

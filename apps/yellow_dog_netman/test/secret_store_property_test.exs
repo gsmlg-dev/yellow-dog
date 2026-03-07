@@ -238,4 +238,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected {:error, :not_found} or {:ok, _} from get, got: #{inspect(result)}"
     end
   end
+
+  property "delete with empty string key always returns :ok" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = SecretStore.delete("")
+      assert result == :ok,
+             "Expected :ok from delete with empty key, got: #{inspect(result)}"
+    end
+  end
 end

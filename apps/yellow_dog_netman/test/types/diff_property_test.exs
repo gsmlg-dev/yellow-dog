@@ -345,4 +345,16 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected binary interface, got: #{inspect(diff.interface)}"
     end
   end
+
+  property "params field is always a map" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, interface, params)
+      assert is_map(diff.params),
+             "Expected map params, got: #{inspect(diff.params)}"
+    end
+  end
 end
