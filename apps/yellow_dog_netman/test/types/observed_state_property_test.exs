@@ -546,4 +546,23 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected link to be stored in state, keys: #{inspect(Map.keys(updated.links))}"
     end
   end
+
+  property "ObservedState links map is always empty for new/0" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert state.links == %{},
+             "Expected empty links map in new ObservedState, got: #{inspect(state.links)}"
+    end
+  end
+
+  property "ObservedState put_link/2 is idempotent for same interface" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      state = ObservedState.new()
+      link = %{interface: iface, index: 1, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}
+      updated1 = ObservedState.put_link(state, link)
+      updated2 = ObservedState.put_link(updated1, link)
+      assert updated1.links == updated2.links,
+             "Expected idempotent put_link for #{iface}"
+    end
+  end
 end

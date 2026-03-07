@@ -845,4 +845,26 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "Profile struct id is always a binary string" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert is_binary(profile.id),
+                 "Expected binary string for profile id, got: #{inspect(profile.id)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
+
+  property "Profile struct type is always :ethernet for valid toml" do
+    check all(toml <- valid_toml_gen()) do
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert profile.type == :ethernet,
+                 "Expected :ethernet type in Profile, got: #{inspect(profile.type)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
 end

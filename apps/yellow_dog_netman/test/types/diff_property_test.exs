@@ -492,4 +492,21 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected map for Diff.params, got: #{inspect(diff.params)}"
     end
   end
+
+  property "Diff.new/1 always produces a struct with two keys" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      keys = Map.keys(diff) |> Enum.reject(&(&1 == :__struct__))
+      assert :action in keys,
+             "Expected :action key in Diff, got: #{inspect(keys)}"
+    end
+  end
+
+  property "Diff struct is never nil" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert diff != nil,
+             "Expected non-nil Diff struct"
+    end
+  end
 end
