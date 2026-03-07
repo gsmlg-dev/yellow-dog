@@ -604,4 +604,23 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic2)
     end
   end
+
+  property "publish with atom message never crashes" do
+    check all(seed <- StreamData.integer(1..9_999), atom <- StreamData.member_of([:ok, :error, :done, :ready])) do
+      topic = "atom_pub_#{seed}"
+      result = EventBus.publish(topic, atom)
+      assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected ok-ish from publish with atom, got: #{inspect(result)}"
+    end
+  end
+
+  property "subscribe to wildcard topic and unsubscribe never crashes" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      topic = "wild_#{seed}:*"
+      r1 = EventBus.subscribe(topic)
+      r2 = EventBus.unsubscribe(topic)
+      assert match?({:ok, _}, r1) or r1 == :ok or is_nil(r1)
+      assert r2 == :ok or is_nil(r2)
+    end
+  end
 end

@@ -478,4 +478,22 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from handle_command with #{method}"
     end
   end
+
+  property "handle_command profile.get with valid string id returns map" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      id = "ptest_#{seed}"
+      result = CLI.handle_command(%{"method" => "profile.get", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from profile.get command"
+    end
+  end
+
+  property "handle_command connection.show returns map for any seed" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      id = "conn_#{seed}"
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from connection.show command"
+    end
+  end
 end

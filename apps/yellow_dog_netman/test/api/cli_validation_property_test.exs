@@ -522,4 +522,21 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map for numeric string method #{n}"
     end
   end
+
+  property "handle_command profile.create with valid alphanumeric id does not raise" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      id = "valid_#{seed}"
+      result = CLI.handle_command(%{"method" => "profile.create", "params" => %{"id" => id, "ipv4_method" => "dhcp"}})
+      assert is_map(result),
+             "Expected map from profile.create with valid id"
+    end
+  end
+
+  property "handle_command always returns map for empty method string" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "", "params" => %{}})
+      assert is_map(result),
+             "Expected map from empty method string"
+    end
+  end
 end
