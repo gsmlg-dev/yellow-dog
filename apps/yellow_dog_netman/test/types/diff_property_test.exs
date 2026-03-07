@@ -551,5 +551,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected nil or binary interface, got: #{inspect(diff.interface)}"
     end
   end
+  property "Diff struct always has params map field" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_map(diff.params),
+             "Expected map params, got: #{inspect(diff.params)}"
+    end
+  end
 
 end

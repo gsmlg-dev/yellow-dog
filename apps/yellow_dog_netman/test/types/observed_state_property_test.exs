@@ -614,5 +614,17 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected map from put_link, got: #{inspect(new_state)}"
     end
   end
+  property "ObservedState put_link result has same keys as original plus link" do
+    check all(
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            up <- StreamData.boolean()
+          ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link = %{interface: iface, up: up}
+      new_state = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+      assert Map.keys(state) == Map.keys(new_state),
+             "Expected same keys after put_link"
+    end
+  end
 
 end

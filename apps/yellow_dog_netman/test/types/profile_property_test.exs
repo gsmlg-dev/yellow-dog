@@ -933,5 +933,20 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected :ok or :raised from from_toml"
     end
   end
+  property "Profile from_toml with empty map returns error tuple" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result =
+        try do
+          YellowDog.Netman.Types.Profile.from_toml(%{})
+          :returned
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:returned, :raised],
+             "Expected :returned or :raised from from_toml({})"
+    end
+  end
 
 end

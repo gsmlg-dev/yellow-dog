@@ -586,5 +586,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected :none/binary/nil from default_route, got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine effective_priority always returns same value for empty list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.PolicyEngine.effective_priority([])
+      r2 = YellowDog.Netman.PolicyEngine.effective_priority([])
+      assert r1 == r2,
+             "Expected deterministic effective_priority results"
+    end
+  end
 
 end

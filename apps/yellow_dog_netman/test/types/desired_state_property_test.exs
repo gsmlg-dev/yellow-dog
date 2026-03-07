@@ -608,5 +608,20 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected DesiredState module to be loadable"
     end
   end
+  property "DesiredState from_profiles with empty list never raises" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result =
+        try do
+          YellowDog.Netman.Types.DesiredState.from_profiles([])
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result == :ok,
+             "Expected :ok from from_profiles, got: #{inspect(result)}"
+    end
+  end
 
 end

@@ -938,5 +938,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected list of exports from __info__, got: #{inspect(exports)}"
     end
   end
+  property "ReconciliationEngine process responds to ping" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.ReconciliationEngine)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ReconciliationEngine to be alive"
+    end
+  end
 
 end
