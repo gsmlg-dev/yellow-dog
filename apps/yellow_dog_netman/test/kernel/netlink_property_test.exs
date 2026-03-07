@@ -407,4 +407,15 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       end
     end
   end
+
+  property "known event type is always dispatched with the correct atom key" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      expected_atom = String.to_atom(event_type)
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag}}}, 500
+    end
+  end
 end
