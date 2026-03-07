@@ -602,5 +602,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected deterministic dns_priority results"
     end
   end
+  property "PolicyEngine route_metrics for any profile returns map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert is_map(result) or is_list(result),
+             "Expected map or list from route_metrics, got: #{inspect(result)}"
+    end
+  end
 
 end

@@ -565,5 +565,15 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected empty params map, got: #{inspect(diff.params)}"
     end
   end
+  property "Diff interface field can be set to a string interface name" do
+    check all(
+            action <- action_gen(),
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)
+          ) do
+      diff = YellowDog.Netman.Types.Diff.new(action, iface, %{})
+      assert diff.interface == iface,
+             "Expected interface to be #{iface}, got: #{inspect(diff.interface)}"
+    end
+  end
 
 end

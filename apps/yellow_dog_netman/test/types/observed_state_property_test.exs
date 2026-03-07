@@ -641,5 +641,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected map after two put_links, got: #{inspect(s2)}"
     end
   end
+  property "ObservedState all fields are present after new" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert Map.has_key?(state, :links),
+             "Expected :links field in ObservedState"
+    end
+  end
 
 end

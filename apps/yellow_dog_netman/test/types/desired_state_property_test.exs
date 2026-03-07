@@ -631,5 +631,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected same result from repeated from_profiles([])"
     end
   end
+  property "DesiredState module exports from_profiles function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Types.DesiredState.__info__(:functions)
+      assert {:from_profiles, 1} in exports,
+             "Expected from_profiles/1 in exports, got: #{inspect(exports)}"
+    end
+  end
 
 end

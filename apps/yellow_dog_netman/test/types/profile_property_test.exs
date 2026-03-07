@@ -958,5 +958,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or binary zone, got: #{inspect(p.zone)}"
     end
   end
+  property "Profile ethernet field defaults to nil or map" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.ethernet) or is_map(p.ethernet),
+             "Expected nil or map ethernet, got: #{inspect(p.ethernet)}"
+    end
+  end
 
 end
