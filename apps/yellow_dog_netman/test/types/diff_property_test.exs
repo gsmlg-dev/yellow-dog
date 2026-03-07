@@ -681,4 +681,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :add_address
     end
   end
+  property "Diff new with remove_route has correct action (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:remove_route)
+      assert diff.action == :remove_route
+    end
+  end
 end

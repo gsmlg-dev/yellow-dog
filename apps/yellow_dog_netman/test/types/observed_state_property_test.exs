@@ -767,4 +767,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert updated.links == %{}
     end
   end
+  property "ObservedState new returns correct struct type (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert state.__struct__ == YellowDog.Netman.Types.ObservedState
+    end
+  end
 end

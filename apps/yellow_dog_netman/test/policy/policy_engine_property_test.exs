@@ -714,4 +714,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == :none or match?({:ok, _}, result)
     end
   end
+  property "PolicyEngine dns_priority always returns a list (r67)" do
+    check all(
+      n <- StreamData.integer(0..5)
+    ) do
+      conns = List.duplicate(%{dns: ["1.1.1.1"], profile: %{autoconnect_priority: 50}}, n)
+      result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
+      assert is_list(result)
+    end
+  end
 end

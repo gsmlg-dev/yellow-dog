@@ -728,4 +728,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert map_size(state.connections) == 0
     end
   end
+  property "DesiredState module info is a list (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Types.DesiredState.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
 end

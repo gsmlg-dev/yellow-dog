@@ -1057,4 +1057,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid)
     end
   end
+  property "ReconciliationEngine module has reconcile function (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.ReconciliationEngine.module_info(:functions)
+      assert Keyword.has_key?(fns, :reconcile)
+    end
+  end
 end
