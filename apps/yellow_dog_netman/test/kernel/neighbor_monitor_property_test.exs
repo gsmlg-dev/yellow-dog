@@ -1138,4 +1138,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Keyword.get(fns, :list_neighbors) == 0
     end
   end
+
+  property "neighbor_monitor module exports at least 2 functions (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+      assert length(fns) >= 2
+    end
+  end
 end

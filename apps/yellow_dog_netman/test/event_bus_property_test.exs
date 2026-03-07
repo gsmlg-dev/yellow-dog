@@ -1168,4 +1168,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:error, _}, result)
     end
   end
+
+  property "event_bus all exports have valid arities (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.EventBus.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
+    end
+  end
 end

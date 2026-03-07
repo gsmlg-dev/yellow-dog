@@ -946,4 +946,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(fns, :dns_priority)
     end
   end
+
+  property "policy_engine route_metrics with empty profiles returns empty map (r97)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert result == %{}
+    end
+  end
 end

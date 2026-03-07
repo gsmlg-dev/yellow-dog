@@ -1021,4 +1021,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Keyword.get(fns, :list_all) == 0
     end
   end
+
+  property "address_manager module exports at least list_all (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert Keyword.has_key?(fns, :list_all)
+    end
+  end
 end

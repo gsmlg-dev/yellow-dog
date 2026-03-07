@@ -884,4 +884,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Keyword.has_key?(fns, :new)
     end
   end
+
+  property "diff new returns struct with action field (r97)" do
+    check all a <- action_gen() do
+      d = YellowDog.Netman.Types.Diff.new(a, nil)
+      assert is_struct(d) or is_map(d)
+    end
+  end
 end

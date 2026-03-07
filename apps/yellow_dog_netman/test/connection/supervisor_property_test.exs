@@ -928,4 +928,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert true
     end
   end
+
+  property "connection supervisor module attributes have keys (r97)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

@@ -888,4 +888,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       refute match?({:exception, _}, result)
     end
   end
+
+  property "cli handle_command with address subcommand returns result (r97)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["address"])
+      assert not is_nil(result)
+    end
+  end
 end

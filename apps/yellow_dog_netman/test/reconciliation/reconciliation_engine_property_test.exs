@@ -1262,4 +1262,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Connection.FSM)
     end
   end
+
+  property "reconciliation_engine all main modules have positive function counts (r97)" do
+    check all _x <- boolean() do
+      for mod <- [YellowDog.Netman.ReconciliationEngine, YellowDog.Netman.Connection.FSM] do
+        fns = mod.__info__(:functions)
+        assert length(fns) > 0
+      end
+      assert true
+    end
+  end
 end

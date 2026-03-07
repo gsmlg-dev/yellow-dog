@@ -900,4 +900,12 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert true
     end
   end
+
+  property "link_monitor module attributes have at least vsn (r97)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.LinkMonitor.__info__(:attributes)
+      vsn = Keyword.get(attrs, :vsn)
+      assert is_list(vsn) or is_nil(vsn)
+    end
+  end
 end

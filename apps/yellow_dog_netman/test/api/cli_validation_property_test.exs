@@ -942,4 +942,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       refute match?({:exception, _}, result)
     end
   end
+
+  property "cli validation all exports have valid arities (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
+    end
+  end
 end

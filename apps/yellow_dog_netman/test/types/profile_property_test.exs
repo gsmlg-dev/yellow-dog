@@ -1414,4 +1414,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml with method field is ok or error (r97)" do
+    check all id <- string(:alphanumeric, min_length: 1),
+              method <- member_of(["dhcp", "static", "disabled", "auto"]) do
+      result = Profile.from_toml(%{"id" => id, "ipv4" => %{"method" => method}})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

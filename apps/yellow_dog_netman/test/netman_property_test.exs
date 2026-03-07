@@ -766,4 +766,14 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
     end
   end
+
+  property "netman all main modules have positive function counts (r97)" do
+    check all _x <- boolean() do
+      for mod <- [YellowDog.Netman.PolicyEngine, YellowDog.Netman.ProfileStore, YellowDog.Netman.EventBus] do
+        fns = mod.__info__(:functions)
+        assert length(fns) > 0
+      end
+      assert true
+    end
+  end
 end

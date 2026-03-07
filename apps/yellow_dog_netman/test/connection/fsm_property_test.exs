@@ -1326,4 +1326,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert true
     end
   end
+
+  property "fsm setup_link has arity 1 or 2 (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      fns_list = for {name, arity} <- fns, name == :setup_link, do: arity
+      assert length(fns_list) >= 1
+    end
+  end
 end

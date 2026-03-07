@@ -950,4 +950,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(result) or result == :error
     end
   end
+
+  property "desired_state empty profiles yields same result always (r97)" do
+    check all _x <- boolean() do
+      ds1 = DesiredState.from_profiles([])
+      ds2 = DesiredState.from_profiles([])
+      assert ds1 == ds2
+    end
+  end
 end

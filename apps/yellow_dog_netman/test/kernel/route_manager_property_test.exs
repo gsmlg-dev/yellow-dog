@@ -1019,4 +1019,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Keyword.get(fns, :list_all) == 0
     end
   end
+
+  property "route_manager module exports at least 3 functions (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+      assert length(fns) >= 3
+    end
+  end
 end

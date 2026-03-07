@@ -1021,4 +1021,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
     end
   end
+
+  property "observed_state struct field count is stable (r97)" do
+    check all _x <- boolean() do
+      s1 = ObservedState.new()
+      s2 = ObservedState.new()
+      assert map_size(s1) == map_size(s2)
+    end
+  end
 end

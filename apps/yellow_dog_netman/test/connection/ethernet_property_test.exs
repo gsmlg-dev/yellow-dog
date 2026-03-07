@@ -856,4 +856,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert Keyword.get(fns, :mtu) == 1
     end
   end
+
+  property "ethernet ethernet? for lo returns boolean (r97)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
+      assert is_boolean(result)
+    end
+  end
 end

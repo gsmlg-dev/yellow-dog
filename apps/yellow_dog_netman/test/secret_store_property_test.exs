@@ -876,4 +876,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       refute match?({:exception, _}, result)
     end
   end
+
+  property "secret_store all exports have valid arities (r97)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.SecretStore.__info__(:functions)
+      assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
+    end
+  end
 end
