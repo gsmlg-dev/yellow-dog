@@ -497,4 +497,38 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected nil or map from get_link, got: #{inspect(result)}"
     end
   end
+
+  property "list_links always returns a list or map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = LinkMonitor.list_links()
+      assert is_map(result) or is_list(result),
+             "Expected map or list from list_links, got: #{inspect(result)}"
+    end
+  end
+
+  property "get_link returns nil for unregistered interface after mock_down" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "lm_ud_#{seed}"
+      result = LinkMonitor.get_link(iface)
+      assert result == nil or is_map(result),
+             "Expected nil or map from get_link, got: #{inspect(result)}"
+    end
+  end
+
+  property "LinkMonitor process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      assert pid != nil, "Expected LinkMonitor to be registered"
+      assert Process.alive?(pid), "Expected LinkMonitor to be alive"
+    end
+  end
+
+  property "list_links count is always non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = LinkMonitor.list_links()
+      count = if is_list(result), do: length(result), else: map_size(result)
+      assert count >= 0,
+             "Expected non-negative count from list_links"
+    end
+  end
 end

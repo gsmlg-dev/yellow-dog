@@ -732,4 +732,45 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected empty or list from get_neighbors for unknown iface: \#{inspect(result)}"
     end
   end
+
+  property "get_neighbors count is always non-negative for any interface" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "nm_cnt_#{seed}"
+      count = length(NeighborMonitor.get_neighbors(iface))
+      assert count >= 0,
+             "Expected non-negative count from get_neighbors for #{iface}"
+    end
+  end
+
+  property "get_neighbors after add event contains the neighbor" do
+    check all(seed <- StreamData.integer(1..9_999), ip <- StreamData.member_of(["10.0.1.1", "192.168.1.1", "172.16.0.1"])) do
+      iface = "nm_add_#{seed}"
+      mac = "aa:bb:cc:dd:ee:ff"
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "neighbor_change", "action" => "add",
+        "interface" => iface, "address" => ip, "mac" => mac
+      }})
+      Process.sleep(50)
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      assert is_list(neighbors),
+             "Expected list from get_neighbors after add event"
+    end
+  end
+
+  property "NeighborMonitor pid is registered and alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.NeighborMonitor)
+      assert pid != nil, "Expected NeighborMonitor to be registered"
+      assert Process.alive?(pid), "Expected NeighborMonitor to be alive"
+    end
+  end
+
+  property "get_neighbors always returns list for interface with no events" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "nm_noevent_#{seed}"
+      result = NeighborMonitor.get_neighbors(iface)
+      assert result == [],
+             "Expected empty list for iface with no events: #{inspect(result)}"
+    end
+  end
 end

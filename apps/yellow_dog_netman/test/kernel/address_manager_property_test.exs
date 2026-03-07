@@ -609,4 +609,48 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "get_addresses result entries always have :family key" do
+    check all(iface <- iface_gen(), addr <- ipv4_gen(), prefix <- prefix_v4_gen()) do
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      for a <- addresses do
+        assert Map.has_key?(a, :family),
+               "Expected :family key in address entry, got: #{inspect(a)}"
+      end
+    end
+  end
+
+  property "get_addresses result entries always have :interface key" do
+    check all(iface <- iface_gen(), addr <- ipv4_gen(), prefix <- prefix_v4_gen()) do
+      MockNetlink.address_removed(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+      addresses = AddressManager.get_addresses(iface)
+      for a <- addresses do
+        assert Map.has_key?(a, :interface),
+               "Expected :interface key in address entry, got: #{inspect(a)}"
+      end
+    end
+  end
+
+  property "AddressManager list_all never returns nil" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = AddressManager.list_all()
+      assert result != nil,
+             "Expected non-nil from AddressManager.list_all"
+    end
+  end
+
+  property "AddressManager is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.AddressManager)
+      assert pid != nil, "Expected AddressManager to be registered"
+      assert Process.alive?(pid), "Expected AddressManager to be alive"
+    end
+  end
 end
