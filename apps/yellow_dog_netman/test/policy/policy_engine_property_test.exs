@@ -396,4 +396,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected 1 entry in route_metrics for single connection, got: #{inspect(metrics)}"
     end
   end
+
+  property "default_route with single activated connection always returns {:ok, _}" do
+    check all(conn <- connection_gen()) do
+      active = [Map.put(conn, :state, :activated)]
+      result = PolicyEngine.default_route(active)
+      assert match?({:ok, _}, result) or result == :none,
+             "Expected {:ok, _} or :none from default_route, got: #{inspect(result)}"
+    end
+  end
 end

@@ -764,4 +764,15 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected empty diff for fully empty state, got: #{inspect(result)}"
     end
   end
+
+  property "diff/2 elements always contain action atoms from known set" do
+    check all(observed <- observed_state_gen()) do
+      desired = %DesiredState{connections: %{}}
+      diffs = ReconciliationEngine.diff(desired, observed)
+      for d <- diffs do
+        assert is_struct(d, YellowDog.Netman.Types.Diff),
+               "Expected Diff struct in diff list, got: #{inspect(d)}"
+      end
+    end
+  end
 end

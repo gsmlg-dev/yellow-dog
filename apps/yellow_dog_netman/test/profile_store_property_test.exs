@@ -478,4 +478,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected {:error, :not_found} for unknown id, got: #{inspect(result)}"
     end
   end
+
+  property "put then get returns the same profile" do
+    check all(profile <- profile_gen()) do
+      :ok = ProfileStore.put(profile.id, profile)
+      result = ProfileStore.get(profile.id)
+      assert result == {:ok, profile},
+             "Expected {:ok, profile} after put, got: #{inspect(result)}"
+      ProfileStore.delete(profile.id)
+    end
+  end
 end
