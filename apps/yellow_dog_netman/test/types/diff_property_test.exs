@@ -525,5 +525,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected action \#{inspect(action)}, got: \#{inspect(diff.action)}"
     end
   end
+  property "Diff new with valid action produces non-nil struct" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      refute is_nil(diff), "Expected non-nil struct from Diff.new"
+    end
+  end
 
 end

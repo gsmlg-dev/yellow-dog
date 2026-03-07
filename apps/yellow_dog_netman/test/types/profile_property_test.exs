@@ -885,5 +885,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected atom type, got: \#{inspect(p.type)}"
     end
   end
+  property "Profile autoconnect field defaults to nil or boolean" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.autoconnect) or is_boolean(p.autoconnect),
+             "Expected nil or boolean for autoconnect"
+    end
+  end
 
 end

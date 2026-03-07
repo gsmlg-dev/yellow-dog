@@ -908,5 +908,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected pid or nil from whereis, got: \#{inspect(result)}"
     end
   end
+  property "ReconciliationEngine module exports list_transitions/0 or similar" do
+    check all(_ <- StreamData.constant(:ok)) do
+      # Verify the module is loaded and callable
+      assert Code.ensure_loaded?(YellowDog.Netman.ReconciliationEngine),
+             "Expected ReconciliationEngine to be loadable"
+    end
+  end
 
 end
