@@ -953,7 +953,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.exit(pid, :kill)
+          Process.unlink(pid); Process.exit(pid, :kill)
         {:error, _reason} ->
           :ok
       end
@@ -967,7 +967,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.exit(pid, :kill)
+          Process.unlink(pid); Process.exit(pid, :kill)
         {:error, _reason} ->
           :ok
       end
@@ -981,7 +981,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.exit(pid, :kill)
+          Process.unlink(pid); Process.exit(pid, :kill)
         {:error, _} ->
           :ok
       end
@@ -1001,7 +1001,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.exit(pid, :kill)
+          Process.unlink(pid); Process.exit(pid, :kill)
         {:error, _} ->
           :ok
       end
