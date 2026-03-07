@@ -324,4 +324,23 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected exactly [:connections] in DesiredState, got: #{inspect(struct_keys)}"
     end
   end
+
+  property "DesiredState connections is always a map with binary string keys" do
+    check all(
+            count <- StreamData.integer(0..4),
+            profiles <- StreamData.list_of(profile_gen(), length: count),
+            ifaces <- StreamData.list_of(interface_gen(), length: count)
+          ) do
+      pairs = Enum.zip(profiles, ifaces)
+      desired = DesiredState.from_profiles(pairs)
+
+      assert is_map(desired.connections),
+             "Expected connections to be a map, got: #{inspect(desired.connections)}"
+
+      for {key, _} <- desired.connections do
+        assert is_binary(key),
+               "Expected binary string key in connections, got: #{inspect(key)}"
+      end
+    end
+  end
 end

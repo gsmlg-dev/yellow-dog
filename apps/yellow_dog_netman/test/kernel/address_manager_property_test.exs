@@ -390,4 +390,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "all get_addresses entries have :interface field matching the queried interface" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses = AddressManager.get_addresses(iface)
+
+      for a <- addresses do
+        assert a.interface == iface,
+               "Expected address.interface == #{iface}, got: #{inspect(a.interface)}"
+      end
+    end
+  end
 end

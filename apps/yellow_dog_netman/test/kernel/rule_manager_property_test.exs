@@ -395,4 +395,26 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert r1 == r2, "list_rules returned different results on consecutive calls"
     end
   end
+
+  property "all rules in list_rules have binary-or-nil source, destination, and interface fields" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+
+      rules = RuleManager.list_rules()
+
+      for r <- rules do
+        assert is_nil(r.source) or is_binary(r.source),
+               "Expected nil or binary source, got: #{inspect(r.source)}"
+
+        assert is_nil(r.destination) or is_binary(r.destination),
+               "Expected nil or binary destination, got: #{inspect(r.destination)}"
+
+        assert is_nil(r.interface) or is_binary(r.interface),
+               "Expected nil or binary interface, got: #{inspect(r.interface)}"
+      end
+    end
+  end
 end
