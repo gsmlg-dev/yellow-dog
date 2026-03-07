@@ -1145,4 +1145,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert length(fns) >= 2
     end
   end
+
+  property "neighbor_monitor list_neighbors arity is 0 (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+      assert Keyword.get(fns, :list_neighbors) == 0
+    end
+  end
 end

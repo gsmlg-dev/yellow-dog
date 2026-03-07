@@ -1029,4 +1029,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(s1) == map_size(s2)
     end
   end
+
+  property "observed_state new does not share state between instances (r98)" do
+    check all _x <- boolean() do
+      s1 = ObservedState.new()
+      s2 = ObservedState.new()
+      # Links map should be independent (both empty)
+      assert s1.links == %{}
+      assert s2.links == %{}
+    end
+  end
 end

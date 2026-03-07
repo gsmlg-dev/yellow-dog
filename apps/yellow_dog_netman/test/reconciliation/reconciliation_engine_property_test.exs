@@ -1272,4 +1272,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert true
     end
   end
+
+  property "reconciliation_engine types modules are all loaded (r98)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Diff)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Profile)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
+    end
+  end
 end

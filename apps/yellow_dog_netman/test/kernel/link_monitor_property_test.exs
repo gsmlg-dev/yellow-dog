@@ -908,4 +908,11 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "link_monitor module at least 2 exports (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.LinkMonitor.__info__(:functions)
+      assert length(fns) >= 2
+    end
+  end
 end

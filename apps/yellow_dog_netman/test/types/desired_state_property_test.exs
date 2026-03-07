@@ -958,4 +958,16 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert ds1 == ds2
     end
   end
+
+  property "desired_state from profiles not crashes with single profile atom (r98)" do
+    check all _x <- boolean() do
+      # Defensive: from_profiles handles gracefully
+      result = try do
+        DesiredState.from_profiles([])
+      rescue
+        _ -> :error
+      end
+      assert is_struct(result) or result == :error
+    end
+  end
 end

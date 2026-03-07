@@ -1000,4 +1000,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "netlink module at least 2 exports (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert length(fns) >= 2
+    end
+  end
 end

@@ -935,4 +935,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "connection supervisor has at least start_link (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
 end

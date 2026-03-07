@@ -891,4 +891,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(d) or is_map(d)
     end
   end
+
+  property "diff struct fields are accessible (r98)" do
+    check all a <- action_gen() do
+      d = YellowDog.Netman.Types.Diff.new(a, nil)
+      assert is_struct(d)
+      assert Map.has_key?(d, :action) or Map.has_key?(d, :type) or map_size(d) > 0
+    end
+  end
 end

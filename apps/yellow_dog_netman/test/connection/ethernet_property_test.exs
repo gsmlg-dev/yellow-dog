@@ -863,4 +863,15 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_boolean(result)
     end
   end
+
+  property "ethernet all functions return safe values (r98)" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      e = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
+      c = YellowDog.Netman.Connection.Ethernet.carrier?(name)
+      m = YellowDog.Netman.Connection.Ethernet.mtu(name)
+      assert is_boolean(e)
+      assert is_boolean(c)
+      assert is_nil(m) or is_integer(m)
+    end
+  end
 end

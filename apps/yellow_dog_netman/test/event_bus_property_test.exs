@@ -1175,4 +1175,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "event_bus module is atom (r98)" do
+    check all _x <- boolean() do
+      assert is_atom(YellowDog.Netman.EventBus)
+      assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
+    end
+  end
 end

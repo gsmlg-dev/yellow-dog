@@ -1027,4 +1027,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "profile_store module is atom (r98)" do
+    check all _x <- boolean() do
+      assert is_atom(YellowDog.Netman.ProfileStore)
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+    end
+  end
 end

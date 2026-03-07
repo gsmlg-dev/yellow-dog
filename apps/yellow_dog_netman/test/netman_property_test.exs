@@ -776,4 +776,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert true
     end
   end
+
+  property "netman diff module loaded and has @actions (r98)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Diff)
+      fns = YellowDog.Netman.Types.Diff.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

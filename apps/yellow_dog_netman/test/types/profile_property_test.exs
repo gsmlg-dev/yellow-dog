@@ -1422,4 +1422,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml with ipv6 method field is ok or error (r98)" do
+    check all id <- string(:alphanumeric, min_length: 1),
+              method <- member_of(["slaac", "dhcpv6", "static", "disabled"]) do
+      result = Profile.from_toml(%{"id" => id, "ipv6" => %{"method" => method}})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

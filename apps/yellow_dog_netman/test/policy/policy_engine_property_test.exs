@@ -953,4 +953,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == %{}
     end
   end
+
+  property "policy_engine dns_priority empty returns empty list (r98)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.dns_priority([])
+      assert result == []
+    end
+  end
 end

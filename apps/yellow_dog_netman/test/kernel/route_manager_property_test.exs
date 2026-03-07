@@ -1026,4 +1026,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert length(fns) >= 3
     end
   end
+
+  property "route_manager remove_route arity is 1 (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+      assert Keyword.get(fns, :remove_route) == 1
+    end
+  end
 end

@@ -1028,4 +1028,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "rule_manager module at least 2 exports (r98)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert length(fns) >= 2
+    end
+  end
 end

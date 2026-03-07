@@ -949,4 +949,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "cli validation module is atom (r98)" do
+    check all _x <- boolean() do
+      assert is_atom(YellowDog.Netman.API.CLI)
+      assert Code.ensure_loaded?(YellowDog.Netman.API.CLI)
+    end
+  end
 end

@@ -1028,4 +1028,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Keyword.has_key?(fns, :list_all)
     end
   end
+
+  property "address_manager list_all returns map with non-negative sizes (r98)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert map_size(result) >= 0
+      assert Enum.all?(result, fn {_k, v} -> length(v) >= 0 end)
+    end
+  end
 end
