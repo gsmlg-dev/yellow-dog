@@ -707,4 +707,14 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       end
     end
   end
+
+  property "observe/0 always returns an ObservedState with routes as a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      observed = ReconciliationEngine.observe()
+      assert is_map(observed),
+             "Expected map from observe/0, got: #{inspect(observed)}"
+      assert is_list(observed.routes),
+             "Expected routes to be a list, got: #{inspect(observed.routes)}"
+    end
+  end
 end

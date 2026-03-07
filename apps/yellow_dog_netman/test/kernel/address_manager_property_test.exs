@@ -408,4 +408,13 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "get_addresses for a fresh unique interface always returns empty list" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "am_fresh_#{seed}"
+      result = AddressManager.get_addresses(fresh_iface)
+      assert result == [],
+             "Expected [] for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
 end
