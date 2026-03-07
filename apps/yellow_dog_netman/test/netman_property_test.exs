@@ -349,4 +349,23 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected :default_route key in status, got: #{inspect(Map.keys(result))}"
     end
   end
+
+  property "Netman module is always accessible" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert function_exported?(Netman, :status, 0),
+             "Expected Netman.status/0 to be exported"
+      assert function_exported?(Netman, :list_profiles, 0),
+             "Expected Netman.list_profiles/0 to be exported"
+    end
+  end
+
+  property "list_connections always returns maps with :priority key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+      for conn <- connections do
+        assert Map.has_key?(conn, :priority),
+               "Expected :priority key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end

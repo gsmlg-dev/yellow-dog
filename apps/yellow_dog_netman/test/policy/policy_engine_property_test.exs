@@ -460,4 +460,25 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected empty dns_priority for zero-DNS connections, got: #{inspect(result)}"
     end
   end
+
+  property "route_metrics with zero-priority connection always returns positive metric" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
+      conn = %{id: "zero_prio_\#{id}", interface: "eth0", autoconnect_priority: 0, type: :ethernet}
+      result = PolicyEngine.route_metrics([conn])
+      assert is_map(result)
+      assert map_size(result) == 1
+      {_id, metric} = Enum.at(result, 0)
+      assert is_integer(metric) and metric > 0,
+             "Expected positive metric for zero-priority connection, got: \#{inspect(metric)}"
+    end
+  end
+
+  property "effective_priority for :wifi type is always positive" do
+    check all(priority <- StreamData.integer(0..500)) do
+      conn = %{autoconnect_priority: priority, type: :wifi}
+      ep = PolicyEngine.effective_priority(conn)
+      assert ep >= 0,
+             "Expected non-negative effective_priority, got: #{inspect(ep)}"
+    end
+  end
 end

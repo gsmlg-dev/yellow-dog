@@ -540,4 +540,27 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "list count after put and delete returns to same count" do
+    check all(profile <- profile_gen()) do
+      # Ensure clean state
+      ProfileStore.delete(profile.id)
+      initial_count = length(ProfileStore.list())
+      ProfileStore.put(profile.id, profile)
+      ProfileStore.delete(profile.id)
+      final_count = length(ProfileStore.list())
+      assert final_count == initial_count,
+             "Expected count \#{initial_count} after put+delete, got \#{final_count}"
+    end
+  end
+
+  property "all profiles in list have non-nil type field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      profiles = ProfileStore.list()
+      for p <- profiles do
+        assert p.type != nil,
+               "Expected non-nil type in profile, got: #{inspect(p)}"
+      end
+    end
+  end
 end
