@@ -337,4 +337,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected [] for empty connections, got: #{inspect(result)}"
     end
   end
+
+  property "default_route with no connections always returns :none" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = PolicyEngine.default_route([])
+      assert result == :none,
+             "Expected :none for empty connection list, got: #{inspect(result)}"
+    end
+  end
 end

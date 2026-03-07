@@ -417,4 +417,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected [] for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
   end
+
+  property "all get_addresses entries always have a binary address field" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses = AddressManager.get_addresses(iface)
+
+      for a <- addresses do
+        assert is_binary(a.address),
+               "Expected binary address field, got: #{inspect(a.address)}"
+      end
+    end
+  end
 end
