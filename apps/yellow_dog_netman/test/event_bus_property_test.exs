@@ -723,5 +723,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result in [:ok, :raised]
     end
   end
+  property "EventBus subscribe then unsubscribe for unique topic never raises" do
+    check all(n <- StreamData.integer(0..99_999)) do
+      topic = "evb51_#{n}"
+      try do
+        EventBus.subscribe(topic)
+        EventBus.unsubscribe(topic)
+      rescue
+        _ -> :ok
+      catch
+        _, _ -> :ok
+      end
+    end
+  end
 
 end

@@ -546,5 +546,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map from unknown method, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with profile.list always returns map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.list"})
+      assert is_map(result),
+             "Expected map from profile.list, got: #{inspect(result)}"
+    end
+  end
 
 end

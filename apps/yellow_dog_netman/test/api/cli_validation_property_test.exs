@@ -590,5 +590,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from missing method key, got: #{inspect(result)}"
     end
   end
+  property "CLI handle_command with profile.delete and any id returns map" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result = CLI.handle_command(%{"method" => "profile.delete", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from profile.delete, got: #{inspect(result)}"
+    end
+  end
 
 end
