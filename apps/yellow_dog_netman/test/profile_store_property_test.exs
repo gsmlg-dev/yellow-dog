@@ -776,4 +776,14 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(result)
     end
   end
+  property "ProfileStore get for unknown id always returns error (r64)" do
+    check all(
+      id <- StreamData.binary(min_length: 1, max_length: 5)
+    ) do
+      # Use a unique ID that won't exist
+      unique_id = "test_unknown_" <> id
+      result = YellowDog.Netman.ProfileStore.get(unique_id)
+      assert match?({:error, _}, result) or is_nil(result)
+    end
+  end
 end

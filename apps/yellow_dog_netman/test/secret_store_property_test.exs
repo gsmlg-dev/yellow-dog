@@ -596,4 +596,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore get after delete returns error tuple (r64)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      YellowDog.Netman.SecretStore.delete(key)
+      result = YellowDog.Netman.SecretStore.get(key)
+      assert match?({:error, _}, result)
+    end
+  end
 end

@@ -553,4 +553,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Application)
     end
   end
+  property "Netman.Supervisor module is loaded (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Supervisor)
+    end
+  end
 end
