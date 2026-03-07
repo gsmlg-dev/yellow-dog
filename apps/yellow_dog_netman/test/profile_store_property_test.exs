@@ -872,4 +872,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "ProfileStore get for short key always returns tagged tuple (r78)" do
+    check all(
+      key <- StreamData.binary(length: 1)
+    ) do
+      result = YellowDog.Netman.ProfileStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

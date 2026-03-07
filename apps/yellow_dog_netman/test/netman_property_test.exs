@@ -624,4 +624,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
     end
   end
+  property "Netman all key modules are loaded (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Profile)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.Diff)
+      assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
+    end
+  end
 end
