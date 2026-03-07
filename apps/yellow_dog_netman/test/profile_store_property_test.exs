@@ -627,4 +627,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected stable ProfileStore.list count: #{c1} vs #{c2}"
     end
   end
+  property "ProfileStore list always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.ProfileStore.list()
+      assert is_list(result),
+             "Expected list from ProfileStore.list, got: \#{inspect(result)}"
+    end
+  end
+
 end

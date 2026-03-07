@@ -431,4 +431,11 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected :ok from put, got: #{inspect(result)}"
     end
   end
+  property "SecretStore put with numeric string key always returns :ok" do
+    check all(n <- StreamData.integer(0..999_999)) do
+      key = Integer.to_string(n)
+      assert SecretStore.put(key, "v") == :ok
+    end
+  end
+
 end

@@ -437,4 +437,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected stable get_profile for #{id}: #{inspect(r1)} vs #{inspect(r2)}"
     end
   end
+  property "Netman module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman),
+             "Expected YellowDog.Netman to be loaded"
+    end
+  end
+
 end
