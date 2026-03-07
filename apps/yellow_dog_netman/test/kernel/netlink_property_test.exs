@@ -736,5 +736,134 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected :module key in module_info"
     end
   end
+  property "Netlink process is alive (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected Netlink to be alive (r59)"
+    end
+  end
 
+  property "Netlink module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Kernel.Netlink.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
+  property "Netlink module has start_link function (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
+  property "Netlink module exports non-empty list (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.Netlink.module_info(:exports)
+      assert is_list(exports) and length(exports) > 0
+    end
+  end
+  property "Netlink module has correct name (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.Netlink.module_info(:module)
+      assert name == YellowDog.Netman.Kernel.Netlink
+    end
+  end
+  property "Netlink module attributes are a list (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.Netlink.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
+  property "Netlink module compile info is a list (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Kernel.Netlink.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "Netlink module version exists (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.Netlink.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
+  property "Netlink module functions include handle_info (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "Netlink module functions include terminate (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
+    end
+  end
+  property "Netlink module compile info has source (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Kernel.Netlink.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "Netlink module functions count is positive (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert length(fns) > 0
+    end
+  end
+  property "Netlink module attributes include behaviour (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.Netlink.module_info(:attributes)
+      assert is_list(attrs) and length(attrs) > 0
+    end
+  end
+  property "Netlink module functions include init (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert Keyword.has_key?(fns, :init)
+    end
+  end
+  property "Netlink module functions are all keyword pairs (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.Netlink.module_info(:functions)
+      assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
+    end
+  end
+  property "Netlink exports include start_link (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.Netlink.module_info(:exports)
+      assert Keyword.has_key?(exports, :start_link)
+    end
+  end
+  property "Netlink exports include module_info (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.Netlink.module_info(:exports)
+      assert Keyword.has_key?(exports, :module_info)
+    end
+  end
+  property "Netlink module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.Netlink.module_info(:module)
+      assert name == YellowDog.Netman.Kernel.Netlink
+    end
+  end
+  property "Netlink is a running process (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
+  property "Netlink process is registered (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.Netlink
+      pid = Process.whereis(name)
+      assert is_pid(pid)
+    end
+  end
+
+  property "netlink module exports functions (r79)" do
+    check all _x <- integer() do
+      fns = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

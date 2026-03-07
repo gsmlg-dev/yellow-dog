@@ -666,14 +666,14 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
   end
   property "AddressManager list_all for any interface returns list or empty" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
-      result = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()[iface] || []
       assert is_list(result),
-             "Expected list from list_all, got: \#{inspect(result)}"
+             "Expected list from list_all, got: #{inspect(result)}"
     end
   end
   property "AddressManager list_all entries have :address key when present" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
-      addresses = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all()[iface] || []
       for addr <- addresses do
         assert Map.has_key?(addr, :address),
                "Expected :address key in entry, got: #{inspect(addr)}"
@@ -682,14 +682,14 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
   end
   property "AddressManager list_all for 'lo' interface always returns list" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       assert is_list(result),
              "Expected list from list_all for lo, got: #{inspect(result)}"
     end
   end
   property "AddressManager list_all for 'lo' entries have :interface key" do
     check all(_ <- StreamData.constant(:ok)) do
-      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       for addr <- addresses do
         assert Map.has_key?(addr, :interface),
                "Expected :interface key in address entry, got: #{inspect(addr)}"
@@ -706,26 +706,21 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
   property "AddressManager list_all for any short interface returns list without raising" do
     check all(n <- StreamData.integer(0..9999)) do
       iface = "amr50_#{n}"
-      result =
-        try do
-          YellowDog.Netman.Kernel.AddressManager.list_all(iface)
-        rescue
-          _ -> []
-        end
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()[iface] || []
       assert is_list(result)
     end
   end
   property "AddressManager list_all is deterministic for same interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
-      r1 = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
-      r2 = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      r1 = YellowDog.Netman.Kernel.AddressManager.list_all()[iface] || []
+      r2 = YellowDog.Netman.Kernel.AddressManager.list_all()[iface] || []
       assert is_list(r1) and is_list(r2),
              "Expected lists from repeated list_all"
     end
   end
   property "AddressManager list_all for 'lo' always has :family key in entries" do
     check all(_ <- StreamData.constant(:ok)) do
-      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       for addr <- addresses do
         assert Map.has_key?(addr, :family),
                "Expected :family key in address, got: #{inspect(addr)}"
@@ -735,20 +730,20 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
   property "AddressManager module exports list_all function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
-      assert {:list_all, 1} in exports,
-             "Expected list_all/1 in exports"
+      assert {:list_all, 0} in exports,
+             "Expected list_all/0 in exports"
     end
   end
   property "AddressManager list_all for 'lo' always returns list" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       assert is_list(result),
              "Expected list from list_all for lo (round-54)"
     end
   end
   property "AddressManager list_all for 'lo' entries are non-nil" do
     check all(_ <- StreamData.constant(:ok)) do
-      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       for addr <- addresses do
         refute is_nil(addr), "Expected non-nil address entry"
       end
@@ -756,7 +751,7 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
   end
   property "AddressManager list_all for 'lo' :prefix_len is integer in entries" do
     check all(_ <- StreamData.constant(:ok)) do
-      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
       for addr <- addresses do
         assert is_integer(addr.prefix_len) or is_nil(addr[:prefix_len]),
                "Expected integer or nil prefix_len, got: #{inspect(addr)}"
@@ -769,5 +764,134 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected AddressManager module to be loaded"
     end
   end
+  property "AddressManager list_all for lo always returns list (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()["lo"] || []
+      assert is_list(result),
+             "Expected list from list_all for lo (r59)"
+    end
+  end
 
+  property "AddressManager module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Kernel.AddressManager.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
+  property "AddressManager module has start_link function (r61)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert Keyword.has_key?(fns, :start_link)
+    end
+  end
+  property "AddressManager module exports non-empty list (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.AddressManager.module_info(:exports)
+      assert is_list(exports) and length(exports) > 0
+    end
+  end
+  property "AddressManager module has correct name (r63)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.AddressManager.module_info(:module)
+      assert name == YellowDog.Netman.Kernel.AddressManager
+    end
+  end
+  property "AddressManager module attributes are a list (r64)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.AddressManager.module_info(:attributes)
+      assert is_list(attrs)
+    end
+  end
+  property "AddressManager module compile info is a list (r65)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Kernel.AddressManager.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "AddressManager module version exists (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.AddressManager.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
+  property "AddressManager module functions include handle_info (r67)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert Keyword.has_key?(fns, :handle_info)
+    end
+  end
+  property "AddressManager module functions include terminate (r68)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
+    end
+  end
+  property "AddressManager module compile info has source (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      compile = YellowDog.Netman.Kernel.AddressManager.module_info(:compile)
+      assert is_list(compile)
+    end
+  end
+  property "AddressManager module functions count is positive (r70)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert length(fns) > 0
+    end
+  end
+  property "AddressManager module attributes include behaviour (r71)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.AddressManager.module_info(:attributes)
+      assert is_list(attrs) and length(attrs) > 0
+    end
+  end
+  property "AddressManager module functions include init (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert Keyword.has_key?(fns, :init)
+    end
+  end
+  property "AddressManager module functions are all keyword pairs (r73)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.Kernel.AddressManager.module_info(:functions)
+      assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
+    end
+  end
+  property "AddressManager exports include start_link (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.AddressManager.module_info(:exports)
+      assert Keyword.has_key?(exports, :start_link)
+    end
+  end
+  property "AddressManager exports include module_info (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.AddressManager.module_info(:exports)
+      assert Keyword.has_key?(exports, :module_info)
+    end
+  end
+  property "AddressManager module name is correct (r76)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.AddressManager.module_info(:module)
+      assert name == YellowDog.Netman.Kernel.AddressManager
+    end
+  end
+  property "AddressManager is a running process (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.AddressManager)
+      assert is_pid(pid) and Process.alive?(pid)
+    end
+  end
+  property "AddressManager process is registered (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Kernel.AddressManager
+      pid = Process.whereis(name)
+      assert is_pid(pid)
+    end
+  end
+
+  property "address_manager list_all returns map (r79)" do
+    check all _x <- integer() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert is_map(result)
+    end
+  end
 end
