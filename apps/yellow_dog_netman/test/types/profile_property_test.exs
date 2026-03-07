@@ -988,5 +988,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected nil or map ipv6, got: #{inspect(p.ipv6)}"
     end
   end
+  property "Profile autoconnect_priority field defaults to nil or integer" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert is_nil(p.autoconnect_priority) or is_integer(p.autoconnect_priority),
+             "Expected nil or integer autoconnect_priority, got: #{inspect(p.autoconnect_priority)}"
+    end
+  end
 
 end

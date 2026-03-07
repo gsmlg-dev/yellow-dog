@@ -975,5 +975,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected registered pid for ReconciliationEngine"
     end
   end
+  property "ReconciliationEngine module info always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.ReconciliationEngine.module_info()
+      assert is_list(info),
+             "Expected list from module_info"
+    end
+  end
 
 end

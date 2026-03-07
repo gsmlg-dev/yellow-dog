@@ -662,5 +662,17 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected :addresses and :links fields"
     end
   end
+  property "ObservedState put_link followed by get returns non-nil links" do
+    check all(
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
+            up <- StreamData.boolean()
+          ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      link = %{interface: iface, up: up}
+      new_state = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+      assert not is_nil(new_state.links),
+             "Expected non-nil links after put_link"
+    end
+  end
 
 end

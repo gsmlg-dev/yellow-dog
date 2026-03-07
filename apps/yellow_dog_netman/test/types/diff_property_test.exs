@@ -597,5 +597,15 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected :ok from Diff.new with #{inspect(action)}"
     end
   end
+  property "Diff action is one of the expected @actions" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      valid_actions = [:add_address, :remove_address, :add_route, :remove_route,
+                       :activate_connection, :deactivate_connection, :update_dns,
+                       :set_mtu, :set_link_up, :set_link_down]
+      assert diff.action in valid_actions,
+             "Expected valid action, got: #{inspect(diff.action)}"
+    end
+  end
 
 end

@@ -650,5 +650,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       refute is_nil(ds), "Expected non-nil result"
     end
   end
+  property "DesiredState module info always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Types.DesiredState.module_info()
+      assert is_list(info),
+             "Expected list from module_info"
+    end
+  end
 
 end
