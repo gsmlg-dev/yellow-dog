@@ -745,4 +745,13 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected :routes field in ObservedState"
     end
   end
+
+  property "diff/2 always returns a list regardless of state contents" do
+    check all(observed <- observed_state_gen()) do
+      desired = %DesiredState{connections: %{}}
+      result = ReconciliationEngine.diff(desired, observed)
+      assert is_list(result),
+             "Expected list from diff/2, got: #{inspect(result)}"
+    end
+  end
 end

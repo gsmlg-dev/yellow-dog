@@ -679,4 +679,13 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected connection id #{id}, got: #{inspect(conn["id"])}"
     end
   end
+
+  property "to_toml connection type is always \"ethernet\"" do
+    check all(toml <- valid_toml_gen()) do
+      {:ok, profile} = Profile.from_toml(toml)
+      result = Profile.to_toml(profile)
+      assert result["connection"]["type"] == "ethernet",
+             "Expected connection.type == 'ethernet', got: #{inspect(result["connection"]["type"])}"
+    end
+  end
 end

@@ -391,4 +391,21 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected exactly 1 connection for one profile, got: #{inspect(desired.connections)}"
     end
   end
+
+  property "each connection always has a :profile_id key with a binary value" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      conn = desired.connections[profile.id]
+      assert conn != nil
+
+      assert Map.has_key?(conn, :profile_id),
+             "Expected :profile_id key in connection, got: #{inspect(Map.keys(conn))}"
+
+      assert is_binary(conn.profile_id),
+             "Expected binary profile_id, got: #{inspect(conn.profile_id)}"
+    end
+  end
 end
