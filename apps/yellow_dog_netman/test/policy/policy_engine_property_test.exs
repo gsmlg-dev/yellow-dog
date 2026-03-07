@@ -315,4 +315,18 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       end
     end
   end
+
+  property "dns_priority entries always have a positive integer priority field" do
+    check all(
+            connections <-
+              StreamData.list_of(connection_with_dns_gen(), min_length: 1, max_length: 5)
+          ) do
+      result = PolicyEngine.dns_priority(connections)
+
+      for entry <- result do
+        assert is_integer(entry.priority) and entry.priority > 0,
+               "Expected positive integer priority, got: #{inspect(entry.priority)}"
+      end
+    end
+  end
 end

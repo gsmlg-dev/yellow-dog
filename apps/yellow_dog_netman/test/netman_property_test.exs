@@ -220,4 +220,15 @@ defmodule YellowDog.NetmanPropertyTest do
              "list_interfaces contains duplicate names: #{inspect(ifaces)}"
     end
   end
+
+  property "list_connections never contains nil entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = Netman.list_connections()
+
+      for conn <- connections do
+        assert conn != nil,
+               "Unexpected nil entry in list_connections"
+      end
+    end
+  end
 end

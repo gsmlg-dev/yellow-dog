@@ -388,4 +388,19 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
     end
   end
+
+  property "all profiles returned by list() always have a boolean autoconnect field" do
+    check all(profile <- profile_gen()) do
+      ProfileStore.put(profile.id, profile)
+
+      profiles = ProfileStore.list()
+
+      for p <- profiles do
+        assert is_boolean(p.autoconnect),
+               "Expected boolean autoconnect in profile, got: #{inspect(p.autoconnect)}"
+      end
+
+      ProfileStore.delete(profile.id)
+    end
+  end
 end
