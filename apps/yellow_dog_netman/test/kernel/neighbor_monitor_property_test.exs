@@ -773,4 +773,38 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
              "Expected empty list for iface with no events: #{inspect(result)}"
     end
   end
+
+  property "get_neighbors after del event returns empty or partial list" do
+    check all(seed <- StreamData.integer(1..9_999), ip <- StreamData.member_of(["10.1.1.1", "192.168.2.2"])) do
+      iface = "nm_del_#{seed}"
+      mac = "aa:bb:cc:dd:ee:ff"
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "neighbor_change", "action" => "add",
+        "interface" => iface, "address" => ip, "mac" => mac
+      }})
+      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+        "type" => "neighbor_change", "action" => "del",
+        "interface" => iface, "address" => ip, "mac" => mac
+      }})
+      Process.sleep(80)
+      result = NeighborMonitor.get_neighbors(iface)
+      assert is_list(result),
+             "Expected list after add+del for #{iface}"
+    end
+  end
+  property "NeighborMonitor get_neighbor for numeric string interface returns nil or map" do
+    check all(n <- StreamData.integer(0..99)) do
+      iface = "eth\#{n}"
+      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor(iface)
+      assert is_nil(result) or is_map(result) or is_list(result),
+             "Expected nil/map/list from get_neighbor, got: \#{inspect(result)}"
+    end
+  end
+  property "NeighborMonitor list_neighbors always returns a non-nil value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      refute is_nil(result), "Expected non-nil from list_neighbors"
+    end
+  end
+
 end

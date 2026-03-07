@@ -630,4 +630,33 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       end
     end
   end
+
+  property "Netlink never crashes on repeated link_change events" do
+    check all(seed <- StreamData.integer(1..999)) do
+      for n <- 1..3 do
+        send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
+          "type" => "link_change", "action" => "add",
+          "interface" => "nl_rep_#{seed}_#{n}", "operstate" => "up"
+        }})
+      end
+      Process.sleep(30)
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert pid != nil and Process.alive?(pid),
+             "Expected Netlink alive after repeated events"
+    end
+  end
+  property "Netlink process responds to alive check" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected Netlink to be alive"
+    end
+  end
+  property "Netlink module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink),
+             "Expected Netlink module to be loadable"
+    end
+  end
+
 end

@@ -656,4 +656,28 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules entries are all non-nil values" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      for r <- rules do
+        assert r != nil,
+               "Expected non-nil rule entry"
+      end
+    end
+  end
+  property "RuleManager process responds to alive check" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected RuleManager to be alive"
+    end
+  end
+  property "RuleManager list_rules always returns a non-nil value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      refute is_nil(result), "Expected non-nil from list_rules"
+    end
+  end
+
 end
