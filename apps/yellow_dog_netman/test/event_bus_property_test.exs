@@ -903,4 +903,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus subscribe returns ok for any alphanumeric topic (r65)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
+    ) do
+      result = YellowDog.Netman.EventBus.subscribe(topic)
+      YellowDog.Netman.EventBus.unsubscribe(topic)
+      assert result == :ok or match?({:ok, _}, result)
+    end
+  end
 end
