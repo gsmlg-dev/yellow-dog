@@ -514,4 +514,24 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
              "Expected :ok from broadcast with empty prefix, got: #{inspect(result)}"
     end
   end
+
+  property "publish to wildcard-style topic without subscriber returns :ok" do
+    check all(
+            prefix <- topic_segment(),
+            message <- term()
+          ) do
+      topic = "wld_nosub:#{prefix}:*"
+      result = EventBus.publish(topic, message)
+      assert result == :ok,
+             "Expected :ok from publish to wildcard-style topic with no subscriber, got: #{inspect(result)}"
+    end
+  end
+
+  property "subscribe to empty string topic always returns {:ok, _}" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = EventBus.subscribe("")
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from subscribe with empty topic, got: #{inspect(result)}"
+    end
+  end
 end

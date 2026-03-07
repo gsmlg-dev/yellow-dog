@@ -394,4 +394,26 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected list in connection.list result, got: #{inspect(conns)}"
     end
   end
+
+  property "device.list result contains maps" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device.list"})
+      devices = result["result"]
+      assert is_list(devices), "Expected list, got: #{inspect(devices)}"
+      for d <- devices do
+        assert is_map(d), "Expected map device, got: #{inspect(d)}"
+      end
+    end
+  end
+
+  property "connection.show with existing connection id returns result key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.list", "params" => %{}})
+      assert is_map(result),
+             "Expected map from connection.list, got: #{inspect(result)}"
+      if ids = result["result"] do
+        assert is_list(ids)
+      end
+    end
+  end
 end

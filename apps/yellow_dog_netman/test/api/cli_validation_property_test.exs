@@ -440,4 +440,27 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected list in device.list result, got: #{inspect(devices)}"
     end
   end
+
+  property "connection with valid id does not return identifier validation error" do
+    check all(id <- valid_id_gen()) do
+      for method <- ["connection.show", "connection.up", "connection.down"] do
+        result = CLI.handle_command(%{"method" => method, "params" => %{"id" => id}})
+        if err = result["error"] do
+          refute String.starts_with?(err, "identifier"),
+                 "#{method} with valid id got identifier error: #{err}"
+        end
+      end
+    end
+  end
+
+  property "connection methods with too-long identifier always return validation error" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      # 129-char id exceeds the 128-char limit
+      long_id = String.duplicate("x", 129) <> Integer.to_string(seed)
+      result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => long_id}})
+      err = result["error"]
+      assert is_binary(err),
+             "Expected error for too-long id, got: #{inspect(result)}"
+    end
+  end
 end
