@@ -607,4 +607,28 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected boolean autoconnect in to_toml output, got: #{inspect(conn["autoconnect"])}"
     end
   end
+
+  property "to_toml interface field always matches the original profile interface" do
+    check all(
+            id <- profile_id_gen(),
+            iface <- iface_gen()
+          ) do
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      toml_map = Profile.to_toml(profile)
+      conn = toml_map["connection"]
+
+      assert conn["interface"] == iface,
+             "Expected interface #{iface} in to_toml, got: #{inspect(conn["interface"])}"
+    end
+  end
 end

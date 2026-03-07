@@ -398,4 +398,16 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected links[#{link.interface}] == #{inspect(link)}, got #{inspect(state.links[link.interface])}"
     end
   end
+
+  property "add_address creates entry with interface field matching the address interface" do
+    check all(addr <- address_gen()) do
+      state = ObservedState.new() |> ObservedState.add_address(addr)
+      addresses = state.addresses[addr.interface] || []
+      added = Enum.find(addresses, &(&1.address == addr.address))
+      assert added != nil,
+             "Expected to find address #{addr.address} in state.addresses[#{addr.interface}]"
+      assert added.interface == addr.interface,
+             "Expected address.interface == #{addr.interface}, got: #{inspect(added.interface)}"
+    end
+  end
 end

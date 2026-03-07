@@ -302,4 +302,14 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected 'result' or 'error' key in response, got: #{inspect(result)}"
     end
   end
+
+  property "connection.up with valid id always returns a map response" do
+    check all(id <- valid_id_gen()) do
+      result = CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => id}})
+      assert is_map(result),
+             "Expected map from connection.up, got: #{inspect(result)}"
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
+             "Expected 'result' or 'error' key in connection.up response, got: #{inspect(result)}"
+    end
+  end
 end
