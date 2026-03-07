@@ -1079,4 +1079,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
+
+  property "neighbor_monitor attribute vsn is a list or nil (r89)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
+      vsn = Keyword.get(attrs, :vsn)
+      assert is_list(vsn) or is_nil(vsn)
+    end
+  end
 end

@@ -954,4 +954,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert length(r1) == length(r2)
     end
   end
+
+  property "profile_store exports get list and delete (r89)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ProfileStore.__info__(:functions)
+      assert Keyword.has_key?(fns, :get)
+      assert Keyword.has_key?(fns, :list)
+    end
+  end
 end

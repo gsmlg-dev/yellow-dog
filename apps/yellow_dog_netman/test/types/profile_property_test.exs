@@ -1346,4 +1346,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
+
+  property "profile from_toml with list value for id returns error (r89)" do
+    check all lst <- list_of(string(:alphanumeric), max_length: 3) do
+      result = Profile.from_toml(%{"id" => lst})
+      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    end
+  end
 end

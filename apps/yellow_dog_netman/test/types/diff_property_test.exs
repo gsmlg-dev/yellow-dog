@@ -826,4 +826,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert :update_dns in @actions
     end
   end
+
+  property "diff @actions has exactly 10 items (r89)" do
+    check all _x <- boolean() do
+      assert length(@actions) == 10
+    end
+  end
 end

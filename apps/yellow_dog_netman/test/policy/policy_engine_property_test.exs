@@ -886,4 +886,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_nil(result) or is_integer(result) or is_float(result)
     end
   end
+
+  property "policy_engine default_route always returns :none or ok tuple (r89)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.default_route([])
+      assert result == :none or match?({:ok, _}, result)
+    end
+  end
 end

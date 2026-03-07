@@ -885,4 +885,13 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert String.starts_with?(name, "Elixir.")
     end
   end
+
+  property "desired_state from_profiles with empty returns valid struct (r89)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      # Check it's a proper struct
+      refute is_nil(ds)
+      assert is_struct(ds)
+    end
+  end
 end

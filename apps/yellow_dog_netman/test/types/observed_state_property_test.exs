@@ -957,4 +957,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              Enum.all?(state.routes, &(is_map(&1) or is_struct(&1)))
     end
   end
+
+  property "observed_state struct fields are consistent (r89)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      keys = Map.keys(state) -- [:__struct__]
+      assert :links in keys
+      assert :routes in keys
+      assert :addresses in keys
+    end
+  end
 end
