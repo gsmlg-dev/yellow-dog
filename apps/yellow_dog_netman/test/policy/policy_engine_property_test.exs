@@ -785,4 +785,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result) or is_nil(result)
     end
   end
+  property "PolicyEngine all functions are in exports (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.PolicyEngine.module_info(:exports)
+      assert Keyword.has_key?(exports, :default_route)
+      assert Keyword.has_key?(exports, :route_metrics)
+      assert Keyword.has_key?(exports, :dns_priority)
+    end
+  end
 end

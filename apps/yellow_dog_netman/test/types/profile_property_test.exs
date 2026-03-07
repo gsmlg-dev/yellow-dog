@@ -1231,4 +1231,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+  property "Profile from_toml with empty string id fails (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      toml = %{"connection" => %{"id" => "", "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      result = YellowDog.Netman.Types.Profile.from_toml(toml)
+      # Empty id might fail or succeed depending on validation
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

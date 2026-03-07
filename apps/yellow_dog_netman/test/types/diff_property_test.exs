@@ -729,4 +729,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       refute is_nil(diff)
     end
   end
+  property "Diff struct is always a Diff module (r75)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert diff.__struct__ == YellowDog.Netman.Types.Diff
+    end
+  end
 end

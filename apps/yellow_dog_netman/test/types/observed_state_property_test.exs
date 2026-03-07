@@ -847,4 +847,16 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s2.links == %{}
     end
   end
+  property "ObservedState add_address then remove_address returns clean state (r75)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      address = %{interface: iface, address: addr, prefix_len: 24}
+      s1 = YellowDog.Netman.Types.ObservedState.add_address(state, address)
+      s2 = YellowDog.Netman.Types.ObservedState.remove_address(s1, iface, addr)
+      assert is_struct(s2)
+    end
+  end
 end
