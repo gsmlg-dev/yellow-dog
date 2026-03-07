@@ -901,4 +901,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(attrs)
     end
   end
+
+  property "rule_manager module info compile is list or map (r81)" do
+    check all _x <- boolean() do
+      info = YellowDog.Netman.Kernel.RuleManager.__info__(:compile)
+      assert is_list(info) or is_map(info)
+    end
+  end
 end

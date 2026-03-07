@@ -733,4 +733,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_boolean(result)
     end
   end
+
+  property "ethernet mtu returns nil or pos_integer for any name (r81)" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      result = YellowDog.Netman.Connection.Ethernet.mtu(name)
+      assert is_nil(result) or (is_integer(result) and result > 0)
+    end
+  end
 end

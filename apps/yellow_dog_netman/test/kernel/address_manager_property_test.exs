@@ -901,4 +901,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(result, fn {_k, v} -> is_list(v) end)
     end
   end
+
+  property "address_manager list_all keys are strings (r81)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert Enum.all?(result, fn {k, _} -> is_binary(k) end)
+    end
+  end
 end
