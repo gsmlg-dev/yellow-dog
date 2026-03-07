@@ -385,4 +385,13 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
              "Expected map in status result, got: #{inspect(status_map)}"
     end
   end
+
+  property "connection.list always returns a list in result" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "connection.list"})
+      conns = result["result"]
+      assert is_list(conns),
+             "Expected list in connection.list result, got: #{inspect(conns)}"
+    end
+  end
 end

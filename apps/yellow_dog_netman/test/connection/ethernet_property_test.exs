@@ -365,4 +365,15 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       end
     end
   end
+
+  property "ethernet? for registered link with type ethernet always returns true" do
+    check all(seed <- StreamData.integer(1..99_999)) do
+      iface = "eth_typed_#{seed}"
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(50)
+      result = Ethernet.ethernet?(iface)
+      assert is_boolean(result),
+             "Expected boolean from ethernet? for #{iface}, got: #{inspect(result)}"
+    end
+  end
 end

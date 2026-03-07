@@ -431,4 +431,13 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected no error from connection.list, got: #{inspect(result)}"
     end
   end
+
+  property "device.list always returns a list in result" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "device.list"})
+      devices = result["result"]
+      assert is_list(devices),
+             "Expected list in device.list result, got: #{inspect(devices)}"
+    end
+  end
 end
