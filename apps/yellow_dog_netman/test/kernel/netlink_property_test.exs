@@ -498,4 +498,20 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       refute_receive {:netlink_event, _}, 50
     end
   end
+
+  property "all known event types always produce a map payload" do
+    check all(event_type <- StreamData.member_of(@known_event_types)) do
+      Netlink.subscribe()
+      Process.sleep(10)
+      tag = unique_tag()
+      send(Netlink, {:mock_event, %{"type" => event_type, "_tag" => tag}})
+      expected_atom = String.to_atom(event_type)
+      receive do
+        {:netlink_event, {^expected_atom, payload}} ->
+          assert is_map(payload), "Expected map payload, got: #{inspect(payload)}"
+      after
+        500 -> flunk("Timed out waiting for event of type #{event_type}")
+      end
+    end
+  end
 end

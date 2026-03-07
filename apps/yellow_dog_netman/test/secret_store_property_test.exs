@@ -287,4 +287,14 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Unexpected result from put with float key: #{inspect(result)}"
     end
   end
+
+  property "put and delete sequence for same key always returns :ok" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32),
+            value <- StreamData.string(:alphanumeric, max_length: 64)
+          ) do
+      assert SecretStore.put(key, value) == :ok
+      assert SecretStore.delete(key) == :ok
+    end
+  end
 end

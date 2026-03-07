@@ -391,4 +391,17 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected action #{inspect(action)}, got: #{inspect(diff.action)}"
     end
   end
+
+  property "two Diffs with same action always have equal action field" do
+    check all(
+            action <- action_gen(),
+            iface1 <- interface_gen(),
+            iface2 <- interface_gen()
+          ) do
+      diff1 = Diff.new(action, iface1, %{})
+      diff2 = Diff.new(action, iface2, %{})
+      assert diff1.action == diff2.action,
+             "Expected same action in both diffs"
+    end
+  end
 end
