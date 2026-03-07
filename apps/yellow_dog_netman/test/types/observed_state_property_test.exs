@@ -886,4 +886,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_list(state.routes)
     end
   end
+
+  property "observed_state links is always map (r80)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert is_map(state.links)
+    end
+  end
 end

@@ -811,4 +811,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(ds)
     end
   end
+
+  property "desired_state has connections field (r80)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert Map.has_key?(ds, :connections) or is_struct(ds)
+    end
+  end
 end

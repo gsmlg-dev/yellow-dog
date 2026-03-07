@@ -1270,4 +1270,11 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml always returns tagged tuple (r80)" do
+    check all kv <- map_of(string(:alphanumeric, min_length: 1), boolean()) do
+      result = Profile.from_toml(kv)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end
