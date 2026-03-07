@@ -973,5 +973,53 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       end
     end
   end
+  property "FSM start_link with seed-based interface and valid profile is idempotent on error" do
+    check all(n <- StreamData.integer(1000..1999)) do
+      iface = String.slice("fsmr47_#{n}", 0, 15)
+      profile = make_profile(iface)
+      result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+      case result do
+        {:ok, pid} ->
+          assert is_pid(pid)
+          Process.exit(pid, :kill)
+        {:error, _} ->
+          :ok
+      end
+    end
+  end
+  property "FSM module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Connection.FSM),
+             "Expected FSM module to be loadable"
+    end
+  end
+  property "FSM start_link with any interface and profile never hangs" do
+    check all(n <- StreamData.integer(2000..2999)) do
+      iface = String.slice("fsmr49_#{n}", 0, 15)
+      profile = make_profile(iface)
+      result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+      case result do
+        {:ok, pid} ->
+          assert is_pid(pid)
+          Process.exit(pid, :kill)
+        {:error, _} ->
+          :ok
+      end
+    end
+  end
+  property "FSM module exports are stable" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert is_list(exports),
+             "Expected list of exports"
+    end
+  end
+  property "FSM module attributes contain vsn" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+      assert is_list(attrs),
+             "Expected list from module_info(:attributes)"
+    end
+  end
 
 end

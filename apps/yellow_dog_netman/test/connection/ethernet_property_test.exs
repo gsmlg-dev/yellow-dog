@@ -506,5 +506,40 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected positive integer mtu for lo, got: #{inspect(result)}"
     end
   end
+  property "Ethernet ethernet? returns false for empty string" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Ethernet.ethernet?("")
+      assert result == false,
+             "Expected false for empty string, got: #{inspect(result)}"
+    end
+  end
+  property "Ethernet carrier? returns boolean for 'lo' interface" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Ethernet.carrier?("lo")
+      assert is_boolean(result),
+             "Expected boolean from carrier? for lo, got: #{inspect(result)}"
+    end
+  end
+  property "Ethernet ethernet? returns false for 'lo' interface" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
+      assert result == false,
+             "Expected false for lo, got: #{inspect(result)}"
+    end
+  end
+  property "Ethernet mtu for 'lo' interface always returns positive integer" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
+      assert is_integer(result) and result > 0,
+             "Expected positive integer mtu for lo, got: #{inspect(result)}"
+    end
+  end
+  property "Ethernet module_info always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Ethernet.module_info()
+      assert is_list(info),
+             "Expected list from module_info"
+    end
+  end
 
 end

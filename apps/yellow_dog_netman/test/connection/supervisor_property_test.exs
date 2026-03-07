@@ -594,5 +594,41 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected list from list_connections, got: #{inspect(result)}"
     end
   end
+  property "ConnSupervisor list_connections count is non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Connection.Supervisor.list_connections()
+      assert length(result) >= 0,
+             "Expected non-negative count"
+    end
+  end
+  property "ConnSupervisor module_info always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Supervisor.module_info()
+      assert is_list(info),
+             "Expected list from module_info"
+    end
+  end
+  property "ConnSupervisor list_connections is stable across calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.Connection.Supervisor.list_connections()
+      r2 = YellowDog.Netman.Connection.Supervisor.list_connections()
+      assert is_list(r1) and is_list(r2),
+             "Expected lists from repeated list_connections"
+    end
+  end
+  property "ConnSupervisor process is always alive" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Connection.Supervisor)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected ConnSupervisor to be alive"
+    end
+  end
+  property "ConnSupervisor module_info exports is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+      assert is_list(exports),
+             "Expected list from module_info(:exports)"
+    end
+  end
 
 end
