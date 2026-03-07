@@ -392,4 +392,19 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert_receive {:netlink_event, {^expected_atom, %{"_tag" => ^tag2}}}, 500
     end
   end
+
+  property "unknown event type with binary value always dispatches as :unknown" do
+    check all(
+            type <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      # Only test types that are NOT known event types
+      unless type in @known_event_types do
+        Netlink.subscribe()
+        Process.sleep(10)
+        tag = unique_tag()
+        send(Netlink, {:mock_event, %{"type" => type, "_tag" => tag}})
+        assert_receive {:netlink_event, {:unknown, %{"_tag" => ^tag}}}, 500
+      end
+    end
+  end
 end

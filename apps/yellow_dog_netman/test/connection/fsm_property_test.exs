@@ -530,6 +530,22 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
     end
   end
 
+  property "FSM get_state state field is always one of the valid FSM states" do
+    check all(seed <- StreamData.integer(1..999_999), max_runs: 50) do
+      iface = "fvs_#{seed}"
+      profile = make_profile(iface)
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      Process.sleep(20)
+
+      {:ok, state} = FSM.get_state(pid)
+
+      assert state.state in @valid_states,
+             "Unexpected FSM state: #{inspect(state.state)}"
+
+      GenServer.stop(pid, :normal)
+    end
+  end
+
   # This test is deterministic, not property-based, but verifies reachability
   test "all states are reachable from initial state" do
     reached_states = MapSet.new()
