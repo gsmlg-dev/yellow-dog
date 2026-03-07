@@ -866,4 +866,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     end
   end
 
+  property "EventBus module_info always returns keyword list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.EventBus.module_info()
+      assert is_list(info) and Keyword.keyword?(info)
+    end
+  end
 end

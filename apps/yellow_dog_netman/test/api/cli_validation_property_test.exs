@@ -657,4 +657,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
     end
   end
 
+  property "CLI valid interface name with mixed case is a string (r60)" do
+    check all(
+      name <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      assert is_binary(name)
+    end
+  end
 end

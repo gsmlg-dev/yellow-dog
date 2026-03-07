@@ -616,4 +616,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     end
   end
 
+  property "CLI handle_command with secret.list always returns a result (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "secret.list"})
+      assert is_map(result) or is_list(result) or is_tuple(result)
+    end
+  end
 end
