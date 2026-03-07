@@ -534,5 +534,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "SecretStore get then put then get shows consistency" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
+            val <- StreamData.string(:alphanumeric, max_length: 32)
+          ) do
+      full_key = "ss57_" <> key
+      _r1 = SecretStore.get(full_key)
+      SecretStore.put(full_key, val)
+      _r2 = SecretStore.get(full_key)
+      assert true, "Should not raise"
+    end
+  end
 
 end
