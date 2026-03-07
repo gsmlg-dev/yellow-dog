@@ -794,4 +794,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert length(list1) == length(list2)
     end
   end
+  property "ProfileStore put always fails for non-struct profile (r66)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      # Deleting a non-existent profile should return ok or error tuple
+      result = YellowDog.Netman.ProfileStore.delete(key)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end

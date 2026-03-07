@@ -614,4 +614,16 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore operations never crash for any input type (r66)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      put_result = YellowDog.Netman.SecretStore.put(key, 42)
+      get_result = YellowDog.Netman.SecretStore.get(key)
+      del_result = YellowDog.Netman.SecretStore.delete(key)
+      assert put_result == :ok
+      assert match?({:ok, _}, get_result) or match?({:error, _}, get_result)
+      assert del_result == :ok
+    end
+  end
 end
