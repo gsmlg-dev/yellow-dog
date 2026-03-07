@@ -848,4 +848,10 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert name == YellowDog.Netman.ProfileStore
     end
   end
+  property "ProfileStore module functions are all keyword pairs (r74)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      fns = YellowDog.Netman.ProfileStore.module_info(:functions)
+      assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
+    end
+  end
 end
