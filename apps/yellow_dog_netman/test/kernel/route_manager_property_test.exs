@@ -508,4 +508,13 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Route #{dest} via #{gw} on #{iface} not found in list_all"
     end
   end
+
+  property "get_routes for a never-seen interface always returns an empty list" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "rm_fresh_#{seed}"
+      result = RouteManager.get_routes(fresh_iface)
+      assert result == [],
+             "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(result)}"
+    end
+  end
 end

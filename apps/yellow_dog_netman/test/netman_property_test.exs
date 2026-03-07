@@ -286,4 +286,14 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "status always returns a map with :running boolean" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Netman.status()
+      assert is_map(result),
+             "Expected map from status, got: #{inspect(result)}"
+      assert is_boolean(result[:running]),
+             "Expected boolean :running in status, got: #{inspect(result[:running])}"
+    end
+  end
 end

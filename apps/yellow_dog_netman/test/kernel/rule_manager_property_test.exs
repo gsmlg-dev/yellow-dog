@@ -500,4 +500,17 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
              "Unknown action '#{unknown_action}' changed rule count: #{before_count} -> #{after_count}"
     end
   end
+
+  property "rule count never decreases without a del event" do
+    check all(
+            priority <- priority_gen(),
+            table <- table_gen()
+          ) do
+      before_count = length(RuleManager.list_rules())
+      send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
+      after_count = length(RuleManager.list_rules())
+      assert after_count >= before_count,
+             "Rule count decreased after add event: #{before_count} -> #{after_count}"
+    end
+  end
 end
