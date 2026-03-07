@@ -944,4 +944,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
+
+  property "rule_manager all function names are atoms (r87)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
+    end
+  end
 end

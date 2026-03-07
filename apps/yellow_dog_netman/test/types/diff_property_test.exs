@@ -810,4 +810,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert :remove_route in @actions
     end
   end
+
+  property "diff actions include set_mtu (r87)" do
+    check all _x <- boolean() do
+      assert :set_mtu in @actions
+      assert :set_link_up in @actions
+      assert :set_link_down in @actions
+    end
+  end
 end

@@ -869,4 +869,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Map.keys(ds1) == Map.keys(ds2)
     end
   end
+
+  property "desired_state __struct__ is DesiredState module (r87)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert ds.__struct__ == YellowDog.Netman.Types.DesiredState
+    end
+  end
 end

@@ -1190,4 +1190,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
+
+  property "reconciliation_engine all function names are atoms (r87)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
+    end
+  end
 end

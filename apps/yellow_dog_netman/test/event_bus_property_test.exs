@@ -1085,4 +1085,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert not is_nil(result) or is_nil(result)
     end
   end
+
+  property "event_bus module loaded and accessible (r87)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
+      fns = YellowDog.Netman.EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

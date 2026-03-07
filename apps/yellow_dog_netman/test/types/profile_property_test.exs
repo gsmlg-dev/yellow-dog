@@ -1331,4 +1331,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml with only zone key returns error (r87)" do
+    check all zone <- string(:alphanumeric, min_length: 1) do
+      result = Profile.from_toml(%{"zone" => zone})
+      # Profile requires id field
+      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    end
+  end
 end

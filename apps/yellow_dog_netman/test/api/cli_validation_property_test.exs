@@ -855,4 +855,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation handle_command accepts list of any strings (r87)" do
+    check all cmds <- list_of(string(:alphanumeric, min_length: 1), min_length: 1, max_length: 3) do
+      result = CLI.handle_command(cmds)
+      assert not is_nil(result)
+    end
+  end
 end

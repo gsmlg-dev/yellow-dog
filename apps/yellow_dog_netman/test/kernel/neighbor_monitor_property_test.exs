@@ -1065,4 +1065,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
+
+  property "neighbor_monitor all function names are atoms (r87)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+      assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
+    end
+  end
 end

@@ -940,4 +940,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s1.routes == s2.routes
     end
   end
+
+  property "observed_state links map values are structs or maps (r87)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      # Either empty or all values are link structs
+      assert map_size(state.links) == 0 or
+             Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
+    end
+  end
 end

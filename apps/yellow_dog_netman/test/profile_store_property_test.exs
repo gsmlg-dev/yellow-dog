@@ -938,4 +938,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile_store module loaded and accessible (r87)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+      fns = YellowDog.Netman.ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
 end

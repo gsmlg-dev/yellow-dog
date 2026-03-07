@@ -871,4 +871,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert length(fns) > 0
     end
   end
+
+  property "policy_engine route_metrics is stable (r87)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.PolicyEngine.route_metrics([])
+      r2 = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert r1 == r2
+    end
+  end
 end
