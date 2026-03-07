@@ -314,4 +314,17 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected link.interface == #{iface}, got: #{inspect(link.interface)}"
     end
   end
+
+  property "link_up then link_down — get_link still returns a non-nil entry" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_down(iface)
+      Process.sleep(50)
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil,
+             "Expected get_link to return non-nil after link_down on #{iface}"
+    end
+  end
 end

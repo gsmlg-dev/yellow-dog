@@ -264,4 +264,18 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected mtu #{mtu2} after second link_up on #{iface}, got: #{Ethernet.mtu(iface)}"
     end
   end
+
+  property "link_down then link_down again still has ethernet? as true" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_down(iface)
+      Process.sleep(30)
+      MockNetlink.link_down(iface)
+      Process.sleep(50)
+
+      assert Ethernet.ethernet?(iface) == true,
+             "Expected ethernet? true after double link_down on #{iface}"
+    end
+  end
 end

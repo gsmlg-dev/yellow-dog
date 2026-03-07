@@ -360,4 +360,15 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "list_connections returned different results on consecutive calls"
     end
   end
+
+  property "list_connections never contains entries with nil state" do
+    check all(_ <- StreamData.constant(:ok)) do
+      connections = ConnSupervisor.list_connections()
+
+      for conn <- connections do
+        assert conn.state != nil,
+               "Connection has nil state: #{inspect(conn)}"
+      end
+    end
+  end
 end
