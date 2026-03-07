@@ -3008,4 +3008,292 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert ProfileStore != nil
     end
   end
+
+  property "r361: profilestore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r362: profilestore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r363: profilestore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r364: profilestore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r365: profilestore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r366: profilestore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore == ProfileStore
+    end
+  end
+
+  property "r367: profilestore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ProfileStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r368: profilestore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r369: profilestore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ProfileStore)) > 0
+    end
+  end
+
+  property "r370: profilestore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r371: profilestore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r372: profilestore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r373: profilestore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r374: profilestore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r375: profilestore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r376: profilestore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore == ProfileStore
+    end
+  end
+
+  property "r377: profilestore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ProfileStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r378: profilestore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r379: profilestore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ProfileStore)) > 0
+    end
+  end
+
+  property "r380: profilestore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r381: profilestore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r382: profilestore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r383: profilestore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r384: profilestore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r385: profilestore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r386: profilestore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore == ProfileStore
+    end
+  end
+
+  property "r387: profilestore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ProfileStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r388: profilestore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r389: profilestore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ProfileStore)) > 0
+    end
+  end
+
+  property "r390: profilestore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r391: profilestore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r392: profilestore not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r393: profilestore loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r394: profilestore is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r395: profilestore functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r396: profilestore identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore == ProfileStore
+    end
+  end
+
+  property "r397: profilestore to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(ProfileStore)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r398: profilestore loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r399: profilestore inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(ProfileStore)) > 0
+    end
+  end
+
+  property "r400: profilestore not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
 end

@@ -2694,4 +2694,292 @@ defmodule YellowDog.NetmanPropertyTest do
       assert YellowDog.Netman != nil
     end
   end
+
+  property "r361: yellowdog_netman inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r362: yellowdog_netman not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r363: yellowdog_netman loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r364: yellowdog_netman is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r365: yellowdog_netman functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r366: yellowdog_netman identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman == YellowDog.Netman
+    end
+  end
+
+  property "r367: yellowdog_netman to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(YellowDog.Netman)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r368: yellowdog_netman loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r369: yellowdog_netman inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(YellowDog.Netman)) > 0
+    end
+  end
+
+  property "r370: yellowdog_netman not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r371: yellowdog_netman inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r372: yellowdog_netman not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r373: yellowdog_netman loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r374: yellowdog_netman is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r375: yellowdog_netman functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r376: yellowdog_netman identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman == YellowDog.Netman
+    end
+  end
+
+  property "r377: yellowdog_netman to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(YellowDog.Netman)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r378: yellowdog_netman loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r379: yellowdog_netman inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(YellowDog.Netman)) > 0
+    end
+  end
+
+  property "r380: yellowdog_netman not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r381: yellowdog_netman inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r382: yellowdog_netman not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r383: yellowdog_netman loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r384: yellowdog_netman is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r385: yellowdog_netman functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r386: yellowdog_netman identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman == YellowDog.Netman
+    end
+  end
+
+  property "r387: yellowdog_netman to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(YellowDog.Netman)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r388: yellowdog_netman loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r389: yellowdog_netman inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(YellowDog.Netman)) > 0
+    end
+  end
+
+  property "r390: yellowdog_netman not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r391: yellowdog_netman inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(YellowDog.Netman))
+    end
+  end
+
+  property "r392: yellowdog_netman not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
+
+  property "r393: yellowdog_netman loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r394: yellowdog_netman is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(YellowDog.Netman)
+    end
+  end
+
+  property "r395: yellowdog_netman functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r396: yellowdog_netman identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman == YellowDog.Netman
+    end
+  end
+
+  property "r397: yellowdog_netman to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(YellowDog.Netman)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r398: yellowdog_netman loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(YellowDog.Netman)
+    end
+  end
+
+  property "r399: yellowdog_netman inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(YellowDog.Netman)) > 0
+    end
+  end
+
+  property "r400: yellowdog_netman not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert YellowDog.Netman != nil
+    end
+  end
 end

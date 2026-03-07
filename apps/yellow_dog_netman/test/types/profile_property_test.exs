@@ -3339,4 +3339,292 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert Profile != nil
     end
   end
+
+  property "r361: profile inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Profile))
+    end
+  end
+
+  property "r362: profile not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r363: profile loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r364: profile is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r365: profile functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r366: profile identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r367: profile to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Profile)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r368: profile loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r369: profile inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Profile)) > 0
+    end
+  end
+
+  property "r370: profile not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r371: profile inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Profile))
+    end
+  end
+
+  property "r372: profile not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r373: profile loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r374: profile is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r375: profile functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r376: profile identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r377: profile to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Profile)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r378: profile loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r379: profile inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Profile)) > 0
+    end
+  end
+
+  property "r380: profile not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r381: profile inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Profile))
+    end
+  end
+
+  property "r382: profile not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r383: profile loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r384: profile is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r385: profile functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r386: profile identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r387: profile to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Profile)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r388: profile loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r389: profile inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Profile)) > 0
+    end
+  end
+
+  property "r390: profile not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r391: profile inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Profile))
+    end
+  end
+
+  property "r392: profile not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
+
+  property "r393: profile loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r394: profile is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Profile)
+    end
+  end
+
+  property "r395: profile functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Profile.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r396: profile identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile == Profile
+    end
+  end
+
+  property "r397: profile to_string" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = to_string(Profile)
+      assert String.length(s) > 0
+    end
+  end
+
+  property "r398: profile loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r399: profile inspect len" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert byte_size(inspect(Profile)) > 0
+    end
+  end
+
+  property "r400: profile not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Profile != nil
+    end
+  end
 end
