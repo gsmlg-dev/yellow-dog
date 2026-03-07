@@ -523,4 +523,23 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected :none from default_route([]), got something else"
     end
   end
+
+  property "effective_priority returns a number for any connection map" do
+    check all(priority <- StreamData.integer(1..100), ap <- StreamData.integer(1..100)) do
+      conn = %{priority: priority, autoconnect_priority: ap}
+      result = PolicyEngine.effective_priority(conn)
+      assert is_number(result),
+             "Expected number from effective_priority, got: #{inspect(result)}"
+    end
+  end
+
+  property "dns_priority result entries always have :interface key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = PolicyEngine.dns_priority([])
+      for entry <- result do
+        assert Map.has_key?(entry, :interface),
+               "Expected :interface in dns_priority entry, got: #{inspect(entry)}"
+      end
+    end
+  end
 end

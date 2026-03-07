@@ -601,4 +601,21 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Process.alive?(pid), "Expected ProfileStore to be alive"
     end
   end
+
+  property "ProfileStore list never raises" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ProfileStore.list()
+      assert is_list(result),
+             "Expected list from ProfileStore.list/0, got: #{inspect(result)}"
+    end
+  end
+
+  property "ProfileStore get for unknown id returns :not_found" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      id = "ps_unk_#{seed}"
+      result = ProfileStore.get(id)
+      assert result == {:error, :not_found},
+             "Expected not_found for unknown id, got: #{inspect(result)}"
+    end
+  end
 end

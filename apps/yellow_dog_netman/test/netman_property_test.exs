@@ -410,4 +410,21 @@ defmodule YellowDog.NetmanPropertyTest do
       end
     end
   end
+
+  property "status default_route key is always present" do
+    check all(_ <- StreamData.constant(:ok)) do
+      status = Netman.status()
+      assert Map.has_key?(status, :default_route),
+             "Expected :default_route in status map"
+    end
+  end
+
+  property "status.interfaces and list_interfaces always match" do
+    check all(_ <- StreamData.constant(:ok)) do
+      status = Netman.status()
+      ifaces = Netman.list_interfaces()
+      assert MapSet.new(status.interfaces) == MapSet.new(ifaces),
+             "Mismatch: status.interfaces=#{inspect(status.interfaces)} vs list_interfaces=#{inspect(ifaces)}"
+    end
+  end
 end
