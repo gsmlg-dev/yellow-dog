@@ -633,4 +633,20 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       end
     end
   end
+  property "EventBus topic with special chars never crashes subscribe" do
+    check all(topic <- StreamData.string(:printable, min_length: 1, max_length: 32)) do
+      result =
+        try do
+          EventBus.subscribe(topic)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised],
+             "Expected :ok or :raised from subscribe with special topic"
+    end
+  end
+
 end

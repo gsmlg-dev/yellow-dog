@@ -547,4 +547,13 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
              "Expected map from profile.list command"
     end
   end
+  property "validate_interface_name with exactly 15 chars always succeeds or fails cleanly" do
+    check all(suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 14)) do
+      name = String.slice("eth0" <> suffix, 0, 15)
+      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => name}})
+      assert is_map(result),
+             "Expected map from device.show with iface \#{name}"
+    end
+  end
+
 end
