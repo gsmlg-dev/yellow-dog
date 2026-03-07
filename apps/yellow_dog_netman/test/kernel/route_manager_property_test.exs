@@ -479,4 +479,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected non-negative failed count, got: #{failed}"
     end
   end
+
+  property "get_routes always returns a list for any interface name" do
+    check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
+      result = RouteManager.get_routes(iface)
+      assert is_list(result),
+             "Expected list from get_routes, got: #{inspect(result)}"
+    end
+  end
 end

@@ -467,4 +467,14 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+
+  property "list_rules never has duplicate priorities" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = RuleManager.list_rules()
+      priorities = Enum.map(rules, & &1.priority)
+
+      assert length(priorities) == length(Enum.uniq(priorities)),
+             "list_rules has duplicate priorities: #{inspect(priorities)}"
+    end
+  end
 end

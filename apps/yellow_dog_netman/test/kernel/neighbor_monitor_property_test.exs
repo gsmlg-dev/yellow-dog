@@ -590,4 +590,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "get_neighbors always returns a list for any interface" do
+    check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
+      result = NeighborMonitor.get_neighbors(iface)
+      assert is_list(result),
+             "Expected list from get_neighbors, got: #{inspect(result)}"
+    end
+  end
 end
