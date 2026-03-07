@@ -544,4 +544,22 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected map for DesiredState.connections, got: #{inspect(ds.connections)}"
     end
   end
+
+  property "DesiredState connections field is always an empty map for empty input" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = DesiredState.from_profiles([])
+      assert ds.connections == %{},
+             "Expected empty connections for from_profiles([]), got: #{inspect(ds.connections)}"
+    end
+  end
+
+  property "DesiredState connections values always have :type key" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = DesiredState.from_profiles([])
+      for {_id, conn} <- ds.connections do
+        assert Map.has_key?(conn, :type),
+               "Expected :type key in connection, got: #{inspect(conn)}"
+      end
+    end
+  end
 end

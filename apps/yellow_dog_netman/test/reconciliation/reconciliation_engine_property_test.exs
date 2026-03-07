@@ -873,4 +873,20 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected ReconciliationEngine to be alive"
     end
   end
+
+  property "ReconciliationEngine activate returns ok or error for unknown profile" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      result = ReconciliationEngine.activate("re_unk_#{seed}")
+      assert result == :ok or match?({:error, _}, result),
+             "Expected :ok or {:error, _} from activate unknown, got: #{inspect(result)}"
+    end
+  end
+
+  property "ReconciliationEngine deactivate returns ok or error for unknown profile" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      result = ReconciliationEngine.deactivate("re_deact_#{seed}")
+      assert result == :ok or match?({:error, _}, result),
+             "Expected :ok or {:error, _} from deactivate unknown, got: #{inspect(result)}"
+    end
+  end
 end

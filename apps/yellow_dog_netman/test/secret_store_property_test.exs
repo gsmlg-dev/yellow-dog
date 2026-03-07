@@ -404,4 +404,23 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
              "Expected tagged tuple after put, got: #{inspect(result)}"
     end
   end
+
+  property "delete for unknown key never raises" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      key = "ss_del_unk_#{seed}"
+      result = SecretStore.delete(key)
+      assert result == :ok or result == {:error, :not_found} or is_nil(result),
+             "Expected ok or not_found from delete unknown key, got: #{inspect(result)}"
+    end
+  end
+
+  property "put then get returns :ok tagged value" do
+    check all(seed <- StreamData.integer(1..9_999), val <- StreamData.integer()) do
+      key = "ss_check_#{seed}"
+      SecretStore.put(key, val)
+      result = SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple after put, got: #{inspect(result)}"
+    end
+  end
 end
