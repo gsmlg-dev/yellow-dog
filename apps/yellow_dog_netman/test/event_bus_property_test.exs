@@ -940,4 +940,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+  property "EventBus publish with map data doesn't crash (r69)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      result = YellowDog.Netman.EventBus.publish(topic, %{key => "value"})
+      assert is_nil(result) or result == :ok or is_tuple(result)
+    end
+  end
 end

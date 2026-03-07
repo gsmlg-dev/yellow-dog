@@ -682,4 +682,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert match?({:ok, _}, encoded) or match?({:error, _}, encoded)
     end
   end
+  property "CLI handle_command with status method returns map (r69)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "status"})
+      assert is_map(result)
+    end
+  end
 end
