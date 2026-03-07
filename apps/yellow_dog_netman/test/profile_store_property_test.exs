@@ -923,4 +923,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(r1) == is_list(r2)
     end
   end
+
+  property "profile_store get always returns tagged tuple (r85)" do
+    check all key <- string(:alphanumeric, min_length: 1) do
+      result = YellowDog.Netman.ProfileStore.get("_r85_" <> key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

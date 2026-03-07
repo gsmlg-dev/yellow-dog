@@ -923,4 +923,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(state.addresses) >= 0
     end
   end
+
+  property "observed_state routes is always list (r85)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert is_list(state.routes)
+      assert length(state.routes) >= 0
+    end
+  end
 end

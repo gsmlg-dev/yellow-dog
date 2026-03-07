@@ -798,4 +798,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert (is_tuple(r1) and is_tuple(r2)) or (r1 == r2)
     end
   end
+
+  property "cli handle_command with version returns result (r85)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command(["version"])
+      assert not is_nil(result)
+    end
+  end
 end

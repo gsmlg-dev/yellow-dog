@@ -764,4 +764,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert r1 == r2
     end
   end
+
+  property "ethernet carrier? is idempotent for same input (r85)" do
+    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      r1 = YellowDog.Netman.Connection.Ethernet.carrier?(name)
+      r2 = YellowDog.Netman.Connection.Ethernet.carrier?(name)
+      assert r1 == r2
+    end
+  end
 end

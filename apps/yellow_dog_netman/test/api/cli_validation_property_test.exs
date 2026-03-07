@@ -839,4 +839,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert Keyword.has_key?(fns, :handle_command)
     end
   end
+
+  property "cli validation handle_command is a 1-arity function (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.API.CLI.__info__(:functions)
+      arity = Keyword.get(fns, :handle_command)
+      assert arity == 1
+    end
+  end
 end

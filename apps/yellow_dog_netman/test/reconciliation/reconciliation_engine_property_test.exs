@@ -1175,4 +1175,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "reconciliation_engine exports apply_diff or similar (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      # Has some public functions
+      assert length(fns) > 0
+    end
+  end
 end

@@ -675,4 +675,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "netman module loaded successfully (r85)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman)
+      assert Code.ensure_loaded?(YellowDog.Netman.API.CLI)
+    end
+  end
 end

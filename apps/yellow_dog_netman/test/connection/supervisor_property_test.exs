@@ -839,4 +839,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "connection supervisor has at least one exported function (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

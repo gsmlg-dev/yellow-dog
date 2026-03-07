@@ -796,4 +796,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       refute a == :none
     end
   end
+
+  property "diff actions include add_address (r85)" do
+    check all _x <- boolean() do
+      assert :add_address in @actions
+      assert :remove_address in @actions
+    end
+  end
 end

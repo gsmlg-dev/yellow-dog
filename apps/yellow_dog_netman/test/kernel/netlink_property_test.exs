@@ -902,4 +902,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "netlink has at least one exported function (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.Netlink.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

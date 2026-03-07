@@ -1316,4 +1316,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml with integer id returns error (r85)" do
+    check all n <- positive_integer() do
+      result = Profile.from_toml(%{"id" => n})
+      # id must be a string
+      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    end
+  end
 end

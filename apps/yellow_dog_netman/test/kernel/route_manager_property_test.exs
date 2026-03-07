@@ -933,4 +933,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "route_manager has at least one exported function (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

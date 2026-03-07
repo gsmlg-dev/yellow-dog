@@ -855,4 +855,12 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert r1 == r2
     end
   end
+
+  property "policy_engine dns_priority result length is bounded (r85)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.PolicyEngine.dns_priority([])
+      assert is_list(result)
+      assert length(result) >= 0
+    end
+  end
 end

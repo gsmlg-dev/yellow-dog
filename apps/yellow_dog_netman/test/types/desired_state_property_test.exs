@@ -854,4 +854,11 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Map.has_key?(ds, :__struct__)
     end
   end
+
+  property "desired_state struct name is module atom (r85)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      assert is_atom(ds.__struct__)
+    end
+  end
 end

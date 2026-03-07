@@ -930,4 +930,13 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert map_size(r1) == map_size(r2)
     end
   end
+
+  property "address_manager list_all returns empty or populated map (r85)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert is_map(result)
+      # Values are lists of addresses
+      assert Enum.all?(result, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

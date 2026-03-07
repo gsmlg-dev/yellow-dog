@@ -770,4 +770,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert r1 == r2
     end
   end
+
+  property "secret_store put returns ok for any binary values (r85)" do
+    check all key <- binary(min_length: 1),
+              val <- binary() do
+      result = YellowDog.Netman.SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
 end

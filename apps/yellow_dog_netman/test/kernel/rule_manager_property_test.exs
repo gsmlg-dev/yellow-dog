@@ -930,4 +930,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert fns1 == fns2
     end
   end
+
+  property "rule_manager has at least one exported function (r85)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

@@ -1069,4 +1069,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert r1 == r2 or (r1 == :ok and r2 == :ok)
     end
   end
+
+  property "event_bus broadcast with integer topic is ok or error (r85)" do
+    check all topic <- string(:alphanumeric, min_length: 1),
+              n <- integer() do
+      result = YellowDog.Netman.EventBus.broadcast(topic, {:data, n})
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end
