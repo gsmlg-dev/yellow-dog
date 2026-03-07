@@ -705,4 +705,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(result)
     end
   end
+  property "PolicyEngine default_route for one conn returns ok tuple or :none (r66)" do
+    check all(
+      priority <- StreamData.integer(1..100)
+    ) do
+      conn = %{profile: %{autoconnect_priority: priority}, gateway: "192.168.1.1", interface: "eth0"}
+      result = YellowDog.Netman.PolicyEngine.default_route([conn])
+      assert result == :none or match?({:ok, _}, result)
+    end
+  end
 end

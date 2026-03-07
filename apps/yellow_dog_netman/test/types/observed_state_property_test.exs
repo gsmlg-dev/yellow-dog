@@ -757,4 +757,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(updated)
     end
   end
+  property "ObservedState remove_link from empty state returns unchanged struct (r66)" do
+    check all(
+      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+    ) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      updated = YellowDog.Netman.Types.ObservedState.remove_link(state, iface)
+      assert is_struct(updated)
+      assert updated.links == %{}
+    end
+  end
 end

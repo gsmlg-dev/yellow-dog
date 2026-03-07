@@ -675,4 +675,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(diff)
     end
   end
+  property "Diff new with add_address action has correct action (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      diff = YellowDog.Netman.Types.Diff.new(:add_address)
+      assert diff.action == :add_address
+    end
+  end
 end

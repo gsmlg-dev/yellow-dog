@@ -722,4 +722,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert state.__struct__ == YellowDog.Netman.Types.DesiredState
     end
   end
+  property "DesiredState from_profiles with empty input has no connections (r66)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert map_size(state.connections) == 0
+    end
+  end
 end
