@@ -654,4 +654,29 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected map from to_toml, got: #{inspect(toml_map)}"
     end
   end
+
+  property "to_toml connection id always matches the profile id" do
+    check all(
+            id <- profile_id_gen(),
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)
+                     |> StreamData.map(&("pp_" <> &1))
+          ) do
+      profile = %Profile{
+        id: id,
+        type: :ethernet,
+        interface: iface,
+        autoconnect: true,
+        autoconnect_priority: 0,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      toml_map = Profile.to_toml(profile)
+      conn = toml_map["connection"]
+
+      assert conn["id"] == id,
+             "Expected connection id #{id}, got: #{inspect(conn["id"])}"
+    end
+  end
 end

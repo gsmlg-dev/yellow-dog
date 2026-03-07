@@ -733,4 +733,16 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
              "Expected addresses to be a map, got: #{inspect(observed.addresses)}"
     end
   end
+
+  property "observe/0 always returns a struct with all required fields" do
+    check all(_ <- StreamData.constant(:ok)) do
+      observed = ReconciliationEngine.observe()
+      assert Map.has_key?(observed, :links),
+             "Expected :links field in ObservedState"
+      assert Map.has_key?(observed, :addresses),
+             "Expected :addresses field in ObservedState"
+      assert Map.has_key?(observed, :routes),
+             "Expected :routes field in ObservedState"
+    end
+  end
 end

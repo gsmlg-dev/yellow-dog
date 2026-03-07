@@ -380,4 +380,15 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       end
     end
   end
+
+  property "from_profiles with one profile produces state with one connection" do
+    check all(
+            profile <- profile_gen(),
+            iface <- interface_gen()
+          ) do
+      desired = DesiredState.from_profiles([{profile, iface}])
+      assert map_size(desired.connections) == 1,
+             "Expected exactly 1 connection for one profile, got: #{inspect(desired.connections)}"
+    end
+  end
 end
