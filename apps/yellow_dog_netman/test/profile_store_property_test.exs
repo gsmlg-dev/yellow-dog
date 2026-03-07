@@ -702,5 +702,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected not_found or nil from unknown id, got: #{inspect(result)}"
     end
   end
+  property "ProfileStore module exports list/0 function" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.ProfileStore.__info__(:functions)
+      assert {:list, 0} in exports,
+             "Expected list/0 in exports, got: #{inspect(exports)}"
+    end
+  end
 
 end
