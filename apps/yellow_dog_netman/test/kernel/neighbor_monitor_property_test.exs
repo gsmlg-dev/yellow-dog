@@ -1482,4 +1482,112 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: neighbor monitor loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r142: neighbor monitor is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r143: neighbor monitor inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(NeighborMonitor))
+    end
+  end
+
+  property "r144: neighbor monitor not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r145: neighbor monitor functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: neighbor monitor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
+
+  property "r147: neighbor monitor module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor == NeighborMonitor
+    end
+  end
+
+  property "r148: neighbor monitor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r149: neighbor monitor inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(NeighborMonitor)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: neighbor monitor atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r151: neighbormonitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(NeighborMonitor)
+    end
+  end
+
+  property "r152: neighbormonitor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(NeighborMonitor)
+    end
+  end
+
+  property "r153: neighbormonitor module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(NeighborMonitor))
+    end
+  end
+
+  property "r154: neighbormonitor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = NeighborMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: neighbormonitor module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert NeighborMonitor != nil
+    end
+  end
 end

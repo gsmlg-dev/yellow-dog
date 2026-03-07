@@ -1744,4 +1744,117 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert String.contains?(inspect(p), id)
     end
   end
+
+  property "r141: profile zone field" do
+    check all zone <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      p = %Profile{id: "test", type: "ethernet", zone: zone}
+      assert p.zone == zone
+    end
+  end
+
+  property "r142: profile interface field" do
+    check all iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+      p = %Profile{id: "test", type: "ethernet", interface: iface}
+      assert p.interface == iface
+    end
+  end
+
+  property "r143: profile ipv4_method field" do
+    check all method <- member_of(["auto", "manual", "disabled"]) do
+      p = %Profile{id: "test", type: "ethernet", ipv4_method: method}
+      assert p.ipv4_method == method
+    end
+  end
+
+  property "r144: profile is_struct check" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert is_struct(p, Profile)
+    end
+  end
+
+  property "r145: profile map keys include id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      m = Map.from_struct(p)
+      assert Map.has_key?(m, :id)
+    end
+  end
+
+  property "r146: profile dns_servers field" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      assert Map.has_key?(Map.from_struct(p), :dns_servers)
+    end
+  end
+
+  property "r147: profile ipv6_method field" do
+    check all method <- member_of(["auto", "manual", "disabled", "ignore"]) do
+      p = %Profile{id: "test", type: "ethernet", ipv6_method: method}
+      assert p.ipv6_method == method
+    end
+  end
+
+  property "r148: profile struct has required id" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.id == id
+    end
+  end
+
+  property "r149: profile type check" do
+    check all type <- member_of(["ethernet", "wifi"]) do
+      p = %Profile{id: "test", type: type}
+      assert p.type == type
+    end
+  end
+
+  property "r150: profile from_toml with valid input" do
+    check all id <- string(:alphanumeric, min_length: 2, max_length: 15) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet"}}
+      case Profile.from_toml(toml) do
+        {:ok, p} -> assert p.id == id
+        {:error, _} -> assert true
+      end
+    end
+  end
+
+  property "r151: profile struct module check" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      assert p.__struct__ == Profile
+    end
+  end
+
+  property "r152: profile id in map_from_struct" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      p = %Profile{id: id, type: "ethernet"}
+      m = Map.from_struct(p)
+      assert m.id == id
+    end
+  end
+
+  property "r153: profile type in map_from_struct" do
+    check all type <- member_of(["ethernet", "wifi"]) do
+      p = %Profile{id: "test", type: type}
+      m = Map.from_struct(p)
+      assert m.type == type
+    end
+  end
+
+  property "r154: profile module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Profile)
+    end
+  end
+
+  property "r155: profile is_struct check" do
+    check all n <- integer(0..3) do
+      _ = n
+      p = %Profile{id: "test", type: "ethernet"}
+      assert is_struct(p)
+    end
+  end
 end

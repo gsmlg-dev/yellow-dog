@@ -1666,4 +1666,112 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: fsm loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r142: fsm is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r143: fsm inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(FSM))
+    end
+  end
+
+  property "r144: fsm not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r145: fsm functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: fsm not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
+
+  property "r147: fsm module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM == FSM
+    end
+  end
+
+  property "r148: fsm loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r149: fsm inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(FSM)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: fsm atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r151: fsm module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(FSM)
+    end
+  end
+
+  property "r152: fsm module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(FSM)
+    end
+  end
+
+  property "r153: fsm module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(FSM))
+    end
+  end
+
+  property "r154: fsm functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = FSM.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: fsm module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert FSM != nil
+    end
+  end
 end

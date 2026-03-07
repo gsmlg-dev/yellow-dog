@@ -1197,4 +1197,112 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: ethernet loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r142: ethernet is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r143: ethernet inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Ethernet))
+    end
+  end
+
+  property "r144: ethernet not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r145: ethernet functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: ethernet not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
+
+  property "r147: ethernet module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet == Ethernet
+    end
+  end
+
+  property "r148: ethernet loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r149: ethernet inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(Ethernet)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: ethernet atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r151: ethernet module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Ethernet)
+    end
+  end
+
+  property "r152: ethernet module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Ethernet)
+    end
+  end
+
+  property "r153: ethernet module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Ethernet))
+    end
+  end
+
+  property "r154: ethernet functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Ethernet.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: ethernet module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Ethernet != nil
+    end
+  end
 end

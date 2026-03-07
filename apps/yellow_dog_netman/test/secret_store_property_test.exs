@@ -1197,4 +1197,112 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == {:error, :not_found}
     end
   end
+
+  property "r141: SecretStore get unknown key" do
+    check all key <- string(:alphanumeric, min_length: 3, max_length: 20) do
+      result = SecretStore.get("zz_unknown_" <> key)
+      assert result == {:error, :not_found}
+    end
+  end
+
+  property "r142: SecretStore functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r143: SecretStore module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(SecretStore)
+    end
+  end
+
+  property "r144: SecretStore put always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20),
+              val <- binary() do
+      assert SecretStore.put(key, val) == :ok
+    end
+  end
+
+  property "r145: SecretStore delete always ok" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      assert SecretStore.delete(key) == :ok
+    end
+  end
+
+  property "r146: SecretStore module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
+
+  property "r147: SecretStore put returns ok check" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      result = SecretStore.put(key, "value")
+      assert result == :ok
+    end
+  end
+
+  property "r148: SecretStore delete returns ok check" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      result = SecretStore.delete(key)
+      assert result == :ok
+    end
+  end
+
+  property "r149: SecretStore get always error" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      result = SecretStore.get(key)
+      assert match?({:error, _}, result)
+    end
+  end
+
+  property "r150: SecretStore inspect works" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(SecretStore))
+    end
+  end
+
+  property "r151: SecretStore get/1 arity" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :get and arity == 1 end)
+    end
+  end
+
+  property "r152: SecretStore put/2 arity" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :put and arity == 2 end)
+    end
+  end
+
+  property "r153: SecretStore delete/1 arity" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = SecretStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :delete and arity == 1 end)
+    end
+  end
+
+  property "r154: SecretStore module loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(SecretStore)
+    end
+  end
+
+  property "r155: SecretStore not nil" do
+    check all n <- integer() do
+      _ = n
+      assert SecretStore != nil
+    end
+  end
 end

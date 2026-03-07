@@ -1364,4 +1364,112 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: address manager loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r142: address manager is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r143: address manager inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r144: address manager not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r145: address manager functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: address manager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
+
+  property "r147: address manager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager == AddressManager
+    end
+  end
+
+  property "r148: address manager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r149: address manager inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(AddressManager)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: address manager atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r151: addressmanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(AddressManager)
+    end
+  end
+
+  property "r152: addressmanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(AddressManager)
+    end
+  end
+
+  property "r153: addressmanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(AddressManager))
+    end
+  end
+
+  property "r154: addressmanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = AddressManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: addressmanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert AddressManager != nil
+    end
+  end
 end

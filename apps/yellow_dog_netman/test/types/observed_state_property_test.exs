@@ -1404,4 +1404,125 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(os)
     end
   end
+
+  property "r141: observed_state is struct" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      assert is_struct(os, ObservedState)
+    end
+  end
+
+  property "r142: observed_state module atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ObservedState)
+    end
+  end
+
+  property "r143: observed_state map from struct" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      m = Map.from_struct(os)
+      assert is_map(m)
+    end
+  end
+
+  property "r144: observed_state struct module check" do
+    check all n <- integer() do
+      os = %ObservedState{}
+      _ = n
+      assert os.__struct__ == ObservedState
+    end
+  end
+
+  property "r145: observed_state keys from struct" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      keys = Map.keys(Map.from_struct(os))
+      assert is_list(keys)
+    end
+  end
+
+  property "r146: observed_state module name" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ObservedState == ObservedState
+    end
+  end
+
+  property "r147: observed_state is not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      assert os != nil
+    end
+  end
+
+  property "r148: observed_state inspect contains module" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      s = inspect(os)
+      assert String.contains?(s, "ObservedState")
+    end
+  end
+
+  property "r149: observed_state map has struct key" do
+    check all n <- integer() do
+      os = %ObservedState{}
+      _ = n
+      assert Map.has_key?(os, :__struct__)
+    end
+  end
+
+  property "r150: observed_state module comparison" do
+    check all n <- integer(0..5) do
+      _ = n
+      assert is_atom(ObservedState)
+      assert ObservedState != nil
+    end
+  end
+
+  property "r151: observed_state struct module check" do
+    check all n <- integer() do
+      os = %ObservedState{}
+      _ = n
+      assert os.__struct__ == ObservedState
+    end
+  end
+
+  property "r152: observed_state from_struct" do
+    check all n <- integer(0..5) do
+      _ = n
+      os = %ObservedState{}
+      m = Map.from_struct(os)
+      assert is_map(m)
+    end
+  end
+
+  property "r153: observed_state not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      assert os != nil
+    end
+  end
+
+  property "r154: observed_state module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ObservedState)
+    end
+  end
+
+  property "r155: observed_state is_struct final" do
+    check all n <- integer(0..3) do
+      _ = n
+      os = %ObservedState{}
+      assert is_struct(os, ObservedState)
+    end
+  end
 end

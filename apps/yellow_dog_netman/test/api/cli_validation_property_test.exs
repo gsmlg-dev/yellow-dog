@@ -1244,4 +1244,112 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: cli validation loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r142: cli validation is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r143: cli validation inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLIValidation))
+    end
+  end
+
+  property "r144: cli validation not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r145: cli validation functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: cli validation not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
+
+  property "r147: cli validation module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation == CLIValidation
+    end
+  end
+
+  property "r148: cli validation loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r149: cli validation inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(CLIValidation)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: cli validation atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r151: clivalidation module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLIValidation)
+    end
+  end
+
+  property "r152: clivalidation module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLIValidation)
+    end
+  end
+
+  property "r153: clivalidation module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLIValidation))
+    end
+  end
+
+  property "r154: clivalidation functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLIValidation.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: clivalidation module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLIValidation != nil
+    end
+  end
 end

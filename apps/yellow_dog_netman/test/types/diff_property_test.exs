@@ -1228,4 +1228,125 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert is_struct(d)
     end
   end
+
+  property "r141: diff with interface set" do
+    check all action <- member_of([:add_address, :remove_address]),
+              iface <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      d = Diff.new(action, iface)
+      assert d.interface == iface
+    end
+  end
+
+  property "r142: diff actions are atoms" do
+    check all action <- member_of([:add_address, :remove_address, :add_route, :remove_route]) do
+      d = Diff.new(action)
+      assert is_atom(d.action)
+    end
+  end
+
+  property "r143: diff params is map" do
+    check all action <- member_of([:add_address, :set_mtu]) do
+      d = Diff.new(action)
+      assert is_map(d.params)
+    end
+  end
+
+  property "r144: diff new with params" do
+    check all action <- member_of([:update_dns, :set_mtu]),
+              metric <- integer(1..9999) do
+      d = Diff.new(action, nil, %{metric: metric})
+      assert d.params.metric == metric
+    end
+  end
+
+  property "r145: diff struct keys" do
+    check all action <- member_of([:add_address, :set_link_up, :set_link_down]) do
+      d = Diff.new(action)
+      keys = Map.keys(d) -- [:__struct__]
+      assert :action in keys
+      assert :interface in keys
+      assert :params in keys
+    end
+  end
+
+  property "r146: diff activate_connection action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:activate_connection)
+      assert d.action == :activate_connection
+      _ = n
+    end
+  end
+
+  property "r147: diff deactivate_connection action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:deactivate_connection)
+      assert d.action == :deactivate_connection
+      _ = n
+    end
+  end
+
+  property "r148: diff update_dns action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:update_dns)
+      assert d.action == :update_dns
+      _ = n
+    end
+  end
+
+  property "r149: diff set_link_up action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:set_link_up)
+      assert d.action == :set_link_up
+      _ = n
+    end
+  end
+
+  property "r150: diff set_link_down action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:set_link_down)
+      assert d.action == :set_link_down
+      _ = n
+    end
+  end
+
+  property "r151: diff add_route action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:add_route)
+      assert d.action == :add_route
+      _ = n
+    end
+  end
+
+  property "r152: diff remove_route action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:remove_route)
+      assert d.action == :remove_route
+      _ = n
+    end
+  end
+
+  property "r153: diff remove_address action" do
+    check all n <- integer(0..5) do
+      d = Diff.new(:remove_address)
+      assert d.action == :remove_address
+      _ = n
+    end
+  end
+
+  property "r154: diff interface is nil by default" do
+    check all action <- member_of([:add_address, :set_mtu, :update_dns]) do
+      d = Diff.new(action)
+      assert is_nil(d.interface)
+    end
+  end
+
+  property "r155: diff params map check" do
+    check all action <- member_of([:add_address, :remove_address]),
+              k <- atom(:alphanumeric),
+              v <- integer() do
+      d = Diff.new(action, nil, %{k => v})
+      assert is_map(d.params)
+      assert d.params[k] == v
+    end
+  end
 end

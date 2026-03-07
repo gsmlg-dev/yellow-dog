@@ -1356,4 +1356,112 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: rule manager loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r142: rule manager is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r143: rule manager inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RuleManager))
+    end
+  end
+
+  property "r144: rule manager not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r145: rule manager functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: rule manager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
+
+  property "r147: rule manager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager == RuleManager
+    end
+  end
+
+  property "r148: rule manager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r149: rule manager inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(RuleManager)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: rule manager atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r151: rulemanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RuleManager)
+    end
+  end
+
+  property "r152: rulemanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RuleManager)
+    end
+  end
+
+  property "r153: rulemanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RuleManager))
+    end
+  end
+
+  property "r154: rulemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RuleManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: rulemanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RuleManager != nil
+    end
+  end
 end

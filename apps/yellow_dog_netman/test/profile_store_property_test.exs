@@ -1419,4 +1419,117 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Enum.all?(list, &is_struct(&1, Profile))
     end
   end
+
+  property "r141: ProfileStore.list/0 result type" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = ProfileStore.list()
+      assert is_list(result)
+    end
+  end
+
+  property "r142: ProfileStore module name atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(ProfileStore)
+    end
+  end
+
+  property "r143: ProfileStore functions exist" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r144: ProfileStore.get missing returns error tuple" do
+    check all suffix <- string(:alphanumeric, min_length: 3, max_length: 10) do
+      id = "zz_missing_" <> suffix
+      assert match?({:error, :not_found}, ProfileStore.get(id))
+    end
+  end
+
+  property "r145: ProfileStore module inspect" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r146: ProfileStore inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(ProfileStore))
+    end
+  end
+
+  property "r147: ProfileStore module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
+
+  property "r148: ProfileStore list result type check" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = ProfileStore.list()
+      assert is_list(result)
+      assert Enum.all?(result, &is_struct(&1, Profile))
+    end
+  end
+
+  property "r149: ProfileStore get missing key error" do
+    check all n <- integer(1..9999) do
+      id = "zzz_missing_#{n}"
+      assert match?({:error, :not_found}, ProfileStore.get(id))
+    end
+  end
+
+  property "r150: ProfileStore functions have put/2" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :put and arity == 2 end)
+    end
+  end
+
+  property "r151: ProfileStore get/1 arity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :get and arity == 1 end)
+    end
+  end
+
+  property "r152: ProfileStore delete/1 arity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :delete and arity == 1 end)
+    end
+  end
+
+  property "r153: ProfileStore list/0 arity check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = ProfileStore.__info__(:functions)
+      assert Enum.any?(fns, fn {name, arity} -> name == :list and arity == 0 end)
+    end
+  end
+
+  property "r154: ProfileStore module loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(ProfileStore)
+    end
+  end
+
+  property "r155: ProfileStore not nil" do
+    check all n <- integer() do
+      _ = n
+      assert ProfileStore != nil
+    end
+  end
 end

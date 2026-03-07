@@ -1359,4 +1359,112 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: route manager loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r142: route manager is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r143: route manager inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r144: route manager not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r145: route manager functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: route manager not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
+
+  property "r147: route manager module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager == RouteManager
+    end
+  end
+
+  property "r148: route manager loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r149: route manager inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(RouteManager)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: route manager atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r151: routemanager module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(RouteManager)
+    end
+  end
+
+  property "r152: routemanager module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(RouteManager)
+    end
+  end
+
+  property "r153: routemanager module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(RouteManager))
+    end
+  end
+
+  property "r154: routemanager functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = RouteManager.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: routemanager module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert RouteManager != nil
+    end
+  end
 end

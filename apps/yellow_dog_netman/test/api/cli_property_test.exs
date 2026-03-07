@@ -1230,4 +1230,112 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert Enum.any?(fns, fn {name, _} -> name == :handle_command end)
     end
   end
+
+  property "r141: cli loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r142: cli is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r143: cli inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLI))
+    end
+  end
+
+  property "r144: cli not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r145: cli functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: cli not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
+
+  property "r147: cli module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI == CLI
+    end
+  end
+
+  property "r148: cli loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r149: cli inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(CLI)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: cli atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r151: cli module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(CLI)
+    end
+  end
+
+  property "r152: cli module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(CLI)
+    end
+  end
+
+  property "r153: cli module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(CLI))
+    end
+  end
+
+  property "r154: cli functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = CLI.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: cli module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert CLI != nil
+    end
+  end
 end

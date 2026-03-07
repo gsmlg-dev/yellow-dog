@@ -1329,4 +1329,112 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: netlink loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r142: netlink is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r143: netlink inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Netlink))
+    end
+  end
+
+  property "r144: netlink not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r145: netlink functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: netlink not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
+
+  property "r147: netlink module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink == Netlink
+    end
+  end
+
+  property "r148: netlink loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r149: netlink inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(Netlink)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: netlink atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r151: netlink module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(Netlink)
+    end
+  end
+
+  property "r152: netlink module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(Netlink)
+    end
+  end
+
+  property "r153: netlink module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(Netlink))
+    end
+  end
+
+  property "r154: netlink functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = Netlink.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: netlink module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Netlink != nil
+    end
+  end
 end

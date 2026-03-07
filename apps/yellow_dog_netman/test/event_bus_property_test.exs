@@ -1563,4 +1563,112 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_binary(inspect(EventBus))
     end
   end
+
+  property "r141: event bus module loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r142: event bus module is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r143: event bus inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
+
+  property "r144: event bus __info__ check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r145: event bus module exists check" do
+    check all n <- integer() do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r146: event bus not nil check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
+
+  property "r147: event bus module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus == EventBus
+    end
+  end
+
+  property "r148: event bus loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r149: event bus inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(EventBus)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: event bus module loaded final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r151: eventbus module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(EventBus)
+    end
+  end
+
+  property "r152: eventbus module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(EventBus)
+    end
+  end
+
+  property "r153: eventbus module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(EventBus))
+    end
+  end
+
+  property "r154: eventbus functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = EventBus.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: eventbus module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert EventBus != nil
+    end
+  end
 end

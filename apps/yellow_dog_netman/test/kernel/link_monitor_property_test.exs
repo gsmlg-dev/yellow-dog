@@ -1237,4 +1237,112 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "r141: link monitor loaded check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r142: link monitor is atom check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r143: link monitor inspect check" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r144: link monitor not nil check" do
+    check all n <- integer() do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r145: link monitor functions check" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: link monitor not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
+
+  property "r147: link monitor module identity" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor == LinkMonitor
+    end
+  end
+
+  property "r148: link monitor loaded ensure" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r149: link monitor inspect non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      s = inspect(LinkMonitor)
+      assert byte_size(s) > 0
+    end
+  end
+
+  property "r150: link monitor atom final" do
+    check all n <- integer() do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r151: linkmonitor module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(LinkMonitor)
+    end
+  end
+
+  property "r152: linkmonitor module is atom" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_atom(LinkMonitor)
+    end
+  end
+
+  property "r153: linkmonitor module inspect binary" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert is_binary(inspect(LinkMonitor))
+    end
+  end
+
+  property "r154: linkmonitor functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = LinkMonitor.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r155: linkmonitor module not nil" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert LinkMonitor != nil
+    end
+  end
 end

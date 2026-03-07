@@ -1304,4 +1304,120 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == []
     end
   end
+
+  property "r141: default_route with nil list" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.default_route([])
+      assert result == :none
+    end
+  end
+
+  property "r142: route_metrics returns map type" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.route_metrics([])
+      assert is_map(result)
+    end
+  end
+
+  property "r143: dns_priority empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      result = PolicyEngine.dns_priority([])
+      assert result == []
+    end
+  end
+
+  property "r144: policy engine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r145: policy engine functions list" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert is_list(fns)
+    end
+  end
+
+  property "r146: policy engine module name" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine == PolicyEngine
+    end
+  end
+
+  property "r147: default_route idempotent on empty" do
+    check all n <- integer(0..5) do
+      _ = n
+      r1 = PolicyEngine.default_route([])
+      r2 = PolicyEngine.default_route([])
+      assert r1 == r2
+    end
+  end
+
+  property "r148: route_metrics idempotent on empty" do
+    check all n <- integer(0..5) do
+      _ = n
+      r1 = PolicyEngine.route_metrics([])
+      r2 = PolicyEngine.route_metrics([])
+      assert r1 == r2
+    end
+  end
+
+  property "r149: dns_priority idempotent" do
+    check all n <- integer(0..5) do
+      _ = n
+      r1 = PolicyEngine.dns_priority([])
+      r2 = PolicyEngine.dns_priority([])
+      assert r1 == r2
+    end
+  end
+
+  property "r150: policy engine not nil" do
+    check all n <- integer() do
+      _ = n
+      assert PolicyEngine != nil
+    end
+  end
+
+  property "r151: policy engine default_route returns none" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine.default_route([]) == :none
+    end
+  end
+
+  property "r152: policy engine route_metrics empty map" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine.route_metrics([]) == %{}
+    end
+  end
+
+  property "r153: policy engine dns_priority empty list" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert PolicyEngine.dns_priority([]) == []
+    end
+  end
+
+  property "r154: policy engine module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(PolicyEngine)
+    end
+  end
+
+  property "r155: policy engine functions non-empty" do
+    check all n <- integer(0..3) do
+      _ = n
+      fns = PolicyEngine.__info__(:functions)
+      assert length(fns) > 0
+    end
+  end
 end

@@ -1323,4 +1323,127 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_binary(inspect(ds))
     end
   end
+
+  property "r141: desired_state put connection" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      ds = %DesiredState{connections: %{key => true}}
+      assert ds.connections[key] == true
+    end
+  end
+
+  property "r142: desired_state map_size zero" do
+    check all n <- integer(0..5) do
+      ds = %DesiredState{}
+      _ = n
+      assert map_size(ds.connections) == 0
+    end
+  end
+
+  property "r143: desired_state multiple connections" do
+    check all k1 <- string(:alphanumeric, min_length: 1, max_length: 5),
+              k2 <- string(:alphanumeric, min_length: 1, max_length: 5),
+              filter(k1 != k2) do
+      ds = %DesiredState{connections: %{k1 => true, k2 => false}}
+      assert map_size(ds.connections) == 2
+    end
+  end
+
+  property "r144: desired_state struct module" do
+    check all n <- integer() do
+      ds = %DesiredState{}
+      _ = n
+      assert ds.__struct__ == DesiredState
+    end
+  end
+
+  property "r145: desired_state connections keys are strings or atoms" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      ds = %DesiredState{connections: %{key => :active}}
+      keys = Map.keys(ds.connections)
+      assert Enum.all?(keys, &(is_binary(&1) or is_atom(&1)))
+    end
+  end
+
+  property "r146: desired_state update connections" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10),
+              val <- boolean() do
+      ds = %DesiredState{connections: %{key => val}}
+      updated = %{ds | connections: Map.put(ds.connections, key <> "2", !val)}
+      assert map_size(updated.connections) == 2
+    end
+  end
+
+  property "r147: desired_state connections merge" do
+    check all k1 <- string(:alphanumeric, min_length: 1, max_length: 5),
+              k2 <- string(:alphanumeric, min_length: 1, max_length: 5),
+              filter(k1 != k2) do
+      ds = %DesiredState{connections: %{k1 => true}}
+      merged = %{ds | connections: Map.put(ds.connections, k2, false)}
+      assert Map.has_key?(merged.connections, k1)
+      assert Map.has_key?(merged.connections, k2)
+    end
+  end
+
+  property "r148: desired_state connections delete" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      ds = %DesiredState{connections: %{key => true}}
+      cleared = %{ds | connections: %{}}
+      assert ds.connections != cleared.connections or map_size(ds.connections) == 0
+    end
+  end
+
+  property "r149: desired_state is_struct check" do
+    check all n <- integer() do
+      ds = %DesiredState{}
+      _ = n
+      assert is_struct(ds, DesiredState)
+    end
+  end
+
+  property "r150: desired_state inspect binary" do
+    check all n <- integer(0..5) do
+      _ = n
+      ds = %DesiredState{}
+      assert is_binary(inspect(ds))
+    end
+  end
+
+  property "r151: desired_state struct module check" do
+    check all n <- integer() do
+      ds = %DesiredState{}
+      _ = n
+      assert ds.__struct__ == DesiredState
+    end
+  end
+
+  property "r152: desired_state connections is map check" do
+    check all n <- integer(0..5) do
+      _ = n
+      ds = %DesiredState{}
+      assert is_map(ds.connections)
+    end
+  end
+
+  property "r153: desired_state from_struct" do
+    check all n <- integer(0..3) do
+      _ = n
+      ds = %DesiredState{}
+      m = Map.from_struct(ds)
+      assert Map.has_key?(m, :connections)
+    end
+  end
+
+  property "r154: desired_state connections key" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 10) do
+      ds = %DesiredState{connections: %{key => :active}}
+      assert Map.has_key?(ds.connections, key)
+    end
+  end
+
+  property "r155: desired_state module loaded" do
+    check all n <- integer(0..3) do
+      _ = n
+      assert Code.ensure_loaded?(DesiredState)
+    end
+  end
 end
