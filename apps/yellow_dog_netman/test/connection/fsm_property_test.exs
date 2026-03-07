@@ -708,4 +708,21 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       GenServer.stop(pid, :normal)
     end
   end
+
+  property "FSM pid is dead after GenServer.stop" do
+    check all(seed <- StreamData.integer(1..99_999), max_runs: 20) do
+      iface = "fsm_dead_#{seed}"
+      profile = make_profile(iface)
+
+      MockNetlink.link_up(iface, carrier: false)
+      Process.sleep(30)
+
+      {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+      GenServer.stop(pid, :normal)
+      Process.sleep(20)
+
+      refute Process.alive?(pid),
+             "Expected FSM pid to be dead after GenServer.stop"
+    end
+  end
 end

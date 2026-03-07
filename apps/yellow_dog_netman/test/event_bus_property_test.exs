@@ -450,4 +450,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
     end
   end
+
+  property "unsubscribe without prior subscribe always returns :ok or nil" do
+    check all(topic <- topic_gen()) do
+      # Ensure clean state first
+      EventBus.unsubscribe(topic)
+      result = EventBus.unsubscribe(topic)
+      assert result == :ok or is_nil(result),
+             "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
+    end
+  end
 end

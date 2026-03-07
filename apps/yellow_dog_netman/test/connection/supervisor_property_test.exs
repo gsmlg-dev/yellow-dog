@@ -427,4 +427,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert ConnSupervisor.find_connection_by_profile("") == :error
     end
   end
+
+  property "list_connections always returns a non-nil result" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = ConnSupervisor.list_connections()
+      assert result != nil,
+             "Expected non-nil from list_connections"
+      assert is_list(result),
+             "Expected list from list_connections, got: #{inspect(result)}"
+    end
+  end
 end
