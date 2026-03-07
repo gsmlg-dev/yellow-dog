@@ -1015,4 +1015,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "neighbor_monitor module attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

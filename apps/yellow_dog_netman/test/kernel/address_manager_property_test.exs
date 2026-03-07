@@ -894,4 +894,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_map(result)
     end
   end
+
+  property "address_manager list_all values are lists (r80)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all()
+      assert Enum.all?(result, fn {_k, v} -> is_list(v) end)
+    end
+  end
 end

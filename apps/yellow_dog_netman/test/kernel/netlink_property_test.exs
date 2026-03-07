@@ -866,4 +866,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "netlink module attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.Netlink.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

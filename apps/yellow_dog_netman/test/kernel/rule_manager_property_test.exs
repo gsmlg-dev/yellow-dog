@@ -894,4 +894,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "rule_manager module attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end
