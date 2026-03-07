@@ -469,5 +469,11 @@ defmodule YellowDog.NetmanPropertyTest do
              "Expected PolicyEngine to be loaded"
     end
   end
+  property "Netman ReconciliationEngine module is always loaded" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.ReconciliationEngine),
+             "Expected ReconciliationEngine to be loaded"
+    end
+  end
 
 end

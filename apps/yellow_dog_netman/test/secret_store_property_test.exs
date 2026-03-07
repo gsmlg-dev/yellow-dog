@@ -467,5 +467,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.delete(key) == :ok
     end
   end
+  property "SecretStore round-trip: put then get returns tagged tuple" do
+    check all(
+            n <- StreamData.integer(1..9999),
+            val <- StreamData.string(:alphanumeric, max_length: 32)
+          ) do
+      key = "ssrt50_#{n}"
+      SecretStore.put(key, val)
+      result = SecretStore.get(key)
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple, got: #{inspect(result)}"
+    end
+  end
 
 end

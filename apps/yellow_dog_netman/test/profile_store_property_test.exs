@@ -666,5 +666,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
              "Expected lists from repeated list calls"
     end
   end
+  property "ProfileStore delete for unknown id always returns tagged tuple or atom" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result = YellowDog.Netman.ProfileStore.delete(id)
+      assert is_atom(result) or match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected atom or tagged tuple from delete, got: #{inspect(result)}"
+    end
+  end
 
 end
