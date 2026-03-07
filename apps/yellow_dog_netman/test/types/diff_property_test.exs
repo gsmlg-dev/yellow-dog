@@ -454,4 +454,26 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert diff.action == :add_address
     end
   end
+
+  property "Diff params field is always a map" do
+    check all(
+            action <- action_gen(),
+            iface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      diff = Diff.new(action, iface, params)
+      assert is_map(diff.params),
+             "Expected map params in Diff, got: #{inspect(diff.params)}"
+    end
+  end
+
+  property "Diff struct always has :action and :params keys" do
+    check all(action <- action_gen()) do
+      diff = Diff.new(action)
+      assert Map.has_key?(diff, :action),
+             "Expected :action key in Diff struct"
+      assert Map.has_key?(diff, :params),
+             "Expected :params key in Diff struct"
+    end
+  end
 end

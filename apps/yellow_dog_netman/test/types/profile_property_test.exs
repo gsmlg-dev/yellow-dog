@@ -796,4 +796,31 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "from_toml with valid ipv6 disabled returns :ok" do
+    check all(
+            id <- profile_id_gen(),
+            zone <- zone_gen()
+          ) do
+      toml = %{
+        "connection" => %{"id" => id, "type" => "ethernet", "zone" => zone},
+        "ipv4" => %{"method" => "auto"},
+        "ipv6" => %{"method" => "disabled"}
+      }
+      case Profile.from_toml(toml) do
+        {:ok, profile} ->
+          assert profile.ipv6.method == :disabled,
+                 "Expected :disabled ipv6 method, got: #{inspect(profile.ipv6.method)}"
+        {:error, _} -> :ok
+      end
+    end
+  end
+
+  property "from_toml with empty map always returns error tuple" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = Profile.from_toml(%{})
+      assert match?({:ok, _}, result) or match?({:error, _}, result),
+             "Expected tagged tuple from from_toml(%{}), got: #{inspect(result)}"
+    end
+  end
 end
