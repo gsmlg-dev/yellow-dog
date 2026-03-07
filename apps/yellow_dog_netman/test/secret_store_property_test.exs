@@ -664,4 +664,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert result == :ok
     end
   end
+  property "SecretStore handles boolean values (r72)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+      val <- StreamData.boolean()
+    ) do
+      result = YellowDog.Netman.SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
 end

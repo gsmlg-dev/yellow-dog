@@ -593,4 +593,9 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.AddressManager)
     end
   end
+  property "Netman.Kernel.LinkMonitor module is loaded (r72)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      assert Code.ensure_loaded?(YellowDog.Netman.Kernel.LinkMonitor)
+    end
+  end
 end

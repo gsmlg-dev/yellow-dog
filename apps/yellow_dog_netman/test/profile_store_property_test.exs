@@ -834,4 +834,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
     end
   end
+  property "ProfileStore returns error for UUID-like non-existent ids (r72)" do
+    check all(
+      uuid <- StreamData.binary(length: 36)
+    ) do
+      result = YellowDog.Netman.ProfileStore.get(uuid)
+      assert match?({:error, _}, result) or is_nil(result)
+    end
+  end
 end
