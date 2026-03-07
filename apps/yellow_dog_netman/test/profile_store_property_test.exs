@@ -887,4 +887,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+
+  property "profile_store get with non_neg_integer key returns error (r80)" do
+    check all n <- non_negative_integer() do
+      result = YellowDog.Netman.ProfileStore.get(Integer.to_string(n) <> "_r80")
+      assert match?({:error, _}, result)
+    end
+  end
 end

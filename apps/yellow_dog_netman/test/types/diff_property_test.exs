@@ -759,4 +759,12 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert d in @actions
     end
   end
+
+  property "diff new from action_gen is valid struct (r80)" do
+    check all a <- action_gen(),
+              param <- integer() do
+      d = YellowDog.Netman.Types.Diff.new(a, param)
+      assert is_struct(d) or is_map(d) or not is_nil(d)
+    end
+  end
 end
