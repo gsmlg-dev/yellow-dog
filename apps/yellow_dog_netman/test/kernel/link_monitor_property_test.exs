@@ -355,4 +355,15 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected nil for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
   end
+
+  property "link_up then list_links includes the interface" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+
+      links = LinkMonitor.list_links()
+      assert Enum.any?(links, &(&1.interface == iface)),
+             "Expected #{iface} in list_links after link_up"
+    end
+  end
 end

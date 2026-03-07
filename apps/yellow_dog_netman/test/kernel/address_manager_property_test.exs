@@ -453,4 +453,22 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+
+  property "get_addresses always returns entries with :inet or :inet6 family" do
+    check all(
+            iface <- iface_gen(),
+            addr <- ipv4_gen(),
+            prefix <- prefix_v4_gen()
+          ) do
+      MockNetlink.address_added(iface, "#{addr}/#{prefix}")
+      Process.sleep(50)
+
+      addresses = AddressManager.get_addresses(iface)
+
+      for a <- addresses do
+        assert a.family in [:inet, :inet6],
+               "Expected :inet or :inet6 family, got: #{inspect(a.family)}"
+      end
+    end
+  end
 end

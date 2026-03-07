@@ -419,4 +419,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected route with destination #{route.destination} in state.routes"
     end
   end
+
+  property "new/0 always creates an ObservedState with empty routes list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = ObservedState.new()
+      assert state.routes == [],
+             "Expected empty routes list in new ObservedState, got: #{inspect(state.routes)}"
+    end
+  end
 end
