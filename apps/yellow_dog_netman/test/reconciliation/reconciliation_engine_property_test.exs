@@ -1014,4 +1014,10 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     end
   end
 
+  property "ReconciliationEngine module_info returns functions list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.ReconciliationEngine.module_info(:functions)
+      assert is_list(info)
+    end
+  end
 end

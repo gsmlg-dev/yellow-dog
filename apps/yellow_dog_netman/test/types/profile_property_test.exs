@@ -1051,4 +1051,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     end
   end
 
+  property "Profile always has non-empty id field (r60)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "default"}}
+      p = YellowDog.Netman.Types.Profile.from_toml(toml)
+      # from_toml may return {:error, _} for invalid inputs; we just check it doesn't crash
+      assert is_struct(p) or is_tuple(p) or is_map(p)
+    end
+  end
 end

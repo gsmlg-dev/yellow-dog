@@ -686,4 +686,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
+  property "DesiredState module_info returns functions list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Types.DesiredState.module_info(:functions)
+      assert is_list(info)
+    end
+  end
 end

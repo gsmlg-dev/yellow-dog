@@ -636,4 +636,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
+  property "Diff params field is always a list or map (r60)" do
+    check all(action <- action_gen()) do
+      diff = YellowDog.Netman.Types.Diff.new(action)
+      assert is_list(diff.params) or is_map(diff.params)
+    end
+  end
 end

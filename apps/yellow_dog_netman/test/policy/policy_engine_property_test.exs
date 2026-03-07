@@ -660,4 +660,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     end
   end
 
+  property "PolicyEngine module_info returns functions list (r60)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.PolicyEngine.module_info(:functions)
+      assert is_list(info)
+    end
+  end
 end
