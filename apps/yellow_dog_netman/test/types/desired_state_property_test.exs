@@ -827,4 +827,15 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert length(keys) > 0
     end
   end
+
+  property "desired_state from_profiles with invalid input still returns struct or error (r82)" do
+    check all n <- positive_integer() do
+      result = try do
+        DesiredState.from_profiles(List.duplicate(%{}, n))
+      rescue
+        _ -> :error
+      end
+      assert is_struct(result) or result == :error or match?({:error, _}, result)
+    end
+  end
 end

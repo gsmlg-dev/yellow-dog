@@ -818,4 +818,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation numeric commands return result (r82)" do
+    check all n <- positive_integer() do
+      result = CLI.handle_command([Integer.to_string(n)])
+      assert not is_nil(result)
+    end
+  end
 end

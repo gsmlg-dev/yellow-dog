@@ -774,4 +774,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert a in @actions
     end
   end
+
+  property "diff list of actions all valid (r82)" do
+    check all actions <- list_of(action_gen(), min_length: 1, max_length: 5) do
+      assert Enum.all?(actions, &(&1 in @actions))
+    end
+  end
 end

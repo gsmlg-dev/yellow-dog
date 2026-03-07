@@ -1046,4 +1046,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert result == :ok or match?({:error, _}, result) or is_nil(result)
     end
   end
+
+  property "event_bus module has subscribe and broadcast (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.EventBus.__info__(:functions)
+      assert Keyword.has_key?(fns, :subscribe)
+      assert Keyword.has_key?(fns, :broadcast)
+    end
+  end
 end

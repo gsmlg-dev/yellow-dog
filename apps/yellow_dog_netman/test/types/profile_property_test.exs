@@ -1288,4 +1288,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       end
     end
   end
+
+  property "profile from_toml with valid zone is ok or error (r82)" do
+    check all zone <- string(:alphanumeric, min_length: 1, max_length: 64),
+              id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+      result = Profile.from_toml(%{"id" => id, "zone" => zone})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

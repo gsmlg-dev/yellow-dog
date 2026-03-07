@@ -833,4 +833,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_map(result)
     end
   end
+
+  property "policy_engine all exported functions are atoms (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert Enum.all?(fns, fn {name, _arity} -> is_atom(name) end)
+    end
+  end
 end

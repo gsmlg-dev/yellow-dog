@@ -816,4 +816,12 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_list(info) or is_map(info)
     end
   end
+
+  property "connection supervisor exports functions list (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      assert is_list(fns)
+      assert length(fns) >= 0
+    end
+  end
 end

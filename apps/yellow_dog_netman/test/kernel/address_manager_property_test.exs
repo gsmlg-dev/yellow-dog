@@ -908,4 +908,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(result, fn {k, _} -> is_binary(k) end)
     end
   end
+
+  property "address_manager module has list_all function (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert Keyword.has_key?(fns, :list_all)
+    end
+  end
 end

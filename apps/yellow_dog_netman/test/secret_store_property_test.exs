@@ -745,4 +745,13 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:ok, _}, get_result) or match?({:error, _}, get_result)
     end
   end
+
+  property "secret_store module exports get put delete (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.SecretStore.__info__(:functions)
+      assert Keyword.has_key?(fns, :get)
+      assert Keyword.has_key?(fns, :put)
+      assert Keyword.has_key?(fns, :delete)
+    end
+  end
 end

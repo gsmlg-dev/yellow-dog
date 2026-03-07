@@ -740,4 +740,13 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_nil(result) or (is_integer(result) and result > 0)
     end
   end
+
+  property "ethernet module has ethernet? carrier? mtu functions (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert Keyword.has_key?(fns, :ethernet?)
+      assert Keyword.has_key?(fns, :carrier?)
+      assert Keyword.has_key?(fns, :mtu)
+    end
+  end
 end

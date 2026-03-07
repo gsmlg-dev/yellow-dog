@@ -901,4 +901,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(state.links) >= 0
     end
   end
+
+  property "observed_state new always returns struct (r82)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert is_struct(state)
+    end
+  end
 end

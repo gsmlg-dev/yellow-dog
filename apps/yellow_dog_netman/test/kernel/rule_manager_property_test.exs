@@ -908,4 +908,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(info) or is_map(info)
     end
   end
+
+  property "rule_manager module exports start_link (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+      assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
+    end
+  end
 end

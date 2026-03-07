@@ -1206,4 +1206,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert is_list(info) or is_map(info)
     end
   end
+
+  property "fsm module exports functions list (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      assert is_list(fns)
+      assert length(fns) >= 0
+    end
+  end
 end

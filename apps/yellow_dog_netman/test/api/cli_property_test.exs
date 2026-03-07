@@ -775,4 +775,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command with unknown command returns result (r82)" do
+    check all cmd <- string(:alphanumeric, min_length: 3, max_length: 20) do
+      result = CLI.handle_command([cmd <> "_unknown_r82"])
+      assert not is_nil(result)
+    end
+  end
 end

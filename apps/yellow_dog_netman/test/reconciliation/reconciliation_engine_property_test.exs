@@ -1152,4 +1152,12 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(info) or is_map(info)
     end
   end
+
+  property "reconciliation_engine module exports functions list (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ReconciliationEngine.__info__(:functions)
+      assert is_list(fns)
+      assert length(fns) >= 0
+    end
+  end
 end

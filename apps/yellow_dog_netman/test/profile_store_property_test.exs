@@ -901,4 +901,11 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(result) or match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile_store module exports list function (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.ProfileStore.__info__(:functions)
+      assert Keyword.has_key?(fns, :list)
+    end
+  end
 end

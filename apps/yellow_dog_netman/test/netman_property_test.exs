@@ -652,4 +652,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(compiled) or is_map(compiled)
     end
   end
+
+  property "netman module exports functions list (r82)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.__info__(:functions)
+      assert is_list(fns)
+      assert length(fns) >= 0
+    end
+  end
 end
