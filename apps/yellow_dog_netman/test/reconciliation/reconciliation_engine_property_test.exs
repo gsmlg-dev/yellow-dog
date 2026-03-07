@@ -1138,4 +1138,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "reconciliation_engine module attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

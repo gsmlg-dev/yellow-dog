@@ -804,4 +804,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation with empty command list returns result (r80)" do
+    check all _x <- boolean() do
+      result = CLI.handle_command([])
+      assert not is_nil(result)
+    end
+  end
 end

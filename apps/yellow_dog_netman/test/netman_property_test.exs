@@ -638,4 +638,11 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(fns)
     end
   end
+
+  property "netman module info attributes is list (r80)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end
