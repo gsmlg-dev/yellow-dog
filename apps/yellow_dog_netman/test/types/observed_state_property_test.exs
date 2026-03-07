@@ -374,4 +374,20 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected links to contain key #{link.interface}"
     end
   end
+
+  property "remove_route with mismatched gateway leaves all routes intact" do
+    check all(
+            route <- route_gen(),
+            gw_last <- integer(1..254),
+            route.gateway != "10.0.0.#{gw_last}"
+          ) do
+      state = ObservedState.new() |> ObservedState.add_route(route)
+
+      after_remove =
+        ObservedState.remove_route(state, route.destination, "10.0.0.#{gw_last}")
+
+      assert length(after_remove.routes) == length(state.routes),
+             "Expected route count unchanged after remove with wrong gateway"
+    end
+  end
 end

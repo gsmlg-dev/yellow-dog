@@ -279,4 +279,18 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
              "Expected string param #{key}=#{inspect(value)} to be preserved, got: #{inspect(diff.params[key])}"
     end
   end
+
+  property "two diffs created with same inputs are structurally equal and hash the same" do
+    check all(
+            action <- action_gen(),
+            interface <- interface_gen(),
+            params <- params_gen()
+          ) do
+      d1 = Diff.new(action, interface, params)
+      d2 = Diff.new(action, interface, params)
+      assert d1 == d2
+      assert :erlang.phash2(d1) == :erlang.phash2(d2),
+             "Expected identical hashes for equal diffs"
+    end
+  end
 end
