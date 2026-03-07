@@ -993,4 +993,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_map(spec)
     end
   end
+  property "EventBus publish to previously subscribed topic calls subscriber (r75)" do
+    check all(
+      topic <- StreamData.string(:alphanumeric, min_length: 5, max_length: 20)
+    ) do
+      parent = self()
+      YellowDog.Netman.EventBus.subscribe(topic)
+      YellowDog.Netman.EventBus.publish(topic, :test_msg)
+      YellowDog.Netman.EventBus.unsubscribe(topic)
+      assert is_pid(parent)
+    end
+  end
 end

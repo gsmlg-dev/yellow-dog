@@ -725,4 +725,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command with monitor.status returns map (r75)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "monitor.status"})
+      assert is_map(result)
+    end
+  end
 end

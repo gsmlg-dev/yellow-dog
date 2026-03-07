@@ -768,4 +768,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result)
     end
   end
+  property "CLI handle_command result always has result or error key (r75)" do
+    check all(
+      method <- StreamData.member_of(["connection.list", "profile.list", "status"])
+    ) do
+      result = CLI.handle_command(%{"method" => method})
+      assert Map.has_key?(result, "result") or Map.has_key?(result, "error")
+    end
+  end
 end
