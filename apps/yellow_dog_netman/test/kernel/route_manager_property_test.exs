@@ -1012,4 +1012,11 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Keyword.has_key?(fns, :remove_route)
     end
   end
+
+  property "route_manager list_all arity is 0 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+      assert Keyword.get(fns, :list_all) == 0
+    end
+  end
 end

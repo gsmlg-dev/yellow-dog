@@ -1014,4 +1014,11 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert Enum.all?(state.addresses, fn {_k, v} -> is_list(v) end)
     end
   end
+
+  property "observed_state links values are maps when present (r96)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
+    end
+  end
 end

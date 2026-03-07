@@ -877,4 +877,15 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command never raises exception (r96)" do
+    check all cmd <- string(:alphanumeric, min_length: 1, max_length: 20) do
+      result = try do
+        CLI.handle_command([cmd])
+      rescue
+        e -> {:exception, e}
+      end
+      refute match?({:exception, _}, result)
+    end
+  end
 end

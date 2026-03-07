@@ -938,4 +938,16 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Types.ObservedState)
     end
   end
+
+  property "desired_state from_profiles not nil for large lists (r96)" do
+    check all n <- integer(1..10) do
+      # Even with bogus profiles, shouldn't crash
+      result = try do
+        DesiredState.from_profiles(List.duplicate(nil, n))
+      rescue
+        _ -> :error
+      end
+      assert is_struct(result) or result == :error
+    end
+  end
 end

@@ -847,4 +847,13 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_boolean(result)
     end
   end
+
+  property "ethernet ethernet? arity is 1 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+      assert Keyword.get(fns, :ethernet?) == 1
+      assert Keyword.get(fns, :carrier?) == 1
+      assert Keyword.get(fns, :mtu) == 1
+    end
+  end
 end

@@ -758,4 +758,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.Netlink)
     end
   end
+
+  property "netman event_bus and profile_store modules loaded (r96)" do
+    check all _x <- boolean() do
+      assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
+      assert Code.ensure_loaded?(YellowDog.Netman.ProfileStore)
+      assert Code.ensure_loaded?(YellowDog.Netman.SecretStore)
+    end
+  end
 end

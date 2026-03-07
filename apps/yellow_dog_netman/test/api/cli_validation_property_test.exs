@@ -931,4 +931,15 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert length(public_fns) >= 1
     end
   end
+
+  property "cli validation never raises for any string list (r96)" do
+    check all cmds <- list_of(string(:alphanumeric, max_length: 10), max_length: 3) do
+      result = try do
+        CLI.handle_command(cmds)
+      rescue
+        e -> {:exception, e}
+      end
+      refute match?({:exception, _}, result)
+    end
+  end
 end

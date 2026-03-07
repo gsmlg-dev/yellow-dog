@@ -937,4 +937,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert length(fns) >= 4
     end
   end
+
+  property "policy_engine module exports all core functions (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert Keyword.has_key?(fns, :default_route)
+      assert Keyword.has_key?(fns, :route_metrics)
+      assert Keyword.has_key?(fns, :dns_priority)
+    end
+  end
 end

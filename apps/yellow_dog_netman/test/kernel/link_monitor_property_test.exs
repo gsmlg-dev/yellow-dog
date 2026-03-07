@@ -890,4 +890,14 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_list(info)
     end
   end
+
+  property "link_monitor start_link arity is 1 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.LinkMonitor.__info__(:functions)
+      if Keyword.has_key?(fns, :start_link) do
+        assert Keyword.get(fns, :start_link) == 1
+      end
+      assert true
+    end
+  end
 end

@@ -1312,4 +1312,18 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert length(state_fns) >= 5
     end
   end
+
+  property "fsm all state functions have arity 3 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
+      # gen_statem state functions all have arity 3
+      state_names = [:disconnected, :configuring, :deactivating, :failed, :unavailable, :prepare, :ip_check]
+      Enum.each(state_names, fn name ->
+        if Keyword.has_key?(fns, name) do
+          assert Keyword.get(fns, name) == 3
+        end
+      end)
+      assert true
+    end
+  end
 end

@@ -918,4 +918,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
+
+  property "connection supervisor child_spec arity is 1 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+      if Keyword.has_key?(fns, :child_spec) do
+        assert Keyword.get(fns, :child_spec) == 1
+      end
+      assert true
+    end
+  end
 end

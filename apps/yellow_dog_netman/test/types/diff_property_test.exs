@@ -877,4 +877,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert length(strings) == length(@actions)
     end
   end
+
+  property "diff module exports new function (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Types.Diff.__info__(:functions)
+      assert Keyword.has_key?(fns, :new)
+    end
+  end
 end

@@ -1014,4 +1014,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Enum.all?(all_addrs, &(is_map(&1) or is_struct(&1)))
     end
   end
+
+  property "address_manager list_all arity is 0 (r96)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.Kernel.AddressManager.__info__(:functions)
+      assert Keyword.get(fns, :list_all) == 0
+    end
+  end
 end

@@ -863,4 +863,17 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert length(public_fns) >= 3
     end
   end
+
+  property "secret_store operations never raise exceptions (r96)" do
+    check all key <- string(:alphanumeric, min_length: 1, max_length: 30),
+              val <- string(:alphanumeric) do
+      result = try do
+        YellowDog.Netman.SecretStore.put(key, val)
+        YellowDog.Netman.SecretStore.get(key)
+      rescue
+        e -> {:exception, e}
+      end
+      refute match?({:exception, _}, result)
+    end
+  end
 end

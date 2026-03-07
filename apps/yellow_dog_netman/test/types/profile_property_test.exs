@@ -1406,4 +1406,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  property "profile from_toml with autoconnect_priority number is ok or error (r96)" do
+    check all id <- string(:alphanumeric, min_length: 1),
+              prio <- non_negative_integer() do
+      result = Profile.from_toml(%{"id" => id, "autoconnect_priority" => prio})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

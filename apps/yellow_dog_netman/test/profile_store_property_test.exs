@@ -1011,4 +1011,13 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert length(result) >= 0
     end
   end
+
+  property "profile_store list result length is stable (r96)" do
+    check all _x <- boolean() do
+      r1 = YellowDog.Netman.ProfileStore.list()
+      r2 = YellowDog.Netman.ProfileStore.list()
+      assert is_list(r1) and is_list(r2)
+      assert length(r1) == length(r2)
+    end
+  end
 end
