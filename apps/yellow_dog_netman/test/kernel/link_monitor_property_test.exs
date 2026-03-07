@@ -393,4 +393,13 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected carrier false after link_down for #{iface}, got: #{inspect(link.carrier)}"
     end
   end
+
+  property "get_link for never-registered interface always returns nil" do
+    check all(seed <- StreamData.integer(1..999_999)) do
+      fresh_iface = "lm_nil_#{seed}"
+      result = LinkMonitor.get_link(fresh_iface)
+      assert result == nil,
+             "Expected nil for unregistered interface, got: #{inspect(result)}"
+    end
+  end
 end

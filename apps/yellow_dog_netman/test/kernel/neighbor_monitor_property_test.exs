@@ -618,4 +618,14 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+
+  property "every entry in list_neighbors has a non-nil :address field" do
+    check all(_ <- StreamData.constant(:ok)) do
+      neighbors = NeighborMonitor.list_neighbors()
+      for n <- neighbors do
+        assert Map.get(n, :address) != nil,
+               "Expected non-nil :address in neighbor, got: #{inspect(n)}"
+      end
+    end
+  end
 end

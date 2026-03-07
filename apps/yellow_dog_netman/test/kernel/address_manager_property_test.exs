@@ -497,4 +497,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
              "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
   end
+
+  property "list_all always returns a map" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = AddressManager.list_all()
+      assert is_map(result),
+             "Expected map from list_all, got: #{inspect(result)}"
+    end
+  end
 end
