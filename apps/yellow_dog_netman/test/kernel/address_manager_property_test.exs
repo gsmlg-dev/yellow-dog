@@ -653,4 +653,32 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Process.alive?(pid), "Expected AddressManager to be alive"
     end
   end
+
+  property "AddressManager list_all always returns map with string keys" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = AddressManager.list_all()
+      assert is_map(result)
+      for {k, _v} <- result do
+        assert is_binary(k),
+               "Expected binary key in list_all map, got: #{inspect(k)}"
+      end
+    end
+  end
+  property "AddressManager list_all for any interface returns list or empty" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      result = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      assert is_list(result),
+             "Expected list from list_all, got: \#{inspect(result)}"
+    end
+  end
+  property "AddressManager list_all entries have :address key when present" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all(iface)
+      for addr <- addresses do
+        assert Map.has_key?(addr, :address),
+               "Expected :address key in entry, got: #{inspect(addr)}"
+      end
+    end
+  end
+
 end

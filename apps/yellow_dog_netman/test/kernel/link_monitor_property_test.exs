@@ -531,4 +531,28 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected non-negative count from list_links"
     end
   end
+
+  property "LinkMonitor pid is stable between two reads" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid1 = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      pid2 = Process.whereis(YellowDog.Netman.Kernel.LinkMonitor)
+      assert pid1 == pid2,
+             "Expected stable LinkMonitor pid: #{inspect(pid1)} vs #{inspect(pid2)}"
+    end
+  end
+  property "LinkMonitor get_link for numeric string interface returns nil or map" do
+    check all(n <- StreamData.integer(0..99)) do
+      iface = "eth\#{n}"
+      result = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+      assert is_nil(result) or is_map(result),
+             "Expected nil or map from get_link, got: \#{inspect(result)}"
+    end
+  end
+  property "LinkMonitor list_links always returns a non-nil value" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.LinkMonitor.list_links()
+      refute is_nil(result), "Expected non-nil from list_links"
+    end
+  end
+
 end

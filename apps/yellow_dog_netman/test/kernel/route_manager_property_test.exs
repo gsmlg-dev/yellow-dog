@@ -659,4 +659,30 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
              "Expected list from get_routes for #{iface}"
     end
   end
+
+  property "RouteManager get_routes count is always non-negative" do
+    check all(seed <- StreamData.integer(1..9_999)) do
+      iface = "rm_cnt_#{seed}"
+      count = length(RouteManager.get_routes(iface))
+      assert count >= 0,
+             "Expected non-negative route count for #{iface}"
+    end
+  end
+  property "RouteManager get_routes for short interface always returns list" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
+      result = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
+      assert is_list(result),
+             "Expected list from get_routes, got: \#{inspect(result)}"
+    end
+  end
+  property "RouteManager get_routes entries have :destination key when present" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
+      routes = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
+      for route <- routes do
+        assert Map.has_key?(route, :destination),
+               "Expected :destination key in route, got: #{inspect(route)}"
+      end
+    end
+  end
+
 end
