@@ -1016,4 +1016,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert Map.has_key?(spec, :id) or Map.has_key?(spec, :start)
     end
   end
+  property "EventBus module attributes include vsn (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.EventBus.module_info(:attributes)
+      assert Keyword.has_key?(attrs, :vsn)
+    end
+  end
 end

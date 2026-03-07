@@ -789,4 +789,12 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert is_map(result) and (Map.has_key?(result, "result") or Map.has_key?(result, "error"))
     end
   end
+  property "CLI handle_command never crashes with empty params (r78)" do
+    check all(
+      method <- StreamData.string(:alphanumeric, min_length: 3, max_length: 15)
+    ) do
+      result = CLI.handle_command(%{"method" => method, "params" => %{}})
+      assert is_map(result)
+    end
+  end
 end

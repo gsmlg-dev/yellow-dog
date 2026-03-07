@@ -748,4 +748,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       refute is_atom(result), "Expected non-atom result"
     end
   end
+  property "CLI handle_command result is not binary (r78)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = CLI.handle_command(%{"method" => "profile.list"})
+      refute is_binary(result), "Expected non-binary result"
+    end
+  end
 end
