@@ -758,4 +758,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(result)
     end
   end
+  property "ProfileStore delete always returns ok or error (r62)" do
+    check all(
+      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = YellowDog.Netman.ProfileStore.delete(id)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end

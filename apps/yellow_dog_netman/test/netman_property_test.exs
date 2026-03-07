@@ -542,4 +542,10 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+  property "Netman module exports are a non-empty list (r62)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.module_info(:exports)
+      assert is_list(exports) and length(exports) > 0
+    end
+  end
 end

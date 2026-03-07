@@ -580,4 +580,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "SecretStore delete always returns ok (r62)" do
+    check all(
+      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+    ) do
+      result = YellowDog.Netman.SecretStore.delete(key)
+      assert result == :ok
+    end
+  end
 end
