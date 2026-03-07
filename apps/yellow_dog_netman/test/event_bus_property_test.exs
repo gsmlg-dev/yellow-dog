@@ -1022,4 +1022,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "event_bus broadcast returns ok or error (r79)" do
+    check all topic <- string(:alphanumeric, min_length: 1),
+              payload <- integer() do
+      result = YellowDog.Netman.EventBus.broadcast(topic, payload)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end

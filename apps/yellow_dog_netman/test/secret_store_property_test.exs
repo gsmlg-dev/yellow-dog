@@ -720,4 +720,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
+  property "secret_store put always returns ok (r79)" do
+    check all key <- string(:alphanumeric, min_length: 1),
+              val <- string(:alphanumeric) do
+      result = YellowDog.Netman.SecretStore.put(key, val)
+      assert result == :ok
+    end
+  end
 end

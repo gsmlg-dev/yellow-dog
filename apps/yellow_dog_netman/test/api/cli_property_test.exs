@@ -754,4 +754,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       refute is_binary(result), "Expected non-binary result"
     end
   end
+
+  property "cli handle_command with status returns result (r79)" do
+    check all _x <- integer() do
+      result = CLI.handle_command(["status"])
+      assert is_tuple(result) or is_atom(result) or is_map(result)
+    end
+  end
 end
