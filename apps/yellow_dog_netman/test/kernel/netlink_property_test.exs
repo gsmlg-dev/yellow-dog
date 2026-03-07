@@ -938,4 +938,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "netlink has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.Netlink.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

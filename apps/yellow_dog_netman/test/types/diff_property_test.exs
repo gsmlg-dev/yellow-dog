@@ -832,4 +832,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert length(@actions) == 10
     end
   end
+
+  property "diff @actions has no duplicates (r90)" do
+    check all _x <- boolean() do
+      assert length(@actions) == length(Enum.uniq(@actions))
+    end
+  end
 end

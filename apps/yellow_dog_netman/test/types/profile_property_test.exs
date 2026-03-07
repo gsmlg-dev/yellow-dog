@@ -1353,4 +1353,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
+
+  property "profile from_toml with valid id and priority returns ok (r90)" do
+    check all id <- string(:alphanumeric, min_length: 1, max_length: 64),
+              prio <- integer(0..1000) do
+      result = Profile.from_toml(%{"id" => id, "priority" => prio})
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

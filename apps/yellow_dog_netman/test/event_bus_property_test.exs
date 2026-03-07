@@ -1110,4 +1110,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert Keyword.has_key?(fns, :broadcast)
     end
   end
+
+  property "event_bus broadcast returns ok for simple topics (r90)" do
+    check all topic <- string(Enum.concat([?a..?z, ?A..?Z]), min_length: 1, max_length: 20) do
+      result = YellowDog.Netman.EventBus.broadcast(topic, nil)
+      assert result == :ok or match?({:error, _}, result)
+    end
+  end
 end

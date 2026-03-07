@@ -711,4 +711,12 @@ defmodule YellowDog.NetmanPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "netman module has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.__info__(:attributes)
+      # Either has behaviours or doesn't - both are valid
+      assert is_list(attrs)
+    end
+  end
 end

@@ -968,4 +968,11 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "address_manager has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.AddressManager.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

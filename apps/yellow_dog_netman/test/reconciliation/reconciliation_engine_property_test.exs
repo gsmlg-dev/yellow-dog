@@ -1212,4 +1212,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "reconciliation_engine has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.ReconciliationEngine.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

@@ -962,4 +962,12 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert Keyword.has_key?(fns, :list)
     end
   end
+
+  property "profile_store list result type is consistent (r90)" do
+    check all _x <- boolean() do
+      result = YellowDog.Netman.ProfileStore.list()
+      # Must be a list of tuples or a list of structs or empty
+      assert is_list(result)
+    end
+  end
 end

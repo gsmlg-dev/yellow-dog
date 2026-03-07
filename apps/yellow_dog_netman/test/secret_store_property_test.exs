@@ -811,4 +811,12 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert Keyword.has_key?(fns, :delete)
     end
   end
+
+  property "secret_store all exports take at most 2 args (r90)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.SecretStore.__info__(:functions)
+      # get/1, put/2, delete/1 - all arities <= 2
+      assert Enum.all?(fns, fn {_name, arity} -> arity <= 2 end)
+    end
+  end
 end

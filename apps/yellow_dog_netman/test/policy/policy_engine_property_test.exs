@@ -893,4 +893,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert result == :none or match?({:ok, _}, result)
     end
   end
+
+  property "policy_engine exported functions include default_route (r90)" do
+    check all _x <- boolean() do
+      fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
+      assert Keyword.has_key?(fns, :default_route)
+    end
+  end
 end

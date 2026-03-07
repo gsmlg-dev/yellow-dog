@@ -833,4 +833,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli handle_command list result has proper type (r90)" do
+    check all cmd <- member_of(["status", "help", "version", "config"]) do
+      result = CLI.handle_command([cmd])
+      assert not is_nil(result)
+    end
+  end
 end

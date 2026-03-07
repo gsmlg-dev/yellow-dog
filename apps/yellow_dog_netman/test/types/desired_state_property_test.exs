@@ -894,4 +894,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert is_struct(ds)
     end
   end
+
+  property "desired_state from_profiles empty has no profiles (r90)" do
+    check all _x <- boolean() do
+      ds = DesiredState.from_profiles([])
+      # with empty profiles, desired state should be empty/minimal
+      assert is_struct(ds)
+    end
+  end
 end

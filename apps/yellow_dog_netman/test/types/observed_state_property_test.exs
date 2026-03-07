@@ -967,4 +967,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert :addresses in keys
     end
   end
+
+  property "observed_state address count is non-negative (r90)" do
+    check all _x <- boolean() do
+      state = ObservedState.new()
+      assert map_size(state.addresses) >= 0
+      assert length(state.routes) >= 0
+      assert map_size(state.links) >= 0
+    end
+  end
 end

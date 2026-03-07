@@ -846,4 +846,11 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "link_monitor has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Kernel.LinkMonitor.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

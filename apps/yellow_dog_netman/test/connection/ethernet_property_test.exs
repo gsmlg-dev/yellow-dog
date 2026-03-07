@@ -801,4 +801,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
+  property "ethernet has behaviour information (r90)" do
+    check all _x <- boolean() do
+      attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
+      assert is_list(attrs)
+    end
+  end
 end

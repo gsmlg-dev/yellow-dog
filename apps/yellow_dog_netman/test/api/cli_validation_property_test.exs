@@ -877,4 +877,11 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       assert not is_nil(result)
     end
   end
+
+  property "cli validation always terminates (r90)" do
+    check all cmds <- list_of(string(:printable, min_length: 1, max_length: 10), max_length: 5) do
+      result = CLI.handle_command(cmds)
+      assert not is_nil(result)
+    end
+  end
 end
