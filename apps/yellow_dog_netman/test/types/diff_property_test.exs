@@ -741,4 +741,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
       assert Keyword.has_key?(exports, :new)
     end
   end
+  property "Diff module has correct name (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Types.Diff.module_info(:module)
+      assert name == YellowDog.Netman.Types.Diff
+    end
+  end
 end

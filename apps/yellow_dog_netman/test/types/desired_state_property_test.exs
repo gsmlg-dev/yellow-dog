@@ -792,4 +792,10 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       assert Keyword.has_key?(exports, :from_profiles)
     end
   end
+  property "DesiredState module name is correct (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Types.DesiredState.module_info(:module)
+      assert name == YellowDog.Netman.Types.DesiredState
+    end
+  end
 end

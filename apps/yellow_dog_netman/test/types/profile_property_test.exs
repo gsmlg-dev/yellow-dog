@@ -1248,4 +1248,10 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+  property "Profile module name is correct (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Types.Profile.module_info(:module)
+      assert name == YellowDog.Netman.Types.Profile
+    end
+  end
 end

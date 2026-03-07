@@ -867,4 +867,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert MapSet.subset?(expected, keys)
     end
   end
+  property "ObservedState module name is correct (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      name = YellowDog.Netman.Types.ObservedState.module_info(:module)
+      assert name == YellowDog.Netman.Types.ObservedState
+    end
+  end
 end

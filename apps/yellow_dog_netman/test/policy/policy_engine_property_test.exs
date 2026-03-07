@@ -799,4 +799,11 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert name == YellowDog.Netman.PolicyEngine
     end
   end
+  property "PolicyEngine effective_priority for map without profile returns value (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      conn = %{autoconnect_priority: 50}
+      result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
+      assert is_integer(result) or is_nil(result)
+    end
+  end
 end

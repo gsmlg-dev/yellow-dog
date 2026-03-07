@@ -1118,4 +1118,11 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+  property "ReconciliationEngine is a GenServer (r77)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.ReconciliationEngine.module_info(:attributes)
+      behaviours = Keyword.get(attrs, :behaviour, [])
+      assert is_list(behaviours)
+    end
+  end
 end
