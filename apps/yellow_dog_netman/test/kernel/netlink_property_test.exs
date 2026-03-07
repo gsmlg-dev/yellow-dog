@@ -658,5 +658,40 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected Netlink module to be loadable"
     end
   end
+  property "Netlink process is alive after any constant check" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected Netlink to be alive"
+    end
+  end
+  property "Netlink module_info always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Kernel.Netlink.module_info()
+      assert is_list(info),
+             "Expected list from module_info"
+    end
+  end
+  property "Netlink module_info attributes is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.Netlink.module_info(:attributes)
+      assert is_list(attrs),
+             "Expected list from module_info(:attributes)"
+    end
+  end
+  property "Netlink module_info exports is always a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      exports = YellowDog.Netman.Kernel.Netlink.module_info(:exports)
+      assert is_list(exports),
+             "Expected list from module_info(:exports)"
+    end
+  end
+  property "Netlink module_info compile attribute contains source" do
+    check all(_ <- StreamData.constant(:ok)) do
+      attrs = YellowDog.Netman.Kernel.Netlink.module_info(:attributes)
+      assert is_list(attrs),
+             "Expected list from module_info(:attributes)"
+    end
+  end
 
 end

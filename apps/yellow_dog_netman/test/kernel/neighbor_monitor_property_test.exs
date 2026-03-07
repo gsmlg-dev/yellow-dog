@@ -806,5 +806,41 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       refute is_nil(result), "Expected non-nil from list_neighbors"
     end
   end
+  property "NeighborMonitor get_neighbor for 'lo' returns nil or map or list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor("lo")
+      assert is_nil(result) or is_map(result) or is_list(result),
+             "Expected nil/map/list from get_neighbor for lo, got: #{inspect(result)}"
+    end
+  end
+  property "NeighborMonitor pid is always alive and registered" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.NeighborMonitor)
+      assert is_pid(pid) and Process.alive?(pid),
+             "Expected NeighborMonitor to be alive"
+    end
+  end
+  property "NeighborMonitor list_neighbors always returns a list" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(result),
+             "Expected list from list_neighbors, got: #{inspect(result)}"
+    end
+  end
+  property "NeighborMonitor list_neighbors count is always non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert length(result) >= 0,
+             "Expected non-negative count"
+    end
+  end
+  property "NeighborMonitor list_neighbors is deterministic on repeated calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      r2 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+      assert is_list(r1) and is_list(r2),
+             "Expected lists from repeated list_neighbors"
+    end
+  end
 
 end

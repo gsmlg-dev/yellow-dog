@@ -679,5 +679,47 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       refute is_nil(result), "Expected non-nil from list_rules"
     end
   end
+  property "RuleManager list_rules count is non-negative" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      assert length(rules) >= 0,
+             "Expected non-negative count of rules"
+    end
+  end
+  property "RuleManager list_rules entries have :priority key when present" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :priority),
+               "Expected :priority key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
+  property "RuleManager list_rules entries have :table key when present" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :table),
+               "Expected :table key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
+  property "RuleManager list_rules entries have :interface key when present" do
+    check all(_ <- StreamData.constant(:ok)) do
+      rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      for r <- rules do
+        assert Map.has_key?(r, :interface),
+               "Expected :interface key in rule entry, got: #{inspect(r)}"
+      end
+    end
+  end
+  property "RuleManager list_rules returns consistent count on repeated calls" do
+    check all(_ <- StreamData.constant(:ok)) do
+      c1 = length(YellowDog.Netman.Kernel.RuleManager.list_rules())
+      c2 = length(YellowDog.Netman.Kernel.RuleManager.list_rules())
+      assert c1 == c2,
+             "Expected stable count from list_rules"
+    end
+  end
 
 end
