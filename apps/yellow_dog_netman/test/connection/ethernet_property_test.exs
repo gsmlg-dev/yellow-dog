@@ -278,4 +278,18 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected ethernet? true after double link_down on #{iface}"
     end
   end
+
+  property "link_removed then link_removed again — ethernet? still returns false" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(30)
+      MockNetlink.link_removed(iface)
+      Process.sleep(30)
+      MockNetlink.link_removed(iface)
+      Process.sleep(50)
+
+      assert Ethernet.ethernet?(iface) == false,
+             "Expected ethernet? false after double link_removed on #{iface}"
+    end
+  end
 end

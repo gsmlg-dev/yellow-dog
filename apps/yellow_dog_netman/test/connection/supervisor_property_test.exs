@@ -371,4 +371,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
+  property "find_connection_by_profile returns :error for unk-prefixed profile IDs" do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      assert ConnSupervisor.find_connection_by_profile("unk2_#{id}") == :error
+    end
+  end
 end

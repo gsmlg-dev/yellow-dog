@@ -327,4 +327,23 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected get_link to return non-nil after link_down on #{iface}"
     end
   end
+
+  property "link_up with custom mtu then get_link has the matching mtu value" do
+    check all(
+            iface <- iface_gen(),
+            mtu <- StreamData.integer(68..65535)
+          ) do
+      send_link_event(%{
+        "action" => "update",
+        "interface" => iface,
+        "state" => "up",
+        "mtu" => mtu
+      })
+
+      link = LinkMonitor.get_link(iface)
+      assert link != nil
+      assert link.mtu == mtu,
+             "Expected link.mtu == #{mtu}, got: #{inspect(link.mtu)}"
+    end
+  end
 end
