@@ -636,4 +636,14 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert Process.alive?(pid), "Expected NeighborMonitor to be alive"
     end
   end
+
+  property "all neighbors in get_neighbors have a non-nil :address field" do
+    check all(iface <- iface_gen()) do
+      neighbors = NeighborMonitor.get_neighbors(iface)
+      for n <- neighbors do
+        assert n.address != nil,
+               "Expected non-nil address in neighbor, got: #{inspect(n)}"
+      end
+    end
+  end
 end

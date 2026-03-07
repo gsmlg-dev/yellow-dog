@@ -513,4 +513,12 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       assert Process.alive?(pid), "Expected AddressManager to be alive"
     end
   end
+
+  property "get_addresses always returns a list" do
+    check all(iface <- iface_gen()) do
+      result = AddressManager.get_addresses(iface)
+      assert is_list(result),
+             "Expected list from get_addresses, got: #{inspect(result)}"
+    end
+  end
 end

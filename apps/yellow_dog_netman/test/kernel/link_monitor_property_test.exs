@@ -414,4 +414,16 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
       end
     end
   end
+
+  property "link_up sets the link state to up or down" do
+    check all(iface <- iface_gen()) do
+      MockNetlink.link_up(iface, carrier: true)
+      Process.sleep(50)
+      link = LinkMonitor.get_link(iface)
+      assert link != nil,
+             "Expected non-nil link after link_up for #{iface}"
+      assert link.state in [:up, :down],
+             "Expected :up or :down state, got: #{inspect(link.state)}"
+    end
+  end
 end
