@@ -704,5 +704,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
              "Expected struct or map from new, got: #{inspect(state)}"
     end
   end
+  property "ObservedState always has all required keys after new" do
+    check all(_ <- StreamData.constant(:ok)) do
+      state = YellowDog.Netman.Types.ObservedState.new()
+      assert Map.has_key?(state, :links) and Map.has_key?(state, :addresses) and Map.has_key?(state, :routes),
+             "Expected :links, :addresses, :routes keys"
+    end
+  end
 
 end

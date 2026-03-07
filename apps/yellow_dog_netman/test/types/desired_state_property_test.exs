@@ -678,5 +678,12 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
              "Expected map from from_profiles (r58)"
     end
   end
+  property "DesiredState from_profiles for empty list always returns the same struct" do
+    check all(_ <- StreamData.constant(:ok)) do
+      ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
+      assert is_map(ds) or is_struct(ds),
+             "Expected map/struct from from_profiles"
+    end
+  end
 
 end

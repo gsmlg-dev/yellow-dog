@@ -651,5 +651,13 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
              "Expected integer/nil/atom (r58), got: #{inspect(result)}"
     end
   end
+  property "PolicyEngine route_metrics for empty returns consistent type (r59)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      r1 = YellowDog.Netman.PolicyEngine.route_metrics([])
+      r2 = YellowDog.Netman.PolicyEngine.route_metrics([])
+      assert r1 == r2,
+             "Expected deterministic route_metrics results"
+    end
+  end
 
 end

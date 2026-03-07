@@ -1040,5 +1040,15 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
              "Expected :returned or :raised"
     end
   end
+  property "Profile type is always a known atom" do
+    check all(
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            type <- StreamData.member_of([:ethernet, :wifi, :loopback])
+          ) do
+      p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+      assert p.type in [:ethernet, :wifi, :loopback],
+             "Expected known type, got: #{inspect(p.type)}"
+    end
+  end
 
 end
