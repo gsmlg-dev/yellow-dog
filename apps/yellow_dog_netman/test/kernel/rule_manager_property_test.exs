@@ -751,5 +751,12 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       end
     end
   end
+  property "RuleManager list_rules always returns a list (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+      assert is_list(result),
+             "Expected list from list_rules (r56)"
+    end
+  end
 
 end

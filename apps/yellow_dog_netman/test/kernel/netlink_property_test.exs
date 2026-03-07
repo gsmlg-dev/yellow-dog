@@ -723,5 +723,11 @@ defmodule YellowDog.Netman.Kernel.NetlinkPropertyTest do
              "Expected stable pid from whereis"
     end
   end
+  property "Netlink process pid is non-nil (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      pid = Process.whereis(YellowDog.Netman.Kernel.Netlink)
+      refute is_nil(pid), "Expected non-nil pid from whereis"
+    end
+  end
 
 end

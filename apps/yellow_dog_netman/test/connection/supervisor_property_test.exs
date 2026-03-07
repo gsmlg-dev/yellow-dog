@@ -658,5 +658,11 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
              "Expected list from module_info(:exports)"
     end
   end
+  property "ConnSupervisor module_info non-nil (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Supervisor.module_info()
+      refute is_nil(info), "Expected non-nil module_info"
+    end
+  end
 
 end

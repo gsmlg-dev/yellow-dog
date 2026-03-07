@@ -754,5 +754,14 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       end
     end
   end
+  property "AddressManager list_all for 'lo' :prefix_len is integer in entries" do
+    check all(_ <- StreamData.constant(:ok)) do
+      addresses = YellowDog.Netman.Kernel.AddressManager.list_all("lo")
+      for addr <- addresses do
+        assert is_integer(addr.prefix_len) or is_nil(addr[:prefix_len]),
+               "Expected integer or nil prefix_len, got: #{inspect(addr)}"
+      end
+    end
+  end
 
 end

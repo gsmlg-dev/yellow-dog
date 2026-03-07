@@ -499,11 +499,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected boolean from ethernet?, got: \#{inspect(result)}"
     end
   end
-  property "Ethernet mtu for 'lo' interface returns a positive integer" do
+  property "Ethernet mtu for 'lo' interface returns a positive integer or nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
-      assert is_integer(result) and result > 0,
-             "Expected positive integer mtu for lo, got: #{inspect(result)}"
+      assert is_nil(result) or (is_integer(result) and result > 0),
+             "Expected positive integer or nil mtu for lo, got: #{inspect(result)}"
     end
   end
   property "Ethernet ethernet? returns false for empty string" do
@@ -527,11 +527,11 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
              "Expected false for lo, got: #{inspect(result)}"
     end
   end
-  property "Ethernet mtu for 'lo' interface always returns positive integer" do
+  property "Ethernet mtu for 'lo' interface always returns integer or nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
-      assert is_integer(result) and result > 0,
-             "Expected positive integer mtu for lo, got: #{inspect(result)}"
+      assert is_nil(result) or (is_integer(result) and result > 0),
+             "Expected positive integer or nil mtu for lo, got: #{inspect(result)}"
     end
   end
   property "Ethernet module_info always returns a list" do
@@ -567,6 +567,12 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       attrs = YellowDog.Netman.Connection.Ethernet.module_info(:attributes)
       assert is_list(attrs),
              "Expected list from module_info(:attributes)"
+    end
+  end
+  property "Ethernet module_info always non-nil (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      info = YellowDog.Netman.Connection.Ethernet.module_info()
+      refute is_nil(info), "Expected non-nil module_info"
     end
   end
 

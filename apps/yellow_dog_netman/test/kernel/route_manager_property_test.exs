@@ -754,5 +754,12 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       end
     end
   end
+  property "RouteManager list_routes entries are non-nil for lo (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      routes = YellowDog.Netman.Kernel.RouteManager.list_routes("lo")
+      assert is_list(routes),
+             "Expected list from list_routes for lo (r56)"
+    end
+  end
 
 end

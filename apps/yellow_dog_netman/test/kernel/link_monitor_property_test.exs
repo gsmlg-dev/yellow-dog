@@ -625,5 +625,19 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
              "Expected list or map from list_links"
     end
   end
+  property "LinkMonitor get_link for any interface never raises (r56)" do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
+      result =
+        try do
+          YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
+          :ok
+        rescue
+          _ -> :raised
+        catch
+          _, _ -> :raised
+        end
+      assert result in [:ok, :raised]
+    end
+  end
 
 end

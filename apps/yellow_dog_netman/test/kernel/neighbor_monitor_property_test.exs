@@ -872,5 +872,12 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       end
     end
   end
+  property "NeighborMonitor get_neighbor for lo returns nil or map or list (r56)" do
+    check all(_ <- StreamData.constant(:ok)) do
+      result = YellowDog.Netman.Kernel.NeighborMonitor.get_neighbor("lo")
+      assert is_nil(result) or is_map(result) or is_list(result),
+             "Expected nil/map/list for lo, got: #{inspect(result)}"
+    end
+  end
 
 end
