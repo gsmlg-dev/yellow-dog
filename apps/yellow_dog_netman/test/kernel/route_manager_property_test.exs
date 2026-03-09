@@ -619,7 +619,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       routes = RouteManager.get_routes(iface)
       for r <- routes do
         assert is_map(r),
-               "Expected map entries in get_routes for #{iface}, got: \#{inspect(r)}"
+               "Expected map entries in get_routes for #{iface}, got: #{inspect(r)}"
       end
     end
   end
@@ -672,7 +672,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       result = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
       assert is_list(result),
-             "Expected list from get_routes, got: \#{inspect(result)}"
+             "Expected list from get_routes, got: #{inspect(result)}"
     end
   end
   property "RouteManager get_routes entries have :destination key when present" do

@@ -542,10 +542,10 @@ defmodule YellowDog.Netman.Kernel.LinkMonitorPropertyTest do
   end
   property "LinkMonitor get_link for numeric string interface returns nil or map" do
     check all(n <- StreamData.integer(0..99)) do
-      iface = "eth\#{n}"
+      iface = "eth#{n}"
       result = YellowDog.Netman.Kernel.LinkMonitor.get_link(iface)
       assert is_nil(result) or is_map(result),
-             "Expected nil or map from get_link, got: \#{inspect(result)}"
+             "Expected nil or map from get_link, got: #{inspect(result)}"
     end
   end
   property "LinkMonitor list_links always returns a non-nil value" do

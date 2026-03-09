@@ -353,7 +353,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
           _, _ -> :raised
         end
       assert result in [:ok, :raised],
-             "Expected :ok or :raised from put with atom key, got: \#{inspect(result)}"
+             "Expected :ok or :raised from put with atom key, got: #{inspect(result)}"
     end
   end
 
@@ -380,7 +380,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.delete(full_key)
       result = SecretStore.get(full_key)
       assert result == {:error, :not_found} or match?({:ok, _}, result),
-             "Expected not_found or ok after put+delete, got: \#{inspect(result)}"
+             "Expected not_found or ok after put+delete, got: #{inspect(result)}"
     end
   end
 

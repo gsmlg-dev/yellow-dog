@@ -584,7 +584,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Supervisor.list_connections()
       assert is_list(result),
-             "Expected list from list_connections, got: \#{inspect(result)}"
+             "Expected list from list_connections, got: #{inspect(result)}"
     end
   end
   property "ConnSupervisor list_connections round-46 returns list" do

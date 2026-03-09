@@ -550,7 +550,7 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       ProfileStore.delete(profile.id)
       final_count = length(ProfileStore.list())
       assert final_count == initial_count,
-             "Expected count \#{initial_count} after put+delete, got \#{final_count}"
+             "Expected count #{initial_count} after put+delete, got #{final_count}"
     end
   end
 
@@ -580,7 +580,7 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
       assert is_list(profiles)
       for p <- profiles do
         assert is_map(p) or is_struct(p),
-               "Expected map or struct in list, got: \#{inspect(p)}"
+               "Expected map or struct in list, got: #{inspect(p)}"
       end
     end
   end
@@ -631,7 +631,7 @@ defmodule YellowDog.Netman.ProfileStorePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.ProfileStore.list()
       assert is_list(result),
-             "Expected list from ProfileStore.list, got: \#{inspect(result)}"
+             "Expected list from ProfileStore.list, got: #{inspect(result)}"
     end
   end
   property "ProfileStore get with any alphanumeric id returns tagged tuple or nil" do

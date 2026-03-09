@@ -503,7 +503,7 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       result = CLI.handle_command(%{"method" => "profile.create", "params" => %{"id" => spaces}})
       err = result["error"]
       assert is_binary(err) or is_nil(err),
-             "Expected string or nil error for whitespace-only id, got: \#{inspect(err)}"
+             "Expected string or nil error for whitespace-only id, got: #{inspect(err)}"
     end
   end
 
@@ -552,7 +552,7 @@ defmodule YellowDog.Netman.API.CLIValidationPropertyTest do
       name = String.slice("eth0" <> suffix, 0, 15)
       result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => name}})
       assert is_map(result),
-             "Expected map from device.show with iface \#{name}"
+             "Expected map from device.show with iface #{name}"
     end
   end
   property "CLI handle_command with connection.down and integer id always returns map" do

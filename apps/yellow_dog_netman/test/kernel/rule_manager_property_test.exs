@@ -616,7 +616,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       rules = RuleManager.list_rules()
       for r <- rules do
         assert Map.has_key?(r, :priority),
-               "Expected :priority key in rule entry, got: \#{inspect(r)}"
+               "Expected :priority key in rule entry, got: #{inspect(r)}"
       end
     end
   end

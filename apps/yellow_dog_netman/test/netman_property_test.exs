@@ -388,7 +388,7 @@ defmodule YellowDog.NetmanPropertyTest do
       c1 = length(Netman.list_profiles())
       c2 = length(Netman.list_profiles())
       assert c1 == c2,
-             "Expected consistent list_profiles count: \#{c1} vs \#{c2}"
+             "Expected consistent list_profiles count: #{c1} vs #{c2}"
     end
   end
 

@@ -413,7 +413,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       desired = DesiredState.from_profiles([])
       assert desired.connections == %{},
-             "Expected empty connections for empty profile list, got: \#{inspect(desired.connections)}"
+             "Expected empty connections for empty profile list, got: #{inspect(desired.connections)}"
     end
   end
 
@@ -491,7 +491,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       conn = desired.connections[profile.id]
       assert conn != nil
       assert is_list(conn.dns),
-             "Expected :dns to be a list in connection, got: \#{inspect(conn.dns)}"
+             "Expected :dns to be a list in connection, got: #{inspect(conn.dns)}"
     end
   end
 
@@ -576,7 +576,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
       conns = Map.get(ds, :connections, [])
       assert is_list(conns) or is_map(conns),
-             "Expected list or map for connections, got: \#{inspect(conns)}"
+             "Expected list or map for connections, got: #{inspect(conns)}"
     end
   end
   property "DesiredState from_profiles always returns a struct or map" do

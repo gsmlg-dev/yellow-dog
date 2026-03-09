@@ -469,7 +469,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert map_size(result) == 1
       {_id, metric} = Enum.at(result, 0)
       assert is_integer(metric) and metric > 0,
-             "Expected positive metric for zero-priority connection, got: \#{inspect(metric)}"
+             "Expected positive metric for zero-priority connection, got: #{inspect(metric)}"
     end
   end
 
@@ -555,7 +555,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
       assert is_integer(result) or is_nil(result) or is_atom(result),
-             "Expected integer/nil/atom from effective_priority, got: \#{inspect(result)}"
+             "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
     end
   end
   property "PolicyEngine dns_priority with empty list always returns expected type" do

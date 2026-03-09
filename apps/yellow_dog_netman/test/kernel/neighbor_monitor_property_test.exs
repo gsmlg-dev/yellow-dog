@@ -729,7 +729,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       iface = "nm_empty_#{seed}"
       result = NeighborMonitor.get_neighbors(iface)
       assert result == [] or is_list(result),
-             "Expected empty or list from get_neighbors for unknown iface: \#{inspect(result)}"
+             "Expected empty or list from get_neighbors for unknown iface: #{inspect(result)}"
     end
   end
 
@@ -794,10 +794,10 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
   property "NeighborMonitor get_neighbor for numeric string interface returns nil or map" do
     check all(n <- StreamData.integer(0..99)) do
-      iface = "eth\#{n}"
+      iface = "eth#{n}"
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_nil(result) or is_map(result) or is_list(result),
-             "Expected nil/map/list from get_neighbor, got: \#{inspect(result)}"
+             "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
     end
   end
   property "NeighborMonitor list_neighbors always returns a non-nil value" do

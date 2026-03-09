@@ -605,7 +605,7 @@ defmodule YellowDog.Netman.Kernel.AddressManagerPropertyTest do
       addresses = AddressManager.get_addresses(iface)
       for a <- addresses do
         assert Map.has_key?(a, :address),
-               "Expected :address key in address entry, got: \#{inspect(a)}"
+               "Expected :address key in address entry, got: #{inspect(a)}"
       end
     end
   end

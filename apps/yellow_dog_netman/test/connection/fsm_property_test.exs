@@ -866,7 +866,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
       assert Map.has_key?(state, :autoconnect_priority),
-             "Expected :autoconnect_priority in FSM state, got: \#{inspect(Map.keys(state))}"
+             "Expected :autoconnect_priority in FSM state, got: #{inspect(Map.keys(state))}"
       GenServer.stop(pid)
     end
   end
@@ -947,7 +947,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
             suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
             seed <- StreamData.integer(1..999)
           ) do
-      iface = String.slice("fsm45_\#{suffix}", 0, 15)
+      iface = String.slice("fsm45_#{suffix}", 0, 15)
       profile = make_profile(iface)
       result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
       case result do

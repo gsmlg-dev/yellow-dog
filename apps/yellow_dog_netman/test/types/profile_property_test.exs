@@ -695,7 +695,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       result = Profile.to_toml(profile)
       autoconnect = result["connection"]["autoconnect"]
       assert is_boolean(autoconnect),
-             "Expected boolean autoconnect in to_toml, got: \#{inspect(autoconnect)}"
+             "Expected boolean autoconnect in to_toml, got: #{inspect(autoconnect)}"
     end
   end
 
@@ -775,7 +775,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       case Profile.from_toml(toml) do
         {:ok, profile} ->
           assert profile.type in known_types,
-                 "Expected known type, got: \#{inspect(profile.type)}"
+                 "Expected known type, got: #{inspect(profile.type)}"
         {:error, _} -> :ok
       end
     end
@@ -882,7 +882,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     check all(type <- StreamData.member_of([:ethernet, :wifi, :loopback])) do
       p = %YellowDog.Netman.Types.Profile{id: "p45", type: type}
       assert is_atom(p.type),
-             "Expected atom type, got: \#{inspect(p.type)}"
+             "Expected atom type, got: #{inspect(p.type)}"
     end
   end
   property "Profile autoconnect field defaults to boolean" do

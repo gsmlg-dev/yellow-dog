@@ -438,7 +438,7 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     check all(mtu <- StreamData.integer(68..65535)) do
       diff = Diff.new(:set_mtu, "eth0", %{mtu: mtu})
       assert is_struct(diff, Diff),
-             "Expected Diff struct, got: \#{inspect(diff)}"
+             "Expected Diff struct, got: #{inspect(diff)}"
       assert diff.action == :set_mtu
       assert diff.params.mtu == mtu
     end
@@ -522,7 +522,7 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     check all(action <- action_gen()) do
       diff = YellowDog.Netman.Types.Diff.new(action)
       assert diff.action == action,
-             "Expected action \#{inspect(action)}, got: \#{inspect(diff.action)}"
+             "Expected action #{inspect(action)}, got: #{inspect(diff.action)}"
     end
   end
   property "Diff new with valid action produces non-nil struct" do

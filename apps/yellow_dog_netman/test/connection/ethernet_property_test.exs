@@ -496,7 +496,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     check all(s <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?(s)
       assert is_boolean(result),
-             "Expected boolean from ethernet?, got: \#{inspect(result)}"
+             "Expected boolean from ethernet?, got: #{inspect(result)}"
     end
   end
   property "Ethernet mtu for 'lo' interface returns a positive integer or nil" do

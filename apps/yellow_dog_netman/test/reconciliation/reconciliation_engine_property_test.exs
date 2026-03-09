@@ -830,7 +830,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
       observed = ObservedState.new()
       result = ReconciliationEngine.diff(desired, observed)
       assert is_list(result),
-             "Expected list from diff/2, got: \#{inspect(result)}"
+             "Expected list from diff/2, got: #{inspect(result)}"
     end
   end
 
@@ -905,7 +905,7 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = Process.whereis(YellowDog.Netman.ReconciliationEngine)
       assert is_pid(result) or is_nil(result),
-             "Expected pid or nil from whereis, got: \#{inspect(result)}"
+             "Expected pid or nil from whereis, got: #{inspect(result)}"
     end
   end
   property "ReconciliationEngine module exports list_transitions/0 or similar" do
