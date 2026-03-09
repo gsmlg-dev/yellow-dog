@@ -614,7 +614,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   property "Ethernet module_info always non-nil (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Ethernet.module_info()
-      refute is_nil(info), "Expected non-nil module_info"
+      assert is_list(info)
     end
   end
 
