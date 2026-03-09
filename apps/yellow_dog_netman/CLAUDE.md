@@ -30,8 +30,8 @@ YellowDog.Netman.Supervisor (rest_for_one)
 - **Connection.FSM** uses `:gen_statem` with `:state_functions` — NOT GenServer
 - **Kernel monitors** store state in named ETS tables for concurrent reads
 - **EventBus** uses Registry with `:duplicate` keys for topic-based PubSub
-- **ProfileStore** watches profile directory with `file_system` for hot-reload
-- **ReconciliationEngine** debounces events (100ms) and runs periodic full reconciliation
+- **ProfileStore** watches profile directory with `file_system` for hot-reload (200ms debounce)
+- **ReconciliationEngine** debounces events (100ms), subscribes to link/profile/connection events
 - **Netlink backend** is configurable: `:mock` for tests, `:port` for production
 
 ## Test Configuration
@@ -53,7 +53,7 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 748 tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 750 tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
