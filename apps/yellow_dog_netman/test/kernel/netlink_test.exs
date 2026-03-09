@@ -299,11 +299,15 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       Netlink.subscribe()
       Process.sleep(20)
 
-      send(Netlink, {:mock_event, %{
-        "type" => "command_error",
-        "cmd" => "link_set",
-        "error" => "ip link set eth99 up failed (exit status: 1): Cannot find device"
-      }})
+      send(
+        Netlink,
+        {:mock_event,
+         %{
+           "type" => "command_error",
+           "cmd" => "link_set",
+           "error" => "ip link set eth99 up failed (exit status: 1): Cannot find device"
+         }}
+      )
 
       # Give the GenServer time to process the event
       Process.sleep(50)
@@ -318,10 +322,14 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       Process.sleep(20)
 
       # Missing "cmd" field — won't match the command_error clause
-      send(Netlink, {:mock_event, %{
-        "type" => "command_error",
-        "error" => "some error"
-      }})
+      send(
+        Netlink,
+        {:mock_event,
+         %{
+           "type" => "command_error",
+           "error" => "some error"
+         }}
+      )
 
       assert_receive {:netlink_event, {:unknown, %{"type" => "command_error"}}}, 500
     end
@@ -332,18 +340,26 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       Process.sleep(20)
 
       # First send a command_error (should be filtered)
-      send(Netlink, {:mock_event, %{
-        "type" => "command_error",
-        "cmd" => "addr_add",
-        "error" => "failed"
-      }})
+      send(
+        Netlink,
+        {:mock_event,
+         %{
+           "type" => "command_error",
+           "cmd" => "addr_add",
+           "error" => "failed"
+         }}
+      )
 
       # Then send a normal event
-      send(Netlink, {:mock_event, %{
-        "type" => "link_change",
-        "action" => "add",
-        "interface" => "cmd_err_test"
-      }})
+      send(
+        Netlink,
+        {:mock_event,
+         %{
+           "type" => "link_change",
+           "action" => "add",
+           "interface" => "cmd_err_test"
+         }}
+      )
 
       # Should only receive the link_change, not the command_error
       assert_receive {:netlink_event, {:link_change, %{"interface" => "cmd_err_test"}}}, 500
