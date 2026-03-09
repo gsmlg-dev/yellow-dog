@@ -9,13 +9,21 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
 
   alias YellowDog.Netman.Kernel.Netlink
 
+  @type neighbor :: %{
+          interface: String.t(),
+          address: String.t(),
+          lladdr: String.t() | nil,
+          state: String.t(),
+          family: :inet | :inet6 | nil
+        }
+
   @table :netman_neighbors
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @spec list_neighbors() :: [map()]
+  @spec list_neighbors() :: [neighbor()]
   def list_neighbors do
     try do
       :ets.tab2list(@table)
@@ -25,7 +33,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
     end
   end
 
-  @spec get_neighbors(String.t()) :: [map()]
+  @spec get_neighbors(String.t()) :: [neighbor()]
   def get_neighbors(interface) do
     list_neighbors()
     |> Enum.filter(&(&1.interface == interface))

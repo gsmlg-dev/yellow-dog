@@ -9,13 +9,24 @@ defmodule YellowDog.Netman.Kernel.RuleManager do
 
   alias YellowDog.Netman.Kernel.Netlink
 
+  @type rule :: %{
+          action: String.t(),
+          priority: non_neg_integer(),
+          table: non_neg_integer(),
+          src: String.t() | nil,
+          dst: String.t() | nil,
+          iif: String.t() | nil,
+          oif: String.t() | nil,
+          family: :inet | :inet6 | nil
+        }
+
   @table :netman_rules
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @spec list_rules() :: [map()]
+  @spec list_rules() :: [rule()]
   def list_rules do
     try do
       :ets.tab2list(@table)

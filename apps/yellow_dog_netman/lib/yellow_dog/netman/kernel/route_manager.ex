@@ -15,6 +15,17 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   alias YellowDog.Netman.EventBus
   alias YellowDog.Netman.Kernel.Netlink
 
+  @type route :: %{
+          destination: String.t(),
+          gateway: String.t() | nil,
+          interface: String.t(),
+          metric: non_neg_integer(),
+          table: non_neg_integer(),
+          protocol: String.t() | nil,
+          scope: String.t() | nil,
+          family: :inet | :inet6 | nil
+        }
+
   @table :netman_routes
 
   ## Client API
@@ -24,14 +35,14 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   end
 
   @doc "Get routes for a specific interface."
-  @spec get_routes(String.t()) :: [map()]
+  @spec get_routes(String.t()) :: [route()]
   def get_routes(interface) do
     list_all()
     |> Enum.filter(&(&1.interface == interface))
   end
 
   @doc "List all routes."
-  @spec list_all() :: [map()]
+  @spec list_all() :: [route()]
   def list_all do
     try do
       :ets.tab2list(@table)
@@ -43,7 +54,7 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   end
 
   @doc "Get the current default route."
-  @spec default_route() :: map() | nil
+  @spec default_route() :: route() | nil
   def default_route do
     list_all()
     |> Enum.find(&(&1.destination == "default" or &1.destination == "0.0.0.0/0"))

@@ -15,6 +15,16 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
   alias YellowDog.Netman.EventBus
   alias YellowDog.Netman.Kernel.Netlink
 
+  @type link :: %{
+          interface: String.t(),
+          index: non_neg_integer(),
+          state: :up | :down | :unknown,
+          carrier: boolean(),
+          mtu: pos_integer(),
+          mac: String.t() | nil,
+          kind: String.t() | nil
+        }
+
   @table :netman_links
 
   ## Client API
@@ -24,7 +34,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
   end
 
   @doc "List all known links."
-  @spec list_links() :: [map()]
+  @spec list_links() :: [link()]
   def list_links do
     try do
       :ets.tab2list(@table)
@@ -35,7 +45,7 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
   end
 
   @doc "Get a specific link by interface name."
-  @spec get_link(String.t()) :: map() | nil
+  @spec get_link(String.t()) :: link() | nil
   def get_link(interface) do
     case :ets.lookup(@table, interface) do
       [{_key, link}] -> link

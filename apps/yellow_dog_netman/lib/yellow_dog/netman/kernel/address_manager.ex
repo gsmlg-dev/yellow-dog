@@ -15,6 +15,14 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   alias YellowDog.Netman.EventBus
   alias YellowDog.Netman.Kernel.Netlink
 
+  @type address :: %{
+          address: String.t(),
+          prefix_len: non_neg_integer(),
+          family: :inet | :inet6,
+          scope: String.t() | nil,
+          interface: String.t()
+        }
+
   @table :netman_addresses
 
   ## Client API
@@ -24,7 +32,7 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   @doc "Get all addresses for an interface."
-  @spec get_addresses(String.t()) :: [map()]
+  @spec get_addresses(String.t()) :: [address()]
   def get_addresses(interface) do
     case :ets.lookup(@table, interface) do
       [{_key, addresses}] -> addresses
@@ -35,7 +43,7 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   end
 
   @doc "Get all addresses across all interfaces."
-  @spec list_all() :: %{String.t() => [map()]}
+  @spec list_all() :: %{String.t() => [address()]}
   def list_all do
     try do
       :ets.tab2list(@table)
