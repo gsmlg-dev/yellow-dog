@@ -493,12 +493,13 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
-  property "new/0 ObservedState is always equal to itself" do
+  property "new/0 two independent ObservedState.new() calls produce equal results" do
     check all(_ <- StreamData.constant(:ok)) do
-      state = ObservedState.new()
+      state1 = ObservedState.new()
+      state2 = ObservedState.new()
 
-      assert state == state,
-             "Expected ObservedState to be equal to itself"
+      assert state1 == state2,
+             "Expected two new ObservedStates to be equal"
     end
   end
 
