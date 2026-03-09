@@ -66,8 +66,6 @@ defmodule YellowDog.Resolved.Management.Client do
         Logger.warning("[Resolved] Management connection failed: #{inspect(reason)}")
         schedule_reconnect(state)
     end
-
-    {:noreply, state}
   end
 
   def handle_info(:heartbeat, %{connected: true} = state) do

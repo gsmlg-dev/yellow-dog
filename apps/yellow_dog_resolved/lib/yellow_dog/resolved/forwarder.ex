@@ -66,10 +66,10 @@ defmodule YellowDog.Resolved.Forwarder do
   end
 
   @impl true
-  def handle_info({:udp, _socket, from_ip, _from_port, data}, state) do
-    case DNS.Message.from_iodata(data) do
-      %DNS.Message{header: %{id: txn_id}} = response ->
-        handle_response(txn_id, response, from_ip, state)
+  def handle_info({:forward_response, txn_id, response_data, upstream}, state) do
+    case DNS.Message.from_iodata(response_data) do
+      %DNS.Message{} = response ->
+        handle_response(txn_id, response, upstream, state)
 
       _ ->
         {:noreply, state}
@@ -133,19 +133,20 @@ defmodule YellowDog.Resolved.Forwarder do
       %{upstream: upstream, domain: query_domain(query), type: query_type(query)}
     )
 
-    # Send via Abyss.Client (fire-and-forget, we'll receive via handle_info)
+    # Send via Abyss.Client, capturing Forwarder PID for message delivery
+    forwarder = self()
+
     Task.start(fn ->
       case Abyss.Client.send_recv(upstream, 53, packet, state.timeout_ms) do
         {:ok, response_data} ->
-          send(self(), {:forward_response, txn_id, response_data, upstream})
+          send(forwarder, {:forward_response, txn_id, response_data, upstream})
 
-        {:error, :timeout} ->
-          send(self(), {:timeout, txn_id})
+        {:error, _reason} ->
+          send(forwarder, {:timeout, txn_id})
       end
     end)
 
-    # Alternative: use direct UDP for better control
-    timer_ref = Process.send_after(self(), {:timeout, txn_id}, state.timeout_ms)
+    timer_ref = Process.send_after(self(), {:timeout, txn_id}, state.timeout_ms + 500)
 
     pending = %{
       txn_id: txn_id,

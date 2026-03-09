@@ -20,7 +20,9 @@ defmodule YellowDog.Resolved.RouterTest do
     discovery: %{enabled: false, websocket: %{}},
     intercept_rules: [
       %{match: {:exact, "myapp.test"}, type: :a, value: "192.168.1.100", ttl: 600},
-      %{match: {:suffix, "local.dev"}, type: :a, value: "127.0.0.1", ttl: 300}
+      %{match: {:suffix, "local.dev"}, type: :a, value: "127.0.0.1", ttl: 300},
+      %{match: {:prefix, "dev-"}, type: :a, value: "10.0.0.1", ttl: 300},
+      %{match: {:exact, "myapp.test"}, type: :aaaa, value: "::1", ttl: 300}
     ]
   }
 
@@ -60,6 +62,14 @@ defmodule YellowDog.Resolved.RouterTest do
       assert length(response.anlist) == 1
     end
 
+    test "intercepts prefix match domain" do
+      query = build_query("dev-server.example.com")
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert length(response.anlist) == 1
+    end
+
     test "returns empty answer when query type doesn't match rule type" do
       query = build_query("myapp.test", :aaaa)
       response = Router.resolve(query)
@@ -67,6 +77,188 @@ defmodule YellowDog.Resolved.RouterTest do
       assert response.header.qr == 1
       assert response.header.rcode == DNS.Message.RCode.no_error()
       assert response.anlist == []
+    end
+
+    test "case-insensitive intercept matching" do
+      query = build_query("MYAPP.TEST")
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert length(response.anlist) == 1
+    end
+
+    test "first match wins for intercept rules" do
+      query = build_query("myapp.test")
+      response = Router.resolve(query)
+
+      assert length(response.anlist) == 1
+      [record] = response.anlist
+      assert record.ttl == 600
+    end
+  end
+
+  describe "resolve/1 with cache" do
+    test "serves response from cache when available" do
+      domain = "cached.example.com"
+      query = build_query(domain)
+
+      # Extract the actual type the Router will use for cache key
+      [question] = query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      fake_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 99999,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 1,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [DNS.Message.Record.new(domain, :a, :in, 300, {1, 2, 3, 4})],
+        nslist: [],
+        arlist: []
+      }
+
+      # Store using same domain/type the Router will look up with
+      Cache.store(domain_str, dns_type, fake_response, 300)
+      Process.sleep(10)
+
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert response.header.id == query.header.id
+      assert length(response.anlist) == 1
+    end
+
+    test "rewrites cached response txn_id to match current query" do
+      domain = "txnid-test.example.com"
+      query = build_query(domain)
+
+      [question] = query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      fake_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 11111,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      Cache.store(domain_str, dns_type, fake_response, 300)
+      Process.sleep(10)
+
+      response = Router.resolve(query)
+      assert response.header.id == query.header.id
+      assert response.header.id != 11111
+    end
+  end
+
+  describe "resolve/1 telemetry" do
+    test "emits query start and stop events for intercept" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        "test-query-start-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :query, :start],
+        fn _name, _measurements, metadata, _config ->
+          send(parent, {:telemetry, :start, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        "test-query-stop-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :query, :stop],
+        fn _name, measurements, metadata, _config ->
+          send(parent, {:telemetry, :stop, metadata, measurements})
+        end,
+        nil
+      )
+
+      query = build_query("myapp.test")
+      Router.resolve(query)
+
+      assert_receive {:telemetry, :start, %{domain: "myapp.test." <> _}}
+      assert_receive {:telemetry, :stop, %{source: :intercept}, %{duration: _}}
+
+      :telemetry.detach("test-query-start-#{inspect(ref)}")
+      :telemetry.detach("test-query-stop-#{inspect(ref)}")
+    end
+
+    test "emits cache source for cached responses" do
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        "test-cache-source-#{inspect(ref)}",
+        [:yellow_dog, :resolved, :query, :stop],
+        fn _name, _measurements, metadata, _config ->
+          send(parent, {:telemetry, :stop, metadata})
+        end,
+        nil
+      )
+
+      domain = "telemetry-cached.example.com"
+      query = build_query(domain)
+
+      [question] = query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      fake_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      Cache.store(domain_str, dns_type, fake_response, 300)
+      Process.sleep(10)
+
+      Router.resolve(query)
+
+      assert_receive {:telemetry, :stop, %{source: :cache}}
+
+      :telemetry.detach("test-cache-source-#{inspect(ref)}")
     end
   end
 end
