@@ -765,7 +765,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
           ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       result = YellowDog.Netman.Types.ObservedState.put_link(state, %{interface: iface, up: up})
-      refute is_nil(result), "Expected non-nil from put_link"
+      assert %YellowDog.Netman.Types.ObservedState{} = result
     end
   end
 
@@ -980,10 +980,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     end
   end
 
-  property "observed_state add_link updates links map (r81)" do
+  property "observed_state put_link updates links map (r81)" do
     check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       state = ObservedState.new()
-      updated = ObservedState.add_link(state, name, %{state: :up})
+      updated = ObservedState.put_link(state, %{interface: name, state: :up})
       assert is_map(updated.links)
       assert map_size(updated.links) >= 1
     end
