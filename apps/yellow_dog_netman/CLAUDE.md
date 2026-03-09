@@ -53,6 +53,14 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 255 tests, 92%+ coverage
+cd apps/yellow_dog_netman && mix test     # 748 tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
+
+## Testing Notes
+
+- Property tests (21 files, 2055 properties) take ~25 minutes — use `--exclude property` for quick feedback
+- `ReconciliationEngine.reconcile()` is async cast + debounce — in tests, use `send(ReconciliationEngine, :debounced_reconcile)` to bypass
+- 203 Rust tests in `native/netlink_helper/` — run with `CARGO_TARGET_DIR=/tmp/... cargo test`
+- Rust `target/` dir may be root-owned from Docker builds; use temp target dir for local runs
