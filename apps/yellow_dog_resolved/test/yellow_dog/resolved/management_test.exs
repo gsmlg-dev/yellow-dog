@@ -114,7 +114,10 @@ defmodule YellowDog.Resolved.ManagementTest do
         })
 
       data = result["data"]
-      assert data["queries_total"] == data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"]
+
+      assert data["queries_total"] ==
+               data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"]
+
       assert data["queries_intercepted"] == 2
       assert data["queries_cached"] == 1
       assert data["queries_forwarded"] == 0

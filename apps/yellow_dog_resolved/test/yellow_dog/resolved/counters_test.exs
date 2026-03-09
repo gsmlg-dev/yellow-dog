@@ -46,7 +46,10 @@ defmodule YellowDog.Resolved.CountersTest do
       Counters.increment(:forwarded)
 
       counters = Counters.get()
-      assert counters.total == counters.intercepted + counters.cached + counters.forwarded + counters.error
+
+      assert counters.total ==
+               counters.intercepted + counters.cached + counters.forwarded + counters.error
+
       assert counters.total == 4
     end
   end
@@ -183,7 +186,10 @@ defmodule YellowDog.Resolved.CountersTest do
       Router.resolve(build_query("notintercepted.example.com"))
 
       counters = Counters.get()
-      assert counters.total == counters.intercepted + counters.cached + counters.forwarded + counters.error
+
+      assert counters.total ==
+               counters.intercepted + counters.cached + counters.forwarded + counters.error
+
       assert counters.total == 3
     end
   end

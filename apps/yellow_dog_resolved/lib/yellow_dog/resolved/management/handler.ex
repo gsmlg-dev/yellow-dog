@@ -33,7 +33,6 @@ defmodule YellowDog.Resolved.Management.Handler do
             Cache.flush_pattern(domain)
           else
             Cache.flush(domain)
-            1
           end
       end
 

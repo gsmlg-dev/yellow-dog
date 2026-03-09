@@ -70,7 +70,7 @@ defmodule YellowDog.Resolved.Cache do
     GenServer.call(__MODULE__, :flush)
   end
 
-  @spec flush(String.t()) :: :ok
+  @spec flush(String.t()) :: non_neg_integer()
   def flush(domain) do
     GenServer.call(__MODULE__, {:flush, domain})
   end
@@ -187,7 +187,7 @@ defmodule YellowDog.Resolved.Cache do
       %{pattern: domain, count: count}
     )
 
-    {:reply, :ok, state}
+    {:reply, count, state}
   end
 
   def handle_call({:flush_pattern, pattern}, _from, state) do
