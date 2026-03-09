@@ -1063,4 +1063,203 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert {:keep_state, ^data} = result
     end
   end
+
+  # ----------------------------------------------------------------
+  # CIDR parsing edge cases (FSM.ex parse_cidr/1)
+  # ----------------------------------------------------------------
+
+  describe "CIDR parsing edge cases via configure_ip" do
+    @moduletag :capture_log
+
+    test "prefix > 128 defaults to /32 for IPv4" do
+      iface = "hdlr_cidr_big_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "cidr-big-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.1/999", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      # Should proceed to ip_check (invalid prefix falls back to /32)
+      assert {:next_state, :ip_check, _new_data, _actions} = result
+    end
+
+    test "negative prefix defaults to /32 for IPv4" do
+      iface = "hdlr_cidr_neg_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "cidr-neg-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.1/-5", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      assert {:next_state, :ip_check, _new_data, _actions} = result
+    end
+
+    test "address without prefix defaults to /32" do
+      iface = "hdlr_cidr_bare_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "cidr-bare-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :manual, address: "10.0.0.1", gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      assert {:next_state, :ip_check, _new_data, _actions} = result
+    end
+
+    test "IPv6 address without prefix defaults to /128" do
+      iface = "hdlr_cidr_v6_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "cidr-v6-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :manual, address: "2001:db8::1", gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      # IPv6 only, IPv4 disabled — the IPv6 static address is applied, then
+      # IPv4 disabled path transitions to ip_check
+      assert {:next_state, :ip_check, _new_data, _actions} = result
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # Activated: address removal edge cases
+  # ----------------------------------------------------------------
+
+  describe "activated address removal edge cases (direct)" do
+    test "address removal with ipv4 disabled keeps state" do
+      iface = "hdlr_adr_dis_#{:rand.uniform(65535)}"
+
+      disabled_ipv4_profile = %Profile{
+        id: "adr-dis-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{
+        interface: iface,
+        profile: disabled_ipv4_profile,
+        current_state: :activated
+      }
+
+      result =
+        FSM.activated(
+          :info,
+          {:netman_event, "netman:address:#{iface}", {:remove, %{scope: :global}}},
+          data
+        )
+
+      # ipv4 disabled → line 401: {:keep_state, data}
+      assert {:keep_state, ^data} = result
+    end
+
+    test "DHCP lease expired triggers deactivation" do
+      iface = "hdlr_lease_exp_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :activated,
+        lease: %{address: "10.0.0.50"}
+      }
+
+      result = FSM.activated(:info, {:dhcp_lease_expired, :timeout}, data)
+      assert {:next_state, :deactivating, _new_data, actions} = result
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :cleanup} -> true
+               _ -> false
+             end)
+    end
+
+    test "interface removed while activated cleans up and goes unavailable" do
+      iface = "hdlr_act_rm_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :activated,
+        lease: %{address: "10.0.0.50"}
+      }
+
+      result =
+        FSM.activated(
+          :info,
+          {:netman_event, "netman:link:#{iface}", {:removed, iface}},
+          data
+        )
+
+      assert {:next_state, :unavailable, new_data, _actions} = result
+      assert new_data.lease == nil
+    end
+
+    test "catch-all in activated ignores unknown events" do
+      iface = "hdlr_act_unk_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :activated}
+
+      result = FSM.activated(:info, :unknown_event, data)
+      assert {:keep_state, ^data} = result
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # setup_link: MTU exit exception
+  # ----------------------------------------------------------------
+
+  describe "setup_link MTU exit exception" do
+    test "exit during set_mtu is caught and returns error" do
+      iface = "hdlr_mtu_exit_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: Map.put(profile, :ethernet, %{mtu: 9000})}
+
+      mock =
+        mock_link_module(%{
+          set_mtu: fn _, _ -> exit(:netlink_down) end,
+          set_link_up: fn _ -> :ok end
+        })
+
+      assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, mock)
+    end
+  end
 end
