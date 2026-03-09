@@ -965,8 +965,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     check all(_x <- boolean()) do
       ds = DesiredState.from_profiles([])
       # Check it's a proper struct
-      refute is_nil(ds)
-      assert is_struct(ds)
+      assert %DesiredState{} = ds
     end
   end
 
@@ -1003,7 +1002,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
   property "desired_state struct has no nil __struct__ (r94)" do
     check all(_x <- boolean()) do
       ds = DesiredState.from_profiles([])
-      refute is_nil(ds.__struct__)
+      assert ds.__struct__ == DesiredState
     end
   end
 

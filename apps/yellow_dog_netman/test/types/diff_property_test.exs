@@ -808,7 +808,7 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
   property "Diff new never returns nil for any valid action (r74)" do
     check all(action <- action_gen()) do
       diff = YellowDog.Netman.Types.Diff.new(action)
-      refute is_nil(diff)
+      assert %YellowDog.Netman.Types.Diff{} = diff
     end
   end
 
