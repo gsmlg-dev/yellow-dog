@@ -71,7 +71,8 @@ defmodule YellowDog.Netman.ProfileStoreCoverageTest do
       initial_count = length(ProfileStore.list())
 
       send(ProfileStore, {:file_event, self(), {nonexistent, [:modified]}})
-      Process.sleep(100)
+      # Wait for debounce timer (200ms) to flush pending reloads
+      Process.sleep(300)
 
       # Should not crash; profile count unchanged
       assert Process.alive?(Process.whereis(ProfileStore))

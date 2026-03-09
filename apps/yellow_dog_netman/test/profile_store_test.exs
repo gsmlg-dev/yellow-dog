@@ -100,7 +100,8 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
       # Simulate the file_event that FileSystem would send
       send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
-      Process.sleep(100)
+      # Wait for debounce timer (200ms) to flush pending reloads
+      Process.sleep(300)
 
       # Profile should now be in the store
       assert {:ok, profile} = ProfileStore.get("hotreload-test-profile")
@@ -116,6 +117,49 @@ defmodule YellowDog.Netman.ProfileStoreTest do
       # Cleanup
       File.rm(tmp_file)
       ProfileStore.delete("hotreload-test-profile")
+    end
+
+    test "multiple rapid file events are debounced into a single reload" do
+      tmp_dir = System.tmp_dir!()
+      tmp_file = Path.join(tmp_dir, "debounce_test_#{:rand.uniform(65535)}.toml")
+
+      toml_content = """
+      [connection]
+      id = "debounce-test-profile"
+      type = "ethernet"
+      interface = "eth98"
+      autoconnect = false
+
+      [ipv4]
+      method = "disabled"
+
+      [ipv6]
+      method = "disabled"
+      """
+
+      File.write!(tmp_file, toml_content)
+      on_exit(fn -> File.rm(tmp_file) end)
+
+      YellowDog.Netman.EventBus.subscribe("netman:profile:changed")
+
+      # Send 5 rapid file events (simulating editor save behavior)
+      for _ <- 1..5 do
+        send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
+      end
+
+      # Wait for debounce to flush
+      Process.sleep(400)
+
+      # Should receive exactly one reload event, not five
+      assert_receive {:netman_event, "netman:profile:changed",
+                      {:reloaded, "debounce-test-profile"}},
+                     500
+
+      refute_receive {:netman_event, "netman:profile:changed",
+                      {:reloaded, "debounce-test-profile"}},
+                     200
+
+      ProfileStore.delete("debounce-test-profile")
     end
 
     test "non-TOML file events are ignored" do
@@ -208,7 +252,8 @@ defmodule YellowDog.Netman.ProfileStoreTest do
 
       existing_count = length(ProfileStore.list())
       send(ProfileStore, {:file_event, self(), {tmp_file, [:modified]}})
-      Process.sleep(100)
+      # Wait for debounce timer (200ms) to flush pending reloads
+      Process.sleep(300)
 
       assert Process.alive?(Process.whereis(ProfileStore))
       assert length(ProfileStore.list()) == existing_count

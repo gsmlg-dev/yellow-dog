@@ -5,7 +5,8 @@ defmodule YellowDog.Netman.MixProject do
     [
       app: :yellow_dog_netman,
       version: "0.1.0",
-      description: "Network manager for wired ethernet with DHCP/static IP, reconciliation engine, and netlink integration",
+      description:
+        "Network manager for wired ethernet with DHCP/static IP, reconciliation engine, and netlink integration",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

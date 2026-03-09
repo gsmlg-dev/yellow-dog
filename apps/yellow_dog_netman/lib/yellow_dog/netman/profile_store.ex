@@ -17,8 +17,15 @@ defmodule YellowDog.Netman.ProfileStore do
 
   @default_profile_dir "/etc/yellowdog/netman/profiles"
   @max_profile_file_bytes 1_048_576
+  @watcher_debounce_ms 200
 
-  defstruct [:profile_dir, :watcher_pid, profiles: %{}]
+  defstruct [
+    :profile_dir,
+    :watcher_pid,
+    :debounce_ref,
+    profiles: %{},
+    pending_reloads: MapSet.new()
+  ]
 
   ## Client API
 
@@ -145,12 +152,31 @@ defmodule YellowDog.Netman.ProfileStore do
   @impl true
   def handle_info({:file_event, _watcher_pid, {path, events}}, state) do
     if Path.extname(path) == ".toml" and :modified in events and not symlink?(path) do
-      Logger.info("Profile file changed: #{path}")
-      state = reload_profile(state, path)
-      {:noreply, state}
+      # Debounce: accumulate paths and process after a short delay.
+      # Editors often emit multiple events per save.
+      pending = MapSet.put(state.pending_reloads, path)
+
+      debounce_ref =
+        if state.debounce_ref do
+          state.debounce_ref
+        else
+          Process.send_after(self(), :flush_pending_reloads, @watcher_debounce_ms)
+        end
+
+      {:noreply, %{state | pending_reloads: pending, debounce_ref: debounce_ref}}
     else
       {:noreply, state}
     end
+  end
+
+  def handle_info(:flush_pending_reloads, state) do
+    state =
+      Enum.reduce(state.pending_reloads, state, fn path, acc ->
+        Logger.info("Profile file changed: #{path}")
+        reload_profile(acc, path)
+      end)
+
+    {:noreply, %{state | pending_reloads: MapSet.new(), debounce_ref: nil}}
   end
 
   def handle_info({:file_event, _watcher_pid, :stop}, state) do
