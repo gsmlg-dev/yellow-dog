@@ -270,6 +270,34 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       assert Process.alive?(pid)
     end
 
+    test "connection state change event triggers debounced reconcile" do
+      test_pid = self()
+      handler_id = {__MODULE__, :conn_event, :rand.uniform(1_000_000)}
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :netman, :reconciliation, :stop],
+        fn _event, measurements, _meta, _config ->
+          send(test_pid, {:recon_done, measurements})
+        end,
+        nil
+      )
+
+      # Publish a connection state change event
+      YellowDog.Netman.EventBus.publish(
+        "netman:connection:test-conn",
+        {:state_change, :activated, :failed}
+      )
+
+      # Wait for debounce + trigger reconciliation
+      Process.sleep(150)
+      send(ReconciliationEngine, :debounced_reconcile)
+
+      assert_receive {:recon_done, _}, 1000
+
+      :telemetry.detach(handler_id)
+    end
+
     test "second reconcile within debounce window hits already-set debounce_ref branch" do
       # Cast reconcile twice rapidly — the second cast sees debounce_ref already set
       # and returns state unchanged (the `if state.debounce_ref do state end` branch)

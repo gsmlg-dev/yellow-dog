@@ -58,6 +58,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     # Subscribe to relevant events
     EventBus.subscribe("netman:link:*")
     EventBus.subscribe("netman:profile:changed")
+    EventBus.subscribe("netman:connection:*")
 
     # Schedule initial reconciliation
     Process.send_after(self(), :initial_reconcile, 100)
