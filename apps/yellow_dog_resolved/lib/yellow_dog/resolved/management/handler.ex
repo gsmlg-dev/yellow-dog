@@ -81,10 +81,10 @@ defmodule YellowDog.Resolved.Management.Handler do
       "id" => id,
       "data" => %{
         "uptime_s" => uptime_seconds(),
-        "queries_total" => stats.hits + stats.misses,
-        "queries_intercepted" => 0,
+        "queries_total" => stats.queries_intercepted + stats.hits + stats.queries_forwarded,
+        "queries_intercepted" => stats.queries_intercepted,
         "queries_cached" => stats.hits,
-        "queries_forwarded" => stats.misses
+        "queries_forwarded" => stats.queries_forwarded
       }
     }
   end

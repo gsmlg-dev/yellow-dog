@@ -27,10 +27,19 @@ defmodule YellowDog.Resolved.Router do
 
     source =
       case result do
-        {:intercept, _} -> :intercept
-        {:cache, _} -> :cache
-        {:forward, _} -> :forward
-        {:error, _} -> :error
+        {:intercept, _} ->
+          Cache.increment_intercepted()
+          :intercept
+
+        {:cache, _} ->
+          :cache
+
+        {:forward, _} ->
+          Cache.increment_forwarded()
+          :forward
+
+        {:error, _} ->
+          :error
       end
 
     response = elem(result, 1)

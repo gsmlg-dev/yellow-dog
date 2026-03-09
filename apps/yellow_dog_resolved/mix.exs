@@ -32,6 +32,7 @@ defmodule YellowDog.Resolved.MixProject do
       {:file_system, "~> 1.0"},
       {:mint_web_socket, "~> 1.0"},
       {:jason, "~> 1.4"},
+      {:stream_data, "~> 1.0", only: [:test]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

@@ -80,12 +80,26 @@ defmodule YellowDog.Resolved.Cache do
     GenServer.call(__MODULE__, {:flush_pattern, pattern})
   end
 
+  @spec increment_intercepted() :: :ok
+  def increment_intercepted do
+    :ets.update_counter(@stats_table, :queries_intercepted, 1)
+    :ok
+  end
+
+  @spec increment_forwarded() :: :ok
+  def increment_forwarded do
+    :ets.update_counter(@stats_table, :queries_forwarded, 1)
+    :ok
+  end
+
   @spec stats() :: map()
   def stats do
     entries = :ets.info(@table, :size)
     [{_, hits}] = :ets.lookup(@stats_table, :hits)
     [{_, misses}] = :ets.lookup(@stats_table, :misses)
     [{_, evictions}] = :ets.lookup(@stats_table, :evictions)
+    [{_, intercepted}] = :ets.lookup(@stats_table, :queries_intercepted)
+    [{_, forwarded}] = :ets.lookup(@stats_table, :queries_forwarded)
 
     total = hits + misses
     hit_rate = if total > 0, do: Float.round(hits / total, 2), else: 0.0
@@ -107,7 +121,9 @@ defmodule YellowDog.Resolved.Cache do
       misses: misses,
       evictions: evictions,
       hit_rate: hit_rate,
-      oldest_entry_age_s: oldest
+      oldest_entry_age_s: oldest,
+      queries_intercepted: intercepted,
+      queries_forwarded: forwarded
     }
   end
 
@@ -117,7 +133,14 @@ defmodule YellowDog.Resolved.Cache do
   def init(config) do
     table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
     stats = :ets.new(@stats_table, [:named_table, :set, :public])
-    :ets.insert(stats, [{:hits, 0}, {:misses, 0}, {:evictions, 0}])
+
+    :ets.insert(stats, [
+      {:hits, 0},
+      {:misses, 0},
+      {:evictions, 0},
+      {:queries_intercepted, 0},
+      {:queries_forwarded, 0}
+    ])
 
     sweep_interval = Map.get(config, :sweep_interval_s, 60) * 1000
     schedule_sweep(sweep_interval)
