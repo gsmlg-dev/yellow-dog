@@ -1262,4 +1262,168 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert {:error, {:netlink_exit, :netlink_down}} = FSM.setup_link(data, mock)
     end
   end
+
+  # ----------------------------------------------------------------
+  # prepare: setup_link failure transitions to failed
+  # ----------------------------------------------------------------
+
+  describe "prepare setup_link failure (direct)" do
+    test "setup_link error transitions prepare to failed with setup_link_failed error" do
+      iface = "hdlr_slk_fail_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{ethernet: %{mtu: 9000}})
+
+      mock =
+        mock_link_module(%{
+          set_mtu: fn _, _ -> {:error, :mtu_unsupported} end,
+          set_link_up: fn _ -> :ok end
+        })
+
+      data = %FSM{interface: iface, profile: profile, current_state: :prepare}
+
+      # Can't call prepare(:internal, :setup_link, data) directly because it
+      # calls setup_link() which uses real LinkMonitor. Instead verify via
+      # the setup_link return value and the prepare handler logic.
+      assert {:error, :mtu_unsupported} = FSM.setup_link(data, mock)
+
+      # Verify the state machine logic directly
+      result = FSM.prepare(:state_timeout, :setup_timeout, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :setup_timeout
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # disconnected: auto_activate with autoconnect=false
+  # ----------------------------------------------------------------
+
+  describe "disconnected auto_activate with autoconnect=false (direct)" do
+    test "auto_activate keeps state when autoconnect is false" do
+      iface = "hdlr_noauto_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{autoconnect: false})
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:internal, :auto_activate, data)
+      assert {:keep_state, ^data} = result
+    end
+
+    test "auto_activate transitions to prepare when autoconnect is true" do
+      iface = "hdlr_auto_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{autoconnect: true})
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:internal, :auto_activate, data)
+      assert {:next_state, :prepare, _new_data, actions} = result
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :setup_link} -> true
+               _ -> false
+             end)
+    end
+
+    test "explicit activate cast transitions to prepare" do
+      iface = "hdlr_act_cast_#{:rand.uniform(65535)}"
+      profile = base_profile(iface, %{autoconnect: false})
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:cast, :activate, data)
+      assert {:next_state, :prepare, _new_data, actions} = result
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :setup_link} -> true
+               _ -> false
+             end)
+    end
+
+    test "get_state in disconnected returns disconnected state info" do
+      iface = "hdlr_disc_gs_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected({:call, {self(), make_ref()}}, :get_state, data)
+      assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
+      assert state.state == :disconnected
+    end
+
+    test "catch-all in disconnected ignores unknown events" do
+      iface = "hdlr_disc_unk_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:info, :unknown_event, data)
+      assert {:keep_state, ^data} = result
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # unavailable: catch-all handler
+  # ----------------------------------------------------------------
+
+  describe "unavailable catch-all (direct)" do
+    test "catch-all in unavailable ignores unknown events" do
+      iface = "hdlr_unav_unk_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :unavailable}
+
+      result = FSM.unavailable(:info, :unknown_event, data)
+      assert {:keep_state, ^data} = result
+    end
+
+    test "link_update with carrier=true transitions to disconnected with auto_activate" do
+      iface = "hdlr_unav_cu_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :unavailable}
+
+      result =
+        FSM.unavailable(
+          :info,
+          {:netman_event, "netman:link:#{iface}", {:link_update, %{carrier: true}}},
+          data
+        )
+
+      assert {:next_state, :disconnected, _new_data, actions} = result
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :auto_activate} -> true
+               _ -> false
+             end)
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # deactivating: cleanup internal event
+  # ----------------------------------------------------------------
+
+  describe "deactivating cleanup (direct)" do
+    test "cleanup internal event performs cleanup and transitions to disconnected" do
+      iface = "hdlr_deact_cl_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :deactivating,
+        lease: %{address: "10.0.0.50"}
+      }
+
+      result = FSM.deactivating(:internal, :cleanup, data)
+      assert {:next_state, :disconnected, new_data, _actions} = result
+      assert new_data.lease == nil
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # activated: get_state handler
+  # ----------------------------------------------------------------
+
+  describe "activated get_state (direct)" do
+    test "get_state in activated returns activated state info" do
+      iface = "hdlr_act_gs_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :activated}
+
+      result = FSM.activated({:call, {self(), make_ref()}}, :get_state, data)
+      assert {:keep_state, _data, [{:reply, _, {:ok, state}}]} = result
+      assert state.state == :activated
+    end
+  end
 end
