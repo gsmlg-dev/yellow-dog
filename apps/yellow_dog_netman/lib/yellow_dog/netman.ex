@@ -35,7 +35,7 @@ defmodule YellowDog.Netman do
   ## Interface Operations
 
   @doc "Lists all known network interfaces."
-  @spec list_interfaces() :: [map()]
+  @spec list_interfaces() :: [LinkMonitor.link()]
   def list_interfaces do
     LinkMonitor.list_links()
   end
