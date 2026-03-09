@@ -10,14 +10,11 @@ defmodule YellowDog.Netman.Kernel.RuleManager do
   alias YellowDog.Netman.Kernel.Netlink
 
   @type rule :: %{
-          action: String.t(),
           priority: non_neg_integer(),
           table: non_neg_integer(),
-          src: String.t() | nil,
-          dst: String.t() | nil,
-          iif: String.t() | nil,
-          oif: String.t() | nil,
-          family: :inet | :inet6 | nil
+          source: String.t() | nil,
+          destination: String.t() | nil,
+          interface: String.t() | nil
         }
 
   @table :netman_rules

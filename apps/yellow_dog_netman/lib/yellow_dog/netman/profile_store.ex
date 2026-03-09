@@ -188,6 +188,12 @@ defmodule YellowDog.Netman.ProfileStore do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, state) do
+    if state.debounce_ref, do: Process.cancel_timer(state.debounce_ref)
+    :ok
+  end
+
   ## Internal
 
   defp valid_profile_path?(path) when is_binary(path) do

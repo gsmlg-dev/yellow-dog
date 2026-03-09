@@ -12,9 +12,8 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitor do
   @type neighbor :: %{
           interface: String.t(),
           address: String.t(),
-          lladdr: String.t() | nil,
-          state: String.t(),
-          family: :inet | :inet6 | nil
+          mac: String.t() | nil,
+          state: :reachable | :stale | :delay | :probe | :failed | :permanent | :none
         }
 
   @table :netman_neighbors
