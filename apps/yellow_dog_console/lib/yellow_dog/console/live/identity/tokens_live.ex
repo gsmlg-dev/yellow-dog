@@ -115,54 +115,56 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
         <div :if={@new_token_raw} class="alert alert-success">
           <div>
             <p class="font-bold">Token created! Copy it now — it won't be shown again.</p>
-            <code class="block mt-2 p-2 bg-base-300 rounded text-sm break-all">{@new_token_raw}</code>
+            <code class="block mt-2 p-2 bg-surface-container-high rounded text-sm break-all">
+              {@new_token_raw}
+            </code>
           </div>
           <button class="btn btn-sm btn-ghost" phx-click="dismiss_token">Dismiss</button>
         </div>
 
-        <div :if={@show_create} class="card bg-base-100 shadow">
+        <div :if={@show_create} class="card bg-surface shadow">
           <div class="card-body">
             <h2 class="card-title">Create Provisioning Token</h2>
             <form phx-submit="create_token" class="space-y-4">
-              <div class="form-control">
-                <label class="label"><span class="label-text">Hostname Pattern</span></label>
+              <div class="form-group">
+                <label class="form-label">Hostname Pattern</label>
                 <input
                   type="text"
                   name="hostname_pattern"
                   value={@form["hostname_pattern"].value}
-                  class="input input-bordered"
+                  class="input"
                   placeholder="node-*"
                 />
               </div>
               <div class="grid grid-cols-2 gap-4">
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Max Uses</span></label>
+                <div class="form-group">
+                  <label class="form-label">Max Uses</label>
                   <input
                     type="number"
                     name="max_uses"
                     value={@form["max_uses"].value}
                     min="1"
-                    class="input input-bordered"
+                    class="input"
                   />
                 </div>
-                <div class="form-control">
-                  <label class="label"><span class="label-text">TTL (hours)</span></label>
+                <div class="form-group">
+                  <label class="form-label">TTL (hours)</label>
                   <input
                     type="number"
                     name="ttl_hours"
                     value={@form["ttl_hours"].value}
                     min="1"
-                    class="input input-bordered"
+                    class="input"
                   />
                 </div>
               </div>
-              <div class="form-control">
-                <label class="label"><span class="label-text">Role (optional)</span></label>
+              <div class="form-group">
+                <label class="form-label">Role (optional)</label>
                 <input
                   type="text"
                   name="role"
                   value={@form["role"].value}
-                  class="input input-bordered"
+                  class="input"
                   placeholder="worker"
                 />
               </div>
@@ -172,7 +174,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
         </div>
 
         <div class="overflow-x-auto">
-          <table class="table table-zebra w-full">
+          <table class="table table-striped w-full">
             <thead>
               <tr>
                 <th>ID</th>
@@ -214,7 +216,7 @@ defmodule YellowDog.Console.IdentityLive.TokensLive do
                 </td>
               </tr>
               <tr :if={@tokens == []}>
-                <td colspan="8" class="text-center text-base-content/50 py-8">
+                <td colspan="8" class="text-center text-on-surface-variant py-8">
                   No provisioning tokens
                 </td>
               </tr>

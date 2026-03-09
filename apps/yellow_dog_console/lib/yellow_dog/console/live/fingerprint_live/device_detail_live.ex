@@ -39,7 +39,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold font-mono">{@mac}</h1>
-            <p :if={@device} class="mt-2 text-base-content/70">
+            <p :if={@device} class="mt-2 text-on-surface-variant">
               {if @device.oui_vendor, do: @device.oui_vendor, else: "Unknown Vendor"} — {if @device.hostname,
                 do: @device.hostname,
                 else: "no hostname"}
@@ -58,19 +58,19 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
           <.card title="Identity">
             <dl class="space-y-3">
               <div class="flex justify-between">
-                <dt class="text-base-content/70">MAC Address</dt>
+                <dt class="text-on-surface-variant">MAC Address</dt>
                 <dd class="font-mono">{@device.mac}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">OUI Vendor</dt>
+                <dt class="text-on-surface-variant">OUI Vendor</dt>
                 <dd>{@device.oui_vendor || "-"}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">Hostname</dt>
+                <dt class="text-on-surface-variant">Hostname</dt>
                 <dd>{@device.hostname || "-"}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">Profile</dt>
+                <dt class="text-on-surface-variant">Profile</dt>
                 <dd>
                   <.badge :if={@device.profile_id} color="info" size="sm">
                     {@device.profile_id}
@@ -79,7 +79,7 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
                 </dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">Confidence</dt>
+                <dt class="text-on-surface-variant">Confidence</dt>
                 <dd>{@device.profile_confidence}%</dd>
               </div>
             </dl>
@@ -88,13 +88,13 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
           <.card title="Network">
             <dl class="space-y-3">
               <div>
-                <dt class="text-base-content/70 mb-1">IPv4 Addresses</dt>
-                <dd :if={@device.ipv4_addresses == []} class="text-base-content/50">none</dd>
+                <dt class="text-on-surface-variant mb-1">IPv4 Addresses</dt>
+                <dd :if={@device.ipv4_addresses == []} class="text-on-surface-variant">none</dd>
                 <dd :for={ip <- @device.ipv4_addresses} class="font-mono text-sm">{ip}</dd>
               </div>
               <div>
-                <dt class="text-base-content/70 mb-1">IPv6 Addresses</dt>
-                <dd :if={@device.ipv6_addresses == []} class="text-base-content/50">none</dd>
+                <dt class="text-on-surface-variant mb-1">IPv6 Addresses</dt>
+                <dd :if={@device.ipv6_addresses == []} class="text-on-surface-variant">none</dd>
                 <dd :for={ip <- @device.ipv6_addresses} class="font-mono text-sm">{ip}</dd>
               </div>
             </dl>
@@ -103,19 +103,19 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
           <.card title="Fingerprints">
             <dl class="space-y-3">
               <div class="flex justify-between">
-                <dt class="text-base-content/70">DHCPv4 Fingerprint</dt>
+                <dt class="text-on-surface-variant">DHCPv4 Fingerprint</dt>
                 <dd class="font-mono text-xs truncate max-w-[200px]">
                   {@device.fingerprint_v4_id || "-"}
                 </dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">DHCPv6 Fingerprint</dt>
+                <dt class="text-on-surface-variant">DHCPv6 Fingerprint</dt>
                 <dd class="font-mono text-xs truncate max-w-[200px]">
                   {@device.fingerprint_v6_id || "-"}
                 </dd>
               </div>
               <div :if={@device.duid} class="flex justify-between">
-                <dt class="text-base-content/70">DUID</dt>
+                <dt class="text-on-surface-variant">DUID</dt>
                 <dd class="font-mono text-xs truncate max-w-[200px]">
                   {Base.encode16(@device.duid, case: :lower)}
                 </dd>
@@ -126,15 +126,15 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
           <.card title="Observation History">
             <dl class="space-y-3">
               <div class="flex justify-between">
-                <dt class="text-base-content/70">First Seen</dt>
+                <dt class="text-on-surface-variant">First Seen</dt>
                 <dd>{format_datetime(@device.first_seen)}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">Last Seen</dt>
+                <dt class="text-on-surface-variant">Last Seen</dt>
                 <dd>{format_datetime(@device.last_seen)}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-base-content/70">Observations</dt>
+                <dt class="text-on-surface-variant">Observations</dt>
                 <dd class="font-bold">{@device.observation_count}</dd>
               </div>
             </dl>
@@ -144,29 +144,29 @@ defmodule YellowDog.Console.FingerprintLive.DeviceDetailLive do
         <.card :if={@profile} title="Device Profile">
           <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <dt class="text-base-content/70 text-sm">Name</dt>
+              <dt class="text-on-surface-variant text-sm">Name</dt>
               <dd class="font-bold">{@profile.name}</dd>
             </div>
             <div>
-              <dt class="text-base-content/70 text-sm">OS Family</dt>
+              <dt class="text-on-surface-variant text-sm">OS Family</dt>
               <dd>{@profile.os_family || "-"}</dd>
             </div>
             <div>
-              <dt class="text-base-content/70 text-sm">OS Version</dt>
+              <dt class="text-on-surface-variant text-sm">OS Version</dt>
               <dd>{@profile.os_version || "-"}</dd>
             </div>
             <div>
-              <dt class="text-base-content/70 text-sm">Device Type</dt>
+              <dt class="text-on-surface-variant text-sm">Device Type</dt>
               <dd>
                 <.badge color="primary" size="sm">{@profile.device_type}</.badge>
               </dd>
             </div>
             <div>
-              <dt class="text-base-content/70 text-sm">Vendor</dt>
+              <dt class="text-on-surface-variant text-sm">Vendor</dt>
               <dd>{@profile.vendor || "-"}</dd>
             </div>
             <div>
-              <dt class="text-base-content/70 text-sm">Source</dt>
+              <dt class="text-on-surface-variant text-sm">Source</dt>
               <dd>
                 <.badge color={source_color(@profile.source)} size="sm">{@profile.source}</.badge>
               </dd>

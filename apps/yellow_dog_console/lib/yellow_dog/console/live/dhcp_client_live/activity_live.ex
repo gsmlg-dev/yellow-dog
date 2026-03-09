@@ -96,17 +96,17 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
     <div class="space-y-4">
       <div class="flex flex-wrap justify-between items-center gap-4">
         <h1 class="text-2xl font-bold">DHCP Client Activity</h1>
-        <div class="join">
+        <div class="flex">
           <button
             phx-click="toggle_pause"
-            class={"btn btn-sm join-item " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
+            class={"btn btn-sm " <> if(@paused, do: "btn-warning", else: "btn-ghost")}
           >
             {if @paused, do: "Resume", else: "Pause"}
           </button>
-          <button phx-click="clear" class="btn btn-sm btn-ghost join-item">Clear</button>
+          <button phx-click="clear" class="btn btn-sm btn-ghost">Clear</button>
           <button
             phx-click="export_csv"
-            class="btn btn-sm btn-ghost join-item"
+            class="btn btn-sm btn-ghost"
             id="csv-export"
             phx-hook="CsvDownload"
           >
@@ -115,51 +115,51 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
         </div>
       </div>
 
-      <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-        <div class="stat">
-          <div class="stat-title">Total</div>
-          <div class="stat-value text-lg">{@total_count}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">State Changes</div>
-          <div class="stat-value text-lg text-info">{@stats.state}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">TX</div>
-          <div class="stat-value text-lg text-warning">{@stats.tx}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">RX</div>
-          <div class="stat-value text-lg text-success">{@stats.rx}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Bound/Renewed</div>
-          <div class="stat-value text-lg text-success">{@stats.bound + @stats.renewed}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Expired</div>
-          <div class="stat-value text-lg text-error">{@stats.expired}</div>
-        </div>
+      <div class="grid grid-cols-3 sm:grid-cols-6 gap-4">
+        <.card>
+          <div class="text-sm text-on-surface-variant">Total</div>
+          <div class="text-lg font-bold">{@total_count}</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">State Changes</div>
+          <div class="text-lg font-bold text-info">{@stats.state}</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">TX</div>
+          <div class="text-lg font-bold text-warning">{@stats.tx}</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">RX</div>
+          <div class="text-lg font-bold text-success">{@stats.rx}</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">Bound/Renewed</div>
+          <div class="text-lg font-bold text-success">{@stats.bound + @stats.renewed}</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">Expired</div>
+          <div class="text-lg font-bold text-error">{@stats.expired}</div>
+        </.card>
       </div>
 
-      <div class="card bg-base-200">
+      <div class="card bg-surface-container">
         <div class="card-body py-3 px-4">
           <div class="flex flex-wrap gap-4 items-center">
-            <div class="form-control">
+            <div class="form-group">
               <input
                 type="text"
                 placeholder="Search interface, IP, or details..."
                 aria-label="Search activity log"
-                class="input input-sm input-bordered w-48"
+                class="input input-sm w-48"
                 phx-change="search"
                 phx-debounce="300"
                 name="search"
                 value={@search_query}
               />
             </div>
-            <div class="form-control">
+            <div class="form-group">
               <select
-                class="select select-sm select-bordered"
+                class="select select-sm"
                 phx-change="filter_type"
                 aria-label="Filter by event type"
                 name="type"
@@ -178,10 +178,10 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="card bg-surface shadow">
         <div class="card-body p-0">
           <div class="overflow-x-auto">
-            <table class="table table-zebra table-sm">
+            <table class="table table-striped table-sm">
               <thead>
                 <tr>
                   <th>Time</th>
@@ -193,7 +193,7 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
               <tbody>
                 <% displayed = filtered_entries(@entries, @search_query, @filter_type) %>
                 <tr :if={displayed == []}>
-                  <td colspan="4" class="text-center text-base-content/50 py-8">
+                  <td colspan="4" class="text-center text-on-surface-variant py-8">
                     No DHCP client activity recorded yet
                   </td>
                 </tr>
@@ -217,7 +217,7 @@ defmodule YellowDog.Console.DhcpClientLive.ActivityLive do
         </div>
       </div>
 
-      <div class="text-xs text-base-content/50 flex justify-between">
+      <div class="text-xs text-on-surface-variant flex justify-between">
         <span>
           Showing {length(filtered_entries(@entries, @search_query, @filter_type))} of {@total_count} events (buffer: {@max_entries})
         </span>

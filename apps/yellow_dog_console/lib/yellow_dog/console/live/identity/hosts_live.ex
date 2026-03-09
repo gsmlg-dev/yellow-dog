@@ -93,14 +93,14 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
               name="q"
               value={@search}
               placeholder="Search hostname..."
-              class="input input-sm input-bordered w-full"
+              class="input input-sm w-full"
               phx-debounce="300"
             />
           </form>
         </div>
 
         <div class="overflow-x-auto">
-          <table class="table table-zebra w-full">
+          <table class="table table-striped w-full">
             <thead>
               <tr>
                 <th>Hostname</th>
@@ -131,7 +131,7 @@ defmodule YellowDog.Console.IdentityLive.HostsLive do
                 </td>
               </tr>
               <tr :if={@hosts == []}>
-                <td colspan="7" class="text-center text-base-content/50 py-8">
+                <td colspan="7" class="text-center text-on-surface-variant py-8">
                   No hosts registered
                 </td>
               </tr>

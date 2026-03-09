@@ -64,46 +64,46 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-4xl font-bold">DHCP Client</h1>
-          <p class="mt-2 text-base-content/70">
+          <p class="mt-2 text-on-surface-variant">
             Manage DHCP client interfaces and monitor lease status
           </p>
         </div>
       </div>
 
-      <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-        <div class="stat">
-          <div class="stat-title">Interfaces</div>
-          <div class="stat-value text-primary">{length(@interfaces)}</div>
-          <div class="stat-desc">Managed DHCP clients</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Bound</div>
-          <div class="stat-value text-success">{count_by_state(@interfaces, :bound)}</div>
-          <div class="stat-desc">With active leases</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Requesting</div>
-          <div class="stat-value text-warning">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <.card>
+          <div class="text-sm text-on-surface-variant">Interfaces</div>
+          <div class="text-2xl font-bold text-primary">{length(@interfaces)}</div>
+          <div class="text-xs text-on-surface-variant">Managed DHCP clients</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">Bound</div>
+          <div class="text-2xl font-bold text-success">{count_by_state(@interfaces, :bound)}</div>
+          <div class="text-xs text-on-surface-variant">With active leases</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">Requesting</div>
+          <div class="text-2xl font-bold text-warning">
             {count_by_state(@interfaces, :init) + count_by_state(@interfaces, :selecting) +
               count_by_state(@interfaces, :requesting)}
           </div>
-          <div class="stat-desc">Acquiring addresses</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Renewing</div>
-          <div class="stat-value text-info">
+          <div class="text-xs text-on-surface-variant">Acquiring addresses</div>
+        </.card>
+        <.card>
+          <div class="text-sm text-on-surface-variant">Renewing</div>
+          <div class="text-2xl font-bold text-info">
             {count_by_state(@interfaces, :renewing) + count_by_state(@interfaces, :rebinding)}
           </div>
-          <div class="stat-desc">Extending leases</div>
-        </div>
+          <div class="text-xs text-on-surface-variant">Extending leases</div>
+        </.card>
       </div>
 
-      <div class="card bg-base-100 shadow-xl">
+      <div class="card bg-surface shadow-xl">
         <div class="card-body">
           <h2 class="card-title">Interface Status</h2>
 
           <%= if @interfaces == [] do %>
-            <div class="text-center py-12 text-base-content/50">
+            <div class="text-center py-12 text-on-surface-variant">
               <p class="text-lg">No DHCP client interfaces configured</p>
               <p class="text-sm mt-2">
                 Configure interfaces in the TOML config under [dhcp_client]
@@ -111,7 +111,7 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
             </div>
           <% else %>
             <div class="overflow-x-auto">
-              <table class="table table-zebra">
+              <table class="table table-striped">
                 <thead>
                   <tr>
                     <th>Interface</th>
@@ -171,7 +171,7 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
 
       <%= for iface <- @interfaces do %>
         <%= if iface.lease do %>
-          <div class="card bg-base-100 shadow-xl">
+          <div class="card bg-surface shadow-xl">
             <div class="card-body">
               <h2 class="card-title">
                 Lease Details — {iface.interface}
@@ -182,51 +182,51 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
 
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">IP Address</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">IP Address</div>
                   <div class="font-mono">{format_ip(iface.lease.ip)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Subnet Mask</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Subnet Mask</div>
                   <div class="font-mono">{format_ip(iface.lease.subnet_mask)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Router</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Router</div>
                   <div class="font-mono">
                     {if iface.lease.router, do: format_ip(iface.lease.router), else: "None"}
                   </div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">DNS Servers</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">DNS Servers</div>
                   <div class="font-mono text-sm">
                     {Enum.map_join(iface.lease.dns_servers, ", ", &format_ip/1)}
                   </div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">DHCP Server</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">DHCP Server</div>
                   <div class="font-mono">{format_ip(iface.lease.server_ip)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Domain</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Domain</div>
                   <div>{iface.lease.domain_name || "None"}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Lease Time</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Lease Time</div>
                   <div>{format_lease_time(iface.lease.lease_time)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">T1 (Renew)</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">T1 (Renew)</div>
                   <div>{format_lease_time(iface.lease.t1)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">T2 (Rebind)</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">T2 (Rebind)</div>
                   <div>{format_lease_time(iface.lease.t2)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Time Remaining</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Time Remaining</div>
                   <div>{format_lease_remaining(iface.lease)}</div>
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-base-content/70">Obtained At</div>
+                  <div class="text-sm font-semibold text-on-surface-variant">Obtained At</div>
                   <div class="text-sm">
                     {if iface.lease.obtained_at,
                       do: Calendar.strftime(iface.lease.obtained_at, "%Y-%m-%d %H:%M:%S UTC"),
@@ -236,14 +236,14 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
 
                 <%= if iface.lease.mtu do %>
                   <div>
-                    <div class="text-sm font-semibold text-base-content/70">MTU</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">MTU</div>
                     <div>{iface.lease.mtu}</div>
                   </div>
                 <% end %>
 
                 <%= if iface.lease.ntp_servers != [] do %>
                   <div>
-                    <div class="text-sm font-semibold text-base-content/70">NTP Servers</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">NTP Servers</div>
                     <div class="font-mono text-sm">
                       {Enum.map_join(iface.lease.ntp_servers, ", ", &format_ip/1)}
                     </div>
@@ -252,14 +252,14 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
 
                 <%= if iface.lease.control_url do %>
                   <div class="col-span-full">
-                    <div class="text-sm font-semibold text-base-content/70">Control URL</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Control URL</div>
                     <div class="font-mono text-sm">{iface.lease.control_url}</div>
                   </div>
                 <% end %>
 
                 <%= if iface.lease.control_url_fallback do %>
                   <div class="col-span-full">
-                    <div class="text-sm font-semibold text-base-content/70">
+                    <div class="text-sm font-semibold text-on-surface-variant">
                       Control URL (Fallback)
                     </div>
                     <div class="font-mono text-sm">{iface.lease.control_url_fallback}</div>
@@ -268,14 +268,14 @@ defmodule YellowDog.Console.DhcpClientLive.Index do
 
                 <%= if iface.lease.cluster_id do %>
                   <div>
-                    <div class="text-sm font-semibold text-base-content/70">Cluster ID</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Cluster ID</div>
                     <div class="font-mono text-sm">{iface.lease.cluster_id}</div>
                   </div>
                 <% end %>
 
                 <%= if iface.lease.server_id do %>
                   <div>
-                    <div class="text-sm font-semibold text-base-content/70">Server ID</div>
+                    <div class="text-sm font-semibold text-on-surface-variant">Server ID</div>
                     <div class="font-mono text-sm">{iface.lease.server_id}</div>
                   </div>
                 <% end %>

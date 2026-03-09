@@ -149,40 +149,40 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="card bg-base-100 shadow">
+            <div class="card bg-surface shadow">
               <div class="card-body">
                 <h2 class="card-title">Identity</h2>
                 <dl class="space-y-2">
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">ID</dt>
+                    <dt class="text-on-surface-variant">ID</dt>
                     <dd class="font-mono text-sm">{@host.id}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Hostname</dt>
+                    <dt class="text-on-surface-variant">Hostname</dt>
                     <dd class="font-bold">{@host.hostname}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Machine ID</dt>
+                    <dt class="text-on-surface-variant">Machine ID</dt>
                     <dd class="font-mono text-sm">{@host.machine_id || "-"}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Key Fingerprint</dt>
+                    <dt class="text-on-surface-variant">Key Fingerprint</dt>
                     <dd class="font-mono text-xs">{@host.key_fingerprint}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Age Recipient</dt>
+                    <dt class="text-on-surface-variant">Age Recipient</dt>
                     <dd class="font-mono text-xs max-w-[300px] truncate">{@host.age_recipient}</dd>
                   </div>
                 </dl>
               </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="card bg-surface shadow">
               <div class="card-body">
                 <h2 class="card-title">Status & Trust</h2>
                 <dl class="space-y-2">
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Status</dt>
+                    <dt class="text-on-surface-variant">Status</dt>
                     <dd>
                       <span class={status_badge_class(@host.status)}>
                         {@host.status}
@@ -190,19 +190,19 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
                     </dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Trust Level</dt>
+                    <dt class="text-on-surface-variant">Trust Level</dt>
                     <dd><span class="badge badge-outline">{@host.trust_level}</span></dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Trust Provider</dt>
+                    <dt class="text-on-surface-variant">Trust Provider</dt>
                     <dd>{@host.trust_provider}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Role</dt>
+                    <dt class="text-on-surface-variant">Role</dt>
                     <dd>{@host.role || "-"}</dd>
                   </div>
                   <div class="flex justify-between">
-                    <dt class="text-base-content/70">Datacenter</dt>
+                    <dt class="text-on-surface-variant">Datacenter</dt>
                     <dd>{@host.datacenter || "-"}</dd>
                   </div>
                 </dl>
@@ -210,14 +210,14 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
             </div>
           </div>
 
-          <div :if={@host.trust_evidence != %{}} class="card bg-base-100 shadow">
+          <div :if={@host.trust_evidence != %{}} class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Trust Evidence</h2>
               <div class="overflow-x-auto">
                 <table class="table table-sm">
                   <tbody>
                     <tr :for={{key, value} <- @host.trust_evidence}>
-                      <td class="font-mono text-sm text-base-content/70">{key}</td>
+                      <td class="font-mono text-sm text-on-surface-variant">{key}</td>
                       <td class="font-mono text-sm">{format_evidence_value(value)}</td>
                     </tr>
                   </tbody>
@@ -226,19 +226,19 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
             </div>
           </div>
 
-          <div :if={@host.previous_keys != []} class="card bg-base-100 shadow">
+          <div :if={@host.previous_keys != []} class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Previous Keys</h2>
-              <div :for={pk <- @host.previous_keys} class="p-2 bg-base-200 rounded mb-2">
+              <div :for={pk <- @host.previous_keys} class="p-2 bg-surface-container rounded mb-2">
                 <p class="font-mono text-xs">Fingerprint: {Map.get(pk, "key_fingerprint", "-")}</p>
-                <p class="text-xs text-base-content/50">
+                <p class="text-xs text-on-surface-variant">
                   Replaced: {Map.get(pk, "replaced_at", "-")}
                 </p>
               </div>
             </div>
           </div>
 
-          <div :if={@audit_entries != []} class="card bg-base-100 shadow">
+          <div :if={@audit_entries != []} class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Audit Trail</h2>
               <div class="overflow-x-auto">
@@ -262,24 +262,24 @@ defmodule YellowDog.Console.IdentityLive.HostDetailLive do
             </div>
           </div>
 
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title">Timeline</h2>
               <dl class="space-y-1">
                 <div class="flex justify-between">
-                  <dt class="text-base-content/70">Created</dt>
+                  <dt class="text-on-surface-variant">Created</dt>
                   <dd>{format_time(@host.created_at)}</dd>
                 </div>
                 <div :if={@host.approved_at} class="flex justify-between">
-                  <dt class="text-base-content/70">Approved</dt>
+                  <dt class="text-on-surface-variant">Approved</dt>
                   <dd>{format_time(@host.approved_at)} by {@host.approved_by}</dd>
                 </div>
                 <div :if={@host.revoked_at} class="flex justify-between">
-                  <dt class="text-base-content/70">Revoked</dt>
+                  <dt class="text-on-surface-variant">Revoked</dt>
                   <dd>{format_time(@host.revoked_at)} by {@host.revoked_by}</dd>
                 </div>
                 <div :if={@host.revoke_reason} class="flex justify-between">
-                  <dt class="text-base-content/70">Reason</dt>
+                  <dt class="text-on-surface-variant">Reason</dt>
                   <dd>{@host.revoke_reason}</dd>
                 </div>
               </dl>

@@ -4,30 +4,17 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 
-// Hooks
-let Hooks = {}
+// Duskmoon hooks and element registration
+import * as DuskmoonHooks from "../../../../deps/phoenix_duskmoon/assets/js/hooks/index.js"
+import { registerAll } from "@duskmoon-dev/elements"
 
-// Theme Toggle Hook
-Hooks.ThemeToggle = {
-  mounted() {
-    // Load saved theme from localStorage or default to 'light'
-    const savedTheme = localStorage.getItem('theme') || 'light'
-    document.documentElement.setAttribute('data-theme', savedTheme)
+registerAll()
 
-    // Set checkbox state based on saved theme
-    this.el.checked = savedTheme === 'dark'
-
-    // Listen for changes
-    this.el.addEventListener('change', (e) => {
-      const newTheme = e.target.checked ? 'dark' : 'light'
-      document.documentElement.setAttribute('data-theme', newTheme)
-      localStorage.setItem('theme', newTheme)
-    })
-  }
-}
+// Custom Hooks
+let CustomHooks = {}
 
 // Copy to Clipboard Hook
-Hooks.CopyToClipboard = {
+CustomHooks.CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", (e) => {
       const target = this.el.dataset.target
@@ -52,7 +39,7 @@ Hooks.CopyToClipboard = {
 
 // CSV Download Hook
 // Triggers a file download from server-pushed CSV content
-Hooks.CsvDownload = {
+CustomHooks.CsvDownload = {
   mounted() {
     this.handleEvent("download_csv", ({content, filename}) => {
       const blob = new Blob([content], {type: "text/csv;charset=utf-8;"})
@@ -70,7 +57,7 @@ Hooks.CsvDownload = {
 
 // Log Auto-Scroll Hook
 // Automatically scrolls to bottom when new logs arrive, unless user has scrolled up
-Hooks.LogAutoScroll = {
+CustomHooks.LogAutoScroll = {
   mounted() {
     this.autoScroll = true
     this.el.addEventListener('scroll', () => {
@@ -85,6 +72,9 @@ Hooks.LogAutoScroll = {
     }
   }
 }
+
+// Merge Duskmoon hooks with custom hooks
+let Hooks = { ...DuskmoonHooks, ...CustomHooks }
 
 // Intercept data-confirm clicks before LiveView processes them
 document.body.addEventListener("click", (e) => {

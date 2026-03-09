@@ -222,19 +222,19 @@ defmodule YellowDog.Console.ProcessMapLive do
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 class="text-2xl font-bold">Process Map</h1>
-            <p class="text-base-content/70">
+            <p class="text-on-surface-variant">
               Supervision trees for all YellowDog applications
             </p>
           </div>
           <div class="flex items-center gap-4">
-            <div class="stats stats-horizontal shadow bg-base-200">
-              <div class="stat py-2 px-4">
-                <div class="stat-title text-xs">Processes</div>
-                <div class="stat-value text-lg">{@node_count}</div>
+            <div class="flex gap-4">
+              <div class="bg-surface-container rounded-lg py-2 px-4 shadow">
+                <div class="text-xs text-on-surface-variant">Processes</div>
+                <div class="text-lg font-bold">{@node_count}</div>
               </div>
-              <div class="stat py-2 px-4">
-                <div class="stat-title text-xs">Last Refresh</div>
-                <div class="stat-value text-lg">{format_time(@last_refresh)}</div>
+              <div class="bg-surface-container rounded-lg py-2 px-4 shadow">
+                <div class="text-xs text-on-surface-variant">Last Refresh</div>
+                <div class="text-lg font-bold">{format_time(@last_refresh)}</div>
               </div>
             </div>
           </div>
@@ -243,7 +243,7 @@ defmodule YellowDog.Console.ProcessMapLive do
     <!-- SVG Tree Container -->
         <div class="flex-1 relative">
           <div class={[
-            "card bg-base-200 shadow-lg overflow-auto h-full",
+            "card bg-surface-container shadow-lg overflow-auto h-full",
             @show_status_panel && "lg:mr-96"
           ]}>
             <div class="card-body p-4">
@@ -307,7 +307,7 @@ defmodule YellowDog.Console.ProcessMapLive do
         fill="none"
         stroke="currentColor"
         stroke-width="2"
-        class="text-base-content/30"
+        class="text-on-surface-variant"
       />
       <.draw_connections node={child} node_width={@node_width} node_height={@node_height} />
     <% end %>
@@ -466,7 +466,7 @@ defmodule YellowDog.Console.ProcessMapLive do
 
   defp status_panel(assigns) do
     ~H"""
-    <div class="fixed right-0 top-16 bottom-0 w-full lg:w-96 bg-base-100 shadow-xl border-l border-base-300 z-50 overflow-y-auto">
+    <div class="fixed right-0 top-16 bottom-0 w-full lg:w-96 bg-surface shadow-xl border-l border-outline z-50 overflow-y-auto">
       <div class="p-4">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-bold">Process Status</h3>
@@ -475,44 +475,18 @@ defmodule YellowDog.Console.ProcessMapLive do
             phx-click="close_panel"
             aria-label="Close panel"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <.dm_mdi name="close" class="h-5 w-5" />
           </button>
         </div>
 
         <%= if @loading do %>
           <div class="flex justify-center py-8">
-            <span class="loading loading-spinner loading-lg"></span>
+            <span class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-12 h-12" role="status"></span>
           </div>
         <% else %>
           <%= if @status[:alive] == false do %>
             <div class="alert alert-warning">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+              <.dm_mdi name="alert" class="h-6 w-6" />
               <span>{@status[:error] || "Process terminated"}</span>
             </div>
           <% else %>
@@ -545,7 +519,7 @@ defmodule YellowDog.Console.ProcessMapLive do
   defp status_field(assigns) do
     ~H"""
     <div class="flex flex-col gap-1">
-      <span class="text-xs text-base-content/60 uppercase tracking-wider">
+      <span class="text-xs text-on-surface-variant uppercase tracking-wider">
         {@label}
       </span>
       <%= if @badge do %>
@@ -553,7 +527,7 @@ defmodule YellowDog.Console.ProcessMapLive do
       <% else %>
         <span class={[
           "text-sm font-medium",
-          @mono && "font-mono text-xs bg-base-200 px-2 py-1 rounded"
+          @mono && "font-mono text-xs bg-surface-container px-2 py-1 rounded"
         ]}>
           {@value}
         </span>
@@ -565,22 +539,9 @@ defmodule YellowDog.Console.ProcessMapLive do
   defp empty_state(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center py-12 text-center">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-16 w-16 text-base-content/30"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-        />
-      </svg>
+      <.dm_mdi name="sitemap" class="h-16 w-16 text-on-surface-variant" />
       <h2 class="text-xl font-bold mt-4">YellowDog.Supervisor Not Found</h2>
-      <p class="text-base-content/70 max-w-md">
+      <p class="text-on-surface-variant max-w-md">
         The YellowDog application supervisor is not running. Start the application to see its process tree.
       </p>
     </div>

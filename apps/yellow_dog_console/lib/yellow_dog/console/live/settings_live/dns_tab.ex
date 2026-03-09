@@ -35,49 +35,41 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
           class="space-y-4"
         >
           <!-- Enabled Toggle -->
-          <div class="form-control">
+          <div class="form-group">
             <label class="label cursor-pointer justify-start gap-4">
               <input type="hidden" name="service_configuration[enabled]" value="false" />
               <input
                 type="checkbox"
                 name="service_configuration[enabled]"
                 value="true"
-                class="toggle toggle-success"
+                class="switch switch-primary"
                 checked={Ecto.Changeset.get_field(@changeset, :enabled)}
               />
-              <span class="label-text font-medium">Enable DNS Service</span>
+              <span class="font-medium">Enable DNS Service</span>
             </label>
             <.input_error changeset={@changeset} field={:enabled} />
           </div>
-          
-    <!-- Listen Address -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Listen Address</span>
-            </label>
+          <!-- Listen Address -->
+          <div class="form-group">
+            <label class="form-label">Listen Address</label>
             <input
               type="text"
               name="service_configuration[listen]"
               value={Ecto.Changeset.get_field(@changeset, :listen)}
               placeholder="0.0.0.0"
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 has_error?(@changeset, :listen) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:listen} />
-            <label class="label">
-              <span class="label-text-alt">
-                IP address to bind DNS service (0.0.0.0 for all interfaces)
-              </span>
-            </label>
+            <span class="helper-text">
+              IP address to bind DNS service (0.0.0.0 for all interfaces)
+            </span>
           </div>
-          
-    <!-- Port -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Port</span>
-            </label>
+          <!-- Port -->
+          <div class="form-group">
+            <label class="form-label">Port</label>
             <input
               type="number"
               name="service_configuration[port]"
@@ -86,32 +78,16 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               min="1"
               max="65535"
               class={[
-                "input input-bordered w-full",
+                "input w-full",
                 has_error?(@changeset, :port) && "input-error"
               ]}
             />
             <.input_error changeset={@changeset} field={:port} />
-            <label class="label">
-              <span class="label-text-alt">UDP port for DNS queries (default: 53)</span>
-            </label>
+            <span class="helper-text">UDP port for DNS queries (default: 53)</span>
           </div>
-          
-    <!-- Configuration Info -->
+          <!-- Configuration Info -->
           <div class="alert alert-info">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              class="stroke-current shrink-0 w-6 h-6"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              >
-              </path>
-            </svg>
+            <.dm_mdi name="information" class="shrink-0 w-6 h-6" />
             <div class="text-sm">
               <p class="font-medium">DNS Configuration Notes:</p>
               <ul class="list-disc list-inside mt-1 space-y-1">
@@ -121,33 +97,18 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               </ul>
             </div>
           </div>
-          
-    <!-- Action Buttons -->
+          <!-- Action Buttons -->
           <div class="flex gap-3 pt-4">
             <button
               type="submit"
               phx-disable-with="Saving..."
               class={[
                 "btn btn-primary",
-                !@changeset.valid? && "btn-disabled"
+                false
               ]}
               disabled={!@changeset.valid?}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                />
-              </svg>
-              Save Configuration
+              <.dm_mdi name="content-save" class="h-5 w-5 mr-2" /> Save Configuration
             </button>
 
             <%= if Map.has_key?(@pending_changes, :dns) do %>
@@ -157,35 +118,20 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
                 phx-disable-with="Applying..."
                 class="btn btn-success"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                Apply Changes & Restart Service
+                <.dm_mdi name="refresh" class="h-5 w-5 mr-2" /> Apply Changes & Restart Service
               </button>
             <% end %>
           </div>
         </.form>
       </.card>
-      
-    <!-- DNS Runtime Operations -->
+      <!-- DNS Runtime Operations -->
       <.card title="DNS Runtime Operations">
         <:actions>
           <.badge color="info" size="sm">Live</.badge>
         </:actions>
 
         <div class="space-y-4">
-          <p class="text-sm text-base-content/70">
+          <p class="text-sm text-on-surface-variant">
             Reload DNS subsystem components from their persisted configuration without restarting the entire service.
           </p>
 
@@ -197,15 +143,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              Reload All
+              <.dm_mdi name="refresh" class="w-4 h-4" /> Reload All
             </button>
             <!-- Reload Views -->
             <button
@@ -214,21 +152,7 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                />
-              </svg>
-              Reload Views
+              <.dm_mdi name="eye" class="w-4 h-4" /> Reload Views
             </button>
             <!-- Reload ACLs -->
             <button
@@ -237,19 +161,11 @@ defmodule YellowDog.Console.SettingsLive.DnsTab do
               phx-disable-with="Reloading..."
               class="btn btn-outline btn-sm gap-2"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-              Reload ACLs
+              <.dm_mdi name="lock" class="w-4 h-4" /> Reload ACLs
             </button>
           </div>
 
-          <div class="text-xs text-base-content/50">
+          <div class="text-xs text-on-surface-variant">
             Hot-reload applies configuration changes to running processes without dropping active connections.
           </div>
         </div>

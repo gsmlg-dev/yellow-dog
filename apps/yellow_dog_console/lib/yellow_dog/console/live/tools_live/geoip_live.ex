@@ -33,7 +33,7 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
             name="ip"
             value={@query}
             placeholder="Enter IP address (e.g. 8.8.8.8)"
-            class="input input-bordered flex-1"
+            class="input flex-1"
             autofocus
           />
           <button type="submit" phx-disable-with="Looking up..." class="btn btn-primary">
@@ -45,7 +45,10 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
           <span>{@error}</span>
         </div>
 
-        <div :if={!@result && !@error && @query == ""} class="text-center py-12 text-base-content/50">
+        <div
+          :if={!@result && !@error && @query == ""}
+          class="text-center py-12 text-on-surface-variant"
+        >
           Enter an IP address to look up its geolocation
         </div>
 
@@ -62,7 +65,7 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
           />
         </div>
 
-        <div :if={@db_info} class="card bg-base-200 mt-6">
+        <div :if={@db_info} class="card bg-surface-container mt-6">
           <div class="card-body">
             <h2 class="card-title text-sm">Database Info</h2>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
@@ -92,9 +95,10 @@ defmodule YellowDog.Console.ToolsLive.GeoipLive do
 
   defp geo_card(assigns) do
     ~H"""
-    <div class="stat bg-base-200 rounded-box">
-      <div class="stat-title">{@label}</div>
-      <div class="stat-value text-lg">{@value || "—"}</div>
+    <div class="card card-bordered bg-surface">
+      <div class="card-body">
+        <div class="text-lg font-bold">{@value || "—"}</div>
+      </div>
     </div>
     """
   end

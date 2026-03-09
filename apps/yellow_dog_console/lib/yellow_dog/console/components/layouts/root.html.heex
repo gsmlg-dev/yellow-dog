@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full" data-theme="sunshine">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,10 +8,16 @@
       {assigns[:page_title] || "YellowDog Console"}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script>
+      (function() {
+        var t = localStorage.getItem("theme");
+        if (t && t !== "default") document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
   </head>
-  <body class="h-full" data-theme="light">
+  <body class="h-full">
     {@inner_content}
   </body>
 </html>

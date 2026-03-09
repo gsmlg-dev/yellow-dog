@@ -4,7 +4,7 @@
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-4xl font-bold">DHCPv6 Server</h1>
-        <p class="mt-2 text-base-content/70">
+        <p class="mt-2 text-on-surface-variant">
           Monitor IPv6 leases, prefix delegations, and client activity
         </p>
       </div>
@@ -15,130 +15,69 @@
           pulse
         />
         <button class="btn btn-ghost btn-circle btn-sm" aria-label="Refresh">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <.dm_mdi name="refresh" class="h-5 w-5" />
         </button>
       </div>
     </div>
     <!-- Global Statistics -->
-    <div class="stats stats-vertical lg:stats-horizontal shadow-xl w-full">
-      <div class="stat">
-        <div class="stat-figure text-primary">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-12 w-12"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Total Leases</div>
+              <div class="text-2xl font-bold text-primary">{@stats.total_leases}</div>
+              <div class="text-xs text-on-surface-variant">All time allocations</div>
+            </div>
+            <.dm_mdi name="file-document-outline" class="h-12 w-12 text-primary" />
+          </div>
         </div>
-        <div class="stat-title">Total Leases</div>
-        <div class="stat-value text-primary">{@stats.total_leases}</div>
-        <div class="stat-desc">All time allocations</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-success">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-12 w-12"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Active Leases</div>
+              <div class="text-2xl font-bold text-success">{@stats.active_leases}</div>
+              <div class="text-xs text-on-surface-variant">Currently allocated</div>
+            </div>
+            <.dm_mdi name="check-circle-outline" class="h-12 w-12 text-success" />
+          </div>
         </div>
-        <div class="stat-title">Active Leases</div>
-        <div class="stat-value text-success">{@stats.active_leases}</div>
-        <div class="stat-desc">Currently allocated</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-warning">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-12 w-12"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Expired</div>
+              <div class="text-2xl font-bold text-warning">{@stats.expired_leases}</div>
+              <div class="text-xs text-on-surface-variant">Need renewal</div>
+            </div>
+            <.dm_mdi name="clock-outline" class="h-12 w-12 text-warning" />
+          </div>
         </div>
-        <div class="stat-title">Expired</div>
-        <div class="stat-value text-warning">{@stats.expired_leases}</div>
-        <div class="stat-desc">Need renewal</div>
       </div>
 
-      <div class="stat">
-        <div class="stat-figure text-info">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-12 w-12"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-            />
-          </svg>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-on-surface-variant">Pools</div>
+              <div class="text-2xl font-bold text-info">{length(@pools)}</div>
+              <div class="text-xs text-on-surface-variant">Configured</div>
+            </div>
+            <.dm_mdi name="server-network" class="h-12 w-12 text-info" />
+          </div>
         </div>
-        <div class="stat-title">Pools</div>
-        <div class="stat-value text-info">{length(@pools)}</div>
-        <div class="stat-desc">Configured</div>
       </div>
     </div>
     <!-- Last Event (Real-time) -->
     <%= if @last_event do %>
       <div class="alert alert-success shadow-lg">
         <div class="flex items-center gap-2 w-full">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6 shrink-0 stroke-current"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <.dm_mdi name="check-circle-outline" class="h-6 w-6 shrink-0" />
           <div class="flex-1">
             <strong>Lease Allocated:</strong>
             DUID {format_duid(@last_event.metadata.duid)} → IPv6 {format_ipv6(
@@ -156,11 +95,11 @@
       <.card title="Lease Distribution by IA Type">
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
           <%= for {ia_type, count} <- @stats.by_ia_type do %>
-            <div class="text-center p-4 bg-base-200 rounded-lg">
+            <div class="text-center p-4 bg-surface-container rounded-lg">
               <div class={"text-3xl font-bold " <> ia_type_text_color(ia_type)}>
                 {count}
               </div>
-              <div class="text-sm text-base-content/70 mt-1">
+              <div class="text-sm text-on-surface-variant mt-1">
                 {format_ia_type_verbose(ia_type)}
               </div>
             </div>
@@ -183,7 +122,7 @@
                     {Float.round(pool_stats.utilization_percent, 1)}%
                   </.badge>
                 </h3>
-                <p class="text-sm text-base-content/70 mt-2">
+                <p class="text-sm text-on-surface-variant mt-2">
                   {pool_stats.allocated_count} of {pool_stats.total_count} allocated
                 </p>
               </div>
@@ -193,26 +132,26 @@
             <!-- Pool Statistics -->
             <div class="space-y-3">
               <div class="flex items-center justify-between">
-                <span class="text-sm text-base-content/70">Total</span>
+                <span class="text-sm text-on-surface-variant">Total</span>
                 <span class="font-mono font-semibold">{pool_stats.total_count}</span>
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm text-base-content/70">Allocated</span>
+                <span class="text-sm text-on-surface-variant">Allocated</span>
                 <span class="font-mono font-semibold text-success">
                   {pool_stats.allocated_count}
                 </span>
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm text-base-content/70">Available</span>
+                <span class="text-sm text-on-surface-variant">Available</span>
                 <span class="font-mono font-semibold text-info">
                   {pool_stats.available_count}
                 </span>
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm text-base-content/70">Static Reservations</span>
+                <span class="text-sm text-on-surface-variant">Static Reservations</span>
                 <span class="font-mono font-semibold">{pool_stats.static_reservations}</span>
               </div>
             </div>
@@ -237,26 +176,7 @@
 
             <:actions>
               <.link navigate={~p"/dhcpv6/pools/#{pool_name}"} class="btn btn-sm btn-ghost gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                  />
-                </svg>
+                <.dm_mdi name="eye" class="h-4 w-4" />
                 View Details
               </.link>
             </:actions>
@@ -269,11 +189,11 @@
       <.card title="Lease Distribution by State">
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
           <%= for {state, count} <- @stats.by_state do %>
-            <div class="text-center p-4 bg-base-200 rounded-lg">
+            <div class="text-center p-4 bg-surface-container rounded-lg">
               <div class={"text-3xl font-bold " <> lease_state_text_color(state)}>
                 {count}
               </div>
-              <div class="text-sm text-base-content/70 mt-1 capitalize">
+              <div class="text-sm text-on-surface-variant mt-1 capitalize">
                 {state}
               </div>
             </div>

@@ -45,7 +45,7 @@ defmodule YellowDog.Console.MixProject do
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:bun, "~> 1.3", runtime: Mix.env() == :dev},
-      {:heroicons, "~> 0.5.6"},
+      {:phoenix_duskmoon, "~> 9.0-rc"},
       {:hackney, "~> 1.9"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},

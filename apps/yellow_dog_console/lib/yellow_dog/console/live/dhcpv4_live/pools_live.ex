@@ -199,24 +199,10 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
         <div class="flex justify-between items-center">
           <div>
             <h1 class="text-2xl font-bold">DHCPv4 Address Pools</h1>
-            <p class="text-base-content/70">Manage IPv4 address pools for DHCP allocation</p>
+            <p class="text-on-surface-variant">Manage IPv4 address pools for DHCP allocation</p>
           </div>
           <button class="btn btn-primary" phx-click="show_new_form">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add Pool
+            <.dm_mdi name="plus" class="w-5 h-5" /> Add Pool
           </button>
         </div>
         
@@ -231,7 +217,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
               phx-change="filter"
               phx-debounce="300"
               name="filter"
-              class="input input-bordered w-full"
+              class="input w-full"
             />
           </div>
           <button
@@ -247,19 +233,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
     <!-- Service Status Alert -->
         <%= unless @service_running do %>
           <div class="alert alert-info">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-6 h-6 shrink-0 stroke-current"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <.dm_mdi name="alert-circle-outline" class="w-6 h-6 shrink-0" />
             <div>
               <h3 class="font-bold">DHCPv4 Service Not Running</h3>
               <div class="text-sm">
@@ -271,48 +245,22 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
         
     <!-- Pools Table -->
         <%= if Enum.empty?(@pools) do %>
-          <div class="card bg-base-200">
+          <div class="card bg-surface-container">
             <div class="card-body items-center text-center py-12">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-16 h-16 text-base-content/30"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
-                />
-              </svg>
-              <h2 class="card-title text-base-content/70">No Address Pools</h2>
-              <p class="text-base-content/50">
+              <.dm_mdi name="server-network" class="w-16 h-16 text-on-surface-variant" />
+              <h2 class="card-title text-on-surface-variant">No Address Pools</h2>
+              <p class="text-on-surface-variant">
                 Create your first address pool to start allocating IP addresses
               </p>
               <button class="btn btn-primary mt-4" phx-click="show_new_form">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
+                <.dm_mdi name="plus" class="w-5 h-5" />
                 Add Pool
               </button>
             </div>
           </div>
         <% else %>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <th scope="col">Name</th>
@@ -349,7 +297,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                         />
                         <span class="text-sm">{Float.round(stats.utilization_percent, 1)}%</span>
                       </div>
-                      <span class="text-xs text-base-content/50">
+                      <span class="text-xs text-on-surface-variant">
                         {stats.allocated_addresses}/{stats.total_addresses} allocated
                       </span>
                     </td>
@@ -368,20 +316,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                           phx-value-pool-name={pool.name}
                           title="Edit pool"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-4 h-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                            />
-                          </svg>
+                          <.dm_mdi name="pencil" class="w-4 h-4" />
                         </button>
                         <button
                           class="btn btn-ghost btn-sm text-error"
@@ -391,20 +326,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
                           data-confirm="Are you sure you want to delete this pool?"
                           title="Delete pool"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-4 h-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
+                          <.dm_mdi name="delete" class="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -414,7 +336,7 @@ defmodule YellowDog.Console.Dhcpv4Live.PoolsLive do
             </table>
           </div>
           <%= if @filter != "" do %>
-            <div class="text-sm text-base-content/60 mt-2">
+            <div class="text-sm text-on-surface-variant mt-2">
               Showing {length(filtered_pools(@pools, @filter))} of {length(@pools)} pools
             </div>
           <% end %>

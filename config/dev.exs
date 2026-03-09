@@ -32,7 +32,7 @@ import Config
 config :yellow_dog_console, YellowDog.Console.Endpoint,
   # Binding to all interfaces to allow access from other machines.
   # Use `ip: {127, 0, 0, 1}` to bind only to localhost.
-  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4270")],
+  http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4270")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

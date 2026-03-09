@@ -144,7 +144,7 @@ defmodule YellowDog.Console.Components.RecordForm do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="card bg-base-200">
+    <div class="card bg-surface-container">
       <div class="card-body">
         <h3 class="card-title text-lg">
           {if @record, do: "Edit Record", else: "New Record"}
@@ -159,14 +159,12 @@ defmodule YellowDog.Console.Components.RecordForm do
           class="space-y-4"
         >
           <%!-- Record Type Selection --%>
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Type</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">Type</label>
             <select
               name="record[type]"
               aria-label="Record type"
-              class={["select select-bordered w-full", @errors[:type] && "select-error"]}
+              class={["select w-full", @errors[:type] && "select-error"]}
               phx-change="change_type"
               phx-target={@myself}
             >
@@ -180,36 +178,32 @@ defmodule YellowDog.Console.Components.RecordForm do
           </div>
 
           <%!-- Record Name --%>
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Name</span>
-              <span class="label-text-alt text-base-content/60">
-                @ for zone apex, or subdomain
-              </span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">Name</label>
+            <span class="helper-text text-on-surface-variant">
+              @ for zone apex, or subdomain
+            </span>
             <input
               type="text"
               name="record[name]"
               value={@form_data["name"]}
               placeholder={"@ or subdomain.#{@zone_name}"}
               maxlength="253"
-              class={["input input-bordered w-full", @errors[:name] && "input-error"]}
+              class={["input w-full", @errors[:name] && "input-error"]}
             />
             <.field_error errors={@errors} field={:name} />
           </div>
 
           <%!-- TTL --%>
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">TTL (seconds)</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label">TTL (seconds)</label>
             <input
               type="number"
               name="record[ttl]"
               value={@form_data["ttl"]}
               placeholder="3600"
               min="0"
-              class={["input input-bordered w-full", @errors[:ttl] && "input-error"]}
+              class={["input w-full", @errors[:ttl] && "input-error"]}
             />
             <.field_error errors={@errors} field={:ttl} />
           </div>
@@ -224,19 +218,7 @@ defmodule YellowDog.Console.Components.RecordForm do
           <%!-- Warnings --%>
           <%= if @warnings != [] do %>
             <div class="alert alert-warning">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-6 w-6 shrink-0 stroke-current"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+              <.dm_mdi name="alert" class="w-6 h-6" />
               <div>
                 <%= for warning <- @warnings do %>
                   <p>{warning}</p>
@@ -271,16 +253,14 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "a"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">IPv4 Address</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">IPv4 Address</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="192.0.2.1"
-        class={["input input-bordered w-full font-mono", @errors[:rdata] && "input-error"]}
+        class={["input w-full font-mono", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -289,16 +269,14 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "aaaa"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">IPv6 Address</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">IPv6 Address</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="2001:db8::1"
-        class={["input input-bordered w-full font-mono", @errors[:rdata] && "input-error"]}
+        class={["input w-full font-mono", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -307,16 +285,14 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "cname"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">Target (Canonical Name)</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">Target (Canonical Name)</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="target.example.com."
-        class={["input input-bordered w-full", @errors[:rdata] && "input-error"]}
+        class={["input w-full", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -326,10 +302,8 @@ defmodule YellowDog.Console.Components.RecordForm do
   defp type_specific_fields(%{type: "mx"} = assigns) do
     ~H"""
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div class="form-control md:col-span-1">
-        <label class="label">
-          <span class="label-text font-medium">Priority</span>
-        </label>
+      <div class="form-group md:col-span-1">
+        <label class="form-label">Priority</label>
         <input
           type="number"
           name="record[priority]"
@@ -337,20 +311,18 @@ defmodule YellowDog.Console.Components.RecordForm do
           placeholder="10"
           min="0"
           max="65535"
-          class={["input input-bordered w-full", @errors[:priority] && "input-error"]}
+          class={["input w-full", @errors[:priority] && "input-error"]}
         />
         <.field_error errors={@errors} field={:priority} />
       </div>
-      <div class="form-control md:col-span-3">
-        <label class="label">
-          <span class="label-text font-medium">Mail Server</span>
-        </label>
+      <div class="form-group md:col-span-3">
+        <label class="form-label">Mail Server</label>
         <input
           type="text"
           name="record[target]"
           value={@form_data["target"]}
           placeholder="mail.example.com."
-          class={["input input-bordered w-full", @errors[:target] && "input-error"]}
+          class={["input w-full", @errors[:target] && "input-error"]}
         />
         <.field_error errors={@errors} field={:target} />
       </div>
@@ -361,10 +333,8 @@ defmodule YellowDog.Console.Components.RecordForm do
   defp type_specific_fields(%{type: "srv"} = assigns) do
     ~H"""
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="form-control">
-        <label class="label">
-          <span class="label-text font-medium">Priority</span>
-        </label>
+      <div class="form-group">
+        <label class="form-label">Priority</label>
         <input
           type="number"
           name="record[priority]"
@@ -372,14 +342,12 @@ defmodule YellowDog.Console.Components.RecordForm do
           placeholder="0"
           min="0"
           max="65535"
-          class={["input input-bordered w-full", @errors[:priority] && "input-error"]}
+          class={["input w-full", @errors[:priority] && "input-error"]}
         />
         <.field_error errors={@errors} field={:priority} />
       </div>
-      <div class="form-control">
-        <label class="label">
-          <span class="label-text font-medium">Weight</span>
-        </label>
+      <div class="form-group">
+        <label class="form-label">Weight</label>
         <input
           type="number"
           name="record[weight]"
@@ -387,14 +355,12 @@ defmodule YellowDog.Console.Components.RecordForm do
           placeholder="5"
           min="0"
           max="65535"
-          class={["input input-bordered w-full", @errors[:weight] && "input-error"]}
+          class={["input w-full", @errors[:weight] && "input-error"]}
         />
         <.field_error errors={@errors} field={:weight} />
       </div>
-      <div class="form-control">
-        <label class="label">
-          <span class="label-text font-medium">Port</span>
-        </label>
+      <div class="form-group">
+        <label class="form-label">Port</label>
         <input
           type="number"
           name="record[port]"
@@ -402,20 +368,18 @@ defmodule YellowDog.Console.Components.RecordForm do
           placeholder="443"
           min="0"
           max="65535"
-          class={["input input-bordered w-full", @errors[:port] && "input-error"]}
+          class={["input w-full", @errors[:port] && "input-error"]}
         />
         <.field_error errors={@errors} field={:port} />
       </div>
-      <div class="form-control md:col-span-4">
-        <label class="label">
-          <span class="label-text font-medium">Target</span>
-        </label>
+      <div class="form-group md:col-span-4">
+        <label class="form-label">Target</label>
         <input
           type="text"
           name="record[target]"
           value={@form_data["target"]}
           placeholder="server.example.com."
-          class={["input input-bordered w-full", @errors[:target] && "input-error"]}
+          class={["input w-full", @errors[:target] && "input-error"]}
         />
         <.field_error errors={@errors} field={:target} />
       </div>
@@ -425,18 +389,16 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "txt"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">Text Data</span>
-        <span class="label-text-alt text-base-content/60">
-          Max 255 bytes per string
-        </span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">Text Data</label>
+      <span class="helper-text text-on-surface-variant">
+        Max 255 bytes per string
+      </span>
       <textarea
         name="record[rdata]"
         placeholder={~s(v=spf1 include:_spf.google.com ~all)}
         rows="3"
-        class={["textarea textarea-bordered w-full font-mono", @errors[:rdata] && "textarea-error"]}
+        class={["textarea w-full font-mono", @errors[:rdata] && "textarea-error"]}
       ><%= @form_data["rdata"] %></textarea>
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -445,16 +407,14 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "ns"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">Nameserver</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">Nameserver</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="ns1.example.com."
-        class={["input input-bordered w-full", @errors[:rdata] && "input-error"]}
+        class={["input w-full", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -463,16 +423,14 @@ defmodule YellowDog.Console.Components.RecordForm do
 
   defp type_specific_fields(%{type: "ptr"} = assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">Target Domain</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">Target Domain</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="host.example.com."
-        class={["input input-bordered w-full", @errors[:rdata] && "input-error"]}
+        class={["input w-full", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -482,10 +440,8 @@ defmodule YellowDog.Console.Components.RecordForm do
   defp type_specific_fields(%{type: "caa"} = assigns) do
     ~H"""
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="form-control">
-        <label class="label">
-          <span class="label-text font-medium">Flags</span>
-        </label>
+      <div class="form-group">
+        <label class="form-label">Flags</label>
         <input
           type="number"
           name="record[flags]"
@@ -493,18 +449,16 @@ defmodule YellowDog.Console.Components.RecordForm do
           placeholder="0"
           min="0"
           max="255"
-          class={["input input-bordered w-full", @errors[:flags] && "input-error"]}
+          class={["input w-full", @errors[:flags] && "input-error"]}
         />
         <.field_error errors={@errors} field={:flags} />
       </div>
-      <div class="form-control">
-        <label class="label">
-          <span class="label-text font-medium">Tag</span>
-        </label>
+      <div class="form-group">
+        <label class="form-label">Tag</label>
         <select
           name="record[tag]"
           aria-label="CAA tag"
-          class={["select select-bordered w-full", @errors[:tag] && "select-error"]}
+          class={["select w-full", @errors[:tag] && "select-error"]}
         >
           <option value="issue" selected={@form_data["tag"] == "issue"}>issue</option>
           <option value="issuewild" selected={@form_data["tag"] == "issuewild"}>issuewild</option>
@@ -512,16 +466,14 @@ defmodule YellowDog.Console.Components.RecordForm do
         </select>
         <.field_error errors={@errors} field={:tag} />
       </div>
-      <div class="form-control md:col-span-3">
-        <label class="label">
-          <span class="label-text font-medium">Value</span>
-        </label>
+      <div class="form-group md:col-span-3">
+        <label class="form-label">Value</label>
         <input
           type="text"
           name="record[value]"
           value={@form_data["value"]}
           placeholder="letsencrypt.org"
-          class={["input input-bordered w-full", @errors[:value] && "input-error"]}
+          class={["input w-full", @errors[:value] && "input-error"]}
         />
         <.field_error errors={@errors} field={:value} />
       </div>
@@ -532,16 +484,14 @@ defmodule YellowDog.Console.Components.RecordForm do
   # Fallback for unknown types
   defp type_specific_fields(assigns) do
     ~H"""
-    <div class="form-control">
-      <label class="label">
-        <span class="label-text font-medium">Record Data</span>
-      </label>
+    <div class="form-group">
+      <label class="form-label">Record Data</label>
       <input
         type="text"
         name="record[rdata]"
         value={@form_data["rdata"]}
         placeholder="Record data"
-        class={["input input-bordered w-full", @errors[:rdata] && "input-error"]}
+        class={["input w-full", @errors[:rdata] && "input-error"]}
       />
       <.field_error errors={@errors} field={:rdata} />
     </div>
@@ -559,9 +509,7 @@ defmodule YellowDog.Console.Components.RecordForm do
 
     ~H"""
     <%= if @error do %>
-      <label class="label">
-        <span class="label-text-alt text-error">{@error}</span>
-      </label>
+      <span class="helper-text text-error">{@error}</span>
     <% end %>
     """
   end

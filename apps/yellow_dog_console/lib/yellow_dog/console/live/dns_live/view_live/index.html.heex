@@ -9,12 +9,12 @@
     </div>
 
     <.service_alert :if={not @service_running} service="DNS" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">DNS Views</h1>
-        <p class="text-sm text-base-content/70">
+        <p class="text-sm text-on-surface-variant">
           Manage DNS views for different client groups
         </p>
       </div>
@@ -27,14 +27,7 @@
           title="Export CSV"
           aria-label="Export CSV"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
+          <.dm_mdi name="download" class="w-4 h-4" />
           Export
         </button>
         <button
@@ -43,31 +36,11 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <.dm_mdi name="refresh" class="h-5 w-5" />
           Refresh
         </button>
         <.link patch={~p"/dns/views/new"} class="btn btn-primary btn-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <.dm_mdi name="plus" class="w-4 h-4" />
           Add View
         </.link>
       </div>
@@ -76,23 +49,23 @@
     <%= case @live_action do %>
       <% :index -> %>
         <!-- Views Data Table -->
-        <div class="card bg-base-100 shadow">
+        <div class="card bg-surface shadow">
           <div class="card-body p-0">
             <%= if @views != [] do %>
               <!-- Filter Bar -->
-              <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
+              <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">
                 <input
                   type="text"
                   placeholder="Filter by view name..."
                   aria-label="Filter DNS views"
-                  class="input input-bordered input-sm flex-1 min-w-48"
+                  class="input input-sm flex-1 min-w-48"
                   phx-change="filter"
                   phx-debounce="300"
                   name="filter"
                   value={@filter}
                 />
                 <select
-                  class="select select-bordered select-sm"
+                  class="select select-sm"
                   phx-change="filter_status"
                   aria-label="Filter by status"
                   name="status"
@@ -105,7 +78,7 @@
                 </select>
               </div>
               <div class="overflow-x-auto">
-                <table class="table table-zebra">
+                <table class="table table-striped">
                   <thead>
                     <tr>
                       <th scope="col">Name</th>
@@ -151,7 +124,7 @@
                         <td>
                           <span class="font-mono">
                             <%= if view.priority == :infinity do %>
-                              ∞
+                              ---
                             <% else %>
                               {view.priority}
                             <% end %>
@@ -188,19 +161,7 @@
                               title="View Zones"
                               aria-label="View Zones"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M9 5l7 7-7 7"
-                                />
-                              </svg>
+                              <.dm_mdi name="arrow-right" class="w-4 h-4" />
                             </.link>
                             <.link
                               patch={~p"/dns/views/#{view.name}/edit"}
@@ -208,19 +169,7 @@
                               title="Edit"
                               aria-label="Edit"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
+                              <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
                             <%= if view.name != "default" do %>
                               <button
@@ -230,19 +179,7 @@
                                 title="Delete"
                                 aria-label="Delete"
                               >
-                                <svg
-                                  class="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                  />
-                                </svg>
+                                <.dm_mdi name="delete" class="w-4 h-4" />
                               </button>
                             <% end %>
                           </div>
@@ -252,7 +189,7 @@
                   </tbody>
                 </table>
               </div>
-              <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
+              <div class="px-4 py-2 border-t border-outline-variant text-sm text-on-surface-variant">
                 <% filtered = filtered_views(@views, @filter, @status_filter) %>
                 <%= if length(filtered) == length(@views) do %>
                   {length(@views)} view(s)
@@ -263,28 +200,10 @@
             <% else %>
               <div class="text-center py-12">
                 <div class="text-6xl mb-4">
-                  <svg
-                    class="w-16 h-16 mx-auto text-base-content/30"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.5"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.5"
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
+                  <.dm_mdi name="eye" class="w-16 h-16 mx-auto text-on-surface-variant" />
                 </div>
                 <h3 class="text-lg font-semibold mb-2">No DNS Views</h3>
-                <p class="text-base-content/60 mb-4">
+                <p class="text-on-surface-variant mb-4">
                   Get started by creating your first DNS view.
                 </p>
                 <.link patch={~p"/dns/views/new"} class="btn btn-primary">
@@ -304,49 +223,41 @@
             phx-debounce="blur"
             class="space-y-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">View Name</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">View Name</label>
               <input
                 type="text"
                 name="view[name]"
                 value={@view_form[:name].value}
                 maxlength="63"
-                class={"input input-bordered w-full #{if @form_errors[:name], do: "input-error"}"}
+                class={"input w-full #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., internal, external, guest"
                 required
               />
-              <label class="label">
-                <%= if @form_errors[:name] do %>
-                  <span class="label-text-alt text-error">{@form_errors[:name]}</span>
-                <% else %>
-                  <span class="label-text-alt">Unique identifier for this view</span>
-                <% end %>
-              </label>
+              <%= if @form_errors[:name] do %>
+                <span class="helper-text text-error">{@form_errors[:name]}</span>
+              <% else %>
+                <span class="helper-text">Unique identifier for this view</span>
+              <% end %>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Priority</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Priority</label>
               <input
                 type="number"
                 name="view[priority]"
                 value={@view_form[:priority].value}
-                class="input input-bordered w-full"
+                class="input w-full"
                 placeholder="100"
                 min="0"
                 required
               />
-              <label class="label">
-                <span class="label-text-alt">Lower value = higher priority (matched first)</span>
-              </label>
+              <span class="helper-text">Lower value = higher priority (matched first)</span>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-3">
+              <div class="form-group">
+                <label class="form-label cursor-pointer justify-start gap-3">
                   <input
                     type="checkbox"
                     name="view[recursion_enabled]"
@@ -355,16 +266,16 @@
                     class="checkbox checkbox-primary"
                   />
                   <div>
-                    <span class="label-text font-semibold">Enable Recursion</span>
-                    <p class="text-xs text-base-content/60">
+                    <span class="font-semibold">Enable Recursion</span>
+                    <p class="text-xs text-on-surface-variant">
                       Allow recursive queries for this view
                     </p>
                   </div>
                 </label>
               </div>
 
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-3">
+              <div class="form-group">
+                <label class="form-label cursor-pointer justify-start gap-3">
                   <input
                     type="checkbox"
                     name="view[ecs_enabled]"
@@ -373,23 +284,21 @@
                     class="checkbox checkbox-info"
                   />
                   <div>
-                    <span class="label-text font-semibold">Enable ECS</span>
-                    <p class="text-xs text-base-content/60">EDNS Client Subnet support</p>
+                    <span class="font-semibold">Enable ECS</span>
+                    <p class="text-xs text-on-surface-variant">EDNS Client Subnet support</p>
                   </div>
                 </label>
               </div>
             </div>
-            
-<!-- ACL Configuration for new view -->
+
+            <!-- ACL Configuration for new view -->
             <div class="divider">Access Control</div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">ACL Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">ACL Type</label>
               <select
                 name="view[acl_type]"
-                class="select select-bordered w-full"
+                class="select w-full"
                 phx-change="acl_type_changed"
               >
                 <option value="any" selected={@view_form[:acl_type].value == "any"}>
@@ -408,20 +317,14 @@
                   Geographic (by country)
                 </option>
               </select>
-              <label class="label">
-                <span class="label-text-alt">Control which clients can use this view</span>
-              </label>
+              <span class="helper-text">Control which clients can use this view</span>
             </div>
-            
-<!-- Geo Country Picker for new view -->
+
+            <!-- Geo Country Picker for new view -->
             <%= if @view_form[:acl_type].value == "geo" do %>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Allowed Countries</span>
-                  <span class="label-text-alt">{length(@selected_countries)} selected</span>
-                </label>
-                
-<!-- Selected countries badges -->
+              <div class="form-group">
+                <label class="form-label font-semibold">Allowed Countries</label>
+                <span class="helper-text">{length(@selected_countries)} selected</span>
                 <%= if @selected_countries != [] do %>
                   <div class="flex flex-wrap gap-1 mb-2">
                     <%= for code <- @selected_countries do %>
@@ -436,24 +339,15 @@
                         <%= if country do %>
                           - {country.name}
                         <% end %>
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
+                        <.dm_mdi name="close" class="w-3 h-3" />
                       </button>
                     <% end %>
                   </div>
                 <% end %>
-                
-<!-- Search input -->
                 <div class="relative mb-2">
                   <input
                     type="text"
-                    class="input input-bordered input-sm w-full pr-8"
+                    class="input input-sm w-full pr-8"
                     placeholder="Search countries..."
                     aria-label="Search countries"
                     value={@country_search}
@@ -465,27 +359,18 @@
                   <%= if @country_search != "" do %>
                     <button
                       type="button"
-                      class="absolute right-2 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
                       phx-click="clear_country_search"
                       aria-label="Clear search"
                     >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                      <.dm_mdi name="close" class="w-4 h-4" />
                     </button>
                   <% end %>
                 </div>
-                
-<!-- Country grid -->
-                <div class="border border-base-300 rounded-lg p-2 max-h-48 overflow-y-auto">
+                <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
                   <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
                     <%= for country <- filtered_countries(@countries, @country_search) do %>
-                      <label class="label cursor-pointer justify-start gap-2 p-1 hover:bg-base-200 rounded">
+                      <label class="form-label cursor-pointer justify-start gap-2 p-1 hover:bg-surface-container rounded">
                         <input
                           type="checkbox"
                           class="checkbox checkbox-xs checkbox-secondary"
@@ -493,8 +378,8 @@
                           phx-click="toggle_country"
                           phx-value-code={country.code}
                         />
-                        <span class="label-text text-sm">
-                          <span class="font-mono text-xs text-base-content/70">
+                        <span class="text-sm">
+                          <span class="font-mono text-xs text-on-surface-variant">
                             {country.code}
                           </span>
                           {country.name}
@@ -505,55 +390,47 @@
                 </div>
               </div>
             <% end %>
-            
-<!-- Fallback Forwarders -->
+
+            <!-- Fallback Forwarders -->
             <div class="divider">Fallback Forwarding</div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Fallback DNS Servers</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Fallback DNS Servers</label>
               <textarea
                 name="view[fallback_forwarders]"
-                class={"textarea textarea-bordered h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
+                class={"textarea h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
                 placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
               >{@view_form[:fallback_forwarders].value}</textarea>
-              <label class="label">
-                <%= if @form_errors[:fallback_forwarders] do %>
-                  <span class="label-text-alt text-error">
-                    {@form_errors[:fallback_forwarders]}
-                  </span>
-                <% else %>
-                  <span class="label-text-alt">
-                    Upstream servers used when zone resolution fails (one per line, optional :port)
-                  </span>
-                <% end %>
-              </label>
+              <%= if @form_errors[:fallback_forwarders] do %>
+                <span class="helper-text text-error">
+                  {@form_errors[:fallback_forwarders]}
+                </span>
+              <% else %>
+                <span class="helper-text">
+                  Upstream servers used when zone resolution fails (one per line, optional :port)
+                </span>
+              <% end %>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Timeout (ms)</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Timeout (ms)</label>
                 <input
                   type="number"
                   name="view[fallback_timeout]"
                   value={@view_form[:fallback_timeout].value}
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   min="100"
                   max="30000"
                 />
               </div>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Retries</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Retries</label>
                 <input
                   type="number"
                   name="view[fallback_retries]"
                   value={@view_form[:fallback_retries].value}
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   min="0"
                   max="5"
                 />
@@ -566,7 +443,7 @@
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
               <button
                 type="submit"
-                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                class="btn btn-primary"
                 disabled={map_size(@form_errors) > 0}
                 phx-disable-with="Creating..."
               >
@@ -585,57 +462,47 @@
             phx-debounce="blur"
             class="space-y-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">View Name</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">View Name</label>
               <input
                 type="text"
                 name="view[name]"
                 value={@view_form[:name].value}
-                class="input input-bordered w-full bg-base-200"
+                class="input w-full bg-surface-container"
                 disabled
               />
-              <label class="label">
-                <span class="label-text-alt text-base-content/60">Name cannot be changed</span>
-              </label>
+              <span class="helper-text text-on-surface-variant">Name cannot be changed</span>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Priority</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Priority</label>
               <%= if @is_default_view do %>
                 <input
                   type="text"
                   name="view[priority]"
-                  value="∞ (catch-all)"
-                  class="input input-bordered w-full bg-base-200 font-mono"
+                  value="--- (catch-all)"
+                  class="input w-full bg-surface-container font-mono"
                   disabled
                 />
-                <label class="label">
-                  <span class="label-text-alt text-base-content/60">
-                    Default view priority cannot be changed
-                  </span>
-                </label>
+                <span class="helper-text text-on-surface-variant">
+                  Default view priority cannot be changed
+                </span>
               <% else %>
                 <input
                   type="number"
                   name="view[priority]"
                   value={@view_form[:priority].value}
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   min="0"
                   required
                 />
-                <label class="label">
-                  <span class="label-text-alt">Lower value = higher priority</span>
-                </label>
+                <span class="helper-text">Lower value = higher priority</span>
               <% end %>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-3">
+              <div class="form-group">
+                <label class="form-label cursor-pointer justify-start gap-3">
                   <input
                     type="checkbox"
                     name="view[recursion_enabled]"
@@ -644,14 +511,14 @@
                     class="checkbox checkbox-primary"
                   />
                   <div>
-                    <span class="label-text font-semibold">Enable Recursion</span>
-                    <p class="text-xs text-base-content/60">Allow recursive queries</p>
+                    <span class="font-semibold">Enable Recursion</span>
+                    <p class="text-xs text-on-surface-variant">Allow recursive queries</p>
                   </div>
                 </label>
               </div>
 
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-3">
+              <div class="form-group">
+                <label class="form-label cursor-pointer justify-start gap-3">
                   <input
                     type="checkbox"
                     name="view[ecs_enabled]"
@@ -660,24 +527,22 @@
                     class="checkbox checkbox-info"
                   />
                   <div>
-                    <span class="label-text font-semibold">Enable ECS</span>
-                    <p class="text-xs text-base-content/60">EDNS Client Subnet support</p>
+                    <span class="font-semibold">Enable ECS</span>
+                    <p class="text-xs text-on-surface-variant">EDNS Client Subnet support</p>
                   </div>
                 </label>
               </div>
             </div>
-            
-<!-- ACL Configuration (hidden for default view) -->
+
+            <!-- ACL Configuration (hidden for default view) -->
             <%= unless @is_default_view do %>
               <div class="divider">Access Control</div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">ACL Type</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">ACL Type</label>
                 <select
                   name="view[acl_type]"
-                  class="select select-bordered w-full"
+                  class="select w-full"
                   phx-change="acl_type_changed"
                 >
                   <option value="any" selected={@view_form[:acl_type].value == "any"}>
@@ -696,20 +561,14 @@
                     Geographic (by country)
                   </option>
                 </select>
-                <label class="label">
-                  <span class="label-text-alt">Control which clients can use this view</span>
-                </label>
+                <span class="helper-text">Control which clients can use this view</span>
               </div>
-              
-<!-- Geo Country Picker for edit view -->
+
+              <!-- Geo Country Picker for edit view -->
               <%= if @view_form[:acl_type].value == "geo" do %>
-                <div class="form-control">
-                  <label class="label">
-                    <span class="label-text font-semibold">Allowed Countries</span>
-                    <span class="label-text-alt">{length(@selected_countries)} selected</span>
-                  </label>
-                  
-<!-- Selected countries badges -->
+                <div class="form-group">
+                  <label class="form-label font-semibold">Allowed Countries</label>
+                  <span class="helper-text">{length(@selected_countries)} selected</span>
                   <%= if @selected_countries != [] do %>
                     <div class="flex flex-wrap gap-1 mb-2">
                       <%= for code <- @selected_countries do %>
@@ -724,29 +583,15 @@
                           <%= if country do %>
                             - {country.name}
                           <% end %>
-                          <svg
-                            class="w-3 h-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
+                          <.dm_mdi name="close" class="w-3 h-3" />
                         </button>
                       <% end %>
                     </div>
                   <% end %>
-                  
-<!-- Search input -->
                   <div class="relative mb-2">
                     <input
                       type="text"
-                      class="input input-bordered input-sm w-full pr-8"
+                      class="input input-sm w-full"
                       placeholder="Search countries..."
                       aria-label="Search countries"
                       value={@country_search}
@@ -758,26 +603,17 @@
                     <%= if @country_search != "" do %>
                       <button
                         type="button"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
                         phx-click="clear_country_search"
                       >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
+                        <.dm_mdi name="close" class="w-4 h-4" />
                       </button>
                     <% end %>
                   </div>
-                  
-<!-- Country grid -->
-                  <div class="border border-base-300 rounded-lg p-2 max-h-48 overflow-y-auto">
+                  <div class="border border-outline rounded-lg p-2 max-h-48 overflow-y-auto">
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
                       <%= for country <- filtered_countries(@countries, @country_search) do %>
-                        <label class="label cursor-pointer justify-start gap-2 p-1 hover:bg-base-200 rounded">
+                        <label class="form-label cursor-pointer justify-start gap-2 p-1 hover:bg-surface-container rounded">
                           <input
                             type="checkbox"
                             class="checkbox checkbox-xs checkbox-secondary"
@@ -785,8 +621,8 @@
                             phx-click="toggle_country"
                             phx-value-code={country.code}
                           />
-                          <span class="label-text text-sm">
-                            <span class="font-mono text-xs text-base-content/70">
+                          <span class="text-sm">
+                            <span class="font-mono text-xs text-on-surface-variant">
                               {country.code}
                             </span>
                             {country.name}
@@ -800,66 +636,51 @@
             <% else %>
               <div class="divider">Access Control</div>
               <div class="alert alert-info">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <.dm_mdi name="information" class="w-5 h-5" />
                 <span>The default view always accepts all clients (ACL: any)</span>
               </div>
             <% end %>
-            
-<!-- Fallback Forwarders -->
+
+            <!-- Fallback Forwarders -->
             <div class="divider">Fallback Forwarding</div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Fallback DNS Servers</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Fallback DNS Servers</label>
               <textarea
                 name="view[fallback_forwarders]"
-                class={"textarea textarea-bordered h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
+                class={"textarea h-20 font-mono text-sm #{if @form_errors[:fallback_forwarders], do: "textarea-error"}"}
                 placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1:53"
               >{@view_form[:fallback_forwarders].value}</textarea>
-              <label class="label">
-                <%= if @form_errors[:fallback_forwarders] do %>
-                  <span class="label-text-alt text-error">
-                    {@form_errors[:fallback_forwarders]}
-                  </span>
-                <% else %>
-                  <span class="label-text-alt">
-                    Upstream servers used when zone resolution fails (one per line, optional :port)
-                  </span>
-                <% end %>
-              </label>
+              <%= if @form_errors[:fallback_forwarders] do %>
+                <span class="helper-text text-error">
+                  {@form_errors[:fallback_forwarders]}
+                </span>
+              <% else %>
+                <span class="helper-text">
+                  Upstream servers used when zone resolution fails (one per line, optional :port)
+                </span>
+              <% end %>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Timeout (ms)</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Timeout (ms)</label>
                 <input
                   type="number"
                   name="view[fallback_timeout]"
                   value={@view_form[:fallback_timeout].value}
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   min="100"
                   max="30000"
                 />
               </div>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Retries</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Retries</label>
                 <input
                   type="number"
                   name="view[fallback_retries]"
                   value={@view_form[:fallback_retries].value}
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   min="0"
                   max="5"
                 />
@@ -872,7 +693,7 @@
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
               <button
                 type="submit"
-                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                class="btn btn-primary"
                 disabled={map_size(@form_errors) > 0}
                 phx-disable-with="Saving..."
               >
@@ -883,12 +704,12 @@
         </.card>
     <% end %>
   </div>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-modal" title="Delete View" show on_cancel={JS.push("close_modal")}>
       <div class="py-4">
-        <p class="text-base-content/80">
+        <p class="text-on-surface-variant">
           Are you sure you want to delete the view <strong class="font-mono">{@delete_confirm}</strong>?
         </p>
         <p class="mt-2 text-sm text-warning">

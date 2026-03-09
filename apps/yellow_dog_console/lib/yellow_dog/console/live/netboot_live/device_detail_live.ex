@@ -66,23 +66,10 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 class="btn btn-ghost btn-sm"
                 aria-label="Copy MAC address"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
+                <.dm_mdi name="content-copy" class="h-4 w-4" />
               </button>
             </div>
-            <p class="mt-1 text-base-content/70">Netboot device detail</p>
+            <p class="mt-1 text-on-surface-variant">Netboot device detail</p>
           </div>
         </div>
 
@@ -103,7 +90,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
               />
               <.info_row label="State" value={to_string(@device.state)} />
               <div class="flex justify-between">
-                <span class="text-base-content/70">Profile</span>
+                <span class="text-on-surface-variant">Profile</span>
                 <.link
                   :if={@device.profile_id}
                   navigate={"/netboot/profiles/#{@device.profile_id}/edit"}
@@ -128,7 +115,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
             </div>
 
             <div class="mt-4">
-              <label class="label"><span class="label-text font-medium">Tags</span></label>
+              <label class="form-label font-medium">Tags</label>
               <div class="flex flex-wrap gap-1 mb-2">
                 <span
                   :for={tag <- @device.tags}
@@ -144,14 +131,14 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                     &times;
                   </button>
                 </span>
-                <span :if={@device.tags == []} class="text-base-content/50 text-sm">No tags</span>
+                <span :if={@device.tags == []} class="text-on-surface-variant text-sm">No tags</span>
               </div>
               <form phx-submit="add_tag" class="flex gap-2">
                 <input
                   type="text"
                   name="tag"
                   placeholder="Add tag..."
-                  class="input input-bordered input-sm flex-1"
+                  class="input input-sm flex-1"
                   value=""
                 />
                 <button type="submit" class="btn btn-outline btn-sm" phx-disable-with="Adding...">
@@ -163,7 +150,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
           <.card>
             <h2 class="card-title mb-4">Hardware Info</h2>
-            <div :if={@device.hardware_info == %{}} class="text-base-content/50 text-sm">
+            <div :if={@device.hardware_info == %{}} class="text-on-surface-variant text-sm">
               No hardware info reported by device
             </div>
             <div :if={@device.hardware_info != %{}} class="space-y-2">
@@ -179,9 +166,9 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
             <h2 class="card-title mb-4">Actions</h2>
             <div class="space-y-3">
               <div>
-                <label class="label"><span class="label-text">Assign Profile</span></label>
+                <label class="form-label">Assign Profile</label>
                 <select
-                  class="select select-bordered w-full"
+                  class="select w-full"
                   phx-change="assign_profile"
                   name="profile_id"
                   value={@device.profile_id || ""}
@@ -210,8 +197,8 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
                 class={[
                   "btn btn-sm w-full",
                   if(@device.rescue_mode,
-                    do: "btn-active btn-accent",
-                    else: "btn-outline btn-accent"
+                    do: "btn-primary",
+                    else: "btn-outline"
                   )
                 ]}
               >
@@ -235,7 +222,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
           <ul class="timeline timeline-vertical timeline-compact">
             <li :for={{entry, idx} <- Enum.with_index(Enum.reverse(@device.state_history))}>
               <hr :if={idx > 0} />
-              <div class="timeline-start text-sm text-base-content/70">
+              <div class="timeline-start text-sm text-on-surface-variant">
                 {format_datetime_full(entry.at)}
               </div>
               <div class="timeline-middle">
@@ -255,15 +242,15 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
 
         <.card :if={@boot_script}>
           <h2 class="card-title mb-4">iPXE Boot Script</h2>
-          <p class="text-sm text-base-content/70 mb-2">
+          <p class="text-sm text-on-surface-variant mb-2">
             Script that would be served to this device {if @device && @device.rescue_mode,
               do: "(rescue mode)",
               else: ""}
           </p>
-          <pre class="bg-base-200 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@boot_script}</pre>
+          <pre class="bg-surface-container p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre">{@boot_script}</pre>
         </.card>
 
-        <div class="text-xs text-base-content/50 flex justify-end">
+        <div class="text-xs text-on-surface-variant flex justify-end">
           <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Live
           </span>
@@ -276,7 +263,7 @@ defmodule YellowDog.Console.NetbootLive.DeviceDetailLive do
   defp info_row(assigns) do
     ~H"""
     <div class="flex justify-between">
-      <span class="text-base-content/70">{@label}</span>
+      <span class="text-on-surface-variant">{@label}</span>
       <span class="font-medium">{@value}</span>
     </div>
     """

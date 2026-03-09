@@ -68,9 +68,9 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
         </div>
 
         <form phx-change="filter" class="flex gap-2 items-end">
-          <div class="form-control">
-            <label class="label"><span class="label-text">Event Type</span></label>
-            <select name="event" class="select select-sm select-bordered">
+          <div class="form-group">
+            <label class="form-label">Event Type</label>
+            <select name="event" class="select select-sm">
               <option value="">All Events</option>
               <option value="host.registered" selected={@filter_event == "host.registered"}>
                 host.registered
@@ -89,19 +89,19 @@ defmodule YellowDog.Console.IdentityLive.AuditLive do
               </option>
             </select>
           </div>
-          <div class="form-control">
-            <label class="label"><span class="label-text">Host ID</span></label>
+          <div class="form-group">
+            <label class="form-label">Host ID</label>
             <input
               type="text"
               name="host"
               value={@filter_host}
               placeholder="Filter by host ID..."
-              class="input input-sm input-bordered w-64"
+              class="input input-sm w-64"
             />
           </div>
         </form>
 
-        <div :if={@entries == []} class="text-center py-12 text-base-content/50">
+        <div :if={@entries == []} class="text-center py-12 text-on-surface-variant">
           No audit entries found
         </div>
 

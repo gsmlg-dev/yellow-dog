@@ -36,7 +36,7 @@ defmodule YellowDog.Console.DiagnosticsLive do
         <h1 class="text-2xl font-bold mb-4">Service Diagnostics</h1>
 
         <%!-- Tab Navigation --%>
-        <div role="tablist" class="tabs tabs-boxed mb-4">
+        <div role="tablist" class="tabs mb-4">
           <button
             role="tab"
             class={["tab", @active_tab == :dns && "tab-active"]}
@@ -73,16 +73,16 @@ defmodule YellowDog.Console.DiagnosticsLive do
 
         <%!-- Display Mode Toggle --%>
         <div class="flex justify-end mb-4">
-          <div class="join">
+          <div class="flex">
             <button
-              class={["btn btn-sm join-item", @display_mode == :struct && "btn-active"]}
+              class={["btn btn-sm", @display_mode == :struct && "btn-primary"]}
               phx-click="toggle_display_mode"
               phx-value-mode="struct"
             >
               Struct
             </button>
             <button
-              class={["btn btn-sm join-item", @display_mode == :raw && "btn-active"]}
+              class={["btn btn-sm", @display_mode == :raw && "btn-primary"]}
               phx-click="toggle_display_mode"
               phx-value-mode="raw"
             >

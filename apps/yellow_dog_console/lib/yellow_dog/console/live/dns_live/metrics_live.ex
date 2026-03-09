@@ -183,9 +183,9 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
   defp bar_width(count, max) when max > 0, do: Float.round(count / max * 100, 0)
   defp bar_width(_, _), do: 0
 
-  defp rcode_color(code), do: Map.get(@rcode_colors, code, "bg-base-300")
+  defp rcode_color(code), do: Map.get(@rcode_colors, code, "bg-surface-container-high")
 
-  defp type_color(type), do: Map.get(@type_colors, type, "bg-base-300")
+  defp type_color(type), do: Map.get(@type_colors, type, "bg-surface-container-high")
 
   @impl true
   def render(assigns) do
@@ -198,28 +198,14 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         <div class="flex flex-wrap justify-between items-center gap-4">
           <h1 class="text-2xl font-bold">DNS Metrics</h1>
           <div class="flex gap-2 items-center">
-            <span class="text-xs text-base-content/50">Auto-refresh: 5s</span>
+            <span class="text-xs text-on-surface-variant">Auto-refresh: 5s</span>
             <button
               phx-click="export_csv"
               id="export-csv"
               phx-hook="CsvDownload"
               class="btn btn-outline btn-sm"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              </svg>
-              Export CSV
+              <.dm_mdi name="download" class="h-4 w-4" /> Export CSV
             </button>
             <button phx-click="reset" class="btn btn-sm btn-ghost" data-confirm="Reset all metrics?">
               Reset
@@ -228,43 +214,55 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         </div>
 
         <%!-- Summary Stats --%>
-        <div class="stats stats-vertical lg:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Total Queries</div>
-            <div class="stat-value">{fmt_count(@summary.queries_total)}</div>
-            <div class="stat-desc">Since start</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Avg Latency</div>
-            <div class="stat-value text-primary">{format_latency(@summary.avg_response_time_us)}</div>
-            <div class="stat-desc">Response time</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Cache Hit Rate</div>
-            <div class="stat-value text-success">{Float.round(@summary.cache_hit_rate, 1)}%</div>
-            <div class="stat-desc">
-              {Map.get(@metrics.counters, :cache_hits, 0)} hits / {Map.get(
-                @metrics.counters,
-                :cache_misses,
-                0
-              )} misses
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Total Queries</div>
+              <div class="text-2xl font-bold">{fmt_count(@summary.queries_total)}</div>
+              <div class="text-xs text-on-surface-variant">Since start</div>
             </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Uptime</div>
-            <div class="stat-value text-lg">{format_uptime(@summary.uptime_seconds)}</div>
-            <div class="stat-desc">Collector running</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Avg Latency</div>
+              <div class="text-2xl font-bold text-primary">
+                {format_latency(@summary.avg_response_time_us)}
+              </div>
+              <div class="text-xs text-on-surface-variant">Response time</div>
+            </div>
+          </div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Cache Hit Rate</div>
+              <div class="text-2xl font-bold text-success">
+                {Float.round(@summary.cache_hit_rate, 1)}%
+              </div>
+              <div class="text-xs text-on-surface-variant">
+                {Map.get(@metrics.counters, :cache_hits, 0)} hits / {Map.get(
+                  @metrics.counters,
+                  :cache_misses,
+                  0
+                )} misses
+              </div>
+            </div>
+          </div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Uptime</div>
+              <div class="text-2xl font-bold">{format_uptime(@summary.uptime_seconds)}</div>
+              <div class="text-xs text-on-surface-variant">Collector running</div>
+            </div>
           </div>
         </div>
 
         <%!-- Response Codes & Query Types --%>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <%!-- Response Codes --%>
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title text-base">Response Codes</h2>
               <%= if Enum.empty?(@metrics.responses_by_code) do %>
-                <p class="text-base-content/50 text-sm">No responses recorded yet</p>
+                <p class="text-on-surface-variant text-sm">No responses recorded yet</p>
               <% else %>
                 <% max_rcode =
                   Enum.reduce(@metrics.responses_by_code, 1, fn {_, c}, acc -> max(c, acc) end) %>
@@ -274,7 +272,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                       <span class="w-24 text-sm font-mono">
                         {code |> to_string() |> String.upcase()}
                       </span>
-                      <div class="flex-1 bg-base-200 rounded-full h-4">
+                      <div class="flex-1 bg-surface-container rounded-full h-4">
                         <div
                           class={"h-4 rounded-full " <> rcode_color(to_string(code))}
                           style={"width: #{bar_width(count, max_rcode)}%"}
@@ -290,11 +288,11 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
           </div>
 
           <%!-- Query Types --%>
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title text-base">Query Types</h2>
               <%= if Enum.empty?(@metrics.queries_by_type) do %>
-                <p class="text-base-content/50 text-sm">No queries recorded yet</p>
+                <p class="text-on-surface-variant text-sm">No queries recorded yet</p>
               <% else %>
                 <% max_type =
                   Enum.reduce(@metrics.queries_by_type, 1, fn {_, c}, acc -> max(c, acc) end) %>
@@ -304,7 +302,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                       <span class="w-16 text-sm font-mono">
                         {type |> to_string() |> String.upcase()}
                       </span>
-                      <div class="flex-1 bg-base-200 rounded-full h-4">
+                      <div class="flex-1 bg-surface-container rounded-full h-4">
                         <div
                           class={"h-4 rounded-full " <> type_color(to_string(type))}
                           style={"width: #{bar_width(count, max_type)}%"}
@@ -321,23 +319,23 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         </div>
 
         <%!-- Response Time Histogram --%>
-        <div class="card bg-base-100 shadow">
+        <div class="card bg-surface shadow">
           <div class="card-body">
             <h2 class="card-title text-base">Response Time Distribution</h2>
             <%= if @response_times.count == 0 do %>
-              <p class="text-base-content/50 text-sm">No response times recorded yet</p>
+              <p class="text-on-surface-variant text-sm">No response times recorded yet</p>
             <% else %>
               <div class="grid grid-cols-3 gap-4 mb-4">
                 <div class="text-center">
-                  <div class="text-xs text-base-content/60">Min</div>
+                  <div class="text-xs text-on-surface-variant">Min</div>
                   <div class="font-mono">{format_latency(@response_times.min)}</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-xs text-base-content/60">Avg</div>
+                  <div class="text-xs text-on-surface-variant">Avg</div>
                   <div class="font-mono">{format_latency(@response_times.avg)}</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-xs text-base-content/60">Max</div>
+                  <div class="text-xs text-on-surface-variant">Max</div>
                   <div class="font-mono">{format_latency(@response_times.max)}</div>
                 </div>
               </div>
@@ -351,7 +349,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                       style={"height: #{bar_width(count, max_bucket)}%"}
                     >
                     </div>
-                    <div class="text-xs text-base-content/60 mt-1 truncate w-full text-center">
+                    <div class="text-xs text-on-surface-variant mt-1 truncate w-full text-center">
                       {format_bucket_label(label)}
                     </div>
                     <div class="text-xs">{count}</div>
@@ -365,11 +363,11 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         <%!-- Top Domains & Top Clients --%>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <%!-- Top Domains --%>
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title text-base">Top Queried Domains</h2>
               <%= if Enum.empty?(@top_domains) do %>
-                <p class="text-base-content/50 text-sm">No domains queried yet</p>
+                <p class="text-on-surface-variant text-sm">No domains queried yet</p>
               <% else %>
                 <div class="overflow-x-auto">
                   <table class="table table-sm">
@@ -383,7 +381,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                     <tbody>
                       <%= for {{domain, count}, idx} <- Enum.with_index(@top_domains, 1) do %>
                         <tr class="hover">
-                          <td class="text-base-content/60">{idx}</td>
+                          <td class="text-on-surface-variant">{idx}</td>
                           <td class="font-mono text-sm">{domain}</td>
                           <td class="text-right">{fmt_count(count)}</td>
                         </tr>
@@ -396,11 +394,11 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
           </div>
 
           <%!-- Top Clients --%>
-          <div class="card bg-base-100 shadow">
+          <div class="card bg-surface shadow">
             <div class="card-body">
               <h2 class="card-title text-base">Top Clients</h2>
               <%= if Enum.empty?(@top_clients) do %>
-                <p class="text-base-content/50 text-sm">No client activity yet</p>
+                <p class="text-on-surface-variant text-sm">No client activity yet</p>
               <% else %>
                 <div class="overflow-x-auto">
                   <table class="table table-sm">
@@ -414,7 +412,7 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
                     <tbody>
                       <%= for {{ip, count}, idx} <- Enum.with_index(@top_clients, 1) do %>
                         <tr class="hover">
-                          <td class="text-base-content/60">{idx}</td>
+                          <td class="text-on-surface-variant">{idx}</td>
                           <td class="font-mono text-sm">{ip}</td>
                           <td class="text-right">{fmt_count(count)}</td>
                         </tr>
@@ -428,30 +426,36 @@ defmodule YellowDog.Console.DnsLive.MetricsLive do
         </div>
 
         <%!-- Additional Counters --%>
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Rate Limited</div>
-            <div class="stat-value text-lg text-warning">
-              {Map.get(@metrics.counters, :rate_limit_rejected, 0)}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Rate Limited</div>
+              <div class="text-2xl font-bold text-warning">
+                {Map.get(@metrics.counters, :rate_limit_rejected, 0)}
+              </div>
             </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Fallbacks Used</div>
-            <div class="stat-value text-lg">{Map.get(@metrics.counters, :fallbacks_total, 0)}</div>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Fallbacks Used</div>
+              <div class="text-2xl font-bold">{Map.get(@metrics.counters, :fallbacks_total, 0)}</div>
+            </div>
           </div>
-          <div class="stat">
-            <div class="stat-title">Protocol Split</div>
-            <div class="stat-value text-lg">
-              <% proto = Map.new(@metrics.queries_by_protocol) %>
-              <span class="text-info">{Map.get(proto, :udp, 0)} UDP</span>
-              <span class="text-xs text-base-content/50"> / </span>
-              <span class="text-primary">{Map.get(proto, :tcp, 0)} TCP</span>
+          <div class="card card-bordered bg-surface">
+            <div class="card-body">
+              <div class="text-sm text-on-surface-variant">Protocol Split</div>
+              <div class="text-2xl font-bold">
+                <% proto = Map.new(@metrics.queries_by_protocol) %>
+                <span class="text-info">{Map.get(proto, :udp, 0)} UDP</span>
+                <span class="text-xs text-on-surface-variant"> / </span>
+                <span class="text-primary">{Map.get(proto, :tcp, 0)} TCP</span>
+              </div>
             </div>
           </div>
         </div>
 
         <%!-- Footer --%>
-        <div class="text-xs text-base-content/50 flex justify-between">
+        <div class="text-xs text-on-surface-variant flex justify-between">
           <span>Data from MetricsCollector</span>
           <span :if={@connected} class="flex items-center gap-1">
             <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span> Connected

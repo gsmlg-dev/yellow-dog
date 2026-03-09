@@ -40,7 +40,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-4xl font-bold">Fingerprints</h1>
-            <p class="mt-2 text-base-content/70">
+            <p class="mt-2 text-on-surface-variant">
               Manage device fingerprint database and classify unknown fingerprints
             </p>
           </div>
@@ -54,23 +54,23 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
           </button>
         </div>
 
-        <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-          <div class="stat">
-            <div class="stat-title">Known Fingerprints</div>
-            <div class="stat-value text-success">{@known_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Unknown Fingerprints</div>
-            <div class="stat-value text-warning">{@unknown_count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">V4 Database</div>
-            <div class="stat-value text-sm">{@stats.fingerprints_v4}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">V6 Database</div>
-            <div class="stat-value text-sm">{@stats.fingerprints_v6}</div>
-          </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <.card>
+            <div class="text-sm text-on-surface-variant">Known Fingerprints</div>
+            <div class="text-2xl font-bold text-success">{@known_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">Unknown Fingerprints</div>
+            <div class="text-2xl font-bold text-warning">{@unknown_count}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">V4 Database</div>
+            <div class="text-2xl font-bold">{@stats.fingerprints_v4}</div>
+          </.card>
+          <.card>
+            <div class="text-sm text-on-surface-variant">V6 Database</div>
+            <div class="text-2xl font-bold">{@stats.fingerprints_v6}</div>
+          </.card>
         </div>
 
         <div role="tablist" class="tabs tabs-bordered">
@@ -94,19 +94,8 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
 
         <.card>
           <div class="mb-4">
-            <label class="input input-bordered flex items-center gap-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                class="h-4 w-4 opacity-70"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
+            <label class="input flex items-center gap-2">
+              <.dm_mdi name="magnify" class="h-4 w-4 opacity-70" />
               <input
                 type="text"
                 class="grow"
@@ -120,7 +109,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
           </div>
 
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <th>Parameter List</th>
@@ -133,7 +122,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
               </thead>
               <tbody>
                 <tr :if={@filtered_fingerprints == []}>
-                  <td colspan="6" class="text-center text-base-content/50 py-8">
+                  <td colspan="6" class="text-center text-on-surface-variant py-8">
                     No fingerprints found
                   </td>
                 </tr>
@@ -146,7 +135,7 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
                     <.badge :if={fp[:profile_id]} color="info" size="sm">
                       {fp[:profile_id]}
                     </.badge>
-                    <span :if={!fp[:profile_id]} class="text-base-content/50">unclassified</span>
+                    <span :if={!fp[:profile_id]} class="text-on-surface-variant">unclassified</span>
                   </td>
                   <td>{fp[:confidence] || 0}%</td>
                   <td>{fp[:hit_count] || 0}</td>
@@ -170,18 +159,18 @@ defmodule YellowDog.Console.FingerprintLive.FingerprintsLive do
           <h3 class="text-lg font-bold mb-4">Classify Fingerprint</h3>
           <form phx-submit="save_override">
             <input type="hidden" name="hash" value={@selected_fp} />
-            <div class="form-control mb-4">
-              <label class="label"><span class="label-text">Profile</span></label>
-              <select name="profile_id" class="select select-bordered w-full">
+            <div class="form-group mb-4">
+              <label class="form-label">Profile</label>
+              <select name="profile_id" class="select w-full">
                 <option :for={p <- @profiles} value={p.id}>{p.name}</option>
               </select>
             </div>
-            <div class="form-control mb-4">
-              <label class="label"><span class="label-text">Note (optional)</span></label>
+            <div class="form-group mb-4">
+              <label class="form-label">Note (optional)</label>
               <input
                 type="text"
                 name="note"
-                class="input input-bordered"
+                class="input"
                 placeholder="e.g. Floor 3 sensors"
               />
             </div>

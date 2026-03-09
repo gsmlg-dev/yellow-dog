@@ -216,3 +216,44 @@ GitHub Actions workflows:
 
 - Conventional commits: `feat|fix|refactor|test|docs|chore(scope): description`
 - Omit "Generated with Claude Code" and Co-Authored-By trailer
+
+## UI System
+
+### Stack
+
+Two dependencies only:
+- `@duskmoon-dev/core` — TailwindCSS plugin (design tokens, utilities)
+- `phoenix_duskmoon` — Phoenix component module (HEEx components)
+
+`phoenix_duskmoon` wraps `duskmoon-elements` internally. Treat both as black boxes consumed via their published APIs only.
+
+### Skills
+
+Load before any UI task:
+- CSS/tokens → `.claude/skills/duskmoon-dev-core/SKILL.md`
+- Web components → `.claude/skills/duskmoon-elements/SKILL.md`
+- Phoenix components → `.claude/skills/elixir-phoenix/SKILL.md` + `.claude/skills/phoenix-duskmoon-ui/SKILL.md`
+
+### Constraints
+
+- NEVER vendor or replicate component internals
+- NEVER override `@duskmoon-dev/core` tokens locally — propose changes upstream instead
+- NEVER patch `phoenix_duskmoon` component logic inline — wrap or compose only
+- Raw Tailwind classes not provided by `@duskmoon-dev/core` are PROHIBITED in templates
+
+### Upstream Issue Protocol
+
+When you encounter a bug, missing feature, or API gap:
+
+1. Identify the correct repo:
+   - Token/CSS/plugin issue → `duskmoon-dev/duskmoonui` (`@duskmoon-dev/core`)
+   - Web component/element issue → `duskmoon-dev/duskmoon-elements`
+   - Phoenix component issue → `duskmoon-dev/phoenix-duskmoon-ui`
+
+2. Create a GitHub issue in that repo with:
+   - Label: `internal request`
+   - Expected vs actual behavior
+   - Minimal reproduction
+
+3. Add a comment at the workaround site: `# TODO: upstream duskmoon-dev/<repo>#<issue>`
+   Do NOT silently absorb upstream bugs.

@@ -50,13 +50,13 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
     <div class="space-y-6">
       <div>
         <h1 class="text-4xl font-bold">DHCP Client Interfaces</h1>
-        <p class="mt-2 text-base-content/70">Manage per-interface DHCP client instances</p>
+        <p class="mt-2 text-on-surface-variant">Manage per-interface DHCP client instances</p>
       </div>
 
-      <div class="card bg-base-100 shadow-xl">
+      <div class="card bg-surface shadow-xl">
         <div class="card-body">
           <h2 class="card-title">Configuration</h2>
-          <p class="text-sm text-base-content/70">
+          <p class="text-sm text-on-surface-variant">
             Interfaces are configured in the TOML config file under [dhcp_client].
           </p>
 
@@ -108,7 +108,7 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
       </div>
 
       <%= for iface <- @interfaces do %>
-        <div class="card bg-base-100 shadow-xl">
+        <div class="card bg-surface shadow-xl">
           <div class="card-body">
             <div class="flex items-center justify-between">
               <h2 class="card-title font-mono">{iface.interface}</h2>
@@ -117,39 +117,43 @@ defmodule YellowDog.Console.DhcpClientLive.InterfacesLive do
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">State</div>
+                <div class="text-xs font-semibold text-on-surface-variant uppercase">State</div>
                 <div class="text-lg font-bold">{iface.state}</div>
               </div>
               <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">IP</div>
+                <div class="text-xs font-semibold text-on-surface-variant uppercase">IP</div>
                 <div class="font-mono">
                   {if iface.lease, do: format_ip(iface.lease.ip), else: "Pending"}
                 </div>
               </div>
               <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">Server</div>
+                <div class="text-xs font-semibold text-on-surface-variant uppercase">Server</div>
                 <div class="font-mono text-sm">
                   {if iface.lease, do: format_ip(iface.lease.server_ip), else: "-"}
                 </div>
               </div>
               <div>
-                <div class="text-xs font-semibold text-base-content/50 uppercase">XID</div>
+                <div class="text-xs font-semibold text-on-surface-variant uppercase">XID</div>
                 <div class="font-mono text-sm">
                   {if iface.lease, do: "0x#{Integer.to_string(iface.lease.xid, 16)}", else: "-"}
                 </div>
               </div>
               <%= if iface.lease do %>
                 <div>
-                  <div class="text-xs font-semibold text-base-content/50 uppercase">Lease Time</div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">
+                    Lease Time
+                  </div>
                   <div class="text-sm">{format_lease_time(iface.lease.lease_time)}</div>
                 </div>
                 <div>
-                  <div class="text-xs font-semibold text-base-content/50 uppercase">Remaining</div>
+                  <div class="text-xs font-semibold text-on-surface-variant uppercase">Remaining</div>
                   <div class="text-sm">{format_lease_remaining(iface.lease)}</div>
                 </div>
                 <%= if iface.lease.yellowdog_server do %>
                   <div>
-                    <div class="text-xs font-semibold text-base-content/50 uppercase">YellowDog</div>
+                    <div class="text-xs font-semibold text-on-surface-variant uppercase">
+                      YellowDog
+                    </div>
                     <div><span class="badge badge-success badge-sm">YD Server</span></div>
                   </div>
                 <% end %>

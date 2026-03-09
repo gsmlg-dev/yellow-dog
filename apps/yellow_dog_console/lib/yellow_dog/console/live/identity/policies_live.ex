@@ -51,19 +51,19 @@ defmodule YellowDog.Console.IdentityLive.PoliciesLive do
           </div>
         </div>
 
-        <div :if={@policies == []} class="text-center py-12 text-base-content/50">
+        <div :if={@policies == []} class="text-center py-12 text-on-surface-variant">
           No policies configured. All registrations will use the default action.
         </div>
 
         <div class="space-y-4">
-          <div :for={{policy, idx} <- Enum.with_index(@policies, 1)} class="card bg-base-100 shadow">
+          <div :for={{policy, idx} <- Enum.with_index(@policies, 1)} class="card bg-surface shadow">
             <div class="card-body">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                   <span class="badge badge-neutral badge-lg font-mono">{idx}</span>
                   <div>
                     <h3 class="font-bold text-lg">{policy.name}</h3>
-                    <p :if={policy.description} class="text-sm text-base-content/70">
+                    <p :if={policy.description} class="text-sm text-on-surface-variant">
                       {policy.description}
                     </p>
                   </div>
@@ -74,13 +74,13 @@ defmodule YellowDog.Console.IdentityLive.PoliciesLive do
               </div>
 
               <div :if={policy.match != %{}} class="mt-3">
-                <h4 class="text-sm font-semibold text-base-content/70 mb-2">Match Criteria</h4>
+                <h4 class="text-sm font-semibold text-on-surface-variant mb-2">Match Criteria</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                   <div
                     :for={{field, value} <- policy.match}
                     class="flex items-center gap-2 text-sm"
                   >
-                    <span class="font-mono text-base-content/50">{field}:</span>
+                    <span class="font-mono text-on-surface-variant">{field}:</span>
                     <span class="font-mono">{format_match_value(value)}</span>
                   </div>
                 </div>

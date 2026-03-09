@@ -1,12 +1,12 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="DHCPv4" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-4xl font-bold">DHCP Leases</h1>
-        <p class="mt-2 text-base-content/70">
+        <p class="mt-2 text-on-surface-variant">
           View and manage all DHCP lease allocations
         </p>
       </div>
@@ -18,24 +18,11 @@
           class="btn btn-outline btn-sm"
           aria-label="Export CSV"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
+          <.dm_mdi name="download" class="h-5 w-5" />
           Export CSV
         </button>
         <.link navigate={~p"/dhcpv4"} class="btn btn-ghost btn-sm">
-          ← Back to Overview
+          <.dm_mdi name="arrow-left" class="h-4 w-4" /> Back to Overview
         </.link>
       </div>
     </div>
@@ -44,21 +31,8 @@
       <div class="flex flex-col md:flex-row gap-4">
         <!-- Search -->
         <div class="flex-1">
-          <label class="input input-bordered flex items-center gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5 opacity-70"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+          <label class="input flex items-center gap-2">
+            <.dm_mdi name="magnify" class="h-5 w-5 opacity-70" />
             <input
               type="text"
               class="grow"
@@ -72,9 +46,9 @@
           </label>
         </div>
         <!-- State Filter -->
-        <div class="form-control w-full md:w-48">
+        <div class="form-group w-full md:w-48">
           <select
-            class="select select-bordered"
+            class="select"
             phx-change="filter_state"
             aria-label="Filter by lease state"
             name="state"
@@ -89,9 +63,9 @@
           </select>
         </div>
         <!-- Pool Filter -->
-        <div class="form-control w-full md:w-48">
+        <div class="form-group w-full md:w-48">
           <select
-            class="select select-bordered"
+            class="select"
             phx-change="filter_pool"
             aria-label="Filter by pool"
             name="pool"
@@ -106,34 +80,42 @@
       </div>
     </.card>
     <!-- Stats Summary -->
-    <div class="stats stats-vertical sm:stats-horizontal shadow">
-      <div class="stat">
-        <div class="stat-title">Total Displayed</div>
-        <div class="stat-value text-sm">{length(@filtered_leases)}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Active</div>
-        <div class="stat-value text-sm text-success">
-          {count_by_state(@filtered_leases, :active)}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Total Displayed</div>
+          <div class="text-xl font-bold">{length(@filtered_leases)}</div>
         </div>
       </div>
-      <div class="stat">
-        <div class="stat-title">Offered</div>
-        <div class="stat-value text-sm text-info">
-          {count_by_state(@filtered_leases, :offered)}
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Active</div>
+          <div class="text-xl font-bold text-success">
+            {count_by_state(@filtered_leases, :active)}
+          </div>
         </div>
       </div>
-      <div class="stat">
-        <div class="stat-title">Expired</div>
-        <div class="stat-value text-sm text-warning">
-          {count_by_state(@filtered_leases, :expired)}
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Offered</div>
+          <div class="text-xl font-bold text-info">
+            {count_by_state(@filtered_leases, :offered)}
+          </div>
+        </div>
+      </div>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <div class="text-sm text-on-surface-variant">Expired</div>
+          <div class="text-xl font-bold text-warning">
+            {count_by_state(@filtered_leases, :expired)}
+          </div>
         </div>
       </div>
     </div>
     <!-- Leases Table -->
     <.card>
       <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="table table-striped">
           <thead>
             <tr>
               <th scope="col">MAC Address</th>
@@ -148,7 +130,7 @@
           <tbody>
             <%= if @filtered_leases == [] do %>
               <tr>
-                <td colspan="7" class="text-center text-base-content/50 py-8">
+                <td colspan="7" class="text-center text-on-surface-variant py-8">
                   No leases found matching your criteria
                 </td>
               </tr>
@@ -160,7 +142,7 @@
                       {format_mac(lease.mac_address)}
                     </div>
                     <%= if lease.client_id do %>
-                      <div class="text-xs text-base-content/50">
+                      <div class="text-xs text-on-surface-variant">
                         Client ID: {Base.encode16(lease.client_id, case: :lower)
                         |> String.slice(0, 16)}...
                       </div>
@@ -175,7 +157,7 @@
                     <%= if lease.hostname do %>
                       <div class="font-medium">{lease.hostname}</div>
                     <% else %>
-                      <span class="text-base-content/50 italic">No hostname</span>
+                      <span class="text-on-surface-variant italic">No hostname</span>
                     <% end %>
                   </td>
                   <td>
@@ -195,7 +177,7 @@
                         {format_time_remaining(lease.expires_at)}
                       </div>
                     <% else %>
-                      <span class="text-base-content/50">-</span>
+                      <span class="text-on-surface-variant">-</span>
                     <% end %>
                   </td>
                   <td>

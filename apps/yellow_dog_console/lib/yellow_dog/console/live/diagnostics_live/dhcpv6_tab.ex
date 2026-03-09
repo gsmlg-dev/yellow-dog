@@ -5,6 +5,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
   Provides form fields for DHCPv6 message testing with privileged port warning.
   """
   use Phoenix.Component
+  use PhoenixDuskmoon.Component
 
   alias YellowDog.Console.DiagnosticsLive.Components.ResultDisplay
   alias YellowDog.Console.DiagnosticsLive.Components.QueryHistory
@@ -27,38 +28,24 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
     assigns = assign(assigns, :message_types, @message_types)
 
     ~H"""
-    <div class="card bg-base-100 shadow-xl">
+    <div class="card bg-surface shadow-xl">
       <div class="card-body">
         <h2 class="card-title">DHCPv6 Message Testing</h2>
 
         <div class="alert alert-warning mb-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="stroke-current shrink-0 h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+          <.dm_mdi name="alert" class="stroke-current shrink-0 h-6 w-6" />
           <span>Port 546 requires root/administrator privileges. Messages sent to ff02::1:2:547</span>
         </div>
 
         <form phx-change="validate_dhcpv6" phx-submit="send_dhcpv6_query">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <%!-- Message Type --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Message Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Message Type</label>
               <select
                 name="dhcpv6_query[message_type]"
                 aria-label="DHCPv6 message type"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <%= for {label, value} <- @message_types do %>
                   <option
@@ -74,78 +61,60 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
             </div>
 
             <%!-- DUID --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">DUID (Client Identifier)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">DUID (Client Identifier)</label>
               <input
                 type="text"
                 name="dhcpv6_query[duid]"
                 value={@tab.form[:duid] || @tab.form["duid"] || ""}
                 placeholder="Auto-generate"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Hex string (leave empty for auto)</span>
-              </label>
+              <span class="helper-text">Hex string (leave empty for auto)</span>
             </div>
 
             <%!-- Transaction ID --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Transaction ID</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Transaction ID</label>
               <input
                 type="text"
                 name="dhcpv6_query[transaction_id]"
                 value={@tab.form[:transaction_id] || @tab.form["transaction_id"] || ""}
                 placeholder="Auto-generate"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">3-byte hex string (leave empty for auto)</span>
-              </label>
+              <span class="helper-text">3-byte hex string (leave empty for auto)</span>
             </div>
 
             <%!-- IAID --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">IAID (Identity Association ID)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">IAID (Identity Association ID)</label>
               <input
                 type="text"
                 name="dhcpv6_query[iaid]"
                 value={@tab.form[:iaid] || @tab.form["iaid"] || ""}
                 placeholder="Auto-generate"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">4-byte hex string (leave empty for auto)</span>
-              </label>
+              <span class="helper-text">4-byte hex string (leave empty for auto)</span>
             </div>
 
             <%!-- Requested Options --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Requested Options</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Requested Options</label>
               <input
                 type="text"
                 name="dhcpv6_query[requested_options]"
                 value={@tab.form[:requested_options] || @tab.form["requested_options"] || "23"}
                 placeholder="23"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
-              <label class="label">
-                <span class="label-text-alt">Comma-separated (23=DNS servers)</span>
-              </label>
+              <span class="helper-text">Comma-separated (23=DNS servers)</span>
             </div>
 
             <%!-- Timeout --%>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Timeout (ms)</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label">Timeout (ms)</label>
               <input
                 type="number"
                 name="dhcpv6_query[timeout]"
@@ -153,7 +122,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
                 placeholder="10000"
                 min="1000"
                 max="60000"
-                class="input input-bordered w-full"
+                class="input w-full"
               />
             </div>
           </div>
@@ -166,7 +135,7 @@ defmodule YellowDog.Console.DiagnosticsLive.Dhcpv6Tab do
               phx-disable-with="Sending..."
             >
               <%= if @tab.loading do %>
-                <span class="loading loading-spinner loading-sm"></span> Sending...
+                <span class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5" role="status"></span> Sending...
               <% else %>
                 Send Message
               <% end %>

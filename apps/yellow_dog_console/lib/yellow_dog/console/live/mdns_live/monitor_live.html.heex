@@ -1,12 +1,11 @@
 <Layouts.app flash={@flash} current_path={@current_path}>
   <div class="space-y-6">
     <.service_alert :if={not @service_running} service="mDNS" />
-    
-<!-- Header -->
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-3xl font-bold">Network Monitor</h1>
-        <p class="mt-2 text-base-content/60">Real-time mDNS query and response monitoring</p>
+        <p class="mt-2 text-on-surface-variant">Real-time mDNS query and response monitoring</p>
       </div>
       <div class="flex items-center gap-2">
         <button
@@ -17,23 +16,11 @@
             if(@auto_refresh, do: "btn-success", else: "btn-ghost")
           ]}
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <%= if @auto_refresh do %>
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            <% else %>
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            <% end %>
-          </svg>
+          <%= if @auto_refresh do %>
+            <.dm_mdi name="pause-circle-outline" class="w-5 h-5" />
+          <% else %>
+            <.dm_mdi name="play-circle-outline" class="w-5 h-5" />
+          <% end %>
           {if @auto_refresh, do: "Auto-Refresh On", else: "Auto-Refresh Off"}
         </button>
         <button
@@ -43,14 +30,7 @@
           data-confirm="Are you sure you want to clear all cached data?"
           class="btn btn-sm btn-error"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-            />
-          </svg>
+          <.dm_mdi name="delete" class="w-5 h-5" />
           Clear Cache
         </button>
         <button
@@ -61,46 +41,49 @@
           class="btn btn-sm btn-ghost"
           aria-label="Export CSV"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
+          <.dm_mdi name="download" class="w-5 h-5" />
           Export CSV
         </button>
       </div>
     </div>
     <!-- Network Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Total Queries</p>
-        <p class="mt-1 text-2xl font-semibold">{@stats.total_queries}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Total Queries</h2>
+          <div class="text-2xl font-semibold">{@stats.total_queries}</div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Total Responses</p>
-        <p class="mt-1 text-2xl font-semibold">{@stats.total_responses}</p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Total Responses</h2>
+          <div class="text-2xl font-semibold">{@stats.total_responses}</div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Queries/Min</p>
-        <p class="mt-1 text-2xl font-semibold text-info">
-          {Float.round(@stats.queries_per_minute, 1)}
-        </p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Queries/Min</h2>
+          <div class="text-2xl font-semibold text-info">
+            {Float.round(@stats.queries_per_minute, 1)}
+          </div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Unique Hosts</p>
-        <p class="mt-1 text-2xl font-semibold text-secondary">{@stats.unique_hosts}</p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Unique Hosts</h2>
+          <div class="text-2xl font-semibold text-secondary">{@stats.unique_hosts}</div>
+        </div>
       </div>
-      <div class="card bg-base-100 shadow-sm p-4">
-        <p class="text-sm text-base-content/60">Active Services</p>
-        <p class="mt-1 text-2xl font-semibold text-success">{@stats.active_services}</p>
+      <div class="card card-bordered bg-surface">
+        <div class="card-body">
+          <h2 class="card-title">Active Services</h2>
+          <div class="text-2xl font-semibold text-success">{@stats.active_services}</div>
+        </div>
       </div>
     </div>
     <!-- Most Queried Services -->
     <%= if @stats.most_queried_services && @stats.most_queried_services != [] do %>
-      <div class="card bg-base-100 shadow-sm">
+      <div class="card bg-surface shadow-sm">
         <div class="card-body">
           <h2 class="card-title">Most Queried Services</h2>
           <div class="space-y-3">
@@ -126,7 +109,7 @@
       </div>
     <% end %>
     <!-- Query Log -->
-    <div class="card bg-base-100 shadow-sm">
+    <div class="card bg-surface shadow-sm">
       <div class="card-body p-0">
         <div class="flex items-center justify-between gap-4 px-6 py-4">
           <h2 class="card-title shrink-0">Recent Queries</h2>
@@ -138,12 +121,12 @@
             phx-change="search"
             phx-debounce="300"
             name="search"
-            class="input input-bordered input-sm flex-1 max-w-xs"
+            class="input input-sm flex-1 max-w-xs"
           />
           <select
             phx-change="set_limit"
             name="limit"
-            class="select select-bordered select-sm"
+            class="select select-sm"
             aria-label="Results per page"
           >
             <option value="50" selected={@limit == 50}>50 queries</option>
@@ -155,26 +138,14 @@
         <div class="overflow-x-auto">
           <%= if Enum.empty?(@queries) do %>
             <div class="p-12 text-center">
-              <svg
-                class="mx-auto h-12 w-12 text-base-content/30"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
+              <.dm_mdi name="chart-bar" class="mx-auto h-12 w-12 text-on-surface-variant" />
               <h3 class="mt-2 text-sm font-medium">No queries logged yet</h3>
-              <p class="mt-1 text-sm text-base-content/50">
+              <p class="mt-1 text-sm text-on-surface-variant">
                 mDNS queries will appear here as they are detected on the network
               </p>
             </div>
           <% else %>
-            <table class="table table-zebra">
+            <table class="table table-striped">
               <thead>
                 <tr>
                   <th scope="col">Time</th>
@@ -186,7 +157,7 @@
               </thead>
               <tbody>
                 <tr :for={query <- filtered_queries(@queries, @search)}>
-                  <td class="text-base-content/60">
+                  <td class="text-on-surface-variant">
                     {format_time(query.timestamp)}
                   </td>
                   <td class="font-medium">
@@ -200,7 +171,7 @@
                       {query.type}
                     </span>
                   </td>
-                  <td class="text-base-content/60">
+                  <td class="text-on-surface-variant">
                     {query.class}
                   </td>
                 </tr>
@@ -209,7 +180,7 @@
           <% end %>
         </div>
         <%= if @search != "" do %>
-          <div class="px-6 py-2 text-sm text-base-content/50">
+          <div class="px-6 py-2 text-sm text-on-surface-variant">
             Showing {length(filtered_queries(@queries, @search))} of {length(@queries)} queries
           </div>
         <% end %>

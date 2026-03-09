@@ -4,85 +4,90 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-4xl font-bold">{@pool_name}</h1>
-        <p class="mt-2 text-base-content/70">
+        <p class="mt-2 text-on-surface-variant">
           DHCPv6 Pool Details
         </p>
       </div>
       <.link navigate={~p"/dhcpv6"} class="btn btn-ghost">
-        ← Back to Overview
+        <.dm_mdi name="arrow-left" class="h-4 w-4" /> Back to Overview
       </.link>
     </div>
     <!-- Pool Statistics -->
     <%= if @pool_stats do %>
-      <div class="stats stats-vertical lg:stats-horizontal shadow w-full">
-        <div class="stat">
-          <div class="stat-title">Total</div>
-          <div class="stat-value text-2xl">{@pool_stats.total_count}</div>
-          <div class="stat-desc">IPv6 addresses/prefixes</div>
-        </div>
-
-        <div class="stat">
-          <div class="stat-title">Allocated</div>
-          <div class="stat-value text-2xl text-success">{@pool_stats.allocated_count}</div>
-          <div class="stat-desc">Currently in use</div>
-        </div>
-
-        <div class="stat">
-          <div class="stat-title">Available</div>
-          <div class="stat-value text-2xl text-info">{@pool_stats.available_count}</div>
-          <div class="stat-desc">Ready to allocate</div>
-        </div>
-
-        <div class="stat">
-          <div class="stat-title">Utilization</div>
-          <div class={"stat-value text-2xl " <> utilization_text_color(@pool_stats.utilization_percent)}>
-            {Float.round(@pool_stats.utilization_percent, 1)}%
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="card card-bordered bg-surface">
+          <div class="card-body">
+            <div class="text-sm text-on-surface-variant">Total</div>
+            <div class="text-2xl font-bold">{@pool_stats.total_count}</div>
+            <div class="text-xs text-on-surface-variant">IPv6 addresses/prefixes</div>
           </div>
-          <div class="stat-desc">
-            <.progress
-              value={@pool_stats.utilization_percent}
-              color={utilization_color(@pool_stats.utilization_percent)}
-            />
+        </div>
+        <div class="card card-bordered bg-surface">
+          <div class="card-body">
+            <div class="text-sm text-on-surface-variant">Allocated</div>
+            <div class="text-2xl font-bold text-success">{@pool_stats.allocated_count}</div>
+            <div class="text-xs text-on-surface-variant">Currently in use</div>
+          </div>
+        </div>
+        <div class="card card-bordered bg-surface">
+          <div class="card-body">
+            <div class="text-sm text-on-surface-variant">Available</div>
+            <div class="text-2xl font-bold text-info">{@pool_stats.available_count}</div>
+            <div class="text-xs text-on-surface-variant">Ready to allocate</div>
+          </div>
+        </div>
+        <div class="card card-bordered bg-surface">
+          <div class="card-body">
+            <div class="text-sm text-on-surface-variant">Utilization</div>
+            <div class={"text-2xl font-bold " <> utilization_text_color(@pool_stats.utilization_percent)}>
+              {Float.round(@pool_stats.utilization_percent, 1)}%
+            </div>
+            <div class="text-xs text-on-surface-variant">
+              <.progress
+                value={@pool_stats.utilization_percent}
+                color={utilization_color(@pool_stats.utilization_percent)}
+              />
+            </div>
           </div>
         </div>
       </div>
-      
-<!-- Pool Configuration -->
+
+      <!-- Pool Configuration -->
       <.card title="Pool Configuration">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <div class="text-sm text-base-content/70 mb-1">Pool Name</div>
+            <div class="text-sm text-on-surface-variant mb-1">Pool Name</div>
             <div class="font-mono">{@pool_name}</div>
           </div>
 
           <%= if @pool_config do %>
             <%= if @pool_config[:range_start] do %>
               <div>
-                <div class="text-sm text-base-content/70 mb-1">Address Range</div>
+                <div class="text-sm text-on-surface-variant mb-1">Address Range</div>
                 <div class="font-mono text-sm">
                   {format_ipv6(@pool_config.range_start)}
-                  <br />→ {format_ipv6(@pool_config.range_end)}
+                  <br />-> {format_ipv6(@pool_config.range_end)}
                 </div>
               </div>
             <% end %>
 
             <%= if @pool_config[:prefix] do %>
               <div>
-                <div class="text-sm text-base-content/70 mb-1">Prefix Pool</div>
+                <div class="text-sm text-on-surface-variant mb-1">Prefix Pool</div>
                 <div class="font-mono text-sm">
                   {format_prefix({@pool_config.prefix, @pool_config.prefix_length})}
                 </div>
               </div>
 
               <div>
-                <div class="text-sm text-base-content/70 mb-1">Delegated Length</div>
+                <div class="text-sm text-on-surface-variant mb-1">Delegated Length</div>
                 <div class="font-mono">/{@pool_config.delegated_length}</div>
               </div>
             <% end %>
 
             <%= if @pool_config[:dns_servers] && @pool_config.dns_servers != [] do %>
               <div>
-                <div class="text-sm text-base-content/70 mb-1">DNS Servers</div>
+                <div class="text-sm text-on-surface-variant mb-1">DNS Servers</div>
                 <div class="font-mono text-sm">
                   <%= for dns <- @pool_config.dns_servers do %>
                     <div>{format_ipv6(dns)}</div>
@@ -93,39 +98,39 @@
 
             <%= if @pool_config[:domain_name] do %>
               <div>
-                <div class="text-sm text-base-content/70 mb-1">Domain Name</div>
+                <div class="text-sm text-on-surface-variant mb-1">Domain Name</div>
                 <div class="font-mono">{@pool_config.domain_name}</div>
               </div>
             <% end %>
 
             <div>
-              <div class="text-sm text-base-content/70 mb-1">Preferred Lifetime</div>
+              <div class="text-sm text-on-surface-variant mb-1">Preferred Lifetime</div>
               <div class="font-mono">{format_duration(@pool_config[:preferred_lifetime])}</div>
             </div>
 
             <div>
-              <div class="text-sm text-base-content/70 mb-1">Valid Lifetime</div>
+              <div class="text-sm text-on-surface-variant mb-1">Valid Lifetime</div>
               <div class="font-mono">{format_duration(@pool_config[:valid_lifetime])}</div>
             </div>
           <% end %>
 
           <div>
-            <div class="text-sm text-base-content/70 mb-1">Static Reservations</div>
+            <div class="text-sm text-on-surface-variant mb-1">Static Reservations</div>
             <div class="font-mono">{@pool_stats.static_reservations}</div>
           </div>
         </div>
       </.card>
-      
-<!-- Lease State Distribution -->
+
+      <!-- Lease State Distribution -->
       <%= if map_size(@pool_stats.leases_by_state) > 0 do %>
         <.card title="Lease Distribution by State">
           <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <%= for {state, count} <- @pool_stats.leases_by_state do %>
-              <div class="text-center p-4 bg-base-200 rounded-lg">
+              <div class="text-center p-4 bg-surface-container rounded-lg">
                 <div class={"text-3xl font-bold " <> lease_state_text_color(state)}>
                   {count}
                 </div>
-                <div class="text-sm text-base-content/70 mt-1 capitalize">
+                <div class="text-sm text-on-surface-variant mt-1 capitalize">
                   {state}
                 </div>
               </div>
@@ -133,8 +138,8 @@
           </div>
         </.card>
       <% end %>
-      
-<!-- Active Leases for this Pool -->
+
+      <!-- Active Leases for this Pool -->
       <.card title="Recent Leases">
         <div class="overflow-x-auto">
           <table class="table table-sm">
@@ -151,7 +156,7 @@
             <tbody>
               <%= if Enum.empty?(@leases) do %>
                 <tr>
-                  <td colspan="6" class="text-center py-4 text-base-content/70">
+                  <td colspan="6" class="text-center py-4 text-on-surface-variant">
                     No active leases in this pool
                   </td>
                 </tr>
@@ -197,7 +202,7 @@
 
         <:actions>
           <.link navigate={~p"/dhcpv6/leases"} class="btn btn-sm btn-ghost">
-            View All Leases →
+            View All Leases <.dm_mdi name="arrow-right" class="h-4 w-4" />
           </.link>
         </:actions>
       </.card>
@@ -205,7 +210,7 @@
       <.card>
         <div class="text-center py-8">
           <div class="text-error text-lg mb-2">Pool Not Found</div>
-          <div class="text-base-content/70">
+          <div class="text-on-surface-variant">
             The pool "{@pool_name}" does not exist or is not configured.
           </div>
         </div>

@@ -10,12 +10,12 @@
     </div>
 
     <.service_alert :if={not @service_running} service="DNS" />
-    
-<!-- Header -->
+
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Zones</h1>
-        <p class="text-sm text-base-content/70">
+        <p class="text-sm text-on-surface-variant">
           Zones in view: <span class="font-mono font-semibold">{@view_name}</span>
         </p>
       </div>
@@ -28,14 +28,7 @@
           title="Export CSV"
           aria-label="Export CSV"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
+          <.dm_mdi name="download" class="w-4 h-4" />
           Export
         </button>
         <button
@@ -44,20 +37,7 @@
           title="Refresh"
           aria-label="Refresh"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <.dm_mdi name="refresh" class="h-5 w-5" />
           Refresh
         </button>
         <.link
@@ -65,25 +45,11 @@
           class="btn btn-ghost btn-sm"
           title="Import Zone"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-            />
-          </svg>
+          <.dm_mdi name="upload" class="w-4 h-4" />
           Import
         </.link>
         <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary btn-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <.dm_mdi name="plus" class="w-4 h-4" />
           Add Zone
         </.link>
       </div>
@@ -92,23 +58,23 @@
     <%= case @live_action do %>
       <% :index -> %>
         <!-- Zones Data Table -->
-        <div class="card bg-base-100 shadow">
+        <div class="card bg-surface shadow">
           <div class="card-body p-0">
             <%= if @zones != [] do %>
               <!-- Filter Bar -->
-              <div class="flex flex-wrap gap-2 p-4 border-b border-base-200">
+              <div class="flex flex-wrap gap-2 p-4 border-b border-outline-variant">
                 <input
                   type="text"
                   placeholder="Filter by zone name..."
                   aria-label="Filter DNS zones"
-                  class="input input-bordered input-sm flex-1 min-w-48"
+                  class="input input-sm flex-1 min-w-48"
                   phx-change="filter"
                   phx-debounce="300"
                   name="filter"
                   value={@filter}
                 />
                 <select
-                  class="select select-bordered select-sm"
+                  class="select select-sm"
                   phx-change="filter_type"
                   aria-label="Filter by zone type"
                   name="type"
@@ -122,7 +88,7 @@
                 </select>
               </div>
               <div class="overflow-x-auto">
-                <table class="table table-zebra">
+                <table class="table table-striped">
                   <thead>
                     <tr>
                       <th scope="col">Zone Name</th>
@@ -165,7 +131,7 @@
                               {zone.record_count} records
                             </.link>
                           <% else %>
-                            <span class="text-base-content/60">N/A</span>
+                            <span class="text-on-surface-variant">N/A</span>
                           <% end %>
                         </td>
                         <td class="font-mono text-sm">{format_number(zone.query_count)}</td>
@@ -180,19 +146,7 @@
                                 title="View Records"
                                 aria-label="View Records"
                               >
-                                <svg
-                                  class="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M9 5l7 7-7 7"
-                                  />
-                                </svg>
+                                <.dm_mdi name="arrow-right" class="w-4 h-4" />
                               </.link>
                             <% end %>
                             <.link
@@ -203,19 +157,7 @@
                               title="Edit"
                               aria-label="Edit"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
+                              <.dm_mdi name="pencil" class="w-4 h-4" />
                             </.link>
                             <button
                               phx-click="confirm_delete"
@@ -225,19 +167,7 @@
                               title="Delete"
                               aria-label="Delete"
                             >
-                              <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                  stroke-width="2"
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
+                              <.dm_mdi name="delete" class="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -246,7 +176,7 @@
                   </tbody>
                 </table>
               </div>
-              <div class="px-4 py-2 border-t border-base-200 text-sm text-base-content/60">
+              <div class="px-4 py-2 border-t border-outline-variant text-sm text-on-surface-variant">
                 <% filtered = filtered_zones(@zones, @filter, @type_filter) %>
                 <%= if length(filtered) == length(@zones) do %>
                   {length(@zones)} zone(s)
@@ -257,22 +187,10 @@
             <% else %>
               <div class="text-center py-12">
                 <div class="text-6xl mb-4">
-                  <svg
-                    class="w-16 h-16 mx-auto text-base-content/30"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.5"
-                      d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <.dm_mdi name="web" class="w-16 h-16 mx-auto text-on-surface-variant" />
                 </div>
                 <h3 class="text-lg font-semibold mb-2">No Zones</h3>
-                <p class="text-base-content/60 mb-4">This view has no zones configured.</p>
+                <p class="text-on-surface-variant mb-4">This view has no zones configured.</p>
                 <div class="flex justify-center gap-2">
                   <.link patch={~p"/dns/views/#{@view_name}/zones/new"} class="btn btn-primary">
                     Create Zone
@@ -295,36 +213,30 @@
             phx-debounce="blur"
             class="space-y-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Zone Name</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Zone Name</label>
               <input
                 type="text"
                 name="zone[name]"
                 value={@zone_form[:name].value}
                 maxlength="253"
-                class={"input input-bordered w-full font-mono #{if @form_errors[:name], do: "input-error"}"}
+                class={"input w-full font-mono #{if @form_errors[:name], do: "input-error"}"}
                 placeholder="e.g., example.com"
                 required
               />
-              <label class="label">
-                <%= if @form_errors[:name] do %>
-                  <span class="label-text-alt text-error">{@form_errors[:name]}</span>
-                <% else %>
-                  <span class="label-text-alt">Fully qualified domain name</span>
-                <% end %>
-              </label>
+              <%= if @form_errors[:name] do %>
+                <span class="helper-text text-error">{@form_errors[:name]}</span>
+              <% else %>
+                <span class="helper-text">Fully qualified domain name</span>
+              <% end %>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Zone Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Zone Type</label>
               <select
                 name="zone[type]"
                 aria-label="Zone type"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <option value="auth" selected={@zone_form[:type].value == "auth"}>
                   Authoritative - Serve records from local data
@@ -337,70 +249,49 @@
                 </option>
               </select>
             </div>
-            
-<!-- Upstream Servers - shown for forward zones -->
+
+            <!-- Upstream Servers - shown for forward zones -->
             <%= if @zone_form[:type].value == "forward" do %>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Upstream DNS Servers</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Upstream DNS Servers</label>
                 <textarea
                   name="zone[upstreams]"
-                  class={"textarea textarea-bordered h-24 font-mono text-sm #{if @form_errors[:upstreams], do: "textarea-error"}"}
+                  class={"textarea h-24 font-mono text-sm #{if @form_errors[:upstreams], do: "textarea-error"}"}
                   placeholder="8.8.8.8&#10;8.8.4.4&#10;1.1.1.1"
                 >{@zone_form[:upstreams].value}</textarea>
-                <label class="label">
-                  <%= if @form_errors[:upstreams] do %>
-                    <span class="label-text-alt text-error">{@form_errors[:upstreams]}</span>
-                  <% else %>
-                    <span class="label-text-alt">
-                      IP addresses of upstream DNS servers (one per line)
-                    </span>
-                  <% end %>
-                </label>
+                <%= if @form_errors[:upstreams] do %>
+                  <span class="helper-text text-error">{@form_errors[:upstreams]}</span>
+                <% else %>
+                  <span class="helper-text">
+                    IP addresses of upstream DNS servers (one per line)
+                  </span>
+                <% end %>
               </div>
             <% end %>
-            
-<!-- NS Records - shown for stub zones -->
+
+            <!-- NS Records - shown for stub zones -->
             <%= if @zone_form[:type].value == "stub" do %>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">NS Server Names</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">NS Server Names</label>
                 <textarea
                   name="zone[ns_records]"
-                  class={"textarea textarea-bordered h-24 font-mono text-sm #{if @form_errors[:ns_records], do: "textarea-error"}"}
+                  class={"textarea h-24 font-mono text-sm #{if @form_errors[:ns_records], do: "textarea-error"}"}
                   placeholder="ns1.example.com&#10;ns2.example.com"
                 >{@zone_form[:ns_records].value}</textarea>
-                <label class="label">
-                  <%= if @form_errors[:ns_records] do %>
-                    <span class="label-text-alt text-error">{@form_errors[:ns_records]}</span>
-                  <% else %>
-                    <span class="label-text-alt">
-                      Fully qualified names of authoritative NS servers (one per line)
-                    </span>
-                  <% end %>
-                </label>
+                <%= if @form_errors[:ns_records] do %>
+                  <span class="helper-text text-error">{@form_errors[:ns_records]}</span>
+                <% else %>
+                  <span class="helper-text">
+                    Fully qualified names of authoritative NS servers (one per line)
+                  </span>
+                <% end %>
               </div>
             <% end %>
-            
-<!-- Info for auth zones -->
+
+            <!-- Info for auth zones -->
             <%= if @zone_form[:type].value == "auth" do %>
               <div class="alert alert-info">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  class="stroke-current shrink-0 w-6 h-6"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  >
-                  </path>
-                </svg>
+                <.dm_mdi name="information" class="w-6 h-6" />
                 <span>
                   Authoritative zones serve records from local data.
                   You can add records after creating the zone.
@@ -414,7 +305,7 @@
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
               <button
                 type="submit"
-                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                class="btn btn-primary"
                 disabled={map_size(@form_errors) > 0}
                 phx-disable-with="Creating..."
               >
@@ -433,90 +324,63 @@
             phx-debounce="blur"
             class="space-y-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Zone Name</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Zone Name</label>
               <input
                 type="text"
                 name="zone[name]"
                 value={@zone_form[:name].value}
-                class="input input-bordered w-full font-mono bg-base-200"
+                class="input w-full font-mono bg-surface-container"
                 disabled
               />
-              <label class="label">
-                <span class="label-text-alt text-base-content/60">Name cannot be changed</span>
-              </label>
+              <span class="helper-text text-on-surface-variant">Name cannot be changed</span>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Zone Type</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Zone Type</label>
               <div class="flex items-center gap-2">
                 <.badge color={zone_type_badge(@editing_zone.type)} size="md">
                   {zone_type_label(@editing_zone.type)}
                 </.badge>
-                <span class="text-sm text-base-content/60">(cannot be changed)</span>
+                <span class="text-sm text-on-surface-variant">(cannot be changed)</span>
               </div>
               <input type="hidden" name="zone[type]" value={@editing_zone.type} />
             </div>
-            
-<!-- Upstream Servers - shown for forward zones -->
+
+            <!-- Upstream Servers - shown for forward zones -->
             <%= if @editing_zone.type == :forward do %>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">Upstream DNS Servers</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">Upstream DNS Servers</label>
                 <textarea
                   name="zone[upstreams]"
-                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  class="textarea h-24 font-mono text-sm"
                   placeholder="8.8.8.8&#10;8.8.4.4"
                 >{@zone_form[:upstreams].value}</textarea>
-                <label class="label">
-                  <span class="label-text-alt">
-                    IP addresses of upstream DNS servers (one per line)
-                  </span>
-                </label>
+                <span class="helper-text">
+                  IP addresses of upstream DNS servers (one per line)
+                </span>
               </div>
             <% end %>
-            
-<!-- NS Records - shown for stub zones -->
+
+            <!-- NS Records - shown for stub zones -->
             <%= if @editing_zone.type == :stub do %>
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-semibold">NS Server Names</span>
-                </label>
+              <div class="form-group">
+                <label class="form-label font-semibold">NS Server Names</label>
                 <textarea
                   name="zone[ns_records]"
-                  class="textarea textarea-bordered h-24 font-mono text-sm"
+                  class="textarea h-24 font-mono text-sm"
                   placeholder="ns1.example.com&#10;ns2.example.com"
                 >{@zone_form[:ns_records].value}</textarea>
-                <label class="label">
-                  <span class="label-text-alt">
-                    Fully qualified names of authoritative NS servers (one per line)
-                  </span>
-                </label>
+                <span class="helper-text">
+                  Fully qualified names of authoritative NS servers (one per line)
+                </span>
               </div>
             <% end %>
-            
-<!-- Info for auth zones -->
+
+            <!-- Info for auth zones -->
             <%= if @editing_zone.type == :auth do %>
               <div class="alert alert-info">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  class="stroke-current shrink-0 w-6 h-6"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  >
-                  </path>
-                </svg>
+                <.dm_mdi name="information" class="w-6 h-6" />
                 <span>
                   Edit records for this zone from the records page.
                 </span>
@@ -529,7 +393,7 @@
               <button type="button" class="btn btn-ghost" phx-click="cancel">Cancel</button>
               <button
                 type="submit"
-                class={["btn btn-primary", map_size(@form_errors) > 0 && "btn-disabled"]}
+                class="btn btn-primary"
                 disabled={map_size(@form_errors) > 0}
                 phx-disable-with="Saving..."
               >
@@ -542,14 +406,12 @@
         <!-- Zone Import Form -->
         <.card title={"Import Zone Data to #{@view_name}"}>
           <.form for={@import_form} phx-submit="import_zone" class="space-y-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Import Format</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Import Format</label>
               <select
                 name="import[format]"
                 aria-label="Import format"
-                class="select select-bordered w-full"
+                class="select w-full"
               >
                 <option value="zone" selected={@import_form[:format].value == "zone"}>
                   BIND Zone File Format
@@ -560,35 +422,18 @@
               </select>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">Zone Data</span>
-              </label>
+            <div class="form-group">
+              <label class="form-label font-semibold">Zone Data</label>
               <textarea
                 name="import[zone_data]"
-                class="textarea textarea-bordered h-64 font-mono text-sm"
+                class="textarea h-64 font-mono text-sm"
                 placeholder="$ORIGIN example.com.\n$TTL 3600\n@       IN  SOA   ns1.example.com. admin.example.com. (\n                    2024010101 ; serial\n                    3600       ; refresh\n                    600        ; retry\n                    604800     ; expire\n                    86400 )    ; minimum\n@       IN  NS    ns1.example.com.\n@       IN  A     192.0.2.1\nwww     IN  A     192.0.2.2"
               >{@import_form[:zone_data].value}</textarea>
-              <label class="label">
-                <span class="label-text-alt">Paste zone file content or CSV data</span>
-              </label>
+              <span class="helper-text">Paste zone file content or CSV data</span>
             </div>
 
             <div class="alert alert-info">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                class="stroke-current shrink-0 w-6 h-6"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                >
-                </path>
-              </svg>
+              <.dm_mdi name="information" class="w-6 h-6" />
               <span>
                 Zone import will create a new authoritative zone with the parsed records.
               </span>
@@ -606,12 +451,12 @@
         </.card>
     <% end %>
   </div>
-  
-<!-- Delete Confirmation Modal -->
+
+  <!-- Delete Confirmation Modal -->
   <%= if @delete_confirm do %>
     <.modal id="delete-modal" title="Delete Zone" show on_cancel={JS.push("close_modal")}>
       <div class="py-4">
-        <p class="text-base-content/80">
+        <p class="text-on-surface-variant">
           Are you sure you want to delete the zone <strong class="font-mono">{@delete_confirm.name}</strong>?
         </p>
         <p class="mt-2 text-sm text-warning">
