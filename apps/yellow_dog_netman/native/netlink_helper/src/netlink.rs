@@ -124,7 +124,7 @@ fn parse_netlink_messages(buf: &[u8]) -> Vec<Value> {
             events.push(e);
         }
 
-        // Align to 4 bytes
+        // NLMSG_ALIGN(len): round up to 4-byte boundary per netlink protocol
         offset += (len + 3) & !3;
     }
 
