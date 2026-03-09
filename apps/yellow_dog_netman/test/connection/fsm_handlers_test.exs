@@ -846,6 +846,122 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
   end
 
   # ----------------------------------------------------------------
+  # DHCP retry exponential backoff and exhaustion
+  # ----------------------------------------------------------------
+
+  describe "DHCP retry exponential backoff" do
+    setup do
+      iface = "hdlr_bo_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "dhcp-bo-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+      }
+
+      {:ok, iface: iface, profile: profile}
+    end
+
+    test "retry 1 schedules with 2000ms delay", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 1
+
+      # Verify Process.send_after was called — :retry_dhcp should arrive
+      assert_receive :retry_dhcp, 2500
+    end
+
+    test "retry 2 schedules with 4000ms delay", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 1
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 2
+
+      # Should NOT arrive in 2000ms (delay is 4000ms)
+      refute_receive :retry_dhcp, 100
+    end
+
+    test "retry 3 schedules with 8000ms delay", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 2
+      }
+
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.dhcp_retries == 3
+
+      # Verify retry counter reached max
+      refute_receive :retry_dhcp, 100
+    end
+
+    test "retries exhausted transitions to failed", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 3
+      }
+
+      # dhcp_retries == @max_dhcp_retries(3), retryable reason but exhausted
+      result = FSM.configuring(:info, {:dhcp_lease_failed, :timeout}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_failed
+      assert new_data.dhcp_retries == 0
+    end
+
+    test "dhcp_client_not_available is non-retryable", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 0
+      }
+
+      result =
+        FSM.configuring(:info, {:dhcp_lease_failed, :dhcp_client_not_available}, data)
+
+      assert {:next_state, :failed, new_data, _} = result
+      assert new_data.error == :dhcp_failed
+    end
+
+    test "lease acquired resets retry counter to zero", %{iface: iface, profile: profile} do
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :configuring,
+        dhcp_retries: 2
+      }
+
+      lease = %{address: "10.0.0.50", prefix_len: 24}
+      result = FSM.configuring(:info, {:dhcp_lease_acquired, lease}, data)
+      assert {:next_state, :ip_check, new_data, _actions} = result
+      assert new_data.dhcp_retries == 0
+      assert new_data.lease == lease
+    end
+  end
+
+  # ----------------------------------------------------------------
   # activated: push_dns with lease DNS servers (line 668)
   # ----------------------------------------------------------------
 
