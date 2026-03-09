@@ -609,8 +609,8 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     check all(seed <- StreamData.integer(1..9_999), atom <- StreamData.member_of([:ok, :error, :done, :ready])) do
       topic = "atom_pub_#{seed}"
       result = EventBus.publish(topic, atom)
-      assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result),
-             "Expected ok-ish from publish with atom, got: #{inspect(result)}"
+      assert result == :ok,
+             "Expected :ok from publish with atom, got: #{inspect(result)}"
     end
   end
 
@@ -879,7 +879,6 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     end
   end
 
-  defp is_ok_or_error(:ok), do: true
   defp is_ok_or_error({:ok, _}), do: true
   defp is_ok_or_error({:error, _}), do: true
   defp is_ok_or_error(_), do: false

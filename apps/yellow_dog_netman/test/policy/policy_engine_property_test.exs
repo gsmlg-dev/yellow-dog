@@ -463,7 +463,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
 
   property "route_metrics with zero-priority connection always returns positive metric" do
     check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
-      conn = %{id: "zero_prio_\#{id}", interface: "eth0", autoconnect_priority: 0, type: :ethernet}
+      conn = %{id: "zero_prio_#{id}", interface: "eth0", autoconnect_priority: 0, type: :ethernet}
       result = PolicyEngine.route_metrics([conn])
       assert is_map(result)
       assert map_size(result) == 1
