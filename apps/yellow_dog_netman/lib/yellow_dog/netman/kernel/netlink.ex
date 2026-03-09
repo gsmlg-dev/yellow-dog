@@ -76,9 +76,15 @@ defmodule YellowDog.Netman.Kernel.Netlink do
 
   def handle_call({:command, cmd}, _from, %{backend: :port, port: port} = state)
       when port != nil do
-    json = Jason.encode!(cmd)
-    send(port, {self(), {:command, json}})
-    {:reply, :ok, state}
+    case Jason.encode(cmd) do
+      {:ok, json} ->
+        send(port, {self(), {:command, json}})
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to encode netlink command: #{inspect(reason)}")
+        {:reply, {:error, :encode_failed}, state}
+    end
   end
 
   def handle_call({:command, _cmd}, _from, state) do
