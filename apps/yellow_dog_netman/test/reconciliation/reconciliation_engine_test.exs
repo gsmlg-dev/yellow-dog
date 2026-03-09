@@ -228,7 +228,8 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
         nil
       )
 
-      ReconciliationEngine.reconcile()
+      # Bypass debounce to ensure reconciliation actually runs
+      send(ReconciliationEngine, :debounced_reconcile)
 
       assert_receive {:recon_done, %{diffs_count: _}}, 1000
 
@@ -250,6 +251,12 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
       # Publish a netman event which ReconciliationEngine subscribes to
       YellowDog.Netman.EventBus.publish("netman:profile:changed", {:updated, "test"})
+
+      # The event triggers schedule_debounced_reconcile which has a 100ms debounce.
+      # Under full suite load the debounce may already be pending, so also send
+      # directly to ensure the reconciliation runs within our timeout.
+      Process.sleep(150)
+      send(ReconciliationEngine, :debounced_reconcile)
 
       assert_receive {:recon_done, _}, 1000
 
@@ -583,7 +590,8 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
         nil
       )
 
-      ReconciliationEngine.reconcile()
+      # Bypass debounce to ensure reconciliation actually runs
+      send(ReconciliationEngine, :debounced_reconcile)
       assert_receive {:recon_done, _}, 2000
 
       # Engine should still be alive

@@ -88,9 +88,10 @@ defmodule YellowDog.Netman.Integration.PerformanceTest do
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
       # Run 3 reconciliation cycles and measure each
+      # Bypass debounce to ensure each reconciliation actually runs
       durations =
         for _ <- 1..3 do
-          ReconciliationEngine.reconcile()
+          send(ReconciliationEngine, :debounced_reconcile)
           assert_receive {:recon_done, duration_ms}, 2000
           duration_ms
         end
@@ -120,7 +121,8 @@ defmodule YellowDog.Netman.Integration.PerformanceTest do
 
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
-      ReconciliationEngine.reconcile()
+      # Bypass debounce to ensure reconciliation runs immediately
+      send(ReconciliationEngine, :debounced_reconcile)
       assert_receive {:recon_done, duration_ms}, 2000
 
       assert duration_ms < @reconciliation_slo_ms,
