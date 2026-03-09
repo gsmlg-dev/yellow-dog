@@ -584,7 +584,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
             prefix1 <- topic_segment(),
             prefix2 <- topic_segment(),
             prefix1 != prefix2,
-            message1 <- term(),
+            _message1 <- term(),
             message2 <- term()
           ) do
       topic1 = "cross_t1:#{prefix1}"

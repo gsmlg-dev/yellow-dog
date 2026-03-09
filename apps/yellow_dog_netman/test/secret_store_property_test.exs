@@ -235,7 +235,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 64)) do
       result = SecretStore.get(key)
 
-      assert result == {:error, :not_found} or match?({:ok, _}, result),
+      assert match?({:error, _}, result),
              "Expected {:error, :not_found} or {:ok, _} from get, got: #{inspect(result)}"
     end
   end
@@ -307,7 +307,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
       result = SecretStore.get(key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple from get, got: #{inspect(result)}"
     end
   end
@@ -392,7 +392,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.delete(full_key)
       result = SecretStore.get(full_key)
 
-      assert result == {:error, :not_found} or match?({:ok, _}, result),
+      assert match?({:error, _}, result),
              "Expected not_found or ok after put+delete, got: #{inspect(result)}"
     end
   end
@@ -403,7 +403,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.put(full_key, "")
       result = SecretStore.get(full_key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple after put empty, got: #{inspect(result)}"
     end
   end
@@ -417,7 +417,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.put(full_key, val)
       result = SecretStore.get(full_key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple after put, got: #{inspect(result)}"
     end
   end
@@ -427,7 +427,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       key = "ss_del_unk_#{seed}"
       result = SecretStore.delete(key)
 
-      assert result == :ok or result == {:error, :not_found} or is_nil(result),
+      assert result == :ok,
              "Expected ok or not_found from delete unknown key, got: #{inspect(result)}"
     end
   end
@@ -438,7 +438,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.put(key, val)
       result = SecretStore.get(key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple after put, got: #{inspect(result)}"
     end
   end
@@ -474,7 +474,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.put(full_key, val)
       result = SecretStore.get(full_key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple, got: #{inspect(result)}"
     end
   end
@@ -503,7 +503,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       SecretStore.put(key, val)
       result = SecretStore.get(key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple, got: #{inspect(result)}"
     end
   end
@@ -513,7 +513,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       key = "ssget51_#{n}"
       result = SecretStore.get(key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple, got: #{inspect(result)}"
     end
   end
@@ -566,7 +566,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       assert SecretStore.delete(full_key) == :ok
       assert SecretStore.put(full_key, val) == :ok
       result = SecretStore.get(full_key)
-      assert match?({:ok, _}, result) or match?({:error, _}, result)
+      assert match?({:error, _}, result)
     end
   end
 
@@ -598,7 +598,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       key = "ssget59_#{n}"
       result = SecretStore.get(key)
 
-      assert match?({:ok, _}, result) or match?({:error, _}, result),
+      assert match?({:error, _}, result),
              "Expected tagged tuple (r59), got: #{inspect(result)}"
     end
   end
@@ -617,7 +617,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
           ) do
       :ok = YellowDog.Netman.SecretStore.put(key, val)
       result = YellowDog.Netman.SecretStore.get(key)
-      assert match?({:ok, _}, result) or match?({:error, _}, result)
+      assert match?({:error, _}, result)
     end
   end
 
@@ -659,7 +659,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       get_result = YellowDog.Netman.SecretStore.get(key)
       del_result = YellowDog.Netman.SecretStore.delete(key)
       assert put_result == :ok
-      assert match?({:ok, _}, get_result) or match?({:error, _}, get_result)
+      assert match?({:error, _}, get_result)
       assert del_result == :ok
     end
   end
@@ -682,7 +682,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       YellowDog.Netman.SecretStore.put(key, %{nested: "value"})
       result = YellowDog.Netman.SecretStore.get(key)
-      assert match?({:ok, _}, result) or match?({:error, _}, result)
+      assert match?({:error, _}, result)
     end
   end
 
@@ -785,7 +785,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       put_result = YellowDog.Netman.SecretStore.put(key, val)
       assert put_result == :ok
       get_result = YellowDog.Netman.SecretStore.get(key)
-      assert match?({:ok, _}, get_result) or match?({:error, _}, get_result)
+      assert match?({:error, _}, get_result)
     end
   end
 
@@ -829,7 +829,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
   property "secret_store get always returns tagged tuple (r86)" do
     check all(key <- string(:alphanumeric, min_length: 1)) do
       result = YellowDog.Netman.SecretStore.get(key)
-      assert match?({:ok, _}, result) or match?({:error, _}, result)
+      assert match?({:error, _}, result)
     end
   end
 
@@ -846,7 +846,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       YellowDog.Netman.SecretStore.delete(key)
       result = YellowDog.Netman.SecretStore.get(key)
       # After delete, get should return error (or ok if stub)
-      assert match?({:ok, _}, result) or match?({:error, _}, result)
+      assert match?({:error, _}, result)
     end
   end
 
@@ -898,7 +898,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
       r1 = YellowDog.Netman.SecretStore.get(key)
       r2 = YellowDog.Netman.SecretStore.get(key)
       # Same result type
-      assert match?({:ok, _}, r1) == match?({:ok, _}, r2)
+      assert r1 == r2
     end
   end
 

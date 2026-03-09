@@ -681,17 +681,18 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
     end
   end
 
-  property "DesiredState from_profiles with empty list is non-nil" do
+  property "DesiredState from_profiles with empty list returns struct" do
     check all(_ <- StreamData.constant(:ok)) do
       ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
-      refute is_nil(ds), "Expected non-nil from from_profiles([])"
+      assert %YellowDog.Netman.Types.DesiredState{} = ds
     end
   end
 
-  property "DesiredState from_profiles always returns non-nil value" do
+  property "DesiredState from_profiles always returns a DesiredState struct" do
     check all(_ <- StreamData.constant(:ok)) do
       ds = YellowDog.Netman.Types.DesiredState.from_profiles([])
-      refute is_nil(ds), "Expected non-nil result"
+      assert %YellowDog.Netman.Types.DesiredState{} = ds
+      assert is_map(ds.connections)
     end
   end
 

@@ -532,12 +532,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
-  property "Diff struct is never nil" do
+  property "Diff struct is always a Diff struct" do
     check all(action <- action_gen()) do
       diff = Diff.new(action)
-
-      assert diff != nil,
-             "Expected non-nil Diff struct"
+      assert %Diff{} = diff
     end
   end
 
@@ -560,10 +558,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
-  property "Diff new with valid action produces non-nil struct" do
+  property "Diff new with valid action produces a Diff struct" do
     check all(action <- action_gen()) do
       diff = YellowDog.Netman.Types.Diff.new(action)
-      refute is_nil(diff), "Expected non-nil struct from Diff.new"
+      assert %YellowDog.Netman.Types.Diff{} = diff
     end
   end
 
@@ -576,10 +574,10 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
-  property "Diff new never produces nil" do
+  property "Diff new always produces a struct with params field" do
     check all(action <- action_gen()) do
       diff = YellowDog.Netman.Types.Diff.new(action)
-      refute is_nil(diff), "Expected non-nil from Diff.new"
+      assert is_map(diff.params)
     end
   end
 
@@ -743,11 +741,11 @@ defmodule YellowDog.Netman.Types.DiffPropertyTest do
     end
   end
 
-  property "Diff new always returns a non-nil struct (r65)" do
+  property "Diff new always returns a struct with action field (r65)" do
     check all(action <- action_gen()) do
       diff = YellowDog.Netman.Types.Diff.new(action)
-      refute is_nil(diff), "Expected non-nil diff"
       assert is_struct(diff)
+      assert diff.action == action
     end
   end
 

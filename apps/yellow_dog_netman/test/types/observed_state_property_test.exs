@@ -983,8 +983,9 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "observed_state add_link updates links map (r81)" do
     check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       state = ObservedState.new()
-      assert is_map(state.links)
-      assert map_size(state.links) >= 0
+      updated = ObservedState.add_link(state, name, %{state: :up})
+      assert is_map(updated.links)
+      assert map_size(updated.links) >= 1
     end
   end
 

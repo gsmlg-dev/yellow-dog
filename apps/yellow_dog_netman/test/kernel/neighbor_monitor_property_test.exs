@@ -858,7 +858,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
   property "NeighborMonitor get_neighbor for numeric string interface returns nil or map" do
     check all(n <- StreamData.integer(0..99)) do
-      iface = "eth#{n}"
+      _iface = "eth#{n}"
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
 
       assert is_nil(result) or is_map(result) or is_list(result),
@@ -921,7 +921,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
   property "NeighborMonitor get_neighbor for any seeded interface returns valid type" do
     check all(n <- StreamData.integer(0..99)) do
-      iface = "nm52_#{n}"
+      _iface = "nm52_#{n}"
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
 
       assert is_nil(result) or is_map(result) or is_list(result),

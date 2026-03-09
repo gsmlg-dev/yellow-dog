@@ -992,7 +992,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   property "FSM start_link with valid profile always returns ok or error tuple" do
     check all(
             suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
-            seed <- StreamData.integer(1..999)
+            _seed <- StreamData.integer(1..999)
           ) do
       iface = String.slice("fsm45_#{suffix}", 0, 15)
       profile = make_profile(iface)

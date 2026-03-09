@@ -625,7 +625,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "get_routes result entries always have :destination key" do
     check all(
             iface <- iface_gen(),
-            seed <- StreamData.integer(1..999)
+            _seed <- StreamData.integer(1..999)
           ) do
       # Add a route then check its fields
       routes = RouteManager.get_routes(iface)
