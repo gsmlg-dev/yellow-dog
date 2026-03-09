@@ -50,6 +50,7 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   ## Client API
 
+  @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
     interface = Keyword.fetch!(opts, :interface)
     profile = Keyword.fetch!(opts, :profile)
@@ -62,6 +63,7 @@ defmodule YellowDog.Netman.Connection.FSM do
     )
   end
 
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     interface = Keyword.fetch!(opts, :interface)
 
