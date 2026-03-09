@@ -1,7 +1,7 @@
 defmodule YellowDog.Resolved.ManagementTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.{Cache, Config}
+  alias YellowDog.Resolved.{Cache, Config, Counters}
   alias YellowDog.Resolved.Management.Handler
 
   @test_config %{
@@ -24,6 +24,7 @@ defmodule YellowDog.Resolved.ManagementTest do
 
   setup do
     start_supervised!({Config, @test_config})
+    start_supervised!(Counters)
     start_supervised!({Cache, @test_config.cache})
     :ok
   end
@@ -93,6 +94,31 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert result["id"] == "req-004"
       assert is_integer(result["data"]["uptime_s"])
       assert is_integer(result["data"]["queries_total"])
+      assert is_integer(result["data"]["queries_intercepted"])
+      assert is_integer(result["data"]["queries_cached"])
+      assert is_integer(result["data"]["queries_forwarded"])
+    end
+
+    test "ping queries_total equals sum of routing counters" do
+      Counters.reset()
+
+      Counters.increment(:intercepted)
+      Counters.increment(:intercepted)
+      Counters.increment(:cached)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-005",
+          "data" => %{"server_time" => 1_706_000_000}
+        })
+
+      data = result["data"]
+      assert data["queries_total"] == data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"]
+      assert data["queries_intercepted"] == 2
+      assert data["queries_cached"] == 1
+      assert data["queries_forwarded"] == 0
+      assert data["queries_total"] == 3
     end
 
     test "unknown command returns nil" do

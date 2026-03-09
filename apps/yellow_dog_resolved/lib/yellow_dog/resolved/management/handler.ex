@@ -4,7 +4,7 @@ defmodule YellowDog.Resolved.Management.Handler do
   Handles cache_flush, cache_stats, and ping commands.
   """
 
-  alias YellowDog.Resolved.Cache
+  alias YellowDog.Resolved.{Cache, Counters}
 
   require Logger
 
@@ -74,17 +74,17 @@ defmodule YellowDog.Resolved.Management.Handler do
       %{type: :ping}
     )
 
-    stats = Cache.stats()
+    counters = Counters.get()
 
     %{
       "type" => "pong",
       "id" => id,
       "data" => %{
         "uptime_s" => uptime_seconds(),
-        "queries_total" => stats.queries_intercepted + stats.hits + stats.queries_forwarded,
-        "queries_intercepted" => stats.queries_intercepted,
-        "queries_cached" => stats.hits,
-        "queries_forwarded" => stats.queries_forwarded
+        "queries_total" => counters.total,
+        "queries_intercepted" => counters.intercepted,
+        "queries_cached" => counters.cached,
+        "queries_forwarded" => counters.forwarded
       }
     }
   end

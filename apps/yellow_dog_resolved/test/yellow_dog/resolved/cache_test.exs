@@ -119,6 +119,44 @@ defmodule YellowDog.Resolved.CacheTest do
       assert stats.misses >= 1
       assert stats.entries >= 1
     end
+
+    test "fresh cache starts with zero counters" do
+      stats = Cache.stats()
+
+      assert stats.hits == 0
+      assert stats.misses == 0
+      assert stats.evictions == 0
+      assert stats.entries == 0
+      assert stats.hit_rate == 0.0
+    end
+
+    test "returns expected keys in stats map" do
+      stats = Cache.stats()
+
+      assert Map.has_key?(stats, :entries)
+      assert Map.has_key?(stats, :hits)
+      assert Map.has_key?(stats, :misses)
+      assert Map.has_key?(stats, :evictions)
+      assert Map.has_key?(stats, :hit_rate)
+      assert Map.has_key?(stats, :oldest_entry_age_s)
+
+      # query routing counters should NOT be in cache stats
+      refute Map.has_key?(stats, :queries_intercepted)
+      refute Map.has_key?(stats, :queries_forwarded)
+    end
+
+    test "hit_rate is computed correctly" do
+      Cache.store("rate.test", :a, %{}, 300)
+      Process.sleep(10)
+
+      Cache.lookup("rate.test", :a)
+      Cache.lookup("rate.test", :a)
+      Cache.lookup("miss.rate.test", :a)
+
+      stats = Cache.stats()
+      # 2 hits, 1 miss → 2/3 ≈ 0.67
+      assert stats.hit_rate == Float.round(2 / 3, 2)
+    end
   end
 
   describe "LRU eviction" do

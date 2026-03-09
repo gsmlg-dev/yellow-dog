@@ -3,7 +3,7 @@ defmodule YellowDog.Resolved.Router do
   Query routing: intercept → cache → forward.
   """
 
-  alias YellowDog.Resolved.{Cache, Config, Forwarder, Intercept, ResponseBuilder}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, Intercept, ResponseBuilder}
 
   require Logger
 
@@ -28,17 +28,19 @@ defmodule YellowDog.Resolved.Router do
     source =
       case result do
         {:intercept, _} ->
-          Cache.increment_intercepted()
+          Counters.increment(:intercepted)
           :intercept
 
         {:cache, _} ->
+          Counters.increment(:cached)
           :cache
 
         {:forward, _} ->
-          Cache.increment_forwarded()
+          Counters.increment(:forwarded)
           :forward
 
         {:error, _} ->
+          Counters.increment(:error)
           :error
       end
 

@@ -12,6 +12,7 @@ defmodule YellowDog.Resolved.Supervisor do
 
     children = [
       {YellowDog.Resolved.Config, config},
+      {YellowDog.Resolved.Counters, []},
       {YellowDog.Resolved.Cache, config.cache},
       {YellowDog.Resolved.Forwarder, config},
       {YellowDog.Resolved.Listener, config}

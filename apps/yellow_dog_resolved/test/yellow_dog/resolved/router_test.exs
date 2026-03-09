@@ -1,7 +1,7 @@
 defmodule YellowDog.Resolved.RouterTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.{Cache, Config, Router}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Router}
 
   @test_config %{
     listen: {127, 0, 0, 1},
@@ -28,6 +28,7 @@ defmodule YellowDog.Resolved.RouterTest do
 
   setup do
     start_supervised!({Config, @test_config})
+    start_supervised!(Counters)
     start_supervised!({Cache, @test_config.cache})
     :ok
   end
