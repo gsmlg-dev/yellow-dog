@@ -380,12 +380,18 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       MockNetlink.route_added(destination: dest, gateway: gw, interface: iface, metric: metric)
       Process.sleep(50)
 
-      assert Enum.any?(RouteManager.get_routes(iface), &(&1.destination == dest and &1.gateway == gw))
+      assert Enum.any?(
+               RouteManager.get_routes(iface),
+               &(&1.destination == dest and &1.gateway == gw)
+             )
 
       MockNetlink.route_removed(destination: dest, gateway: gw, interface: iface)
       Process.sleep(50)
 
-      refute Enum.any?(RouteManager.get_routes(iface), &(&1.destination == dest and &1.gateway == gw)),
+      refute Enum.any?(
+               RouteManager.get_routes(iface),
+               &(&1.destination == dest and &1.gateway == gw)
+             ),
              "Route #{dest} via #{gw} should be absent after route_removed"
     end
   end
@@ -432,6 +438,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "rm_fresh_#{seed}"
       result = RouteManager.get_routes(fresh_iface)
+
       assert result == [],
              "Expected [] for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
@@ -473,8 +480,10 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       })
 
       {removed, failed} = RouteManager.flush(iface)
+
       assert is_integer(removed) and removed >= 0,
              "Expected non-negative removed count, got: #{removed}"
+
       assert is_integer(failed) and failed >= 0,
              "Expected non-negative failed count, got: #{failed}"
     end
@@ -483,6 +492,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "get_routes always returns a list for any interface name" do
     check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
       result = RouteManager.get_routes(iface)
+
       assert is_list(result),
              "Expected list from get_routes, got: #{inspect(result)}"
     end
@@ -504,7 +514,10 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert Enum.any?(per_iface, &(&1.destination == dest and &1.gateway == gw)),
              "Route #{dest} via #{gw} not found in get_routes(#{iface})"
 
-      assert Enum.any?(all_routes, &(&1.destination == dest and &1.gateway == gw and &1.interface == iface)),
+      assert Enum.any?(
+               all_routes,
+               &(&1.destination == dest and &1.gateway == gw and &1.interface == iface)
+             ),
              "Route #{dest} via #{gw} on #{iface} not found in list_all"
     end
   end
@@ -513,6 +526,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "rm_fresh_#{seed}"
       result = RouteManager.get_routes(fresh_iface)
+
       assert result == [],
              "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
@@ -521,11 +535,14 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "list_all always returns a list of route maps" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = RouteManager.list_all()
+
       assert is_list(routes),
              "Expected list from list_all, got: #{inspect(routes)}"
+
       for route <- routes do
         assert is_map(route),
                "Expected map in list_all, got: #{inspect(route)}"
+
         assert Map.has_key?(route, :interface),
                "Expected :interface key in route, got: #{inspect(route)}"
       end
@@ -543,6 +560,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "list_all always returns routes with non-nil :destination" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = RouteManager.list_all()
+
       for route <- routes do
         assert route.destination != nil,
                "Expected non-nil destination in route, got: #{inspect(route)}"
@@ -553,6 +571,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "every route in list_all has non-nil :gateway field" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = RouteManager.list_all()
+
       for route <- routes do
         # gateway may be nil for connected routes, just check it's a map key
         assert Map.has_key?(route, :gateway),
@@ -564,6 +583,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "routes in list_all always have a non-nil :interface field" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = RouteManager.list_all()
+
       for route <- routes do
         assert is_binary(route.interface) or is_atom(route.interface),
                "Expected binary or atom interface in route, got: #{inspect(route.interface)}"
@@ -574,6 +594,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "list_all never returns nil routes" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = RouteManager.list_all()
+
       for route <- routes do
         assert route != nil,
                "Expected non-nil entry in list_all routes"
@@ -584,6 +605,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "default_route result has :interface key when non-nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = RouteManager.default_route()
+
       if result != nil do
         assert Map.has_key?(result, :interface),
                "Expected :interface key in default_route result, got: #{inspect(result)}"
@@ -594,6 +616,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "get_routes always returns a list for any interface" do
     check all(iface <- iface_gen()) do
       result = RouteManager.get_routes(iface)
+
       assert is_list(result),
              "Expected list from get_routes for #{iface}, got: #{inspect(result)}"
     end
@@ -606,6 +629,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
           ) do
       # Add a route then check its fields
       routes = RouteManager.get_routes(iface)
+
       for r <- routes do
         assert Map.has_key?(r, :destination),
                "Expected :destination key in route, got: #{inspect(r)}"
@@ -617,6 +641,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "rm_maps_#{seed}"
       routes = RouteManager.get_routes(iface)
+
       for r <- routes do
         assert is_map(r),
                "Expected map entries in get_routes for #{iface}, got: #{inspect(r)}"
@@ -628,6 +653,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "rt_gw_#{seed}"
       routes = RouteManager.get_routes(iface)
+
       for r <- routes do
         assert Map.has_key?(r, :gateway),
                "Expected :gateway key in route entry, got: #{inspect(r)}"
@@ -638,6 +664,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   property "default_route returns nil when no routes added for fresh state" do
     check all(_ <- StreamData.constant(:ok)) do
       result = RouteManager.default_route()
+
       assert result == nil or is_map(result),
              "Expected nil or map from default_route, got: #{inspect(result)}"
     end
@@ -655,6 +682,7 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "rm_seed_#{seed}"
       result = RouteManager.get_routes(iface)
+
       assert is_list(result),
              "Expected list from get_routes for #{iface}"
     end
@@ -664,112 +692,161 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "rm_cnt_#{seed}"
       count = length(RouteManager.get_routes(iface))
+
       assert count >= 0,
              "Expected non-negative route count for #{iface}"
     end
   end
+
   property "RouteManager get_routes for short interface always returns list" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       result = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
+
       assert is_list(result),
              "Expected list from get_routes, got: #{inspect(result)}"
     end
   end
+
   property "RouteManager get_routes entries have :destination key when present" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       routes = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
+
       for route <- routes do
         assert Map.has_key?(route, :destination),
                "Expected :destination key in route, got: #{inspect(route)}"
       end
     end
   end
+
   property "RouteManager get_routes for 'lo' interface returns list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+
       assert is_list(result),
              "Expected list from get_routes for lo, got: #{inspect(result)}"
     end
   end
+
   property "RouteManager pid is always alive and registered" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.RouteManager)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected RouteManager to be alive"
     end
   end
+
   property "RouteManager list_all returns list for 'lo'" do
     check all(_ <- StreamData.constant(:ok)) do
-      result = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
+      result =
+        Enum.filter(
+          YellowDog.Netman.Kernel.RouteManager.list_all(),
+          &(is_map(&1) and Map.get(&1, :interface) == "lo")
+        )
+
       assert is_list(result),
              "Expected list from list_all for lo, got: #{inspect(result)}"
     end
   end
+
   property "RouteManager list_all always returns list for any interface" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "rm50_#{n}"
+
       result =
         try do
-          Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == iface))
+          Enum.filter(
+            YellowDog.Netman.Kernel.RouteManager.list_all(),
+            &(is_map(&1) and Map.get(&1, :interface) == iface)
+          )
         rescue
           _ -> []
         end
+
       assert is_list(result)
     end
   end
+
   property "RouteManager list_all and get_routes return same type for same interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       r1 = YellowDog.Netman.Kernel.RouteManager.get_routes(iface)
-      r2 = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == iface))
+
+      r2 =
+        Enum.filter(
+          YellowDog.Netman.Kernel.RouteManager.list_all(),
+          &(is_map(&1) and Map.get(&1, :interface) == iface)
+        )
+
       assert is_list(r1) and is_list(r2),
              "Expected lists from both route queries"
     end
   end
+
   property "RouteManager get_routes for 'lo' returns list with valid entries" do
     check all(_ <- StreamData.constant(:ok)) do
       routes = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+
       assert is_list(routes),
              "Expected list from get_routes for lo, got: #{inspect(routes)}"
     end
   end
+
   property "RouteManager module exports get_routes function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
+
       assert {:get_routes, 1} in exports,
              "Expected get_routes/1 in exports"
     end
   end
+
   property "RouteManager get_routes for 'lo' always returns list (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+
       assert is_list(result),
              "Expected list from get_routes for lo (r54)"
     end
   end
+
   property "RouteManager list_all entries are non-nil for lo" do
     check all(_ <- StreamData.constant(:ok)) do
-      routes = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
+      routes =
+        Enum.filter(
+          YellowDog.Netman.Kernel.RouteManager.list_all(),
+          &(is_map(&1) and Map.get(&1, :interface) == "lo")
+        )
+
       for route <- routes do
         refute is_nil(route), "Expected non-nil route entry"
       end
     end
   end
+
   property "RouteManager list_all entries are non-nil for lo (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
-      routes = Enum.filter(YellowDog.Netman.Kernel.RouteManager.list_all(), &(is_map(&1) and Map.get(&1, :interface) == "lo"))
+      routes =
+        Enum.filter(
+          YellowDog.Netman.Kernel.RouteManager.list_all(),
+          &(is_map(&1) and Map.get(&1, :interface) == "lo")
+        )
+
       assert is_list(routes),
              "Expected list from list_routes for lo (r56)"
     end
   end
+
   property "RouteManager module is always loaded" do
     check all(_ <- StreamData.constant(:ok)) do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RouteManager),
              "Expected RouteManager module to be loaded"
     end
   end
+
   property "RouteManager get_routes for lo returns list (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RouteManager.get_routes("lo")
+
       assert is_list(result),
              "Expected list from get_routes for lo (r59)"
     end
@@ -781,108 +858,126 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "RouteManager module has start_link function (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "RouteManager module exports non-empty list (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RouteManager.module_info(:exports)
       assert is_list(exports) and length(exports) > 0
     end
   end
+
   property "RouteManager module has correct name (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RouteManager.module_info(:module)
       assert name == YellowDog.Netman.Kernel.RouteManager
     end
   end
+
   property "RouteManager module attributes are a list (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RouteManager.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "RouteManager module compile info is a list (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.RouteManager.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "RouteManager module version exists (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RouteManager.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "RouteManager module functions include handle_info (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert Keyword.has_key?(fns, :handle_info)
     end
   end
+
   property "RouteManager module functions include terminate (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "RouteManager module compile info has source (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.RouteManager.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "RouteManager module functions count is positive (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert length(fns) > 0
     end
   end
+
   property "RouteManager module attributes include behaviour (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RouteManager.module_info(:attributes)
       assert is_list(attrs) and length(attrs) > 0
     end
   end
+
   property "RouteManager module functions include init (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "RouteManager module functions are all keyword pairs (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RouteManager.module_info(:functions)
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+
   property "RouteManager exports include start_link (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RouteManager.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "RouteManager exports include module_info (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RouteManager.module_info(:exports)
       assert Keyword.has_key?(exports, :module_info)
     end
   end
+
   property "RouteManager module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RouteManager.module_info(:module)
       assert name == YellowDog.Netman.Kernel.RouteManager
     end
   end
+
   property "RouteManager is a running process (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.RouteManager)
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+
   property "RouteManager process is registered (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RouteManager
@@ -892,42 +987,42 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   end
 
   property "route_manager module exports functions (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert is_list(fns)
     end
   end
 
   property "route_manager module attributes is list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "route_manager module info compile is list or map (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       info = YellowDog.Netman.Kernel.RouteManager.__info__(:compile)
       assert is_list(info) or is_map(info)
     end
   end
 
   property "route_manager module exports start_link (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
     end
   end
 
   property "route_manager module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Kernel.RouteManager)
       assert result == true
     end
   end
 
   property "route_manager module has consistent info (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns1 = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       fns2 = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert fns1 == fns2
@@ -935,35 +1030,35 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   end
 
   property "route_manager has at least one exported function (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert length(fns) > 0
     end
   end
 
   property "route_manager all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "route_manager all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "route_manager functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "route_manager attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -971,35 +1066,35 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   end
 
   property "route_manager has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "route_manager all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "route_manager attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RouteManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "route_manager list_all returns list (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Kernel.RouteManager.list_all()
       assert is_list(result)
     end
   end
 
   property "route_manager list_all is stable (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = YellowDog.Netman.Kernel.RouteManager.list_all()
       r2 = YellowDog.Netman.Kernel.RouteManager.list_all()
       assert length(r1) == length(r2)
@@ -1007,35 +1102,35 @@ defmodule YellowDog.Netman.Kernel.RouteManagerPropertyTest do
   end
 
   property "route_manager exports remove_route function (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Keyword.has_key?(fns, :remove_route)
     end
   end
 
   property "route_manager list_all arity is 0 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Keyword.get(fns, :list_all) == 0
     end
   end
 
   property "route_manager module exports at least 3 functions (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert length(fns) >= 3
     end
   end
 
   property "route_manager remove_route arity is 1 (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Keyword.get(fns, :remove_route) == 1
     end
   end
 
   property "route_manager start_link arity is 1 (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RouteManager.__info__(:functions)
       assert Keyword.get(fns, :start_link) == 1
     end

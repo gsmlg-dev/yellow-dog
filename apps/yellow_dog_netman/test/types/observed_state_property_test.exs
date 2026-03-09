@@ -272,6 +272,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
         end)
 
       state = Enum.reduce(routes, ObservedState.new(), &ObservedState.add_route(&2, &1))
+
       assert length(state.routes) == count,
              "Expected #{count} routes, got #{length(state.routes)}"
     end
@@ -321,6 +322,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "add_route creates exactly one entry in routes when starting from empty" do
     check all(route <- route_gen()) do
       state = ObservedState.new() |> ObservedState.add_route(route)
+
       assert length(state.routes) == 1,
              "Expected 1 route after add_route, got #{length(state.routes)}"
     end
@@ -394,6 +396,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "put_link then get from links map returns the same link" do
     check all(link <- link_gen()) do
       state = ObservedState.new() |> ObservedState.put_link(link)
+
       assert state.links[link.interface] == link,
              "Expected links[#{link.interface}] == #{inspect(link)}, got #{inspect(state.links[link.interface])}"
     end
@@ -404,8 +407,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       state = ObservedState.new() |> ObservedState.add_address(addr)
       addresses = state.addresses[addr.interface] || []
       added = Enum.find(addresses, &(&1.address == addr.address))
+
       assert added != nil,
              "Expected to find address #{addr.address} in state.addresses[#{addr.interface}]"
+
       assert added.interface == addr.interface,
              "Expected address.interface == #{addr.interface}, got: #{inspect(added.interface)}"
     end
@@ -415,6 +420,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
     check all(route <- route_gen()) do
       state = ObservedState.new() |> ObservedState.add_route(route)
       added = Enum.find(state.routes, &(&1.destination == route.destination))
+
       assert added != nil,
              "Expected route with destination #{route.destination} in state.routes"
     end
@@ -423,6 +429,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always creates an ObservedState with empty routes list" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.routes == [],
              "Expected empty routes list in new ObservedState, got: #{inspect(state.routes)}"
     end
@@ -431,6 +438,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always creates an ObservedState with empty addresses map" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.addresses == %{},
              "Expected empty addresses map in new ObservedState, got: #{inspect(state.addresses)}"
     end
@@ -439,6 +447,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always creates an ObservedState with empty links map" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.links == %{},
              "Expected empty links map in new ObservedState, got: #{inspect(state.links)}"
     end
@@ -447,6 +456,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always creates a struct with empty links map" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.links == %{},
              "Expected empty links map in new ObservedState, got: #{inspect(state.links)}"
     end
@@ -455,6 +465,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always creates a struct where routes is an empty list" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert is_list(state.routes) and state.routes == [],
              "Expected empty routes list, got: #{inspect(state.routes)}"
     end
@@ -463,8 +474,10 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 always produces a struct with links, addresses, and routes" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert is_struct(state, ObservedState),
              "Expected ObservedState struct, got: #{inspect(state)}"
+
       assert Map.has_key?(state, :links), "Missing :links field"
       assert Map.has_key?(state, :addresses), "Missing :addresses field"
       assert Map.has_key?(state, :routes), "Missing :routes field"
@@ -474,6 +487,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 creates an ObservedState that is a struct" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert is_struct(state, ObservedState),
              "Expected ObservedState struct from new/0, got: #{inspect(state)}"
     end
@@ -482,6 +496,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 ObservedState is always equal to itself" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state == state,
              "Expected ObservedState to be equal to itself"
     end
@@ -490,6 +505,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 addresses values are always maps" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       for {_iface, addrs} <- state.addresses do
         assert is_list(addrs),
                "Expected list of addresses per interface, got: #{inspect(addrs)}"
@@ -500,6 +516,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 routes is always a list on fresh state" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert is_list(state.routes),
              "Expected list routes in ObservedState.new/0, got: #{inspect(state.routes)}"
     end
@@ -508,6 +525,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 addresses map is always empty on fresh state" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.addresses == %{},
              "Expected empty addresses map in ObservedState.new/0, got: #{inspect(state.addresses)}"
     end
@@ -516,6 +534,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "new/0 links map is always empty on fresh state" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.links == %{},
              "Expected empty links map in ObservedState.new/0, got: #{inspect(state.links)}"
     end
@@ -524,6 +543,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState.new/0 always returns struct with :routes key" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert Map.has_key?(state, :routes),
              "Expected :routes key in ObservedState.new/0 result"
     end
@@ -532,6 +552,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState.new/0 always returns struct with :addresses key" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert Map.has_key?(state, :addresses),
              "Expected :addresses key in ObservedState.new/0 result"
     end
@@ -540,8 +561,19 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState put_link/2 always returns updated state with the link" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = ObservedState.new()
-      link = %{interface: iface, index: 1, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}
+
+      link = %{
+        interface: iface,
+        index: 1,
+        state: :up,
+        carrier: true,
+        mtu: 1500,
+        mac: nil,
+        kind: nil
+      }
+
       updated = ObservedState.put_link(state, link)
+
       assert Map.has_key?(updated.links, iface),
              "Expected link to be stored in state, keys: #{inspect(Map.keys(updated.links))}"
     end
@@ -550,6 +582,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState links map is always empty for new/0" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.links == %{},
              "Expected empty links map in new ObservedState, got: #{inspect(state.links)}"
     end
@@ -558,9 +591,20 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState put_link/2 is idempotent for same interface" do
     check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = ObservedState.new()
-      link = %{interface: iface, index: 1, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}
+
+      link = %{
+        interface: iface,
+        index: 1,
+        state: :up,
+        carrier: true,
+        mtu: 1500,
+        mac: nil,
+        kind: nil
+      }
+
       updated1 = ObservedState.put_link(state, link)
       updated2 = ObservedState.put_link(updated1, link)
+
       assert updated1.links == updated2.links,
              "Expected idempotent put_link for #{iface}"
     end
@@ -569,39 +613,49 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   property "ObservedState.new/0 always returns struct with empty routes" do
     check all(_ <- StreamData.constant(:ok)) do
       state = ObservedState.new()
+
       assert state.routes == [],
              "Expected empty routes list in new ObservedState, got: #{inspect(state.routes)}"
     end
   end
+
   property "ObservedState links field is always a map" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert is_map(state.links),
              "Expected map for links, got: #{inspect(state.links)}"
     end
   end
+
   property "ObservedState addresses field is always a map" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert is_map(state.addresses),
              "Expected map for addresses, got: #{inspect(state.addresses)}"
     end
   end
+
   property "ObservedState routes field is always a map or list" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert is_map(state.routes) or is_list(state.routes),
              "Expected map or list for routes, got: #{inspect(state.routes)}"
     end
   end
+
   property "ObservedState new always returns same empty state" do
     check all(_ <- StreamData.constant(:ok)) do
       s1 = YellowDog.Netman.Types.ObservedState.new()
       s2 = YellowDog.Netman.Types.ObservedState.new()
+
       assert s1 == s2,
              "Expected deterministic empty state"
     end
   end
+
   property "ObservedState put_link returns updated state with link" do
     check all(
             iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
@@ -610,10 +664,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       state = YellowDog.Netman.Types.ObservedState.new()
       link = %{interface: iface, up: up}
       new_state = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+
       assert is_map(new_state),
              "Expected map from put_link, got: #{inspect(new_state)}"
     end
   end
+
   property "ObservedState put_link result has same keys as original plus link" do
     check all(
             iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
@@ -622,10 +678,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       state = YellowDog.Netman.Types.ObservedState.new()
       link = %{interface: iface, up: up}
       new_state = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+
       assert Map.keys(state) == Map.keys(new_state),
              "Expected same keys after put_link"
     end
   end
+
   property "ObservedState put_link with multiple links accumulates state" do
     check all(
             iface1 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
@@ -637,31 +695,39 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       link2 = %{interface: iface2, up: false}
       s1 = YellowDog.Netman.Types.ObservedState.put_link(state, link1)
       s2 = YellowDog.Netman.Types.ObservedState.put_link(s1, link2)
+
       assert is_map(s2),
              "Expected map after two put_links, got: #{inspect(s2)}"
     end
   end
+
   property "ObservedState all fields are present after new" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert Map.has_key?(state, :links),
              "Expected :links field in ObservedState"
     end
   end
+
   property "ObservedState addresses field is always map or list" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert is_map(state.addresses) or is_list(state.addresses),
              "Expected map or list for addresses, got: #{inspect(state.addresses)}"
     end
   end
+
   property "ObservedState new returns struct with all expected fields" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert Map.has_key?(state, :addresses) and Map.has_key?(state, :links),
              "Expected :addresses and :links fields"
     end
   end
+
   property "ObservedState put_link followed by get returns non-nil links" do
     check all(
             iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
@@ -670,10 +736,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       state = YellowDog.Netman.Types.ObservedState.new()
       link = %{interface: iface, up: up}
       new_state = YellowDog.Netman.Types.ObservedState.put_link(state, link)
+
       assert not is_nil(new_state.links),
              "Expected non-nil links after put_link"
     end
   end
+
   property "ObservedState put_link preserves existing links" do
     check all(
             iface1 <- StreamData.string(:alphanumeric, min_length: 1, max_length: 6),
@@ -683,10 +751,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       state = YellowDog.Netman.Types.ObservedState.new()
       s1 = YellowDog.Netman.Types.ObservedState.put_link(state, %{interface: iface1, up: true})
       s2 = YellowDog.Netman.Types.ObservedState.put_link(s1, %{interface: iface2, up: false})
+
       assert is_map(s2),
              "Expected map after two put_links"
     end
   end
+
   property "ObservedState put_link result is non-nil" do
     check all(
             iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
@@ -697,17 +767,22 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       refute is_nil(result), "Expected non-nil from put_link"
     end
   end
+
   property "ObservedState new always returns a struct" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
+
       assert is_struct(state) or is_map(state),
              "Expected struct or map from new, got: #{inspect(state)}"
     end
   end
+
   property "ObservedState always has all required keys after new" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
-      assert Map.has_key?(state, :links) and Map.has_key?(state, :addresses) and Map.has_key?(state, :routes),
+
+      assert Map.has_key?(state, :links) and Map.has_key?(state, :addresses) and
+               Map.has_key?(state, :routes),
              "Expected :links, :addresses, :routes keys"
     end
   end
@@ -718,103 +793,109 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_list(info)
     end
   end
+
   property "ObservedState always has links field as map (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       assert is_map(state.links)
     end
   end
+
   property "ObservedState put_link returns updated struct (r62)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       link = %{interface: iface, flags: [], mtu: 1500, mac: nil}
       updated = YellowDog.Netman.Types.ObservedState.put_link(state, link)
       assert is_struct(updated)
     end
   end
+
   property "ObservedState routes field is always a list (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       assert is_list(state.routes)
     end
   end
+
   property "ObservedState addresses field is always a map (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       assert is_map(state.addresses)
     end
   end
+
   property "ObservedState add_route returns updated struct (r65)" do
     check all(
-      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+            dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       route = %{destination: dst, gateway: gw, interface: "lo"}
       updated = YellowDog.Netman.Types.ObservedState.add_route(state, route)
       assert is_struct(updated)
     end
   end
+
   property "ObservedState remove_link from empty state returns unchanged struct (r66)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       updated = YellowDog.Netman.Types.ObservedState.remove_link(state, iface)
       assert is_struct(updated)
       assert updated.links == %{}
     end
   end
+
   property "ObservedState new returns correct struct type (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       assert state.__struct__ == YellowDog.Netman.Types.ObservedState
     end
   end
+
   property "ObservedState add_address returns updated struct (r68)" do
     check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       address = %{interface: iface, address: addr, prefix_len: 24}
       updated = YellowDog.Netman.Types.ObservedState.add_address(state, address)
       assert is_struct(updated)
     end
   end
+
   property "ObservedState remove_address from empty state returns unchanged struct (r69)" do
     check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       updated = YellowDog.Netman.Types.ObservedState.remove_address(state, iface, addr)
       assert is_struct(updated)
     end
   end
+
   property "ObservedState remove_route from empty state returns unchanged struct (r70)" do
     check all(
-      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+            dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       updated = YellowDog.Netman.Types.ObservedState.remove_route(state, dst, gw)
       assert is_struct(updated)
       assert updated.routes == []
     end
   end
+
   property "ObservedState module has new function (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Types.ObservedState.module_info(:functions)
       assert Keyword.has_key?(fns, :new)
     end
   end
+
   property "ObservedState put_link with same interface updates existing (r72)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       link1 = %{interface: iface, flags: [], mtu: 1500, mac: nil}
       link2 = %{interface: iface, flags: [:up], mtu: 9000, mac: nil}
@@ -824,11 +905,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert map_size(state2.links) == 1
     end
   end
+
   property "ObservedState add_route then remove_route returns empty routes (r73)" do
     check all(
-      dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+            dst <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            gw <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       route = %{destination: dst, gateway: gw, interface: "lo"}
       s1 = YellowDog.Netman.Types.ObservedState.add_route(state, route)
@@ -836,10 +918,9 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s2.routes == []
     end
   end
+
   property "ObservedState put_link then remove_link returns empty links (r74)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       state = YellowDog.Netman.Types.ObservedState.new()
       link = %{interface: iface, flags: [], mtu: 1500, mac: nil}
       s1 = YellowDog.Netman.Types.ObservedState.put_link(state, link)
@@ -847,11 +928,12 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert s2.links == %{}
     end
   end
+
   property "ObservedState add_address then remove_address returns clean state (r75)" do
     check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
+            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            addr <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
       state = YellowDog.Netman.Types.ObservedState.new()
       address = %{interface: iface, address: addr, prefix_len: 24}
       s1 = YellowDog.Netman.Types.ObservedState.add_address(state, address)
@@ -859,6 +941,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert is_struct(s2)
     end
   end
+
   property "ObservedState struct keys are always the expected ones (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       state = YellowDog.Netman.Types.ObservedState.new()
@@ -867,12 +950,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
       assert MapSet.subset?(expected, keys)
     end
   end
+
   property "ObservedState module name is correct (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Types.ObservedState.module_info(:module)
       assert name == YellowDog.Netman.Types.ObservedState
     end
   end
+
   property "ObservedState module attributes include vsn (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Types.ObservedState.module_info(:attributes)
@@ -881,21 +966,21 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state routes field is list (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       state = ObservedState.new()
       assert is_list(state.routes)
     end
   end
 
   property "observed_state links is always map (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert is_map(state.links)
     end
   end
 
   property "observed_state add_link updates links map (r81)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       state = ObservedState.new()
       assert is_map(state.links)
       assert map_size(state.links) >= 0
@@ -903,21 +988,21 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state new always returns struct (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert is_struct(state)
     end
   end
 
   property "observed_state addresses field is map (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert is_map(state.addresses)
     end
   end
 
   property "observed_state addresses is empty map initially (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert is_map(state.addresses)
       assert map_size(state.addresses) >= 0
@@ -925,7 +1010,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state routes is always list (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert is_list(state.routes)
       assert length(state.routes) >= 0
@@ -933,7 +1018,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state new is deterministic (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       s1 = ObservedState.new()
       s2 = ObservedState.new()
       assert s1.links == s2.links
@@ -942,24 +1027,25 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state links map values are structs or maps (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       # Either empty or all values are link structs
       assert map_size(state.links) == 0 or
-             Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
+               Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
     end
   end
 
   property "observed_state route entries are maps or structs (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
+
       assert length(state.routes) == 0 or
-             Enum.all?(state.routes, &(is_map(&1) or is_struct(&1)))
+               Enum.all?(state.routes, &(is_map(&1) or is_struct(&1)))
     end
   end
 
   property "observed_state struct fields are consistent (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       keys = Map.keys(state) -- [:__struct__]
       assert :links in keys
@@ -969,7 +1055,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state address count is non-negative (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert map_size(state.addresses) >= 0
       assert length(state.routes) >= 0
@@ -978,14 +1064,14 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state module info is non-empty (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Types.ObservedState.__info__(:functions)
       assert is_list(fns) and length(fns) > 0
     end
   end
 
   property "observed_state is created fresh each call (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       s1 = ObservedState.new()
       s2 = ObservedState.new()
       # Both fresh structs are equal
@@ -994,7 +1080,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state all keys are atoms (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       keys = Map.keys(state)
       assert Enum.all?(keys, &is_atom/1)
@@ -1002,28 +1088,28 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state addresses keys are strings (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert Enum.all?(state.addresses, fn {k, _} -> is_binary(k) end)
     end
   end
 
   property "observed_state addresses values are lists (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert Enum.all?(state.addresses, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "observed_state links values are maps when present (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert Enum.all?(state.links, fn {_k, v} -> is_map(v) or is_struct(v) end)
     end
   end
 
   property "observed_state struct field count is stable (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       s1 = ObservedState.new()
       s2 = ObservedState.new()
       assert map_size(s1) == map_size(s2)
@@ -1031,7 +1117,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state new does not share state between instances (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       s1 = ObservedState.new()
       s2 = ObservedState.new()
       # Links map should be independent (both empty)
@@ -1041,7 +1127,7 @@ defmodule YellowDog.Netman.Types.ObservedStatePropertyTest do
   end
 
   property "observed_state new has all expected fields (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       state = ObservedState.new()
       assert Map.has_key?(state, :links)
       assert Map.has_key?(state, :routes)

@@ -322,8 +322,17 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "all connections in list_connections have valid FSM state fields" do
     check all(_ <- StreamData.constant(:ok)) do
       connections = ConnSupervisor.list_connections()
-      valid_states = [:unavailable, :disconnected, :prepare, :configuring,
-                      :ip_check, :activated, :deactivating, :failed]
+
+      valid_states = [
+        :unavailable,
+        :disconnected,
+        :prepare,
+        :configuring,
+        :ip_check,
+        :activated,
+        :deactivating,
+        :failed
+      ]
 
       for conn <- connections do
         assert is_map(conn),
@@ -381,8 +390,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections result is always a list of maps" do
     check all(_ <- StreamData.constant(:ok)) do
       result = ConnSupervisor.list_connections()
+
       assert is_list(result),
              "Expected list from list_connections, got: #{inspect(result)}"
+
       for conn <- result do
         assert is_map(conn),
                "Expected map in list_connections, got: #{inspect(conn)}"
@@ -431,8 +442,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections always returns a non-nil result" do
     check all(_ <- StreamData.constant(:ok)) do
       result = ConnSupervisor.list_connections()
+
       assert result != nil,
              "Expected non-nil from list_connections"
+
       assert is_list(result),
              "Expected list from list_connections, got: #{inspect(result)}"
     end
@@ -453,15 +466,15 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
 
       assert is_pid(pid2) and pid1 != pid2,
              "Expected a new pid after restart, got same: #{inspect(pid2)}"
+
       ConnSupervisor.stop_connection(iface)
     end
   end
 
   property "find_connection returns :error for interface with special chars" do
-    check all(
-            seed <- StreamData.integer(1..999_999)
-          ) do
+    check all(seed <- StreamData.integer(1..999_999)) do
       iface = "!bad@iface##{seed}"
+
       assert ConnSupervisor.find_connection(iface) == :error,
              "Expected :error for special char interface"
     end
@@ -470,8 +483,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections pid field is always nil or alive pid" do
     check all(_ <- StreamData.constant(:ok)) do
       connections = ConnSupervisor.list_connections()
+
       for conn <- connections do
         pid = conn[:pid]
+
         if pid != nil do
           assert is_pid(pid) and Process.alive?(pid),
                  "Expected alive pid in connection, got: #{inspect(pid)}"
@@ -481,10 +496,9 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "find_connection returns :error for very long interface name" do
-    check all(
-            seed <- StreamData.integer(1..999_999)
-          ) do
+    check all(seed <- StreamData.integer(1..999_999)) do
       long_iface = String.duplicate("x", 16) <> "#{seed}"
+
       assert ConnSupervisor.find_connection(long_iface) == :error,
              "Expected :error for overlong interface name"
     end
@@ -494,6 +508,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       connections = ConnSupervisor.list_connections()
       assert is_list(connections)
+
       for conn <- connections do
         assert Map.has_key?(conn, :profile_id),
                "Expected :profile_id key in connection, got: #{inspect(conn)}"
@@ -504,6 +519,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "find_connection for unknown interface always returns :error" do
     check all(seed <- StreamData.integer(1..999_999)) do
       unknown = "never_started_#{seed}"
+
       assert ConnSupervisor.find_connection(unknown) == :error,
              "Expected :error for unknown interface #{unknown}"
     end
@@ -516,8 +532,10 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
       result = ConnSupervisor.start_connection(iface, profile)
+
       assert match?({:ok, _}, result) or match?({:error, :already_started}, result),
              "Expected {:ok, pid} or :already_started, got: #{inspect(result)}"
+
       ConnSupervisor.stop_connection(iface)
     end
   end
@@ -525,6 +543,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections result maps all have :state key" do
     check all(_ <- StreamData.constant(:ok)) do
       connections = ConnSupervisor.list_connections()
+
       for conn <- connections do
         assert Map.has_key?(conn, :state),
                "Expected :state key in connection, got: #{inspect(conn)}"
@@ -536,6 +555,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       tasks = for _ <- 1..3, do: Task.async(fn -> ConnSupervisor.list_connections() end)
       results = Task.await_many(tasks, 5_000)
+
       assert Enum.all?(results, &is_list/1),
              "Expected all concurrent list_connections to return lists"
     end
@@ -544,6 +564,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections count is always non-negative" do
     check all(_ <- StreamData.constant(:ok)) do
       count = length(ConnSupervisor.list_connections())
+
       assert count >= 0,
              "Expected non-negative connection count, got: #{count}"
     end
@@ -559,6 +580,7 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   property "list_connections never returns nil" do
     check all(_ <- StreamData.constant(:ok)) do
       conns = ConnSupervisor.list_connections()
+
       assert conns != nil,
              "Expected non-nil from list_connections"
     end
@@ -580,100 +602,127 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       end
     end
   end
+
   property "ConnSupervisor list_connections always returns a list with round-45 check" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Supervisor.list_connections()
+
       assert is_list(result),
              "Expected list from list_connections, got: #{inspect(result)}"
     end
   end
+
   property "ConnSupervisor list_connections round-46 returns list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Supervisor.list_connections()
+
       assert is_list(result),
              "Expected list from list_connections, got: #{inspect(result)}"
     end
   end
+
   property "ConnSupervisor list_connections count is non-negative" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Supervisor.list_connections()
+
       assert length(result) >= 0,
              "Expected non-negative count"
     end
   end
+
   property "ConnSupervisor module_info always returns a list" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Supervisor.module_info()
+
       assert is_list(info),
              "Expected list from module_info"
     end
   end
+
   property "ConnSupervisor list_connections is stable across calls" do
     check all(_ <- StreamData.constant(:ok)) do
       r1 = YellowDog.Netman.Connection.Supervisor.list_connections()
       r2 = YellowDog.Netman.Connection.Supervisor.list_connections()
+
       assert is_list(r1) and is_list(r2),
              "Expected lists from repeated list_connections"
     end
   end
+
   property "ConnSupervisor process is always alive" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Connection.Supervisor)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected ConnSupervisor to be alive"
     end
   end
+
   property "ConnSupervisor module_info exports is always a list" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+
       assert is_list(exports),
              "Expected list from module_info(:exports)"
     end
   end
+
   property "ConnSupervisor module exports contain list_connections" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+
       assert {:list_connections, 0} in exports,
              "Expected list_connections/0 in exports"
     end
   end
+
   property "ConnSupervisor process responds to alive check always" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Connection.Supervisor)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected ConnSupervisor to be alive"
     end
   end
+
   property "ConnSupervisor module_info attributes is always a list (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
+
       assert is_list(attrs),
              "Expected list from module_info(:attributes)"
     end
   end
+
   property "ConnSupervisor module_info exports is always a list (r55)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
+
       assert is_list(exports),
              "Expected list from module_info(:exports)"
     end
   end
+
   property "ConnSupervisor module_info non-nil (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Supervisor.module_info()
       refute is_nil(info), "Expected non-nil module_info"
     end
   end
+
   property "ConnSupervisor module info has :module key" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Supervisor.module_info()
+
       assert Keyword.has_key?(info, :module),
              "Expected :module key in module_info"
     end
   end
+
   property "ConnSupervisor list_connections is always a list (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Supervisor.list_connections()
+
       assert is_list(result),
              "Expected list from list_connections (r59)"
     end
@@ -685,36 +734,42 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "Connection.Supervisor module has start_link function (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "Connection.Supervisor module exports non-empty list (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
       assert is_list(exports) and length(exports) > 0
     end
   end
+
   property "Connection.Supervisor module has correct name (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Connection.Supervisor.module_info(:module)
       assert name == YellowDog.Netman.Connection.Supervisor
     end
   end
+
   property "Connection.Supervisor module attributes are a list (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "Connection.Supervisor module compile info is a list (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Connection.Supervisor.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "Connection.Supervisor module version is a list (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
@@ -722,72 +777,84 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
       assert is_list(vsn) or is_nil(vsn)
     end
   end
+
   property "Connection.Supervisor module functions include init (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "Connection.Supervisor module functions include terminate (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "Connection.Supervisor module attributes include vsn (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "Connection.Supervisor module functions count is positive (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert length(fns) > 0
     end
   end
+
   property "Connection.Supervisor attributes include behaviour (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "Connection.Supervisor module functions include start_link (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "Connection.Supervisor module functions are all keyword pairs (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Supervisor.module_info(:functions)
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+
   property "Connection.Supervisor exports include start_link (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "Connection.Supervisor exports are non-empty (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Supervisor.module_info(:exports)
       assert length(exports) > 0
     end
   end
+
   property "Connection.Supervisor module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Connection.Supervisor.module_info(:module)
       assert name == YellowDog.Netman.Connection.Supervisor
     end
   end
+
   property "Connection.Supervisor module attributes include vsn (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Supervisor.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "Connection.Supervisor process is alive (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       # Supervisor is not named but we can check DynamicSupervisor
@@ -797,28 +864,28 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "connection supervisor module exports start_link (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
 
   property "connection supervisor module attributes is list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "connection supervisor module info compile is list or map (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       info = YellowDog.Netman.Connection.Supervisor.__info__(:compile)
       assert is_list(info) or is_map(info)
     end
   end
 
   property "connection supervisor exports functions list (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert is_list(fns)
       assert length(fns) >= 0
@@ -826,14 +893,14 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "connection supervisor module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Connection.Supervisor)
       assert result == true
     end
   end
 
   property "connection supervisor module has consistent info (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns1 = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       fns2 = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert fns1 == fns2
@@ -841,35 +908,35 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "connection supervisor has at least one exported function (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert length(fns) > 0
     end
   end
 
   property "connection supervisor all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "connection supervisor all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "connection supervisor functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "connection supervisor attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -877,28 +944,28 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "connection supervisor has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "connection supervisor all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "connection supervisor attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "connection supervisor has start_link and child_spec (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link)
       assert Keyword.has_key?(fns, :child_spec)
@@ -906,45 +973,47 @@ defmodule YellowDog.Netman.Connection.SupervisorPropertyTest do
   end
 
   property "connection supervisor has connection-related exports (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
 
   property "connection supervisor module functions all valid arity (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
 
   property "connection supervisor child_spec arity is 1 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
+
       if Keyword.has_key?(fns, :child_spec) do
         assert Keyword.get(fns, :child_spec) == 1
       end
+
       assert true
     end
   end
 
   property "connection supervisor module attributes have keys (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Supervisor.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "connection supervisor has at least start_link (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
 
   property "connection supervisor start_link arity is 1 (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Supervisor.__info__(:functions)
       assert Keyword.get(fns, :start_link) == 1
     end

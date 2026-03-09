@@ -183,6 +183,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.type == profile.type,
              "type mismatch: #{state.type} != #{profile.type}"
 
@@ -220,6 +221,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.state == :unavailable,
              "Expected :unavailable for unregistered interface, got: #{state.state}"
 
@@ -240,6 +242,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.state == :disconnected,
              "Expected :disconnected for link-up interface, got: #{state.state}"
 
@@ -256,8 +259,12 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
-      assert state.lease == nil, "Expected nil lease in initial state, got: #{inspect(state.lease)}"
-      assert state.error == nil, "Expected nil error in initial state, got: #{inspect(state.error)}"
+
+      assert state.lease == nil,
+             "Expected nil lease in initial state, got: #{inspect(state.lease)}"
+
+      assert state.error == nil,
+             "Expected nil error in initial state, got: #{inspect(state.error)}"
 
       GenServer.stop(pid, :normal)
     end
@@ -276,6 +283,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.priority == priority,
              "FSM priority #{state.priority} != profile priority #{priority}"
 
@@ -365,6 +373,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert is_list(state.dns),
              "Expected dns to be a list, got: #{inspect(state.dns)}"
 
@@ -459,6 +468,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.profile_id == profile.id,
              "Expected profile_id #{profile.id}, got: #{inspect(state.profile_id)}"
 
@@ -475,6 +485,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.dns == [],
              "Expected empty dns list in initial state, got: #{inspect(state.dns)}"
 
@@ -491,6 +502,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(50)
 
       {:ok, state} = FSM.get_state(pid)
+
       assert state.interface == interface,
              "Expected interface #{interface}, got: #{inspect(state.interface)}"
 
@@ -523,6 +535,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
 
       {:ok, state} = FSM.get_state(pid)
       assert is_map(state), "Expected map from get_state, got: #{inspect(state)}"
+
       assert state.interface == iface,
              "Expected interface #{iface} in get_state, got: #{inspect(state.interface)}"
 
@@ -662,6 +675,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
 
       assert Map.has_key?(state, :state),
              "Expected :state field in FSM state map, got: #{inspect(state)}"
+
       assert state.state in @valid_states,
              "Expected valid FSM state, got: #{inspect(state.state)}"
 
@@ -699,10 +713,20 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
 
       assert is_map(state_map),
              "Expected map from get_state, got: #{inspect(state_map)}"
+
       assert Map.has_key?(state_map, :state),
              "get_state map missing :state field"
-      assert state_map.state in [:unavailable, :disconnected, :prepare, :configuring,
-                                  :ip_check, :activated, :deactivating, :failed],
+
+      assert state_map.state in [
+               :unavailable,
+               :disconnected,
+               :prepare,
+               :configuring,
+               :ip_check,
+               :activated,
+               :deactivating,
+               :failed
+             ],
              "get_state returned unknown state: #{inspect(state_map.state)}"
 
       GenServer.stop(pid, :normal)
@@ -775,6 +799,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(30)
 
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
+
       assert {:ok, _state_map} = FSM.get_state(pid),
              "Expected {:ok, map} from get_state immediately after start"
 
@@ -807,8 +832,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(30)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state_map} = FSM.get_state(pid)
+
       assert Map.has_key?(state_map, :state),
              "Expected :state key in FSM state map, got: #{inspect(Map.keys(state_map))}"
+
       GenServer.stop(pid, :normal)
     end
   end
@@ -821,8 +848,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(30)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state_map} = FSM.get_state(pid)
+
       assert state_map.profile_id == profile.id,
              "Expected profile_id #{profile.id}, got #{inspect(state_map.profile_id)}"
+
       GenServer.stop(pid, :normal)
     end
   end
@@ -835,8 +864,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(30)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state_map} = FSM.get_state(pid)
+
       assert state_map.interface == iface,
              "Expected interface #{iface}, got #{inspect(state_map.interface)}"
+
       GenServer.stop(pid, :normal)
     end
   end
@@ -849,10 +880,13 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       Process.sleep(30)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state_map} = FSM.get_state(pid)
+
       assert Map.has_key?(state_map, :interface),
              "Expected :interface key in FSM state"
+
       assert Map.has_key?(state_map, :profile_id),
              "Expected :profile_id key in FSM state"
+
       GenServer.stop(pid, :normal)
     end
   end
@@ -865,8 +899,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
+
       assert Map.has_key?(state, :autoconnect_priority),
              "Expected :autoconnect_priority in FSM state, got: #{inspect(Map.keys(state))}"
+
       GenServer.stop(pid)
     end
   end
@@ -879,8 +915,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
+
       assert Map.has_key?(state, :dns),
              "Expected :dns key in FSM state, got: #{inspect(Map.keys(state))}"
+
       GenServer.stop(pid)
     end
   end
@@ -893,8 +931,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
+
       assert state.state in [:idle, :disconnected, :connecting, :activated, :failed],
              "Expected valid FSM state, got: #{inspect(state.state)}"
+
       GenServer.stop(pid)
     end
   end
@@ -907,8 +947,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       result = FSM.get_state(pid)
+
       assert match?({:ok, _}, result),
              "Expected {:ok, _} from get_state, got: #{inspect(result)}"
+
       GenServer.stop(pid)
     end
   end
@@ -921,8 +963,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
+
       assert Map.has_key?(state, :error),
              "Expected :error key in FSM state, got: #{inspect(Map.keys(state))}"
+
       GenServer.stop(pid)
     end
   end
@@ -935,13 +979,16 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       profile = make_profile(iface)
       {:ok, pid} = FSM.start_link(interface: iface, profile: profile)
       {:ok, state} = FSM.get_state(pid)
+
       for key <- [:interface, :state] do
         assert Map.get(state, key) != nil,
                "Expected non-nil #{key} in FSM state, got: #{inspect(state)}"
       end
+
       GenServer.stop(pid)
     end
   end
+
   property "FSM start_link with valid profile always returns ok or error tuple" do
     check all(
             suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
@@ -950,121 +997,154 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       iface = String.slice("fsm45_#{suffix}", 0, 15)
       profile = make_profile(iface)
       result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.unlink(pid); Process.exit(pid, :kill)
+          Process.unlink(pid)
+          Process.exit(pid, :kill)
+
         {:error, _reason} ->
           :ok
       end
     end
   end
+
   property "FSM start_link with unique suffix-based interface always returns ok or error" do
     check all(n <- StreamData.integer(1..999)) do
       iface = String.slice("fsm46_#{n}", 0, 15)
       profile = make_profile(iface)
       result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.unlink(pid); Process.exit(pid, :kill)
+          Process.unlink(pid)
+          Process.exit(pid, :kill)
+
         {:error, _reason} ->
           :ok
       end
     end
   end
+
   property "FSM start_link with seed-based interface and valid profile is idempotent on error" do
     check all(n <- StreamData.integer(1000..1999)) do
       iface = String.slice("fsmr47_#{n}", 0, 15)
       profile = make_profile(iface)
       result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.unlink(pid); Process.exit(pid, :kill)
+          Process.unlink(pid)
+          Process.exit(pid, :kill)
+
         {:error, _} ->
           :ok
       end
     end
   end
+
   property "FSM module is always loaded" do
     check all(_ <- StreamData.constant(:ok)) do
       assert Code.ensure_loaded?(YellowDog.Netman.Connection.FSM),
              "Expected FSM module to be loadable"
     end
   end
+
   property "FSM start_link with any interface and profile never hangs" do
     check all(n <- StreamData.integer(2000..2999)) do
       iface = String.slice("fsmr49_#{n}", 0, 15)
       profile = make_profile(iface)
       result = YellowDog.Netman.Connection.FSM.start_link(interface: iface, profile: profile)
+
       case result do
         {:ok, pid} ->
           assert is_pid(pid)
-          Process.unlink(pid); Process.exit(pid, :kill)
+          Process.unlink(pid)
+          Process.exit(pid, :kill)
+
         {:error, _} ->
           :ok
       end
     end
   end
+
   property "FSM module exports are stable" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+
       assert is_list(exports),
              "Expected list of exports"
     end
   end
+
   property "FSM module attributes contain vsn" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+
       assert is_list(attrs),
              "Expected list from module_info(:attributes)"
     end
   end
+
   property "FSM module exports contain start_link function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+
       assert {:start_link, 1} in exports,
              "Expected start_link/1 in exports"
     end
   end
+
   property "FSM module exports contain handle_event function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.__info__(:functions)
+
       assert is_list(exports) and length(exports) > 0,
              "Expected non-empty exports list"
     end
   end
+
   property "FSM module_info exports is always a list (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.module_info(:exports)
+
       assert is_list(exports),
              "Expected list from module_info(:exports)"
     end
   end
+
   property "FSM module_info attributes is always a list (r55)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
+
       assert is_list(attrs),
              "Expected list from module_info(:attributes)"
     end
   end
+
   property "FSM module_info non-nil (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.FSM.module_info()
       refute is_nil(info), "Expected non-nil module_info"
     end
   end
+
   property "FSM module info has :module key" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.FSM.module_info()
+
       assert Keyword.has_key?(info, :module),
              "Expected :module key in module_info"
     end
   end
+
   property "FSM module_info has :module key (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.FSM.module_info()
+
       assert Keyword.has_key?(info, :module),
              "Expected :module key in module_info (r59)"
     end
@@ -1076,36 +1156,42 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "FSM module has start_link function (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "FSM module has module_info/1 function (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :module_info)
     end
   end
+
   property "FSM module has correct module name (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Connection.FSM.module_info(:module)
       assert name == YellowDog.Netman.Connection.FSM
     end
   end
+
   property "FSM module attributes are always a list (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "FSM module info compile keys always include source (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Connection.FSM.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "FSM module nif_loaded function exists (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
@@ -1113,72 +1199,84 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       assert length(fns) > 0
     end
   end
+
   property "FSM module functions include handle_info (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "FSM module functions include terminate (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate)
     end
   end
+
   property "FSM module functions include handle_cast (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "FSM module functions include init (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "FSM module functions include handle_call (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :disconnected) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "FSM module functions include code_change (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "FSM module functions are all {atom, arity} pairs (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.FSM.module_info(:functions)
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+
   property "FSM exports include start_link (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "FSM exports include init (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.FSM.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "FSM module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Connection.FSM.module_info(:module)
       assert name == YellowDog.Netman.Connection.FSM
     end
   end
+
   property "FSM module attributes include vsn (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "FSM module attributes include behaviour (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.FSM.module_info(:attributes)
@@ -1187,28 +1285,28 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm module exports child_spec (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Keyword.has_key?(fns, :child_spec)
     end
   end
 
   property "fsm module info attributes is list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "fsm module info compile is list or map (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       info = YellowDog.Netman.Connection.FSM.__info__(:compile)
       assert is_list(info) or is_map(info)
     end
   end
 
   property "fsm module exports functions list (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert is_list(fns)
       assert length(fns) >= 0
@@ -1216,14 +1314,14 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Connection.FSM)
       assert result == true
     end
   end
 
   property "fsm module has consistent info (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns1 = YellowDog.Netman.Connection.FSM.__info__(:functions)
       fns2 = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert fns1 == fns2
@@ -1231,35 +1329,35 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm module has at least one exported function (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert length(fns) > 0
     end
   end
 
   property "fsm all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "fsm all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "fsm functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "fsm attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -1267,28 +1365,28 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "fsm all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "fsm attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.FSM.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "fsm has disconnected and configuring state functions (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Keyword.has_key?(fns, :disconnected)
       assert Keyword.has_key?(fns, :configuring)
@@ -1296,7 +1394,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm has init deactivate get_state (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Keyword.has_key?(fns, :init)
       assert Keyword.has_key?(fns, :deactivate)
@@ -1305,7 +1403,7 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm state machine has at least 5 state functions (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       # State functions have arity 3 in gen_statem
       state_fns = Enum.filter(fns, fn {_name, arity} -> arity == 3 end)
@@ -1314,21 +1412,31 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm all state functions have arity 3 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       # gen_statem state functions all have arity 3
-      state_names = [:disconnected, :configuring, :deactivating, :failed, :unavailable, :prepare, :ip_check]
+      state_names = [
+        :disconnected,
+        :configuring,
+        :deactivating,
+        :failed,
+        :unavailable,
+        :prepare,
+        :ip_check
+      ]
+
       Enum.each(state_names, fn name ->
         if Keyword.has_key?(fns, name) do
           assert Keyword.get(fns, name) == 3
         end
       end)
+
       assert true
     end
   end
 
   property "fsm setup_link has arity 1 or 2 (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       fns_list = for {name, arity} <- fns, name == :setup_link, do: arity
       assert length(fns_list) >= 1
@@ -1336,14 +1444,14 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
   end
 
   property "fsm deactivate has arity 1 (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Keyword.get(fns, :deactivate) == 1
     end
   end
 
   property "fsm get_state arity is 1 (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.FSM.__info__(:functions)
       assert Keyword.get(fns, :get_state) == 1
     end

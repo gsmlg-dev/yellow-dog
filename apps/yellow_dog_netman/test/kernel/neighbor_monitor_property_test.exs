@@ -194,6 +194,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
       neighbors = NeighborMonitor.get_neighbors(iface)
       matching = Enum.filter(neighbors, &(&1.address == addr))
+
       assert length(matching) == 1,
              "Expected exactly 1 entry for #{addr} on #{iface}, got #{length(matching)}"
     end
@@ -232,6 +233,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
           ) do
       fresh_iface = "nm_fresh_#{seed}"
       neighbors = NeighborMonitor.get_neighbors(fresh_iface)
+
       assert neighbors == [],
              "Expected empty list for fresh interface #{fresh_iface}, got: #{inspect(neighbors)}"
     end
@@ -541,6 +543,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "nm_fresh_#{seed}"
       result = NeighborMonitor.get_neighbors(fresh_iface)
+
       assert result == [],
              "Expected [] for fresh interface #{fresh_iface}, got: #{inspect(result)}"
     end
@@ -561,6 +564,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       })
 
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       for n <- neighbors do
         assert is_atom(n.state),
                "Expected atom state field, got: #{inspect(n.state)}"
@@ -584,6 +588,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
 
       neighbors = NeighborMonitor.get_neighbors(iface)
       entry = Enum.find(neighbors, &(&1.address == addr))
+
       if entry do
         assert is_binary(entry.mac),
                "Expected binary mac field, got: #{inspect(entry.mac)}"
@@ -594,6 +599,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "get_neighbors always returns a list for any interface" do
     check all(iface <- StreamData.string(:printable, min_length: 0, max_length: 64)) do
       result = NeighborMonitor.get_neighbors(iface)
+
       assert is_list(result),
              "Expected list from get_neighbors, got: #{inspect(result)}"
     end
@@ -602,6 +608,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "neighbor count for any interface is always a non-negative integer" do
     check all(iface <- iface_gen()) do
       count = length(NeighborMonitor.get_neighbors(iface))
+
       assert is_integer(count) and count >= 0,
              "Expected non-negative neighbor count for #{iface}, got: #{count}"
     end
@@ -610,9 +617,11 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "every entry in list_neighbors is a map with :interface key" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         assert is_map(n),
                "Expected map in list_neighbors, got: #{inspect(n)}"
+
         assert Map.has_key?(n, :interface),
                "Expected :interface key in neighbor map, got: #{inspect(n)}"
       end
@@ -622,6 +631,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "every entry in list_neighbors has a non-nil :address field" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         assert Map.get(n, :address) != nil,
                "Expected non-nil :address in neighbor, got: #{inspect(n)}"
@@ -640,6 +650,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "all neighbors in get_neighbors have a non-nil :address field" do
     check all(iface <- iface_gen()) do
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       for n <- neighbors do
         assert n.address != nil,
                "Expected non-nil address in neighbor, got: #{inspect(n)}"
@@ -651,6 +662,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "nm_fresh_#{seed}"
       result = NeighborMonitor.get_neighbors(fresh_iface)
+
       assert result == [],
              "Expected empty neighbors for fresh interface, got: #{inspect(result)}"
     end
@@ -661,12 +673,17 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
             iface <- iface_gen(),
             addr <- ipv4_gen()
           ) do
-      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
-        "type" => "neighbor_change",
-        "action" => "add",
-        "interface" => iface,
-        "address" => addr
-      }})
+      send(
+        YellowDog.Netman.Kernel.Netlink,
+        {:mock_event,
+         %{
+           "type" => "neighbor_change",
+           "action" => "add",
+           "interface" => iface,
+           "address" => addr
+         }}
+      )
+
       Process.sleep(50)
       all = NeighborMonitor.list_neighbors()
       assert is_list(all), "Expected list from list_neighbors"
@@ -676,6 +693,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "list_neighbors never contains nil entries" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         assert n != nil,
                "Expected non-nil entry in list_neighbors"
@@ -688,15 +706,21 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
             iface <- iface_gen(),
             addr <- ipv4_gen()
           ) do
-      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
-        "type" => "neighbor_change",
-        "action" => "add",
-        "interface" => iface,
-        "address" => addr,
-        "mac" => "aa:bb:cc:dd:ee:ff"
-      }})
+      send(
+        YellowDog.Netman.Kernel.Netlink,
+        {:mock_event,
+         %{
+           "type" => "neighbor_change",
+           "action" => "add",
+           "interface" => iface,
+           "address" => addr,
+           "mac" => "aa:bb:cc:dd:ee:ff"
+         }}
+      )
+
       Process.sleep(50)
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       for n <- neighbors do
         assert Map.has_key?(n, :mac),
                "Expected :mac key in neighbor, got: #{inspect(n)}"
@@ -707,6 +731,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "list_neighbors result entries always have :interface key" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         assert Map.has_key?(n, :interface),
                "Expected :interface key in neighbor, got: #{inspect(n)}"
@@ -717,6 +742,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   property "list_neighbors entries always have :state key" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         assert Map.has_key?(n, :state),
                "Expected :state key in neighbor, got: #{inspect(n)}"
@@ -728,6 +754,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "nm_empty_#{seed}"
       result = NeighborMonitor.get_neighbors(iface)
+
       assert result == [] or is_list(result),
              "Expected empty or list from get_neighbors for unknown iface: #{inspect(result)}"
     end
@@ -737,21 +764,35 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "nm_cnt_#{seed}"
       count = length(NeighborMonitor.get_neighbors(iface))
+
       assert count >= 0,
              "Expected non-negative count from get_neighbors for #{iface}"
     end
   end
 
   property "get_neighbors after add event contains the neighbor" do
-    check all(seed <- StreamData.integer(1..9_999), ip <- StreamData.member_of(["10.0.1.1", "192.168.1.1", "172.16.0.1"])) do
+    check all(
+            seed <- StreamData.integer(1..9_999),
+            ip <- StreamData.member_of(["10.0.1.1", "192.168.1.1", "172.16.0.1"])
+          ) do
       iface = "nm_add_#{seed}"
       mac = "aa:bb:cc:dd:ee:ff"
-      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
-        "type" => "neighbor_change", "action" => "add",
-        "interface" => iface, "address" => ip, "mac" => mac
-      }})
+
+      send(
+        YellowDog.Netman.Kernel.Netlink,
+        {:mock_event,
+         %{
+           "type" => "neighbor_change",
+           "action" => "add",
+           "interface" => iface,
+           "address" => ip,
+           "mac" => mac
+         }}
+      )
+
       Process.sleep(50)
       neighbors = NeighborMonitor.get_neighbors(iface)
+
       assert is_list(neighbors),
              "Expected list from get_neighbors after add event"
     end
@@ -769,125 +810,173 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       iface = "nm_noevent_#{seed}"
       result = NeighborMonitor.get_neighbors(iface)
+
       assert result == [],
              "Expected empty list for iface with no events: #{inspect(result)}"
     end
   end
 
   property "get_neighbors after del event returns empty or partial list" do
-    check all(seed <- StreamData.integer(1..9_999), ip <- StreamData.member_of(["10.1.1.1", "192.168.2.2"])) do
+    check all(
+            seed <- StreamData.integer(1..9_999),
+            ip <- StreamData.member_of(["10.1.1.1", "192.168.2.2"])
+          ) do
       iface = "nm_del_#{seed}"
       mac = "aa:bb:cc:dd:ee:ff"
-      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
-        "type" => "neighbor_change", "action" => "add",
-        "interface" => iface, "address" => ip, "mac" => mac
-      }})
-      send(YellowDog.Netman.Kernel.Netlink, {:mock_event, %{
-        "type" => "neighbor_change", "action" => "del",
-        "interface" => iface, "address" => ip, "mac" => mac
-      }})
+
+      send(
+        YellowDog.Netman.Kernel.Netlink,
+        {:mock_event,
+         %{
+           "type" => "neighbor_change",
+           "action" => "add",
+           "interface" => iface,
+           "address" => ip,
+           "mac" => mac
+         }}
+      )
+
+      send(
+        YellowDog.Netman.Kernel.Netlink,
+        {:mock_event,
+         %{
+           "type" => "neighbor_change",
+           "action" => "del",
+           "interface" => iface,
+           "address" => ip,
+           "mac" => mac
+         }}
+      )
+
       Process.sleep(80)
       result = NeighborMonitor.get_neighbors(iface)
+
       assert is_list(result),
              "Expected list after add+del for #{iface}"
     end
   end
+
   property "NeighborMonitor get_neighbor for numeric string interface returns nil or map" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "eth#{n}"
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
     end
   end
+
   property "NeighborMonitor list_neighbors always returns a non-nil value" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       refute is_nil(result), "Expected non-nil from list_neighbors"
     end
   end
+
   property "NeighborMonitor get_neighbor for 'lo' returns nil or map or list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor for lo, got: #{inspect(result)}"
     end
   end
+
   property "NeighborMonitor pid is always alive and registered" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.NeighborMonitor)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected NeighborMonitor to be alive"
     end
   end
+
   property "NeighborMonitor list_neighbors always returns a list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_list(result),
              "Expected list from list_neighbors, got: #{inspect(result)}"
     end
   end
+
   property "NeighborMonitor list_neighbors count is always non-negative" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert length(result) >= 0,
              "Expected non-negative count"
     end
   end
+
   property "NeighborMonitor list_neighbors is deterministic on repeated calls" do
     check all(_ <- StreamData.constant(:ok)) do
       r1 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       r2 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_list(r1) and is_list(r2),
              "Expected lists from repeated list_neighbors"
     end
   end
+
   property "NeighborMonitor get_neighbor for any seeded interface returns valid type" do
     check all(n <- StreamData.integer(0..99)) do
       iface = "nm52_#{n}"
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_nil(result) or is_map(result) or is_list(result),
              "Expected nil/map/list from get_neighbor, got: #{inspect(result)}"
     end
   end
+
   property "NeighborMonitor module exports list_neighbors function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
+
       assert {:list_neighbors, 0} in exports,
              "Expected list_neighbors/0 in exports"
     end
   end
+
   property "NeighborMonitor list_neighbors always returns list (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_list(result),
              "Expected list from list_neighbors (r54)"
     end
   end
+
   property "NeighborMonitor list_neighbors entries are non-nil" do
     check all(_ <- StreamData.constant(:ok)) do
       neighbors = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       for n <- neighbors do
         refute is_nil(n), "Expected non-nil neighbor entry"
       end
     end
   end
+
   property "NeighborMonitor get_neighbor for lo returns nil or map or list (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_list(result),
              "Expected list from list_neighbors (r56), got: #{inspect(result)}"
     end
   end
+
   property "NeighborMonitor module is always loaded" do
     check all(_ <- StreamData.constant(:ok)) do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor),
              "Expected NeighborMonitor module to be loaded"
     end
   end
+
   property "NeighborMonitor list_neighbors returns list (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
+
       assert is_list(result),
              "Expected list from list_neighbors (r59)"
     end
@@ -899,108 +988,126 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "NeighborMonitor module has start_link function (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "NeighborMonitor module exports non-empty list (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:exports)
       assert is_list(exports) and length(exports) > 0
     end
   end
+
   property "NeighborMonitor module has correct name (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:module)
       assert name == YellowDog.Netman.Kernel.NeighborMonitor
     end
   end
+
   property "NeighborMonitor module attributes are a list (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "NeighborMonitor module compile info is a list (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "NeighborMonitor module version exists (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "NeighborMonitor module functions include handle_info (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert Keyword.has_key?(fns, :handle_info)
     end
   end
+
   property "NeighborMonitor module functions include terminate (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "NeighborMonitor module compile info has source (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "NeighborMonitor module functions count is positive (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert length(fns) > 0
     end
   end
+
   property "NeighborMonitor module attributes include behaviour (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:attributes)
       assert is_list(attrs) and length(attrs) > 0
     end
   end
+
   property "NeighborMonitor module functions include init (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "NeighborMonitor module functions are all keyword pairs (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:functions)
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+
   property "NeighborMonitor exports include start_link (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "NeighborMonitor exports include module_info (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:exports)
       assert Keyword.has_key?(exports, :module_info)
     end
   end
+
   property "NeighborMonitor module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.NeighborMonitor.module_info(:module)
       assert name == YellowDog.Netman.Kernel.NeighborMonitor
     end
   end
+
   property "NeighborMonitor is a running process (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.NeighborMonitor)
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+
   property "NeighborMonitor process is registered (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.NeighborMonitor
@@ -1010,42 +1117,42 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   property "neighbor_monitor module exports functions (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert is_list(fns)
     end
   end
 
   property "neighbor_monitor module attributes is list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "neighbor_monitor module info compile is list or map (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       info = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:compile)
       assert is_list(info) or is_map(info)
     end
   end
 
   property "neighbor_monitor module exports start_link (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
     end
   end
 
   property "neighbor_monitor module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Kernel.NeighborMonitor)
       assert result == true
     end
   end
 
   property "neighbor_monitor module has consistent info (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns1 = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       fns2 = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert fns1 == fns2
@@ -1053,35 +1160,35 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   property "neighbor_monitor has at least one exported function (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert length(fns) > 0
     end
   end
 
   property "neighbor_monitor all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "neighbor_monitor all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "neighbor_monitor functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "neighbor_monitor attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -1089,35 +1196,35 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   property "neighbor_monitor has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "neighbor_monitor all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "neighbor_monitor attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "neighbor_monitor list_neighbors returns list (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_list(result)
     end
   end
 
   property "neighbor_monitor list_neighbors returns list of maps (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert is_list(result)
       assert Enum.all?(result, &(is_map(&1) or is_struct(&1)))
@@ -1125,7 +1232,7 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   property "neighbor_monitor list_neighbors is stable (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       r2 = YellowDog.Netman.Kernel.NeighborMonitor.list_neighbors()
       assert length(r1) == length(r2)
@@ -1133,28 +1240,28 @@ defmodule YellowDog.Netman.Kernel.NeighborMonitorPropertyTest do
   end
 
   property "neighbor_monitor list_neighbors arity is 0 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Keyword.get(fns, :list_neighbors) == 0
     end
   end
 
   property "neighbor_monitor module exports at least 2 functions (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert length(fns) >= 2
     end
   end
 
   property "neighbor_monitor list_neighbors arity is 0 (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Keyword.get(fns, :list_neighbors) == 0
     end
   end
 
   property "neighbor_monitor start_link arity is 1 (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.NeighborMonitor.__info__(:functions)
       assert Keyword.get(fns, :start_link) == 1
     end

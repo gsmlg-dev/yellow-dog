@@ -538,6 +538,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
 
       {:ok, profile} = Profile.from_toml(toml)
       result = Profile.to_toml(profile)
+
       assert Map.has_key?(result, "ipv4"),
              "to_toml must include ipv4 section for disabled method"
     end
@@ -658,8 +659,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   property "to_toml connection id always matches the profile id" do
     check all(
             id <- profile_id_gen(),
-            iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)
-                     |> StreamData.map(&("pp_" <> &1))
+            iface <-
+              StreamData.string(:alphanumeric, min_length: 1, max_length: 12)
+              |> StreamData.map(&("pp_" <> &1))
           ) do
       profile = %Profile{
         id: id,
@@ -684,6 +686,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)
       result = Profile.to_toml(profile)
+
       assert result["connection"]["type"] == "ethernet",
              "Expected connection.type == 'ethernet', got: #{inspect(result["connection"]["type"])}"
     end
@@ -694,6 +697,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       {:ok, profile} = Profile.from_toml(toml)
       result = Profile.to_toml(profile)
       autoconnect = result["connection"]["autoconnect"]
+
       assert is_boolean(autoconnect),
              "Expected boolean autoconnect in to_toml, got: #{inspect(autoconnect)}"
     end
@@ -702,10 +706,13 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   property "from_toml preserves ipv4 method field" do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)
+
       assert profile.ipv4 != nil,
              "Expected non-nil ipv4 field, got nil"
+
       assert is_map(profile.ipv4),
              "Expected map ipv4, got: #{inspect(profile.ipv4)}"
+
       assert Map.has_key?(profile.ipv4, :method),
              "Expected :method key in ipv4 map"
     end
@@ -716,10 +723,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       case Profile.from_toml(toml) do
         {:ok, profile} ->
           conn_iface = get_in(toml, ["connection", "interface"])
+
           if is_binary(conn_iface) and byte_size(conn_iface) > 0 do
             assert profile.interface == conn_iface,
                    "Expected interface #{inspect(conn_iface)}, got: #{inspect(profile.interface)}"
           end
+
         {:error, _} ->
           :ok
       end
@@ -732,8 +741,10 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert is_map(profile.ipv6),
                  "Expected map ipv6, got: #{inspect(profile.ipv6)}"
+
           assert Map.has_key?(profile.ipv6, :method),
                  "Expected :method in ipv6, got: #{inspect(profile.ipv6)}"
+
         {:error, _} ->
           :ok
       end
@@ -744,6 +755,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)
       result = Profile.to_toml(profile)
+
       assert result["connection"]["id"] == profile.id,
              "Expected connection.id #{profile.id}, got: #{inspect(result["connection"]["id"])}"
     end
@@ -753,6 +765,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     check all(toml <- valid_toml_gen()) do
       {:ok, profile} = Profile.from_toml(toml)
       result = Profile.to_toml(profile)
+
       assert Map.has_key?(result["connection"], "autoconnect"),
              "Expected autoconnect key in to_toml connection, got: #{inspect(result["connection"])}"
     end
@@ -764,19 +777,24 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert is_boolean(profile.autoconnect),
                  "Expected boolean autoconnect, got: #{inspect(profile.autoconnect)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
 
   property "from_toml result type is always a known atom" do
     known_types = [:ethernet, :wifi, :cellular, :vpn, :loopback]
+
     check all(toml <- valid_toml_gen()) do
       case Profile.from_toml(toml) do
         {:ok, profile} ->
           assert profile.type in known_types,
                  "Expected known type, got: #{inspect(profile.type)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -786,13 +804,18 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       case Profile.from_toml(toml) do
         {:ok, profile} ->
           toml2 = Profile.to_toml(profile)
+
           case Profile.from_toml(toml2) do
             {:ok, restored} ->
               assert restored.id == profile.id,
                      "Expected profile id preserved in round-trip"
-            {:error, _} -> :ok
+
+            {:error, _} ->
+              :ok
           end
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -807,11 +830,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         "ipv4" => %{"method" => "auto"},
         "ipv6" => %{"method" => "disabled"}
       }
+
       case Profile.from_toml(toml) do
         {:ok, profile} ->
           assert profile.ipv6.method == :disabled,
                  "Expected :disabled ipv6 method, got: #{inspect(profile.ipv6.method)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -819,6 +845,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   property "from_toml with empty map always returns error tuple" do
     check all(_ <- StreamData.constant(:ok)) do
       result = Profile.from_toml(%{})
+
       assert match?({:ok, _}, result) or match?({:error, _}, result),
              "Expected tagged tuple from from_toml(%{}), got: #{inspect(result)}"
     end
@@ -830,7 +857,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert Map.has_key?(profile, :ipv4),
                  "Expected :ipv4 key in Profile struct, got: #{inspect(Map.keys(profile))}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -841,7 +870,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert Map.has_key?(profile, :ipv6),
                  "Expected :ipv6 key in Profile struct, got: #{inspect(Map.keys(profile))}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -852,7 +883,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert is_binary(profile.id),
                  "Expected binary string for profile id, got: #{inspect(profile.id)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -863,7 +896,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert profile.type == :ethernet,
                  "Expected :ethernet type in Profile, got: #{inspect(profile.type)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
@@ -874,47 +909,58 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         {:ok, profile} ->
           assert is_binary(profile.zone),
                  "Expected binary zone in Profile, got: #{inspect(profile.zone)}"
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
+
   property "Profile type field is always an atom" do
     check all(type <- StreamData.member_of([:ethernet, :wifi, :loopback])) do
       p = %YellowDog.Netman.Types.Profile{id: "p45", type: type}
+
       assert is_atom(p.type),
              "Expected atom type, got: #{inspect(p.type)}"
     end
   end
+
   property "Profile autoconnect field defaults to boolean" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_boolean(p.autoconnect),
              "Expected boolean for autoconnect"
     end
   end
+
   property "Profile id field is always a string" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_binary(p.id),
              "Expected binary id, got: #{inspect(p.id)}"
     end
   end
+
   property "Profile struct has exactly the expected enforce_keys" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert p.id == id and p.type == type,
              "Expected matching id and type fields"
     end
   end
+
   property "Profile from_toml with valid map never crashes" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
@@ -929,10 +975,12 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised],
              "Expected :ok or :raised from from_toml"
     end
   end
+
   property "Profile from_toml with empty map returns error tuple" do
     check all(_ <- StreamData.constant(:ok)) do
       result =
@@ -944,80 +992,96 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:returned, :raised],
              "Expected :returned or :raised from from_toml({})"
     end
   end
+
   property "Profile struct zone field defaults to binary" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_binary(p.zone),
              "Expected binary zone, got: #{inspect(p.zone)}"
     end
   end
+
   property "Profile ethernet field defaults to map" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_map(p.ethernet),
              "Expected map ethernet, got: #{inspect(p.ethernet)}"
     end
   end
+
   property "Profile ipv4 field defaults to map" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_map(p.ipv4),
              "Expected map ipv4, got: #{inspect(p.ipv4)}"
     end
   end
+
   property "Profile ipv6 field defaults to map" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_map(p.ipv6),
              "Expected map ipv6, got: #{inspect(p.ipv6)}"
     end
   end
+
   property "Profile autoconnect_priority field defaults to integer" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_integer(p.autoconnect_priority),
              "Expected integer autoconnect_priority, got: #{inspect(p.autoconnect_priority)}"
     end
   end
+
   property "Profile interface field defaults to nil or string" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_nil(p.interface) or is_binary(p.interface),
              "Expected nil or string interface, got: #{inspect(p.interface)}"
     end
   end
+
   property "Profile ipv4 and ipv6 are map by default" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert is_map(p.ipv4) and is_map(p.ipv6),
              "Expected map for ipv4/ipv6 by default"
     end
   end
+
   property "Profile from_toml with valid ethernet map returns error or struct" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
@@ -1030,200 +1094,341 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
             "type" => "ethernet",
             "interface" => iface
           })
+
           :returned
         rescue
           _ -> :raised
         catch
           _, _ -> :raised
         end
+
       assert result in [:returned, :raised],
              "Expected :returned or :raised"
     end
   end
+
   property "Profile type is always a known atom" do
     check all(
             id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
             type <- StreamData.member_of([:ethernet, :wifi, :loopback])
           ) do
       p = %YellowDog.Netman.Types.Profile{id: id, type: type}
+
       assert p.type in [:ethernet, :wifi, :loopback],
              "Expected known type, got: #{inspect(p.type)}"
     end
   end
 
   property "Profile always has non-empty id field (r60)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "default"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "default"
+        }
+      }
+
       p = YellowDog.Netman.Types.Profile.from_toml(toml)
       # from_toml may return {:error, _} for invalid inputs; we just check it doesn't crash
       assert is_struct(p) or is_tuple(p) or is_map(p)
     end
   end
+
   property "Profile from_toml with valid map returns ok or error tuple (r61)" do
     check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
-      priority <- StreamData.integer(1..100)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => priority, "zone" => "default"}}
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            priority <- StreamData.integer(1..100)
+          ) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => priority,
+          "zone" => "default"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
   property "Profile zone field is always a binary (r62)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "test"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "test"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_binary(p.zone)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile type field is always a known atom (r63)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert p.type in [:ethernet, :wifi, :bridge, :loopback] or is_atom(p.type)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile autoconnect field is always boolean (r64)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_boolean(p.autoconnect)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile autoconnect_priority is always an integer (r65)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_integer(p.autoconnect_priority)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile interface field is nil or binary (r66)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_nil(p.interface) or is_binary(p.interface)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile ethernet field is always nil or map (r67)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_nil(p.ethernet) or is_map(p.ethernet)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile ipv4 method is always :auto :manual :disabled or :link_local (r68)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} ->
           if p.ipv4 do
-            assert p.ipv4[:method] in [:auto, :manual, :disabled, :link_local] or is_nil(p.ipv4[:method])
+            assert p.ipv4[:method] in [:auto, :manual, :disabled, :link_local] or
+                     is_nil(p.ipv4[:method])
           end
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
+
   property "Profile autoconnect_priority is always integer (r69)" do
     check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
-      priority <- StreamData.integer(1..1000)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => priority, "zone" => "z"}}
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+            priority <- StreamData.integer(1..1000)
+          ) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => priority,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_integer(p.autoconnect_priority)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile from_toml with zone always returns binary zone (r70)" do
     check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
-      zone <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => zone}}
+            id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+            zone <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+          ) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => zone
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert is_binary(p.zone)
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile ipv6 method is nil or known atom (r71)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} ->
           if p.ipv6 do
-            assert is_nil(p.ipv6[:method]) or p.ipv6[:method] in [:auto, :manual, :disabled, :link_local]
+            assert is_nil(p.ipv6[:method]) or
+                     p.ipv6[:method] in [:auto, :manual, :disabled, :link_local]
           end
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
+
   property "Profile id always matches the input id from TOML (r72)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
+
       case result do
         {:ok, p} -> assert p.id == id
         {:error, _} -> :ok
       end
     end
   end
+
   property "Profile to_toml round-trip preserves id (r73)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       case YellowDog.Netman.Types.Profile.from_toml(toml) do
         {:ok, p} ->
           toml2 = YellowDog.Netman.Types.Profile.to_toml(p)
           assert is_map(toml2)
-        {:error, _} -> :ok
+
+        {:error, _} ->
+          :ok
       end
     end
   end
+
   property "Profile from_toml with missing id fails (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       toml = %{"connection" => %{"type" => "ethernet"}}
@@ -1231,29 +1436,49 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       assert match?({:error, _}, result)
     end
   end
+
   property "Profile from_toml with empty string id fails (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
-      toml = %{"connection" => %{"id" => "", "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+      toml = %{
+        "connection" => %{
+          "id" => "",
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
       # Empty id might fail or succeed depending on validation
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
   property "Profile from_toml always returns tagged tuple (r76)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
-      toml = %{"connection" => %{"id" => id, "type" => "ethernet", "interface" => "eth0", "priority" => 1, "zone" => "z"}}
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
+      toml = %{
+        "connection" => %{
+          "id" => id,
+          "type" => "ethernet",
+          "interface" => "eth0",
+          "priority" => 1,
+          "zone" => "z"
+        }
+      }
+
       result = YellowDog.Netman.Types.Profile.from_toml(toml)
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
   property "Profile module name is correct (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Types.Profile.module_info(:module)
       assert name == YellowDog.Netman.Types.Profile
     end
   end
+
   property "Profile module attributes include vsn (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Types.Profile.module_info(:attributes)
@@ -1262,8 +1487,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile autoconnect_priority is integer or nil (r79)" do
-    check all profile_map <- map_of(string(:alphanumeric, min_length: 1), string(:alphanumeric)) do
+    check all(profile_map <- map_of(string(:alphanumeric, min_length: 1), string(:alphanumeric))) do
       result = Profile.from_toml(profile_map)
+
       case result do
         {:ok, p} -> assert is_nil(p.autoconnect_priority) or is_integer(p.autoconnect_priority)
         {:error, _} -> assert true
@@ -1272,16 +1498,17 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml always returns tagged tuple (r80)" do
-    check all kv <- map_of(string(:alphanumeric, min_length: 1), boolean()) do
+    check all(kv <- map_of(string(:alphanumeric, min_length: 1), boolean())) do
       result = Profile.from_toml(kv)
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml preserves id when valid (r81)" do
-    check all id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+    check all(id <- string(:alphanumeric, min_length: 1, max_length: 64)) do
       map = %{"id" => id, "zone" => "test"}
       result = Profile.from_toml(map)
+
       case result do
         {:ok, p} -> assert p.id == id or is_nil(p.id)
         {:error, _} -> assert true
@@ -1290,16 +1517,19 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with valid zone is ok or error (r82)" do
-    check all zone <- string(:alphanumeric, min_length: 1, max_length: 64),
-              id <- string(:alphanumeric, min_length: 1, max_length: 64) do
+    check all(
+            zone <- string(:alphanumeric, min_length: 1, max_length: 64),
+            id <- string(:alphanumeric, min_length: 1, max_length: 64)
+          ) do
       result = Profile.from_toml(%{"id" => id, "zone" => zone})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml ipv4 field presence (r83)" do
-    check all id <- string(:alphanumeric, min_length: 1) do
+    check all(id <- string(:alphanumeric, min_length: 1)) do
       result = Profile.from_toml(%{"id" => id})
+
       case result do
         {:ok, p} -> assert Map.has_key?(p, :ipv4)
         {:error, _} -> assert true
@@ -1308,8 +1538,9 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml ipv6 field presence (r84)" do
-    check all id <- string(:alphanumeric, min_length: 1) do
+    check all(id <- string(:alphanumeric, min_length: 1)) do
       result = Profile.from_toml(%{"id" => id})
+
       case result do
         {:ok, p} -> assert Map.has_key?(p, :ipv6)
         {:error, _} -> assert true
@@ -1318,7 +1549,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with integer id returns error (r85)" do
-    check all n <- positive_integer() do
+    check all(n <- positive_integer()) do
       result = Profile.from_toml(%{"id" => n})
       # id must be a string
       assert match?({:error, _}, result) or match?({:ok, _}, result)
@@ -1326,14 +1557,14 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with empty map returns error (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Profile.from_toml(%{})
       assert match?({:error, _}, result)
     end
   end
 
   property "profile from_toml with only zone key returns error (r87)" do
-    check all zone <- string(:alphanumeric, min_length: 1) do
+    check all(zone <- string(:alphanumeric, min_length: 1)) do
       result = Profile.from_toml(%{"zone" => zone})
       # Profile requires id field
       assert match?({:error, _}, result) or match?({:ok, _}, result)
@@ -1341,29 +1572,31 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with boolean value for id returns error (r88)" do
-    check all b <- boolean() do
+    check all(b <- boolean()) do
       result = Profile.from_toml(%{"id" => b})
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
 
   property "profile from_toml with list value for id returns error (r89)" do
-    check all lst <- list_of(string(:alphanumeric), max_length: 3) do
+    check all(lst <- list_of(string(:alphanumeric), max_length: 3)) do
       result = Profile.from_toml(%{"id" => lst})
       assert match?({:error, _}, result) or match?({:ok, _}, result)
     end
   end
 
   property "profile from_toml with valid id and priority returns ok (r90)" do
-    check all id <- string(:alphanumeric, min_length: 1, max_length: 64),
-              prio <- integer(0..1000) do
+    check all(
+            id <- string(:alphanumeric, min_length: 1, max_length: 64),
+            prio <- integer(0..1000)
+          ) do
       result = Profile.from_toml(%{"id" => id, "priority" => prio})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml autoconnect field defaults to boolean (r91)" do
-    check all id <- string(:alphanumeric, min_length: 1) do
+    check all(id <- string(:alphanumeric, min_length: 1)) do
       case Profile.from_toml(%{"id" => id}) do
         {:ok, p} -> assert is_boolean(p.autoconnect) or is_nil(p.autoconnect)
         {:error, _} -> assert true
@@ -1372,8 +1605,10 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml zone field is string when set (r92)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              zone <- string(:alphanumeric, min_length: 1, max_length: 64) do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            zone <- string(:alphanumeric, min_length: 1, max_length: 64)
+          ) do
       case Profile.from_toml(%{"id" => id, "zone" => zone}) do
         {:ok, p} -> assert is_binary(p.zone) or is_nil(p.zone)
         {:error, _} -> assert true
@@ -1382,16 +1617,20 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with interface field is ok or error (r93)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              iface <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            iface <- string(:alphanumeric, min_length: 1, max_length: 15)
+          ) do
       result = Profile.from_toml(%{"id" => id, "interface" => iface})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml id preserved in ok case (r94)" do
-    check all id <- string(Enum.concat([?a..?z, ?A..?Z, ?0..?9, [?_]]),
-                          min_length: 1, max_length: 64) do
+    check all(
+            id <-
+              string(Enum.concat([?a..?z, ?A..?Z, ?0..?9, [?_]]), min_length: 1, max_length: 64)
+          ) do
       case Profile.from_toml(%{"id" => id}) do
         {:ok, p} -> assert is_binary(p.id) or is_nil(p.id)
         {:error, _} -> assert true
@@ -1400,45 +1639,55 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   end
 
   property "profile from_toml with autoconnect boolean is ok or error (r95)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              auto <- boolean() do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            auto <- boolean()
+          ) do
       result = Profile.from_toml(%{"id" => id, "autoconnect" => auto})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml with autoconnect_priority number is ok or error (r96)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              prio <- non_negative_integer() do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            prio <- non_negative_integer()
+          ) do
       result = Profile.from_toml(%{"id" => id, "autoconnect_priority" => prio})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml with method field is ok or error (r97)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              method <- member_of(["dhcp", "static", "disabled", "auto"]) do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            method <- member_of(["dhcp", "static", "disabled", "auto"])
+          ) do
       result = Profile.from_toml(%{"id" => id, "ipv4" => %{"method" => method}})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml with ipv6 method field is ok or error (r98)" do
-    check all id <- string(:alphanumeric, min_length: 1),
-              method <- member_of(["slaac", "dhcpv6", "static", "disabled"]) do
+    check all(
+            id <- string(:alphanumeric, min_length: 1),
+            method <- member_of(["slaac", "dhcpv6", "static", "disabled"])
+          ) do
       result = Profile.from_toml(%{"id" => id, "ipv6" => %{"method" => method}})
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
 
   property "profile from_toml returns struct with expected keys on success (r99)" do
-    check all id <- string(:alphanumeric, min_length: 1) do
+    check all(id <- string(:alphanumeric, min_length: 1)) do
       case Profile.from_toml(%{"id" => id}) do
         {:ok, p} ->
           assert Map.has_key?(p, :id)
           assert Map.has_key?(p, :ipv4)
           assert Map.has_key?(p, :ipv6)
-        {:error, _} -> assert true
+
+        {:error, _} ->
+          assert true
       end
     end
   end

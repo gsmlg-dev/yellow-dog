@@ -235,6 +235,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       EventBus.unsubscribe(topic)
 
       result = EventBus.publish(topic, message)
+
       assert result == :ok,
              "Expected :ok when publishing to unsubscribed topic, got: #{inspect(result)}"
     end
@@ -329,8 +330,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     check all(topic <- topic_gen()) do
       EventBus.unsubscribe(topic)
       result = EventBus.subscribe(topic)
+
       assert match?({:ok, _}, result),
              "Expected subscribe to succeed after unsubscribe, got: #{inspect(result)}"
+
       EventBus.unsubscribe(topic)
     end
   end
@@ -396,8 +399,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "subscribe returns {:ok, _} for any valid topic" do
     check all(topic <- topic_gen()) do
       result = EventBus.subscribe(topic)
+
       assert match?({:ok, _}, result),
              "Expected {:ok, _} from subscribe, got: #{inspect(result)}"
+
       EventBus.unsubscribe(topic)
     end
   end
@@ -409,8 +414,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
           ) do
       wildcard = "wc_sub:#{prefix}:#{suffix}:*"
       result = EventBus.subscribe(wildcard)
+
       assert match?({:ok, _}, result),
              "Expected {:ok, _} from wildcard subscribe, got: #{inspect(result)}"
+
       EventBus.unsubscribe(wildcard)
     end
   end
@@ -420,6 +427,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       unique_topic = "ev_unsub:#{topic}:#{:rand.uniform(999_999)}"
       {:ok, _} = EventBus.subscribe(unique_topic)
       result = EventBus.unsubscribe(unique_topic)
+
       assert result == :ok or is_nil(result),
              "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
     end
@@ -428,15 +436,17 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "publish always returns :ok regardless of message type" do
     check all(
             topic <- topic_gen(),
-            msg <- StreamData.one_of([
-              StreamData.integer(),
-              StreamData.boolean(),
-              StreamData.string(:alphanumeric, max_length: 20),
-              StreamData.constant(nil),
-              StreamData.constant(:ok)
-            ])
+            msg <-
+              StreamData.one_of([
+                StreamData.integer(),
+                StreamData.boolean(),
+                StreamData.string(:alphanumeric, max_length: 20),
+                StreamData.constant(nil),
+                StreamData.constant(:ok)
+              ])
           ) do
       result = EventBus.publish(topic, msg)
+
       assert result == :ok,
              "Expected :ok from publish, got: #{inspect(result)}"
     end
@@ -445,8 +455,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "subscribe always returns {:ok, _} for any topic string" do
     check all(topic <- topic_gen()) do
       result = EventBus.subscribe(topic)
+
       assert match?({:ok, _}, result),
              "Expected {:ok, _} from subscribe, got: #{inspect(result)}"
+
       EventBus.unsubscribe(topic)
     end
   end
@@ -456,6 +468,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       # Ensure clean state first
       EventBus.unsubscribe(topic)
       result = EventBus.unsubscribe(topic)
+
       assert result == :ok or is_nil(result),
              "Expected :ok or nil from unsubscribe, got: #{inspect(result)}"
     end
@@ -475,6 +488,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         Task.async(fn ->
           {:ok, _} = EventBus.subscribe(wc)
           send(parent, :subscribed)
+
           receive do
             {:netman_event, ^topic, ^message} -> :received
           after
@@ -496,12 +510,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "publish returns :ok for message types including maps and lists" do
     check all(
             topic <- topic_gen(),
-            msg <- StreamData.one_of([
-              StreamData.map_of(StreamData.string(:alphanumeric, max_length: 5), StreamData.integer(), max_length: 3),
-              StreamData.list_of(StreamData.integer(), max_length: 5)
-            ])
+            msg <-
+              StreamData.one_of([
+                StreamData.map_of(
+                  StreamData.string(:alphanumeric, max_length: 5),
+                  StreamData.integer(),
+                  max_length: 3
+                ),
+                StreamData.list_of(StreamData.integer(), max_length: 5)
+              ])
           ) do
       result = EventBus.publish(topic, msg)
+
       assert result == :ok,
              "Expected :ok from publish with complex message, got: #{inspect(result)}"
     end
@@ -510,6 +530,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "broadcast to empty prefix always returns :ok" do
     check all(_ <- StreamData.constant(:ok)) do
       result = EventBus.broadcast("", :any_message)
+
       assert result == :ok,
              "Expected :ok from broadcast with empty prefix, got: #{inspect(result)}"
     end
@@ -522,6 +543,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
           ) do
       topic = "wld_nosub:#{prefix}:*"
       result = EventBus.publish(topic, message)
+
       assert result == :ok,
              "Expected :ok from publish to wildcard-style topic with no subscriber, got: #{inspect(result)}"
     end
@@ -530,6 +552,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "subscribe to empty string topic always returns {:ok, _}" do
     check all(_ <- StreamData.constant(:ok)) do
       result = EventBus.subscribe("")
+
       assert match?({:ok, _}, result),
              "Expected {:ok, _} from subscribe with empty topic, got: #{inspect(result)}"
     end
@@ -541,6 +564,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
             b <- StreamData.boolean()
           ) do
       result = EventBus.publish(topic, b)
+
       assert result == :ok,
              "Expected :ok from publish with boolean message, got: #{inspect(result)}"
     end
@@ -549,6 +573,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "publish with nil message always returns :ok" do
     check all(topic <- topic_gen()) do
       result = EventBus.publish(topic, nil)
+
       assert result == :ok,
              "Expected :ok from publish with nil message, got: #{inspect(result)}"
     end
@@ -576,8 +601,10 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       topic = "loop_sub_#{seed}"
       result1 = EventBus.subscribe(topic)
       result2 = EventBus.unsubscribe(topic)
+
       assert match?({:ok, _}, result1) or result1 == :ok or is_nil(result1),
              "Expected ok-ish from subscribe, got: #{inspect(result1)}"
+
       assert result2 == :ok or is_nil(result2),
              "Expected :ok from unsubscribe, got: #{inspect(result2)}"
     end
@@ -587,6 +614,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
     check all(seed <- StreamData.integer(1..9_999), msg <- StreamData.integer()) do
       topic = "pub_ret_#{seed}"
       result = EventBus.publish(topic, msg)
+
       assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result),
              "Expected ok-ish from publish, got: #{inspect(result)}"
     end
@@ -606,9 +634,13 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "publish with atom message never crashes" do
-    check all(seed <- StreamData.integer(1..9_999), atom <- StreamData.member_of([:ok, :error, :done, :ready])) do
+    check all(
+            seed <- StreamData.integer(1..9_999),
+            atom <- StreamData.member_of([:ok, :error, :done, :ready])
+          ) do
       topic = "atom_pub_#{seed}"
       result = EventBus.publish(topic, atom)
+
       assert result == :ok,
              "Expected :ok from publish with atom, got: #{inspect(result)}"
     end
@@ -627,12 +659,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   property "EventBus survives publish to same topic multiple times" do
     check all(seed <- StreamData.integer(1..9_999), n <- StreamData.integer(1..5)) do
       topic = "multi_pub_#{seed}"
+
       for i <- 1..n do
         result = EventBus.publish(topic, i)
         assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result)
       end
     end
   end
+
   property "EventBus topic with special chars never crashes subscribe" do
     check all(topic <- StreamData.string(:printable, min_length: 1, max_length: 32)) do
       result =
@@ -644,16 +678,19 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised],
              "Expected :ok or :raised from subscribe with special topic"
     end
   end
+
   property "EventBus subscribe then publish never crashes" do
     check all(
             topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
             msg <- StreamData.integer()
           ) do
       EventBus.subscribe(topic)
+
       result =
         try do
           EventBus.publish(topic, msg)
@@ -663,9 +700,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus multiple subscribers for same topic never crashes" do
     check all(
             topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
@@ -674,9 +713,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       for _ <- 1..n do
         EventBus.subscribe(topic)
       end
+
       :ok
     end
   end
+
   property "EventBus wildcard subscribe never crashes" do
     check all(prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       result =
@@ -688,12 +729,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe for topic with number suffix never crashes" do
     check all(n <- StreamData.integer(0..9999)) do
       topic = "topic_#{n}"
+
       result =
         try do
           EventBus.subscribe(topic)
@@ -703,9 +747,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus publish to unsubscribed topic never crashes" do
     check all(
             topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16),
@@ -720,12 +766,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe then unsubscribe for unique topic never raises" do
     check all(n <- StreamData.integer(0..99_999)) do
       topic = "evb51_#{n}"
+
       try do
         EventBus.subscribe(topic)
         EventBus.unsubscribe(topic)
@@ -736,12 +785,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       end
     end
   end
+
   property "EventBus topics with dots never crash subscribe" do
     check all(
             prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
             suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
           ) do
       topic = "#{prefix}.#{suffix}"
+
       result =
         try do
           EventBus.subscribe(topic)
@@ -751,15 +802,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe with long topic never raises" do
     check all(
             prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
             suffix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
           ) do
       topic = String.duplicate(prefix, 3) <> "." <> suffix
+
       result =
         try do
           EventBus.subscribe(topic)
@@ -769,15 +823,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus multiple publishes to same topic never crash" do
     check all(
             topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12),
             msgs <- StreamData.list_of(StreamData.integer(), min_length: 1, max_length: 5)
           ) do
       EventBus.subscribe(topic)
+
       for msg <- msgs do
         result =
           try do
@@ -788,10 +845,12 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
           catch
             _, _ -> :raised
           end
+
         assert result in [:ok, :raised]
       end
     end
   end
+
   property "EventBus subscribe then get topic list never crashes" do
     check all(topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 12)) do
       result =
@@ -803,12 +862,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe and immediately unsubscribe never leaves junk" do
     check all(n <- StreamData.integer(0..9999)) do
       topic = "evb56_#{n}"
+
       result =
         try do
           EventBus.subscribe(topic)
@@ -819,9 +881,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe with atom topic never raises" do
     check all(topic <- StreamData.atom(:alphanumeric)) do
       result =
@@ -833,9 +897,11 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe with binary topic never crashes" do
     check all(topic <- StreamData.binary(min_length: 1, max_length: 16)) do
       result =
@@ -847,12 +913,15 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
+
   property "EventBus subscribe with numeric-only topic never crashes" do
-    check all(n <- StreamData.integer(0..9999999)) do
+    check all(n <- StreamData.integer(0..9_999_999)) do
       topic = Integer.to_string(n)
+
       result =
         try do
           EventBus.subscribe(topic)
@@ -862,6 +931,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
         catch
           _, _ -> :raised
         end
+
       assert result in [:ok, :raised]
     end
   end
@@ -872,6 +942,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "EventBus subscribe/unsubscribe with empty string topic doesn't crash (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.EventBus.subscribe("")
@@ -882,120 +953,120 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   defp is_ok_or_error({:ok, _}), do: true
   defp is_ok_or_error({:error, _}), do: true
   defp is_ok_or_error(_), do: false
+
   property "EventBus registry is always running (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.EventBus.Registry)
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+
   property "EventBus registry name is atom (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       registry = YellowDog.Netman.EventBus.Registry
       assert is_atom(registry)
     end
   end
+
   property "EventBus publish with any atom topic never crashes (r64)" do
-    check all(
-      topic <- StreamData.atom(:alphanumeric)
-    ) do
+    check all(topic <- StreamData.atom(:alphanumeric)) do
       result = YellowDog.Netman.EventBus.publish(Atom.to_string(topic), %{data: "test"})
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus subscribe returns ok for any alphanumeric topic (r65)" do
-    check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
-    ) do
+    check all(topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)) do
       result = YellowDog.Netman.EventBus.subscribe(topic)
       YellowDog.Netman.EventBus.unsubscribe(topic)
       assert result == :ok or match?({:ok, _}, result)
     end
   end
+
   property "EventBus unsubscribe for non-subscribed topic doesn't crash (r66)" do
-    check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
-    ) do
+    check all(topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)) do
       result = YellowDog.Netman.EventBus.unsubscribe(topic)
       # Returns :ok or nil (nil when topic doesn't end with "*")
       assert result == :ok or is_nil(result) or is_tuple(result)
     end
   end
+
   property "EventBus subscribe with wildcard topic succeeds (r67)" do
-    check all(
-      prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       topic = prefix <> ".*"
       result = YellowDog.Netman.EventBus.subscribe(topic)
       YellowDog.Netman.EventBus.unsubscribe(topic)
       assert result == :ok or match?({:ok, _}, result)
     end
   end
+
   property "EventBus publish returns nil or ok (r68)" do
     check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
-      data <- StreamData.integer()
-    ) do
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            data <- StreamData.integer()
+          ) do
       result = YellowDog.Netman.EventBus.publish(topic, data)
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus publish with map data doesn't crash (r69)" do
     check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
-      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
+          ) do
       result = YellowDog.Netman.EventBus.publish(topic, %{key => "value"})
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus broadcast never crashes with any message (r70)" do
     check all(
-      prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
-      data <- StreamData.integer()
-    ) do
+            prefix <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10),
+            data <- StreamData.integer()
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(prefix, data)
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus subscribe and then publish doesn't crash (r71)" do
     check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
-      data <- StreamData.integer()
-    ) do
+            topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15),
+            data <- StreamData.integer()
+          ) do
       YellowDog.Netman.EventBus.subscribe(topic)
       result = YellowDog.Netman.EventBus.publish(topic, data)
       YellowDog.Netman.EventBus.unsubscribe(topic)
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus broadcast with empty prefix always returns nil or ok (r72)" do
-    check all(
-      data <- StreamData.integer()
-    ) do
+    check all(data <- StreamData.integer()) do
       result = YellowDog.Netman.EventBus.broadcast("", data)
       assert is_nil(result) or result == :ok or is_tuple(result)
     end
   end
+
   property "EventBus subscribe with exact same topic twice doesn't crash (r73)" do
-    check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
+    check all(topic <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
       YellowDog.Netman.EventBus.subscribe(topic)
       result = YellowDog.Netman.EventBus.subscribe(topic)
       YellowDog.Netman.EventBus.unsubscribe(topic)
       assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
   property "EventBus child_spec returns a map (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       spec = YellowDog.Netman.EventBus.child_spec([])
       assert is_map(spec)
     end
   end
+
   property "EventBus publish to previously subscribed topic calls subscriber (r75)" do
-    check all(
-      topic <- StreamData.string(:alphanumeric, min_length: 5, max_length: 20)
-    ) do
+    check all(topic <- StreamData.string(:alphanumeric, min_length: 5, max_length: 20)) do
       parent = self()
       YellowDog.Netman.EventBus.subscribe(topic)
       YellowDog.Netman.EventBus.publish(topic, :test_msg)
@@ -1003,18 +1074,21 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       assert is_pid(parent)
     end
   end
+
   property "EventBus module info has correct module name (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.EventBus.module_info(:module)
       assert name == YellowDog.Netman.EventBus
     end
   end
+
   property "EventBus registry child spec is a supervisor-compatible map (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       spec = YellowDog.Netman.EventBus.child_spec([])
       assert Map.has_key?(spec, :id) or Map.has_key?(spec, :start)
     end
   end
+
   property "EventBus module attributes include vsn (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.EventBus.module_info(:attributes)
@@ -1023,15 +1097,17 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus broadcast returns ok or error (r79)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              payload <- integer() do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            payload <- integer()
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(topic, payload)
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus subscribe then broadcast returns ok (r80)" do
-    check all topic <- string(:alphanumeric, min_length: 1) do
+    check all(topic <- string(:alphanumeric, min_length: 1)) do
       YellowDog.Netman.EventBus.subscribe(topic)
       result = YellowDog.Netman.EventBus.broadcast(topic, :ping)
       assert result == :ok or match?({:error, _}, result)
@@ -1039,15 +1115,17 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus publish returns ok or error (r81)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              msg <- integer() do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            msg <- integer()
+          ) do
       result = YellowDog.Netman.EventBus.publish(topic, msg)
       assert result == :ok or match?({:error, _}, result) or is_nil(result)
     end
   end
 
   property "event_bus module has subscribe and broadcast (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.EventBus.__info__(:functions)
       assert Keyword.has_key?(fns, :subscribe)
       assert Keyword.has_key?(fns, :broadcast)
@@ -1055,14 +1133,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.EventBus)
       assert result == true
     end
   end
 
   property "event_bus broadcast is idempotent on same topic (r84)" do
-    check all topic <- string(:alphanumeric, min_length: 1) do
+    check all(topic <- string(:alphanumeric, min_length: 1)) do
       r1 = YellowDog.Netman.EventBus.broadcast(topic, :test)
       r2 = YellowDog.Netman.EventBus.broadcast(topic, :test)
       assert r1 == r2 or (r1 == :ok and r2 == :ok)
@@ -1070,23 +1148,27 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus broadcast with integer topic is ok or error (r85)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              n <- integer() do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            n <- integer()
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(topic, {:data, n})
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus subscribe topic length irrelevant to result (r86)" do
-    check all len <- integer(1..100),
-              topic <- string(:alphanumeric, min_length: len, max_length: len) do
+    check all(
+            len <- integer(1..100),
+            topic <- string(:alphanumeric, min_length: len, max_length: len)
+          ) do
       result = YellowDog.Netman.EventBus.subscribe(topic)
       assert not is_nil(result) or is_nil(result)
     end
   end
 
   property "event_bus module loaded and accessible (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
       fns = YellowDog.Netman.EventBus.__info__(:functions)
       assert is_list(fns)
@@ -1094,16 +1176,18 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus broadcast with map payload is ok or error (r88)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              key <- string(:alphanumeric, min_length: 1),
-              val <- integer() do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            key <- string(:alphanumeric, min_length: 1),
+            val <- integer()
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(topic, %{key => val})
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus exports subscribe broadcast publish (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.EventBus.__info__(:functions)
       assert Keyword.has_key?(fns, :subscribe)
       assert Keyword.has_key?(fns, :broadcast)
@@ -1111,14 +1195,14 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus broadcast returns ok for simple topics (r90)" do
-    check all topic <- string(Enum.concat([?a..?z, ?A..?Z]), min_length: 1, max_length: 20) do
+    check all(topic <- string(Enum.concat([?a..?z, ?A..?Z]), min_length: 1, max_length: 20)) do
       result = YellowDog.Netman.EventBus.broadcast(topic, nil)
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus subscribe wildcard topic ends with star (r91)" do
-    check all prefix <- string(:alphanumeric, min_length: 1, max_length: 20) do
+    check all(prefix <- string(:alphanumeric, min_length: 1, max_length: 20)) do
       topic = prefix <> ".*"
       result = YellowDog.Netman.EventBus.subscribe(topic)
       # Wildcard subscriptions should work
@@ -1127,7 +1211,7 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus subscribe unsubscribe cycle is safe (r92)" do
-    check all topic <- string(:alphanumeric, min_length: 1, max_length: 20) do
+    check all(topic <- string(:alphanumeric, min_length: 1, max_length: 20)) do
       YellowDog.Netman.EventBus.subscribe(topic)
       result = YellowDog.Netman.EventBus.unsubscribe(topic)
       # Unsubscribe by topic string should not crash
@@ -1136,31 +1220,35 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus broadcast with list payload is ok (r93)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              items <- list_of(integer(), max_length: 5) do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            items <- list_of(integer(), max_length: 5)
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(topic, items)
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus broadcast returns same type consistently (r94)" do
-    check all topic <- string(:alphanumeric, min_length: 1, max_length: 10) do
+    check all(topic <- string(:alphanumeric, min_length: 1, max_length: 10)) do
       r1 = YellowDog.Netman.EventBus.broadcast(topic, :ping)
       r2 = YellowDog.Netman.EventBus.broadcast(topic, :pong)
-      assert (r1 == :ok) == (r2 == :ok)
+      assert r1 == :ok == (r2 == :ok)
     end
   end
 
   property "event_bus broadcast with nested map payload is ok (r95)" do
-    check all topic <- string(:alphanumeric, min_length: 1),
-              key <- string(:alphanumeric, min_length: 1) do
+    check all(
+            topic <- string(:alphanumeric, min_length: 1),
+            key <- string(:alphanumeric, min_length: 1)
+          ) do
       result = YellowDog.Netman.EventBus.broadcast(topic, %{key => %{nested: true}})
       assert result == :ok or match?({:error, _}, result)
     end
   end
 
   property "event_bus subscribe and broadcast idempotent (r96)" do
-    check all topic <- string(:alphanumeric, min_length: 1) do
+    check all(topic <- string(:alphanumeric, min_length: 1)) do
       YellowDog.Netman.EventBus.subscribe(topic)
       YellowDog.Netman.EventBus.subscribe(topic)
       result = YellowDog.Netman.EventBus.broadcast(topic, :test)
@@ -1169,21 +1257,21 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
   end
 
   property "event_bus all exports have valid arities (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.EventBus.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
 
   property "event_bus module is atom (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       assert is_atom(YellowDog.Netman.EventBus)
       assert Code.ensure_loaded?(YellowDog.Netman.EventBus)
     end
   end
 
   property "event_bus broadcast with nil payload is ok or error (r99)" do
-    check all topic <- string(:alphanumeric, min_length: 1) do
+    check all(topic <- string(:alphanumeric, min_length: 1)) do
       result = YellowDog.Netman.EventBus.broadcast(topic, nil)
       assert result == :ok or match?({:error, _}, result)
     end

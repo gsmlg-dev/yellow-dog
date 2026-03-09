@@ -260,6 +260,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
 
       rules = RuleManager.list_rules()
       matching = Enum.filter(rules, &(&1.priority in priorities))
+
       assert length(matching) == length(priorities),
              "Expected #{length(priorities)} rules but found #{length(matching)}"
     end
@@ -509,6 +510,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       before_count = length(RuleManager.list_rules())
       send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
       after_count = length(RuleManager.list_rules())
+
       assert after_count >= before_count,
              "Rule count decreased after add event: #{before_count} -> #{after_count}"
     end
@@ -525,6 +527,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result length is always a non-negative integer" do
     check all(_ <- StreamData.constant(:ok)) do
       count = length(RuleManager.list_rules())
+
       assert is_integer(count) and count >= 0,
              "Expected non-negative rule count, got: #{count}"
     end
@@ -533,9 +536,11 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "rules have :priority and :table fields" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for rule <- rules do
         assert Map.has_key?(rule, :priority),
                "Expected :priority key in rule, got: #{inspect(rule)}"
+
         assert Map.has_key?(rule, :table),
                "Expected :table key in rule, got: #{inspect(rule)}"
       end
@@ -553,6 +558,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
       send_rule_event(%{"action" => "del", "priority" => priority, "table" => table})
       final_count = length(RuleManager.list_rules())
+
       assert final_count == initial_count,
              "Expected rule count to return to #{initial_count}, got #{final_count}"
     end
@@ -561,6 +567,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "rule priority is always an integer" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for rule <- rules do
         assert is_integer(rule.priority),
                "Expected integer priority in rule, got: #{inspect(rule.priority)}"
@@ -571,6 +578,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules never contains nil entries" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for rule <- rules do
         assert rule != nil,
                "Expected non-nil entry in list_rules"
@@ -581,6 +589,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result rules all have :table key" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for rule <- rules do
         assert Map.has_key?(rule, :table),
                "Expected :table key in rule, got: #{inspect(rule)}"
@@ -596,6 +605,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       before_count = length(RuleManager.list_rules())
       send_rule_event(%{"action" => "add", "priority" => priority, "table" => table})
       after_count = length(RuleManager.list_rules())
+
       assert after_count >= before_count,
              "Expected count to not decrease after add: #{before_count} -> #{after_count}"
     end
@@ -604,6 +614,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result all have :priority key" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for rule <- rules do
         assert Map.has_key?(rule, :priority),
                "Expected :priority key in rule, got: #{inspect(rule)}"
@@ -614,6 +625,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result entries always have :priority key" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :priority),
                "Expected :priority key in rule entry, got: #{inspect(r)}"
@@ -624,6 +636,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result entries always have :table key" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :table),
                "Expected :table key in rule entry, got: #{inspect(r)}"
@@ -634,6 +647,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "rule count is always non-negative" do
     check all(_ <- StreamData.constant(:ok)) do
       count = length(RuleManager.list_rules())
+
       assert count >= 0,
              "Expected non-negative rule count, got: #{count}"
     end
@@ -650,6 +664,7 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules result entries always have :source key" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :source),
                "Expected :source key in rule entry, got: #{inspect(r)}"
@@ -660,113 +675,140 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   property "list_rules entries are all non-nil values" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = RuleManager.list_rules()
+
       for r <- rules do
         assert r != nil,
                "Expected non-nil rule entry"
       end
     end
   end
+
   property "RuleManager process responds to alive check" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected RuleManager to be alive"
     end
   end
+
   property "RuleManager list_rules always returns a non-nil value" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RuleManager.list_rules()
       refute is_nil(result), "Expected non-nil from list_rules"
     end
   end
+
   property "RuleManager list_rules count is non-negative" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       assert length(rules) >= 0,
              "Expected non-negative count of rules"
     end
   end
+
   property "RuleManager list_rules entries have :priority key when present" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :priority),
                "Expected :priority key in rule entry, got: #{inspect(r)}"
       end
     end
   end
+
   property "RuleManager list_rules entries have :table key when present" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :table),
                "Expected :table key in rule entry, got: #{inspect(r)}"
       end
     end
   end
+
   property "RuleManager list_rules entries have :interface key when present" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :interface),
                "Expected :interface key in rule entry, got: #{inspect(r)}"
       end
     end
   end
+
   property "RuleManager list_rules returns consistent count on repeated calls" do
     check all(_ <- StreamData.constant(:ok)) do
       c1 = length(YellowDog.Netman.Kernel.RuleManager.list_rules())
       c2 = length(YellowDog.Netman.Kernel.RuleManager.list_rules())
+
       assert c1 == c2,
              "Expected stable count from list_rules"
     end
   end
+
   property "RuleManager list_rules is always non-nil and a list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       assert is_list(result) and not is_nil(result),
              "Expected non-nil list from list_rules"
     end
   end
+
   property "RuleManager module exports list_rules function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+
       assert {:list_rules, 0} in exports,
              "Expected list_rules/0 in exports"
     end
   end
+
   property "RuleManager process responds to alive check (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
+
       assert is_pid(pid) and Process.alive?(pid),
              "Expected RuleManager to be alive (r54)"
     end
   end
+
   property "RuleManager list_rules entries have :destination key when present" do
     check all(_ <- StreamData.constant(:ok)) do
       rules = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       for r <- rules do
         assert Map.has_key?(r, :destination),
                "Expected :destination key in rule entry, got: #{inspect(r)}"
       end
     end
   end
+
   property "RuleManager list_rules always returns a list (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       assert is_list(result),
              "Expected list from list_rules (r56)"
     end
   end
+
   property "RuleManager module is always loaded" do
     check all(_ <- StreamData.constant(:ok)) do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager),
              "Expected RuleManager module to be loaded"
     end
   end
+
   property "RuleManager list_rules returns list (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Kernel.RuleManager.list_rules()
+
       assert is_list(result),
              "Expected list from list_rules (r59)"
     end
@@ -778,108 +820,126 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "RuleManager module has start_link function (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert Keyword.has_key?(fns, :start_link)
     end
   end
+
   property "RuleManager module exports non-empty list (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RuleManager.module_info(:exports)
       assert is_list(exports) and length(exports) > 0
     end
   end
+
   property "RuleManager module has correct name (r63)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RuleManager.module_info(:module)
       assert name == YellowDog.Netman.Kernel.RuleManager
     end
   end
+
   property "RuleManager module attributes are a list (r64)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RuleManager.module_info(:attributes)
       assert is_list(attrs)
     end
   end
+
   property "RuleManager module compile info is a list (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.RuleManager.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "RuleManager module version exists (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RuleManager.module_info(:attributes)
       assert Keyword.has_key?(attrs, :vsn)
     end
   end
+
   property "RuleManager module functions include handle_info (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert Keyword.has_key?(fns, :handle_info)
     end
   end
+
   property "RuleManager module functions include terminate (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert Keyword.has_key?(fns, :terminate) or Keyword.has_key?(fns, :init)
     end
   end
+
   property "RuleManager module compile info has source (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       compile = YellowDog.Netman.Kernel.RuleManager.module_info(:compile)
       assert is_list(compile)
     end
   end
+
   property "RuleManager module functions count is positive (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert length(fns) > 0
     end
   end
+
   property "RuleManager module attributes include behaviour (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Kernel.RuleManager.module_info(:attributes)
       assert is_list(attrs) and length(attrs) > 0
     end
   end
+
   property "RuleManager module functions include init (r72)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert Keyword.has_key?(fns, :init)
     end
   end
+
   property "RuleManager module functions are all keyword pairs (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Kernel.RuleManager.module_info(:functions)
       assert Enum.all?(fns, fn {k, v} -> is_atom(k) and is_integer(v) end)
     end
   end
+
   property "RuleManager exports include start_link (r74)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RuleManager.module_info(:exports)
       assert Keyword.has_key?(exports, :start_link)
     end
   end
+
   property "RuleManager exports include module_info (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Kernel.RuleManager.module_info(:exports)
       assert Keyword.has_key?(exports, :module_info)
     end
   end
+
   property "RuleManager module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RuleManager.module_info(:module)
       assert name == YellowDog.Netman.Kernel.RuleManager
     end
   end
+
   property "RuleManager is a running process (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       pid = Process.whereis(YellowDog.Netman.Kernel.RuleManager)
       assert is_pid(pid) and Process.alive?(pid)
     end
   end
+
   property "RuleManager process is registered (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Kernel.RuleManager
@@ -889,42 +949,42 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager module exports functions (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert is_list(fns)
     end
   end
 
   property "rule_manager module attributes is list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "rule_manager module info compile is list or map (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       info = YellowDog.Netman.Kernel.RuleManager.__info__(:compile)
       assert is_list(info) or is_map(info)
     end
   end
 
   property "rule_manager module exports start_link (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert Keyword.has_key?(fns, :start_link) or Keyword.has_key?(fns, :child_spec)
     end
   end
 
   property "rule_manager module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
       assert result == true
     end
   end
 
   property "rule_manager module has consistent info (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns1 = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       fns2 = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert fns1 == fns2
@@ -932,35 +992,35 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager has at least one exported function (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert length(fns) > 0
     end
   end
 
   property "rule_manager all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "rule_manager all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "rule_manager functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "rule_manager attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -968,28 +1028,28 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "rule_manager all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "rule_manager attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "rule_manager module attributes are valid (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert is_list(attrs)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
@@ -997,14 +1057,14 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager module functions all have arity 0 to 5 (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 5 end)
     end
   end
 
   property "rule_manager module loaded and accessible (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       assert Code.ensure_loaded?(YellowDog.Netman.Kernel.RuleManager)
       info = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert is_list(info)
@@ -1012,17 +1072,19 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager start_link arity is 1 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
+
       if Keyword.has_key?(fns, :start_link) do
         assert Keyword.get(fns, :start_link) == 1
       end
+
       assert true
     end
   end
 
   property "rule_manager module attributes have at least vsn (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -1030,14 +1092,14 @@ defmodule YellowDog.Netman.Kernel.RuleManagerPropertyTest do
   end
 
   property "rule_manager module at least 2 exports (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Kernel.RuleManager.__info__(:functions)
       assert length(fns) >= 2
     end
   end
 
   property "rule_manager all attribute keys are atoms (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Kernel.RuleManager.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end

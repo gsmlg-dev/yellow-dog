@@ -296,6 +296,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   property "mtu for a never-added interface always returns nil" do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "ep_nil_#{seed}"
+
       assert Ethernet.mtu(fresh_iface) == nil,
              "Expected nil mtu for fresh interface #{fresh_iface}"
     end
@@ -306,6 +307,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface)
       Process.sleep(50)
       result = Ethernet.mtu(iface)
+
       assert is_nil(result) or (is_integer(result) and result > 0),
              "Expected positive integer or nil mtu after link_up, got: #{inspect(result)}"
     end
@@ -329,8 +331,10 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   property "ethernet? and carrier? are both false for a never-registered interface" do
     check all(seed <- StreamData.integer(1..999_999)) do
       fresh_iface = "ep_never_#{seed}"
+
       assert Ethernet.ethernet?(fresh_iface) == false,
              "Expected ethernet? false for fresh interface #{fresh_iface}"
+
       assert Ethernet.carrier?(fresh_iface) == false,
              "Expected carrier? false for fresh interface #{fresh_iface}"
     end
@@ -340,6 +344,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       iface = "eth_bool_#{seed}"
       result = Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet?, got: #{inspect(result)}"
     end
@@ -349,6 +354,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     check all(seed <- StreamData.integer(1..999_999)) do
       iface = "eth_carr_#{seed}"
       result = Ethernet.carrier?(iface)
+
       assert is_boolean(result),
              "Expected boolean from carrier?, got: #{inspect(result)}"
     end
@@ -359,6 +365,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       iface = "eth_agree_#{seed}"
       MockNetlink.link_up(iface, carrier: true)
       Process.sleep(50)
+
       if Ethernet.carrier?(iface) do
         assert Ethernet.ethernet?(iface),
                "Expected ethernet? true when carrier? is true for #{iface}"
@@ -372,6 +379,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
       result = Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet? for #{iface}, got: #{inspect(result)}"
     end
@@ -382,6 +390,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       iface = "eth_ct_#{seed}"
       MockNetlink.link_up(iface, carrier: true)
       Process.sleep(50)
+
       assert Ethernet.carrier?(iface) == true,
              "Expected carrier? true for #{iface} after link_up with carrier: true"
     end
@@ -392,6 +401,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       iface = "eth_down_#{seed}"
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
+
       assert Ethernet.carrier?(iface) == false,
              "Expected carrier? false for #{iface} with carrier: false"
     end
@@ -403,6 +413,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
       result = Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet? for #{iface}"
     end
@@ -414,6 +425,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface, carrier: true)
       Process.sleep(50)
       result = Ethernet.carrier?(iface)
+
       assert is_boolean(result),
              "Expected boolean from carrier? for #{iface}, got: #{inspect(result)}"
     end
@@ -426,6 +438,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       Process.sleep(50)
       result1 = Ethernet.ethernet?(iface)
       result2 = Ethernet.ethernet?(iface)
+
       assert result1 == result2,
              "Expected consistent ethernet? result for #{iface}: #{result1} vs #{result2}"
     end
@@ -437,6 +450,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface, carrier: false)
       Process.sleep(50)
       result = Ethernet.mtu(iface)
+
       assert result == nil or is_integer(result),
              "Expected nil or integer from mtu for #{iface}, got: #{inspect(result)}"
     end
@@ -446,6 +460,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     check all(seed <- StreamData.integer(1..99_999)) do
       iface = "eth_nev_#{seed}"
       result = Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet? for unseen #{iface}"
     end
@@ -458,6 +473,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       Process.sleep(50)
       r1 = Ethernet.carrier?(iface)
       r2 = Ethernet.carrier?(iface)
+
       assert r1 == r2,
              "Expected consistent carrier? for #{iface}: #{r1} vs #{r2}"
     end
@@ -469,6 +485,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       MockNetlink.link_up(iface, carrier: true)
       Process.sleep(50)
       result = Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet? after link_up for #{iface}"
     end
@@ -478,6 +495,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
     check all(seed <- StreamData.integer(1..99_999)) do
       iface = "eth_mtu2_#{seed}"
       result = Ethernet.mtu(iface)
+
       assert result == nil or (is_integer(result) and result > 0),
              "Expected nil or positive integer from mtu, got: #{inspect(result)}"
     end
@@ -488,103 +506,131 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       iface = "eth_same_#{seed}"
       r1 = Ethernet.ethernet?(iface)
       r2 = Ethernet.ethernet?(iface)
+
       assert r1 == r2,
              "Expected stable ethernet? for #{iface}: #{r1} vs #{r2}"
     end
   end
+
   property "Ethernet ethernet? for short alphanumeric interface always returns boolean" do
     check all(s <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?(s)
+
       assert is_boolean(result),
              "Expected boolean from ethernet?, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet mtu for 'lo' interface returns a positive integer or nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
+
       assert is_nil(result) or (is_integer(result) and result > 0),
              "Expected positive integer or nil mtu for lo, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet ethernet? returns false for empty string" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("")
+
       assert result == false,
              "Expected false for empty string, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet carrier? returns boolean for 'lo' interface" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?("lo")
+
       assert is_boolean(result),
              "Expected boolean from carrier? for lo, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet ethernet? returns false for 'lo' interface" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
+
       assert result == false,
              "Expected false for lo, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet mtu for 'lo' interface always returns integer or nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
+
       assert is_nil(result) or (is_integer(result) and result > 0),
              "Expected positive integer or nil mtu for lo, got: #{inspect(result)}"
     end
   end
+
   property "Ethernet module_info always returns a list" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Ethernet.module_info()
+
       assert is_list(info),
              "Expected list from module_info"
     end
   end
+
   property "Ethernet module exports contain carrier? function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+
       assert {:carrier?, 1} in exports,
              "Expected carrier?/1 in exports"
     end
   end
+
   property "Ethernet module exports contain ethernet? function" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
+
       assert {:ethernet?, 1} in exports,
              "Expected ethernet?/1 in exports"
     end
   end
+
   property "Ethernet module_info exports is always a list (r54)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.Connection.Ethernet.module_info(:exports)
+
       assert is_list(exports),
              "Expected list from module_info(:exports)"
     end
   end
+
   property "Ethernet module_info attributes is always a list (r55)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Ethernet.module_info(:attributes)
+
       assert is_list(attrs),
              "Expected list from module_info(:attributes)"
     end
   end
+
   property "Ethernet module_info always non-nil (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Ethernet.module_info()
       refute is_nil(info), "Expected non-nil module_info"
     end
   end
+
   property "Ethernet module info has :module key" do
     check all(_ <- StreamData.constant(:ok)) do
       info = YellowDog.Netman.Connection.Ethernet.module_info()
+
       assert Keyword.has_key?(info, :module),
              "Expected :module key in module_info"
     end
   end
+
   property "Ethernet ethernet? returns boolean for any printable string (r59)" do
     check all(iface <- StreamData.string(:printable, min_length: 1, max_length: 15)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?(iface)
+
       assert is_boolean(result),
              "Expected boolean from ethernet?, got: #{inspect(result)}"
     end
@@ -596,123 +642,129 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
       assert is_list(info) and Keyword.keyword?(info)
     end
   end
+
   property "Ethernet ethernet? for loopback returns boolean (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
       assert is_boolean(result)
     end
   end
+
   property "Ethernet carrier? for loopback returns boolean (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?("lo")
       assert is_boolean(result)
     end
   end
+
   property "Ethernet ethernet? with loopback returns boolean (r63b)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
       assert is_boolean(result)
     end
   end
+
   property "Ethernet carrier? returns boolean for any printable string (r64b)" do
-    check all(
-      iface <- StreamData.string(:printable, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:printable, min_length: 1, max_length: 10)) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?(iface)
       assert is_boolean(result)
     end
   end
+
   property "Ethernet read_mac with integer always returns error (r65)" do
-    check all(
-      n <- StreamData.integer()
-    ) do
+    check all(n <- StreamData.integer()) do
       # module_info is public, test boundary behavior
       info = YellowDog.Netman.Connection.Ethernet.module_info(:module)
       assert info == YellowDog.Netman.Connection.Ethernet
       _ = n
     end
   end
+
   property "Ethernet module functions include ethernet? (r66)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Ethernet.module_info(:functions)
       assert Keyword.has_key?(fns, :ethernet?)
     end
   end
+
   property "Ethernet module functions include carrier? (r67)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Ethernet.module_info(:functions)
       assert Keyword.has_key?(fns, :carrier?)
     end
   end
+
   property "Ethernet mtu returns nil or integer for any string (r68b)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu(iface)
       assert is_nil(result) or is_integer(result)
     end
   end
+
   property "Ethernet module functions include mtu (r69b)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Ethernet.module_info(:functions)
       assert Keyword.has_key?(fns, :mtu)
     end
   end
+
   property "Ethernet module functions include mtu (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Ethernet.module_info(:functions)
       assert Keyword.has_key?(fns, :mtu)
     end
   end
+
   property "Ethernet module functions include module_info (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       fns = YellowDog.Netman.Connection.Ethernet.module_info(:functions)
       assert Keyword.has_key?(fns, :module_info)
     end
   end
+
   property "Ethernet ethernet? returns false for random alphanumeric string (r72)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 8, max_length: 15)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 8, max_length: 15)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?(iface)
       # Usually false for random names but we just check it's boolean
       assert is_boolean(result)
     end
   end
+
   property "Ethernet carrier? for random interface returns boolean (r73)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?(iface)
       assert is_boolean(result)
     end
   end
+
   property "Ethernet ethernet? for loopback always returns false (r74b)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
       assert is_boolean(result)
     end
   end
+
   property "Ethernet mtu for loopback is nil or integer (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
       assert is_nil(result) or is_integer(result)
     end
   end
+
   property "Ethernet module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.Connection.Ethernet.module_info(:module)
       assert name == YellowDog.Netman.Connection.Ethernet
     end
   end
+
   property "Ethernet mtu for random interface returns nil or integer (r77)" do
-    check all(
-      iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
-    ) do
+    check all(iface <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu(iface)
       assert is_nil(result) or is_integer(result)
     end
   end
+
   property "Ethernet module attributes include vsn (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.Connection.Ethernet.module_info(:attributes)
@@ -721,28 +773,28 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet? with alphanumeric string returns boolean (r79)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
       assert is_boolean(result)
     end
   end
 
   property "ethernet carrier? with alphanumeric returns boolean (r80)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?(name)
       assert is_boolean(result)
     end
   end
 
   property "ethernet mtu returns nil or pos_integer for any name (r81)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = YellowDog.Netman.Connection.Ethernet.mtu(name)
       assert is_nil(result) or (is_integer(result) and result > 0)
     end
   end
 
   property "ethernet module has ethernet? carrier? mtu functions (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Keyword.has_key?(fns, :ethernet?)
       assert Keyword.has_key?(fns, :carrier?)
@@ -751,14 +803,14 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.Connection.Ethernet)
       assert result == true
     end
   end
 
   property "ethernet ethernet? is idempotent for same input (r84)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       r1 = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
       r2 = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
       assert r1 == r2
@@ -766,7 +818,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet carrier? is idempotent for same input (r85)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       r1 = YellowDog.Netman.Connection.Ethernet.carrier?(name)
       r2 = YellowDog.Netman.Connection.Ethernet.carrier?(name)
       assert r1 == r2
@@ -774,28 +826,28 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet all exported functions have non-neg arities (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 end)
     end
   end
 
   property "ethernet all function names are atoms (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Enum.all?(fns, fn {name, _} -> is_atom(name) end)
     end
   end
 
   property "ethernet functions have arity 0 to 10 (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Enum.all?(fns, fn {_name, arity} -> arity >= 0 and arity <= 10 end)
     end
   end
 
   property "ethernet attribute vsn is a list or nil (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
       vsn = Keyword.get(attrs, :vsn)
       assert is_list(vsn) or is_nil(vsn)
@@ -803,28 +855,28 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet has behaviour information (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "ethernet all attribute values are lists (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
       assert Enum.all?(attrs, fn {_k, v} -> is_list(v) end)
     end
   end
 
   property "ethernet attribute keys are atoms (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.Connection.Ethernet.__info__(:attributes)
       assert Enum.all?(attrs, fn {k, _} -> is_atom(k) end)
     end
   end
 
   property "ethernet has exactly ethernet? carrier? mtu (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Keyword.has_key?(fns, :ethernet?)
       assert Keyword.has_key?(fns, :carrier?)
@@ -833,7 +885,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet mtu for lo returns positive integer (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Connection.Ethernet.mtu("lo")
       # lo always has an MTU in test env
       assert is_nil(result) or (is_integer(result) and result > 0)
@@ -841,7 +893,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet carrier? for lo returns true in test env (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Connection.Ethernet.carrier?("lo")
       # lo is a loopback, may or may not have carrier
       assert is_boolean(result)
@@ -849,7 +901,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet ethernet? arity is 1 (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Keyword.get(fns, :ethernet?) == 1
       assert Keyword.get(fns, :carrier?) == 1
@@ -858,14 +910,14 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet ethernet? for lo returns boolean (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.Connection.Ethernet.ethernet?("lo")
       assert is_boolean(result)
     end
   end
 
   property "ethernet all functions return safe values (r98)" do
-    check all name <- string(:alphanumeric, min_length: 1, max_length: 15) do
+    check all(name <- string(:alphanumeric, min_length: 1, max_length: 15)) do
       e = YellowDog.Netman.Connection.Ethernet.ethernet?(name)
       c = YellowDog.Netman.Connection.Ethernet.carrier?(name)
       m = YellowDog.Netman.Connection.Ethernet.mtu(name)
@@ -876,7 +928,7 @@ defmodule YellowDog.Netman.Connection.EthernetPropertyTest do
   end
 
   property "ethernet functions all have arity 1 (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.Connection.Ethernet.__info__(:functions)
       assert Keyword.get(fns, :ethernet?) == 1
       assert Keyword.get(fns, :carrier?) == 1

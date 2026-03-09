@@ -146,7 +146,8 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
 
   property "device.show with valid interface always returns result or interface-not-found" do
     check all(iface <- valid_id_gen() |> StreamData.map(&String.slice(&1, 0, 15))) do
-      result = CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}})
+      result =
+        CLI.handle_command(%{"method" => "device.show", "params" => %{"interface" => iface}})
 
       case result do
         %{"result" => _} -> :ok
@@ -208,6 +209,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.delete with valid id always returns deleted or error" do
     check all(id <- valid_id_gen()) do
       result = CLI.handle_command(%{"method" => "connection.delete", "params" => %{"id" => id}})
+
       case result do
         %{"result" => "deleted"} -> :ok
         %{"error" => _} -> :ok
@@ -296,8 +298,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.remove with valid id always returns a map response" do
     check all(id <- valid_id_gen()) do
       result = CLI.handle_command(%{"method" => "connection.remove", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from connection.remove, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected 'result' or 'error' key in response, got: #{inspect(result)}"
     end
@@ -306,8 +310,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.up with valid id always returns a map response" do
     check all(id <- valid_id_gen()) do
       result = CLI.handle_command(%{"method" => "connection.up", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from connection.up, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected 'result' or 'error' key in connection.up response, got: #{inspect(result)}"
     end
@@ -316,8 +322,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.down with valid id always returns a map response" do
     check all(id <- valid_id_gen()) do
       result = CLI.handle_command(%{"method" => "connection.down", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from connection.down, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected 'result' or 'error' key in connection.down response, got: #{inspect(result)}"
     end
@@ -326,6 +334,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "device.list result is always a list" do
     check all(_ <- StreamData.constant(:ok)) do
       %{"result" => result} = CLI.handle_command(%{"method" => "device.list"})
+
       assert is_list(result),
              "Expected list in device.list result, got: #{inspect(result)}"
     end
@@ -347,11 +356,19 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "handle_command always returns a map with a string result key" do
     check all(
             method <-
-              StreamData.member_of(["device", "device.list", "connection", "connection.list", "status"])
+              StreamData.member_of([
+                "device",
+                "device.list",
+                "connection",
+                "connection.list",
+                "status"
+              ])
           ) do
       result = CLI.handle_command(%{"method" => method})
+
       assert is_map(result),
              "Expected map from handle_command, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "result"),
              "Expected 'result' key in response for method '#{method}'"
     end
@@ -360,8 +377,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.show with missing params returns error map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.show", "params" => %{}})
+
       assert is_map(result),
              "Expected map from handle_command, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "error"),
              "Expected error key in response, got: #{inspect(result)}"
     end
@@ -370,6 +389,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "device command always returns a map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "device"})
+
       assert is_map(result),
              "Expected map from device command, got: #{inspect(result)}"
     end
@@ -378,9 +398,12 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "status command returns a result with version info" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status"})
+
       assert Map.has_key?(result, "result"),
              "Expected result key in status, got: #{inspect(result)}"
+
       status_map = result["result"]
+
       assert is_map(status_map),
              "Expected map in status result, got: #{inspect(status_map)}"
     end
@@ -390,6 +413,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list"})
       conns = result["result"]
+
       assert is_list(conns),
              "Expected list in connection.list result, got: #{inspect(conns)}"
     end
@@ -400,6 +424,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       result = CLI.handle_command(%{"method" => "device.list"})
       devices = result["result"]
       assert is_list(devices), "Expected list, got: #{inspect(devices)}"
+
       for d <- devices do
         assert is_map(d), "Expected map device, got: #{inspect(d)}"
       end
@@ -409,8 +434,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "connection.show with existing connection id returns result key" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list", "params" => %{}})
+
       assert is_map(result),
              "Expected map from connection.list, got: #{inspect(result)}"
+
       if ids = result["result"] do
         assert is_list(ids)
       end
@@ -421,9 +448,11 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list", "params" => %{}})
       items = result["result"] || []
+
       for item <- items do
         assert Map.has_key?(item, "id") or Map.has_key?(item, :id),
                "Expected id in connection list item, got: #{inspect(item)}"
+
         assert Map.has_key?(item, "type") or Map.has_key?(item, :type),
                "Expected type in connection list item, got: #{inspect(item)}"
       end
@@ -433,8 +462,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "status command result has version info or error" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status", "params" => %{}})
+
       assert is_map(result),
              "Expected map from status command"
+
       # Either a result map with data or an error map
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected result or error key, got: #{inspect(Map.keys(result))}"
@@ -445,6 +476,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 32)) do
       result = CLI.handle_command(%{"method" => "connection.remove", "params" => %{"id" => id}})
       keys = Map.keys(result)
+
       assert length(keys) == 1,
              "Expected exactly one key in response, got: #{inspect(keys)}"
     end
@@ -453,8 +485,10 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "handle_command with missing method key returns error" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"params" => %{}})
+
       assert is_map(result),
              "Expected map from handle_command with missing method, got: #{inspect(result)}"
+
       assert Map.has_key?(result, "error") or Map.has_key?(result, "result"),
              "Expected error or result key in response"
     end
@@ -464,16 +498,22 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       method = "unknown.method_#{seed}"
       result = CLI.handle_command(%{"method" => method, "params" => %{}})
+
       assert is_map(result),
              "Expected map from handle_command with unknown method"
+
       assert Map.has_key?(result, "error") or Map.has_key?(result, "result"),
              "Expected error or result in response for unknown method"
     end
   end
 
   property "handle_command with empty params map never raises" do
-    check all(method <- StreamData.member_of(["profile.list", "connection.list", "status", "profile.get"])) do
+    check all(
+            method <-
+              StreamData.member_of(["profile.list", "connection.list", "status", "profile.get"])
+          ) do
       result = CLI.handle_command(%{"method" => method, "params" => %{}})
+
       assert is_map(result),
              "Expected map from handle_command with #{method}"
     end
@@ -483,6 +523,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       id = "ptest_#{seed}"
       result = CLI.handle_command(%{"method" => "profile.get", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from profile.get command"
     end
@@ -492,6 +533,7 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
     check all(seed <- StreamData.integer(1..9_999)) do
       id = "conn_#{seed}"
       result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from connection.show command"
     end
@@ -500,117 +542,149 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   property "handle_command status returns map with all required keys" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status", "params" => %{}})
+
       assert is_map(result),
              "Expected map from status command"
     end
   end
+
   property "CLI handle_command connection.list always returns map with result" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list"})
+
       assert is_map(result),
              "Expected map from connection.list, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command status always returns map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status"})
+
       assert is_map(result),
              "Expected map from status command"
     end
   end
+
   property "CLI handle_command connection.show with any id returns map" do
     check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
       result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from connection.show, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command device.list always returns map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "device.list"})
+
       assert is_map(result),
              "Expected map from device.list, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with profile.add and any file path returns map" do
     check all(p <- StreamData.string(:printable, min_length: 1, max_length: 30)) do
-      result = CLI.handle_command(%{"method" => "profile.add", "params" => %{"file" => "/tmp/" <> p}})
+      result =
+        CLI.handle_command(%{"method" => "profile.add", "params" => %{"file" => "/tmp/" <> p}})
+
       assert is_map(result),
              "Expected map from profile.add, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with unknown method always returns error map" do
     check all(method <- StreamData.string(:alphanumeric, min_length: 3, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "unknown." <> method})
+
       assert is_map(result),
              "Expected map from unknown method, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with profile.list always returns map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "profile.list"})
+
       assert is_map(result),
              "Expected map from profile.list, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command profile.show with any id returns map" do
     check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 16)) do
       result = CLI.handle_command(%{"method" => "profile.show", "params" => %{"id" => id}})
+
       assert is_map(result),
              "Expected map from profile.show, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with nested params always returns map" do
     check all(
             key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8),
             val <- StreamData.string(:alphanumeric, min_length: 1, max_length: 8)
           ) do
       result = CLI.handle_command(%{"method" => "status", "params" => %{key => val}})
+
       assert is_map(result),
              "Expected map from status with params, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with integer params always returns map" do
     check all(n <- StreamData.integer()) do
       result = CLI.handle_command(%{"method" => "status", "params" => n})
+
       assert is_map(result),
              "Expected map from status with integer params, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with boolean params always returns map" do
     check all(b <- StreamData.boolean()) do
       result = CLI.handle_command(%{"method" => "status", "params" => b})
+
       assert is_map(result),
              "Expected map from status with boolean params, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command map with all string values always returns map" do
     check all(
             method <- StreamData.member_of(["status", "connection.list", "profile.list"]),
             _ <- StreamData.constant(:ok)
           ) do
       result = CLI.handle_command(%{"method" => method})
+
       assert is_map(result),
              "Expected map from #{method}, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with connection.list returns result key" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list"})
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected result or error key, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with status always returns map with result key" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status"})
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected result or error key, got: #{inspect(result)}"
     end
   end
+
   property "CLI handle_command with profile.list returns result key (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "profile.list"})
+
       assert Map.has_key?(result, "result") or Map.has_key?(result, "error"),
              "Expected result or error key (r59)"
     end
@@ -622,59 +696,66 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert is_map(result) or is_list(result) or is_tuple(result)
     end
   end
+
   property "CLI handle_command with device.list returns consistent type (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "device.list"})
       assert is_map(result) or is_list(result) or is_tuple(result)
     end
   end
+
   property "CLI handle_command with profile.delete returns expected shape (r62)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "profile.delete", "params" => %{"id" => id}})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with unknown method returns error (r63)" do
-    check all(
-      method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "unknown." <> method})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with profile.get and valid id returns map (r64)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "profile.get", "params" => %{"id" => id}})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command result always has string keys (r65)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "connection.list"})
       assert is_map(result) and Enum.all?(Map.keys(result), &is_binary/1)
     end
   end
+
   property "CLI handle_command with connection.show returns map (r66)" do
-    check all(
-      id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)
-    ) do
+    check all(id <- StreamData.string(:alphanumeric, min_length: 1, max_length: 15)) do
       result = CLI.handle_command(%{"method" => "connection.show", "params" => %{"id" => id}})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with any valid method never throws exception (r67)" do
     check all(
-      method <- StreamData.member_of(["connection.list", "profile.list", "secret.list",
-                                      "connection.show", "device.show", "profile.get"])
-    ) do
+            method <-
+              StreamData.member_of([
+                "connection.list",
+                "profile.list",
+                "secret.list",
+                "connection.show",
+                "device.show",
+                "profile.get"
+              ])
+          ) do
       result = CLI.handle_command(%{"method" => method})
       assert is_map(result) or is_list(result)
     end
   end
+
   property "CLI handle_command result is always serializable (r68)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "profile.list"})
@@ -682,72 +763,88 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
       assert match?({:ok, _}, encoded) or match?({:error, _}, encoded)
     end
   end
+
   property "CLI handle_command with status method returns map (r69)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "status"})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with device.list always returns map (r70)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "device.list"})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with monitor method returns map (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "monitor"})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with secret.get returns map (r72)" do
-    check all(
-      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "secret.get", "params" => %{"key" => key}})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with secret.put returns map (r73)" do
     check all(
-      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
-      val <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
-    ) do
-      result = CLI.handle_command(%{"method" => "secret.put", "params" => %{"key" => key, "value" => val}})
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            val <- StreamData.string(:alphanumeric, min_length: 1, max_length: 30)
+          ) do
+      result =
+        CLI.handle_command(%{
+          "method" => "secret.put",
+          "params" => %{"key" => key, "value" => val}
+        })
+
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with secret.delete returns map (r74)" do
-    check all(
-      key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => "secret.delete", "params" => %{"key" => key}})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with monitor.status returns map (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "monitor.status"})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command with any known method always returns map (r76)" do
     check all(
-      method <- StreamData.member_of(["connection.list", "profile.list", "secret.list",
-                                      "status", "device.list", "monitor"])
-    ) do
+            method <-
+              StreamData.member_of([
+                "connection.list",
+                "profile.list",
+                "secret.list",
+                "status",
+                "device.list",
+                "monitor"
+              ])
+          ) do
       result = CLI.handle_command(%{"method" => method})
       assert is_map(result)
     end
   end
+
   property "CLI handle_command never returns atom for any method (r77)" do
-    check all(
-      method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
-    ) do
+    check all(method <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20)) do
       result = CLI.handle_command(%{"method" => method})
       refute is_atom(result), "Expected non-atom result"
     end
   end
+
   property "CLI handle_command result is not binary (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = CLI.handle_command(%{"method" => "profile.list"})
@@ -756,93 +853,93 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   end
 
   property "cli handle_command with status returns result (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       result = CLI.handle_command(["status"])
       assert is_tuple(result) or is_atom(result) or is_map(result)
     end
   end
 
   property "cli handle_command with profile list returns non-nil (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["profile", "list"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with help returns result (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["help"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with unknown command returns result (r82)" do
-    check all cmd <- string(:alphanumeric, min_length: 3, max_length: 20) do
+    check all(cmd <- string(:alphanumeric, min_length: 3, max_length: 20)) do
       result = CLI.handle_command([cmd <> "_unknown_r82"])
       assert not is_nil(result)
     end
   end
 
   property "cli module is loaded (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = Code.ensure_loaded?(YellowDog.Netman.API.CLI)
       assert result == true
     end
   end
 
   property "cli handle_command is stable across identical calls (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = CLI.handle_command(["status"])
       r2 = CLI.handle_command(["status"])
       # Both calls should return same type
-      assert (is_tuple(r1) and is_tuple(r2)) or (r1 == r2)
+      assert (is_tuple(r1) and is_tuple(r2)) or r1 == r2
     end
   end
 
   property "cli handle_command with version returns result (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["version"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with config returns result (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["config"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with monitor subcommand returns result (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["monitor"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with route subcommand returns result (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["route"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with interface subcommand returns result (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["interface"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command list result has proper type (r90)" do
-    check all cmd <- member_of(["status", "help", "version", "config"]) do
+    check all(cmd <- member_of(["status", "help", "version", "config"])) do
       result = CLI.handle_command([cmd])
       assert not is_nil(result)
     end
   end
 
   property "cli module exports handle_command (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.API.CLI.__info__(:functions)
       assert Keyword.has_key?(fns, :handle_command)
       # arity 1
@@ -851,60 +948,62 @@ defmodule YellowDog.Netman.API.CLIPropertyTest do
   end
 
   property "cli handle_command with profile add subcommand returns result (r92)" do
-    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+    check all(id <- string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = CLI.handle_command(["profile", "add", id])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with profile get subcommand returns result (r93)" do
-    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+    check all(id <- string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = CLI.handle_command(["profile", "get", id])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with connection list returns result (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["connection", "list"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with profile delete subcommand returns result (r95)" do
-    check all id <- string(:alphanumeric, min_length: 1, max_length: 10) do
+    check all(id <- string(:alphanumeric, min_length: 1, max_length: 10)) do
       result = CLI.handle_command(["profile", "delete", id])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command never raises exception (r96)" do
-    check all cmd <- string(:alphanumeric, min_length: 1, max_length: 20) do
-      result = try do
-        CLI.handle_command([cmd])
-      rescue
-        e -> {:exception, e}
-      end
+    check all(cmd <- string(:alphanumeric, min_length: 1, max_length: 20)) do
+      result =
+        try do
+          CLI.handle_command([cmd])
+        rescue
+          e -> {:exception, e}
+        end
+
       refute match?({:exception, _}, result)
     end
   end
 
   property "cli handle_command with address subcommand returns result (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["address"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with dns subcommand returns result (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["dns"])
       assert not is_nil(result)
     end
   end
 
   property "cli handle_command with show subcommand returns result (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = CLI.handle_command(["show"])
       assert not is_nil(result)
     end

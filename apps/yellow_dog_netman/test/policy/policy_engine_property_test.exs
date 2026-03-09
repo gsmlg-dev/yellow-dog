@@ -198,6 +198,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       case PolicyEngine.default_route(connections) do
         {:ok, id} ->
           all_ids = Enum.map(connections, &(&1[:profile_id] || &1[:id]))
+
           assert id in all_ids,
                  "default_route returned #{inspect(id)} not in input connections"
 
@@ -333,6 +334,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority with empty connections always returns empty list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = PolicyEngine.dns_priority([])
+
       assert result == [],
              "Expected [] for empty connections, got: #{inspect(result)}"
     end
@@ -341,6 +343,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "default_route with no connections always returns :none" do
     check all(_ <- StreamData.constant(:ok)) do
       result = PolicyEngine.default_route([])
+
       assert result == :none,
              "Expected :none for empty connection list, got: #{inspect(result)}"
     end
@@ -355,8 +358,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
         |> Enum.map(fn {c, i} -> %{c | id: "uniq_#{i}_#{c.id}"} end)
 
       metrics = PolicyEngine.route_metrics(unique_conns)
+
       assert is_map(metrics),
              "Expected map from route_metrics, got: #{inspect(metrics)}"
+
       assert map_size(metrics) == length(unique_conns),
              "Expected #{length(unique_conns)} entries in route_metrics, got #{map_size(metrics)}"
     end
@@ -381,6 +386,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "effective_priority for any connection is always non-negative" do
     check all(conn <- connection_gen()) do
       priority = PolicyEngine.effective_priority(conn)
+
       assert is_integer(priority) and priority >= 0,
              "Expected non-negative integer from effective_priority, got: #{inspect(priority)}"
     end
@@ -390,8 +396,10 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(conn <- connection_gen()) do
       active = [Map.put(conn, :state, :activated)]
       metrics = PolicyEngine.route_metrics(active)
+
       assert is_map(metrics),
              "Expected map from route_metrics, got: #{inspect(metrics)}"
+
       assert map_size(metrics) == 1,
              "Expected 1 entry in route_metrics for single connection, got: #{inspect(metrics)}"
     end
@@ -401,6 +409,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(conn <- connection_gen()) do
       active = [Map.put(conn, :state, :activated)]
       result = PolicyEngine.default_route(active)
+
       assert match?({:ok, _}, result) or result == :none,
              "Expected {:ok, _} or :none from default_route, got: #{inspect(result)}"
     end
@@ -409,6 +418,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority result is always a list" do
     check all(connections <- list_of(connection_gen(), max_length: 5)) do
       result = PolicyEngine.dns_priority(connections)
+
       assert is_list(result),
              "Expected list from dns_priority, got: #{inspect(result)}"
     end
@@ -419,9 +429,26 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
             seed1 <- StreamData.integer(1..49_999),
             seed2 <- StreamData.integer(50_000..99_999)
           ) do
-      conn1 = %{profile_id: "pe_a#{seed1}", priority: 100, state: :activated, interface: "eth0", type: :ethernet, autoconnect_priority: 100}
-      conn2 = %{profile_id: "pe_b#{seed2}", priority: 100, state: :activated, interface: "eth1", type: :ethernet, autoconnect_priority: 100}
+      conn1 = %{
+        profile_id: "pe_a#{seed1}",
+        priority: 100,
+        state: :activated,
+        interface: "eth0",
+        type: :ethernet,
+        autoconnect_priority: 100
+      }
+
+      conn2 = %{
+        profile_id: "pe_b#{seed2}",
+        priority: 100,
+        state: :activated,
+        interface: "eth1",
+        type: :ethernet,
+        autoconnect_priority: 100
+      }
+
       metrics = PolicyEngine.route_metrics([conn1, conn2])
+
       assert map_size(metrics) == 2,
              "Expected 2 metric entries for 2 connections, got: #{inspect(metrics)}"
     end
@@ -430,6 +457,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority for multiple connections returns list with at most N entries" do
     check all(connections <- list_of(connection_gen(), min_length: 1, max_length: 5)) do
       result = PolicyEngine.dns_priority(connections)
+
       assert is_list(result),
              "Expected list from dns_priority, got: #{inspect(result)}"
     end
@@ -444,6 +472,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       conn2 = %{autoconnect_priority: p2, type: :ethernet}
       ep1 = PolicyEngine.effective_priority(conn1)
       ep2 = PolicyEngine.effective_priority(conn2)
+
       assert ep1 <= ep2,
              "Expected conn with lower priority #{p1} to have ep <= conn with higher priority #{p2}: #{ep1} vs #{ep2}"
     end
@@ -452,10 +481,18 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority with all connections having empty DNS always returns empty list" do
     check all(
             count <- StreamData.integer(1..5),
-            ids <- StreamData.list_of(StreamData.string(:alphanumeric, min_length: 1, max_length: 12), length: count)
+            ids <-
+              StreamData.list_of(StreamData.string(:alphanumeric, min_length: 1, max_length: 12),
+                length: count
+              )
           ) do
-      conns = Enum.map(ids, fn id -> %{id: "empty_dns_#{id}", interface: "eth0", dns: [], priority: 100} end)
+      conns =
+        Enum.map(ids, fn id ->
+          %{id: "empty_dns_#{id}", interface: "eth0", dns: [], priority: 100}
+        end)
+
       result = PolicyEngine.dns_priority(conns)
+
       assert result == [],
              "Expected empty dns_priority for zero-DNS connections, got: #{inspect(result)}"
     end
@@ -468,6 +505,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_map(result)
       assert map_size(result) == 1
       {_id, metric} = Enum.at(result, 0)
+
       assert is_integer(metric) and metric > 0,
              "Expected positive metric for zero-priority connection, got: #{inspect(metric)}"
     end
@@ -477,6 +515,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(priority <- StreamData.integer(0..500)) do
       conn = %{autoconnect_priority: priority, type: :wifi}
       ep = PolicyEngine.effective_priority(conn)
+
       assert ep >= 0,
              "Expected non-negative effective_priority, got: #{inspect(ep)}"
     end
@@ -488,6 +527,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
               StreamData.list_of(connection_with_dns_gen(), min_length: 1, max_length: 5)
           ) do
       result = PolicyEngine.dns_priority(connections)
+
       for entry <- result do
         assert is_binary(entry.interface),
                "Expected binary interface in dns_priority entry, got: #{inspect(entry)}"
@@ -497,13 +537,26 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
 
   property "route_metrics always returns a map or list for any connections list" do
     check all(n <- StreamData.integer(0..3)) do
-      conns = Enum.map(1..max(n, 1), fn i ->
-        %{interface: "rm_iface_#{i}", priority: i, autoconnect_priority: i,
-          state: :activated, profile_id: "p#{i}", type: :ethernet,
-          ipv4: %{method: :static, address: "10.0.#{i}.1", prefix_len: 24, gateway: nil},
-          ipv6: %{method: :disabled}, dns: [], lease: nil, error: nil}
-      end)
-      result = if n == 0, do: PolicyEngine.route_metrics([]), else: PolicyEngine.route_metrics(conns)
+      conns =
+        Enum.map(1..max(n, 1), fn i ->
+          %{
+            interface: "rm_iface_#{i}",
+            priority: i,
+            autoconnect_priority: i,
+            state: :activated,
+            profile_id: "p#{i}",
+            type: :ethernet,
+            ipv4: %{method: :static, address: "10.0.#{i}.1", prefix_len: 24, gateway: nil},
+            ipv6: %{method: :disabled},
+            dns: [],
+            lease: nil,
+            error: nil
+          }
+        end)
+
+      result =
+        if n == 0, do: PolicyEngine.route_metrics([]), else: PolicyEngine.route_metrics(conns)
+
       assert is_map(result) or is_list(result),
              "Expected map or list from route_metrics, got: #{inspect(result)}"
     end
@@ -512,6 +565,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority with empty list returns empty list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = PolicyEngine.dns_priority([])
+
       assert result == [],
              "Expected [] from dns_priority([]), got: #{inspect(result)}"
     end
@@ -528,6 +582,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(priority <- StreamData.integer(1..100), ap <- StreamData.integer(1..100)) do
       conn = %{priority: priority, autoconnect_priority: ap}
       result = PolicyEngine.effective_priority(conn)
+
       assert is_number(result),
              "Expected number from effective_priority, got: #{inspect(result)}"
     end
@@ -536,6 +591,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   property "dns_priority result entries always have :interface key" do
     check all(_ <- StreamData.constant(:ok)) do
       result = PolicyEngine.dns_priority([])
+
       for entry <- result do
         assert Map.has_key?(entry, :interface),
                "Expected :interface in dns_priority entry, got: #{inspect(entry)}"
@@ -547,114 +603,145 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(p <- StreamData.integer(0..1000), ap <- StreamData.integer(0..1000)) do
       conn = %{priority: p, autoconnect_priority: ap}
       result = PolicyEngine.effective_priority(conn)
+
       assert is_number(result) and result >= 0,
              "Expected non-negative number from effective_priority, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine effective_priority with empty list returns numeric value" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert is_integer(result) or is_nil(result) or is_atom(result),
              "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine dns_priority with empty list always returns expected type" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.dns_priority([])
+
       assert is_integer(result) or is_nil(result) or is_atom(result) or is_list(result),
              "Expected integer/nil/atom/list from dns_priority, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine route_metrics returns map for any list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
+
       assert is_map(result) or is_list(result),
              "Expected map or list from route_metrics, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine effective_priority with single-profile list always returns value" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert is_integer(result) or is_nil(result) or is_atom(result),
              "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine default_route returns :none or a string for single profile" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
+
       assert result == :none or is_binary(result) or is_nil(result),
              "Expected :none/binary/nil from default_route, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine effective_priority always returns same value for empty list" do
     check all(_ <- StreamData.constant(:ok)) do
       r1 = YellowDog.Netman.PolicyEngine.effective_priority([])
       r2 = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert r1 == r2,
              "Expected deterministic effective_priority results"
     end
   end
+
   property "PolicyEngine dns_priority always returns consistent type" do
     check all(_ <- StreamData.constant(:ok)) do
       r1 = YellowDog.Netman.PolicyEngine.dns_priority([])
       r2 = YellowDog.Netman.PolicyEngine.dns_priority([])
+
       assert r1 == r2,
              "Expected deterministic dns_priority results"
     end
   end
+
   property "PolicyEngine route_metrics for any profile returns map" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
+
       assert is_map(result) or is_list(result),
              "Expected map or list from route_metrics, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine default_route with empty list always returns :none" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
+
       assert result == :none,
              "Expected :none from default_route([]), got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine effective_priority with empty list is non-nil" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert not is_nil(result),
              "Expected non-nil from effective_priority([]), got: nil"
     end
   end
+
   property "PolicyEngine effective_priority is non-nil for empty list (r55)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert not is_nil(result) or is_integer(result) or is_atom(result),
              "Expected non-nil value, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine default_route always returns :none for empty profiles (r56)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
+
       assert result == :none,
              "Expected :none, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine dns_priority with empty list returns list" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.dns_priority([])
+
       assert is_list(result) or is_nil(result) or is_integer(result),
              "Expected list/nil/integer, got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine effective_priority for empty list is integer or nil (r58)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
+
       assert is_integer(result) or is_nil(result) or is_atom(result),
              "Expected integer/nil/atom (r58), got: #{inspect(result)}"
     end
   end
+
   property "PolicyEngine route_metrics for empty returns consistent type (r59)" do
     check all(_ <- StreamData.constant(:ok)) do
       r1 = YellowDog.Netman.PolicyEngine.route_metrics([])
       r2 = YellowDog.Netman.PolicyEngine.route_metrics([])
+
       assert r1 == r2,
              "Expected deterministic route_metrics results"
     end
@@ -666,125 +753,131 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_list(info)
     end
   end
+
   property "PolicyEngine default_route with single-elem list returns map (r61)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
       assert result == :none or is_map(result) or is_struct(result)
     end
   end
+
   property "PolicyEngine route_metrics with empty list returns empty map (r62)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
       assert result == %{} or is_map(result) or is_list(result)
     end
   end
+
   property "PolicyEngine effective_priority returns integer or zero (r63)" do
-    check all(
-      priority <- StreamData.integer(1..100)
-    ) do
+    check all(priority <- StreamData.integer(1..100)) do
       conn = %{profile: %{priority: priority}, type: :ethernet}
       result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine effective_priority for any priority list returns value (r64)" do
-    check all(
-      priority <- StreamData.integer(1..1000)
-    ) do
+    check all(priority <- StreamData.integer(1..1000)) do
       conn = %{profile: %{autoconnect_priority: priority}}
       result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine dns_priority for single conn returns list (r65)" do
-    check all(
-      priority <- StreamData.integer(1..100)
-    ) do
+    check all(priority <- StreamData.integer(1..100)) do
       conns = [%{profile: %{autoconnect_priority: priority}, dns: ["8.8.8.8"]}]
       result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
       assert is_list(result)
     end
   end
+
   property "PolicyEngine default_route for one conn returns ok tuple or :none (r66)" do
-    check all(
-      priority <- StreamData.integer(1..100)
-    ) do
-      conn = %{profile: %{autoconnect_priority: priority}, gateway: "192.168.1.1", interface: "eth0"}
+    check all(priority <- StreamData.integer(1..100)) do
+      conn = %{
+        profile: %{autoconnect_priority: priority},
+        gateway: "192.168.1.1",
+        interface: "eth0"
+      }
+
       result = YellowDog.Netman.PolicyEngine.default_route([conn])
       assert result == :none or match?({:ok, _}, result)
     end
   end
+
   property "PolicyEngine dns_priority always returns a list (r67)" do
-    check all(
-      n <- StreamData.integer(0..5)
-    ) do
+    check all(n <- StreamData.integer(0..5)) do
       conns = List.duplicate(%{dns: ["1.1.1.1"], profile: %{autoconnect_priority: 50}}, n)
       result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
       assert is_list(result)
     end
   end
+
   property "PolicyEngine route_metrics for n connections returns n-entry map (r68)" do
-    check all(
-      n <- StreamData.integer(0..5)
-    ) do
-      conns = Enum.map(1..max(n, 1), fn i ->
-        %{profile_id: "conn#{i}", profile: %{autoconnect_priority: i * 10}}
-      end)
+    check all(n <- StreamData.integer(0..5)) do
+      conns =
+        Enum.map(1..max(n, 1), fn i ->
+          %{profile_id: "conn#{i}", profile: %{autoconnect_priority: i * 10}}
+        end)
+
       conns = if n == 0, do: [], else: conns
       result = YellowDog.Netman.PolicyEngine.route_metrics(conns)
       assert is_map(result)
       assert map_size(result) == length(conns)
     end
   end
+
   property "PolicyEngine effective_priority returns non-negative for any priority (r69)" do
-    check all(
-      priority <- StreamData.integer(1..1000)
-    ) do
+    check all(priority <- StreamData.integer(1..1000)) do
       conn = %{profile: %{autoconnect_priority: priority}}
       result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine effective_priority for nested autoconnect_priority (r70)" do
-    check all(
-      priority <- StreamData.integer(0..1000)
-    ) do
+    check all(priority <- StreamData.integer(0..1000)) do
       conn = %{profile: %{autoconnect_priority: priority}, autoconnect_priority: priority}
       result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine route_metrics for empty input returns empty map (r71)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
       assert result == %{}
     end
   end
+
   property "PolicyEngine dns_priority returns list for any list of conns (r72)" do
-    check all(
-      n <- StreamData.integer(0..3)
-    ) do
-      conns = Enum.map(1..max(n,1), fn i -> %{dns: ["1.1.1.#{i}"], profile: %{autoconnect_priority: i * 10}} end)
+    check all(n <- StreamData.integer(0..3)) do
+      conns =
+        Enum.map(1..max(n, 1), fn i ->
+          %{dns: ["1.1.1.#{i}"], profile: %{autoconnect_priority: i * 10}}
+        end)
+
       conns = if n == 0, do: [], else: conns
       result = YellowDog.Netman.PolicyEngine.dns_priority(conns)
       assert is_list(result)
     end
   end
+
   property "PolicyEngine default_route for empty list always :none (r73)" do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
       assert result == :none
     end
   end
+
   property "PolicyEngine effective_priority with profile struct (r74)" do
-    check all(
-      prio <- StreamData.integer(0..500)
-    ) do
+    check all(prio <- StreamData.integer(0..500)) do
       conn = %{profile: %{autoconnect_priority: prio}}
       result = YellowDog.Netman.PolicyEngine.effective_priority(conn)
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine all functions are in exports (r75)" do
     check all(_ <- StreamData.constant(:ok)) do
       exports = YellowDog.Netman.PolicyEngine.module_info(:exports)
@@ -793,12 +886,14 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert Keyword.has_key?(exports, :dns_priority)
     end
   end
+
   property "PolicyEngine module name is correct (r76)" do
     check all(_ <- StreamData.constant(:ok)) do
       name = YellowDog.Netman.PolicyEngine.module_info(:module)
       assert name == YellowDog.Netman.PolicyEngine
     end
   end
+
   property "PolicyEngine effective_priority for map without profile returns value (r77)" do
     check all(_ <- StreamData.constant(:ok)) do
       conn = %{autoconnect_priority: 50}
@@ -806,6 +901,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       assert is_integer(result) or is_nil(result)
     end
   end
+
   property "PolicyEngine module attributes include vsn (r78)" do
     check all(_ <- StreamData.constant(:ok)) do
       attrs = YellowDog.Netman.PolicyEngine.module_info(:attributes)
@@ -814,42 +910,42 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine default_route with no profiles is none (r79)" do
-    check all _x <- integer() do
+    check all(_x <- integer()) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
       assert result == :none
     end
   end
 
   property "policy_engine dns_priority with empty returns list (r80)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.dns_priority([])
       assert is_list(result)
     end
   end
 
   property "policy_engine route_metrics returns map always (r81)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
       assert is_map(result)
     end
   end
 
   property "policy_engine all exported functions are atoms (r82)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Enum.all?(fns, fn {name, _arity} -> is_atom(name) end)
     end
   end
 
   property "policy_engine module attributes has vsn (r83)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       attrs = YellowDog.Netman.PolicyEngine.__info__(:attributes)
       assert is_list(attrs)
     end
   end
 
   property "policy_engine default_route is deterministic (r84)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = YellowDog.Netman.PolicyEngine.default_route([])
       r2 = YellowDog.Netman.PolicyEngine.default_route([])
       assert r1 == r2
@@ -857,7 +953,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine dns_priority result length is bounded (r85)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.dns_priority([])
       assert is_list(result)
       assert length(result) >= 0
@@ -865,7 +961,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine module is loaded and functions accessible (r86)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       assert Code.ensure_loaded?(YellowDog.Netman.PolicyEngine)
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert length(fns) > 0
@@ -873,7 +969,7 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine route_metrics is stable (r87)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = YellowDog.Netman.PolicyEngine.route_metrics([])
       r2 = YellowDog.Netman.PolicyEngine.route_metrics([])
       assert r1 == r2
@@ -881,42 +977,42 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine effective_priority returns number or nil (r88)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
       assert is_nil(result) or is_integer(result) or is_float(result)
     end
   end
 
   property "policy_engine default_route always returns :none or ok tuple (r89)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
       assert result == :none or match?({:ok, _}, result)
     end
   end
 
   property "policy_engine exported functions include default_route (r90)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Keyword.has_key?(fns, :default_route)
     end
   end
 
   property "policy_engine exported functions include route_metrics (r91)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Keyword.has_key?(fns, :route_metrics)
     end
   end
 
   property "policy_engine exported functions include dns_priority (r92)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Keyword.has_key?(fns, :dns_priority)
     end
   end
 
   property "policy_engine default_route stable on second call (r93)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       r1 = YellowDog.Netman.PolicyEngine.default_route([])
       r2 = YellowDog.Netman.PolicyEngine.default_route([])
       assert r1 == r2
@@ -925,21 +1021,21 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine exports effective_priority function (r94)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Keyword.has_key?(fns, :effective_priority)
     end
   end
 
   property "policy_engine exports at least 4 functions (r95)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert length(fns) >= 4
     end
   end
 
   property "policy_engine module exports all core functions (r96)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       fns = YellowDog.Netman.PolicyEngine.__info__(:functions)
       assert Keyword.has_key?(fns, :default_route)
       assert Keyword.has_key?(fns, :route_metrics)
@@ -948,21 +1044,21 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
   end
 
   property "policy_engine route_metrics with empty profiles returns empty map (r97)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.route_metrics([])
       assert result == %{}
     end
   end
 
   property "policy_engine dns_priority empty returns empty list (r98)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.dns_priority([])
       assert result == []
     end
   end
 
   property "policy_engine effective_priority empty returns nil (r99)" do
-    check all _x <- boolean() do
+    check all(_x <- boolean()) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
       assert is_nil(result) or is_integer(result) or is_float(result)
     end
