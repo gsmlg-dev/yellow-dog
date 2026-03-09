@@ -8,6 +8,8 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   with 100ms debounce.
   """
 
+  @compile {:no_warn_undefined, [:telemetry]}
+
   use GenServer
 
   require Logger

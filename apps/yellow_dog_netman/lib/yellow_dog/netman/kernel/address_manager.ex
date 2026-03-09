@@ -6,6 +6,8 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
   commands to add/remove addresses.
   """
 
+  @compile {:no_warn_undefined, [:telemetry]}
+
   use GenServer
 
   require Logger

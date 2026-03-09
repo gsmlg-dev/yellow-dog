@@ -7,6 +7,8 @@ defmodule YellowDog.Netman.API.CLI do
   returns JSON responses.
   """
 
+  @compile {:no_warn_undefined, [Jason, :telemetry]}
+
   use GenServer
 
   require Logger

@@ -6,6 +6,8 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
   commands to add/remove routes with metric-based ordering.
   """
 
+  @compile {:no_warn_undefined, [:telemetry]}
+
   use GenServer
 
   require Logger

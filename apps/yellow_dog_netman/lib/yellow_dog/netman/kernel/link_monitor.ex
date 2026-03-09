@@ -6,6 +6,8 @@ defmodule YellowDog.Netman.Kernel.LinkMonitor do
   `netman:link:<interface>` events to the EventBus.
   """
 
+  @compile {:no_warn_undefined, [:telemetry]}
+
   use GenServer
 
   require Logger

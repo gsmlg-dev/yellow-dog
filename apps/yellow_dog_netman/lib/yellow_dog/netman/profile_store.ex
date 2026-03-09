@@ -6,6 +6,8 @@ defmodule YellowDog.Netman.ProfileStore do
   watches for changes via `file_system`, and provides CRUD operations.
   """
 
+  @compile {:no_warn_undefined, [Toml, FileSystem]}
+
   use GenServer
 
   require Logger

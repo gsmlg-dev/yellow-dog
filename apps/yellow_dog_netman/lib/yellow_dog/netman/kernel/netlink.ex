@@ -10,6 +10,8 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   In test mode, uses a mock backend instead of the actual port.
   """
 
+  @compile {:no_warn_undefined, [Jason]}
+
   use GenServer
 
   require Logger

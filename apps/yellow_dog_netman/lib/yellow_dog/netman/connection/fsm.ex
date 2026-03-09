@@ -12,6 +12,8 @@ defmodule YellowDog.Netman.Connection.FSM do
   Registered via `{:via, Registry, {YellowDog.Netman.Registry, {:connection, interface}}}`.
   """
 
+  @compile {:no_warn_undefined, [:telemetry, YellowDog.DhcpClient]}
+
   @behaviour :gen_statem
 
   require Logger
