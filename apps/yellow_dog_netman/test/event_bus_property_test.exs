@@ -602,8 +602,8 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       result1 = EventBus.subscribe(topic)
       result2 = EventBus.unsubscribe(topic)
 
-      assert match?({:ok, _}, result1) or result1 == :ok or is_nil(result1),
-             "Expected ok-ish from subscribe, got: #{inspect(result1)}"
+      assert match?({:ok, _}, result1),
+             "Expected {:ok, _} from subscribe, got: #{inspect(result1)}"
 
       assert result2 == :ok or is_nil(result2),
              "Expected :ok from unsubscribe, got: #{inspect(result2)}"
@@ -615,8 +615,8 @@ defmodule YellowDog.Netman.EventBusPropertyTest do
       topic = "pub_ret_#{seed}"
       result = EventBus.publish(topic, msg)
 
-      assert result == :ok or match?({:ok, _}, result) or match?({:error, _}, result),
-             "Expected ok-ish from publish, got: #{inspect(result)}"
+      assert result == :ok,
+             "Expected :ok from publish, got: #{inspect(result)}"
     end
   end
 

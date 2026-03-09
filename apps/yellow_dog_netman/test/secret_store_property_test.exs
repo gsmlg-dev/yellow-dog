@@ -447,7 +447,7 @@ defmodule YellowDog.Netman.SecretStorePropertyTest do
     check all(key <- StreamData.binary(min_length: 1, max_length: 30)) do
       result = SecretStore.put(key, "v")
 
-      assert result == :ok or is_nil(result),
+      assert result == :ok,
              "Expected :ok from put, got: #{inspect(result)}"
     end
   end

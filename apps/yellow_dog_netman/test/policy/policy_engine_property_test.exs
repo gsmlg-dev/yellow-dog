@@ -410,8 +410,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
       active = [Map.put(conn, :state, :activated)]
       result = PolicyEngine.default_route(active)
 
-      assert match?({:ok, _}, result) or result == :none,
-             "Expected {:ok, _} or :none from default_route, got: #{inspect(result)}"
+      assert match?({:ok, _}, result),
+             "Expected {:ok, _} from default_route with activated connection, got: #{inspect(result)}"
     end
   end
 
@@ -613,8 +613,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
 
-      assert is_integer(result) or is_nil(result) or is_atom(result),
-             "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
+      assert is_integer(result) or is_float(result),
+             "Expected numeric from effective_priority, got: #{inspect(result)}"
     end
   end
 
@@ -640,8 +640,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
 
-      assert is_integer(result) or is_nil(result) or is_atom(result),
-             "Expected integer/nil/atom from effective_priority, got: #{inspect(result)}"
+      assert is_integer(result) or is_float(result),
+             "Expected numeric from effective_priority, got: #{inspect(result)}"
     end
   end
 
@@ -649,8 +649,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.default_route([])
 
-      assert result == :none or is_binary(result) or is_nil(result),
-             "Expected :none/binary/nil from default_route, got: #{inspect(result)}"
+      assert result == :none or match?({:ok, _}, result),
+             "Expected :none or {:ok, _} from default_route, got: #{inspect(result)}"
     end
   end
 
@@ -696,8 +696,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
 
-      assert not is_nil(result),
-             "Expected non-nil from effective_priority([]), got: nil"
+      assert is_integer(result) or is_float(result),
+             "Expected numeric from effective_priority([]), got: #{inspect(result)}"
     end
   end
 
@@ -705,8 +705,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
 
-      assert not is_nil(result) or is_integer(result) or is_atom(result),
-             "Expected non-nil value, got: #{inspect(result)}"
+      assert is_integer(result) or is_float(result),
+             "Expected numeric value, got: #{inspect(result)}"
     end
   end
 
@@ -732,8 +732,8 @@ defmodule YellowDog.Netman.PolicyEnginePropertyTest do
     check all(_ <- StreamData.constant(:ok)) do
       result = YellowDog.Netman.PolicyEngine.effective_priority([])
 
-      assert is_integer(result) or is_nil(result) or is_atom(result),
-             "Expected integer/nil/atom (r58), got: #{inspect(result)}"
+      assert is_integer(result) or is_float(result),
+             "Expected numeric (r58), got: #{inspect(result)}"
     end
   end
 
