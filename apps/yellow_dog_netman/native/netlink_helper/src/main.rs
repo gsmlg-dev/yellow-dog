@@ -80,6 +80,17 @@ fn main() -> io::Result<()> {
         while let Ok(cmd) = cmd_rx.try_recv() {
             if let Err(e) = commands::handle(&cmd) {
                 eprintln!("command error: {}", e);
+                // Send error back to Elixir so it can log/react
+                let cmd_type = cmd["cmd"].as_str().unwrap_or("unknown");
+                let error_event = serde_json::json!({
+                    "type": "command_error",
+                    "cmd": cmd_type,
+                    "error": e.to_string()
+                });
+                if let Err(we) = protocol::write_message(&error_event) {
+                    eprintln!("failed to send command error to Elixir: {}", we);
+                    return Ok(());
+                }
             }
         }
     }

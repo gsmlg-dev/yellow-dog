@@ -240,7 +240,8 @@ defmodule YellowDog.Netman.Integration.PerformanceTest do
 
       durations =
         for _ <- 1..10 do
-          ReconciliationEngine.reconcile()
+          # Bypass debounce to ensure each reconciliation actually runs
+          send(ReconciliationEngine, :debounced_reconcile)
           assert_receive {:recon_done, duration_ms}, 2000
           duration_ms
         end

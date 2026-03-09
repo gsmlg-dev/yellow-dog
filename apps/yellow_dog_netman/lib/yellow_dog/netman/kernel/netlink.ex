@@ -189,15 +189,25 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   end
 
   defp dispatch_event(event, subscribers) do
-    parsed = parse_event(event)
+    case parse_event(event) do
+      :command_error ->
+        # Already logged in parse_event; don't broadcast to subscribers
+        :ok
 
-    for {pid, _ref} <- subscribers do
-      send(pid, {:netlink_event, parsed})
+      parsed ->
+        for {pid, _ref} <- subscribers do
+          send(pid, {:netlink_event, parsed})
+        end
     end
   end
 
   defp reconnect_delay(attempts) do
     min(@port_reconnect_base_ms * Bitwise.bsl(1, attempts), @port_reconnect_max_ms)
+  end
+
+  defp parse_event(%{"type" => "command_error", "cmd" => cmd, "error" => error}) do
+    Logger.warning("Netlink command failed: #{cmd} — #{error}")
+    :command_error
   end
 
   defp parse_event(%{"type" => "link_change"} = e), do: {:link_change, e}

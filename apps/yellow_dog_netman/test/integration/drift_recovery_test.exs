@@ -168,9 +168,9 @@ defmodule YellowDog.Netman.Integration.DriftRecoveryTest do
     MockNetlink.link_up(iface, carrier: true)
     Process.sleep(50)
 
-    # Run 3 reconciliation cycles
+    # Run 3 reconciliation cycles — bypass debounce to ensure each runs
     for _ <- 1..3 do
-      ReconciliationEngine.reconcile()
+      send(ReconciliationEngine, :debounced_reconcile)
       Process.sleep(200)
     end
 
@@ -209,7 +209,8 @@ defmodule YellowDog.Netman.Integration.DriftRecoveryTest do
     MockNetlink.link_up(iface, carrier: true)
     Process.sleep(50)
 
-    ReconciliationEngine.reconcile()
+    # Bypass debounce to ensure reconciliation actually runs
+    send(ReconciliationEngine, :debounced_reconcile)
 
     assert_receive {:recon_stop, measurements}, 1000
     assert is_integer(measurements.diffs_count)
