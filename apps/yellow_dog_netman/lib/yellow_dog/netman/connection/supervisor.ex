@@ -7,6 +7,7 @@ defmodule YellowDog.Netman.Connection.Supervisor do
 
   alias YellowDog.Netman.Connection.FSM
 
+  @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
