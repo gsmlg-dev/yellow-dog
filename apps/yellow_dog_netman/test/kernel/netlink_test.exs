@@ -292,4 +292,62 @@ defmodule YellowDog.Netman.Kernel.NetlinkTest do
       :sys.replace_state(pid, fn _state -> original_state end)
     end
   end
+
+  describe "command_error event handling" do
+    @tag :capture_log
+    test "command_error events are logged but not dispatched to subscribers" do
+      Netlink.subscribe()
+      Process.sleep(20)
+
+      send(Netlink, {:mock_event, %{
+        "type" => "command_error",
+        "cmd" => "link_set",
+        "error" => "ip link set eth99 up failed (exit status: 1): Cannot find device"
+      }})
+
+      # Give the GenServer time to process the event
+      Process.sleep(50)
+
+      # Subscriber should NOT receive command_error events
+      refute_receive {:netlink_event, _}, 100
+    end
+
+    @tag :capture_log
+    test "command_error with missing fields falls through to :unknown" do
+      Netlink.subscribe()
+      Process.sleep(20)
+
+      # Missing "cmd" field — won't match the command_error clause
+      send(Netlink, {:mock_event, %{
+        "type" => "command_error",
+        "error" => "some error"
+      }})
+
+      assert_receive {:netlink_event, {:unknown, %{"type" => "command_error"}}}, 500
+    end
+
+    @tag :capture_log
+    test "normal events still dispatch after command_error" do
+      Netlink.subscribe()
+      Process.sleep(20)
+
+      # First send a command_error (should be filtered)
+      send(Netlink, {:mock_event, %{
+        "type" => "command_error",
+        "cmd" => "addr_add",
+        "error" => "failed"
+      }})
+
+      # Then send a normal event
+      send(Netlink, {:mock_event, %{
+        "type" => "link_change",
+        "action" => "add",
+        "interface" => "cmd_err_test"
+      }})
+
+      # Should only receive the link_change, not the command_error
+      assert_receive {:netlink_event, {:link_change, %{"interface" => "cmd_err_test"}}}, 500
+      refute_receive {:netlink_event, :command_error}, 100
+    end
+  end
 end
