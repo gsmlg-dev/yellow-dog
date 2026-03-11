@@ -8,6 +8,7 @@ defmodule YellowDog.Resolved.Cache do
 
   @table :resolved_dns_cache
   @stats_table :resolved_cache_stats
+  @lru_table :resolved_cache_lru
 
   # Client API
 
@@ -21,9 +22,11 @@ defmodule YellowDog.Resolved.Cache do
     now = System.monotonic_time(:second)
 
     case :ets.lookup(@table, key) do
-      [{^key, response, expires_at, _inserted_at}] when expires_at > now ->
+      [{^key, response, expires_at, last_access}] when expires_at > now ->
         :ets.update_counter(@stats_table, :hits, 1)
         # Update last access time for LRU
+        :ets.delete(@lru_table, {last_access, key})
+        :ets.insert(@lru_table, {{now, key}})
         :ets.update_element(@table, key, {4, now})
 
         :telemetry.execute(
@@ -34,9 +37,10 @@ defmodule YellowDog.Resolved.Cache do
 
         {:hit, response}
 
-      [{^key, _response, _expires_at, _inserted_at}] ->
+      [{^key, _response, _expires_at, last_access}] ->
         # Expired - lazy eviction
         :ets.delete(@table, key)
+        :ets.delete(@lru_table, {last_access, key})
         :ets.update_counter(@stats_table, :misses, 1)
 
         :telemetry.execute(
@@ -117,6 +121,7 @@ defmodule YellowDog.Resolved.Cache do
   def init(config) do
     table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
     stats = :ets.new(@stats_table, [:named_table, :set, :public])
+    :ets.new(@lru_table, [:named_table, :ordered_set, :public])
 
     :ets.insert(stats, [
       {:hits, 0},
@@ -163,12 +168,19 @@ defmodule YellowDog.Resolved.Cache do
     now = System.monotonic_time(:second)
     expires_at = now + clamped_ttl
 
+    # Remove old LRU entry if key already exists
+    case :ets.lookup(@table, key) do
+      [{^key, _, _, old_access}] -> :ets.delete(@lru_table, {old_access, key})
+      [] -> :ok
+    end
+
     # Enforce max entries via LRU eviction
     if :ets.info(@table, :size) >= state.max_entries do
       evict_lru()
     end
 
     :ets.insert(@table, {key, response, expires_at, now})
+    :ets.insert(@lru_table, {{now, key}})
 
     :telemetry.execute(
       [:yellow_dog, :resolved, :cache, :store],
@@ -183,6 +195,7 @@ defmodule YellowDog.Resolved.Cache do
   def handle_call(:flush, _from, state) do
     count = :ets.info(@table, :size)
     :ets.delete_all_objects(@table)
+    :ets.delete_all_objects(@lru_table)
 
     :telemetry.execute(
       [:yellow_dog, :resolved, :cache, :flush],
@@ -244,36 +257,49 @@ defmodule YellowDog.Resolved.Cache do
   end
 
   defp evict_lru do
-    # Find the entry with the oldest access time
-    case :ets.match_object(@table, {:_, :_, :_, :_}) do
-      [] ->
+    # O(log n) eviction using ordered_set LRU index
+    case :ets.first(@lru_table) do
+      :"$end_of_table" ->
         :ok
 
-      entries ->
-        {oldest_key, _, _, _} = Enum.min_by(entries, fn {_, _, _, accessed_at} -> accessed_at end)
-        :ets.delete(@table, oldest_key)
+      {_access_time, key} = lru_key ->
+        :ets.delete(@lru_table, lru_key)
+        :ets.delete(@table, key)
         :ets.update_counter(@stats_table, :evictions, 1)
     end
   end
 
   defp sweep_expired(now) do
-    # Use match_spec to find and delete expired entries
-    match_spec = [{{:_, :_, :"$1", :_}, [{:<, :"$1", now}], [true]}]
-    :ets.select_delete(@table, match_spec)
+    # Collect expired entries to clean up LRU index
+    select_spec = [{{:"$1", :_, :"$2", :"$3"}, [{:<, :"$2", now}], [{{:"$3", :"$1"}}]}]
+    expired_lru_keys = :ets.select(@table, select_spec)
+    Enum.each(expired_lru_keys, &:ets.delete(@lru_table, &1))
+
+    # Delete expired entries from main table
+    delete_spec = [{{:_, :_, :"$1", :_}, [{:<, :"$1", now}], [true]}]
+    :ets.select_delete(@table, delete_spec)
   end
 
   defp flush_domain_entries(domain) do
     normalized = String.downcase(String.trim_trailing(domain, "."))
-    match_spec = [{{{normalized, :_}, :_, :_, :_}, [], [true]}]
-    :ets.select_delete(@table, match_spec)
+
+    entries = :ets.match_object(@table, {{normalized, :_}, :_, :_, :_})
+
+    Enum.each(entries, fn {key, _, _, access_time} ->
+      :ets.delete(@lru_table, {access_time, key})
+      :ets.delete(@table, key)
+    end)
+
+    length(entries)
   end
 
   defp do_flush_pattern("*." <> suffix) do
     normalized_suffix = String.downcase(suffix)
 
     :ets.foldl(
-      fn {{domain, _type} = key, _, _, _}, count ->
+      fn {{domain, _type} = key, _, _, access_time}, count ->
         if domain == normalized_suffix or String.ends_with?(domain, "." <> normalized_suffix) do
+          :ets.delete(@lru_table, {access_time, key})
           :ets.delete(@table, key)
           count + 1
         else
