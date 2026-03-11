@@ -136,6 +136,19 @@ defmodule YellowDog.Dhcpv4.OptionParserTest do
       result = OptionParser.extract_common(options)
       assert result.requested_ip == nil
     end
+
+    test "strips null terminator from hostname (RFC 2132 §3.14 backward compat)" do
+      # Some legacy clients append <<0>> to hostname option
+      options = [%{type: 12, length: 8, value: "client1" <> <<0>>}]
+      result = OptionParser.extract_common(options)
+      assert result.hostname == "client1"
+    end
+
+    test "hostname without null terminator is unchanged" do
+      options = [%{type: 12, length: 7, value: "client1"}]
+      result = OptionParser.extract_common(options)
+      assert result.hostname == "client1"
+    end
   end
 
   describe "extract_message_type/1" do

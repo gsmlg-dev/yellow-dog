@@ -631,7 +631,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: inform.hlen,
       xid: inform.xid,
       flags: inform.flags,
-      ciaddr: client_ip,
+      # RFC 2131 §4.3.5: unicast ACK to the address in ciaddr; fall back to
+      # the UDP source address only when ciaddr is zero (direct-on-link client).
+      ciaddr: if(inform.ciaddr != {0, 0, 0, 0}, do: inform.ciaddr, else: client_ip),
       siaddr: pool.gateway,
       giaddr: inform.giaddr,
       chaddr: inform.chaddr,
