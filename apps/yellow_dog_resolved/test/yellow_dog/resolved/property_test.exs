@@ -222,6 +222,40 @@ defmodule YellowDog.Resolved.PropertyTest do
     end
   end
 
+  # Property: flush_pattern("*.suffix") flushes only matching entries
+  property "flush_pattern only removes entries matching the wildcard suffix" do
+    check all(
+            suffix <- dns_label(),
+            matching_sub <- dns_label(),
+            non_matching <- dns_domain(),
+            max_runs: 30
+          ) do
+      matching_domain = "#{matching_sub}.#{suffix}"
+      # Make sure non_matching doesn't accidentally match
+      non_matching_safe =
+        if String.ends_with?(String.downcase(non_matching), ".#{String.downcase(suffix)}") or
+             String.downcase(non_matching) == String.downcase(suffix) do
+          "totally.unrelated.domain"
+        else
+          non_matching
+        end
+
+      Cache.store(matching_domain, :a, %{m: true}, 300)
+      Cache.store(non_matching_safe, :a, %{m: false}, 300)
+      Process.sleep(5)
+
+      Cache.flush_pattern("*.#{suffix}")
+
+      # Matching entry should be flushed
+      assert :miss = Cache.lookup(matching_domain, :a)
+      # Non-matching should still be present
+      assert {:hit, _} = Cache.lookup(non_matching_safe, :a)
+
+      # Clean up
+      Cache.flush()
+    end
+  end
+
   # Helpers
 
   defp build_fake_response(domain, type) do
