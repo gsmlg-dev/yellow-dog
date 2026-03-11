@@ -109,21 +109,21 @@ defmodule YellowDog.Resolved.Router do
   defp forward_and_cache(query, domain, type, config) do
     case forward_query(query, domain, type, config) do
       {:forward, response} ->
-        # Cache the response
-        ttl = extract_ttl(response)
+        cache_config = Map.get(config, :cache, %{})
 
-        if ttl > 0 do
-          # Check for NXDOMAIN — use negative TTL
-          cache_config = Map.get(config, :cache, %{})
+        cond do
+          # NXDOMAIN — cache with negative TTL
+          response.header.rcode == DNS.Message.RCode.nx_domain() ->
+            negative_ttl = Map.get(cache_config, :negative_ttl_s, 60)
+            Cache.store(domain, type, response, negative_ttl)
 
-          actual_ttl =
-            if response.header.rcode == DNS.Message.RCode.nx_domain() do
-              Map.get(cache_config, :negative_ttl_s, 60)
-            else
-              ttl
-            end
+          # Positive response with answers — cache with answer TTL
+          extract_ttl(response) > 0 ->
+            Cache.store(domain, type, response, extract_ttl(response))
 
-          Cache.store(domain, type, response, actual_ttl)
+          # No answers and not NXDOMAIN (e.g. NOERROR with 0 records) — don't cache
+          true ->
+            :ok
         end
 
         {:forward, response}

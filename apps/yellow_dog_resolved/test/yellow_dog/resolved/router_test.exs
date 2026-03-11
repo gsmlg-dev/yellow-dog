@@ -178,6 +178,50 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "NXDOMAIN caching through Router" do
+    test "NXDOMAIN stored in cache is served on subsequent queries" do
+      domain = "nxdomain-router.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+      domain_str = to_string(question.name)
+
+      # Simulate what forward_and_cache should do for NXDOMAIN:
+      # store with negative_ttl_s (30 in test config)
+      nxdomain = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.nx_domain(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      Cache.store(domain_str, question.type, nxdomain, 30)
+      Process.sleep(10)
+
+      # Router should serve from cache with NXDOMAIN rcode
+      response = Router.resolve(query)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+      assert response.header.id == query.header.id
+
+      # Verify it came from cache counter
+      stats = Cache.stats()
+      assert stats.hits >= 1
+    end
+  end
+
   describe "resolve/1 with cache disabled" do
     test "bypasses cache and forwards directly" do
       # Stop the default Config and start with cache disabled
