@@ -77,10 +77,16 @@ defmodule YellowDog.Resolved.Handler do
   defp handle_query(client_ip, client_port, data, state) do
     try do
       case DNS.Message.from_iodata(data) do
-        %DNS.Message{} = query ->
+        %DNS.Message{header: %{qr: 0}} = query ->
           response = Router.resolve(query)
           response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
+
+        %DNS.Message{header: %{qr: 1}} ->
+          # Silently discard DNS response packets — the resolver only accepts
+          # queries (QR=0).  Sending a reply to a response would be incorrect
+          # and could participate in reflection amplification.
+          Logger.debug("[Resolved] Received DNS response on query port from #{:inet.ntoa(client_ip)} — discarding")
 
         _ ->
           emit_malformed_packet(client_ip)

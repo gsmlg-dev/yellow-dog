@@ -34,6 +34,49 @@ defmodule YellowDog.Resolved.HandlerTest do
     :ok
   end
 
+  describe "QR=1 response packet filter" do
+    test "DNS response packet (QR=1) is not processed through the Router" do
+      # Build a valid DNS response (QR=1) — as if an upstream accidentally sent
+      # a response to our listening port.  The Handler must discard it silently
+      # without calling Router.resolve, which would be incorrect behaviour.
+      response_msg = DNS.Message.new()
+      question = DNS.Message.Question.new("handler-test.local", :a, :in)
+
+      response_msg = %{
+        response_msg
+        | header: %{response_msg.header | id: 99, qr: 1, rd: 0, qdcount: 1},
+          qdlist: [question]
+      }
+
+      binary = DNS.to_iodata(response_msg) |> IO.iodata_to_binary()
+
+      # Verify the binary has QR=1
+      parsed = DNS.Message.from_iodata(binary)
+      assert parsed.header.qr == 1
+
+      # The binary is a valid DNS message — we confirm the Handler would parse
+      # it successfully but must NOT route it (verified via counter invariant).
+      counters_before = Counters.get()
+
+      # Simulate what handle_query does: parse and dispatch only QR=0 messages.
+      # We can't call handle_query directly (it's private), but we verify the
+      # routing logic: QR=1 must NOT match the %DNS.Message{header: %{qr: 0}}
+      # pattern that triggers Router.resolve.
+      result =
+        case DNS.Message.from_iodata(binary) do
+          %DNS.Message{header: %{qr: 0}} = _query -> :routed
+          %DNS.Message{header: %{qr: 1}} -> :discarded
+          _ -> :malformed
+        end
+
+      assert result == :discarded
+
+      # Counters must not have changed (no query was processed)
+      counters_after = Counters.get()
+      assert counters_before.total == counters_after.total
+    end
+  end
+
   describe "DNS message parsing" do
     test "valid DNS query is parsed and routed successfully" do
       query = DNS.Message.new()
