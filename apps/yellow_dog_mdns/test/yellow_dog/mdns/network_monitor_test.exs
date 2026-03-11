@@ -290,6 +290,40 @@ defmodule YellowDog.Mdns.NetworkMonitorTest do
       assert NetworkMonitor.get_discovered_service("unknown._http._tcp.local") == nil
     end
 
+    # RFC 6762 §11.3: Goodbye packets (TTL=0) must remove cached records and services
+    test "Goodbye PTR (TTL=0) removes the service from the registry" do
+      # First announce the service
+      ptr = create_ptr_record("_http._tcp.local", "goodbyehost._http._tcp.local")
+      srv = create_srv_record("goodbyehost._http._tcp.local", "goodbyehost.local", 80)
+      NetworkMonitor.cache_response(create_dns_message(answers: [ptr, srv]), {192, 168, 1, 99}, 5353)
+      :timer.sleep(10)
+
+      assert NetworkMonitor.get_discovered_service("goodbyehost._http._tcp.local") != nil
+
+      # Now send a Goodbye (TTL=0 PTR) for the same service instance
+      goodbye_ptr = create_ptr_record("_http._tcp.local", "goodbyehost._http._tcp.local", 0)
+      NetworkMonitor.cache_response(create_dns_message(answers: [goodbye_ptr]), {192, 168, 1, 99}, 5353)
+      :timer.sleep(10)
+
+      assert NetworkMonitor.get_discovered_service("goodbyehost._http._tcp.local") == nil
+    end
+
+    test "Goodbye record (TTL=0) removes A record from cache" do
+      # First cache an A record
+      a_record = create_a_record("goodbye.local", {10, 0, 0, 1})
+      NetworkMonitor.cache_response(create_dns_message(answers: [a_record]), {10, 0, 0, 1}, 5353)
+      :timer.sleep(10)
+
+      assert NetworkMonitor.query("goodbye.local") != []
+
+      # Send Goodbye (TTL=0) for same record
+      goodbye_a = create_a_record("goodbye.local", {10, 0, 0, 1}, 0)
+      NetworkMonitor.cache_response(create_dns_message(answers: [goodbye_a]), {10, 0, 0, 1}, 5353)
+      :timer.sleep(10)
+
+      assert NetworkMonitor.query("goodbye.local") == []
+    end
+
     test "search_services/1 filters by type" do
       # Add HTTP service
       http_ptr = create_ptr_record("_http._tcp.local", "web._http._tcp.local")

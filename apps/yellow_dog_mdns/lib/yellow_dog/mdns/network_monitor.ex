@@ -385,19 +385,24 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp cache_record(record, message, source_ip, source_port, received_at, section) do
     domain_key = normalize_domain(to_string(record.name))
 
-    entry = %{
-      domain: to_string(record.name),
-      record_type: record.type,
-      record: record,
-      message: message,
-      source_ip: source_ip,
-      source_port: source_port,
-      received_at: received_at,
-      ttl: max(record.ttl, @default_ttl),
-      section: section
-    }
+    # RFC 6762 §11.3: TTL=0 is a Goodbye packet — remove from cache, do not re-insert.
+    if record.ttl == 0 do
+      :ets.delete(@response_table, domain_key)
+    else
+      entry = %{
+        domain: to_string(record.name),
+        record_type: record.type,
+        record: record,
+        message: message,
+        source_ip: source_ip,
+        source_port: source_port,
+        received_at: received_at,
+        ttl: max(record.ttl, @default_ttl),
+        section: section
+      }
 
-    :ets.insert(@response_table, {domain_key, entry})
+      :ets.insert(@response_table, {domain_key, entry})
+    end
   end
 
   defp mark_queries_as_answered(message) do
@@ -426,6 +431,14 @@ defmodule YellowDog.Mdns.NetworkMonitor do
     # Extract service information from PTR, SRV, TXT records
     # Group records by service instance
 
+    # RFC 6762 §11.3: PTR records with TTL=0 are Goodbye packets — remove the service.
+    Enum.each(message.anlist, fn record ->
+      if to_string(record.type) == "PTR" and record.ttl == 0 do
+        service_instance = to_string(record.data)
+        :ets.delete(@services_table, service_instance)
+      end
+    end)
+
     services = extract_services_from_message(message, source_ip)
 
     Enum.each(services, &update_or_create_service/1)
@@ -434,9 +447,11 @@ defmodule YellowDog.Mdns.NetworkMonitor do
   defp extract_services_from_message(message, source_ip) do
     now = System.system_time(:second)
 
-    # Find PTR records (service type enumeration)
+    # Find PTR records (service type enumeration) — only non-Goodbye (TTL > 0)
     ptr_records =
-      Enum.filter(message.anlist, fn record -> to_string(record.type) == "PTR" end)
+      Enum.filter(message.anlist, fn record ->
+        to_string(record.type) == "PTR" and record.ttl > 0
+      end)
 
     # For each PTR, try to find corresponding SRV, TXT, A/AAAA records
     Enum.flat_map(ptr_records, fn ptr ->
