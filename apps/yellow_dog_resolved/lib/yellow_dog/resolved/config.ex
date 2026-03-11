@@ -289,13 +289,14 @@ defmodule YellowDog.Resolved.Config do
   defp validate_rule_value(:unknown, _value), do: :error
   defp validate_rule_value(_type, _value), do: :ok
 
-  defp parse_match_pattern("*." <> suffix), do: {:suffix, String.downcase(suffix)}
+  defp parse_match_pattern("*." <> suffix),
+    do: {:suffix, suffix |> String.downcase() |> String.trim_trailing(".")}
 
   defp parse_match_pattern(pattern) do
     if String.ends_with?(pattern, "*") do
       {:prefix, String.downcase(String.trim_trailing(pattern, "*"))}
     else
-      {:exact, String.downcase(pattern)}
+      {:exact, pattern |> String.downcase() |> String.trim_trailing(".")}
     end
   end
 
