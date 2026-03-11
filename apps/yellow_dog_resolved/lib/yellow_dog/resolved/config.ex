@@ -336,10 +336,33 @@ defmodule YellowDog.Resolved.Config do
   defp parse_ip(_), do: {127, 0, 0, 1}
 
   defp parse_upstreams(upstreams) when is_list(upstreams) do
-    Enum.map(upstreams, &parse_ip/1)
+    Enum.reduce(upstreams, [], fn upstream, acc ->
+      case parse_upstream_ip(upstream) do
+        {:ok, ip} ->
+          acc ++ [ip]
+
+        :error ->
+          Logger.warning("[Resolved] Skipping invalid upstream address: #{inspect(upstream)}")
+          acc
+      end
+    end)
   end
 
   defp parse_upstreams(_), do: [{1, 1, 1, 1}, {8, 8, 8, 8}]
+
+  # Returns {:ok, ip_tuple} or :error — used for upstream list validation so that
+  # invalid entries are skipped (with a warning) rather than silently replaced with
+  # the loopback address, which could cause DNS query loops.
+  defp parse_upstream_ip(ip) when is_tuple(ip), do: {:ok, ip}
+
+  defp parse_upstream_ip(ip) when is_binary(ip) do
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, ip_tuple} -> {:ok, ip_tuple}
+      _ -> :error
+    end
+  end
+
+  defp parse_upstream_ip(_), do: :error
 
   defp propagate_config(new_config, old_config) do
     # Notify Forwarder if upstream settings changed

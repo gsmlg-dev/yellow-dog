@@ -473,6 +473,54 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert config.intercept_rules == []
     end
 
+    test "invalid upstream IP string is skipped with a warning" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => ["8.8.8.8", "not-an-ip", "1.1.1.1"]
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          config = Config.parse_toml_for_test(toml)
+          # Only valid IPs should appear in the upstreams list
+          assert config.upstreams == [{8, 8, 8, 8}, {1, 1, 1, 1}]
+        end)
+
+      assert log =~ "Skipping invalid upstream"
+      assert log =~ "not-an-ip"
+    end
+
+    test "all-invalid upstream list results in empty upstreams" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => ["bad-ip", "also-bad"]
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      capture_log(fn ->
+        config = Config.parse_toml_for_test(toml)
+        assert config.upstreams == []
+      end)
+    end
+
+    test "valid IPv6 upstream is accepted" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => ["2001:4860:4860::8888"]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.upstreams) == 1
+      [upstream] = config.upstreams
+      assert tuple_size(upstream) == 8
+    end
+
     test "valid PTR rule is parsed with type :ptr" do
       toml = %{
         "resolved" => %{
