@@ -19,7 +19,6 @@ defmodule YellowDog.Dhcpv4.Handler do
     ACL,
     ConflictResolver,
     CustomOptions,
-    Ipv4Util,
     LeaseManager,
     OptionParser,
     RateLimiter

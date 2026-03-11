@@ -352,8 +352,9 @@ defmodule YellowDog.Dhcpv6.LeaseStorage do
   ## Returns
 
   - `:ok` - Successfully deleted or didn't exist
+  - `{:error, reason}` - Mnesia transaction aborted
   """
-  @spec delete(duid(), iaid()) :: :ok
+  @spec delete(duid(), iaid()) :: :ok | {:error, term()}
   def delete(duid, iaid) do
     lease_key = make_lease_key(duid, iaid)
 

@@ -281,8 +281,9 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
   ## Returns
 
   - `:ok` - Successfully deleted or didn't exist
+  - `{:error, reason}` - Mnesia transaction aborted
   """
-  @spec delete(mac_address()) :: :ok
+  @spec delete(mac_address()) :: :ok | {:error, term()}
   def delete(mac_address) do
     transaction = fn ->
       :mnesia.delete(@table_name, mac_address, :write)
