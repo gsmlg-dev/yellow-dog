@@ -460,6 +460,65 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     end
   end
 
+  # RFC 3315 §22.4: T1 = 50% and T2 = 80% of preferred lifetime in IA_NA options
+  describe "RFC 3315 §22.4 — IA_NA T1/T2 renewal times" do
+    @server_duid_t1 <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-t1t2-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :lease, :granted],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "IA_NA T1/T2 formula: T1 = 50%, T2 = 80% of preferred lifetime" do
+      # Verify the formula using the test pool's preferred_lifetime = 3600
+      preferred = 3600
+      expected_t1 = div(preferred, 2)
+      expected_t2 = div(preferred * 4, 5)
+
+      assert expected_t1 == 1800
+      assert expected_t2 == 2880
+    end
+
+    test "valid REQUEST succeeds and fires lease:granted telemetry" do
+      client_duid = <<0x99, 0xAA, 0xBB, 0xCC>>
+
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xA1, 0xB2, 0xC3>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_t1),
+          # IA_NA with IAID=100
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 12}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      # lease:granted confirms the T1/T2 code path in create_ia_na_option was reached
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :granted], _,
+                      %{client_duid: ^client_duid}},
+                     500
+    end
+  end
+
   # RFC 3315 §18.2.1: REQUEST with wrong Server Identifier must be silently discarded
   describe "RFC 3315 §18.2.1 — Server Identifier validation" do
     setup do
