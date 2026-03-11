@@ -64,6 +64,14 @@ defmodule YellowDog.Resolved.RateLimiter do
   end
 
   @impl true
+  def handle_cast({:update_config, config}, state) do
+    rate_config = Map.get(config, :rate_limit, %{})
+    :persistent_term.put({__MODULE__, :burst}, Map.get(rate_config, :burst, @default_burst))
+    :persistent_term.put({__MODULE__, :rate}, Map.get(rate_config, :rate, @default_rate))
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:sweep, state) do
     sweep_stale()
     schedule_sweep()

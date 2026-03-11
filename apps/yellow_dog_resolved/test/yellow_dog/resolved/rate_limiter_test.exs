@@ -63,6 +63,27 @@ defmodule YellowDog.Resolved.RateLimiterTest do
     end
   end
 
+  describe "update_config/1 hot-reload" do
+    test "update_config cast changes burst and rate via persistent_term", %{pid: _pid} do
+      ip = {10, 1, 0, 1}
+
+      # With initial config: burst=5, rate=2 — exhaust the burst
+      for _ <- 1..5, do: RateLimiter.allow?(ip)
+      assert :rate_limited = RateLimiter.allow?(ip)
+
+      # Hot-reload to burst=10
+      GenServer.cast(RateLimiter, {:update_config, %{rate_limit: %{burst: 10, rate: 2}}})
+      # Ensure cast is processed
+      :sys.get_state(RateLimiter)
+
+      # Next request from a fresh IP should allow up to burst=10
+      ip2 = {10, 1, 0, 2}
+      results = for _ <- 1..10, do: RateLimiter.allow?(ip2)
+      assert Enum.all?(results, &(&1 == :ok))
+      assert :rate_limited = RateLimiter.allow?(ip2)
+    end
+  end
+
   describe "telemetry" do
     test "rate_limited telemetry emitted in handler integration" do
       # This tests the telemetry event name is correct

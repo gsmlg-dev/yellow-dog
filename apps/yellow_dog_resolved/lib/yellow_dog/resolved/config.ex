@@ -337,6 +337,13 @@ defmodule YellowDog.Resolved.Config do
         GenServer.cast(YellowDog.Resolved.Cache, {:update_config, new_config.cache})
       end
     end
+
+    # Notify RateLimiter if rate_limit settings changed
+    if new_config.rate_limit != old_config.rate_limit do
+      if Process.whereis(YellowDog.Resolved.RateLimiter) do
+        GenServer.cast(YellowDog.Resolved.RateLimiter, {:update_config, new_config})
+      end
+    end
   end
 
   defp maybe_start_watcher(%{config_path: nil} = state), do: state
