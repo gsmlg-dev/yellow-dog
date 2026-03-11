@@ -8,6 +8,8 @@ defmodule YellowDog.Dhcpv4.AddressPool do
 
   alias YellowDog.Dhcpv4.{Ipv4Util, MacFormat}
 
+  require Logger
+
   @type ip_address :: {0..255, 0..255, 0..255, 0..255}
   @type mac_address :: binary()
   @type ip_range :: {ip_address(), ip_address()}
@@ -174,7 +176,19 @@ defmodule YellowDog.Dhcpv4.AddressPool do
     # Check for static reservation first
     case get_static_reservation(pool, mac) do
       {:ok, ip} ->
-        {:ok, ip}
+        # Guard against allocating a reserved IP that is currently leased to a different
+        # client.  This can happen when a reservation is added after another client has
+        # already obtained a dynamic lease for the same address.
+        if MapSet.member?(allocated_ips, ip) do
+          Logger.warning(
+            "[DHCPv4] Static reservation #{inspect(ip)} for #{inspect(mac)} is already " <>
+              "allocated to another client — cannot assign"
+          )
+
+          {:error, :pool_exhausted}
+        else
+          {:ok, ip}
+        end
 
       :not_found ->
         # Find next available IP across all ranges, excluding excluded ranges
