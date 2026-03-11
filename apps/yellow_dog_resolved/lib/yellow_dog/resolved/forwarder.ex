@@ -142,6 +142,10 @@ defmodule YellowDog.Resolved.Forwarder do
         {:noreply, state}
 
       pending ->
+        # Cancel the process timer — it may still be live if the Task-sent
+        # {:timeout, txn_id} arrived before the timer fired.
+        Process.cancel_timer(pending.timer_ref)
+
         # Increment failure count for this upstream
         state = increment_failure(state, pending.upstream)
 
@@ -153,8 +157,13 @@ defmodule YellowDog.Resolved.Forwarder do
           upstream = Enum.at(upstreams, next_index)
           state = %{state | pending: Map.delete(state.pending, txn_id)}
 
+          # Allocate a fresh txn_id so the stale process timer for the previous
+          # attempt (which fires timeout_ms + 500ms after the Task already gave up)
+          # cannot match this new pending entry and prematurely abort it.
+          {new_txn_id, state} = allocate_txn_id(state)
+
           state =
-            send_to_upstream(pending.query, upstream, next_index, txn_id, pending.from, state)
+            send_to_upstream(pending.query, upstream, next_index, new_txn_id, pending.from, state)
 
           {:noreply, state}
         else

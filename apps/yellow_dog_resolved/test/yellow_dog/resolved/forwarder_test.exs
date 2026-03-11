@@ -599,6 +599,53 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "failover stale-timer safety" do
+    test "failover allocates a fresh txn_id so stale process timer cannot abort second attempt" do
+      # Two unreachable upstreams; first will timeout, triggering failover to second.
+      config = %{
+        upstreams: [{127, 0, 0, 2}, {127, 0, 0, 3}],
+        upstream_timeout_ms: 300,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      query = build_query("stale-timer.example.com")
+      task = Task.async(fn -> Forwarder.forward(query, 5000) end)
+
+      # Wait for the first attempt to be registered
+      Process.sleep(20)
+      state = :sys.get_state(pid)
+      assert map_size(state.pending) == 1
+      [first_txn_id | _] = Map.keys(state.pending)
+
+      # Manually trigger the first timeout (simulate Task sending it early)
+      send(pid, {:timeout, first_txn_id})
+
+      # Wait for failover to second upstream to be set up
+      Process.sleep(20)
+
+      state = :sys.get_state(pid)
+      assert map_size(state.pending) == 1
+      [second_txn_id | _] = Map.keys(state.pending)
+
+      # The failover MUST use a different txn_id so the stale process timer
+      # for first_txn_id cannot match the second pending entry.
+      assert second_txn_id != first_txn_id
+
+      # Inject the stale timer message (old process timer fires for first_txn_id)
+      send(pid, {:timeout, first_txn_id})
+      Process.sleep(10)
+
+      # Second pending entry must still be alive — stale timer was ignored
+      state = :sys.get_state(pid)
+      assert Map.has_key?(state.pending, second_txn_id)
+
+      Task.await(task, 3000)
+      GenServer.stop(pid)
+    end
+  end
+
   describe "latency EMA calculation" do
     test "latency EMA updated on successful response" do
       upstream = {127, 0, 0, 1}
