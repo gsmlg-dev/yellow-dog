@@ -396,4 +396,196 @@ defmodule YellowDog.Resolved.ForwarderTest do
       GenServer.stop(pid)
     end
   end
+
+  describe "failure count tracking" do
+    test "increments failure count on timeout" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 100,
+        upstream_failure_threshold: 5
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      query = build_query("failure-count.example.com")
+      # Forward to unreachable upstream — will timeout
+      {:error, :timeout} = Forwarder.forward(query, 2000)
+
+      state = :sys.get_state(pid)
+      assert Map.get(state.failure_counts, {127, 0, 0, 1}, 0) >= 1
+
+      GenServer.stop(pid)
+    end
+
+    test "resets failure count on successful response" do
+      upstream = {127, 0, 0, 1}
+
+      config = %{
+        upstreams: [upstream],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 5
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Inject a pre-existing failure count
+      :sys.replace_state(pid, fn state ->
+        %{state | failure_counts: %{upstream => 3}}
+      end)
+
+      assert :sys.get_state(pid).failure_counts == %{upstream => 3}
+
+      # Forward a query asynchronously so it registers in pending
+      query = build_query("reset-failure.example.com")
+
+      task = Task.async(fn -> Forwarder.forward(query, 3000) end)
+      Process.sleep(10)
+
+      # Grab the allocated txn_id from pending
+      state = :sys.get_state(pid)
+      [txn_id | _] = Map.keys(state.pending)
+
+      # Build a valid DNS response using that txn_id
+      response_binary = build_response(query, txn_id)
+      send(pid, {:forward_response, txn_id, response_binary, upstream})
+
+      assert {:ok, _response} = Task.await(task, 1000)
+
+      # Failure count should be reset for this upstream
+      state = :sys.get_state(pid)
+      assert Map.get(state.failure_counts, upstream, 0) == 0
+
+      GenServer.stop(pid)
+    end
+
+    test "healthy upstreams tried before degraded" do
+      upstream_a = {10, 0, 0, 1}
+      upstream_b = {10, 0, 0, 2}
+
+      config = %{
+        upstreams: [upstream_a, upstream_b],
+        upstream_timeout_ms: 100,
+        upstream_failure_threshold: 2
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Degrade upstream_a by injecting failure count >= threshold
+      :sys.replace_state(pid, fn state ->
+        %{state | failure_counts: %{upstream_a => 3}}
+      end)
+
+      # The first upstream tried should be upstream_b (the healthy one)
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :start]
+        ])
+
+      query = build_query("degraded-first.example.com")
+      Forwarder.forward(query, 2000)
+
+      assert_received {[:yellow_dog, :resolved, :forward, :start], ^ref, %{},
+                       %{upstream: ^upstream_b}}
+
+      GenServer.stop(pid)
+    end
+  end
+
+  describe "latency EMA calculation" do
+    test "latency EMA updated on successful response" do
+      upstream = {127, 0, 0, 1}
+
+      config = %{
+        upstreams: [upstream],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 5
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      query = build_query("ema-test.example.com")
+      task = Task.async(fn -> Forwarder.forward(query, 3000) end)
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      [txn_id | _] = Map.keys(state.pending)
+
+      response_binary = build_response(query, txn_id)
+      send(pid, {:forward_response, txn_id, response_binary, upstream})
+
+      assert {:ok, _} = Task.await(task, 1000)
+
+      # Latency EMA should now be populated for the upstream
+      latencies = Forwarder.upstream_latencies()
+      assert is_float(Map.get(latencies, upstream))
+      assert Map.get(latencies, upstream) > 0.0
+
+      GenServer.stop(pid)
+    end
+
+    test "EMA blends previous and current latency with alpha=0.3" do
+      upstream = {127, 0, 0, 1}
+
+      config = %{
+        upstreams: [upstream],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 5
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Pre-inject a latency EMA value
+      :sys.replace_state(pid, fn state ->
+        %{state | latencies: %{upstream => 1000.0}}
+      end)
+
+      # Trigger a successful response — inject via pending state trick
+      query = build_query("ema-blend.example.com")
+      task = Task.async(fn -> Forwarder.forward(query, 3000) end)
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      [txn_id | _] = Map.keys(state.pending)
+
+      # Override sent_at to control duration; inject response
+      :sys.replace_state(pid, fn state ->
+        pending = Map.get(state.pending, txn_id)
+        # sent_at in the past by 2000 µs → duration will be ~2000 µs
+        %{state | pending: Map.put(state.pending, txn_id, %{pending | sent_at: System.monotonic_time(:microsecond) - 2000})}
+      end)
+
+      response_binary = build_response(query, txn_id)
+      send(pid, {:forward_response, txn_id, response_binary, upstream})
+      assert {:ok, _} = Task.await(task, 1000)
+
+      # EMA = 0.3 * ~2000 + 0.7 * 1000.0 = ~600 + 700 = ~1300
+      # Allow wide tolerance since duration is measured, not exact
+      latencies = Forwarder.upstream_latencies()
+      new_ema = Map.get(latencies, upstream)
+      assert is_float(new_ema)
+      # Should be between pure old (1000) and pure new duration (closer to 1300)
+      assert new_ema > 900.0 and new_ema < 2500.0
+
+      GenServer.stop(pid)
+    end
+  end
+
+  # Build a valid DNS A response for the given query using the specified txn_id
+  defp build_response(query, txn_id) do
+    name =
+      case query.qdlist do
+        [q | _] -> to_string(q.name)
+        _ -> "example.com"
+      end
+
+    record = DNS.Message.Record.new(name, :a, :in, 300, {93, 184, 216, 34})
+
+    response = %{
+      query
+      | header: %{query.header | id: txn_id, qr: 1, aa: 1, ancount: 1},
+        anlist: [record]
+    }
+
+    DNS.to_iodata(response) |> IO.iodata_to_binary()
+  end
 end
