@@ -59,7 +59,7 @@ defmodule YellowDog.Resolved.ResponseBuilder do
         aa: 1,
         tc: 0,
         rd: query.header.rd,
-        ra: 0,
+        ra: 1,
         z: 0,
         ad: 0,
         cd: 0,

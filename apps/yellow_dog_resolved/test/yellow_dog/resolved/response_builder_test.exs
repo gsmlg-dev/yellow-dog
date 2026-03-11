@@ -113,6 +113,14 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.header.id == query.header.id
     end
 
+    test "sets RA=1 (stub resolver advertises recursion support)" do
+      query = build_query("myapp.test", :a)
+      rule = %{match: {:exact, "myapp.test"}, type: :a, value: "127.0.0.1", ttl: 300}
+
+      response = ResponseBuilder.intercept_response(query, rule)
+      assert response.header.ra == 1
+    end
+
     test "preserves RD flag from query" do
       query = build_query("myapp.test", :a)
       query = %{query | header: %{query.header | rd: 0}}
@@ -167,11 +175,11 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.header.qdcount == 1
     end
 
-    test "sets RA=0" do
+    test "sets RA=1 (recursive resolver advertises recursion support)" do
       query = build_query("example.com")
       response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.no_error())
 
-      assert response.header.ra == 0
+      assert response.header.ra == 1
     end
 
     test "REFUSED rcode is set correctly for rate-limited responses" do
