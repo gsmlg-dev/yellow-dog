@@ -740,6 +740,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     end
   rescue
     e ->
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :boot_options, :callback_error],
+        %{count: 1},
+        %{error: Exception.message(e)}
+      )
+
       Logger.warning("boot_options_fn failed: #{Exception.message(e)}")
       options
   end

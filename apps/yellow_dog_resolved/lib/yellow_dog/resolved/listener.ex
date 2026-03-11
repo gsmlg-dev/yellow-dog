@@ -125,10 +125,11 @@ defmodule YellowDog.Resolved.Handler do
 
   defp emit_malformed_packet(client_ip) do
     Logger.debug("[Resolved] Received malformed DNS packet")
+    Counters.increment(:error)
 
     :telemetry.execute(
       [:yellow_dog, :resolved, :query, :malformed],
-      %{},
+      %{count: 1},
       %{client: client_ip}
     )
   end
