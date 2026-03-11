@@ -98,6 +98,7 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert is_integer(result["data"]["queries_intercepted"])
       assert is_integer(result["data"]["queries_cached"])
       assert is_integer(result["data"]["queries_forwarded"])
+      assert is_integer(result["data"]["queries_error"])
     end
 
     test "ping queries_total equals sum of routing counters" do
@@ -117,11 +118,13 @@ defmodule YellowDog.Resolved.ManagementTest do
       data = result["data"]
 
       assert data["queries_total"] ==
-               data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"]
+               data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"] +
+                 data["queries_error"]
 
       assert data["queries_intercepted"] == 2
       assert data["queries_cached"] == 1
       assert data["queries_forwarded"] == 0
+      assert data["queries_error"] == 0
       assert data["queries_total"] == 3
     end
 

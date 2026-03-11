@@ -84,6 +84,7 @@ defmodule YellowDog.Resolved.Management.Handler do
         "queries_intercepted" => counters.intercepted,
         "queries_cached" => counters.cached,
         "queries_forwarded" => counters.forwarded,
+        "queries_error" => counters.error,
         "rate_limited_tracked_ips" => RateLimiter.tracked_ips()
       }
     }
