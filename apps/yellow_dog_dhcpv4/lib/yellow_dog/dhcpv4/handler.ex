@@ -625,6 +625,8 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp build_dhcp_ack_inform(inform, client_ip, pool) do
+    dns_servers_binary = encode_dns_servers(pool.dns_servers)
+
     Map.merge(DHCPv4.Message.new(), %{
       op: 2,
       htype: inform.htype,
@@ -646,8 +648,12 @@ defmodule YellowDog.Dhcpv4.Handler do
         %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
         # router
         %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
-        # DNS servers
-        %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
+        # DNS servers — length must match encoded byte count (4 bytes per server)
+        %DHCPv4.Message.Option{
+          type: 6,
+          length: byte_size(dns_servers_binary),
+          value: dns_servers_binary
+        },
         # :end
         %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
       ]
