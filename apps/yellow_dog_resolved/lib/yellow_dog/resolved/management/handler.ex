@@ -24,9 +24,7 @@ defmodule YellowDog.Resolved.Management.Handler do
     flushed =
       case pattern do
         nil ->
-          count = Cache.stats().entries
           Cache.flush()
-          count
 
         domain when is_binary(domain) ->
           if String.starts_with?(domain, "*.") do

@@ -100,6 +100,15 @@ defmodule YellowDog.Resolved.CacheTest do
       assert :miss = Cache.lookup("b.com", :a)
     end
 
+    test "flush/0 returns the count of flushed entries" do
+      Cache.store("x.com", :a, %{}, 300)
+      Cache.store("y.com", :a, %{}, 300)
+      Cache.store("z.com", :a, %{}, 300)
+      Process.sleep(10)
+
+      assert Cache.flush() == 3
+    end
+
     test "flush/1 clears specific domain" do
       Cache.store("a.com", :a, %{}, 300)
       Cache.store("b.com", :a, %{}, 300)
