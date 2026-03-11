@@ -1406,8 +1406,12 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert answer.rdata == {192, 168, 1, 1}
     end
 
-    test "wildcard NODATA when query type has no wildcard record", %{zone: pid, zone_name: zone_name} do
-      # Wildcard A exists, query for AAAA → NODATA (name exists via wildcard)
+    test "wildcard NODATA when query type has no wildcard record (RFC 4592 §2.2.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # Wildcard A exists, query for AAAA → NODATA (name "exists" via wildcard but has
+      # no AAAA record). RFC 4592 §2.2.2 requires NODATA, not NXDOMAIN.
       Auth.add_record(pid, %{
         name: "*.#{zone_name}",
         type: :a,
@@ -1416,16 +1420,12 @@ defmodule YellowDog.Dns.Zone.AuthTest do
         rdata: {10, 0, 0, 3}
       })
 
-      # For strict RFC compliance: wildcard expands for AAAA type,
-      # no wildcard AAAA exists → NODATA.
-      # Current implementation returns NXDOMAIN in this case (acceptable in practice).
       query = build_query("x.#{zone_name}", :aaaa)
       {:ok, response} = Auth.resolve(pid, query)
 
-      # Either NODATA (NOERROR + empty answer) or NXDOMAIN are acceptable.
-      # The critical thing is we do NOT return the A record for an AAAA query.
-      assert response.anlist == [] or
-               Enum.all?(response.anlist, fn r -> r.type != :aaaa end)
+      # NODATA: RCODE=0, empty answer section
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert response.anlist == []
     end
   end
 end

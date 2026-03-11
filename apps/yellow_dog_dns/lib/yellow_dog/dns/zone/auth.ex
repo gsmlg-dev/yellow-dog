@@ -864,6 +864,11 @@ defmodule YellowDog.Dns.Zone.Auth do
               all_answers = chase_cname_chain(state, expanded_cnames, qtype, 0)
               {:ok, build_response(query, all_answers, state)}
 
+            wildcard != nil and name_exists?(state.table, wildcard) ->
+              # RFC 4592 §2.2.2: the wildcard "exists" but has no records of
+              # the requested type → NODATA (not NXDOMAIN).
+              {:ok, build_nodata_response(query, state)}
+
             true ->
               {:ok, build_nxdomain_response(query, state)}
           end
