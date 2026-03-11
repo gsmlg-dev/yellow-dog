@@ -103,6 +103,18 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert is_integer(result["data"]["queries_rate_limited"])
     end
 
+    test "ping works without data field" do
+      result =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-no-data"
+        })
+
+      assert result["type"] == "pong"
+      assert result["id"] == "req-no-data"
+      assert is_integer(result["data"]["queries_total"])
+    end
+
     test "uptime_s is bounded by BEAM wall-clock age" do
       # The resolver started after (or at the same time as) the BEAM, so its
       # uptime must be <= the BEAM's own wall_clock total.

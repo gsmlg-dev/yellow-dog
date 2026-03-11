@@ -64,7 +64,7 @@ defmodule YellowDog.Resolved.Management.Handler do
     }
   end
 
-  def handle_command(%{"type" => "ping", "id" => id, "data" => _data}) do
+  def handle_command(%{"type" => "ping", "id" => id}) do
     :telemetry.execute(
       [:yellow_dog, :resolved, :management, :command],
       %{},
