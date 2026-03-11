@@ -101,8 +101,15 @@ defmodule YellowDog.Resolved.Forwarder do
   def handle_info({:forward_response, txn_id, response_data, upstream}, state) do
     try do
       case DNS.Message.from_iodata(response_data) do
-        %DNS.Message{} = response ->
+        %DNS.Message{header: %{qr: 1}} = response ->
           handle_response(txn_id, response, upstream, state)
+
+        %DNS.Message{} ->
+          Logger.debug(
+            "[Resolved] Received non-response DNS message from upstream #{:inet.ntoa(upstream)}"
+          )
+
+          {:noreply, state}
 
         _ ->
           Logger.debug(
