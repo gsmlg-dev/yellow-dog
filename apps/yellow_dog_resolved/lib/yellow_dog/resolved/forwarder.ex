@@ -19,6 +19,9 @@ defmodule YellowDog.Resolved.Forwarder do
           from: GenServer.from()
         }
 
+  # EMA smoothing factor: 0.3 weights recent latency at 30%, history at 70%
+  @ema_alpha 0.3
+
   # Client API
 
   def start_link(config) do
@@ -34,6 +37,14 @@ defmodule YellowDog.Resolved.Forwarder do
     GenServer.call(__MODULE__, {:forward, query}, timeout + 1000)
   end
 
+  @doc """
+  Returns per-upstream latency averages in microseconds.
+  """
+  @spec upstream_latencies() :: %{:inet.ip_address() => float()}
+  def upstream_latencies do
+    GenServer.call(__MODULE__, :upstream_latencies)
+  end
+
   # Server callbacks
 
   @impl true
@@ -43,6 +54,7 @@ defmodule YellowDog.Resolved.Forwarder do
       timeout_ms: Map.get(config, :upstream_timeout_ms, 3000),
       failure_threshold: Map.get(config, :upstream_failure_threshold, 3),
       failure_counts: %{},
+      latencies: %{},
       pending: %{},
       next_txn_id: :rand.uniform(65_535)
     }
@@ -65,6 +77,10 @@ defmodule YellowDog.Resolved.Forwarder do
     end
   end
 
+  def handle_call(:upstream_latencies, _from, state) do
+    {:reply, state.latencies, state}
+  end
+
   @impl true
   def handle_cast({:update_config, config}, state) do
     Logger.info("[Resolved] Forwarder config updated")
@@ -75,7 +91,8 @@ defmodule YellowDog.Resolved.Forwarder do
        | upstreams: Map.get(config, :upstreams, state.upstreams),
          timeout_ms: Map.get(config, :upstream_timeout_ms, state.timeout_ms),
          failure_threshold: Map.get(config, :upstream_failure_threshold, state.failure_threshold),
-         failure_counts: %{}
+         failure_counts: %{},
+         latencies: %{}
      }}
   end
 
@@ -197,20 +214,23 @@ defmodule YellowDog.Resolved.Forwarder do
 
       pending ->
         Process.cancel_timer(pending.timer_ref)
+        duration = System.monotonic_time(:microsecond) - pending.sent_at
 
         # Rewrite txn_id back to client's original
         response = %{response | header: %{response.header | id: pending.original_txn_id}}
 
-        # Reset failure count for this upstream
+        # Reset failure count and update latency EMA for this upstream
         state = reset_failure(state, from_ip)
+        state = update_latency(state, from_ip, duration)
 
         :telemetry.execute(
           [:yellow_dog, :resolved, :forward, :stop],
-          %{duration: System.monotonic_time(:microsecond) - pending.sent_at},
+          %{duration: duration},
           %{
             upstream: from_ip,
             domain: query_domain(pending.query),
-            type: query_type(pending.query)
+            type: query_type(pending.query),
+            latency_ema: Map.get(state.latencies, from_ip, duration / 1.0)
           }
         )
 
@@ -227,7 +247,14 @@ defmodule YellowDog.Resolved.Forwarder do
         Map.get(state.failure_counts, upstream, 0) < threshold
       end)
 
-    healthy ++ degraded
+    # Sort healthy upstreams by latency EMA (fastest first).
+    # Upstreams without latency data keep their configured order (infinity).
+    sorted_healthy =
+      Enum.sort_by(healthy, fn upstream ->
+        Map.get(state.latencies, upstream, :infinity)
+      end)
+
+    sorted_healthy ++ degraded
   end
 
   defp increment_failure(state, upstream) do
@@ -237,6 +264,19 @@ defmodule YellowDog.Resolved.Forwarder do
 
   defp reset_failure(state, upstream) do
     %{state | failure_counts: Map.delete(state.failure_counts, upstream)}
+  end
+
+  defp update_latency(state, upstream, duration_us) do
+    new_ema =
+      case Map.get(state.latencies, upstream) do
+        nil ->
+          duration_us / 1.0
+
+        prev_ema ->
+          @ema_alpha * duration_us + (1 - @ema_alpha) * prev_ema
+      end
+
+    %{state | latencies: Map.put(state.latencies, upstream, new_ema)}
   end
 
   defp query_domain(query) do

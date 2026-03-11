@@ -276,6 +276,100 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "upstream latency tracking" do
+    test "latencies start empty" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 500,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+      assert Forwarder.upstream_latencies() == %{}
+      GenServer.stop(pid)
+    end
+
+    test "latency not updated on timeout" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      query = build_query("latency-test.example.com")
+      _result = Forwarder.forward(query, 2000)
+
+      # After a timeout, latencies should remain empty (only updated on success)
+      assert Forwarder.upstream_latencies() == %{}
+
+      GenServer.stop(pid)
+    end
+
+    test "config update resets latencies" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 500,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Manually inject a latency value via :sys.replace_state
+      :sys.replace_state(pid, fn state ->
+        %{state | latencies: %{{127, 0, 0, 1} => 1500.0}}
+      end)
+
+      assert Forwarder.upstream_latencies() == %{{127, 0, 0, 1} => 1500.0}
+
+      # Config update should reset latencies
+      GenServer.cast(pid, {:update_config, %{upstreams: [{8, 8, 8, 8}]}})
+      Process.sleep(10)
+
+      assert Forwarder.upstream_latencies() == %{}
+
+      GenServer.stop(pid)
+    end
+
+    test "prioritization sorts healthy upstreams by latency" do
+      config = %{
+        upstreams: [{10, 0, 0, 1}, {10, 0, 0, 2}, {10, 0, 0, 3}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Inject latencies: upstream 3 is fastest, upstream 1 is slowest
+      :sys.replace_state(pid, fn state ->
+        %{
+          state
+          | latencies: %{
+              {10, 0, 0, 1} => 5000.0,
+              {10, 0, 0, 2} => 3000.0,
+              {10, 0, 0, 3} => 1000.0
+            }
+        }
+      end)
+
+      # Trigger a forward — the first upstream tried should be the fastest
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :start]
+        ])
+
+      query = build_query("latency-priority.example.com")
+      Forwarder.forward(query, 2000)
+
+      # The first forward:start event should be for the fastest upstream {10,0,0,3}
+      assert_received {[:yellow_dog, :resolved, :forward, :start], ^ref, %{},
+                       %{upstream: {10, 0, 0, 3}}}
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "malformed upstream response" do
     test "handles malformed response data without crashing" do
       config = %{
