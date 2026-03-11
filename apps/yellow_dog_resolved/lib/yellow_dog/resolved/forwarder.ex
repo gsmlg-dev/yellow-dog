@@ -8,8 +8,6 @@ defmodule YellowDog.Resolved.Forwarder do
 
   @type pending :: %{
           txn_id: 0..65_535,
-          client_addr: :inet.ip_address(),
-          client_port: :inet.port_number(),
           query: DNS.Message.t(),
           original_txn_id: non_neg_integer(),
           sent_at: integer(),
@@ -234,17 +232,26 @@ defmodule YellowDog.Resolved.Forwarder do
       %{upstream: upstream, domain: query_domain(query), type: query_type(query)}
     )
 
-    # Send via Abyss.Client, capturing Forwarder PID for message delivery
+    # Send via Abyss.Client, capturing Forwarder PID for message delivery.
+    # Wrap send_recv in try/rescue so that any exception (not just {:error} return)
+    # still delivers a {:timeout} message — otherwise the Task would crash silently
+    # and the pending entry would linger until the backup process timer fires.
     forwarder = self()
 
     Task.start(fn ->
-      case Abyss.Client.send_recv(upstream, 53, packet, state.timeout_ms) do
-        {:ok, response_data} ->
-          send(forwarder, {:forward_response, txn_id, response_data, upstream})
+      msg =
+        try do
+          case Abyss.Client.send_recv(upstream, 53, packet, state.timeout_ms) do
+            {:ok, response_data} -> {:forward_response, txn_id, response_data, upstream}
+            {:error, _reason} -> {:timeout, txn_id}
+          end
+        rescue
+          _ -> {:timeout, txn_id}
+        catch
+          :throw, _ -> {:timeout, txn_id}
+        end
 
-        {:error, _reason} ->
-          send(forwarder, {:timeout, txn_id})
-      end
+      send(forwarder, msg)
     end)
 
     timer_ref = Process.send_after(self(), {:timeout, txn_id}, state.timeout_ms + 500)
