@@ -103,6 +103,8 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
 
       assert response.header.rcode == DNS.Message.RCode.no_error()
       assert response.anlist == []
+      # Type-mismatch — not authoritative for the requested type
+      assert response.header.aa == 0
     end
 
     test "preserves query transaction ID" do
@@ -139,6 +141,8 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.header.qr == 1
       assert response.header.rcode == DNS.Message.RCode.serv_fail()
       assert response.anlist == []
+      # Error response — not authoritative
+      assert response.header.aa == 0
     end
   end
 
@@ -152,6 +156,13 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.anlist == []
       assert response.header.id == query.header.id
     end
+
+    test "SERVFAIL is non-authoritative (aa=0)" do
+      query = build_query("fail.test")
+      response = ResponseBuilder.servfail_response(query)
+      # Error responses must not claim authority (RFC 1035 §4.1.1)
+      assert response.header.aa == 0
+    end
   end
 
   describe "nxdomain_response/1" do
@@ -163,6 +174,13 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.header.rcode == DNS.Message.RCode.nx_domain()
       assert response.anlist == []
       assert response.header.id == query.header.id
+    end
+
+    test "NXDOMAIN is non-authoritative (aa=0)" do
+      query = build_query("nonexistent.test")
+      response = ResponseBuilder.nxdomain_response(query)
+      # Stub resolver is not authoritative for upstream NXDOMAIN (RFC 1035 §4.1.1)
+      assert response.header.aa == 0
     end
   end
 
@@ -190,6 +208,20 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       assert response.header.qr == 1
       assert response.header.id == query.header.id
       assert response.anlist == []
+      # Rate-limited responses are non-authoritative
+      assert response.header.aa == 0
+    end
+
+    test "aa=1 option marks response as authoritative" do
+      query = build_query("example.com")
+      response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.no_error(), aa: 1)
+      assert response.header.aa == 1
+    end
+
+    test "aa defaults to 0 (non-authoritative)" do
+      query = build_query("example.com")
+      response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.no_error())
+      assert response.header.aa == 0
     end
   end
 
@@ -271,6 +303,8 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       response = ResponseBuilder.intercept_response(query, rule)
       assert response.header.rcode == DNS.Message.RCode.serv_fail()
       assert response.anlist == []
+      # Error response — not authoritative
+      assert response.header.aa == 0
     end
 
     test "returns SERVFAIL for malformed MX record value" do
@@ -280,6 +314,7 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       response = ResponseBuilder.intercept_response(query, rule)
       assert response.header.rcode == DNS.Message.RCode.serv_fail()
       assert response.anlist == []
+      assert response.header.aa == 0
     end
 
     test "returns SERVFAIL for malformed SRV record value" do
@@ -289,6 +324,7 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       response = ResponseBuilder.intercept_response(query, rule)
       assert response.header.rcode == DNS.Message.RCode.serv_fail()
       assert response.anlist == []
+      assert response.header.aa == 0
     end
   end
 

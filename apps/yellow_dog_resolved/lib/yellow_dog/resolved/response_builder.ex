@@ -18,7 +18,8 @@ defmodule YellowDog.Resolved.ResponseBuilder do
         if query_type == rule.type do
           case build_record(to_string(question.name), rule.type, rule.value, rule.ttl) do
             {:ok, record} ->
-              build_response(query, [record], DNS.Message.RCode.no_error())
+              # This resolver IS authoritative for its local intercept rules (aa: 1)
+              build_response(query, [record], DNS.Message.RCode.no_error(), aa: 1)
 
             :error ->
               # Malformed rule value — return SERVFAIL rather than crash
@@ -49,14 +50,22 @@ defmodule YellowDog.Resolved.ResponseBuilder do
 
   @doc """
   Build a generic response with the given answers and rcode.
+
+  Options:
+  - `aa` - Authoritative Answer flag (0 or 1, default 0). Set to 1 only when this
+    resolver is the authority for the data — i.e., local intercept rule matches.
+    Forwarded, cached, and error responses are non-authoritative (RFC 1035 §4.1.1).
   """
-  @spec build_response(DNS.Message.t(), [DNS.Message.Record.t()], integer()) :: DNS.Message.t()
-  def build_response(query, answers, rcode) do
+  @spec build_response(DNS.Message.t(), [DNS.Message.Record.t()], integer(), keyword()) ::
+          DNS.Message.t()
+  def build_response(query, answers, rcode, opts \\ []) do
+    aa = Keyword.get(opts, :aa, 0)
+
     %DNS.Message{
       header: %DNS.Message.Header{
         id: query.header.id,
         qr: 1,
-        aa: 1,
+        aa: aa,
         tc: 0,
         rd: query.header.rd,
         ra: 1,
