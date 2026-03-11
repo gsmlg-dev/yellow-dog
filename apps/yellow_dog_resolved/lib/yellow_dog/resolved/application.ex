@@ -2,10 +2,12 @@ defmodule YellowDog.Resolved.Application do
   @moduledoc false
   use Application
 
+  @env Mix.env()
+
   @impl true
   def start(_type, _args) do
     children =
-      if Mix.env() == :test do
+      if @env == :test do
         []
       else
         [{YellowDog.Resolved.Supervisor, []}]
