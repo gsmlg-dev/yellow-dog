@@ -159,6 +159,63 @@ defmodule YellowDog.Resolved.CacheTest do
     end
   end
 
+  describe "telemetry events" do
+    test "emits :hit telemetry on cache hit" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :cache, :hit]
+        ])
+
+      Cache.store("telem-hit.test", :a, %{}, 300)
+      Process.sleep(10)
+
+      Cache.lookup("telem-hit.test", :a)
+
+      assert_received {[:yellow_dog, :resolved, :cache, :hit], ^ref, %{},
+                       %{domain: "telem-hit.test", type: :a}}
+    end
+
+    test "emits :miss telemetry on cache miss" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :cache, :miss]
+        ])
+
+      Cache.lookup("telem-miss.test", :a)
+
+      assert_received {[:yellow_dog, :resolved, :cache, :miss], ^ref, %{},
+                       %{domain: "telem-miss.test", type: :a}}
+    end
+
+    test "emits :store telemetry on cache store" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :cache, :store]
+        ])
+
+      Cache.store("telem-store.test", :a, %{}, 300)
+      Process.sleep(10)
+
+      assert_received {[:yellow_dog, :resolved, :cache, :store], ^ref, %{},
+                       %{domain: "telem-store.test", type: :a, ttl: _}}
+    end
+
+    test "emits :flush telemetry on cache flush" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :cache, :flush]
+        ])
+
+      Cache.store("telem-flush.test", :a, %{}, 300)
+      Process.sleep(10)
+
+      Cache.flush()
+
+      assert_received {[:yellow_dog, :resolved, :cache, :flush], ^ref, %{},
+                       %{pattern: nil, count: _}}
+    end
+  end
+
   describe "LRU eviction" do
     test "evicts oldest entry when max_entries exceeded" do
       # Fill cache to max (100 entries)
