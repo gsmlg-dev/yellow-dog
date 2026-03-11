@@ -180,14 +180,20 @@ defmodule YellowDog.Resolved.Discovery do
 
   defp build_discovery_query(instance_id) do
     edns_data = <<@edns_version::8, instance_id::binary-size(16)>>
+    edns_options = build_edns_option(edns_data)
+    rdlen = byte_size(edns_options)
 
+    # DNS.Parameter.to_iodata/1 for BitString treats the value as a domain
+    # name, not raw RDATA.  Wrap in DNS.Message.Record.Data so the generic
+    # implementation emits <<rdlength::16, edns_options::binary>> — the
+    # correct wire format for OPT RDATA (RFC 6891 §6.1.2).
     opt_rr = %DNS.Message.Record{
       name: %DNS.Message.Domain{value: ".", size: 1},
       type: DNS.ResourceRecordType.new(41),
       class: DNS.Class.new(4096),
       ttl: 0,
-      rdlength: 0,
-      data: build_edns_option(edns_data)
+      rdlength: rdlen,
+      data: %DNS.Message.Record.Data{rdlength: rdlen, raw: edns_options}
     }
 
     query = DNS.Message.new()

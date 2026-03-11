@@ -14,6 +14,44 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       uuid2 = :crypto.strong_rand_bytes(16)
       assert uuid1 != uuid2
     end
+
+    test "OPT record EDNS option survives DNS wire-format round-trip" do
+      # Reproduces the encoding bug: DNS.Parameter.to_iodata/1 for BitString
+      # encodes raw binaries as domain names.  The fix wraps edns_options in
+      # DNS.Message.Record.Data so the generic impl emits <<rdlength::16, data>>.
+      instance_id = :crypto.strong_rand_bytes(16)
+      edns_data = <<1::8, instance_id::binary-size(16)>>
+      edns_options = <<65321::16, byte_size(edns_data)::16, edns_data::binary>>
+      rdlen = byte_size(edns_options)
+
+      opt_rr = %DNS.Message.Record{
+        name: %DNS.Message.Domain{value: ".", size: 1},
+        type: DNS.ResourceRecordType.new(41),
+        class: DNS.Class.new(4096),
+        ttl: 0,
+        rdlength: rdlen,
+        data: %DNS.Message.Record.Data{rdlength: rdlen, raw: edns_options}
+      }
+
+      query = DNS.Message.new()
+
+      query_with_opt = %{
+        query
+        | arlist: [opt_rr],
+          header: %{query.header | arcount: 1}
+      }
+
+      packet = DNS.to_iodata(query_with_opt) |> IO.iodata_to_binary()
+      parsed = DNS.Message.from_iodata(packet)
+
+      # The OPT record must survive serialization (arcount = 1)
+      assert parsed.header.arcount == 1
+      assert length(parsed.arlist) == 1
+      [parsed_opt] = parsed.arlist
+
+      # rdlength in the parsed record must match the original EDNS option length
+      assert parsed_opt.rdlength == rdlen
+    end
   end
 
   describe "EDNS option format" do
