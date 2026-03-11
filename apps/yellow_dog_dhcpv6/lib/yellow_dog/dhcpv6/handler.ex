@@ -45,6 +45,7 @@ defmodule YellowDog.Dhcpv6.Handler do
   # RFC 1035 §2.3.4: Maximum DNS label length
   @max_dns_label_length 63
   # RFC 3315 §24.4: Status codes
+  @status_success 0
   @status_no_addrs_avail 2
   @status_no_binding 3
   # DHCPv6 temporary address lifetimes (seconds)
@@ -472,7 +473,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_release(_message, parsed_opts, client_ip, client_port, state, start_time) do
+  defp handle_release(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :released],
       %{count: 1},
@@ -493,6 +494,10 @@ defmodule YellowDog.Dhcpv6.Handler do
         %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
         %{client_ip: client_ip, client_duid: duid}
       )
+
+      # RFC 3315 §18.2.6: server MUST respond with REPLY containing Success status
+      reply = create_success_reply(message, parsed_opts)
+      send_dhcpv6_response(reply, client_ip, client_port, state)
     else
       :error ->
         :ok
@@ -508,7 +513,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     {:continue, state}
   end
 
-  defp handle_decline(_message, parsed_opts, client_ip, client_port, state, start_time) do
+  defp handle_decline(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :declined],
       %{count: 1},
@@ -529,6 +534,10 @@ defmodule YellowDog.Dhcpv6.Handler do
         %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
         %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
       )
+
+      # RFC 3315 §18.2.7: server MUST respond with REPLY containing Success status
+      reply = create_success_reply(message, parsed_opts)
+      send_dhcpv6_response(reply, client_ip, client_port, state)
     else
       :error ->
         :ok
@@ -610,6 +619,33 @@ defmodule YellowDog.Dhcpv6.Handler do
           create_dns_servers_option(pool.dns_servers)
         ]
         |> add_domain_list_option(pool.domain_name)
+    }
+  end
+
+  # RFC 3315 §18.2.6/18.2.7: REPLY with top-level Success status for RELEASE and DECLINE.
+  defp create_success_reply(request, parsed_opts) do
+    client_id = parsed_opts.client_id
+
+    options =
+      [
+        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+        %DHCPv6.Message.Option{
+          option_code: @option_status_code,
+          option_data: <<@status_success::16>>
+        }
+      ]
+      |> then(fn opts ->
+        if client_id do
+          [%DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id} | opts]
+        else
+          opts
+        end
+      end)
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
+      transaction_id: request.transaction_id,
+      options: options
     }
   end
 

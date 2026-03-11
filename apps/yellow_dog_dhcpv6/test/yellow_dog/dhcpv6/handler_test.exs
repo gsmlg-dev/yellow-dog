@@ -528,4 +528,109 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
                      500
     end
   end
+
+  # RFC 3315 §18.2.6/18.2.7: RELEASE and DECLINE must be acknowledged with a REPLY
+  describe "RFC 3315 §18.2.6/18.2.7 — Success REPLY for RELEASE and DECLINE" do
+    @server_duid_release <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      test_pid = self()
+      release_id = "test-dhcpv6-release-#{System.unique_integer()}"
+      decline_id = "test-dhcpv6-decline-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        release_id,
+        [:yellow_dog, :dhcpv6, :lease, :release_completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        decline_id,
+        [:yellow_dog, :dhcpv6, :lease, :decline_completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(release_id)
+        :telemetry.detach(decline_id)
+      end)
+
+      :ok
+    end
+
+    test "valid RELEASE triggers release_completed telemetry" do
+      # Allocate a lease first so we can release it
+      client_duid = <<0xEE, 0xEE, 0xEE, 0xEE>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_duid, 50)
+
+      message = %DHCPv6.Message{
+        msg_type: 8,
+        transaction_id: <<0x77, 0x88, 0x99>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_release),
+          # IA_NA with IAID=50
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 9}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :release_completed], _,
+                      %{client_duid: ^client_duid}},
+                     500
+    end
+
+    test "valid DECLINE triggers decline_completed telemetry" do
+      # Allocate a lease so we can decline it
+      client_duid = <<0xFF, 0xFF, 0xFF, 0xFF>>
+      {:ok, lease} = LeaseManager.allocate_lease(client_duid, 60)
+
+      # Encode the allocated IP into IA_ADDR inside IA_NA
+      {a, b, c, d, e, f, g, h} = lease.ip
+      # IA_ADDR: IPv6 addr (16 bytes) + preferred (4) + valid (4)
+      ia_addr_data = <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16, 0::32, 0::32>>
+      ia_addr_opt = DHCPv6.Message.Option.new(5, ia_addr_data)
+      ia_addr_wire = DHCPv6.Message.to_iodata(%DHCPv6.Message{
+        msg_type: 1, transaction_id: <<0, 0, 0>>, options: [ia_addr_opt]
+      })
+      # Extract just the IA_ADDR option bytes from the wire (skip 4-byte msg header)
+      <<_::binary-size(4), ia_addr_option_bytes::binary>> = IO.iodata_to_binary(ia_addr_wire)
+
+      # IA_NA: IAID + T1 + T2 + IA_ADDR option
+      ia_na_data = <<0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0>> <> ia_addr_option_bytes
+
+      message = %DHCPv6.Message{
+        msg_type: 9,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_release),
+          DHCPv6.Message.Option.new(3, ia_na_data)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 10}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :decline_completed], _,
+                      %{client_duid: ^client_duid}},
+                     500
+    end
+  end
 end
