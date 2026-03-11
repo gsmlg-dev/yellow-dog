@@ -50,10 +50,26 @@ defmodule YellowDog.Resolved.Handler do
 
   require Logger
 
-  alias YellowDog.Resolved.Router
+  alias YellowDog.Resolved.{RateLimiter, Router}
 
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
+    case RateLimiter.allow?(client_ip) do
+      :ok ->
+        handle_query(client_ip, client_port, data, state)
+
+      :rate_limited ->
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :query, :rate_limited],
+          %{},
+          %{client: client_ip}
+        )
+    end
+
+    {:close, state}
+  end
+
+  defp handle_query(client_ip, client_port, data, state) do
     try do
       case DNS.Message.from_iodata(data) do
         %DNS.Message{} = query ->
@@ -69,8 +85,6 @@ defmodule YellowDog.Resolved.Handler do
     catch
       :throw, _ -> emit_malformed_packet(client_ip)
     end
-
-    {:close, state}
   end
 
   defp emit_malformed_packet(client_ip) do
