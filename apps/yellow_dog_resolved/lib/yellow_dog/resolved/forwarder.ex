@@ -316,8 +316,26 @@ defmodule YellowDog.Resolved.Forwarder do
               }
           }
 
-          # Reset failure count and update latency EMA for this upstream
-          state = reset_failure(state, from_ip)
+          # SERVFAIL (rcode 2) indicates an upstream processing error — the server
+          # is reachable but failing. Don't reset the failure counter (which tracks
+          # transport-level health) for SERVFAIL responses; only reward truly
+          # healthy responses (NOERROR, NXDOMAIN, REFUSED, etc.) with a counter reset.
+          # Latency is still updated since the upstream did respond.
+          servfail_rcode = DNS.Message.RCode.new(2)
+
+          state =
+            if response.header.rcode == servfail_rcode do
+              :telemetry.execute(
+                [:yellow_dog, :resolved, :forward, :servfail],
+                %{duration: duration},
+                %{upstream: from_ip, domain: query_domain(pending.query)}
+              )
+
+              state
+            else
+              reset_failure(state, from_ip)
+            end
+
           state = update_latency(state, from_ip, duration)
 
           :telemetry.execute(
