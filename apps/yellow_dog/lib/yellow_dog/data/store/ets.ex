@@ -57,6 +57,8 @@ defmodule YellowDog.Data.Store.Ets do
         read_concurrency: true
       ])
 
+    # Delete any pre-existing named table (e.g. from a previous test run or restart)
+    if :ets.whereis(table_name) != :undefined, do: :ets.delete(table_name)
     table = :ets.new(table_name, ets_opts)
 
     persistence_opts = build_persistence_opts(collection, opts)

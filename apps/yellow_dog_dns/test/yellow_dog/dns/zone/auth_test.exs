@@ -650,7 +650,13 @@ defmodule YellowDog.Dns.Zone.AuthTest do
           ]
         )
 
-      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000) end)
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
 
       query = build_query("nonexistent.#{zone_name}", :a)
       {:ok, response} = Auth.resolve(pid, query)
@@ -709,7 +715,13 @@ defmodule YellowDog.Dns.Zone.AuthTest do
           ]
         )
 
-      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000) end)
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
 
       query = build_query("www.#{zone_name}", :aaaa)
       {:ok, response} = Auth.resolve(pid, query)
