@@ -371,6 +371,47 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "probe_result client start failure" do
+    test "already_started adopts running client pid without logging a warning" do
+      # When two concurrent probes complete, the second start_link returns
+      # {:error, {:already_started, pid}}.  Discovery must adopt the existing
+      # client pid rather than leaving management_pid = nil.
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{
+            heartbeat_interval_s: 30,
+            reconnect_base_s: 1,
+            reconnect_max_s: 8
+          }
+        }
+      }
+
+      {:ok, pid} = Discovery.start_link(config)
+      Process.sleep(10)
+
+      # Register a dummy process under the Management.Client name so that
+      # start_link returns {:error, {:already_started, dummy}}.
+      dummy = spawn(fn -> Process.sleep(5000) end)
+      Process.register(dummy, YellowDog.Resolved.Management.Client)
+
+      send(pid, {:probe_result, {:ok, "ws://localhost:9999/ws/resolved"}})
+      Process.sleep(10)
+
+      # Discovery should adopt dummy as management_pid (not leave it nil)
+      state = :sys.get_state(pid)
+      assert state.management_pid == dummy
+      assert state.discovered_endpoint == "ws://localhost:9999/ws/resolved"
+      # Reconnect delay must NOT have been doubled (not a failure path)
+      assert state.reconnect_delay == 1000
+
+      Process.unregister(YellowDog.Resolved.Management.Client)
+      Process.exit(dummy, :kill)
+      GenServer.stop(pid)
+    end
+  end
+
   describe "exponential backoff" do
     test "management_down triggers re-probe with exponential backoff" do
       config = %{

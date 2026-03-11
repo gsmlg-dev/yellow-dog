@@ -95,9 +95,19 @@ defmodule YellowDog.Resolved.Discovery do
         {:noreply,
          %{state | management_pid: pid, discovered_endpoint: endpoint, reconnect_delay: state.reconnect_base}}
 
+      {:error, {:already_started, pid}} ->
+        # Two concurrent probes completed — reuse the already-running client.
+        {:noreply,
+         %{state | management_pid: pid, discovered_endpoint: endpoint}}
+
       {:error, reason} ->
+        # Client failed to start (e.g. connect refused before even upgrading to WS).
+        # Schedule a re-probe with exponential backoff so discovery retries rather
+        # than silently giving up.
         Logger.warning("[Resolved] Failed to start management client: #{inspect(reason)}")
-        {:noreply, state}
+        Process.send_after(self(), :probe, state.reconnect_delay)
+        new_delay = min(state.reconnect_delay * 2, state.reconnect_max)
+        {:noreply, %{state | reconnect_delay: new_delay}}
     end
   end
 
