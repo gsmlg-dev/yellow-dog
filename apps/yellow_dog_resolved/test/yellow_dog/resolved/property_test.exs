@@ -109,6 +109,13 @@ defmodule YellowDog.Resolved.PropertyTest do
                DNS.Message.RCode.nx_domain(),
                DNS.Message.RCode.refused()
              ]
+
+      # RFC 1035 §4.1.1: RA=1 for locally-built responses from a recursive resolver
+      # (all responses here are locally built since upstreams = [])
+      assert response.header.ra == 1
+
+      # RD bit echoed back (RFC 1035 §4.1.1)
+      assert response.header.rd == query.header.rd
     end
   end
 
