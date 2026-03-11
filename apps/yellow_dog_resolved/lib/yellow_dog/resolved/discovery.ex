@@ -244,8 +244,13 @@ defmodule YellowDog.Resolved.Discovery do
   end
 
   defp parse_edns_options(data) when is_binary(data) and byte_size(data) >= 4 do
-    <<_code::16, length::16, _data::binary-size(length), rest::binary>> = data
-    parse_edns_options(rest)
+    case data do
+      <<_code::16, length::16, _data::binary-size(length), rest::binary>> ->
+        parse_edns_options(rest)
+
+      _ ->
+        :not_found
+    end
   end
 
   defp parse_edns_options(_), do: :not_found

@@ -200,13 +200,13 @@ defmodule YellowDog.Resolved.Config do
     }
   end
 
-  defp parse_match_pattern("*." <> suffix), do: {:suffix, suffix}
+  defp parse_match_pattern("*." <> suffix), do: {:suffix, String.downcase(suffix)}
 
   defp parse_match_pattern(pattern) do
     if String.ends_with?(pattern, "*") do
-      {:prefix, String.trim_trailing(pattern, "*")}
+      {:prefix, String.downcase(String.trim_trailing(pattern, "*"))}
     else
-      {:exact, pattern}
+      {:exact, String.downcase(pattern)}
     end
   end
 
