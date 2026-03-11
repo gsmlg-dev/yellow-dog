@@ -653,7 +653,6 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
       mac = <<0xEE, 0x11, 0x22, 0x33, 0x44, 0x55>>
       {:ok, lease} = LeaseManager.allocate_lease(mac, nil, nil, "default")
       client_ip = lease.ip_address
-      {a, b, c, d} = client_ip
 
       # RENEWING DHCPREQUEST: ciaddr = assigned IP, no server_id, no requested_ip option
       message = %DHCPv4.Message{
