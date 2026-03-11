@@ -591,26 +591,18 @@ defmodule YellowDog.Dns.View do
   defp find_zone_for_name(zones, query_name) do
     normalized = normalize_name(query_name)
 
-    # Handle both simple zone names and {type, name} tuples
-    Enum.find_value(zones, fn
-      {_type, zone_name} ->
-        zone_suffix = normalize_name(zone_name)
-
-        if String.ends_with?(normalized, zone_suffix) or normalized == zone_suffix do
-          zone_name
-        else
-          nil
-        end
-
-      zone_name when is_binary(zone_name) ->
-        zone_suffix = normalize_name(zone_name)
-
-        if String.ends_with?(normalized, zone_suffix) or normalized == zone_suffix do
-          zone_name
-        else
-          nil
-        end
+    # RFC 1034 §3.6: select the most specific (longest) matching zone.
+    # Use label-boundary matching to prevent "e.com" from matching "example.com".
+    zones
+    |> Enum.map(fn
+      {_type, zone_name} -> zone_name
+      zone_name when is_binary(zone_name) -> zone_name
     end)
+    |> Enum.filter(fn zone_name ->
+      zone_suffix = normalize_name(zone_name)
+      normalized == zone_suffix or String.ends_with?(normalized, "." <> zone_suffix)
+    end)
+    |> Enum.max_by(&String.length/1, fn -> nil end)
   end
 
   defp check_cache(state, name, type) do
