@@ -4,7 +4,7 @@ defmodule YellowDog.Resolved.Management.Handler do
   Handles cache_flush, cache_stats, and ping commands.
   """
 
-  alias YellowDog.Resolved.{Cache, Counters}
+  alias YellowDog.Resolved.{Cache, Counters, RateLimiter}
 
   require Logger
 
@@ -83,7 +83,8 @@ defmodule YellowDog.Resolved.Management.Handler do
         "queries_total" => counters.total,
         "queries_intercepted" => counters.intercepted,
         "queries_cached" => counters.cached,
-        "queries_forwarded" => counters.forwarded
+        "queries_forwarded" => counters.forwarded,
+        "rate_limited_tracked_ips" => RateLimiter.tracked_ips()
       }
     }
   end

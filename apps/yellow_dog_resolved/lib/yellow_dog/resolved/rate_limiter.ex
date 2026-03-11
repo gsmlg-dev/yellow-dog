@@ -40,6 +40,14 @@ defmodule YellowDog.Resolved.RateLimiter do
     end
   end
 
+  @doc """
+  Returns the number of tracked IPs in the rate limiter table.
+  """
+  @spec tracked_ips() :: non_neg_integer()
+  def tracked_ips do
+    :ets.info(@table, :size)
+  end
+
   # Server callbacks
 
   @impl true
