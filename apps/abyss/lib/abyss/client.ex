@@ -220,11 +220,23 @@ defmodule Abyss.Client do
     ]
 
     result =
-      with {:ok, socket} <- :gen_udp.open(port, socket_opts),
-           :ok <- maybe_join_multicast(socket, broadcast_addr, opts) do
-        packets = collect_responses(socket, timeout, [])
-        :gen_udp.close(socket)
-        {:ok, packets}
+      case :gen_udp.open(port, socket_opts) do
+        {:ok, socket} ->
+          try do
+            case maybe_join_multicast(socket, broadcast_addr, opts) do
+              :ok ->
+                packets = collect_responses(socket, timeout, [])
+                {:ok, packets}
+
+              {:error, _reason} = error ->
+                error
+            end
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
       end
 
     emit_subscribe_telemetry(result, start_time, metadata)
