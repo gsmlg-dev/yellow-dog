@@ -42,7 +42,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
   alias YellowDog.Dns.{IpFormat, QueryLogger}
   alias YellowDog.Telemetry
   alias DNS.Message
-  alias DNS.Message.RCode
+  alias DNS.Message.{OpCode, RCode}
 
   # DNS module used for to_iodata/1
   require DNS
@@ -192,12 +192,25 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         {:reply, {:error, :not_a_query}, state}
       else
-        case submit_query_internal(state, query, raw: true) do
-          {:ok, new_state} ->
-            {:reply, :ok, new_state}
+        # RFC 1035 §4.1.1: Only OPCODE 0 (QUERY) is supported.
+        # Return NOTIMP for any other opcode (IQUERY, STATUS, Notify, Update, etc.).
+        if query.header.opcode != OpCode.query() do
+          Telemetry.debug("Unsupported DNS opcode — returning NOTIMP", %{
+            id: query.header.id,
+            opcode: to_string(query.header.opcode)
+          })
 
-          {:error, _reason} = error ->
-            {:reply, error, state}
+          notimp = build_notimp_response(query)
+          send(state.handler_pid, {:dns_raw_response, :notimp, DNS.to_iodata(notimp)})
+          {:reply, :ok, state}
+        else
+          case submit_query_internal(state, query, raw: true) do
+            {:ok, new_state} ->
+              {:reply, :ok, new_state}
+
+            {:error, _reason} = error ->
+              {:reply, error, state}
+          end
         end
       end
     rescue
@@ -501,6 +514,26 @@ defmodule YellowDog.Dns.ConnectionProcess do
           :ok
       end
     end
+  end
+
+  defp build_notimp_response(query) do
+    %Message{
+      header: %{
+        query.header
+        | qr: 1,
+          aa: 0,
+          tc: 0,
+          ra: 0,
+          rcode: RCode.not_imp(),
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+      },
+      qdlist: query.qdlist,
+      anlist: [],
+      nslist: [],
+      arlist: []
+    }
   end
 
   defp create_error_response(query, reason) do

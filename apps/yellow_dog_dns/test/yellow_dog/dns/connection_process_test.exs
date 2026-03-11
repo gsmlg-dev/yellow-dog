@@ -272,6 +272,25 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       stats = ConnectionProcess.stats(pid)
       assert stats.active_queries == 0
     end
+
+    @tag :capture_log
+    test "returns NOTIMP for non-QUERY opcodes (RFC 1035 §4.1.1)", %{pid: pid} do
+      # Build a STATUS query (opcode=2); the server only supports QUERY (opcode=0)
+      query = build_test_query(203)
+      status_query = %{query | header: %{query.header | opcode: DNS.Message.OpCode.new(2)}}
+      raw_data = DNS.to_iodata(status_query) |> IO.iodata_to_binary()
+
+      assert :ok = ConnectionProcess.submit_raw_data(pid, raw_data)
+
+      # Should receive a NOTIMP response (rcode=4) — NOT enqueued as an active query
+      assert_receive {:dns_raw_response, :notimp, response_data}, 500
+      parsed = DNS.Message.from_iodata(response_data)
+      assert parsed.header.qr == 1
+      assert rcode_value(parsed.header.rcode) == 4
+
+      stats = ConnectionProcess.stats(pid)
+      assert stats.active_queries == 0
+    end
   end
 
   describe "stats/1" do
