@@ -68,6 +68,19 @@ defmodule YellowDog.Resolved.Router do
         Logger.error("[Resolved] Query resolution failed: #{Exception.message(e)}")
         Counters.increment(:error)
         ResponseBuilder.servfail_response(query)
+    catch
+      :exit, reason ->
+        duration = System.monotonic_time() - start_time
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :query, :exception],
+          %{duration: duration},
+          %{domain: domain, type: type, reason: inspect(reason)}
+        )
+
+        Logger.error("[Resolved] Query resolution exited: #{inspect(reason)}")
+        Counters.increment(:error)
+        ResponseBuilder.servfail_response(query)
     end
   end
 

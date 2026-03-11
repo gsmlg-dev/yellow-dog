@@ -378,4 +378,24 @@ defmodule YellowDog.Resolved.RouterTest do
       :telemetry.detach("test-cache-source-#{inspect(ref)}")
     end
   end
+
+  describe "resolve/1 exit handling" do
+    test "Forwarder process crash returns SERVFAIL (not an exit)" do
+      # Start a Forwarder, then kill it while a query is in-flight.
+      # Router.resolve must catch the :noproc exit and return SERVFAIL.
+      start_supervised!({YellowDog.Resolved.Forwarder, @test_config})
+
+      # Kill the Forwarder so the next call exits with :noproc
+      pid = Process.whereis(YellowDog.Resolved.Forwarder)
+      Process.exit(pid, :kill)
+      Process.sleep(10)
+
+      query = build_query("notintercepted.example.com")
+      # Should return SERVFAIL instead of crashing the caller
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+    end
+  end
 end
