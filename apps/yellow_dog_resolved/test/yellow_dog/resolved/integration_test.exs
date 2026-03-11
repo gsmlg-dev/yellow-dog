@@ -194,7 +194,7 @@ defmodule YellowDog.Resolved.IntegrationTest do
       Cache.store(domain_str, dns_type, fake_response, 300)
       Process.sleep(10)
 
-      assert {:hit, _} = Cache.lookup(domain_str, dns_type)
+      assert {:hit, _, _} = Cache.lookup(domain_str, dns_type)
 
       Cache.flush()
 
@@ -241,7 +241,7 @@ defmodule YellowDog.Resolved.IntegrationTest do
       # Verify cache still works
       Cache.store("reload-test.example.com", :a, %{}, 300)
       Process.sleep(10)
-      assert {:hit, _} = Cache.lookup("reload-test.example.com", :a)
+      assert {:hit, _, _} = Cache.lookup("reload-test.example.com", :a)
     end
   end
 
@@ -284,7 +284,7 @@ defmodule YellowDog.Resolved.IntegrationTest do
       Process.sleep(10)
 
       # Should be a cache hit with NXDOMAIN rcode
-      assert {:hit, cached} = Cache.lookup(domain_str, dns_type)
+      assert {:hit, cached, _} = Cache.lookup(domain_str, dns_type)
       assert cached.header.rcode == DNS.Message.RCode.nx_domain()
 
       # Query through router should return the cached NXDOMAIN

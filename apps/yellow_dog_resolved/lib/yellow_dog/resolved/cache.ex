@@ -17,7 +17,7 @@ defmodule YellowDog.Resolved.Cache do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
 
-  @spec lookup(String.t(), atom()) :: {:hit, term()} | :miss
+  @spec lookup(String.t(), atom()) :: {:hit, term(), non_neg_integer()} | :miss
   def lookup(domain, type) do
     key = cache_key(domain, type)
     now = System.monotonic_time(:second)
@@ -30,13 +30,15 @@ defmodule YellowDog.Resolved.Cache do
         :ets.insert(@lru_table, {{now, key}})
         :ets.update_element(@table, key, {4, now})
 
+        remaining_ttl = expires_at - now
+
         :telemetry.execute(
           [:yellow_dog, :resolved, :cache, :hit],
           %{},
           %{domain: domain, type: type}
         )
 
-        {:hit, response}
+        {:hit, response, remaining_ttl}
 
       [{^key, _response, _expires_at, last_access}] ->
         # Expired - lazy eviction

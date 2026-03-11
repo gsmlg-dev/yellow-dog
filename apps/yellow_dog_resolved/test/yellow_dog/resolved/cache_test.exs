@@ -26,7 +26,7 @@ defmodule YellowDog.Resolved.CacheTest do
       # Give cast time to process
       Process.sleep(10)
 
-      assert {:hit, ^response} = Cache.lookup("example.com", :a)
+      assert {:hit, ^response, _} = Cache.lookup("example.com", :a)
     end
 
     test "lookup returns :miss for unknown domain" do
@@ -38,7 +38,7 @@ defmodule YellowDog.Resolved.CacheTest do
       Cache.store("EXAMPLE.COM", :a, response, 300)
       Process.sleep(10)
 
-      assert {:hit, _} = Cache.lookup("example.com", :a)
+      assert {:hit, _, _} = Cache.lookup("example.com", :a)
     end
 
     test "normalizes trailing dot" do
@@ -46,7 +46,7 @@ defmodule YellowDog.Resolved.CacheTest do
       Cache.store("example.com.", :a, response, 300)
       Process.sleep(10)
 
-      assert {:hit, _} = Cache.lookup("example.com", :a)
+      assert {:hit, _, _} = Cache.lookup("example.com", :a)
     end
 
     test "different types are separate cache entries" do
@@ -54,8 +54,25 @@ defmodule YellowDog.Resolved.CacheTest do
       Cache.store("example.com", :aaaa, %{type: :aaaa}, 300)
       Process.sleep(10)
 
-      assert {:hit, %{type: :a}} = Cache.lookup("example.com", :a)
-      assert {:hit, %{type: :aaaa}} = Cache.lookup("example.com", :aaaa)
+      assert {:hit, %{type: :a}, _} = Cache.lookup("example.com", :a)
+      assert {:hit, %{type: :aaaa}, _} = Cache.lookup("example.com", :aaaa)
+    end
+  end
+
+  describe "remaining TTL" do
+    test "lookup returns remaining TTL that decreases over time" do
+      Cache.store("ttl-test.com", :a, %{data: "test"}, 300)
+      Process.sleep(10)
+
+      {:hit, _, ttl1} = Cache.lookup("ttl-test.com", :a)
+      # TTL should be close to 300 (clamped, stored with 300s)
+      assert ttl1 > 0
+      assert ttl1 <= 300
+
+      # After a brief wait, TTL should be the same or less
+      Process.sleep(10)
+      {:hit, _, ttl2} = Cache.lookup("ttl-test.com", :a)
+      assert ttl2 <= ttl1
     end
   end
 
@@ -64,7 +81,7 @@ defmodule YellowDog.Resolved.CacheTest do
       Cache.store("expire.test", :a, %{data: "old"}, 1)
       Process.sleep(10)
 
-      assert {:hit, _} = Cache.lookup("expire.test", :a)
+      assert {:hit, _, _} = Cache.lookup("expire.test", :a)
 
       # Wait for TTL to expire (min_ttl is 5s, so the 1s gets clamped to 5s)
       # We test with a value above min_ttl
@@ -77,7 +94,7 @@ defmodule YellowDog.Resolved.CacheTest do
       Cache.store("b.com", :a, %{}, 300)
       Process.sleep(10)
 
-      assert {:hit, _} = Cache.lookup("a.com", :a)
+      assert {:hit, _, _} = Cache.lookup("a.com", :a)
       Cache.flush()
       assert :miss = Cache.lookup("a.com", :a)
       assert :miss = Cache.lookup("b.com", :a)
@@ -90,7 +107,7 @@ defmodule YellowDog.Resolved.CacheTest do
 
       Cache.flush("a.com")
       assert :miss = Cache.lookup("a.com", :a)
-      assert {:hit, _} = Cache.lookup("b.com", :a)
+      assert {:hit, _, _} = Cache.lookup("b.com", :a)
     end
 
     test "flush_pattern/1 with wildcard" do
@@ -102,7 +119,7 @@ defmodule YellowDog.Resolved.CacheTest do
       count = Cache.flush_pattern("*.example.com")
       assert count == 2
       assert :miss = Cache.lookup("sub1.example.com", :a)
-      assert {:hit, _} = Cache.lookup("other.com", :a)
+      assert {:hit, _, _} = Cache.lookup("other.com", :a)
     end
   end
 
@@ -256,7 +273,7 @@ defmodule YellowDog.Resolved.CacheTest do
       # victim should have been evicted (oldest access time)
       assert :miss = Cache.lookup("victim.test", :a)
       # trigger should be present
-      assert {:hit, _} = Cache.lookup("trigger.test", :a)
+      assert {:hit, _, _} = Cache.lookup("trigger.test", :a)
     end
   end
 
@@ -280,7 +297,7 @@ defmodule YellowDog.Resolved.CacheTest do
       Process.sleep(50)
 
       # Both should be present initially
-      assert {:hit, _} = Cache.lookup("sweep-keep.test", :a)
+      assert {:hit, _, _} = Cache.lookup("sweep-keep.test", :a)
 
       # Wait for TTL to expire + sweep interval to fire
       Process.sleep(3500)
@@ -288,7 +305,7 @@ defmodule YellowDog.Resolved.CacheTest do
       # sweep-target should be gone (expired + swept)
       # sweep-keep should remain (long TTL)
       assert :miss = Cache.lookup("sweep-target.test", :a)
-      assert {:hit, _} = Cache.lookup("sweep-keep.test", :a)
+      assert {:hit, _, _} = Cache.lookup("sweep-keep.test", :a)
 
       # Evictions counter should reflect the sweep
       stats = Cache.stats()

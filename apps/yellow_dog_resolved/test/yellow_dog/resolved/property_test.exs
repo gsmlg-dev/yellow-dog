@@ -127,7 +127,7 @@ defmodule YellowDog.Resolved.PropertyTest do
       Process.sleep(5)
 
       # Should be a hit immediately (min_ttl clamp means at least 5s TTL)
-      assert {:hit, _} = Cache.lookup(domain, type)
+      assert {:hit, _, _} = Cache.lookup(domain, type)
 
       # Clean up
       Cache.flush(domain)
@@ -190,7 +190,7 @@ defmodule YellowDog.Resolved.PropertyTest do
       Process.sleep(5)
 
       # Should match with lowercase
-      assert {:hit, _} = Cache.lookup(String.downcase(domain), type)
+      assert {:hit, _, _} = Cache.lookup(String.downcase(domain), type)
 
       # Clean up
       Cache.flush(domain)
@@ -249,7 +249,7 @@ defmodule YellowDog.Resolved.PropertyTest do
       # Matching entry should be flushed
       assert :miss = Cache.lookup(matching_domain, :a)
       # Non-matching should still be present
-      assert {:hit, _} = Cache.lookup(non_matching_safe, :a)
+      assert {:hit, _, _} = Cache.lookup(non_matching_safe, :a)
 
       # Clean up
       Cache.flush()

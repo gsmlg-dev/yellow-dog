@@ -141,7 +141,7 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       # Only the targeted domain should be flushed
       assert :miss = Cache.lookup("target.example.com", :a)
-      assert {:hit, _} = Cache.lookup("keep.example.com", :a)
+      assert {:hit, _, _} = Cache.lookup("keep.example.com", :a)
     end
 
     test "cache_flush telemetry is emitted" do
