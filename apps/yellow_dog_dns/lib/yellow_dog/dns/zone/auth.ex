@@ -20,6 +20,9 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @behaviour Behaviour
 
+  # RFC 1034 §3.6.2: limit CNAME chain depth to prevent infinite loops.
+  @max_cname_depth 10
+
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.Message.RCode
@@ -832,7 +835,12 @@ defmodule YellowDog.Dns.Zone.Auth do
           {:ok, build_response(query, records, state)}
 
         Enum.any?(cname_records) ->
-          {:ok, build_response(query, cname_records, state)}
+          # RFC 1034 §3.6.2: follow the CNAME chain within the zone and include
+          # target records in the same answer section. Stops at the zone boundary
+          # (out-of-zone targets are left for the client/resolver to pursue) and
+          # at @max_cname_depth to prevent loops.
+          all_answers = chase_cname_chain(state, cname_records, qtype, 0)
+          {:ok, build_response(query, all_answers, state)}
 
         name_exists?(state.table, qname) ->
           {:ok, build_nodata_response(query, state)}
@@ -856,6 +864,54 @@ defmodule YellowDog.Dns.Zone.Auth do
       specific_type ->
         for {_key, record} <- :ets.lookup(table, {normalized, specific_type}), do: record
     end
+  end
+
+  # Follow the CNAME chain within the zone, accumulating all records.
+  # Returns the accumulated list of records (CNAMEs + final target records).
+  # Stops when the depth limit is reached, the target is out-of-zone, or
+  # the target has records of the requested type (end of chain).
+  defp chase_cname_chain(_state, _cname_records, _qtype, depth)
+       when depth >= @max_cname_depth,
+       do: []
+
+  defp chase_cname_chain(state, cname_records, qtype, depth) do
+    cname_records ++
+      Enum.flat_map(cname_records, fn cname_record ->
+        target_name = cname_target_name(cname_record)
+
+        if target_name != nil and in_zone?(state.name, target_name) do
+          target_records = lookup_records(state.table, target_name, qtype)
+          target_cnames = lookup_records(state.table, target_name, :cname)
+
+          cond do
+            Enum.any?(target_records) ->
+              target_records
+
+            Enum.any?(target_cnames) ->
+              chase_cname_chain(state, target_cnames, qtype, depth + 1)
+
+            true ->
+              []
+          end
+        else
+          # Target is out-of-zone — stop here; client resolves the rest.
+          []
+        end
+      end)
+  end
+
+  # Extract the target domain name from a CNAME record.
+  # Handles both plain maps (from add_record) and DNS.Message.Record structs.
+  defp cname_target_name(record) do
+    target =
+      cond do
+        is_binary(Map.get(record, :rdata)) -> Map.get(record, :rdata)
+        is_binary(Map.get(record, "rdata")) -> Map.get(record, "rdata")
+        is_map(record) and Map.get(record, :data) != nil -> to_string(record.data)
+        true -> nil
+      end
+
+    if is_binary(target) and target != "", do: normalize_name(target), else: nil
   end
 
   defp name_exists?(table, name) do

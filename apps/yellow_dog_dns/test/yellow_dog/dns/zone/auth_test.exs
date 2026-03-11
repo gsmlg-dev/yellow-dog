@@ -738,6 +738,94 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert answer.type == :cname
     end
 
+    test "follows CNAME and includes target A records in answer (RFC 1034 §3.6.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "www.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {1, 2, 3, 4}
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Answer must contain both the CNAME and the target A record
+      assert length(response.anlist) == 2
+      types = Enum.map(response.anlist, & &1.type) |> Enum.sort()
+      assert :a in types
+      assert :cname in types
+    end
+
+    test "follows multi-hop CNAME chain within zone (RFC 1034 §3.6.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # alias → alias2 → www
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "alias2.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "alias2.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "www.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 1}
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Should contain alias → alias2 CNAME, alias2 → www CNAME, and www A record
+      assert length(response.anlist) == 3
+      types = Enum.map(response.anlist, & &1.type)
+      assert Enum.count(types, &(&1 == :cname)) == 2
+      assert Enum.count(types, &(&1 == :a)) == 1
+    end
+
+    test "stops CNAME chasing at zone boundary", %{zone: pid, zone_name: zone_name} do
+      # CNAME pointing to out-of-zone target — must NOT chase
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.external.com"
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Only the CNAME record itself, no external records
+      assert length(response.anlist) == 1
+      [answer] = response.anlist
+      assert answer.type == :cname
+    end
+
     test "returns :refused for queries outside zone", %{zone: pid} do
       # Query for a completely different domain
       query = build_query("www.otherdomain.com", :a)
