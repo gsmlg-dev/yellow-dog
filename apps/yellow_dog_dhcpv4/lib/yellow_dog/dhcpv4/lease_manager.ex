@@ -1011,7 +1011,8 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
 
     case Base.decode16(hex, case: :lower) do
       {:ok, bytes} -> bytes
-      :error -> mac_string
+      # Return nil so callers can detect and skip the invalid lease entry
+      :error -> nil
     end
   end
 
