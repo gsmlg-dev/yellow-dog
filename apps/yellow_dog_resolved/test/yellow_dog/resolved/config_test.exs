@@ -58,6 +58,49 @@ defmodule YellowDog.Resolved.ConfigTest do
       end
     end
 
+    test "load/0 parses all record types from TOML correctly" do
+      config = Config.load()
+      rules = config.intercept_rules
+
+      types = Enum.map(rules, & &1.type)
+
+      # Our config has A, AAAA, CNAME, TXT, MX, SRV rules
+      assert :a in types
+      assert :aaaa in types
+      assert :cname in types
+      assert :txt in types
+      assert :mx in types
+      assert :srv in types
+    end
+
+    test "load/0 parses wildcard suffix match correctly" do
+      config = Config.load()
+
+      suffix_rules =
+        Enum.filter(config.intercept_rules, fn rule ->
+          match?({:suffix, _}, rule.match)
+        end)
+
+      assert length(suffix_rules) > 0
+
+      for rule <- suffix_rules do
+        {:suffix, suffix} = rule.match
+        # Suffix should not contain the leading "*."
+        refute String.starts_with?(suffix, "*.")
+      end
+    end
+
+    test "load/0 parses exact match correctly" do
+      config = Config.load()
+
+      exact_rules =
+        Enum.filter(config.intercept_rules, fn rule ->
+          match?({:exact, _}, rule.match)
+        end)
+
+      assert length(exact_rules) > 0
+    end
+
     test "load/0 parses IP addresses in upstreams" do
       config = Config.load()
 

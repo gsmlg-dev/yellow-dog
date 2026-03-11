@@ -294,6 +294,82 @@ defmodule YellowDog.Resolved.IntegrationTest do
     end
   end
 
+  describe "end-to-end intercept for all record types" do
+    setup do
+      # Override config with rules for all supported record types
+      stop_supervised!(Config)
+
+      all_types_config = %{
+        @test_config
+        | intercept_rules: [
+            %{match: {:exact, "a.test"}, type: :a, value: "192.168.1.100", ttl: 300},
+            %{match: {:exact, "aaaa.test"}, type: :aaaa, value: "::1", ttl: 300},
+            %{match: {:exact, "cname.test"}, type: :cname, value: "target.test", ttl: 300},
+            %{match: {:exact, "txt.test"}, type: :txt, value: "v=spf1 ~all", ttl: 300},
+            %{match: {:exact, "mx.test"}, type: :mx, value: "10 mail.test", ttl: 300},
+            %{match: {:exact, "srv.test"}, type: :srv, value: "10 20 5060 sip.test", ttl: 300}
+          ]
+      }
+
+      start_supervised!({Config, all_types_config})
+      :ok
+    end
+
+    test "A record intercept serializes correctly" do
+      query = build_query("a.test", :a)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "AAAA record intercept serializes correctly" do
+      query = build_query("aaaa.test", :aaaa)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "CNAME record intercept serializes correctly" do
+      query = build_query("cname.test", :cname)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "TXT record intercept serializes correctly" do
+      query = build_query("txt.test", :txt)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "MX record intercept serializes correctly" do
+      query = build_query("mx.test", :mx)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "SRV record intercept serializes correctly" do
+      query = build_query("srv.test", :srv)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+  end
+
   describe "management command integration" do
     alias YellowDog.Resolved.Management.Handler
 
