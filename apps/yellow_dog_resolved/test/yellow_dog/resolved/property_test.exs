@@ -256,6 +256,47 @@ defmodule YellowDog.Resolved.PropertyTest do
     end
   end
 
+  # Property: Config parsing always produces valid bounded values
+  property "config parsing always produces valid bounded values" do
+    check all(
+            port <- one_of([integer(-100..100_000), constant("bad")]),
+            timeout <- one_of([integer(-100..100_000), constant(nil)]),
+            max_entries <- one_of([integer(-100..2_000_000), constant("x")]),
+            min_ttl <- one_of([integer(-100..200_000), constant(0.5)]),
+            max_ttl <- one_of([integer(-100..1_000_000), constant(true)]),
+            max_runs: 50
+          ) do
+      toml = %{
+        "resolved" => %{
+          "port" => port,
+          "upstream_timeout_ms" => timeout,
+          "upstreams" => [],
+          "cache" => %{
+            "max_entries" => max_entries,
+            "min_ttl_s" => min_ttl,
+            "max_ttl_s" => max_ttl
+          }
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+
+      # All values must be integers in valid ranges
+      assert is_integer(config.port)
+      assert config.port >= 1 and config.port <= 65_535
+
+      assert is_integer(config.upstream_timeout_ms)
+      assert config.upstream_timeout_ms >= 100 and config.upstream_timeout_ms <= 30_000
+
+      assert is_integer(config.cache.max_entries)
+      assert config.cache.max_entries >= 1
+
+      assert is_integer(config.cache.min_ttl_s)
+      assert is_integer(config.cache.max_ttl_s)
+      assert config.cache.min_ttl_s <= config.cache.max_ttl_s
+    end
+  end
+
   # Helpers
 
   defp build_fake_response(domain, type) do
