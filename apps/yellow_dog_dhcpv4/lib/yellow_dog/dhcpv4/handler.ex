@@ -257,7 +257,7 @@ defmodule YellowDog.Dhcpv4.Handler do
       }
     )
 
-    # Generate a DHCPACK or DHCPNAK response based on state (using pre-parsed options)
+    # Generate a DHCPACK, DHCPNAK, or silent discard based on state (using pre-parsed options)
     case create_dhcp_ack(message, parsed_opts, client_ip, request_state) do
       {:ok, ack} ->
         send_dhcp_response(ack, client_ip, client_port, state)
@@ -277,6 +277,10 @@ defmodule YellowDog.Dhcpv4.Handler do
 
         nak = build_dhcp_nak(message, reason)
         send_dhcp_response(nak, client_ip, client_port, state)
+
+      :discard ->
+        # RFC 2131 §4.3.2: silently discard — no response sent
+        :ok
     end
 
     {:continue, state}
@@ -456,14 +460,14 @@ defmodule YellowDog.Dhcpv4.Handler do
         allocate_and_respond(request, requested_ip, hostname, client_id)
 
       {:error, :wrong_server} ->
-        # Client is requesting from a different server, silently ignore
+        # RFC 2131 §4.3.2: must silently discard — do NOT send NAK
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :request, :ignored],
           %{count: 1},
           %{client_mac: request.chaddr, reason: "non-matching server identifier"}
         )
 
-        {:nak, "Wrong server identifier"}
+        :discard
     end
   end
 

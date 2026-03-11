@@ -233,6 +233,88 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  # RFC 2131 §4.3.2: DHCPREQUEST addressed to a different server must be silently
+  # discarded (no NAK sent). The test verifies that the :request, :ignored telemetry
+  # event fires but the :lease, :rejected event does NOT fire.
+  describe "RFC 2131 §4.3.2 — wrong server identifier is silently discarded" do
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv4-rfc2131-ignored-#{System.unique_integer()}"
+      rejected_id = "test-dhcpv4-rfc2131-rejected-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv4, :request, :ignored],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        rejected_id,
+        [:yellow_dog, :dhcpv4, :lease, :rejected],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(handler_id)
+        :telemetry.detach(rejected_id)
+      end)
+
+      :ok
+    end
+
+    test "DHCPREQUEST with non-matching server identifier is silently dropped" do
+      # Build a DHCPREQUEST whose Server Identifier option contains
+      # 10.0.0.99 — a different server, not us (pool GW is 192.168.1.1).
+      message = %DHCPv4.Message{
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0xDEAD_BEEF,
+        secs: 0,
+        flags: 0,
+        ciaddr: {0, 0, 0, 0},
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
+        chaddr: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+        sname: <<0::size(64 * 8)>>,
+        file: <<0::size(128 * 8)>>,
+        options: [
+          # DHCPREQUEST
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<3>>},
+          # Requested IP Address (option 50)
+          %DHCPv4.Message.Option{type: 50, length: 4, value: <<192, 168, 1, 150>>},
+          # Server Identifier (option 54) — deliberately wrong server
+          %DHCPv4.Message.Option{type: 54, length: 4, value: <<10, 0, 0, 99>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+
+      data = DHCP.Parameter.to_iodata(message)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      result = Handler.handle_data({{192, 168, 1, 50}, 68, data}, state)
+      assert result == {:continue, state}
+
+      # Silently ignored — telemetry event must fire
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv4, :request, :ignored], _, meta}, 500
+      assert meta.reason =~ "non-matching server identifier"
+
+      # No NAK — the :lease, :rejected event must NOT fire
+      refute_receive {:telemetry, [:yellow_dog, :dhcpv4, :lease, :rejected], _, _}, 200
+
+      :gen_udp.close(socket)
+    end
+  end
+
   describe "error handling" do
     test "handles handler errors" do
       state = %{socket: self()}
