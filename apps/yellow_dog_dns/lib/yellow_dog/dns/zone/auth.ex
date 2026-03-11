@@ -846,7 +846,27 @@ defmodule YellowDog.Dns.Zone.Auth do
           {:ok, build_nodata_response(query, state)}
 
         true ->
-          {:ok, build_nxdomain_response(query, state)}
+          # RFC 1034 §4.3.3 / RFC 4592: try wildcard expansion before NXDOMAIN.
+          # The wildcard candidate is the query name with the leftmost label
+          # replaced by "*" (e.g., "a.example.com" → "*.example.com").
+          wildcard = wildcard_candidate(qname)
+          wildcard_records = if wildcard, do: lookup_records(state.table, wildcard, qtype), else: []
+          wildcard_cnames = if wildcard, do: lookup_records(state.table, wildcard, :cname), else: []
+
+          cond do
+            Enum.any?(wildcard_records) ->
+              # Substitute the query name as the owner (RFC 4592 §2.2.2)
+              expanded = Enum.map(wildcard_records, &%{&1 | name: qname})
+              {:ok, build_response(query, expanded, state)}
+
+            Enum.any?(wildcard_cnames) ->
+              expanded_cnames = Enum.map(wildcard_cnames, &%{&1 | name: qname})
+              all_answers = chase_cname_chain(state, expanded_cnames, qtype, 0)
+              {:ok, build_response(query, all_answers, state)}
+
+            true ->
+              {:ok, build_nxdomain_response(query, state)}
+          end
       end
     else
       {:error, :refused}
@@ -919,6 +939,18 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     :ets.match_object(table, {{normalized, :_}, :_})
     |> Enum.any?()
+  end
+
+  # RFC 1034 §4.3.3 / RFC 4592: build the wildcard candidate for qname by
+  # replacing the leftmost label with "*".
+  # "a.example.com"   → "*.example.com"
+  # "a.b.example.com" → "*.b.example.com"
+  # Returns nil for apex queries (no label to strip).
+  defp wildcard_candidate(qname) do
+    case String.split(qname, ".", parts: 2) do
+      [_first, rest] when rest != "" -> "*.#{rest}"
+      _ -> nil
+    end
   end
 
   defp in_zone?(zone_name, qname) do
