@@ -30,7 +30,8 @@ defmodule YellowDog.Resolved.Management.Client do
       ref: nil,
       heartbeat_interval: Map.get(config.ws_config, :heartbeat_interval_s, 30) * 1000,
       heartbeat_timer: nil,
-      connected: false
+      connected: false,
+      last_pong_at: nil
     }
 
     send(self(), :connect)
@@ -54,10 +55,20 @@ defmodule YellowDog.Resolved.Management.Client do
   end
 
   def handle_info(:heartbeat, %{connected: true} = state) do
-    # WebSocket ping/pong
-    state = send_ws_ping(state)
-    timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
-    {:noreply, %{state | heartbeat_timer: timer}}
+    # Pong watchdog: if no pong has arrived within 2× the heartbeat interval
+    # the TCP session is likely half-open (silently dead).  Disconnect so that
+    # Discovery can re-probe and establish a fresh connection.
+    now = System.monotonic_time(:millisecond)
+    deadline = state.heartbeat_interval * 2
+
+    if state.last_pong_at != nil and now - state.last_pong_at > deadline do
+      Logger.warning("[Resolved] Management heartbeat timeout — no pong received; reconnecting")
+      handle_disconnect(state, :heartbeat_timeout)
+    else
+      state = send_ws_ping(state)
+      timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
+      {:noreply, %{state | heartbeat_timer: timer}}
+    end
   end
 
   def handle_info(:heartbeat, state), do: {:noreply, state}
@@ -100,7 +111,8 @@ defmodule YellowDog.Resolved.Management.Client do
                 %{endpoint: state.endpoint}
               )
 
-              state = %{state | conn: conn, websocket: websocket, connected: true}
+              state = %{state | conn: conn, websocket: websocket, connected: true,
+                               last_pong_at: System.monotonic_time(:millisecond)}
               connected_msg = Handler.connected_event(state.instance_id)
               state = send_message(state, connected_msg)
               timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
@@ -196,7 +208,7 @@ defmodule YellowDog.Resolved.Management.Client do
         send_ws_pong(state, data)
 
       {:pong, _data}, state ->
-        state
+        %{state | last_pong_at: System.monotonic_time(:millisecond)}
 
       {:close, code, data}, state ->
         # RFC 6455 §5.5.1: echo the close frame before disconnecting.

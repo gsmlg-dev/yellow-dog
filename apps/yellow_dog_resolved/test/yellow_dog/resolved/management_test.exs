@@ -312,6 +312,55 @@ defmodule YellowDog.Resolved.ManagementTest do
     end
   end
 
+  describe "heartbeat watchdog" do
+    # Starts a TCP listener that accepts the connection but never speaks HTTP,
+    # giving us a live GenServer in the pre-upgrade state with full state access.
+    defp start_client_with_silent_tcp(parent) do
+      {:ok, listen_sock} =
+        :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listen_sock)
+
+      Task.start(fn ->
+        {:ok, _sock} = :gen_tcp.accept(listen_sock, 5000)
+        Process.sleep(:infinity)
+      end)
+
+      {:ok, pid} =
+        GenServer.start_link(Client, %{
+          endpoint: "ws://127.0.0.1:#{port}/ws",
+          instance_id: :crypto.strong_rand_bytes(16),
+          parent: parent,
+          ws_config: %{heartbeat_interval_s: 30}
+        })
+
+      # Give :connect time to fire and TCP handshake to complete.
+      Process.sleep(50)
+      {pid, listen_sock}
+    end
+
+    test "sends :management_down(:heartbeat_timeout) when pong is overdue" do
+      {pid, listen_sock} = start_client_with_silent_tcp(self())
+      ref = Process.monitor(pid)
+
+      # Inject: connected=true, last_pong_at far in the past (beyond 2× heartbeat)
+      :sys.replace_state(pid, fn state ->
+        %{state |
+          connected: true,
+          last_pong_at: System.monotonic_time(:millisecond) - 100_000
+        }
+      end)
+
+      send(pid, :heartbeat)
+
+      assert_receive {:management_down, :heartbeat_timeout}, 1000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1000
+
+      :gen_tcp.close(listen_sock)
+    end
+
+  end
+
   describe "connected_event/1" do
     test "builds correct connected event structure" do
       instance_id = :crypto.strong_rand_bytes(16)
