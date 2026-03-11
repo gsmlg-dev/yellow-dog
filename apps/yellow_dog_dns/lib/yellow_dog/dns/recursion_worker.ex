@@ -175,7 +175,7 @@ defmodule YellowDog.Dns.RecursionWorker do
 
   defp follow_referral(socket, query, question, response, timeout, depth) do
     # Extract NS records and their glue
-    ns_records = Enum.filter(response.nslist, &(&1.type == :ns))
+    ns_records = Enum.filter(response.nslist, fn r -> to_string(r.type) == "NS" end)
 
     # Get glue records (A/AAAA in additional section)
     glue_records = extract_glue(response.arlist)
@@ -198,12 +198,12 @@ defmodule YellowDog.Dns.RecursionWorker do
   end
 
   defp has_ns_records?(records) do
-    Enum.any?(records, &(&1.type == :ns))
+    Enum.any?(records, fn r -> to_string(r.type) == "NS" end)
   end
 
   defp extract_glue(additional) do
     additional
-    |> Enum.filter(&(&1.type in [:a, :aaaa]))
+    |> Enum.filter(fn r -> to_string(r.type) in ["A", "AAAA"] end)
     |> Enum.group_by(& &1.name)
   end
 
@@ -238,7 +238,7 @@ defmodule YellowDog.Dns.RecursionWorker do
 
       case do_resolve(socket, ns_query, default_root_servers(), timeout, depth) do
         {:ok, response} ->
-          addresses = for(r <- response.anlist, r.type == :a, do: {r.rdata, 53})
+          addresses = for r <- response.anlist, to_string(r.type) == "A", do: {r.rdata, 53}
 
           if addresses == [] do
             resolve_ns_addresses(socket, rest, timeout, depth)

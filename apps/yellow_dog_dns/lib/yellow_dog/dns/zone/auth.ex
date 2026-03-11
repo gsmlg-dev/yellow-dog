@@ -368,7 +368,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
-    :ets.delete(state.table, {normalize_name(name), type})
+    :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
 
     new_state = %{
       state
@@ -438,7 +438,7 @@ defmodule YellowDog.Dns.Zone.Auth do
   @impl true
   def handle_call({:remove_record_versioned, name, type, expected_version}, _from, state) do
     if state.version == expected_version do
-      :ets.delete(state.table, {normalize_name(name), type})
+      :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
       new_version = state.version + 1
 
       new_state = %{

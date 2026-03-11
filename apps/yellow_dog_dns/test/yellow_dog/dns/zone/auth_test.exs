@@ -299,6 +299,27 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert length(records) == 1
       assert hd(records).type == :txt
     end
+
+    test "removes record when type is a DNS.ResourceRecordType struct", %{zone: pid} do
+      # add_record normalises to atom; remove_record must also normalise so the
+      # ETS key matches — previously remove_record used the raw struct, causing
+      # a silent no-op deletion.
+      Auth.add_record(pid, %{
+        name: "srv.example.com",
+        type: :a,
+        class: :in,
+        ttl: 3600,
+        rdata: {10, 0, 0, 1}
+      })
+
+      assert length(Auth.get_all_records(pid)) == 1
+
+      # Pass type as a ResourceRecordType struct (as it arrives from wire-format parsing)
+      rr_type_struct = DNS.ResourceRecordType.new(1)
+      :ok = Auth.remove_record(pid, "srv.example.com", rr_type_struct)
+
+      assert Auth.get_all_records(pid) == []
+    end
   end
 
   describe "name normalization" do
