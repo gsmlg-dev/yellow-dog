@@ -435,7 +435,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
     # Find PTR records (service type enumeration)
     ptr_records =
-      Enum.filter(message.anlist, fn record -> record.type == :PTR end)
+      Enum.filter(message.anlist, fn record -> to_string(record.type) == "PTR" end)
 
     # For each PTR, try to find corresponding SRV, TXT, A/AAAA records
     Enum.flat_map(ptr_records, fn ptr ->
@@ -445,13 +445,13 @@ defmodule YellowDog.Mdns.NetworkMonitor do
       # Find SRV record
       srv_record =
         Enum.find(message.anlist ++ message.arlist, fn record ->
-          record.type == :SRV and to_string(record.name) == service_instance
+          to_string(record.type) == "SRV" and to_string(record.name) == service_instance
         end)
 
       # Find TXT record
       txt_record =
         Enum.find(message.anlist ++ message.arlist, fn record ->
-          record.type == :TXT and to_string(record.name) == service_instance
+          to_string(record.type) == "TXT" and to_string(record.name) == service_instance
         end)
 
       # Find A/AAAA records

@@ -472,7 +472,7 @@ defmodule YellowDog.Mdns.Client do
   defp extract_ptr_targets(responses) do
     for msg <- responses,
         record <- msg.anlist,
-        record.type == :PTR,
+        to_string(record.type) == "PTR",
         uniq: true,
         do: to_string(record.data)
   end
@@ -480,7 +480,7 @@ defmodule YellowDog.Mdns.Client do
   defp extract_a_records(responses) do
     for msg <- responses,
         record <- msg.anlist ++ msg.arlist,
-        record.type == :A,
+        to_string(record.type) == "A",
         uniq: true,
         do: record.data
   end
@@ -488,7 +488,7 @@ defmodule YellowDog.Mdns.Client do
   defp extract_aaaa_records(responses) do
     for msg <- responses,
         record <- msg.anlist ++ msg.arlist,
-        record.type == :AAAA,
+        to_string(record.type) == "AAAA",
         uniq: true,
         do: record.data
   end
@@ -532,12 +532,16 @@ defmodule YellowDog.Mdns.Client do
 
   defp extract_srv_record(responses) do
     Enum.find_value(responses, fn msg ->
-      Enum.find_value(msg.anlist ++ msg.arlist, fn
-        %{type: :SRV, data: %{target: target, port: port, priority: priority, weight: weight}} ->
-          %{host: to_string(target), port: port, priority: priority, weight: weight}
+      Enum.find_value(msg.anlist ++ msg.arlist, fn record ->
+        if to_string(record.type) == "SRV" do
+          case record.data do
+            %{target: target, port: port, priority: priority, weight: weight} ->
+              %{host: to_string(target), port: port, priority: priority, weight: weight}
 
-        _ ->
-          nil
+            _ ->
+              nil
+          end
+        end
       end)
     end)
   end
@@ -545,7 +549,7 @@ defmodule YellowDog.Mdns.Client do
   defp extract_txt_record(responses) do
     responses
     |> Enum.flat_map(fn msg -> msg.anlist ++ msg.arlist end)
-    |> Enum.filter(fn record -> record.type == :TXT end)
+    |> Enum.filter(fn record -> to_string(record.type) == "TXT" end)
     |> Enum.flat_map(fn record ->
       case record.data do
         list when is_list(list) ->
