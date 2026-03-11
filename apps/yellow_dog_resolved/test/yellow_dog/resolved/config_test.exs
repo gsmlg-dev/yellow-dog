@@ -239,6 +239,37 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert log =~ "max_ttl_s"
     end
 
+    test "rate_limit burst < rate is clamped to rate" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "rate_limit" => %{"burst" => 5, "rate" => 20}
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.rate_limit.burst >= config.rate_limit.rate
+    end
+
+    test "rate_limit burst < rate emits a warning log" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "rate_limit" => %{"burst" => 5, "rate" => 20}
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          Config.parse_toml_for_test(toml)
+        end)
+
+      assert log =~ "burst"
+      assert log =~ "rate"
+    end
+
     test "cache max_entries is at least 1" do
       toml = %{
         "resolved" => %{

@@ -195,9 +195,18 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_rate_limit_config(rl) do
+    burst = clamp_int(Map.get(rl, "burst", 50), 1, 10_000)
+    rate = clamp_int(Map.get(rl, "rate", 20), 1, 10_000)
+
+    if burst < rate do
+      Logger.warning(
+        "[Resolved] Rate limiter burst (#{burst}) < rate (#{rate}); clamping burst to #{rate}"
+      )
+    end
+
     %{
-      burst: clamp_int(Map.get(rl, "burst", 50), 1, 10_000),
-      rate: clamp_int(Map.get(rl, "rate", 20), 1, 10_000)
+      burst: max(burst, rate),
+      rate: rate
     }
   end
 

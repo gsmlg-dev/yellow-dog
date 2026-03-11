@@ -51,7 +51,7 @@ defmodule YellowDog.Resolved.Handler do
 
   require Logger
 
-  alias YellowDog.Resolved.{RateLimiter, Router}
+  alias YellowDog.Resolved.{Counters, RateLimiter, Router}
 
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
@@ -60,6 +60,8 @@ defmodule YellowDog.Resolved.Handler do
         handle_query(client_ip, client_port, data, state)
 
       :rate_limited ->
+        Counters.increment(:rate_limited)
+
         :telemetry.execute(
           [:yellow_dog, :resolved, :query, :rate_limited],
           %{},

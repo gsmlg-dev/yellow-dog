@@ -36,6 +36,7 @@ defmodule YellowDog.Resolved.CountersTest do
       assert counters.cached == 0
       assert counters.forwarded == 0
       assert counters.error == 0
+      assert counters.rate_limited == 0
       assert counters.total == 0
     end
 
@@ -79,6 +80,12 @@ defmodule YellowDog.Resolved.CountersTest do
       assert Counters.get().error == 1
     end
 
+    test "increments :rate_limited counter" do
+      assert Counters.get().rate_limited == 0
+      assert :ok = Counters.increment(:rate_limited)
+      assert Counters.get().rate_limited == 1
+    end
+
     test "increments are additive" do
       Counters.increment(:intercepted)
       Counters.increment(:intercepted)
@@ -94,6 +101,7 @@ defmodule YellowDog.Resolved.CountersTest do
       Counters.increment(:cached)
       Counters.increment(:forwarded)
       Counters.increment(:error)
+      Counters.increment(:rate_limited)
 
       assert :ok = Counters.reset()
 
@@ -102,6 +110,7 @@ defmodule YellowDog.Resolved.CountersTest do
       assert counters.cached == 0
       assert counters.forwarded == 0
       assert counters.error == 0
+      assert counters.rate_limited == 0
       assert counters.total == 0
     end
   end

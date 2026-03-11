@@ -17,8 +17,9 @@ defmodule YellowDog.Resolved.Counters do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  @spec increment(:intercepted | :forwarded | :cached | :error) :: :ok
-  def increment(counter) when counter in [:intercepted, :forwarded, :cached, :error] do
+  @spec increment(:intercepted | :forwarded | :cached | :error | :rate_limited) :: :ok
+  def increment(counter)
+      when counter in [:intercepted, :forwarded, :cached, :error, :rate_limited] do
     :ets.update_counter(@table, counter, 1)
     :ok
   end
@@ -28,6 +29,7 @@ defmodule YellowDog.Resolved.Counters do
           cached: non_neg_integer(),
           forwarded: non_neg_integer(),
           error: non_neg_integer(),
+          rate_limited: non_neg_integer(),
           total: non_neg_integer()
         }
   def get do
@@ -35,12 +37,14 @@ defmodule YellowDog.Resolved.Counters do
     [{_, cached}] = :ets.lookup(@table, :cached)
     [{_, forwarded}] = :ets.lookup(@table, :forwarded)
     [{_, error}] = :ets.lookup(@table, :error)
+    [{_, rate_limited}] = :ets.lookup(@table, :rate_limited)
 
     %{
       intercepted: intercepted,
       cached: cached,
       forwarded: forwarded,
       error: error,
+      rate_limited: rate_limited,
       total: intercepted + cached + forwarded + error
     }
   end
@@ -51,7 +55,8 @@ defmodule YellowDog.Resolved.Counters do
       {:intercepted, 0},
       {:cached, 0},
       {:forwarded, 0},
-      {:error, 0}
+      {:error, 0},
+      {:rate_limited, 0}
     ])
 
     :ok
@@ -67,7 +72,8 @@ defmodule YellowDog.Resolved.Counters do
       {:intercepted, 0},
       {:cached, 0},
       {:forwarded, 0},
-      {:error, 0}
+      {:error, 0},
+      {:rate_limited, 0}
     ])
 
     {:ok, %{table: table}}
