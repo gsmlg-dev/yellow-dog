@@ -335,7 +335,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     # If ciaddr is non-zero and does not match the allocated IP, silently ignore.
     # ciaddr is stored as an IP tuple by ex_dhcp; treat {0,0,0,0} as "not supplied".
     ciaddr =
-      if message.ciaddr == {0, 0, 0, 0} or message.ciaddr == 0, do: nil, else: message.ciaddr
+      if message.ciaddr == {0, 0, 0, 0}, do: nil, else: message.ciaddr
 
     case LeaseManager.get_lease(message.chaddr) do
       {:ok, lease} when ciaddr != nil and lease.ip_address != ciaddr ->
@@ -462,12 +462,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     requested_ip =
       case request_state do
         :renewing ->
-          # For RENEWING, use ciaddr (client's current IP)
-          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
+          # For RENEWING, use ciaddr (client's current IP — already a tuple from parser)
+          if(request.ciaddr == {0, 0, 0, 0}, do: nil, else: request.ciaddr)
 
         :rebinding ->
-          # For REBINDING, use ciaddr (client's current IP)
-          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
+          # For REBINDING, use ciaddr (client's current IP — already a tuple from parser)
+          if(request.ciaddr == {0, 0, 0, 0}, do: nil, else: request.ciaddr)
 
         _ ->
           # For SELECTING and INIT-REBOOT, use pre-parsed Requested IP Address
@@ -863,21 +863,23 @@ defmodule YellowDog.Dhcpv4.Handler do
     requested_ip = parsed_opts.requested_ip
     ciaddr = request.ciaddr
 
+    zero_ip = {0, 0, 0, 0}
+
     cond do
-      # SELECTING: Server Identifier and Requested IP present, ciaddr is 0
-      server_id != nil && requested_ip != nil && ciaddr == 0 ->
+      # SELECTING: Server Identifier and Requested IP present, ciaddr is 0.0.0.0
+      server_id != nil && requested_ip != nil && ciaddr == zero_ip ->
         :selecting
 
-      # INIT-REBOOT: Requested IP present, no Server Identifier, ciaddr is 0
-      requested_ip != nil && server_id == nil && ciaddr == 0 ->
+      # INIT-REBOOT: Requested IP present, no Server Identifier, ciaddr is 0.0.0.0
+      requested_ip != nil && server_id == nil && ciaddr == zero_ip ->
         :init_reboot
 
       # RENEWING: ciaddr filled in, no Requested IP or Server Identifier
-      ciaddr != 0 && requested_ip == nil && server_id == nil ->
+      ciaddr != zero_ip && requested_ip == nil && server_id == nil ->
         :renewing
 
       # REBINDING: ciaddr filled in, may have Requested IP but no Server Identifier
-      ciaddr != 0 && server_id == nil ->
+      ciaddr != zero_ip && server_id == nil ->
         :rebinding
 
       # Default to selecting if we can't determine

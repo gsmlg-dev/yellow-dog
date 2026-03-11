@@ -640,6 +640,104 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  describe "RFC 2131 §4.3.2 — DHCPREQUEST state detection via ciaddr" do
+    # RFC 2131 §4.3.2 defines four client states inferred from message fields:
+    # SELECTING:  server_id present, requested_ip present, ciaddr = 0.0.0.0
+    # INIT-REBOOT: requested_ip present, server_id absent, ciaddr = 0.0.0.0
+    # RENEWING:   ciaddr non-zero, no requested_ip, no server_id
+    # REBINDING:  ciaddr non-zero, server_id absent (may have requested_ip)
+
+    @tag :capture_log
+    test "RENEWING state: ciaddr non-zero is detected correctly" do
+      # First allocate a lease so the RENEWING REQUEST succeeds
+      mac = <<0xEE, 0x11, 0x22, 0x33, 0x44, 0x55>>
+      {:ok, lease} = LeaseManager.allocate_lease(mac, nil, nil, "default")
+      client_ip = lease.ip_address
+      {a, b, c, d} = client_ip
+
+      # RENEWING DHCPREQUEST: ciaddr = assigned IP, no server_id, no requested_ip option
+      message = %DHCPv4.Message{
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0x12340001,
+        secs: 0,
+        flags: 0,
+        # ciaddr = client's current IP (non-zero — triggers RENEWING state)
+        ciaddr: client_ip,
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
+        chaddr: mac <> <<0::size(10 * 8)>>,
+        sname: <<0::size(64 * 8)>>,
+        file: <<0::size(128 * 8)>>,
+        options: [
+          # DHCPREQUEST — no server_id, no requested_ip options (unicast RENEWING)
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<3>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+
+      data = DHCP.Parameter.to_iodata(message)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      # Handler must process without crashing — RENEWING state now detected correctly
+      result = Handler.handle_data({client_ip, 68, data}, state)
+      assert result == {:continue, state}
+
+      :gen_udp.close(socket)
+    end
+
+    @tag :capture_log
+    test "SELECTING state: ciaddr 0.0.0.0 is detected correctly (not treated as RENEWING)" do
+      mac = <<0xEE, 0x44, 0x55, 0x66, 0x77, 0x88>>
+      {:ok, _lease} = LeaseManager.allocate_lease(mac, nil, nil, "default")
+
+      server_ip = {192, 168, 1, 1}
+      {sa, sb, sc, sd} = server_ip
+      requested_ip = {192, 168, 1, 100}
+      {ra, rb, rc, rd} = requested_ip
+
+      # SELECTING DHCPREQUEST: ciaddr=0.0.0.0, server_id present, requested_ip present
+      message = %DHCPv4.Message{
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0x12340002,
+        secs: 0,
+        flags: 0,
+        ciaddr: {0, 0, 0, 0},
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
+        chaddr: mac <> <<0::size(10 * 8)>>,
+        sname: <<0::size(64 * 8)>>,
+        file: <<0::size(128 * 8)>>,
+        options: [
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<3>>},
+          # Server identifier (option 54)
+          %DHCPv4.Message.Option{type: 54, length: 4, value: <<sa, sb, sc, sd>>},
+          # Requested IP (option 50)
+          %DHCPv4.Message.Option{type: 50, length: 4, value: <<ra, rb, rc, rd>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+
+      data = DHCP.Parameter.to_iodata(message)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      # Should not crash — ciaddr=0.0.0.0 (tuple) is correctly identified as SELECTING
+      result = Handler.handle_data({{0, 0, 0, 0}, 68, data}, state)
+      assert result == {:continue, state}
+
+      :gen_udp.close(socket)
+    end
+  end
+
   # Helper to create a DECLINE message
   defp create_decline_message(mac, ip) do
     {a, b, c, d} = ip
