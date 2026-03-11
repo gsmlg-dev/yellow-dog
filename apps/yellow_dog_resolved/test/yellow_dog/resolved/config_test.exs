@@ -457,6 +457,22 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert rule.type == :ns
     end
 
+    test "intercept rule with unknown type is rejected (not silently coerced to :a)" do
+      # If "BADTYPE" silently became :a, and the value happened to be a valid IP,
+      # the rule would be accepted as an A record — wrong and confusing.
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "example.local", "type" => "BADTYPE", "value" => "1.2.3.4"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.intercept_rules == []
+    end
+
     test "valid PTR rule is parsed with type :ptr" do
       toml = %{
         "resolved" => %{

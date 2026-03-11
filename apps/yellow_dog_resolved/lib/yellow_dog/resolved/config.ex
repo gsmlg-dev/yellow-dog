@@ -286,6 +286,7 @@ defmodule YellowDog.Resolved.Config do
     end
   end
 
+  defp validate_rule_value(:unknown, _value), do: :error
   defp validate_rule_value(_type, _value), do: :ok
 
   defp parse_match_pattern("*." <> suffix), do: {:suffix, String.downcase(suffix)}
@@ -306,7 +307,7 @@ defmodule YellowDog.Resolved.Config do
   defp parse_record_type("SRV"), do: :srv
   defp parse_record_type("NS"), do: :ns
   defp parse_record_type("PTR"), do: :ptr
-  defp parse_record_type(_), do: :a
+  defp parse_record_type(_), do: :unknown
 
   defp clamp_int(val, min_val, max_val) when is_integer(val) do
     val |> max(min_val) |> min(max_val)
