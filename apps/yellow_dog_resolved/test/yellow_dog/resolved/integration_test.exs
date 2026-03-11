@@ -359,7 +359,9 @@ defmodule YellowDog.Resolved.IntegrationTest do
             %{match: {:exact, "cname.test"}, type: :cname, value: "target.test", ttl: 300},
             %{match: {:exact, "txt.test"}, type: :txt, value: "v=spf1 ~all", ttl: 300},
             %{match: {:exact, "mx.test"}, type: :mx, value: "10 mail.test", ttl: 300},
-            %{match: {:exact, "srv.test"}, type: :srv, value: "10 20 5060 sip.test", ttl: 300}
+            %{match: {:exact, "srv.test"}, type: :srv, value: "10 20 5060 sip.test", ttl: 300},
+            %{match: {:exact, "ns.test"}, type: :ns, value: "ns1.test", ttl: 300},
+            %{match: {:exact, "1.0.168.192.in-addr.arpa"}, type: :ptr, value: "host.ns.test", ttl: 300}
           ]
       }
 
@@ -414,6 +416,24 @@ defmodule YellowDog.Resolved.IntegrationTest do
 
     test "SRV record intercept serializes correctly" do
       query = build_query("srv.test", :srv)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "NS record intercept serializes correctly" do
+      query = build_query("ns.test", :ns)
+      response = Router.resolve(query)
+      parsed = serialize_roundtrip(response)
+
+      assert parsed.header.qr == 1
+      assert length(parsed.anlist) == 1
+    end
+
+    test "PTR record intercept serializes correctly" do
+      query = build_query("1.0.168.192.in-addr.arpa", :ptr)
       response = Router.resolve(query)
       parsed = serialize_roundtrip(response)
 
