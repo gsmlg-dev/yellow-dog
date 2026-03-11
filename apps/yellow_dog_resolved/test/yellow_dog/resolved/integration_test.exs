@@ -5,7 +5,7 @@ defmodule YellowDog.Resolved.IntegrationTest do
   """
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, Router}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, RateLimiter, Router}
 
   @test_config %{
     listen: {127, 0, 0, 1},
@@ -34,6 +34,7 @@ defmodule YellowDog.Resolved.IntegrationTest do
     start_supervised!(Counters)
     start_supervised!({Cache, @test_config.cache})
     start_supervised!({Forwarder, @test_config})
+    start_supervised!({RateLimiter, @test_config})
     :ok
   end
 
@@ -199,6 +200,54 @@ defmodule YellowDog.Resolved.IntegrationTest do
       Cache.flush()
 
       assert :miss = Cache.lookup(domain_str, dns_type)
+    end
+  end
+
+  describe "cached response TTL adjustment" do
+    test "cached response TTLs reflect remaining cache lifetime" do
+      domain = "ttl-adj.example.com"
+      query = build_query(domain)
+
+      [question] = query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      original_ttl = 300
+
+      fake_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          z: 0,
+          ad: 0,
+          cd: 0,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 1,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [DNS.Message.Record.new(domain, :a, :in, original_ttl, {10, 20, 30, 40})],
+        nslist: [],
+        arlist: []
+      }
+
+      Cache.store(domain_str, dns_type, fake_response, original_ttl)
+      Process.sleep(10)
+
+      # Query through router — TTL should be <= original_ttl
+      response = Router.resolve(query)
+      assert response.header.id == query.header.id
+
+      [answer] = response.anlist
+      assert answer.ttl > 0
+      assert answer.ttl <= original_ttl
     end
   end
 
