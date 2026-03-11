@@ -921,4 +921,98 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
       GenServer.stop(pid)
     end
   end
+
+  describe "UDP truncation (RFC 1035 §4.2.1)" do
+    setup do
+      {:ok, pid} =
+        ConnectionProcess.start_link(
+          handler_pid: self(),
+          client_ip: {127, 0, 0, 1},
+          client_port: 12345,
+          query_timeout: 500
+        )
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      {:ok, pid: pid}
+    end
+
+    # Build a response whose wire form exceeds `min_bytes` by stuffing TXT records.
+    defp build_large_response(query, min_bytes) do
+      # Each TXT record is ~50-60 bytes on the wire; add enough to exceed the limit.
+      count = div(min_bytes, 40) + 5
+
+      answers =
+        for _i <- 1..count do
+          # 30-byte TXT payload to ensure consistent sizing
+          txt = String.duplicate("x", 30)
+          DNS.Message.Record.new("example.com", :txt, :in, 300, [txt])
+        end
+
+      build_test_response(query, answers)
+    end
+
+    test "raw response > 512 bytes is truncated with TC=1 (no EDNS0)", %{pid: pid} do
+      query = build_test_query(9001)
+      raw_data = DNS.to_iodata(query) |> IO.iodata_to_binary()
+      :ok = ConnectionProcess.submit_raw_data(pid, raw_data)
+
+      # Build a response guaranteed to be larger than 512 bytes
+      response = build_large_response(query, 600)
+      original_size = IO.iodata_length(DNS.to_iodata(response))
+      assert original_size > 512
+
+      send(pid, {:resolution_complete, 9001, response})
+
+      assert_receive {:dns_raw_response, 9001, response_data}, 500
+      wire = IO.iodata_to_binary(response_data)
+
+      # Truncated response must fit within 512 bytes
+      assert byte_size(wire) <= 512
+
+      # TC bit must be set (bit 1 of byte 2 in the DNS header)
+      <<_id::16, _flags1::1, _opcode::4, _aa::1, tc::1, _rest::bits>> = wire
+      assert tc == 1
+    end
+
+    test "raw response <= 512 bytes is NOT truncated (no EDNS0)", %{pid: pid} do
+      query = build_test_query(9002)
+      raw_data = DNS.to_iodata(query) |> IO.iodata_to_binary()
+      :ok = ConnectionProcess.submit_raw_data(pid, raw_data)
+
+      # Small response that fits within 512 bytes
+      small_answer = DNS.Message.Record.new("example.com", :a, :in, 300, {1, 2, 3, 4})
+      response = build_test_response(query, [small_answer])
+      assert IO.iodata_length(DNS.to_iodata(response)) <= 512
+
+      send(pid, {:resolution_complete, 9002, response})
+
+      assert_receive {:dns_raw_response, 9002, response_data}, 500
+      wire = IO.iodata_to_binary(response_data)
+
+      # TC bit must NOT be set
+      <<_id::16, _flags1::1, _opcode::4, _aa::1, tc::1, _rest::bits>> = wire
+      assert tc == 0
+    end
+
+    test "non-raw (TCP) large response is NOT truncated", %{pid: pid} do
+      query = build_test_query(9003)
+      :ok = ConnectionProcess.submit_query(pid, query)
+
+      response = build_large_response(query, 600)
+      send(pid, {:resolution_complete, 9003, response})
+
+      assert_receive {:dns_response, 9003, received}, 500
+      # TC must be 0 — TCP has no size limit
+      assert received.header.tc == 0
+      # Answer section should be intact
+      assert length(received.anlist) > 0
+    end
+  end
 end

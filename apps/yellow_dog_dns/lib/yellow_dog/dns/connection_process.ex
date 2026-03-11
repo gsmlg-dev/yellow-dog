@@ -80,9 +80,15 @@ defmodule YellowDog.Dns.ConnectionProcess do
       view: nil,
       zone: nil,
       metadata: %{},
-      raw: false
+      raw: false,
+      # Maximum UDP payload size: 512 (RFC 1035) unless the query includes an
+      # EDNS0 OPT record advertising a larger buffer (RFC 6891 §6.2.3).
+      max_udp_payload: 512
     ]
   end
+
+  # RFC 6891 §6.1.2 OPT pseudo-RR type value
+  @opt_rr_type 41
 
   # Client API
 
@@ -372,7 +378,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
         timer_ref: timer_ref,
         started_at: System.monotonic_time(:millisecond),
         phase: @phase_received,
-        raw: raw
+        raw: raw,
+        max_udp_payload: extract_edns0_payload_size(query)
       }
 
       # Update state
@@ -464,7 +471,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         # Send response to handler (raw binary or parsed message)
         if qs.raw do
-          response_data = DNS.to_iodata(response)
+          # RFC 1035 §4.2.1: truncate UDP responses that exceed the client's
+          # declared buffer size (default 512, larger with EDNS0).
+          response_data = DNS.to_iodata(maybe_truncate(response, qs.max_udp_payload))
           send(state.handler_pid, {:dns_raw_response, query_id, response_data})
         else
           send(state.handler_pid, {:dns_response, query_id, response})
@@ -676,5 +685,58 @@ defmodule YellowDog.Dns.ConnectionProcess do
       answer_count: 0,
       error: reason
     })
+  end
+
+  # RFC 1035 §4.2.1 / RFC 6891 §6.2.3 — UDP truncation helpers
+
+  # Extract the client's advertised UDP payload size from its EDNS0 OPT record.
+  # Defaults to 512 (the RFC 1035 limit) when no OPT record is present.
+  defp extract_edns0_payload_size(%Message{arlist: arlist}) when is_list(arlist) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+
+    case Enum.find(arlist, fn r -> r.type == opt_type end) do
+      nil ->
+        512
+
+      opt_rec ->
+        # RFC 6891 §6.2.3: the class field of the OPT record holds the UDP
+        # payload size as a 16-bit unsigned integer.
+        try do
+          <<udp_payload::16>> = opt_rec.class.value
+          max(udp_payload, 512)
+        rescue
+          _ -> 512
+        end
+    end
+  end
+
+  defp extract_edns0_payload_size(_), do: 512
+
+  # If the serialized response would exceed `max_bytes`, return a truncated
+  # response with TC=1 and an empty answer section.  Per RFC 1035 §4.2.1,
+  # truncation starts at the end of the message, but the simplest compliant
+  # approach (widely used) is to return an empty answer with TC=1 so the
+  # resolver falls back to TCP.
+  defp maybe_truncate(%Message{} = response, max_bytes) do
+    wire = DNS.to_iodata(response)
+
+    if IO.iodata_length(wire) > max_bytes do
+      truncated = %Message{
+        response
+        | header: %{response.header | tc: 1, ancount: 0, nscount: 0, arcount: 0},
+          anlist: [],
+          nslist: [],
+          arlist: []
+      }
+
+      Telemetry.debug("DNS response truncated for UDP", %{
+        original_bytes: IO.iodata_length(wire),
+        max_bytes: max_bytes
+      })
+
+      truncated
+    else
+      response
+    end
   end
 end
