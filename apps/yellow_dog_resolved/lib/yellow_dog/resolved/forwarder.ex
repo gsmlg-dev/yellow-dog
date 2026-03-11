@@ -55,7 +55,8 @@ defmodule YellowDog.Resolved.Forwarder do
       failure_counts: %{},
       latencies: %{},
       pending: %{},
-      next_txn_id: :rand.uniform(65_535)
+      # :rand.uniform(65_536) - 1 gives uniform 0..65535 (all valid DNS IDs)
+      next_txn_id: :rand.uniform(65_536) - 1
     }
 
     {:ok, state}
@@ -337,7 +338,10 @@ defmodule YellowDog.Resolved.Forwarder do
       end)
 
     # Sort healthy upstreams by latency EMA (fastest first).
-    # Upstreams without latency data keep their configured order (infinity).
+    # :infinity (an atom) is used as the sentinel for upstreams without latency
+    # data.  Erlang's total term ordering places all numbers before all atoms,
+    # so :infinity sorts after any float — upstreams with no data go last and
+    # preserve their configured order relative to each other.
     sorted_healthy =
       Enum.sort_by(healthy, fn upstream ->
         Map.get(state.latencies, upstream, :infinity)
