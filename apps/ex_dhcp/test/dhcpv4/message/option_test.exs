@@ -273,4 +273,31 @@ defmodule DHCPv4.Message.OptionTest do
       assert option.value == <<>>
     end
   end
+
+  describe "malformed option resilience" do
+    # Option 6 (DNS servers) carries a list of 4-byte IPv4 addresses.
+    # A malformed packet that declares an odd-byte-count length (not a multiple of 4)
+    # must NOT crash the parser — the partial trailing bytes are silently dropped.
+    test "DNS server option with non-multiple-of-4 length does not crash" do
+      magic_cookie = <<99, 130, 83, 99>>
+      # Option 6 (DNS), length=5 (not a multiple of 4), 5 bytes of data
+      malformed = <<6, 5, 8, 8, 8, 8, 1>>
+      {:ok, parsed} = Option.parse(magic_cookie <> malformed <> <<255>>)
+      dns_opt = Enum.find(parsed, fn o -> o.type == 6 end)
+      # Parser should succeed and return whatever it could decode (not crash)
+      assert dns_opt != nil
+    end
+
+    # Option 121 (classless static routes, RFC 3442) has variable-length entries.
+    # A malformed packet with a corrupt/truncated route entry must not loop or crash.
+    test "classless static route option with inconsistent length does not crash" do
+      magic_cookie = <<99, 130, 83, 99>>
+      # Option 121 (classless static routes), length=3, but a /24 route needs 8 bytes
+      # (1 prefix_len + 3 network_octets + 4 router)
+      malformed = <<121, 3, 24, 10, 0>>
+      result = Option.parse(magic_cookie <> malformed <> <<255>>)
+      # Must return {:ok, _} or {:error, _} — must NOT raise
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+  end
 end

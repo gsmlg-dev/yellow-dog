@@ -513,11 +513,16 @@ defmodule DHCPv4.Message.Option.Types do
 
   defp to_ip_mask_list(_, _), do: []
 
+  # Guard against malformed options where the declared length is not a multiple of the
+  # element width — avoids a MatchError when the binary is exhausted mid-element.
+  defp to_int_list(bit_size, data, len) when len <= 0 or byte_size(data) < div(bit_size, 8),
+    do: []
+
   defp to_int_list(bit_size, data, len) do
     <<a::size(bit_size), rest::binary>> = data
     remaining = len - div(bit_size, 8)
 
-    if remaining == 0 do
+    if remaining <= 0 do
       [a]
     else
       [a | to_int_list(bit_size, rest, remaining)]
@@ -548,7 +553,7 @@ defmodule DHCPv4.Message.Option.Types do
     end
   end
 
-  defp to_mask_network_route_list(_bin, len) when len == 0, do: []
+  defp to_mask_network_route_list(_bin, len) when len <= 0, do: []
 
   defp to_mask_network_route_list(bin, len) do
     <<mask::8, rest::binary>> = bin
