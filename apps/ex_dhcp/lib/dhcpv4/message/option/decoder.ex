@@ -131,4 +131,19 @@ defmodule DHCPv4.Message.Option.Decoder do
   defp parse_options(<<code, length, value::binary-size(length), rest::binary>>) do
     [Helpers.new(code, length, value) | parse_options(rest)]
   end
+
+  # Catch truncated options: `code` and `length` are present but the value binary
+  # is shorter than `length` bytes.  Without this clause a FunctionClauseError
+  # would escape the try/catch in parse/1, crashing the caller.
+  defp parse_options(<<code, length, _truncated::binary>>) do
+    throw(
+      {:parse_dhcp_options_failed,
+       "option #{code} declares length #{length} but insufficient bytes remain"}
+    )
+  end
+
+  defp parse_options(<<>>) do
+    # Reached end of buffer without an explicit End option (255) — treat as valid.
+    []
+  end
 end

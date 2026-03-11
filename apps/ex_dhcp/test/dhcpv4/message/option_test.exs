@@ -76,6 +76,22 @@ defmodule DHCPv4.Message.OptionTest do
       assert Option.parse(<<99, 130, 83, 99, 255>>) == {:ok, []}
     end
 
+    test "returns error for truncated option (length > remaining bytes)" do
+      magic_cookie = <<99, 130, 83, 99>>
+      # Option code 53 (DHCP Message Type), declares length 10, but only 3 bytes follow
+      truncated = <<53, 10, 1, 2, 3>>
+      assert {:error, reason} = Option.parse(magic_cookie <> truncated)
+      assert is_binary(reason)
+    end
+
+    test "returns error for option with zero remaining bytes after length field" do
+      magic_cookie = <<99, 130, 83, 99>>
+      # Option code 1, declares length 4, but no data follows
+      no_data = <<1, 4>>
+      assert {:error, reason} = Option.parse(magic_cookie <> no_data)
+      assert is_binary(reason)
+    end
+
     test "parses multiple options correctly" do
       magic_cookie = <<99, 130, 83, 99>>
 
