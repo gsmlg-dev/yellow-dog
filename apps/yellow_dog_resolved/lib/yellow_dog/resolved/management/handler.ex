@@ -108,7 +108,9 @@ defmodule YellowDog.Resolved.Management.Handler do
         "previous_total" => old_counters.total,
         "previous_forwarded" => old_counters.forwarded,
         "previous_cached" => old_counters.cached,
-        "previous_intercepted" => old_counters.intercepted
+        "previous_intercepted" => old_counters.intercepted,
+        "previous_error" => old_counters.error,
+        "previous_rate_limited" => old_counters.rate_limited
       }
     }
   end

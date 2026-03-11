@@ -203,6 +203,8 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert result["data"]["previous_intercepted"] == 1
       assert result["data"]["previous_forwarded"] == 2
       assert result["data"]["previous_total"] == 3
+      assert result["data"]["previous_error"] == 0
+      assert result["data"]["previous_rate_limited"] == 0
 
       # Counters should now be zero
       assert Counters.get().total == 0

@@ -312,6 +312,16 @@ defmodule YellowDog.Resolved.Config do
     val |> max(min_val) |> min(max_val)
   end
 
+  defp clamp_int(val, min_val, max_val) when is_float(val) do
+    rounded = round(val)
+
+    Logger.warning(
+      "[Resolved] Config value #{val} is a float; expected integer. Rounding to #{rounded}"
+    )
+
+    clamp_int(rounded, min_val, max_val)
+  end
+
   defp clamp_int(_val, min_val, _max_val), do: min_val
 
   defp parse_ip(ip_string) when is_binary(ip_string) do

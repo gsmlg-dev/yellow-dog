@@ -202,6 +202,27 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert config.upstream_timeout_ms >= 100
     end
 
+    test "float config values are rounded to integer with a warning" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "upstream_timeout_ms" => 2000.0
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          config = Config.parse_toml_for_test(toml)
+          # 2000.0 rounds to 2000
+          assert config.upstream_timeout_ms == 2000
+        end)
+
+      assert log =~ "float"
+      assert log =~ "2000"
+    end
+
     test "cache min_ttl_s cannot exceed max_ttl_s" do
       toml = %{
         "resolved" => %{
