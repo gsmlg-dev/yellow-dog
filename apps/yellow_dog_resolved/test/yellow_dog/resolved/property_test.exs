@@ -5,7 +5,7 @@ defmodule YellowDog.Resolved.PropertyTest do
   use ExUnit.Case, async: false
   use ExUnitProperties
 
-  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, Intercept, Router}
+  alias YellowDog.Resolved.{Cache, Config, Counters, Forwarder, Intercept, RateLimiter, Router}
 
   @test_config %{
     listen: {127, 0, 0, 1},
@@ -294,6 +294,33 @@ defmodule YellowDog.Resolved.PropertyTest do
       assert is_integer(config.cache.min_ttl_s)
       assert is_integer(config.cache.max_ttl_s)
       assert config.cache.min_ttl_s <= config.cache.max_ttl_s
+    end
+  end
+
+  # Property: Rate limiter never allows more than burst + refilled tokens
+  property "rate limiter never exceeds burst capacity" do
+    # Start a dedicated rate limiter for this property test
+    rl_config = %{rate_limit: %{burst: 10, rate: 5}}
+
+    case Process.whereis(RateLimiter) do
+      nil -> :ok
+      _ -> stop_supervised!(RateLimiter)
+    end
+
+    start_supervised!({RateLimiter, rl_config})
+
+    check all(
+            ip_last_octet <- integer(1..254),
+            request_count <- integer(1..20),
+            max_runs: 30
+          ) do
+      ip = {172, 16, 0, ip_last_octet}
+      results = for _ <- 1..request_count, do: RateLimiter.allow?(ip)
+
+      allowed = Enum.count(results, &(&1 == :ok))
+
+      # Without any time passing, allowed requests can never exceed burst (10)
+      assert allowed <= 10
     end
   end
 
