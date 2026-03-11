@@ -422,6 +422,40 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "resolve/1 non-QUERY opcode" do
+    test "STATUS opcode (2) returns NOTIMP (RFC 1035 §4.1.1)" do
+      query = build_query("example.com")
+      status_query = %{query | header: %{query.header | opcode: DNS.Message.OpCode.status()}}
+
+      response = Router.resolve(status_query)
+
+      assert response.header.qr == 1
+      assert response.header.id == status_query.header.id
+      assert response.header.rcode == DNS.Message.RCode.not_imp()
+    end
+
+    test "IQUERY opcode (1) returns NOTIMP" do
+      query = build_query("example.com")
+      iquery = %{query | header: %{query.header | opcode: DNS.Message.OpCode.iquery()}}
+
+      response = Router.resolve(iquery)
+
+      assert response.header.rcode == DNS.Message.RCode.not_imp()
+    end
+
+    test "QUERY opcode (0) is processed normally" do
+      query = build_query("myapp.test")
+      # opcode is already QUERY (0) from build_query
+      assert query.header.opcode == DNS.Message.OpCode.query()
+
+      response = Router.resolve(query)
+
+      # intercepted — not NOTIMP
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert length(response.anlist) == 1
+    end
+  end
+
   describe "resolve/1 empty question section" do
     test "returns FORMERR for query with empty qdlist" do
       # RFC 1035 §4.1.2 violation: no question section

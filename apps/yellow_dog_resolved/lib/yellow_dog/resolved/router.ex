@@ -102,41 +102,48 @@ defmodule YellowDog.Resolved.Router do
   # Private
 
   defp do_resolve(query, domain, type) do
-    config = Config.get()
-    rules = Map.get(config, :intercept_rules, [])
+    # RFC 1035 §4.1.1: non-QUERY opcodes (IQUERY, STATUS, NOTIFY, UPDATE, …)
+    # are not handled by this stub resolver — return NOTIMP immediately.
+    if query.header.opcode != DNS.Message.OpCode.query() do
+      Logger.debug("[Resolved] Non-QUERY opcode #{query.header.opcode} — returning NOTIMP (domain=#{domain})")
+      {:error, ResponseBuilder.build_response(query, [], DNS.Message.RCode.not_imp())}
+    else
+      config = Config.get()
+      rules = Map.get(config, :intercept_rules, [])
 
-    # 1. Check intercept rules (match by both domain pattern and query type)
-    case Intercept.match(domain, type, rules) do
-      %{} = rule ->
-        {:intercept, ResponseBuilder.intercept_response(query, rule)}
+      # 1. Check intercept rules (match by both domain pattern and query type)
+      case Intercept.match(domain, type, rules) do
+        %{} = rule ->
+          {:intercept, ResponseBuilder.intercept_response(query, rule)}
 
-      nil ->
-        # 2. Check cache
-        cache_config = Map.get(config, :cache, %{enabled: true})
+        nil ->
+          # 2. Check cache
+          cache_config = Map.get(config, :cache, %{enabled: true})
 
-        if Map.get(cache_config, :enabled, true) do
-          case Cache.lookup(domain, type) do
-            {:hit, cached_response, remaining_ttl} ->
-              # Rewrite the response header to match the current query's txn_id,
-              # echo the RD bit from the current query (RFC 1035 §4.1.1: RD is
-              # copied into the response), and set TTLs to remaining cache TTL
-              # (RFC 1035 §4.1.3).
-              response = %{
-                cached_response
-                | header: %{cached_response.header | id: query.header.id, rd: query.header.rd},
-                  anlist: set_ttls(cached_response.anlist, remaining_ttl),
-                  nslist: set_ttls(cached_response.nslist, remaining_ttl),
-                  arlist: set_ttls(cached_response.arlist, remaining_ttl)
-              }
+          if Map.get(cache_config, :enabled, true) do
+            case Cache.lookup(domain, type) do
+              {:hit, cached_response, remaining_ttl} ->
+                # Rewrite the response header to match the current query's txn_id,
+                # echo the RD bit from the current query (RFC 1035 §4.1.1: RD is
+                # copied into the response), and set TTLs to remaining cache TTL
+                # (RFC 1035 §4.1.3).
+                response = %{
+                  cached_response
+                  | header: %{cached_response.header | id: query.header.id, rd: query.header.rd},
+                    anlist: set_ttls(cached_response.anlist, remaining_ttl),
+                    nslist: set_ttls(cached_response.nslist, remaining_ttl),
+                    arlist: set_ttls(cached_response.arlist, remaining_ttl)
+                }
 
-              {:cache, response}
+                {:cache, response}
 
-            :miss ->
-              forward_and_cache(query, domain, type, config)
+              :miss ->
+                forward_and_cache(query, domain, type, config)
+            end
+          else
+            forward_query(query, domain, type, config)
           end
-        else
-          forward_query(query, domain, type, config)
-        end
+      end
     end
   end
 
