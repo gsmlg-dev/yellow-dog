@@ -123,7 +123,8 @@ defmodule YellowDog.Mdns.Responder do
     Enum.any?(our_records, fn our_record ->
       Enum.any?(query.anlist, fn known_answer ->
         records_match?(our_record, known_answer) and
-          known_answer.ttl > our_record.ttl / 2
+          # RFC 6762 §7.1: suppress if known-answer TTL > half the record's TTL
+          known_answer.ttl > div(our_record.ttl, 2)
       end)
     end)
   end
@@ -224,12 +225,12 @@ defmodule YellowDog.Mdns.Responder do
     fixed_size = 10
 
     data_size =
-      case {type, data} do
-        {:A, {_, _, _, _}} -> 4
-        {:AAAA, {_, _, _, _, _, _, _, _}} -> 16
-        {:PTR, target} -> byte_size(to_string(target))
-        {:TXT, list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
-        {:SRV, %{target: target}} -> byte_size(to_string(target)) + 6
+      case {to_string(type), data} do
+        {"A", {_, _, _, _}} -> 4
+        {"AAAA", {_, _, _, _, _, _, _, _}} -> 16
+        {"PTR", target} -> byte_size(to_string(target))
+        {"TXT", list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
+        {"SRV", %{target: target}} -> byte_size(to_string(target)) + 6
         _ -> 20
       end
 
