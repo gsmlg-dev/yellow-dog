@@ -936,12 +936,20 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
         {:ok, leases} when leases != [] ->
           loaded =
             Enum.reduce(leases, 0, fn lease_data, count ->
-              # Convert TOML lease to Mnesia format
-              lease = convert_toml_lease_to_storage(lease_data, pool.name)
+              # Convert TOML lease to Mnesia format; skip entries with invalid IPs
+              case convert_toml_lease_to_storage(lease_data, pool.name) do
+                {:ok, lease} ->
+                  case LeaseStorage.put(lease) do
+                    {:ok, _} -> count + 1
+                    {:error, _} -> count
+                  end
 
-              case LeaseStorage.put(lease) do
-                {:ok, _} -> count + 1
-                {:error, _} -> count
+                {:error, reason} ->
+                  Logger.warning(
+                    "[Dhcpv4] Skipping invalid lease entry from TOML: #{inspect(reason)}"
+                  )
+
+                  count
               end
             end)
 
@@ -966,32 +974,34 @@ defmodule YellowDog.Dhcpv4.LeaseManager do
     end)
   end
 
-  # Convert a lease from TOML format to LeaseStorage format
+  # Convert a lease from TOML format to LeaseStorage format.
+  # Returns {:ok, lease_map} or {:error, reason} so callers can skip bad entries
+  # instead of crashing the GenServer on a corrupt or manually edited TOML file.
   defp convert_toml_lease_to_storage(lease_data, pool_name) do
     now = System.system_time(:second)
 
-    # Parse IP address if it's a string
-    {:ok, ip} = Ipv4Util.parse(lease_data.ip)
+    with {:ok, ip} <- Ipv4Util.parse(lease_data.ip) do
+      mac =
+        case lease_data.mac do
+          mac when is_binary(mac) and byte_size(mac) == 6 -> mac
+          mac when is_binary(mac) -> parse_mac(mac)
+          _ -> nil
+        end
 
-    # Parse MAC address
-    mac =
-      case lease_data.mac do
-        mac when is_binary(mac) and byte_size(mac) == 6 -> mac
-        mac when is_binary(mac) -> parse_mac(mac)
-      end
-
-    %{
-      mac_address: mac,
-      ip_address: ip,
-      pool_name: pool_name,
-      state: lease_data.state || :active,
-      lease_time: lease_data.lease_time || 3600,
-      expires_at: lease_data.expires_at || now + 3600,
-      hostname: lease_data.hostname,
-      client_id: lease_data.client_id,
-      created_at: lease_data.starts_at || now,
-      updated_at: now
-    }
+      {:ok,
+       %{
+         mac_address: mac,
+         ip_address: ip,
+         pool_name: pool_name,
+         state: lease_data.state || :active,
+         lease_time: lease_data.lease_time || 3600,
+         expires_at: lease_data.expires_at || now + 3600,
+         hostname: lease_data.hostname,
+         client_id: lease_data.client_id,
+         created_at: lease_data.starts_at || now,
+         updated_at: now
+       }}
+    end
   end
 
   # Parse MAC address from various formats

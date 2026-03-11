@@ -20,6 +20,8 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
 
   use GenServer
 
+  require Logger
+
   import YellowDog.ConfigHelpers, only: [get_value: 3]
 
   alias YellowDog.Dhcpv6.{AddressPool, DuidFormat, Ipv6Util, LeaseStorage, PoolStore}
@@ -847,18 +849,24 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
         {:ok, leases} when leases != [] ->
           loaded =
             Enum.reduce(leases, 0, fn lease_data, count ->
-              # Convert TOML lease to storage format
-              lease = convert_toml_lease_to_storage(lease_data, pool)
+              # Convert TOML lease to storage format; skip entries with invalid IPs
+              case convert_toml_lease_to_storage(lease_data, pool) do
+                {:ok, lease} ->
+                  case LeaseStorage.put(lease) do
+                    {:ok, _} ->
+                      lease_key = make_lease_key(lease.duid, lease.iaid)
+                      :ets.insert(@table_name, {lease_key, lease})
+                      count + 1
 
-              # Store in Mnesia
-              case LeaseStorage.put(lease) do
-                {:ok, _} ->
-                  # Also store in ETS cache
-                  lease_key = make_lease_key(lease.duid, lease.iaid)
-                  :ets.insert(@table_name, {lease_key, lease})
-                  count + 1
+                    {:error, _} ->
+                      count
+                  end
 
-                {:error, _} ->
+                {:error, reason} ->
+                  Logger.warning(
+                    "[Dhcpv6] Skipping invalid lease entry from TOML: #{inspect(reason)}"
+                  )
+
                   count
               end
             end)
@@ -884,33 +892,33 @@ defmodule YellowDog.Dhcpv6.LeaseManager do
     end)
   end
 
-  # Convert a lease from TOML format to storage format
+  # Convert a lease from TOML format to storage format.
+  # Returns {:ok, lease_map} or {:error, reason} so callers can skip bad entries.
   defp convert_toml_lease_to_storage(lease_data, pool) do
     now = System.system_time(:second)
 
-    # Parse IPv6 address if it's a string
-    {:ok, ip} = Ipv6Util.parse(lease_data.ip)
+    with {:ok, ip} <- Ipv6Util.parse(lease_data.ip) do
+      expires_at =
+        case lease_data.valid_until do
+          %DateTime{} = dt -> DateTime.to_unix(dt)
+          unix when is_integer(unix) -> unix
+          _ -> now + pool.valid_lifetime
+        end
 
-    # Calculate expires_at from valid_until (DateTime or unix timestamp)
-    expires_at =
-      case lease_data.valid_until do
-        %DateTime{} = dt -> DateTime.to_unix(dt)
-        unix when is_integer(unix) -> unix
-        _ -> now + pool.valid_lifetime
-      end
-
-    %{
-      duid: lease_data.duid,
-      iaid: lease_data.iaid,
-      ip_address: ip,
-      ip: ip,
-      pool_name: pool.name,
-      ia_type: :ia_na,
-      state: lease_data.state || :active,
-      preferred_lifetime: pool.preferred_lifetime,
-      valid_lifetime: pool.valid_lifetime,
-      expires_at: expires_at
-    }
+      {:ok,
+       %{
+         duid: lease_data.duid,
+         iaid: lease_data.iaid,
+         ip_address: ip,
+         ip: ip,
+         pool_name: pool.name,
+         ia_type: :ia_na,
+         state: lease_data.state || :active,
+         preferred_lifetime: pool.preferred_lifetime,
+         valid_lifetime: pool.valid_lifetime,
+         expires_at: expires_at
+       }}
+    end
   end
 
   # Flush all leases to TOML files
