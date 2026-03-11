@@ -32,6 +32,8 @@ defmodule YellowDog.Resolved.Config do
     intercept_rules: []
   }
 
+  @persistent_term_key {__MODULE__, :config}
+
   @doc false
   def parse_toml_for_test(toml), do: parse_toml(toml)
 
@@ -48,12 +50,12 @@ defmodule YellowDog.Resolved.Config do
 
   @spec get() :: map()
   def get do
-    GenServer.call(__MODULE__, :get)
+    :persistent_term.get(@persistent_term_key)
   end
 
   @spec get(atom()) :: term()
   def get(key) do
-    GenServer.call(__MODULE__, {:get, key})
+    Map.get(:persistent_term.get(@persistent_term_key), key)
   end
 
   @doc """
@@ -79,6 +81,7 @@ defmodule YellowDog.Resolved.Config do
 
   @impl true
   def init(config) do
+    :persistent_term.put(@persistent_term_key, config)
     config_path = find_config_file()
 
     state = %{
@@ -92,21 +95,13 @@ defmodule YellowDog.Resolved.Config do
   end
 
   @impl true
-  def handle_call(:get, _from, state) do
-    {:reply, state.config, state}
-  end
-
-  def handle_call({:get, key}, _from, state) do
-    {:reply, Map.get(state.config, key), state}
-  end
-
-  @impl true
   def handle_info({:file_event, _watcher, {path, _events}}, state) do
     if path == state.config_path do
       Logger.info("[Resolved] Config file changed, reloading")
 
       case load_from_file(path) do
         config when is_map(config) ->
+          :persistent_term.put(@persistent_term_key, config)
           propagate_config(config, state.config)
           {:noreply, %{state | config: config}}
 
@@ -119,6 +114,12 @@ defmodule YellowDog.Resolved.Config do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, _state) do
+    :persistent_term.erase(@persistent_term_key)
+    :ok
+  end
 
   # Private
 
