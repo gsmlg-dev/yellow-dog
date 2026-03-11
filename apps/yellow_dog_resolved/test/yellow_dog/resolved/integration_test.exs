@@ -245,6 +245,55 @@ defmodule YellowDog.Resolved.IntegrationTest do
     end
   end
 
+  describe "negative caching (NXDOMAIN)" do
+    test "NXDOMAIN response is cached and served on second query" do
+      domain = "nonexistent-neg-cache.example.com"
+      query = build_query(domain)
+
+      [question] = query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      # Simulate an NXDOMAIN response from upstream
+      nxdomain_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          z: 0,
+          ad: 0,
+          cd: 0,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.nx_domain(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      # Store with negative TTL (as Router.forward_and_cache would)
+      Cache.store(domain_str, dns_type, nxdomain_response, 5)
+      Process.sleep(10)
+
+      # Should be a cache hit with NXDOMAIN rcode
+      assert {:hit, cached} = Cache.lookup(domain_str, dns_type)
+      assert cached.header.rcode == DNS.Message.RCode.nx_domain()
+
+      # Query through router should return the cached NXDOMAIN
+      response = Router.resolve(query)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+      assert response.header.id == query.header.id
+    end
+  end
+
   describe "management command integration" do
     alias YellowDog.Resolved.Management.Handler
 
