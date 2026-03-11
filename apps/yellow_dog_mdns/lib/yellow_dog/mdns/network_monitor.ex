@@ -461,7 +461,7 @@ defmodule YellowDog.Mdns.NetworkMonitor do
         if host do
           (message.anlist ++ message.arlist)
           |> Enum.filter(fn record ->
-            record.type in [:A, :AAAA] and to_string(record.name) == host
+            to_string(record.type) in ["A", "AAAA"] and to_string(record.name) == host
           end)
           |> Enum.map(& &1.data)
         else
