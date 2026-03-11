@@ -81,11 +81,25 @@ defmodule YellowDog.Resolved.Forwarder do
 
   @impl true
   def handle_info({:forward_response, txn_id, response_data, upstream}, state) do
-    case DNS.Message.from_iodata(response_data) do
-      %DNS.Message{} = response ->
-        handle_response(txn_id, response, upstream, state)
+    try do
+      case DNS.Message.from_iodata(response_data) do
+        %DNS.Message{} = response ->
+          handle_response(txn_id, response, upstream, state)
 
+        _ ->
+          Logger.debug(
+            "[Resolved] Received malformed response from upstream #{:inet.ntoa(upstream)}"
+          )
+
+          {:noreply, state}
+      end
+    rescue
       _ ->
+        Logger.debug("[Resolved] Failed to parse upstream response from #{:inet.ntoa(upstream)}")
+        {:noreply, state}
+    catch
+      :throw, _ ->
+        Logger.debug("[Resolved] Failed to parse upstream response from #{:inet.ntoa(upstream)}")
         {:noreply, state}
     end
   end

@@ -227,4 +227,31 @@ defmodule YellowDog.Resolved.ForwarderTest do
       GenServer.stop(pid)
     end
   end
+
+  describe "malformed upstream response" do
+    test "handles malformed response data without crashing" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      # Simulate receiving a malformed response (short binary that will cause from_iodata to raise)
+      send(pid, {:forward_response, 12345, <<0, 1, 2, 3>>, {127, 0, 0, 1}})
+      Process.sleep(10)
+
+      # Forwarder should still be alive
+      assert Process.alive?(pid)
+
+      # Simulate receiving garbage data (12+ bytes that causes throw)
+      send(pid, {:forward_response, 12346, :crypto.strong_rand_bytes(20), {127, 0, 0, 1}})
+      Process.sleep(10)
+
+      assert Process.alive?(pid)
+
+      GenServer.stop(pid)
+    end
+  end
 end

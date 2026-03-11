@@ -191,26 +191,32 @@ defmodule YellowDog.Resolved.Discovery do
   end
 
   defp parse_discovery_response(data) do
-    case DNS.Message.from_iodata(data) do
-      %DNS.Message{} = response ->
-        # Look for EDNS option 65321 in additional section
-        case find_edns_option(response.arlist) do
-          {:ok, ws_path} ->
-            # Find SRV record for host/port
-            case find_srv_record(response.anlist) do
-              {:ok, host, port} ->
-                {:ok, "ws://#{host}:#{port}#{ws_path}"}
+    try do
+      case DNS.Message.from_iodata(data) do
+        %DNS.Message{} = response ->
+          # Look for EDNS option 65321 in additional section
+          case find_edns_option(response.arlist) do
+            {:ok, ws_path} ->
+              # Find SRV record for host/port
+              case find_srv_record(response.anlist) do
+                {:ok, host, port} ->
+                  {:ok, "ws://#{host}:#{port}#{ws_path}"}
 
-              :not_found ->
-                :not_yellowdog
-            end
+                :not_found ->
+                  :not_yellowdog
+              end
 
-          :not_found ->
-            :not_yellowdog
-        end
+            :not_found ->
+              :not_yellowdog
+          end
 
-      _ ->
-        :not_yellowdog
+        _ ->
+          :not_yellowdog
+      end
+    rescue
+      _ -> :not_yellowdog
+    catch
+      :throw, _ -> :not_yellowdog
     end
   end
 
