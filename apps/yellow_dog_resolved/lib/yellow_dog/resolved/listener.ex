@@ -77,8 +77,15 @@ defmodule YellowDog.Resolved.Handler do
   defp handle_query(client_ip, client_port, data, state) do
     try do
       case DNS.Message.from_iodata(data) do
-        %DNS.Message{header: %{qr: 0}} = query ->
+        %DNS.Message{header: %{qr: 0, opcode: %DNS.Message.OpCode{value: <<0::4>>}}} = query ->
           response = Router.resolve(query)
+          response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+          Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
+
+        %DNS.Message{header: %{qr: 0}} = query ->
+          # RFC 1035 §4.1.1: non-QUERY opcodes are not supported — return NOTIMP
+          Logger.debug("[Resolved] Received non-QUERY opcode from #{:inet.ntoa(client_ip)} — returning NOTIMP")
+          response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.not_imp())
           response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
 

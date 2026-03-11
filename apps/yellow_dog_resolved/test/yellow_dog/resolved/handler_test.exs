@@ -106,6 +106,39 @@ defmodule YellowDog.Resolved.HandlerTest do
     end
   end
 
+  describe "non-QUERY opcode filter" do
+    test "non-QUERY opcode (QR=0) does NOT match the QUERY pattern guard" do
+      # Simulate a STATUS query (opcode=2, QR=0) arriving on the listening port.
+      # The handler must return NOTIMP instead of routing it through Router.resolve.
+      query = DNS.Message.new()
+      question = DNS.Message.Question.new("example.com", :a, :in)
+
+      status_query = %{
+        query
+        | header: %{query.header | id: 55, qr: 0, qdcount: 1, opcode: DNS.Message.OpCode.new(2)},
+          qdlist: [question]
+      }
+
+      binary = DNS.to_iodata(status_query) |> IO.iodata_to_binary()
+
+      parsed = DNS.Message.from_iodata(binary)
+      assert parsed.header.qr == 0
+      <<opcode_value::4>> = parsed.header.opcode.value
+      assert opcode_value == 2
+
+      # Verify the non-QUERY opcode does NOT match the QUERY pattern guard.
+      # A QR=0 + opcode=0 packet would match; opcode=2 must NOT.
+      result =
+        case DNS.Message.from_iodata(binary) do
+          %DNS.Message{header: %{qr: 0, opcode: %DNS.Message.OpCode{value: <<0::4>>}}} -> :routed
+          %DNS.Message{header: %{qr: 0}} -> :notimp
+          _ -> :other
+        end
+
+      assert result == :notimp
+    end
+  end
+
   describe "DNS message parsing" do
     test "valid DNS query is parsed and routed successfully" do
       query = DNS.Message.new()
