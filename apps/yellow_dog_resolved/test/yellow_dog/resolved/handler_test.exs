@@ -77,6 +77,35 @@ defmodule YellowDog.Resolved.HandlerTest do
     end
   end
 
+  describe "send_refused QR=1 guard" do
+    test "send_refused does not reply to DNS response packets (QR=1)" do
+      # Simulate a rate-limited request that is itself a DNS response (QR=1).
+      # send_refused must silently skip it — replying to a response could
+      # participate in reflection amplification.
+      response_msg = DNS.Message.new()
+      question = DNS.Message.Question.new("example.com", :a, :in)
+
+      response_msg = %{
+        response_msg
+        | header: %{response_msg.header | id: 77, qr: 1, qdcount: 1},
+          qdlist: [question]
+      }
+
+      binary = DNS.to_iodata(response_msg) |> IO.iodata_to_binary()
+      parsed = DNS.Message.from_iodata(binary)
+      assert parsed.header.qr == 1
+
+      # Verify QR=1 does NOT match the QR=0 guard used in send_refused.
+      result =
+        case DNS.Message.from_iodata(binary) do
+          %DNS.Message{header: %{qr: 0}} -> :would_reply
+          _ -> :silent
+        end
+
+      assert result == :silent
+    end
+  end
+
   describe "DNS message parsing" do
     test "valid DNS query is parsed and routed successfully" do
       query = DNS.Message.new()

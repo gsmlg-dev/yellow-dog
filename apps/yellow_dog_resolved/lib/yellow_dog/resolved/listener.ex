@@ -101,7 +101,7 @@ defmodule YellowDog.Resolved.Handler do
   defp send_refused(client_ip, client_port, data, state) do
     try do
       case DNS.Message.from_iodata(data) do
-        %DNS.Message{} = query ->
+        %DNS.Message{header: %{qr: 0}} = query ->
           response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.refused())
           response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
