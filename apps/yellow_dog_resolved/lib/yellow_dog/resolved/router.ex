@@ -159,9 +159,18 @@ defmodule YellowDog.Resolved.Router do
           response.header.tc == 1 ->
             :ok
 
-          # NXDOMAIN — cache with negative TTL
+          # NXDOMAIN — cache using min(SOA TTL, SOA MINIMUM) per RFC 2308 §2.2.
+          # Fall back to configured negative_ttl_s if authority section has no SOA.
           response.header.rcode == DNS.Message.RCode.nx_domain() ->
-            negative_ttl = Map.get(cache_config, :negative_ttl_s, 60)
+            fallback_ttl = Map.get(cache_config, :negative_ttl_s, 60)
+            negative_ttl = extract_soa_negative_ttl(response, fallback_ttl)
+            Cache.store(domain, type, response, negative_ttl)
+
+          # NODATA — NOERROR with no matching answers. Cache with SOA MINIMUM per RFC 2308 §2.1.
+          # Fall back to configured negative_ttl_s if authority section has no SOA.
+          response.header.rcode == DNS.Message.RCode.no_error() and ttl == 0 ->
+            fallback_ttl = Map.get(cache_config, :negative_ttl_s, 60)
+            negative_ttl = extract_soa_negative_ttl(response, fallback_ttl)
             Cache.store(domain, type, response, negative_ttl)
 
           # Positive response — only cache NOERROR with answers.
@@ -170,7 +179,7 @@ defmodule YellowDog.Resolved.Router do
           response.header.rcode == DNS.Message.RCode.no_error() and ttl > 0 ->
             Cache.store(domain, type, response, ttl)
 
-          # NOERROR with no answers (NODATA), SERVFAIL, REFUSED, etc. — don't cache
+          # SERVFAIL, REFUSED, etc. — don't cache
           true ->
             :ok
         end
@@ -199,6 +208,19 @@ defmodule YellowDog.Resolved.Router do
     case response.anlist do
       [] -> 0
       records -> records |> Enum.map(& &1.ttl) |> Enum.min()
+    end
+  end
+
+  # RFC 2308 §2.2: negative caching TTL = min(SOA TTL, SOA MINIMUM).
+  # Returns fallback_ttl when the authority section contains no SOA record.
+  defp extract_soa_negative_ttl(response, fallback_ttl) do
+    case Enum.find(response.nslist, fn r -> to_string(r.type) == "SOA" end) do
+      nil ->
+        fallback_ttl
+
+      soa_record ->
+        {_ns, _rp, _serial, _refresh, _retry, _expire, soa_minimum} = soa_record.data.data
+        min(soa_record.ttl, soa_minimum)
     end
   end
 

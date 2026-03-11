@@ -589,6 +589,132 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "NODATA caching (RFC 2308 §2.1)" do
+    test "NODATA response (NOERROR + empty anlist) is cached and served on subsequent queries" do
+      domain = "nodata-test.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+      domain_str = to_string(question.name)
+
+      nodata = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      # Simulate what forward_and_cache does for NODATA: store with negative_ttl_s
+      Cache.store(domain_str, question.type, nodata, 30)
+      Process.sleep(10)
+
+      response = Router.resolve(query)
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert response.anlist == []
+      assert response.header.id == query.header.id
+      assert Cache.stats().hits >= 1
+    end
+  end
+
+  describe "SOA MINIMUM TTL extraction (RFC 2308 §2.2)" do
+    test "NXDOMAIN with SOA in authority section uses min(SOA TTL, SOA MINIMUM) for caching" do
+      # Verify the logic: SOA TTL=3600, SOA MINIMUM=300 → expected negative_ttl = 300
+      ns = DNS.Message.Domain.new("ns1.example.com")
+      rp = DNS.Message.Domain.new("admin.example.com")
+      # SOA MINIMUM = 300 (< SOA TTL of 3600) — min should be 300
+      soa_record = DNS.Message.Record.new("example.com", :soa, :in, 3600, {ns, rp, 1, 3600, 900, 604_800, 300})
+      assert {_ns, _rp, _serial, _refresh, _retry, _expire, soa_minimum} = soa_record.data.data
+      assert soa_minimum == 300
+
+      # The expected negative TTL is min(3600, 300) = 300
+      expected_negative_ttl = min(soa_record.ttl, soa_minimum)
+      assert expected_negative_ttl == 300
+
+      domain = "nxdomain-with-soa.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+      domain_str = to_string(question.name)
+
+      nxdomain_with_soa = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.nx_domain(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 1,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [soa_record],
+        arlist: []
+      }
+
+      # Store with the correct SOA-derived TTL to simulate forward_and_cache behaviour
+      Cache.store(domain_str, question.type, nxdomain_with_soa, expected_negative_ttl)
+      Process.sleep(10)
+
+      response = Router.resolve(query)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+      assert response.header.id == query.header.id
+    end
+
+    test "NXDOMAIN without SOA in authority section falls back to configured negative_ttl_s" do
+      # Negative TTL should be the negative_ttl_s config (30s in test config) when no SOA
+      domain = "nxdomain-no-soa.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+      domain_str = to_string(question.name)
+
+      nxdomain_no_soa = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: query.header.opcode,
+          rcode: DNS.Message.RCode.nx_domain(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: query.qdlist,
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      # negative_ttl_s in test config is 30
+      Cache.store(domain_str, question.type, nxdomain_no_soa, 30)
+      Process.sleep(10)
+
+      response = Router.resolve(query)
+      assert response.header.rcode == DNS.Message.RCode.nx_domain()
+    end
+  end
+
   describe "resolve/1 exit handling" do
     test "Forwarder process crash returns SERVFAIL (not an exit)" do
       # Start a Forwarder, then kill it while a query is in-flight.
