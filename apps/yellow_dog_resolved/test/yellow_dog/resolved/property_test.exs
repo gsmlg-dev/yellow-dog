@@ -197,6 +197,31 @@ defmodule YellowDog.Resolved.PropertyTest do
     end
   end
 
+  # Property: ResponseBuilder.build_record with valid inputs always produces serializable records
+  property "build_record with valid inputs always returns {:ok, record}" do
+    alias YellowDog.Resolved.ResponseBuilder
+
+    check all(
+            domain <- dns_domain(),
+            {type, value} <-
+              member_of([
+                {:a, "192.168.1.1"},
+                {:a, "10.0.0.1"},
+                {:aaaa, "::1"},
+                {:aaaa, "fe80::1"},
+                {:cname, "target.example.com"},
+                {:txt, "v=spf1 ~all"},
+                {:mx, "10 mail.example.com"},
+                {:srv, "10 20 5060 sip.example.com"}
+              ]),
+            ttl <- integer(1..86400),
+            max_runs: 50
+          ) do
+      assert {:ok, record} = ResponseBuilder.build_record(domain, type, value, ttl)
+      assert record.ttl == ttl
+    end
+  end
+
   # Helpers
 
   defp build_fake_response(domain, type) do
