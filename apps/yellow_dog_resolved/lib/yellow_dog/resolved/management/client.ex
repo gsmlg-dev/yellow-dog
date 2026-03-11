@@ -94,6 +94,10 @@ defmodule YellowDog.Resolved.Management.Client do
     handle_disconnect(state, reason)
   end
 
+  def handle_info({:send_failed, reason}, state) do
+    handle_disconnect(state, {:send_failed, reason})
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -171,10 +175,13 @@ defmodule YellowDog.Resolved.Management.Client do
 
           {:error, _conn, reason} ->
             Logger.warning("[Resolved] Failed to send WS message: #{inspect(reason)}")
+            send(self(), {:send_failed, reason})
             state
         end
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.warning("[Resolved] Failed to encode WS message: #{inspect(reason)}")
+        send(self(), {:send_failed, reason})
         state
     end
   end
