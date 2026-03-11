@@ -255,6 +255,117 @@ defmodule YellowDog.Resolved.ConfigTest do
       [rule] = config.intercept_rules
       assert rule.ttl <= 604_800
     end
+
+    test "intercept rule with invalid IPv4 value is skipped with warning" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "bad.local", "type" => "A", "value" => "not-an-ip"},
+            %{"match" => "good.local", "type" => "A", "value" => "10.0.0.1"}
+          ]
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          config = Config.parse_toml_for_test(toml)
+          # Only the valid rule should be kept
+          assert length(config.intercept_rules) == 1
+          [rule] = config.intercept_rules
+          assert {:exact, "good.local"} = rule.match
+        end)
+
+      assert log =~ "Skipping invalid intercept rule"
+      assert log =~ "not-an-ip"
+    end
+
+    test "intercept rule with invalid IPv6 value is skipped" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "bad.local", "type" => "AAAA", "value" => "not::valid::ipv6::addr"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.intercept_rules == []
+    end
+
+    test "intercept rule with invalid MX format is skipped" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "bad.local", "type" => "MX", "value" => "mail.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.intercept_rules == []
+    end
+
+    test "intercept rule with invalid SRV format is skipped" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "bad.local", "type" => "SRV", "value" => "10 sip.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.intercept_rules == []
+    end
+
+    test "valid CNAME and TXT rules are kept regardless of value format" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "alias.local", "type" => "CNAME", "value" => "real.example.com"},
+            %{"match" => "txt.local", "type" => "TXT", "value" => "v=spf1 include:example.com ~all"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.intercept_rules) == 2
+    end
+
+    test "valid MX rule with correct format is kept" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "mail.local", "type" => "MX", "value" => "10 mail.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.intercept_rules) == 1
+    end
+
+    test "valid SRV rule with correct format is kept" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "_sip._tcp.local", "type" => "SRV", "value" => "10 20 5060 sip.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.intercept_rules) == 1
+    end
   end
 
   describe "TOML config file parsing" do

@@ -196,7 +196,9 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_intercept_rules(rules) when is_list(rules) do
-    Enum.map(rules, &parse_rule/1)
+    rules
+    |> Enum.map(&parse_rule/1)
+    |> Enum.reject(&is_nil/1)
   end
 
   defp parse_intercept_rules(_), do: []
@@ -206,14 +208,70 @@ defmodule YellowDog.Resolved.Config do
     type_str = Map.get(rule, "type", "A")
     value = Map.get(rule, "value", "")
     ttl = clamp_int(Map.get(rule, "ttl", 300), 1, 604_800)
+    type = parse_record_type(type_str)
 
-    %{
-      match: parse_match_pattern(match_str),
-      type: parse_record_type(type_str),
-      value: value,
-      ttl: ttl
-    }
+    case validate_rule_value(type, value) do
+      :ok ->
+        %{
+          match: parse_match_pattern(match_str),
+          type: type,
+          value: value,
+          ttl: ttl
+        }
+
+      :error ->
+        Logger.warning(
+          "[Resolved] Skipping invalid intercept rule: type=#{type_str} value=#{inspect(value)} match=#{inspect(match_str)}"
+        )
+
+        nil
+    end
   end
+
+  defp validate_rule_value(:a, value) do
+    case :inet.parse_address(String.to_charlist(value)) do
+      {:ok, {_, _, _, _}} -> :ok
+      _ -> :error
+    end
+  end
+
+  defp validate_rule_value(:aaaa, value) do
+    case :inet.parse_address(String.to_charlist(value)) do
+      {:ok, {_, _, _, _, _, _, _, _}} -> :ok
+      _ -> :error
+    end
+  end
+
+  defp validate_rule_value(:mx, value) do
+    case String.split(value, " ", parts: 2) do
+      [priority_str, _exchange] ->
+        case Integer.parse(priority_str) do
+          {_, ""} -> :ok
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp validate_rule_value(:srv, value) do
+    case String.split(value, " ", parts: 4) do
+      [pri_s, weight_s, port_s, _target] ->
+        with {_, ""} <- Integer.parse(pri_s),
+             {_, ""} <- Integer.parse(weight_s),
+             {_, ""} <- Integer.parse(port_s) do
+          :ok
+        else
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp validate_rule_value(_type, _value), do: :ok
 
   defp parse_match_pattern("*." <> suffix), do: {:suffix, String.downcase(suffix)}
 
