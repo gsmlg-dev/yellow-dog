@@ -63,11 +63,25 @@ defmodule YellowDog.Resolved.Management.Client do
   def handle_info(:heartbeat, state), do: {:noreply, state}
 
   # Complete the WebSocket handshake when the HTTP 101 response arrives.
-  # websocket is nil until Mint.WebSocket.new/3 succeeds.
+  # websocket is nil until Mint.WebSocket.new/4 succeeds.
   def handle_info({:tcp, _socket, _data} = msg, %{websocket: nil} = state) do
-    case Mint.HTTP.stream(state.conn, msg) do
+    case Mint.WebSocket.stream(state.conn, msg) do
       {:ok, conn, responses} ->
-        case Mint.WebSocket.new(conn, state.ref, responses) do
+        ref = state.ref
+
+        status =
+          Enum.find_value(responses, fn
+            {:status, ^ref, s} -> s
+            _ -> nil
+          end)
+
+        headers =
+          Enum.find_value(responses, fn
+            {:headers, ^ref, h} -> h
+            _ -> nil
+          end)
+
+        case Mint.WebSocket.new(conn, state.ref, status, headers) do
           {:ok, conn, websocket} ->
             Logger.info("[Resolved] Management WebSocket connected to #{state.endpoint}")
 
@@ -97,9 +111,9 @@ defmodule YellowDog.Resolved.Management.Client do
     end
   end
 
-  # Receive WebSocket frames via Mint.HTTP.stream → Mint.WebSocket.decode.
+  # Receive WebSocket frames via Mint.WebSocket.stream → Mint.WebSocket.decode.
   def handle_info({:tcp, _socket, _data} = msg, state) do
-    case Mint.HTTP.stream(state.conn, msg) do
+    case Mint.WebSocket.stream(state.conn, msg) do
       {:ok, conn, responses} ->
         state = %{state | conn: conn}
         {websocket, frames} = extract_ws_frames(responses, state.ref, state.websocket)
