@@ -190,11 +190,16 @@ defmodule YellowDog.Resolved.Management.Client do
     case Mint.WebSocket.encode(state.websocket, {:ping, ""}) do
       {:ok, websocket, data} ->
         case Mint.HTTP.stream_request_body(state.conn, state.ref, data) do
-          {:ok, conn} -> %{state | conn: conn, websocket: websocket}
-          _ -> state
+          {:ok, conn} ->
+            %{state | conn: conn, websocket: websocket}
+
+          {:error, _conn, reason} ->
+            send(self(), {:send_failed, reason})
+            state
         end
 
-      _ ->
+      {:error, reason} ->
+        send(self(), {:send_failed, reason})
         state
     end
   end
@@ -203,11 +208,16 @@ defmodule YellowDog.Resolved.Management.Client do
     case Mint.WebSocket.encode(state.websocket, {:pong, data}) do
       {:ok, websocket, out} ->
         case Mint.HTTP.stream_request_body(state.conn, state.ref, out) do
-          {:ok, conn} -> %{state | conn: conn, websocket: websocket}
-          _ -> state
+          {:ok, conn} ->
+            %{state | conn: conn, websocket: websocket}
+
+          {:error, _conn, reason} ->
+            send(self(), {:send_failed, reason})
+            state
         end
 
-      _ ->
+      {:error, reason} ->
+        send(self(), {:send_failed, reason})
         state
     end
   end
