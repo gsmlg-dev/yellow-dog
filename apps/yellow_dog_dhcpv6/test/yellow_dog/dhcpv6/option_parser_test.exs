@@ -19,7 +19,8 @@ defmodule YellowDog.Dhcpv6.OptionParserTest do
                server_id: nil,
                ia_na: nil,
                ia_ta: nil,
-               ia_pd: nil
+               ia_pd: nil,
+               rapid_commit: false
              }
     end
 
@@ -164,7 +165,8 @@ defmodule YellowDog.Dhcpv6.OptionParserTest do
                server_id: nil,
                ia_na: nil,
                ia_ta: nil,
-               ia_pd: nil
+               ia_pd: nil,
+               rapid_commit: false
              }
     end
 

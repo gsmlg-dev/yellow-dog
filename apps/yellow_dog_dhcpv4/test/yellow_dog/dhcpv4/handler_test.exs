@@ -431,6 +431,76 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  # RFC 2131 §4.1: response delivery must use broadcast (255.255.255.255) when flags bit set
+  describe "RFC 2131 §4.1 — response destination respects broadcast flag" do
+    setup do
+      test_pid = self()
+      sent_id = "test-dhcpv4-bcast-sent-#{System.unique_integer()}"
+      error_id = "test-dhcpv4-bcast-error-#{System.unique_integer()}"
+
+      # Capture the destination IP from whichever event fires
+      callback = fn _event, _measurements, metadata, _cfg ->
+        send(test_pid, {:response_dest, metadata.client_ip})
+      end
+
+      :telemetry.attach(sent_id, [:yellow_dog, :dhcpv4, :response, :sent], callback, nil)
+      :telemetry.attach(error_id, [:yellow_dog, :dhcpv4, :response, :error], callback, nil)
+
+      on_exit(fn ->
+        :telemetry.detach(sent_id)
+        :telemetry.detach(error_id)
+      end)
+
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, broadcast: true)
+      on_exit(fn -> :gen_udp.close(socket) end)
+      %{socket: socket}
+    end
+
+    test "DISCOVER with broadcast bit sends OFFER to 255.255.255.255", %{socket: socket} do
+      message = %DHCPv4.Message{
+        op: 1, htype: 1, hlen: 6, hops: 0,
+        xid: 0xAABBCCDD, secs: 0, flags: 0x8000,
+        ciaddr: {0, 0, 0, 0}, yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0}, giaddr: {0, 0, 0, 0},
+        chaddr: <<0xAA, 0xBB, 0xCC, 0x11, 0x22, 0x33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+        sname: <<0::size(512)>>, file: <<0::size(1024)>>,
+        options: [
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+      data = DHCP.Parameter.to_iodata(message)
+
+      Handler.handle_data({{0, 0, 0, 0}, 68, data}, %{socket: socket})
+
+      assert_receive {:response_dest, {255, 255, 255, 255}}, 500
+    end
+
+    test "DISCOVER without broadcast bit sends OFFER to yiaddr (unicast)", %{socket: socket} do
+      message = %DHCPv4.Message{
+        op: 1, htype: 1, hlen: 6, hops: 0,
+        xid: 0xAABBCCDE, secs: 0, flags: 0x0000,
+        ciaddr: {0, 0, 0, 0}, yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0}, giaddr: {0, 0, 0, 0},
+        chaddr: <<0xAA, 0xBB, 0xCC, 0x11, 0x22, 0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+        sname: <<0::size(512)>>, file: <<0::size(1024)>>,
+        options: [
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<1>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+      data = DHCP.Parameter.to_iodata(message)
+
+      Handler.handle_data({{0, 0, 0, 0}, 68, data}, %{socket: socket})
+
+      assert_receive {:response_dest, dest_ip}, 500
+      # Must NOT be broadcast — should be the yiaddr (an address from 192.168.1.100-200)
+      assert dest_ip != {255, 255, 255, 255}
+      {a, b, c, _d} = dest_ip
+      assert {a, b, c} == {192, 168, 1}
+    end
+  end
+
   # RFC 2131 §4.3.1: DHCPOFFER/ACK must include T1 (opt 58, 50% of lease) and T2 (opt 59, 87.5%)
   describe "RFC 2131 §4.3.1 — T1/T2 renewal times in OFFER and ACK" do
     test "DHCPOFFER includes T1 (option 58) and T2 (option 59)" do

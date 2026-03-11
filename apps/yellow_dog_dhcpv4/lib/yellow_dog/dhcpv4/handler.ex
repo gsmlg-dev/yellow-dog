@@ -11,6 +11,8 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   use Abyss.Handler
 
+  import Bitwise, only: [&&&: 2]
+
   require Logger
 
   alias YellowDog.Dhcpv4.{
@@ -441,10 +443,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: discover.hlen,
       xid: discover.xid,
       flags: discover.flags,
-      ciaddr: 0,
-      yiaddr: ip_tuple_to_integer(lease.ip_address),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(discover.giaddr),
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: lease.ip_address,
+      siaddr: pool.gateway,
+      giaddr: discover.giaddr,
       chaddr: discover.chaddr,
       options: build_dhcp_options(2, pool, lease, context, option_set_name)
     })
@@ -546,10 +548,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: request.hlen,
       xid: request.xid,
       flags: request.flags,
-      ciaddr: ip_tuple_to_integer(request.ciaddr),
-      yiaddr: ip_tuple_to_integer(lease.ip_address),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(request.giaddr),
+      ciaddr: request.ciaddr,
+      yiaddr: lease.ip_address,
+      siaddr: pool.gateway,
+      giaddr: request.giaddr,
       chaddr: request.chaddr,
       options: build_dhcp_options(5, pool, lease, context)
     })
@@ -567,10 +569,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: request.hlen,
       xid: request.xid,
       flags: request.flags,
-      ciaddr: 0,
-      yiaddr: 0,
-      siaddr: 0,
-      giaddr: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: {0, 0, 0, 0},
+      siaddr: {0, 0, 0, 0},
+      giaddr: {0, 0, 0, 0},
       chaddr: request.chaddr,
       options: build_dhcp_nak_options(pool, reason)
     })
@@ -629,9 +631,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: inform.hlen,
       xid: inform.xid,
       flags: inform.flags,
-      ciaddr: ip_tuple_to_integer(client_ip),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(inform.giaddr),
+      ciaddr: client_ip,
+      siaddr: pool.gateway,
+      giaddr: inform.giaddr,
       chaddr: inform.chaddr,
       options: [
         # DHCPACK = 5
@@ -650,25 +652,51 @@ defmodule YellowDog.Dhcpv4.Handler do
     })
   end
 
-  defp send_dhcp_response(response, client_ip, client_port, state) do
+  defp send_dhcp_response(response, _client_ip, _client_port, state) do
     data = DHCP.Parameter.to_iodata(response)
 
-    # Send response to client (port 67 for broadcast, 68 for unicast)
-    response_port = if client_port == 67, do: 68, else: client_port
+    # RFC 2131 §4.1: determine destination based on giaddr, ciaddr, yiaddr, and broadcast flag.
+    zero_ip = {0, 0, 0, 0}
 
-    case Abyss.Transport.UDP.send(state.socket, client_ip, response_port, data) do
+    dest_ip =
+      cond do
+        # Non-zero giaddr: forward to relay agent (port 67)
+        response.giaddr != zero_ip ->
+          response.giaddr
+
+        # Non-zero ciaddr: unicast directly to client's current address
+        response.ciaddr != zero_ip ->
+          response.ciaddr
+
+        # Broadcast bit set: client cannot receive unicast — broadcast to 255.255.255.255
+        (response.flags &&& 0x8000) != 0 ->
+          {255, 255, 255, 255}
+
+        # Broadcast bit not set and a yiaddr is assigned: unicast to offered address
+        response.yiaddr != zero_ip ->
+          response.yiaddr
+
+        # Fallback: broadcast
+        true ->
+          {255, 255, 255, 255}
+      end
+
+    # Responses always go to port 68 (DHCP client), except relay agents use port 67
+    dest_port = if response.giaddr != zero_ip, do: 67, else: 68
+
+    case Abyss.Transport.UDP.send(state.socket, dest_ip, dest_port, data) do
       :ok ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :response, :sent],
           %{count: 1, bytes: IO.iodata_length(data)},
-          %{client_ip: client_ip, client_port: response_port}
+          %{client_ip: dest_ip, client_port: dest_port}
         )
 
       {:error, reason} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :response, :error],
           %{count: 1},
-          %{client_ip: client_ip, client_port: response_port, reason: inspect(reason)}
+          %{client_ip: dest_ip, client_port: dest_port, reason: inspect(reason)}
         )
     end
   end
@@ -925,16 +953,6 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     <<0, 0, 0, 0>>
   end
-
-  # Convert IP tuple to 32-bit integer for DHCPv4 message fields
-  defp ip_tuple_to_integer({a, b, c, d})
-       when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
-    <<integer::32>> = <<a, b, c, d>>
-    integer
-  end
-
-  defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
-  defp ip_tuple_to_integer(_), do: 0
 
   # Note: build_client_info moved to OptionParser.build_client_info/2 for single-pass efficiency
   # Legacy option extraction functions removed to avoid duplication
