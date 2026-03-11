@@ -379,6 +379,21 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "resolve/1 empty question section" do
+    test "returns FORMERR for query with empty qdlist" do
+      # RFC 1035 §4.1.2 violation: no question section
+      query = %DNS.Message{DNS.Message.new() | header: %{DNS.Message.new().header | id: 9999}}
+      assert query.qdlist == []
+
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert response.header.id == 9999
+      assert response.header.rcode == DNS.Message.RCode.form_err()
+      assert response.anlist == []
+    end
+  end
+
   describe "resolve/1 exit handling" do
     test "Forwarder process crash returns SERVFAIL (not an exit)" do
       # Start a Forwarder, then kill it while a query is in-flight.

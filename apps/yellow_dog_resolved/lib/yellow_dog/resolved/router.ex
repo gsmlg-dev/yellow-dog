@@ -12,6 +12,21 @@ defmodule YellowDog.Resolved.Router do
   Returns a DNS response message.
   """
   @spec resolve(DNS.Message.t()) :: DNS.Message.t()
+  # RFC 1035 §4.1.2: every query MUST have at least one question.
+  # Reject malformed messages before touching the pipeline.
+  def resolve(%DNS.Message{qdlist: []} = query) do
+    Logger.debug("[Resolved] Received query with empty question section (RFC violation)")
+
+    :telemetry.execute(
+      [:yellow_dog, :resolved, :query, :malformed],
+      %{},
+      %{client: nil}
+    )
+
+    Counters.increment(:error)
+    ResponseBuilder.build_response(query, [], DNS.Message.RCode.form_err())
+  end
+
   def resolve(query) do
     start_time = System.monotonic_time()
     domain = query_domain(query)
