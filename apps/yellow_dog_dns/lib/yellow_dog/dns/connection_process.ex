@@ -182,12 +182,23 @@ defmodule YellowDog.Dns.ConnectionProcess do
     try do
       query = Message.from_iodata(data)
 
-      case submit_query_internal(state, query, raw: true) do
-        {:ok, new_state} ->
-          {:reply, :ok, new_state}
+      # RFC 1035 §4.1.1: QR=1 means this is a DNS response, not a query.
+      # Silently discard — replying to a response would be incorrect and
+      # could participate in reflection amplification attacks.
+      if query.header.qr == 1 do
+        Telemetry.debug("Discarding DNS response packet on query port", %{
+          id: query.header.id
+        })
 
-        {:error, _reason} = error ->
-          {:reply, error, state}
+        {:reply, {:error, :not_a_query}, state}
+      else
+        case submit_query_internal(state, query, raw: true) do
+          {:ok, new_state} ->
+            {:reply, :ok, new_state}
+
+          {:error, _reason} = error ->
+            {:reply, error, state}
+        end
       end
     rescue
       error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->

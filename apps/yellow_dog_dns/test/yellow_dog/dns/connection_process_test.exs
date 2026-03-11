@@ -253,6 +253,25 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
 
       assert {:error, _reason} = ConnectionProcess.submit_raw_data(pid, truncated)
     end
+
+    @tag :capture_log
+    test "discards DNS response packet (QR=1) — not_a_query (RFC 1035 §4.1.1)", %{pid: pid} do
+      # Build a valid DNS response (QR=1) — as if someone sent a response to
+      # the query port. The server must reject it without routing it.
+      query = build_test_query(202)
+      response = build_test_response(query)
+      raw_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+      # Parsed message should have QR=1
+      parsed = DNS.Message.from_iodata(raw_data)
+      assert parsed.header.qr == 1
+
+      assert {:error, :not_a_query} = ConnectionProcess.submit_raw_data(pid, raw_data)
+
+      # No query should have been added to the pipeline
+      stats = ConnectionProcess.stats(pid)
+      assert stats.active_queries == 0
+    end
   end
 
   describe "stats/1" do
