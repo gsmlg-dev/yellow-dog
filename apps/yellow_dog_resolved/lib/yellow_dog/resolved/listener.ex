@@ -54,14 +54,20 @@ defmodule YellowDog.Resolved.Handler do
 
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
-    case DNS.Message.from_iodata(data) do
-      %DNS.Message{} = query ->
-        response = Router.resolve(query)
-        response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
-        Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
+    try do
+      case DNS.Message.from_iodata(data) do
+        %DNS.Message{} = query ->
+          response = Router.resolve(query)
+          response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+          Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
 
-      _ ->
-        Logger.debug("[Resolved] Received malformed DNS packet")
+        _ ->
+          Logger.debug("[Resolved] Received malformed DNS packet")
+      end
+    rescue
+      _ -> Logger.debug("[Resolved] Received malformed DNS packet")
+    catch
+      :throw, _ -> Logger.debug("[Resolved] Received malformed DNS packet")
     end
 
     {:close, state}

@@ -232,5 +232,67 @@ defmodule YellowDog.Resolved.CacheTest do
       stats = Cache.stats()
       assert stats.entries <= 100
     end
+
+    test "evicts the least recently accessed entry" do
+      # Insert one entry and wait so it has an earlier access time (second granularity)
+      Cache.store("victim.test", :a, %{name: "victim"}, 300)
+      Process.sleep(10)
+
+      # Wait over 1 second so access times differ at second granularity
+      Process.sleep(1100)
+
+      # Fill up remaining entries (99 more to reach 100 max)
+      for i <- 1..99 do
+        Cache.store("filler#{i}.test", :a, %{i: i}, 300)
+      end
+
+      Process.sleep(50)
+
+      # victim.test is the oldest entry and has the oldest access time
+      # Adding one more should evict it
+      Cache.store("trigger.test", :a, %{trigger: true}, 300)
+      Process.sleep(10)
+
+      # victim should have been evicted (oldest access time)
+      assert :miss = Cache.lookup("victim.test", :a)
+      # trigger should be present
+      assert {:hit, _} = Cache.lookup("trigger.test", :a)
+    end
+  end
+
+  describe "sweep" do
+    test "periodic sweep removes expired entries" do
+      # Restart cache with a very short sweep interval
+      stop_supervised!(Cache)
+
+      sweep_config = %{
+        @cache_config
+        | sweep_interval_s: 1,
+          min_ttl_s: 1,
+          max_ttl_s: 3600
+      }
+
+      start_supervised!({Cache, sweep_config})
+
+      # Store entries: one with 2s TTL (short) and one with long TTL
+      Cache.store("sweep-target.test", :a, %{data: "old"}, 2)
+      Cache.store("sweep-keep.test", :a, %{data: "keep"}, 3600)
+      Process.sleep(50)
+
+      # Both should be present initially
+      assert {:hit, _} = Cache.lookup("sweep-keep.test", :a)
+
+      # Wait for TTL to expire + sweep interval to fire
+      Process.sleep(3500)
+
+      # sweep-target should be gone (expired + swept)
+      # sweep-keep should remain (long TTL)
+      assert :miss = Cache.lookup("sweep-target.test", :a)
+      assert {:hit, _} = Cache.lookup("sweep-keep.test", :a)
+
+      # Evictions counter should reflect the sweep
+      stats = Cache.stats()
+      assert stats.evictions >= 1
+    end
   end
 end

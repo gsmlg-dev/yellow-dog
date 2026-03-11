@@ -178,6 +178,60 @@ defmodule YellowDog.Resolved.RouterTest do
     end
   end
 
+  describe "resolve/1 with cache disabled" do
+    test "bypasses cache and forwards directly" do
+      # Stop the default Config and start with cache disabled
+      stop_supervised!(Config)
+
+      disabled_config = %{
+        @test_config
+        | cache: %{@test_config.cache | enabled: false},
+          upstreams: []
+      }
+
+      start_supervised!({Config, disabled_config})
+      start_supervised!({YellowDog.Resolved.Forwarder, disabled_config})
+
+      # Pre-populate cache — should be ignored when cache disabled
+      domain = "bypass-cache.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+
+      Cache.store(
+        to_string(question.name),
+        question.type,
+        %DNS.Message{
+          header: %DNS.Message.Header{
+            id: 0,
+            qr: 1,
+            aa: 0,
+            tc: 0,
+            rd: 1,
+            ra: 1,
+            opcode: query.header.opcode,
+            rcode: DNS.Message.RCode.no_error(),
+            qdcount: 1,
+            ancount: 0,
+            nscount: 0,
+            arcount: 0
+          },
+          qdlist: query.qdlist,
+          anlist: [],
+          nslist: [],
+          arlist: []
+        },
+        300
+      )
+
+      Process.sleep(10)
+
+      # With cache disabled and no upstreams, should get SERVFAIL (not cached response)
+      response = Router.resolve(query)
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+    end
+  end
+
   describe "resolve/1 telemetry" do
     test "emits query start and stop events for intercept" do
       ref = make_ref()

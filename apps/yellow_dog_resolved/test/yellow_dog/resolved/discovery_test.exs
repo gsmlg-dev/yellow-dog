@@ -100,6 +100,83 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "probe with multiple upstreams" do
+    test "no probes emitted when no upstreams configured" do
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{
+            heartbeat_interval_s: 30,
+            reconnect_base_s: 5,
+            reconnect_max_s: 60
+          }
+        }
+      }
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :discovery, :probe]
+        ])
+
+      {:ok, pid} = Discovery.start_link(config)
+      Process.sleep(50)
+
+      # No probes should have been sent (no upstreams)
+      refute_received {[:yellow_dog, :resolved, :discovery, :probe], ^ref, %{}, %{upstream: _}}
+
+      GenServer.stop(pid)
+    end
+
+    test "management_down clears endpoint and pid in state" do
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{
+            heartbeat_interval_s: 30,
+            reconnect_base_s: 1,
+            reconnect_max_s: 4
+          }
+        }
+      }
+
+      {:ok, pid} = Discovery.start_link(config)
+      Process.sleep(10)
+
+      # Simulate management disconnect
+      send(pid, {:management_down, :connection_closed})
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert state.management_pid == nil
+      assert state.discovered_endpoint == nil
+
+      GenServer.stop(pid)
+    end
+
+    test "unknown messages are handled gracefully" do
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{reconnect_base_s: 5, reconnect_max_s: 60}
+        }
+      }
+
+      {:ok, pid} = Discovery.start_link(config)
+      Process.sleep(10)
+
+      # Send random message — should not crash
+      send(pid, :some_random_message)
+      send(pid, {:unexpected, :data})
+      Process.sleep(10)
+
+      assert Process.alive?(pid)
+      GenServer.stop(pid)
+    end
+  end
+
   describe "exponential backoff" do
     test "management_down triggers re-probe with exponential backoff" do
       config = %{
