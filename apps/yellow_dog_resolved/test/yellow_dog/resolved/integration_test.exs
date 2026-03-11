@@ -370,6 +370,69 @@ defmodule YellowDog.Resolved.IntegrationTest do
     end
   end
 
+  describe "counters through full pipeline" do
+    test "ping command reflects actual query routing outcomes" do
+      alias YellowDog.Resolved.Management.Handler
+
+      Counters.reset()
+
+      # 2 intercepted queries
+      Router.resolve(build_query("myapp.test"))
+      Router.resolve(build_query("app.local.dev"))
+
+      # 1 cached query
+      domain = "cached-ping.example.com"
+      q = build_query(domain)
+      [question] = q.qdlist
+
+      Cache.store(
+        to_string(question.name),
+        question.type,
+        %DNS.Message{
+          header: %DNS.Message.Header{
+            id: 0,
+            qr: 1,
+            aa: 0,
+            tc: 0,
+            rd: 1,
+            ra: 1,
+            opcode: q.header.opcode,
+            rcode: DNS.Message.RCode.no_error(),
+            qdcount: 1,
+            ancount: 0,
+            nscount: 0,
+            arcount: 0
+          },
+          qdlist: q.qdlist,
+          anlist: [],
+          nslist: [],
+          arlist: []
+        },
+        300
+      )
+
+      Process.sleep(10)
+      Router.resolve(q)
+
+      # 1 error (no upstreams)
+      Router.resolve(build_query("unknown.example.com"))
+
+      # Now verify ping returns accurate counts
+      result =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "counter-verify",
+          "data" => %{"server_time" => 0}
+        })
+
+      data = result["data"]
+      assert data["queries_intercepted"] == 2
+      assert data["queries_cached"] == 1
+      assert data["queries_forwarded"] == 0
+      assert data["queries_total"] == 4
+    end
+  end
+
   describe "management command integration" do
     alias YellowDog.Resolved.Management.Handler
 
