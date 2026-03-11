@@ -148,8 +148,8 @@ defmodule YellowDog.Resolved.Router do
 
   defp extract_ttl(response) do
     case response.anlist do
-      [record | _] -> record.ttl
       [] -> 0
+      records -> records |> Enum.map(& &1.ttl) |> Enum.min()
     end
   end
 
