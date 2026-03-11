@@ -105,6 +105,21 @@ defmodule YellowDog.Resolved.DiscoveryTest do
         assert port >= 1 and port <= 65535
       end
     end
+
+    test "SRV target trailing dot is stripped for WebSocket URL" do
+      # DNS FQDN responses include a trailing dot; it must be stripped
+      # before embedding in the ws:// URL or the HTTP client will fail.
+      fqdn = "server.local."
+      host = String.trim_trailing(fqdn, ".")
+      assert host == "server.local"
+      refute String.ends_with?(host, ".")
+    end
+
+    test "SRV target without trailing dot is unchanged" do
+      bare = "server.local"
+      host = String.trim_trailing(bare, ".")
+      assert host == "server.local"
+    end
   end
 
   describe "discovery startup" do
@@ -206,6 +221,30 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       Process.sleep(10)
 
       assert Process.alive?(pid)
+      GenServer.stop(pid)
+    end
+
+    test "probe_result :not_found keeps GenServer alive" do
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{reconnect_base_s: 5, reconnect_max_s: 60}
+        }
+      }
+
+      {:ok, pid} = Discovery.start_link(config)
+      Process.sleep(10)
+
+      # Simulate a probe task that returned :not_found (e.g. due to an exception)
+      send(pid, {:probe_result, :not_found})
+      Process.sleep(10)
+
+      # GenServer must remain alive — no crash from unhandled :not_found
+      assert Process.alive?(pid)
+      state = :sys.get_state(pid)
+      assert state.management_pid == nil
+
       GenServer.stop(pid)
     end
   end

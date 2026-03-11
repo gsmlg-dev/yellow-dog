@@ -63,7 +63,17 @@ defmodule YellowDog.Resolved.Discovery do
     discovery = self()
 
     Task.start(fn ->
-      result = find_endpoint(state.upstreams, state.instance_id)
+      # Wrap in try/rescue so any unexpected exception still delivers
+      # {:probe_result, :not_found} rather than crashing the task silently.
+      result =
+        try do
+          find_endpoint(state.upstreams, state.instance_id)
+        rescue
+          _ -> :not_found
+        catch
+          :throw, _ -> :not_found
+        end
+
       send(discovery, {:probe_result, result})
     end)
 
@@ -273,7 +283,10 @@ defmodule YellowDog.Resolved.Discovery do
       if to_string(record.type) == "SRV" do
         case record.data do
           {_priority, _weight, port, target} when port >= 1 and port <= 65535 ->
-            {:ok, to_string(target), port}
+            # DNS domain names in wire-format responses include a trailing dot (FQDN);
+            # strip it before embedding in the WebSocket URL.
+            host = target |> to_string() |> String.trim_trailing(".")
+            {:ok, host, port}
 
           _ ->
             nil
