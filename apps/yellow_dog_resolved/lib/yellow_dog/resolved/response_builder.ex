@@ -141,6 +141,14 @@ defmodule YellowDog.Resolved.ResponseBuilder do
     end
   end
 
+  def build_record(name, :ns, value, ttl) do
+    {:ok, DNS.Message.Record.new(name, :ns, :in, ttl, value)}
+  end
+
+  def build_record(name, :ptr, value, ttl) do
+    {:ok, DNS.Message.Record.new(name, :ptr, :in, ttl, value)}
+  end
+
   def build_record(_name, _type, _value, _ttl), do: :error
 
   # Private

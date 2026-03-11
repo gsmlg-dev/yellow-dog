@@ -224,8 +224,24 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
                ResponseBuilder.build_record("test.com", :srv, "10 20 abc sip.example.com", 300)
     end
 
+    test "NS record with domain name returns {:ok, record}" do
+      assert {:ok, record} =
+               ResponseBuilder.build_record("test.com", :ns, "ns1.example.com", 300)
+
+      assert record.ttl == 300
+      assert to_string(record.type) == "NS"
+    end
+
+    test "PTR record with domain name returns {:ok, record}" do
+      assert {:ok, record} =
+               ResponseBuilder.build_record("1.0.168.192.in-addr.arpa", :ptr, "host.example.com", 300)
+
+      assert record.ttl == 300
+      assert to_string(record.type) == "PTR"
+    end
+
     test "unknown record type returns :error" do
-      assert :error = ResponseBuilder.build_record("test.com", :ns, "ns1.example.com", 300)
+      assert :error = ResponseBuilder.build_record("test.com", :soa, "ns1.example.com", 300)
     end
   end
 

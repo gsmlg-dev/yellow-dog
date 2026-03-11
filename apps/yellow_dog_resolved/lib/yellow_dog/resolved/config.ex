@@ -295,6 +295,8 @@ defmodule YellowDog.Resolved.Config do
   defp parse_record_type("TXT"), do: :txt
   defp parse_record_type("MX"), do: :mx
   defp parse_record_type("SRV"), do: :srv
+  defp parse_record_type("NS"), do: :ns
+  defp parse_record_type("PTR"), do: :ptr
   defp parse_record_type(_), do: :a
 
   defp clamp_int(val, min_val, max_val) when is_integer(val) do

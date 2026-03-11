@@ -388,6 +388,38 @@ defmodule YellowDog.Resolved.ConfigTest do
       config = Config.parse_toml_for_test(toml)
       assert length(config.intercept_rules) == 1
     end
+
+    test "valid NS rule is parsed with type :ns" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "example.local", "type" => "NS", "value" => "ns1.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.intercept_rules) == 1
+      [rule] = config.intercept_rules
+      assert rule.type == :ns
+    end
+
+    test "valid PTR rule is parsed with type :ptr" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "1.0.168.192.in-addr.arpa", "type" => "PTR", "value" => "host.example.com"}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert length(config.intercept_rules) == 1
+      [rule] = config.intercept_rules
+      assert rule.type == :ptr
+    end
   end
 
   describe "TOML config file parsing" do
