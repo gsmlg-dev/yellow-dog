@@ -178,12 +178,14 @@ defmodule YellowDog.Resolved.Forwarder do
 
         if next_index < length(upstreams) do
           upstream = Enum.at(upstreams, next_index)
-          state = %{state | pending: Map.delete(state.pending, txn_id)}
 
-          # Allocate a fresh txn_id so the stale process timer for the previous
-          # attempt (which fires timeout_ms + 500ms after the Task already gave up)
-          # cannot match this new pending entry and prematurely abort it.
+          # Allocate the new txn_id BEFORE removing the old one from pending.
+          # This prevents the allocator from re-issuing the same ID: if it did,
+          # any already-queued {:timeout, txn_id} message (from either the Task
+          # or the backup timer) would find the new pending entry and prematurely
+          # abort the failover attempt.
           {new_txn_id, state} = allocate_txn_id(state)
+          state = %{state | pending: Map.delete(state.pending, txn_id)}
 
           state =
             send_to_upstream(pending.query, upstream, next_index, new_txn_id, pending.from, state)
