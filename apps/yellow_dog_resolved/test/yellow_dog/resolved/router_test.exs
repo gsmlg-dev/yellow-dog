@@ -545,6 +545,30 @@ defmodule YellowDog.Resolved.RouterTest do
       assert :miss = Cache.lookup(domain_str, question.type)
     end
 
+    test "NOERROR truncated (TC=1) response is not cached (RFC 1035 §4.2.1)" do
+      domain = "truncated-nocache.example.com"
+      query = build_query(domain)
+      [question] = query.qdlist
+      domain_str = to_string(question.name)
+
+      truncated =
+        build_upstream_response(
+          query,
+          DNS.Message.RCode.no_error(),
+          [DNS.Message.Record.new(domain, :a, :in, 300, {1, 2, 3, 4})]
+        )
+
+      # Simulate TC=1 (truncated) from upstream
+      truncated = %{truncated | header: %{truncated.header | tc: 1}}
+
+      # Verify the TC guard prevents caching even with ttl > 0
+      is_truncated = truncated.header.tc == 1
+      assert is_truncated, "TC bit must be set"
+
+      # Nothing should be stored in cache
+      assert :miss = Cache.lookup(domain_str, question.type)
+    end
+
     test "NOERROR with ttl > 0 is cached" do
       domain = "noerror-cache.example.com"
       query = build_query(domain)

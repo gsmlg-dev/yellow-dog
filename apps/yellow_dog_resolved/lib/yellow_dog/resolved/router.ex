@@ -154,6 +154,11 @@ defmodule YellowDog.Resolved.Router do
         ttl = extract_ttl(response)
 
         cond do
+          # Truncated response — incomplete data must not be cached (RFC 1035 §4.2.1).
+          # The client will retry over TCP to get the full answer.
+          response.header.tc == 1 ->
+            :ok
+
           # NXDOMAIN — cache with negative TTL
           response.header.rcode == DNS.Message.RCode.nx_domain() ->
             negative_ttl = Map.get(cache_config, :negative_ttl_s, 60)
