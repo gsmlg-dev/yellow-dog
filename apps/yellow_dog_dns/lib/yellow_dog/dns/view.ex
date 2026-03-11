@@ -640,15 +640,21 @@ defmodule YellowDog.Dns.View do
   end
 
   defp cache_response(state, query, response) do
-    case query.qdlist do
-      [question | _] ->
-        ttl = get_min_ttl(response)
-        key = {normalize_name(question.name), question.type}
-        expires_at = System.system_time(:second) + ttl
-        :ets.insert(state.cache_table, {key, {response, expires_at}})
+    # RFC 2308 §7: SERVFAIL and REFUSED responses must not be cached —
+    # they are transient errors, not authoritative answers.
+    if response.header.rcode in [DNS.Message.RCode.serv_fail(), DNS.Message.RCode.refused()] do
+      :ok
+    else
+      case query.qdlist do
+        [question | _] ->
+          ttl = get_min_ttl(response)
+          key = {normalize_name(question.name), question.type}
+          expires_at = System.system_time(:second) + ttl
+          :ets.insert(state.cache_table, {key, {response, expires_at}})
 
-      [] ->
-        :ok
+        [] ->
+          :ok
+      end
     end
   end
 
