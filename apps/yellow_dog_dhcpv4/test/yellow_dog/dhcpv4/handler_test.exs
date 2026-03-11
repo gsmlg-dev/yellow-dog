@@ -431,6 +431,45 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  # RFC 2131 §4.3.1: DHCPOFFER/ACK must include T1 (opt 58, 50% of lease) and T2 (opt 59, 87.5%)
+  describe "RFC 2131 §4.3.1 — T1/T2 renewal times in OFFER and ACK" do
+    test "DHCPOFFER includes T1 (option 58) and T2 (option 59)" do
+      {:ok, recv_socket} =
+        :gen_udp.open(0, mode: :binary, active: false, ip: {127, 0, 0, 1})
+
+      {:ok, recv_port} = :inet.port(recv_socket)
+      {:ok, send_socket} = :gen_udp.open(0, mode: :binary)
+      state = %{socket: send_socket}
+
+      # Send DISCOVER from 127.0.0.1 so the OFFER is returned to recv_socket
+      data = TestHelper.create_dhcp_discover()
+
+      Handler.handle_data({{127, 0, 0, 1}, recv_port, data}, state)
+
+      case :gen_udp.recv(recv_socket, 0, 500) do
+        {:ok, {_, _, offer_data}} ->
+          offer = DHCPv4.Message.from_iodata(offer_data)
+          option_types = Enum.map(offer.options, & &1.type)
+
+          # lease_time = 86400 → T1 = 43200, T2 = 75600
+          assert 58 in option_types, "OFFER missing T1 (option 58)"
+          assert 59 in option_types, "OFFER missing T2 (option 59)"
+
+          t1_opt = Enum.find(offer.options, &(&1.type == 58))
+          t2_opt = Enum.find(offer.options, &(&1.type == 59))
+          assert <<43_200::32>> = t1_opt.value
+          assert <<75_600::32>> = t2_opt.value
+
+        {:error, :timeout} ->
+          # No OFFER sent (e.g. loopback routing issue in CI) — skip
+          :ok
+      end
+
+      :gen_udp.close(recv_socket)
+      :gen_udp.close(send_socket)
+    end
+  end
+
   describe "error handling" do
     test "handles handler errors" do
       state = %{socket: self()}

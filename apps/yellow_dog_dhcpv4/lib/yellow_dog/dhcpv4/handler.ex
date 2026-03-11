@@ -679,6 +679,10 @@ defmodule YellowDog.Dhcpv4.Handler do
     lease_time_binary = <<lease.lease_time::32>>
     dns_servers_binary = encode_dns_servers(pool.dns_servers)
 
+    # RFC 2131 §4.3.1: T1 = 50% of lease time, T2 = 87.5% of lease time
+    t1 = div(lease.lease_time, 2)
+    t2 = div(lease.lease_time * 7, 8)
+
     base_options = [
       # Message type
       %DHCPv4.Message.Option{type: 53, length: 1, value: <<message_type>>},
@@ -686,6 +690,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
       # Lease time
       %DHCPv4.Message.Option{type: 51, length: 4, value: lease_time_binary},
+      # Renewal time (T1 = 50% of lease, option 58)
+      %DHCPv4.Message.Option{type: 58, length: 4, value: <<t1::32>>},
+      # Rebinding time (T2 = 87.5% of lease, option 59)
+      %DHCPv4.Message.Option{type: 59, length: 4, value: <<t2::32>>},
       # Subnet mask
       %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
       # Router
