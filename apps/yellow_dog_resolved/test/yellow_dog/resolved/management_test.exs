@@ -2,7 +2,7 @@ defmodule YellowDog.Resolved.ManagementTest do
   use ExUnit.Case, async: false
 
   alias YellowDog.Resolved.{Cache, Config, Counters, RateLimiter}
-  alias YellowDog.Resolved.Management.Handler
+  alias YellowDog.Resolved.Management.{Client, Handler}
 
   @test_config %{
     listen: {127, 0, 0, 1},
@@ -225,6 +225,69 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       # Counters should now be zero
       assert Counters.get().total == 0
+    end
+  end
+
+  describe "Client connection failure handling" do
+    test "unreachable endpoint notifies parent with :management_down and stops" do
+      parent = self()
+
+      {:ok, pid} =
+        GenServer.start_link(Client, %{
+          endpoint: "ws://127.0.0.1:1/ws",
+          instance_id: :crypto.strong_rand_bytes(16),
+          parent: parent,
+          ws_config: %{}
+        })
+
+      ref = Process.monitor(pid)
+
+      # Connection to port 1 is immediately refused; the client must notify the
+      # parent and stop with :normal rather than crashing.
+      assert_receive {:management_down, _reason}, 2000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+    end
+
+    test "ws_closed message notifies parent and stops (RFC 6455 §5.5.1)" do
+      parent = self()
+
+      # Start a TCP listener that accepts the connection but never sends anything.
+      # This lets Mint.HTTP.connect succeed so the :connect handler can return
+      # {:noreply, state} — leaving the GenServer alive and reachable for our
+      # subsequent {:ws_closed} injection.
+      {:ok, listen_sock} =
+        :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listen_sock)
+
+      # Accept in a task so the TCP handshake completes (Mint needs it).
+      Task.start(fn ->
+        {:ok, _client_sock} = :gen_tcp.accept(listen_sock, 5000)
+        # Never send data — client waits for the HTTP 101 indefinitely.
+        Process.sleep(:infinity)
+      end)
+
+      {:ok, pid} =
+        GenServer.start_link(Client, %{
+          endpoint: "ws://127.0.0.1:#{port}/ws",
+          instance_id: :crypto.strong_rand_bytes(16),
+          parent: parent,
+          ws_config: %{}
+        })
+
+      ref = Process.monitor(pid)
+
+      # Give :connect enough time to fire and succeed (TCP connect + HTTP upgrade
+      # request sent). The GenServer is now waiting for a {:tcp, _, _} response.
+      Process.sleep(50)
+
+      # Inject the server-initiated close — should trigger handle_disconnect.
+      send(pid, {:ws_closed, :normal})
+
+      assert_receive {:management_down, {:ws_closed, :normal}}, 2000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2000
+
+      :gen_tcp.close(listen_sock)
     end
   end
 

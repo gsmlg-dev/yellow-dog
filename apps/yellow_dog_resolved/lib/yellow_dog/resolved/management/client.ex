@@ -128,6 +128,12 @@ defmodule YellowDog.Resolved.Management.Client do
     handle_disconnect(state, {:send_failed, reason})
   end
 
+  # Server-initiated WebSocket close: close echo was already sent in handle_frames;
+  # now cleanly disconnect so Discovery can re-probe (RFC 6455 §5.5.1).
+  def handle_info({:ws_closed, reason}, state) do
+    handle_disconnect(state, {:ws_closed, reason})
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -168,7 +174,9 @@ defmodule YellowDog.Resolved.Management.Client do
       {:pong, _data}, state ->
         state
 
-      {:close, _code, _reason}, state ->
+      {:close, code, data}, state ->
+        # RFC 6455 §5.5.1: echo the close frame before disconnecting.
+        state = send_ws_close(state, code, data)
         send(self(), {:ws_closed, :normal})
         state
 
@@ -248,6 +256,22 @@ defmodule YellowDog.Resolved.Management.Client do
 
       {:error, reason} ->
         send(self(), {:send_failed, reason})
+        state
+    end
+  end
+
+  defp send_ws_close(state, code, data) do
+    case Mint.WebSocket.encode(state.websocket, {:close, code, data}) do
+      {:ok, websocket, out} ->
+        case Mint.HTTP.stream_request_body(state.conn, state.ref, out) do
+          {:ok, conn} ->
+            %{state | conn: conn, websocket: websocket}
+
+          {:error, _conn, _reason} ->
+            state
+        end
+
+      {:error, _reason} ->
         state
     end
   end
