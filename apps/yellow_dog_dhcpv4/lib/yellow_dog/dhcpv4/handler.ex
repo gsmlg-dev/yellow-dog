@@ -329,14 +329,34 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp handle_dhcp_release(message, client_ip, _client_port, state, start_time) do
-    :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :lease, :released],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
-      %{client_ip: client_ip, client_mac: message.chaddr}
-    )
+    # RFC 2131 §4.4.3: validate ciaddr against the allocated lease before releasing.
+    # If ciaddr is non-zero and does not match the allocated IP, silently ignore.
+    # ciaddr is stored as an IP tuple by ex_dhcp; treat {0,0,0,0} as "not supplied".
+    ciaddr =
+      if message.ciaddr == {0, 0, 0, 0} or message.ciaddr == 0, do: nil, else: message.ciaddr
 
-    # Release the lease for this MAC address
-    LeaseManager.release_lease(message.chaddr)
+    case LeaseManager.get_lease(message.chaddr) do
+      {:ok, lease} when ciaddr != nil and lease.ip_address != ciaddr ->
+        Logger.warning(
+          "[DHCPv4] RELEASE from #{inspect(message.chaddr)} ciaddr=#{inspect(ciaddr)} " <>
+            "does not match allocated #{inspect(lease.ip_address)} — ignoring"
+        )
+
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :release_ignored],
+          %{count: 1},
+          %{client_ip: client_ip, client_mac: message.chaddr, reason: "ciaddr_mismatch"}
+        )
+
+      _ ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :released],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+
+        LeaseManager.release_lease(message.chaddr)
+    end
 
     {:continue, state}
   end

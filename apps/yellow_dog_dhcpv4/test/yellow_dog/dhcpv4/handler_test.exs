@@ -315,6 +315,122 @@ defmodule YellowDog.Dhcpv4.HandlerTest do
     end
   end
 
+  describe "RFC 2131 §4.4.3 — DHCPRELEASE ciaddr validation" do
+    setup do
+      test_pid = self()
+      released_id = "test-release-#{inspect(self())}"
+      ignored_id = "test-release-ignore-#{inspect(self())}"
+
+      :telemetry.attach(
+        released_id,
+        [:yellow_dog, :dhcpv4, :lease, :released],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        ignored_id,
+        [:yellow_dog, :dhcpv4, :lease, :release_ignored],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(released_id)
+        :telemetry.detach(ignored_id)
+      end)
+
+      :ok
+    end
+
+    defp build_release_packet(mac, ciaddr_tuple) do
+      {a, b, c, d} = ciaddr_tuple
+
+      message = %DHCPv4.Message{
+        op: 1,
+        htype: 1,
+        hlen: 6,
+        hops: 0,
+        xid: 0xDEAD_CAFE,
+        secs: 0,
+        flags: 0,
+        ciaddr: {a, b, c, d},
+        yiaddr: {0, 0, 0, 0},
+        siaddr: {0, 0, 0, 0},
+        giaddr: {0, 0, 0, 0},
+        chaddr: mac <> <<0::size(10 * 8)>>,
+        sname: <<0::size(64 * 8)>>,
+        file: <<0::size(128 * 8)>>,
+        options: [
+          # DHCPRELEASE (type 7)
+          %DHCPv4.Message.Option{type: 53, length: 1, value: <<7>>},
+          %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
+        ]
+      }
+
+      DHCP.Parameter.to_iodata(message)
+    end
+
+    test "RELEASE with matching ciaddr releases the lease" do
+      mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01>>
+
+      # Allocate a lease for this MAC
+      {:ok, lease} = LeaseManager.allocate_lease(mac)
+      assert lease.ip_address != nil
+
+      data = build_release_packet(mac, lease.ip_address)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      result = Handler.handle_data({{192, 168, 1, 50}, 68, data}, state)
+      assert result == {:continue, state}
+
+      # Released telemetry must fire
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv4, :lease, :released], _, _}, 500
+
+      # Ignored telemetry must NOT fire
+      refute_receive {:telemetry, [:yellow_dog, :dhcpv4, :lease, :release_ignored], _, _}, 200
+
+      :gen_udp.close(socket)
+    end
+
+    test "RELEASE with mismatched ciaddr is silently ignored (RFC 2131 §4.4.3)" do
+      mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02>>
+
+      # Allocate a lease for this MAC
+      {:ok, lease} = LeaseManager.allocate_lease(mac)
+      assert lease.ip_address != nil
+
+      # Build RELEASE with a different ciaddr
+      wrong_ip = {10, 0, 0, 99}
+      refute lease.ip_address == wrong_ip
+
+      data = build_release_packet(mac, wrong_ip)
+      {:ok, socket} = :gen_udp.open(0, mode: :binary, active: false)
+      state = %{socket: socket}
+
+      result = Handler.handle_data({{192, 168, 1, 50}, 68, data}, state)
+      assert result == {:continue, state}
+
+      # Ignored telemetry must fire
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv4, :lease, :release_ignored], _,
+                      %{reason: "ciaddr_mismatch"}},
+                     500
+
+      # Released telemetry must NOT fire (lease must still be active)
+      refute_receive {:telemetry, [:yellow_dog, :dhcpv4, :lease, :released], _, _}, 200
+
+      # Lease should still be active
+      assert {:ok, _} = LeaseManager.get_lease(mac)
+
+      :gen_udp.close(socket)
+    end
+  end
+
   describe "error handling" do
     test "handles handler errors" do
       state = %{socket: self()}
