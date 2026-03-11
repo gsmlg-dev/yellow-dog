@@ -234,37 +234,47 @@ defmodule YellowDog.Resolved.Forwarder do
         {:noreply, state}
 
       pending ->
-        Process.cancel_timer(pending.timer_ref)
-        duration = System.monotonic_time(:microsecond) - pending.sent_at
+        # RFC 1035 §4.1.1: Response ID must match the transaction ID we sent
+        if response.header.id != txn_id do
+          Logger.warning(
+            "[Resolved] Discarding response from #{:inet.ntoa(from_ip)}: " <>
+              "ID mismatch (expected #{txn_id}, got #{response.header.id})"
+          )
 
-        # Rewrite txn_id back to client's original
-        response = %{response | header: %{response.header | id: pending.original_txn_id}}
+          {:noreply, state}
+        else
+          Process.cancel_timer(pending.timer_ref)
+          duration = System.monotonic_time(:microsecond) - pending.sent_at
 
-        # Reset failure count and update latency EMA for this upstream
-        state = reset_failure(state, from_ip)
-        state = update_latency(state, from_ip, duration)
+          # Rewrite txn_id back to client's original
+          response = %{response | header: %{response.header | id: pending.original_txn_id}}
 
-        :telemetry.execute(
-          [:yellow_dog, :resolved, :forward, :stop],
-          %{duration: duration},
-          %{
-            upstream: from_ip,
-            domain: query_domain(pending.query),
-            type: query_type(pending.query),
-            latency_ema: Map.get(state.latencies, from_ip, duration / 1.0)
-          }
-        )
+          # Reset failure count and update latency EMA for this upstream
+          state = reset_failure(state, from_ip)
+          state = update_latency(state, from_ip, duration)
 
-        GenServer.reply(pending.from, {:ok, response})
-        new_state = %{state | pending: Map.delete(state.pending, txn_id)}
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :forward, :stop],
+            %{duration: duration},
+            %{
+              upstream: from_ip,
+              domain: query_domain(pending.query),
+              type: query_type(pending.query),
+              latency_ema: Map.get(state.latencies, from_ip, duration / 1.0)
+            }
+          )
 
-        :telemetry.execute(
-          [:yellow_dog, :resolved, :forward, :pending],
-          %{count: map_size(new_state.pending)},
-          %{}
-        )
+          GenServer.reply(pending.from, {:ok, response})
+          new_state = %{state | pending: Map.delete(state.pending, txn_id)}
 
-        {:noreply, new_state}
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :forward, :pending],
+            %{count: map_size(new_state.pending)},
+            %{}
+          )
+
+          {:noreply, new_state}
+        end
     end
   end
 

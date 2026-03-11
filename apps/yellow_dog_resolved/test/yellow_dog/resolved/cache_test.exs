@@ -271,6 +271,32 @@ defmodule YellowDog.Resolved.CacheTest do
       assert stats.entries <= 100
     end
 
+    test "updating an existing key at max capacity does not evict a valid entry" do
+      stop_supervised!(Cache)
+
+      # Start with a very small max_entries so we can fill it easily
+      small_config = %{@cache_config | max_entries: 3}
+      start_supervised!({Cache, small_config})
+
+      # Fill to capacity
+      Cache.store("a.test", :a, %{v: 1}, 300)
+      Cache.store("b.test", :a, %{v: 2}, 300)
+      Cache.store("c.test", :a, %{v: 3}, 300)
+      Process.sleep(20)
+      assert Cache.stats().entries == 3
+
+      # Update an existing key — should NOT evict any other entry
+      Cache.store("a.test", :a, %{v: 99}, 300)
+      Process.sleep(20)
+
+      # Still 3 entries — no spurious eviction
+      assert Cache.stats().entries == 3
+      # All three domains still present
+      assert {:hit, %{v: 99}, _} = Cache.lookup("a.test", :a)
+      assert {:hit, %{v: 2}, _} = Cache.lookup("b.test", :a)
+      assert {:hit, %{v: 3}, _} = Cache.lookup("c.test", :a)
+    end
+
     test "evicts the least recently accessed entry" do
       # Insert one entry and wait so it has an earlier access time (second granularity)
       Cache.store("victim.test", :a, %{name: "victim"}, 300)

@@ -431,6 +431,53 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "response ID validation" do
+    test "discards response with mismatched transaction ID" do
+      upstream = {127, 0, 0, 1}
+
+      config = %{
+        upstreams: [upstream],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 5
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      query = build_query("id-mismatch.example.com")
+      task = Task.async(fn -> Forwarder.forward(query, 3000) end)
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      [txn_id | _] = Map.keys(state.pending)
+
+      # Build a response with a WRONG ID (txn_id + 1)
+      wrong_id = rem(txn_id + 1, 65_536)
+      name = "id-mismatch.example.com"
+      record = DNS.Message.Record.new(name, :a, :in, 300, {1, 2, 3, 4})
+
+      spoofed_response = %{
+        query
+        | header: %{query.header | id: wrong_id, qr: 1, aa: 1, ancount: 1},
+          anlist: [record]
+      }
+
+      spoofed_data = DNS.to_iodata(spoofed_response) |> IO.iodata_to_binary()
+      send(pid, {:forward_response, txn_id, spoofed_data, upstream})
+      Process.sleep(20)
+
+      # The pending entry should still exist — response was discarded
+      state = :sys.get_state(pid)
+      assert Map.has_key?(state.pending, txn_id)
+
+      # Clean up: send a valid response so the task completes
+      valid_data = build_response(query, txn_id)
+      send(pid, {:forward_response, txn_id, valid_data, upstream})
+      assert {:ok, _} = Task.await(task, 1000)
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "malformed upstream response" do
     test "handles malformed response data without crashing" do
       config = %{

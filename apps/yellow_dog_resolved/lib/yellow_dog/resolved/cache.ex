@@ -174,14 +174,19 @@ defmodule YellowDog.Resolved.Cache do
     now = System.monotonic_time(:second)
     expires_at = now + clamped_ttl
 
-    # Remove old LRU entry if key already exists
-    case :ets.lookup(@table, key) do
-      [{^key, _, _, old_access}] -> :ets.delete(@lru_table, {old_access, key})
-      [] -> :ok
-    end
+    # Remove old LRU entry if key already exists; track if this is a new key
+    is_new_key =
+      case :ets.lookup(@table, key) do
+        [{^key, _, _, old_access}] ->
+          :ets.delete(@lru_table, {old_access, key})
+          false
 
-    # Enforce max entries via LRU eviction
-    if :ets.info(@table, :size) >= state.max_entries do
+        [] ->
+          true
+      end
+
+    # Enforce max entries via LRU eviction (only when inserting a new key)
+    if is_new_key and :ets.info(@table, :size) >= state.max_entries do
       evict_lru()
     end
 
