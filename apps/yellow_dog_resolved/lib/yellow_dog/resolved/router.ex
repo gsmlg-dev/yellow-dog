@@ -23,37 +23,52 @@ defmodule YellowDog.Resolved.Router do
       %{domain: domain, type: type, client: nil}
     )
 
-    result = do_resolve(query, domain, type)
+    try do
+      result = do_resolve(query, domain, type)
 
-    source =
-      case result do
-        {:intercept, _} ->
-          Counters.increment(:intercepted)
-          :intercept
+      source =
+        case result do
+          {:intercept, _} ->
+            Counters.increment(:intercepted)
+            :intercept
 
-        {:cache, _} ->
-          Counters.increment(:cached)
-          :cache
+          {:cache, _} ->
+            Counters.increment(:cached)
+            :cache
 
-        {:forward, _} ->
-          Counters.increment(:forwarded)
-          :forward
+          {:forward, _} ->
+            Counters.increment(:forwarded)
+            :forward
 
-        {:error, _} ->
-          Counters.increment(:error)
-          :error
-      end
+          {:error, _} ->
+            Counters.increment(:error)
+            :error
+        end
 
-    response = elem(result, 1)
-    duration = System.monotonic_time() - start_time
+      response = elem(result, 1)
+      duration = System.monotonic_time() - start_time
 
-    :telemetry.execute(
-      [:yellow_dog, :resolved, :query, :stop],
-      %{duration: duration},
-      %{domain: domain, type: type, source: source}
-    )
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :query, :stop],
+        %{duration: duration},
+        %{domain: domain, type: type, source: source}
+      )
 
-    response
+      response
+    rescue
+      e ->
+        duration = System.monotonic_time() - start_time
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :query, :exception],
+          %{duration: duration},
+          %{domain: domain, type: type, reason: Exception.message(e)}
+        )
+
+        Logger.error("[Resolved] Query resolution failed: #{Exception.message(e)}")
+        Counters.increment(:error)
+        ResponseBuilder.servfail_response(query)
+    end
   end
 
   # Private
