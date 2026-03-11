@@ -252,6 +252,10 @@ defmodule YellowDog.Dns.Zone.Forward do
             elapsed_us: elapsed
           })
 
+          # RFC 2181 §6: clear AA — this server is not authoritative for
+          # the queried zone; only the upstream that sent the response is.
+          response = %{response | header: %{response.header | aa: 0}}
+
           # Reply to caller
           GenServer.reply(pending.from, {:ok, response})
 
