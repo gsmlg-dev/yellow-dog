@@ -89,6 +89,28 @@ defmodule YellowDog.Resolved.Management.Handler do
     }
   end
 
+  def handle_command(%{"type" => "counters_reset", "id" => id}) do
+    :telemetry.execute(
+      [:yellow_dog, :resolved, :management, :command],
+      %{},
+      %{type: :counters_reset}
+    )
+
+    old_counters = Counters.get()
+    Counters.reset()
+
+    %{
+      "type" => "counters_reset_result",
+      "id" => id,
+      "data" => %{
+        "previous_total" => old_counters.total,
+        "previous_forwarded" => old_counters.forwarded,
+        "previous_cached" => old_counters.cached,
+        "previous_intercepted" => old_counters.intercepted
+      }
+    }
+  end
+
   def handle_command(%{"type" => type}) do
     Logger.warning("[Resolved] Unknown management command: #{type}")
     nil

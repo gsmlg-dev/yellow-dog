@@ -1,7 +1,7 @@
 defmodule YellowDog.Resolved.ManagementTest do
   use ExUnit.Case, async: false
 
-  alias YellowDog.Resolved.{Cache, Config, Counters}
+  alias YellowDog.Resolved.{Cache, Config, Counters, RateLimiter}
   alias YellowDog.Resolved.Management.Handler
 
   @test_config %{
@@ -26,6 +26,7 @@ defmodule YellowDog.Resolved.ManagementTest do
     start_supervised!({Config, @test_config})
     start_supervised!(Counters)
     start_supervised!({Cache, @test_config.cache})
+    start_supervised!({RateLimiter, @test_config})
     :ok
   end
 
@@ -166,6 +167,28 @@ defmodule YellowDog.Resolved.ManagementTest do
 
     test "malformed command without type returns nil" do
       assert nil == Handler.handle_command(%{"no_type" => "bad"})
+    end
+
+    test "counters_reset resets counters and returns previous values" do
+      Counters.reset()
+      Counters.increment(:intercepted)
+      Counters.increment(:forwarded)
+      Counters.increment(:forwarded)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "counters_reset",
+          "id" => "req-010"
+        })
+
+      assert result["type"] == "counters_reset_result"
+      assert result["id"] == "req-010"
+      assert result["data"]["previous_intercepted"] == 1
+      assert result["data"]["previous_forwarded"] == 2
+      assert result["data"]["previous_total"] == 3
+
+      # Counters should now be zero
+      assert Counters.get().total == 0
     end
   end
 
