@@ -16,6 +16,7 @@ defmodule YellowDog.Resolved.RateLimiter do
 
   # Client API
 
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end

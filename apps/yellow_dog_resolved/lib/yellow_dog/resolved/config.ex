@@ -35,6 +35,7 @@ defmodule YellowDog.Resolved.Config do
   @persistent_term_key {__MODULE__, :config}
 
   @doc false
+  @spec parse_toml_for_test(map()) :: map()
   def parse_toml_for_test(toml), do: parse_toml(toml)
 
   @config_paths [
@@ -44,6 +45,7 @@ defmodule YellowDog.Resolved.Config do
 
   # Client API
 
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
