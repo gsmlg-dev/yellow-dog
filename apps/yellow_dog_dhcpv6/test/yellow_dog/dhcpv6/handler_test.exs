@@ -200,4 +200,73 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       assert result == {:continue, state}
     end
   end
+
+  # RFC 3315 §18.2.1: REQUEST with wrong Server Identifier must be silently discarded
+  describe "RFC 3315 §18.2.1 — Server Identifier validation" do
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-server-id-invalid-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :message, :invalid],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "REQUEST with mismatched Server Identifier is silently discarded" do
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          # Client ID
+          DHCPv6.Message.Option.new(1, <<1, 2, 3, 4, 5, 6>>),
+          # Wrong Server ID (not this server's DUID)
+          DHCPv6.Message.Option.new(2, <<0xFF, 0xFF, 0xFF, 0xFF>>),
+          # IA_NA
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 1, 0, 0, 3, 84, 0, 0, 5, 220>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :message, :invalid], _,
+                      %{reason: "Server Identifier mismatch"}},
+                     500
+    end
+
+    test "REQUEST without Server Identifier is silently discarded" do
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          # Client ID only — no Server ID
+          DHCPv6.Message.Option.new(1, <<1, 2, 3, 4, 5, 6>>),
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 1, 0, 0, 3, 84, 0, 0, 5, 220>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :message, :invalid], _,
+                      %{reason: "missing Server Identifier"}},
+                     500
+    end
+  end
 end

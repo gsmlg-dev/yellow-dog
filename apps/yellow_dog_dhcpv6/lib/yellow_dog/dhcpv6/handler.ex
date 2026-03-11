@@ -295,6 +295,11 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
+    # RFC 3315 §18.2.1: Server Identifier must be present and match this server's DUID
+    case validate_server_id(parsed_opts.server_id, client_ip) do
+      :error -> {:continue, state}
+      :ok ->
+
     case {client_duid, ia_na} do
       {nil, _} ->
         :telemetry.execute(
@@ -337,6 +342,7 @@ defmodule YellowDog.Dhcpv6.Handler do
 
         {:continue, state}
     end
+    end
   end
 
   defp handle_renew(message, parsed_opts, client_ip, client_port, state, start_time) do
@@ -349,6 +355,11 @@ defmodule YellowDog.Dhcpv6.Handler do
     # Use pre-parsed options for efficiency
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
+
+    # RFC 3315 §18.2.3: Server Identifier must be present and match this server's DUID
+    case validate_server_id(parsed_opts.server_id, client_ip) do
+      :error -> {:continue, state}
+      :ok ->
 
     case {client_duid, ia_na} do
       {duid, %{iaid: iaid}} when duid != nil ->
@@ -382,6 +393,7 @@ defmodule YellowDog.Dhcpv6.Handler do
         )
 
         {:continue, state}
+    end
     end
   end
 
@@ -441,15 +453,19 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {duid, %{iaid: iaid}} when duid != nil ->
-        LeaseManager.release_lease(duid, iaid)
+    # RFC 3315 §18.2.6: Server Identifier must be present and match this server's DUID
+    with :ok <- validate_server_id(parsed_opts.server_id, client_ip),
+         {duid, %{iaid: iaid}} when duid != nil <- {client_duid, ia_na} do
+      LeaseManager.release_lease(duid, iaid)
 
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :lease, :release_completed],
-          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_duid: duid}
-        )
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease, :release_completed],
+        %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+        %{client_ip: client_ip, client_duid: duid}
+      )
+    else
+      :error ->
+        :ok
 
       _ ->
         :telemetry.execute(
@@ -473,15 +489,19 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {duid, %{ia_addr: ia_addr}} when duid != nil and ia_addr != nil ->
-        LeaseManager.decline_ip(ia_addr, duid)
+    # RFC 3315 §18.2.7: Server Identifier must be present and match this server's DUID
+    with :ok <- validate_server_id(parsed_opts.server_id, client_ip),
+         {duid, %{ia_addr: ia_addr}} when duid != nil and ia_addr != nil <- {client_duid, ia_na} do
+      LeaseManager.decline_ip(ia_addr, duid)
 
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :lease, :decline_completed],
-          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
-        )
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease, :decline_completed],
+        %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+        %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
+      )
+    else
+      :error ->
+        :ok
 
       _ ->
         :telemetry.execute(
@@ -798,6 +818,33 @@ defmodule YellowDog.Dhcpv6.Handler do
       option_code: @option_ia_pd,
       option_data: ia_pd_data
     }
+  end
+
+  # RFC 3315 §18.2.1/3/6/7: REQUEST, RENEW, RELEASE, DECLINE must include a Server
+  # Identifier that matches this server's DUID; if absent or mismatched, discard silently.
+  defp validate_server_id(server_id, client_ip) do
+    cond do
+      server_id == nil ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "missing Server Identifier", client_ip: client_ip}
+        )
+
+        :error
+
+      server_id != get_server_duid() ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "Server Identifier mismatch", client_ip: client_ip}
+        )
+
+        :error
+
+      true ->
+        :ok
+    end
   end
 
   defp get_server_duid do
