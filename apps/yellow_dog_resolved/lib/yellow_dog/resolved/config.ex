@@ -32,6 +32,9 @@ defmodule YellowDog.Resolved.Config do
     intercept_rules: []
   }
 
+  @doc false
+  def parse_toml_for_test(toml), do: parse_toml(toml)
+
   @config_paths [
     "config/resolved.toml",
     "/etc/yellowdog/resolved.toml"
@@ -139,10 +142,11 @@ defmodule YellowDog.Resolved.Config do
 
     %{
       listen: parse_ip(Map.get(resolved, "listen", "127.0.0.1")),
-      port: Map.get(resolved, "port", 53),
+      port: clamp_int(Map.get(resolved, "port", 53), 1, 65_535),
       upstreams: parse_upstreams(Map.get(resolved, "upstreams", ["1.1.1.1", "8.8.8.8"])),
-      upstream_timeout_ms: Map.get(resolved, "upstream_timeout_ms", 3000),
-      upstream_failure_threshold: Map.get(resolved, "upstream_failure_threshold", 3),
+      upstream_timeout_ms: clamp_int(Map.get(resolved, "upstream_timeout_ms", 3000), 100, 30_000),
+      upstream_failure_threshold:
+        clamp_int(Map.get(resolved, "upstream_failure_threshold", 3), 1, 100),
       cache: parse_cache_config(Map.get(resolved, "cache", %{})),
       discovery: parse_discovery_config(Map.get(resolved, "discovery", %{})),
       intercept_rules: parse_intercept_rules(Map.get(resolved, "intercept", []))
@@ -150,13 +154,16 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_cache_config(cache) do
+    min_ttl = clamp_int(Map.get(cache, "min_ttl_s", 30), 0, 86_400)
+    max_ttl = clamp_int(Map.get(cache, "max_ttl_s", 86_400), 1, 604_800)
+
     %{
       enabled: Map.get(cache, "enabled", true),
-      max_entries: Map.get(cache, "max_entries", 10_000),
-      min_ttl_s: Map.get(cache, "min_ttl_s", 30),
-      max_ttl_s: Map.get(cache, "max_ttl_s", 86_400),
-      negative_ttl_s: Map.get(cache, "negative_ttl_s", 60),
-      sweep_interval_s: Map.get(cache, "sweep_interval_s", 60)
+      max_entries: clamp_int(Map.get(cache, "max_entries", 10_000), 1, 1_000_000),
+      min_ttl_s: min(min_ttl, max_ttl),
+      max_ttl_s: max_ttl,
+      negative_ttl_s: clamp_int(Map.get(cache, "negative_ttl_s", 60), 0, 86_400),
+      sweep_interval_s: clamp_int(Map.get(cache, "sweep_interval_s", 60), 1, 86_400)
     }
   end
 
@@ -166,9 +173,9 @@ defmodule YellowDog.Resolved.Config do
     %{
       enabled: Map.get(discovery, "enabled", true),
       websocket: %{
-        heartbeat_interval_s: Map.get(ws, "heartbeat_interval_s", 30),
-        reconnect_base_s: Map.get(ws, "reconnect_base_s", 5),
-        reconnect_max_s: Map.get(ws, "reconnect_max_s", 60)
+        heartbeat_interval_s: clamp_int(Map.get(ws, "heartbeat_interval_s", 30), 5, 300),
+        reconnect_base_s: clamp_int(Map.get(ws, "reconnect_base_s", 5), 1, 60),
+        reconnect_max_s: clamp_int(Map.get(ws, "reconnect_max_s", 60), 5, 600)
       }
     }
   end
@@ -183,7 +190,7 @@ defmodule YellowDog.Resolved.Config do
     match_str = Map.get(rule, "match", "")
     type_str = Map.get(rule, "type", "A")
     value = Map.get(rule, "value", "")
-    ttl = Map.get(rule, "ttl", 300)
+    ttl = clamp_int(Map.get(rule, "ttl", 300), 1, 604_800)
 
     %{
       match: parse_match_pattern(match_str),
@@ -210,6 +217,12 @@ defmodule YellowDog.Resolved.Config do
   defp parse_record_type("MX"), do: :mx
   defp parse_record_type("SRV"), do: :srv
   defp parse_record_type(_), do: :a
+
+  defp clamp_int(val, min_val, max_val) when is_integer(val) do
+    val |> max(min_val) |> min(max_val)
+  end
+
+  defp clamp_int(_val, min_val, _max_val), do: min_val
 
   defp parse_ip(ip_string) when is_binary(ip_string) do
     case :inet.parse_address(String.to_charlist(ip_string)) do

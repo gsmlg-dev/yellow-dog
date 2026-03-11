@@ -164,6 +164,99 @@ defmodule YellowDog.Resolved.ConfigTest do
     end
   end
 
+  describe "config validation" do
+    test "port is clamped to valid range" do
+      toml = %{
+        "resolved" => %{
+          "port" => 0,
+          "upstreams" => []
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.port >= 1
+      assert config.port <= 65_535
+    end
+
+    test "port above 65535 is clamped down" do
+      toml = %{
+        "resolved" => %{
+          "port" => 99_999,
+          "upstreams" => []
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.port == 65_535
+    end
+
+    test "upstream_timeout_ms is clamped to valid range" do
+      toml = %{
+        "resolved" => %{
+          "upstream_timeout_ms" => 0,
+          "upstreams" => []
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.upstream_timeout_ms >= 100
+    end
+
+    test "cache min_ttl_s cannot exceed max_ttl_s" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "cache" => %{
+            "min_ttl_s" => 9999,
+            "max_ttl_s" => 100
+          }
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.cache.min_ttl_s <= config.cache.max_ttl_s
+    end
+
+    test "cache max_entries is at least 1" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "cache" => %{"max_entries" => -5}
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert config.cache.max_entries >= 1
+    end
+
+    test "non-integer values fall back to minimum" do
+      toml = %{
+        "resolved" => %{
+          "port" => "not_a_number",
+          "upstreams" => []
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      assert is_integer(config.port)
+    end
+
+    test "intercept rule TTL is clamped" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "intercept" => [
+            %{"match" => "test.local", "type" => "A", "value" => "1.2.3.4", "ttl" => 9_999_999}
+          ]
+        }
+      }
+
+      config = Config.parse_toml_for_test(toml)
+      [rule] = config.intercept_rules
+      assert rule.ttl <= 604_800
+    end
+  end
+
   describe "TOML config file parsing" do
     test "writes and reads a temporary TOML config" do
       toml_content = """
