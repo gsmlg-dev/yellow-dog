@@ -340,13 +340,14 @@ defmodule YellowDog.Dhcpv6.Handler do
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
             reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease, :granted],
               %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
               %{client_ip: client_ip, client_duid: duid}
             )
+
+            send_dhcpv6_response(reply, client_ip, client_port, state)
 
           {:error, reason} ->
             :telemetry.execute(
@@ -388,13 +389,14 @@ defmodule YellowDog.Dhcpv6.Handler do
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
             reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease, :granted],
               %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
               %{client_ip: client_ip, client_duid: duid}
             )
+
+            send_dhcpv6_response(reply, client_ip, client_port, state)
 
           {:error, reason} ->
             :telemetry.execute(
@@ -439,13 +441,14 @@ defmodule YellowDog.Dhcpv6.Handler do
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
             reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease, :granted],
               %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
               %{client_ip: client_ip, client_duid: duid}
             )
+
+            send_dhcpv6_response(reply, client_ip, client_port, state)
 
           {:error, reason} ->
             :telemetry.execute(
@@ -723,9 +726,14 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
 
     # IA_NA option (option 3) - contains IA_ADDR
-    # IAID + T1 + T2 (0 = server decides)
+    # RFC 3315 §22.4: T1 = 50% of preferred lifetime, T2 = 80% of preferred lifetime.
+    # Zero means "server decides" — but since we never send an updated value,
+    # clients would never enter RENEW state. Set explicit values so clients renew.
+    t1 = div(lease.preferred_lifetime, 2)
+    t2 = div(lease.preferred_lifetime * 4, 5)
+
     ia_na_data =
-      <<lease.iaid::32, 0::32, 0::32>> <>
+      <<lease.iaid::32, t1::32, t2::32>> <>
         DHCP.Parameter.to_iodata(ia_addr_option)
 
     %DHCPv6.Message.Option{
