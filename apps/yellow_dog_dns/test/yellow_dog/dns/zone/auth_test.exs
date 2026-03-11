@@ -1428,4 +1428,93 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert response.anlist == []
     end
   end
+
+  describe "zone loaded from file" do
+    # Regression test: DNS.Zone.Loader returns DNS.Zone.RRSet structs in zone.records,
+    # but the auth zone and response builder expect DNS.Message.Record structs (which
+    # implement DNS.Parameter for wire-format serialization). Loading a zone file used
+    # to crash with Protocol.UndefinedError when DNS.to_iodata/1 was called on a response.
+    test "resolves queries and response is wire-serializable" do
+      tmp_dir = System.tmp_dir!()
+      ref = :erlang.unique_integer([:positive])
+      zone_name = "filezone-#{ref}.test"
+      zone_file = Path.join(tmp_dir, "#{zone_name}.zone")
+
+      File.write!(zone_file, """
+      $TTL 3600
+      $ORIGIN #{zone_name}.
+      @   IN  SOA  ns1.#{zone_name}. hostmaster.#{zone_name}. (
+              1 3600 1800 604800 86400 )
+      @   IN  NS   ns1.#{zone_name}.
+      www IN  A    198.51.100.1
+      """)
+
+      {:ok, pid} = Auth.start_link(name: zone_name, zone_file: zone_file)
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+
+        File.rm(zone_file)
+      end)
+
+      query = build_query("www.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # The answer should contain an A record
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert length(response.anlist) == 1
+
+      # Each answer record must be a DNS.Message.Record (not a DNS.Zone.RRSet).
+      # DNS.Message.Record implements DNS.Parameter; DNS.Zone.RRSet does not.
+      # Serializing individual records must not raise Protocol.UndefinedError.
+      for rec <- response.anlist do
+        assert %DNS.Message.Record{} = rec
+        assert is_binary(IO.iodata_to_binary(DNS.to_iodata(rec)))
+      end
+    end
+
+    test "SOA record from file is wire-serializable" do
+      tmp_dir = System.tmp_dir!()
+      ref = :erlang.unique_integer([:positive])
+      zone_name = "filezone-soa-#{ref}.test"
+      zone_file = Path.join(tmp_dir, "#{zone_name}.zone")
+
+      File.write!(zone_file, """
+      $TTL 3600
+      $ORIGIN #{zone_name}.
+      @   IN  SOA  ns1.#{zone_name}. hostmaster.#{zone_name}. (
+              42 3600 1800 604800 86400 )
+      @   IN  NS   ns1.#{zone_name}.
+      """)
+
+      {:ok, pid} = Auth.start_link(name: zone_name, zone_file: zone_file)
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+
+        File.rm(zone_file)
+      end)
+
+      # Query SOA directly
+      query = build_query(zone_name, :soa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert length(response.anlist) >= 1
+      [soa_rec | _] = response.anlist
+      assert to_string(soa_rec.type) == "SOA"
+
+      # SOA record must be a DNS.Message.Record serializable to wire format
+      assert %DNS.Message.Record{} = soa_rec
+      assert is_binary(IO.iodata_to_binary(DNS.to_iodata(soa_rec)))
+    end
+  end
 end

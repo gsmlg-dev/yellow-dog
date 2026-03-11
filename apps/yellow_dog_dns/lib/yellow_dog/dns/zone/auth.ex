@@ -660,6 +660,42 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp build_record(:soa, _name, _ttl, _data), do: nil
   defp build_record(_type, _name, _ttl, _data), do: nil
 
+  # Build a DNS.Message.Record for SOA from zone.soa, which may be:
+  #   - %DNS.Zone.Parser.SOARecord{primary_ns:, admin_email:, ...}  (AST-based parser)
+  #   - %{mname:, rname:, serial:, ...}                             (FileParser, legacy)
+  # Returns nil when no SOA data is present so callers can filter it out safely.
+  defp build_soa_from_zone(%DNS.Zone{soa: nil}, _zone_name, _default_ttl), do: nil
+
+  defp build_soa_from_zone(
+         %DNS.Zone{soa: %DNS.Zone.Parser.SOARecord{} = soa, origin: origin},
+         zone_name,
+         default_ttl
+       ) do
+    name = normalize_origin(origin) || normalize_origin(zone_name)
+    ttl = soa.minimum || default_ttl
+    mname = trim_trailing_dot(to_string(soa.primary_ns))
+    rname = trim_trailing_dot(to_string(soa.admin_email))
+    Message.Record.new(name, :soa, :in, ttl, {mname, rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum})
+  end
+
+  defp build_soa_from_zone(%DNS.Zone{soa: soa, origin: origin}, zone_name, default_ttl)
+       when is_map(soa) do
+    name = normalize_origin(origin) || normalize_origin(zone_name)
+    mname = trim_trailing_dot(to_string(Map.get(soa, :mname, "ns1.#{name}")))
+    rname = trim_trailing_dot(to_string(Map.get(soa, :rname, "hostmaster.#{name}")))
+    serial = Map.get(soa, :serial, 1)
+    refresh = Map.get(soa, :refresh, 3600)
+    retry = Map.get(soa, :retry, 1800)
+    expire = Map.get(soa, :expire, 604_800)
+    minimum = Map.get(soa, :minimum, 86_400)
+    ttl = minimum || default_ttl
+    Message.Record.new(name, :soa, :in, ttl, {mname, rname, serial, refresh, retry, expire, minimum})
+  end
+
+  defp build_soa_from_zone(_zone, _zone_name, _default_ttl), do: nil
+
+  defp trim_trailing_dot(s), do: String.trim_trailing(s, ".")
+
   defp resolve_name(nil, origin), do: normalize_origin(origin)
   defp resolve_name("@", origin), do: normalize_origin(origin)
 
@@ -1108,7 +1144,16 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     case DNS.Zone.Loader.load_zone_from_file(state.name, zone_file) do
       {:ok, zone} ->
-        load_zone_data(state, zone.records)
+        # DNS.Zone.Loader returns DNS.Zone.RRSet structs in zone.records, but the
+        # auth zone ETS table and response builder expect DNS.Message.Record structs
+        # (which implement DNS.Parameter for wire-format serialization). Use
+        # rrsets_to_records/1 to convert non-SOA records. SOA is stored separately
+        # in zone.soa by the file parser and must be built explicitly because
+        # build_record(:soa, ...) returns nil to avoid double-storing it.
+        records = rrsets_to_records(zone)
+        soa = build_soa_from_zone(zone, state.name, state.ttl)
+        all_records = if soa, do: [soa | records], else: records
+        load_zone_data(state, all_records)
 
       {:error, reason} ->
         Telemetry.error("Failed to load zone file", %{

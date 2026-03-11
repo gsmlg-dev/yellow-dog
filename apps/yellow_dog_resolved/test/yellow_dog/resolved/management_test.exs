@@ -215,6 +215,21 @@ defmodule YellowDog.Resolved.ManagementTest do
                        %{type: :cache_flush}}
     end
 
+    test "cache_flush without data field flushes all (no pattern)" do
+      Cache.store("test.com", :a, %{data: "test"}, 300)
+      Process.sleep(10)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "cache_flush",
+          "id" => "req-no-data-flush"
+        })
+
+      assert result["type"] == "cache_flush_result"
+      assert result["id"] == "req-no-data-flush"
+      assert is_integer(result["data"]["flushed"])
+    end
+
     test "cache_flush with null data field does not crash" do
       # JSON clients may send {"data": null} instead of {"data": {}}
       result =
