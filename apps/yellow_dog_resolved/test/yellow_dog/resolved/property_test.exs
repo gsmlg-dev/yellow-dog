@@ -154,7 +154,7 @@ defmodule YellowDog.Resolved.PropertyTest do
           :mixed -> "Test.Example.COM"
         end
 
-      assert %{} = Intercept.match(domain, rules)
+      assert %{} = Intercept.match(domain, :a, rules)
 
       # Suffix match
       suffix_domain =
@@ -164,7 +164,7 @@ defmodule YellowDog.Resolved.PropertyTest do
           :mixed -> "App.Local.DEV"
         end
 
-      assert %{} = Intercept.match(suffix_domain, rules)
+      assert %{} = Intercept.match(suffix_domain, :a, rules)
 
       # Prefix match
       prefix_domain =
@@ -174,7 +174,7 @@ defmodule YellowDog.Resolved.PropertyTest do
           :mixed -> "Dev-Server.Test"
         end
 
-      assert %{} = Intercept.match(prefix_domain, rules)
+      assert %{} = Intercept.match(prefix_domain, :a, rules)
     end
   end
 

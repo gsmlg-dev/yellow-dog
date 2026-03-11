@@ -16,14 +16,34 @@ defmodule YellowDog.Resolved.Intercept do
           ttl: pos_integer()
         }
 
+  # Maps DNS.ResourceRecordType string representation to rule type atoms
+  @type_string_map %{
+    "A" => :a,
+    "AAAA" => :aaaa,
+    "CNAME" => :cname,
+    "TXT" => :txt,
+    "MX" => :mx,
+    "SRV" => :srv,
+    "NS" => :ns,
+    "PTR" => :ptr,
+    "SOA" => :soa
+  }
+
   @doc """
-  Check if a domain matches any intercept rule.
-  Returns the first matching rule or nil.
+  Check if a domain and query type match any intercept rule.
+  Returns the first rule whose domain pattern AND record type match, or nil.
+
+  Both domain pattern and type must match so that an AAAA rule and an A rule
+  for the same domain can coexist: querying AAAA skips A-only rules and finds
+  the AAAA rule rather than silently returning NODATA.
+
+  Accepts the type as either an atom (`:a`) or a `DNS.ResourceRecordType` struct.
   """
-  @spec match(String.t(), [rule()]) :: rule() | nil
-  def match(domain, rules) do
+  @spec match(String.t(), atom() | term(), [rule()]) :: rule() | nil
+  def match(domain, type, rules) do
     normalized = String.downcase(domain) |> String.trim_trailing(".")
-    Enum.find(rules, fn rule -> matches?(normalized, rule.match) end)
+    type_atom = normalize_type(type)
+    Enum.find(rules, fn rule -> rule.type == type_atom and matches?(normalized, rule.match) end)
   end
 
   @doc """
@@ -44,5 +64,11 @@ defmodule YellowDog.Resolved.Intercept do
 
   def matches?(domain, {:prefix, prefix}) do
     String.starts_with?(String.downcase(domain), String.downcase(prefix))
+  end
+
+  defp normalize_type(type) when is_atom(type), do: type
+
+  defp normalize_type(type) do
+    Map.get(@type_string_map, to_string(type), :unknown)
   end
 end

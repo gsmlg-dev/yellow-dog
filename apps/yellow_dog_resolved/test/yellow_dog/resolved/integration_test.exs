@@ -85,12 +85,15 @@ defmodule YellowDog.Resolved.IntegrationTest do
       assert length(parsed.anlist) == 1
     end
 
-    test "type mismatch returns empty NOERROR" do
+    test "AAAA query for domain with no AAAA rule falls through to forward" do
+      # Config has only an A rule for myapp.test, no AAAA rule.
+      # With type-aware matching the AAAA query is not intercepted;
+      # it falls through to the forward path. No upstreams → SERVFAIL.
       query = build_query("myapp.test", :aaaa)
       response = Router.resolve(query)
       parsed = serialize_roundtrip(response)
 
-      assert parsed.header.rcode == DNS.Message.RCode.no_error()
+      assert parsed.header.rcode == DNS.Message.RCode.serv_fail()
       assert parsed.anlist == []
     end
   end

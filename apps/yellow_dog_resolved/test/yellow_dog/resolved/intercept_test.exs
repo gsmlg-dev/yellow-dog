@@ -10,49 +10,59 @@ defmodule YellowDog.Resolved.InterceptTest do
     %{match: {:suffix, "local.dev"}, type: :aaaa, value: "::1", ttl: 300}
   ]
 
-  describe "match/2" do
-    test "matches exact domain" do
-      assert %{type: :a, value: "192.168.1.100"} = Intercept.match("myapp.test", @rules)
+  describe "match/3" do
+    test "matches exact domain with correct type" do
+      assert %{type: :a, value: "192.168.1.100"} = Intercept.match("myapp.test", :a, @rules)
     end
 
     test "matches exact domain case-insensitively" do
-      assert %{type: :a} = Intercept.match("MYAPP.TEST", @rules)
-      assert %{type: :a} = Intercept.match("MyApp.Test", @rules)
+      assert %{type: :a} = Intercept.match("MYAPP.TEST", :a, @rules)
+      assert %{type: :a} = Intercept.match("MyApp.Test", :a, @rules)
     end
 
     test "matches suffix pattern" do
-      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("app.local.dev", @rules)
-      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("deep.sub.local.dev", @rules)
+      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("app.local.dev", :a, @rules)
+      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("deep.sub.local.dev", :a, @rules)
     end
 
     test "matches suffix pattern for exact suffix domain" do
-      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("local.dev", @rules)
+      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("local.dev", :a, @rules)
     end
 
     test "matches prefix pattern" do
-      assert %{type: :a, value: "10.0.0.1"} = Intercept.match("dev-server.example.com", @rules)
+      assert %{type: :a, value: "10.0.0.1"} = Intercept.match("dev-server.example.com", :a, @rules)
     end
 
     test "returns nil for non-matching domain" do
-      assert nil == Intercept.match("google.com", @rules)
+      assert nil == Intercept.match("google.com", :a, @rules)
     end
 
-    test "first match wins" do
+    test "returns nil when domain matches but type does not" do
+      # @rules has no CNAME rule — A-rule for myapp.test must not block CNAME queries
+      assert nil == Intercept.match("myapp.test", :cname, @rules)
+    end
+
+    test "A and AAAA rules for same domain are independently reachable" do
+      # Without type-aware matching, the AAAA rule would be shadowed by the A rule
+      assert %{type: :a, value: "127.0.0.1"} = Intercept.match("app.local.dev", :a, @rules)
+      assert %{type: :aaaa, value: "::1"} = Intercept.match("app.local.dev", :aaaa, @rules)
+    end
+
+    test "first match by type wins" do
       rules = [
         %{match: {:suffix, "example.com"}, type: :a, value: "1.1.1.1", ttl: 300},
         %{match: {:exact, "test.example.com"}, type: :a, value: "2.2.2.2", ttl: 300}
       ]
 
-      # Suffix matches first
-      assert %{value: "1.1.1.1"} = Intercept.match("test.example.com", rules)
+      assert %{value: "1.1.1.1"} = Intercept.match("test.example.com", :a, rules)
     end
 
     test "handles trailing dot in domain" do
-      assert %{type: :a} = Intercept.match("myapp.test.", @rules)
+      assert %{type: :a} = Intercept.match("myapp.test.", :a, @rules)
     end
 
     test "returns nil for empty rules" do
-      assert nil == Intercept.match("anything.com", [])
+      assert nil == Intercept.match("anything.com", :a, [])
     end
   end
 

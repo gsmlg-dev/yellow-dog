@@ -71,13 +71,31 @@ defmodule YellowDog.Resolved.RouterTest do
       assert length(response.anlist) == 1
     end
 
-    test "returns empty answer when query type doesn't match rule type" do
+    test "AAAA query matches the AAAA intercept rule (not the A rule)" do
+      # Config has both A and AAAA rules for myapp.test.
+      # With type-aware matching, the AAAA query gets the AAAA answer, not NODATA.
       query = build_query("myapp.test", :aaaa)
       response = Router.resolve(query)
 
       assert response.header.qr == 1
       assert response.header.rcode == DNS.Message.RCode.no_error()
-      assert response.anlist == []
+      assert length(response.anlist) == 1
+      [record] = response.anlist
+      # record.type is a DNS.ResourceRecordType struct; compare via to_string
+      assert to_string(record.type) == "AAAA"
+    end
+
+    test "A query with no matching intercept type returns intercept answer" do
+      # Verify the first-match-by-type semantics: only the right-type rule is returned.
+      # A query for myapp.test matches the A rule (not the AAAA rule).
+      query = build_query("myapp.test", :a)
+      response = Router.resolve(query)
+
+      assert response.header.qr == 1
+      assert response.header.aa == 1
+      assert length(response.anlist) == 1
+      [record] = response.anlist
+      assert to_string(record.type) == "A"
     end
 
     test "case-insensitive intercept matching" do

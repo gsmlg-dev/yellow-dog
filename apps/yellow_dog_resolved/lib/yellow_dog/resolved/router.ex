@@ -77,8 +77,8 @@ defmodule YellowDog.Resolved.Router do
     config = Config.get()
     rules = Map.get(config, :intercept_rules, [])
 
-    # 1. Check intercept rules
-    case Intercept.match(domain, rules) do
+    # 1. Check intercept rules (match by both domain pattern and query type)
+    case Intercept.match(domain, type, rules) do
       %{} = rule ->
         {:intercept, ResponseBuilder.intercept_response(query, rule)}
 
