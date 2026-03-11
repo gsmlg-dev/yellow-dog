@@ -137,13 +137,34 @@ defmodule YellowDog.Resolved.ManagementTest do
 
       assert data["queries_total"] ==
                data["queries_intercepted"] + data["queries_cached"] + data["queries_forwarded"] +
-                 data["queries_error"]
+                 data["queries_error"] + data["queries_rate_limited"]
 
       assert data["queries_intercepted"] == 2
       assert data["queries_cached"] == 1
       assert data["queries_forwarded"] == 0
       assert data["queries_error"] == 0
+      assert data["queries_rate_limited"] == 0
       assert data["queries_total"] == 3
+    end
+
+    test "ping queries_total includes rate_limited queries" do
+      Counters.reset()
+
+      Counters.increment(:intercepted)
+      Counters.increment(:rate_limited)
+      Counters.increment(:rate_limited)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-rate-total",
+          "data" => %{}
+        })
+
+      data = result["data"]
+      assert data["queries_total"] == 3
+      assert data["queries_rate_limited"] == 2
+      assert data["queries_intercepted"] == 1
     end
 
     test "cache_flush with exact domain pattern" do
