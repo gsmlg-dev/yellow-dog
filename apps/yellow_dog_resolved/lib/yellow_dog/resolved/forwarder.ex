@@ -119,7 +119,10 @@ defmodule YellowDog.Resolved.Forwarder do
             %{upstream: upstream, reason: :not_a_response}
           )
 
-          {:noreply, state}
+          # Treat as a timeout so the pending entry is cleaned up immediately
+          # (failover to next upstream or reply with error) rather than waiting
+          # for the backup process timer.
+          handle_info({:timeout, txn_id}, state)
 
         _ ->
           Logger.debug(
@@ -132,7 +135,7 @@ defmodule YellowDog.Resolved.Forwarder do
             %{upstream: upstream, reason: :bad_message}
           )
 
-          {:noreply, state}
+          handle_info({:timeout, txn_id}, state)
       end
     rescue
       _ ->
@@ -144,7 +147,7 @@ defmodule YellowDog.Resolved.Forwarder do
           %{upstream: upstream, reason: :parse_error}
         )
 
-        {:noreply, state}
+        handle_info({:timeout, txn_id}, state)
     catch
       :throw, _ ->
         Logger.debug("[Resolved] Failed to parse upstream response from #{:inet.ntoa(upstream)}")
@@ -155,7 +158,7 @@ defmodule YellowDog.Resolved.Forwarder do
           %{upstream: upstream, reason: :parse_error}
         )
 
-        {:noreply, state}
+        handle_info({:timeout, txn_id}, state)
     end
   end
 
