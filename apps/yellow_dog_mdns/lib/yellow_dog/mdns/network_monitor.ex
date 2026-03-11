@@ -411,7 +411,8 @@ defmodule YellowDog.Mdns.NetworkMonitor do
 
         queries ->
           Enum.each(queries, fn {key, query} ->
-            if query.record_type == record.type or query.record_type == :ANY do
+            if to_string(query.record_type) == to_string(record.type) or
+                 to_string(query.record_type) == "ANY" do
               updated_query = %{query | answered: true}
               :ets.delete_object(@query_table, {key, query})
               :ets.insert(@query_table, {key, updated_query})

@@ -259,9 +259,9 @@ defmodule YellowDog.Mdns.Responder do
       service_type = normalize_name("#{service.type}.#{service.domain}")
       service_host = normalize_name(service.host)
 
-      (qtype == :PTR and qname == service_type) or
-        (qtype in [:SRV, :TXT, :ANY] and qname == service_fqdn) or
-        (qtype in [:A, :AAAA, :ANY] and qname == service_host)
+      (to_string(qtype) == "PTR" and qname == service_type) or
+        (to_string(qtype) in ["SRV", "TXT", "ANY"] and qname == service_fqdn) or
+        (to_string(qtype) in ["A", "AAAA", "ANY"] and qname == service_host)
     end)
   end
 
