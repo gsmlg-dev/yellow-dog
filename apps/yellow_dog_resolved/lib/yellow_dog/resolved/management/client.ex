@@ -9,9 +9,6 @@ defmodule YellowDog.Resolved.Management.Client do
 
   alias YellowDog.Resolved.Management.Handler
 
-  @reconnect_base_ms 5_000
-  @reconnect_max_ms 60_000
-
   # Client API
 
   def start_link(config) do
@@ -30,7 +27,6 @@ defmodule YellowDog.Resolved.Management.Client do
       conn: nil,
       websocket: nil,
       ref: nil,
-      reconnect_delay: Map.get(config.ws_config, :reconnect_base_s, 5) * 1000,
       heartbeat_interval: Map.get(config.ws_config, :heartbeat_interval_s, 30) * 1000,
       heartbeat_timer: nil,
       connected: false
@@ -59,12 +55,12 @@ defmodule YellowDog.Resolved.Management.Client do
         # Start heartbeat
         timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
 
-        {:noreply,
-         %{state | connected: true, heartbeat_timer: timer, reconnect_delay: @reconnect_base_ms}}
+        {:noreply, %{state | connected: true, heartbeat_timer: timer}}
 
       {:error, reason} ->
         Logger.warning("[Resolved] Management connection failed: #{inspect(reason)}")
-        schedule_reconnect(state)
+        send(state.parent, {:management_down, reason})
+        {:stop, :normal, state}
     end
   end
 
@@ -214,14 +210,10 @@ defmodule YellowDog.Resolved.Management.Client do
 
     if state.heartbeat_timer, do: Process.cancel_timer(state.heartbeat_timer)
 
+    # Notify Discovery to re-probe (PRD: always re-discover, don't cache endpoint)
     send(state.parent, {:management_down, reason})
 
-    schedule_reconnect(state)
-  end
-
-  defp schedule_reconnect(state) do
-    Process.send_after(self(), :connect, state.reconnect_delay)
-    new_delay = min(state.reconnect_delay * 2, @reconnect_max_ms)
-    {:noreply, %{state | connected: false, reconnect_delay: new_delay, heartbeat_timer: nil}}
+    # Stop self — Discovery will start a new Client after re-probing
+    {:stop, :normal, %{state | connected: false, heartbeat_timer: nil}}
   end
 end
