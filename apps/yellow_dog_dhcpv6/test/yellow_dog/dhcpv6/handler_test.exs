@@ -343,6 +343,123 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     end
   end
 
+  # RFC 3315 §18.2.3/18.2.4: RENEW/REBIND when pool is exhausted must receive REPLY with NoBinding
+  describe "RFC 3315 §18.2.3/18.2.4 — NoBinding reply on RENEW/REBIND with exhausted pool" do
+    @server_duid_renew <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      # Restart LeaseManager with a single-address pool so new clients are rejected
+      case GenServer.whereis(LeaseManager) do
+        nil -> :ok
+        pid -> GenServer.stop(pid, :normal)
+      end
+
+      LeaseStorage.clear_all()
+
+      tiny_pool = %{
+        name: "default",
+        range_start: "fd00::2000",
+        range_end: "fd00::2000",
+        dns_servers: [],
+        domain_name: "",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      {:ok, _pid} = LeaseManager.start_link(pools: [tiny_pool])
+
+      test_pid = self()
+      renew_id = "test-dhcpv6-renew-failed-#{System.unique_integer()}"
+      rebind_id = "test-dhcpv6-rebind-failed-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        renew_id,
+        [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        rebind_id,
+        [:yellow_dog, :dhcpv6, :lease, :rebind_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(renew_id)
+        :telemetry.detach(rebind_id)
+      end)
+
+      :ok
+    end
+
+    test "RENEW from a different client when pool is exhausted triggers renew_failed telemetry" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xCC, 0xCC, 0xCC>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 10)
+
+      # Client B tries to RENEW but pool is exhausted
+      client_b_duid = <<0xCC, 0xCC, 0xCC, 0xCC>>
+
+      message = %DHCPv6.Message{
+        msg_type: 5,
+        transaction_id: <<0x11, 0x22, 0x33>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_renew),
+          # IA_NA with IAID=20
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 7}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :renew_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+
+    test "REBIND from a different client when pool is exhausted triggers rebind_failed telemetry" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xDD, 0xDD, 0xDD>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 10)
+
+      # Client B tries to REBIND but pool is exhausted (no server ID required in REBIND)
+      client_b_duid = <<0xDD, 0xDD, 0xDD, 0xDD>>
+
+      message = %DHCPv6.Message{
+        msg_type: 6,
+        transaction_id: <<0x44, 0x55, 0x66>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          # No Server ID in REBIND (RFC 3315 §18.1.4)
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 8}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :rebind_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+  end
+
   # RFC 3315 §18.2.1: REQUEST with wrong Server Identifier must be silently discarded
   describe "RFC 3315 §18.2.1 — Server Identifier validation" do
     setup do

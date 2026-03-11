@@ -44,6 +44,9 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   # RFC 1035 §2.3.4: Maximum DNS label length
   @max_dns_label_length 63
+  # RFC 3315 §24.4: Status codes
+  @status_no_addrs_avail 2
+  @status_no_binding 3
   # DHCPv6 temporary address lifetimes (seconds)
   @ta_preferred_lifetime 600
   @ta_valid_lifetime 1200
@@ -398,6 +401,11 @@ defmodule YellowDog.Dhcpv6.Handler do
               %{count: 1},
               %{reason: inspect(reason), client_duid: duid}
             )
+
+            # RFC 3315 §18.2.3: must send REPLY with NoBinding status when
+            # unable to find or extend the lease — client must not be left waiting.
+            reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
+            send_dhcpv6_response(reply, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -444,6 +452,11 @@ defmodule YellowDog.Dhcpv6.Handler do
               %{count: 1},
               %{reason: inspect(reason), client_duid: duid}
             )
+
+            # RFC 3315 §18.2.4: must send REPLY with NoBinding status when
+            # unable to find or extend the lease — client must not be left waiting.
+            reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
+            send_dhcpv6_response(reply, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -603,17 +616,19 @@ defmodule YellowDog.Dhcpv6.Handler do
   # RFC 3315 §18.2.2: builds a REPLY carrying NoAddrsAvail (status 2) inside
   # the IA_NA option so the client knows the pool is exhausted.
   defp create_no_addrs_avail_reply(request, iaid, parsed_opts) do
-    client_id = parsed_opts.client_id
+    create_ia_na_error_reply(request, iaid, parsed_opts, @status_no_addrs_avail)
+  end
 
-    # StatusCode option (13): 2-byte status value = 2 (NoAddrsAvail)
-    status_option_data = <<2::16>>
+  # Generic IA_NA error REPLY builder — wraps a StatusCode option inside IA_NA.
+  # RFC 3315 §24.4 status codes: 2=NoAddrsAvail, 3=NoBinding, 4=NotOnLink.
+  defp create_ia_na_error_reply(request, iaid, parsed_opts, status_code) do
+    client_id = parsed_opts.client_id
 
     status_option = %DHCPv6.Message.Option{
       option_code: @option_status_code,
-      option_data: status_option_data
+      option_data: <<status_code::16>>
     }
 
-    # Empty IA_NA wrapping the StatusCode option
     ia_na_data =
       <<iaid::32, 0::32, 0::32>> <> DHCP.Parameter.to_iodata(status_option)
 
