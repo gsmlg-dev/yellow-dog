@@ -52,3 +52,24 @@ match = "db.internal"
 type = "CNAME"
 value = "postgres.local.dev"
 ttl = 300
+
+# TXT record example (SPF, verification, etc.)
+[[resolved.intercept]]
+match = "info.local.dev"
+type = "TXT"
+value = "v=spf1 include:_spf.local.dev ~all"
+ttl = 300
+
+# MX record example (format: "priority exchange")
+[[resolved.intercept]]
+match = "*.local.dev"
+type = "MX"
+value = "10 mail.local.dev"
+ttl = 300
+
+# SRV record example (format: "priority weight port target")
+[[resolved.intercept]]
+match = "_sip._tcp.local.dev"
+type = "SRV"
+value = "10 60 5060 sip.local.dev"
+ttl = 300

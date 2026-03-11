@@ -164,6 +164,89 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
     end
   end
 
+  describe "build_record/4" do
+    test "A record with valid IP returns {:ok, record}" do
+      assert {:ok, record} = ResponseBuilder.build_record("test.com", :a, "192.168.1.1", 300)
+      assert record.ttl == 300
+    end
+
+    test "A record with invalid IP returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :a, "not.an.ip", 300)
+    end
+
+    test "A record with IPv6 address returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :a, "::1", 300)
+    end
+
+    test "AAAA record with valid IPv6 returns {:ok, record}" do
+      assert {:ok, _record} = ResponseBuilder.build_record("test.com", :aaaa, "::1", 300)
+    end
+
+    test "AAAA record with IPv4 address returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :aaaa, "192.168.1.1", 300)
+    end
+
+    test "MX record with valid format returns {:ok, record}" do
+      assert {:ok, _record} =
+               ResponseBuilder.build_record("test.com", :mx, "10 mail.example.com", 300)
+    end
+
+    test "MX record with missing exchange returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :mx, "10", 300)
+    end
+
+    test "MX record with non-integer priority returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :mx, "abc mail.example.com", 300)
+    end
+
+    test "SRV record with valid format returns {:ok, record}" do
+      assert {:ok, _record} =
+               ResponseBuilder.build_record("test.com", :srv, "10 20 5060 sip.example.com", 300)
+    end
+
+    test "SRV record with missing fields returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :srv, "10 20", 300)
+    end
+
+    test "SRV record with non-integer port returns :error" do
+      assert :error =
+               ResponseBuilder.build_record("test.com", :srv, "10 20 abc sip.example.com", 300)
+    end
+
+    test "unknown record type returns :error" do
+      assert :error = ResponseBuilder.build_record("test.com", :ns, "ns1.example.com", 300)
+    end
+  end
+
+  describe "intercept_response with malformed values" do
+    test "returns SERVFAIL for invalid A record value" do
+      query = build_query("bad.test", :a)
+      rule = %{match: {:exact, "bad.test"}, type: :a, value: "not.an.ip", ttl: 300}
+
+      response = ResponseBuilder.intercept_response(query, rule)
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+      assert response.anlist == []
+    end
+
+    test "returns SERVFAIL for malformed MX record value" do
+      query = build_query("bad.test", :mx)
+      rule = %{match: {:exact, "bad.test"}, type: :mx, value: "invalid", ttl: 300}
+
+      response = ResponseBuilder.intercept_response(query, rule)
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+      assert response.anlist == []
+    end
+
+    test "returns SERVFAIL for malformed SRV record value" do
+      query = build_query("bad.test", :srv)
+      rule = %{match: {:exact, "bad.test"}, type: :srv, value: "not valid", ttl: 300}
+
+      response = ResponseBuilder.intercept_response(query, rule)
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+      assert response.anlist == []
+    end
+  end
+
   describe "response serialization" do
     test "intercept response can be serialized to valid DNS packet" do
       query = build_query("myapp.test", :a)
