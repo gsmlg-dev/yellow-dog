@@ -81,25 +81,35 @@ defmodule YellowDog.Resolved.Management.Client do
             _ -> nil
           end)
 
-        case Mint.WebSocket.new(conn, state.ref, status, headers) do
-          {:ok, conn, websocket} ->
-            Logger.info("[Resolved] Management WebSocket connected to #{state.endpoint}")
+        # Guard: Mint buffers HTTP headers internally until the complete header
+        # block arrives (status line + all headers + "\r\n\r\n").  If only a
+        # partial TCP segment was received, responses is empty and both status
+        # and headers are nil — calling Mint.WebSocket.new/4 with nil arguments
+        # would fail and trigger a spurious disconnect.  Wait for the next TCP
+        # message instead.
+        if status == nil do
+          {:noreply, %{state | conn: conn}}
+        else
+          case Mint.WebSocket.new(conn, state.ref, status, headers) do
+            {:ok, conn, websocket} ->
+              Logger.info("[Resolved] Management WebSocket connected to #{state.endpoint}")
 
-            :telemetry.execute(
-              [:yellow_dog, :resolved, :management, :connected],
-              %{},
-              %{endpoint: state.endpoint}
-            )
+              :telemetry.execute(
+                [:yellow_dog, :resolved, :management, :connected],
+                %{},
+                %{endpoint: state.endpoint}
+              )
 
-            state = %{state | conn: conn, websocket: websocket, connected: true}
-            connected_msg = Handler.connected_event(state.instance_id)
-            state = send_message(state, connected_msg)
-            timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
-            {:noreply, %{state | heartbeat_timer: timer}}
+              state = %{state | conn: conn, websocket: websocket, connected: true}
+              connected_msg = Handler.connected_event(state.instance_id)
+              state = send_message(state, connected_msg)
+              timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
+              {:noreply, %{state | heartbeat_timer: timer}}
 
-          {:error, conn, reason} ->
-            Logger.warning("[Resolved] WebSocket upgrade failed: #{inspect(reason)}")
-            handle_disconnect(%{state | conn: conn}, {:upgrade_failed, reason})
+            {:error, conn, reason} ->
+              Logger.warning("[Resolved] WebSocket upgrade failed: #{inspect(reason)}")
+              handle_disconnect(%{state | conn: conn}, {:upgrade_failed, reason})
+          end
         end
 
       {:error, _conn, reason, _responses} ->
