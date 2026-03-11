@@ -604,6 +604,42 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert response.anlist == []
     end
 
+    test "NXDOMAIN includes SOA in authority section (RFC 2308 §2)" do
+      zone_name = "soa-nxd-#{System.unique_integer([:positive])}.com"
+
+      {:ok, pid} =
+        Auth.start_link(
+          name: zone_name,
+          zone_data: [
+            %{
+              name: zone_name,
+              type: :soa,
+              class: :in,
+              ttl: 3600,
+              rdata: %{
+                mname: "ns1.#{zone_name}.",
+                rname: "admin.#{zone_name}.",
+                serial: 1,
+                refresh: 3600,
+                retry: 600,
+                expire: 604_800,
+                minimum: 86400
+              }
+            }
+          ]
+        )
+
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000) end)
+
+      query = build_query("nonexistent.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.nscount == 1
+      assert length(response.nslist) == 1
+      [soa] = response.nslist
+      assert soa.type == :soa
+    end
+
     test "returns NODATA for existing name with no matching type", %{
       zone: pid,
       zone_name: zone_name
@@ -624,6 +660,43 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       # NODATA has rcode 0 but empty answers
       assert response.header.rcode == DNS.Message.RCode.no_error()
       assert response.anlist == []
+    end
+
+    test "NODATA includes SOA in authority section (RFC 2308 §2)" do
+      zone_name = "soa-nodata-#{System.unique_integer([:positive])}.com"
+
+      {:ok, pid} =
+        Auth.start_link(
+          name: zone_name,
+          zone_data: [
+            %{
+              name: zone_name,
+              type: :soa,
+              class: :in,
+              ttl: 3600,
+              rdata: %{
+                mname: "ns1.#{zone_name}.",
+                rname: "admin.#{zone_name}.",
+                serial: 1,
+                refresh: 3600,
+                retry: 600,
+                expire: 604_800,
+                minimum: 86400
+              }
+            },
+            %{name: "www.#{zone_name}", type: :a, class: :in, ttl: 3600, rdata: {192, 168, 1, 1}}
+          ]
+        )
+
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000) end)
+
+      query = build_query("www.#{zone_name}", :aaaa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.nscount == 1
+      assert length(response.nslist) == 1
+      [soa] = response.nslist
+      assert soa.type == :soa
     end
 
     test "returns CNAME for CNAME records", %{zone: pid, zone_name: zone_name} do

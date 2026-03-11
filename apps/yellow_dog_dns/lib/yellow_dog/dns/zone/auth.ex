@@ -942,7 +942,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     }
   end
 
-  defp build_nodata_response(query, _state) do
+  # RFC 2308 §2: negative responses SHOULD include the zone SOA in the
+  # authority section so that resolvers can cache negative results.
+  defp build_nodata_response(query, state) do
+    authority = if state.soa, do: [state.soa], else: []
+
     %Message{
       header: %{
         query.header
@@ -950,17 +954,19 @@ defmodule YellowDog.Dns.Zone.Auth do
           aa: 1,
           rcode: RCode.no_error(),
           ancount: 0,
-          nscount: 0,
+          nscount: length(authority),
           arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: [],
+      nslist: authority,
       arlist: []
     }
   end
 
-  defp build_nxdomain_response(query, _state) do
+  defp build_nxdomain_response(query, state) do
+    authority = if state.soa, do: [state.soa], else: []
+
     %Message{
       header: %{
         query.header
@@ -968,12 +974,12 @@ defmodule YellowDog.Dns.Zone.Auth do
           aa: 1,
           rcode: RCode.nx_domain(),
           ancount: 0,
-          nscount: 0,
+          nscount: length(authority),
           arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: [],
+      nslist: authority,
       arlist: []
     }
   end
