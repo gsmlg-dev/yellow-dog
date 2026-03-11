@@ -134,5 +134,83 @@ defmodule YellowDog.Resolved.ConfigTest do
 
       assert Config.get(:nonexistent) == nil
     end
+
+    test "handles unknown messages gracefully" do
+      config = Config.load()
+      start_supervised!({Config, config})
+
+      pid = Process.whereis(Config)
+      send(pid, {:random_message, :data})
+      send(pid, :unknown)
+      Process.sleep(10)
+
+      # Should still be alive and functional
+      assert Process.alive?(pid)
+      assert Config.get(:port) == config.port
+    end
+
+    test "file_event for non-config path is ignored" do
+      config = Config.load()
+      start_supervised!({Config, config})
+
+      pid = Process.whereis(Config)
+      # Send a file_event for a different path
+      send(pid, {:file_event, nil, {"/tmp/not_config.toml", [:modified]}})
+      Process.sleep(10)
+
+      assert Process.alive?(pid)
+      # Config should be unchanged
+      assert Config.get() == config
+    end
+  end
+
+  describe "TOML config file parsing" do
+    test "writes and reads a temporary TOML config" do
+      toml_content = """
+      [resolved]
+      listen = "127.0.0.1"
+      port = 5353
+      upstreams = ["9.9.9.9"]
+      upstream_timeout_ms = 2000
+      upstream_failure_threshold = 5
+
+      [resolved.cache]
+      enabled = false
+      max_entries = 500
+
+      [resolved.discovery]
+      enabled = false
+
+      [[resolved.intercept]]
+      match = "test.local"
+      type = "A"
+      value = "10.0.0.1"
+      ttl = 120
+      """
+
+      tmp_path =
+        Path.join(System.tmp_dir!(), "test_resolved_#{System.unique_integer([:positive])}.toml")
+
+      File.write!(tmp_path, toml_content)
+
+      on_exit(fn -> File.rm(tmp_path) end)
+
+      {:ok, parsed} = Toml.decode_file(tmp_path)
+      resolved = parsed["resolved"]
+
+      assert resolved["port"] == 5353
+      assert resolved["upstreams"] == ["9.9.9.9"]
+      assert resolved["upstream_timeout_ms"] == 2000
+      assert resolved["cache"]["enabled"] == false
+      assert resolved["cache"]["max_entries"] == 500
+      assert resolved["discovery"]["enabled"] == false
+      assert length(resolved["intercept"]) == 1
+
+      [rule] = resolved["intercept"]
+      assert rule["match"] == "test.local"
+      assert rule["type"] == "A"
+      assert rule["value"] == "10.0.0.1"
+      assert rule["ttl"] == 120
+    end
   end
 end

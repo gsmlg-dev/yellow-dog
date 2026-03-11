@@ -228,6 +228,54 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "telemetry events" do
+    test "forward start telemetry emitted when forwarding" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 500,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :start]
+        ])
+
+      query = build_query("telemetry-fwd.example.com")
+      Forwarder.forward(query, 2000)
+
+      assert_received {[:yellow_dog, :resolved, :forward, :start], ^ref, %{},
+                       %{upstream: {127, 0, 0, 1}}}
+
+      GenServer.stop(pid)
+    end
+
+    test "forward exception telemetry emitted on all-upstream timeout" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :exception]
+        ])
+
+      query = build_query("timeout-telem.example.com")
+      Forwarder.forward(query, 2000)
+
+      assert_received {[:yellow_dog, :resolved, :forward, :exception], ^ref, %{duration: _},
+                       %{upstream: _, reason: :timeout}}
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "malformed upstream response" do
     test "handles malformed response data without crashing" do
       config = %{
