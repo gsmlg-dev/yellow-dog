@@ -117,11 +117,13 @@ defmodule YellowDog.Resolved.Router do
         if Map.get(cache_config, :enabled, true) do
           case Cache.lookup(domain, type) do
             {:hit, cached_response, remaining_ttl} ->
-              # Rewrite the response header to match the current query's txn_id
-              # and set TTLs to remaining cache TTL (RFC 1035 §4.1.3)
+              # Rewrite the response header to match the current query's txn_id,
+              # echo the RD bit from the current query (RFC 1035 §4.1.1: RD is
+              # copied into the response), and set TTLs to remaining cache TTL
+              # (RFC 1035 §4.1.3).
               response = %{
                 cached_response
-                | header: %{cached_response.header | id: query.header.id},
+                | header: %{cached_response.header | id: query.header.id, rd: query.header.rd},
                   anlist: set_ttls(cached_response.anlist, remaining_ttl),
                   nslist: set_ttls(cached_response.nslist, remaining_ttl),
                   arlist: set_ttls(cached_response.arlist, remaining_ttl)

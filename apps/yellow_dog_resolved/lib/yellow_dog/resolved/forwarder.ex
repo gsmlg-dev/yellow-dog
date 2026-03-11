@@ -288,8 +288,16 @@ defmodule YellowDog.Resolved.Forwarder do
           Process.cancel_timer(pending.timer_ref)
           duration = System.monotonic_time(:microsecond) - pending.sent_at
 
-          # Rewrite txn_id back to client's original
-          response = %{response | header: %{response.header | id: pending.original_txn_id}}
+          # Rewrite txn_id back to client's original and echo the RD bit from
+          # the client's query (RFC 1035 §4.1.1: RD is copied into the response).
+          response = %{
+            response
+            | header: %{
+                response.header
+                | id: pending.original_txn_id,
+                  rd: pending.query.header.rd
+              }
+          }
 
           # Reset failure count and update latency EMA for this upstream
           state = reset_failure(state, from_ip)

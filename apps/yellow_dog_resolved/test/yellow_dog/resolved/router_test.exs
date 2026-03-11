@@ -194,6 +194,49 @@ defmodule YellowDog.Resolved.RouterTest do
       assert response.header.id == query.header.id
       assert response.header.id != 11111
     end
+
+    test "echoes RD bit from current query in cached response (RFC 1035 §4.1.1)" do
+      domain = "rd-echo-cache.example.com"
+      base_query = build_query(domain)
+
+      [question] = base_query.qdlist
+      dns_type = question.type
+      domain_str = to_string(question.name)
+
+      # Cache a response that has rd: 1
+      fake_response = %DNS.Message{
+        header: %DNS.Message.Header{
+          id: 0,
+          qr: 1,
+          aa: 0,
+          tc: 0,
+          rd: 1,
+          ra: 1,
+          opcode: 0,
+          rcode: DNS.Message.RCode.no_error(),
+          qdcount: 1,
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+        },
+        qdlist: [question],
+        anlist: [],
+        nslist: [],
+        arlist: []
+      }
+
+      Cache.store(domain_str, dns_type, fake_response, 300)
+      Process.sleep(10)
+
+      # Issue a query with rd: 0 — cached response has rd: 1 but we must echo rd: 0
+      query_no_rd = %{
+        base_query
+        | header: %{base_query.header | id: 9999, rd: 0}
+      }
+
+      response = Router.resolve(query_no_rd)
+      assert response.header.rd == 0
+    end
   end
 
   describe "NXDOMAIN caching through Router" do
