@@ -196,15 +196,11 @@ defmodule YellowDog.Dhcpv4.Handler do
           %{client_mac: message.chaddr, reason: reason}
         )
 
-        # Don't send a response - silently ignore denied clients
-        :ok
+      # Don't send a response - silently drop denied clients (RFC 2131 §3.2)
 
       {:allow, target_pool} ->
-        # Determine pool name from ACL or default
         pool_name = target_pool || "default"
 
-        # Generate a DHCPOFFER response (no custom option set for allow action)
-        # Pass pre-parsed options for efficiency
         case create_dhcp_offer(message, parsed_opts, pool_name, nil) do
           nil ->
             :telemetry.execute(
@@ -217,9 +213,13 @@ defmodule YellowDog.Dhcpv4.Handler do
             send_dhcp_response(offer, client_ip, client_port, state)
         end
 
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :discover_handled],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+
       {:custom_options, option_set_name} ->
-        # Apply custom options and allow the request
-        # Pass pre-parsed options for efficiency
         case create_dhcp_offer(message, parsed_opts, "default", option_set_name) do
           nil ->
             :telemetry.execute(
@@ -231,14 +231,13 @@ defmodule YellowDog.Dhcpv4.Handler do
           offer ->
             send_dhcp_response(offer, client_ip, client_port, state)
         end
-    end
 
-    # Emit telemetry event
-    :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :discover_handled],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
-      %{client_ip: client_ip, client_mac: message.chaddr}
-    )
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :discover_handled],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+    end
 
     {:continue, state}
   end
