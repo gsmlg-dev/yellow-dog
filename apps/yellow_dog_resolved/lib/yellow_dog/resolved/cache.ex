@@ -97,16 +97,19 @@ defmodule YellowDog.Resolved.Cache do
     total = hits + misses
     hit_rate = if total > 0, do: Float.round(hits / total, 2), else: 0.0
 
-    oldest =
-      case :ets.first(@table) do
-        :"$end_of_table" ->
-          0
+    now = System.monotonic_time(:second)
 
-        key ->
-          now = System.monotonic_time(:second)
-          [{_, _, _, inserted_at}] = :ets.lookup(@table, key)
-          max(now - inserted_at, 0)
-      end
+    oldest =
+      :ets.foldl(
+        fn {_key, _response, _expires_at, inserted_at}, min_inserted_at ->
+          min(inserted_at, min_inserted_at)
+        end,
+        now,
+        @table
+      )
+      |> then(fn min_inserted_at ->
+        if min_inserted_at == now, do: 0, else: max(now - min_inserted_at, 0)
+      end)
 
     %{
       entries: entries,

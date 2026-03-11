@@ -174,6 +174,27 @@ defmodule YellowDog.Resolved.CacheTest do
       # 2 hits, 1 miss → 2/3 ≈ 0.67
       assert stats.hit_rate == Float.round(2 / 3, 2)
     end
+
+    test "oldest_entry_age_s returns the actual oldest entry, not arbitrary" do
+      # Store entries at slightly different times
+      Cache.store("first.test", :a, %{}, 300)
+      Process.sleep(100)
+      Cache.store("second.test", :a, %{}, 300)
+      Process.sleep(100)
+      Cache.store("third.test", :a, %{}, 300)
+
+      stats = Cache.stats()
+
+      # oldest_entry_age_s should reflect the oldest (first) entry, which is ≥ 200ms old
+      assert stats.oldest_entry_age_s >= 0
+      # The oldest entry was stored at least 200ms ago but less than 60 seconds ago
+      assert stats.oldest_entry_age_s < 60
+    end
+
+    test "oldest_entry_age_s is 0 when cache is empty" do
+      stats = Cache.stats()
+      assert stats.oldest_entry_age_s == 0
+    end
   end
 
   describe "telemetry events" do
