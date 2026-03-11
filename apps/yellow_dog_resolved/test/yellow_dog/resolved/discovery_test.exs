@@ -99,4 +99,59 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       GenServer.stop(pid)
     end
   end
+
+  describe "exponential backoff" do
+    test "management_down triggers re-probe with exponential backoff" do
+      config = %{
+        upstreams: [],
+        discovery: %{
+          enabled: true,
+          websocket: %{
+            heartbeat_interval_s: 30,
+            reconnect_base_s: 1,
+            reconnect_max_s: 8
+          }
+        }
+      }
+
+      {:ok, pid} = Discovery.start_link(config)
+
+      # Get initial state via sys
+      state = :sys.get_state(pid)
+      assert state.reconnect_delay == 1000
+      assert state.reconnect_base == 1000
+      assert state.reconnect_max == 8000
+
+      # Simulate management connection loss
+      send(pid, {:management_down, :test_disconnect})
+      Process.sleep(10)
+
+      # Backoff should have doubled
+      state = :sys.get_state(pid)
+      assert state.reconnect_delay == 2000
+
+      # Simulate another disconnect
+      send(pid, {:management_down, :test_disconnect_2})
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_delay == 4000
+
+      # And another
+      send(pid, {:management_down, :test_disconnect_3})
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_delay == 8000
+
+      # Should be capped at max
+      send(pid, {:management_down, :test_disconnect_4})
+      Process.sleep(10)
+
+      state = :sys.get_state(pid)
+      assert state.reconnect_delay == 8000
+
+      GenServer.stop(pid)
+    end
+  end
 end
