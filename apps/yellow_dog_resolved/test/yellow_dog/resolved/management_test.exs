@@ -124,8 +124,48 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert data["queries_total"] == 3
     end
 
+    test "cache_flush with exact domain pattern" do
+      Cache.store("target.example.com", :a, %{}, 300)
+      Cache.store("keep.example.com", :a, %{}, 300)
+      Process.sleep(10)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "cache_flush",
+          "id" => "req-006",
+          "data" => %{"pattern" => "target.example.com"}
+        })
+
+      assert result["type"] == "cache_flush_result"
+      assert result["data"]["flushed"] >= 1
+
+      # Only the targeted domain should be flushed
+      assert :miss = Cache.lookup("target.example.com", :a)
+      assert {:hit, _} = Cache.lookup("keep.example.com", :a)
+    end
+
+    test "cache_flush telemetry is emitted" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :management, :command]
+        ])
+
+      Handler.handle_command(%{
+        "type" => "cache_flush",
+        "id" => "req-007",
+        "data" => %{"pattern" => nil}
+      })
+
+      assert_received {[:yellow_dog, :resolved, :management, :command], ^ref, %{},
+                       %{type: :cache_flush}}
+    end
+
     test "unknown command returns nil" do
       assert nil == Handler.handle_command(%{"type" => "unknown"})
+    end
+
+    test "malformed command without type returns nil" do
+      assert nil == Handler.handle_command(%{"no_type" => "bad"})
     end
   end
 
@@ -135,10 +175,23 @@ defmodule YellowDog.Resolved.ManagementTest do
       event = Handler.connected_event(instance_id)
 
       assert event["type"] == "connected"
-      assert is_binary(event["data"]["instance_id"])
+      assert is_binary(event["id"])
       assert event["data"]["version"] == "0.1.0"
+      assert is_binary(event["data"]["instance_id"])
       assert is_binary(event["data"]["hostname"])
       assert is_list(event["data"]["upstreams"])
+      assert is_integer(event["data"]["intercept_rule_count"])
+      assert is_integer(event["data"]["cache_max_entries"])
+    end
+
+    test "connected event instance_id is hex-encoded" do
+      instance_id = :crypto.strong_rand_bytes(16)
+      event = Handler.connected_event(instance_id)
+
+      hex = event["data"]["instance_id"]
+      assert String.length(hex) == 32
+      # Should be valid hex
+      assert {:ok, _} = Base.decode16(hex, case: :lower)
     end
   end
 end
