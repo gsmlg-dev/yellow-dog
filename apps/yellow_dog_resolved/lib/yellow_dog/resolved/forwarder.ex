@@ -116,6 +116,12 @@ defmodule YellowDog.Resolved.Forwarder do
             "[Resolved] Received non-response DNS message from upstream #{:inet.ntoa(upstream)}"
           )
 
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :forward, :malformed],
+            %{},
+            %{upstream: upstream, reason: :not_a_response}
+          )
+
           {:noreply, state}
 
         _ ->
@@ -123,15 +129,35 @@ defmodule YellowDog.Resolved.Forwarder do
             "[Resolved] Received malformed response from upstream #{:inet.ntoa(upstream)}"
           )
 
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :forward, :malformed],
+            %{},
+            %{upstream: upstream, reason: :bad_message}
+          )
+
           {:noreply, state}
       end
     rescue
       _ ->
         Logger.debug("[Resolved] Failed to parse upstream response from #{:inet.ntoa(upstream)}")
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :forward, :malformed],
+          %{},
+          %{upstream: upstream, reason: :parse_error}
+        )
+
         {:noreply, state}
     catch
       :throw, _ ->
         Logger.debug("[Resolved] Failed to parse upstream response from #{:inet.ntoa(upstream)}")
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :forward, :malformed],
+          %{},
+          %{upstream: upstream, reason: :parse_error}
+        )
+
         {:noreply, state}
     end
   end

@@ -479,6 +479,57 @@ defmodule YellowDog.Resolved.ForwarderTest do
   end
 
   describe "malformed upstream response" do
+    test "emits :malformed telemetry for non-response message (qr=0)" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :malformed]
+        ])
+
+      # Build a DNS *query* (qr=0) — the forwarder should not accept it
+      query = build_query("non-response.example.com")
+      qr0_data = DNS.to_iodata(query) |> IO.iodata_to_binary()
+
+      send(pid, {:forward_response, 99999, qr0_data, {127, 0, 0, 1}})
+      Process.sleep(20)
+
+      assert_received {[:yellow_dog, :resolved, :forward, :malformed], ^ref, %{},
+                       %{upstream: {127, 0, 0, 1}, reason: :not_a_response}}
+
+      GenServer.stop(pid)
+    end
+
+    test "emits :malformed telemetry for parse failure" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 2000,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :malformed]
+        ])
+
+      # Too-short binary will raise FunctionClauseError in from_iodata
+      send(pid, {:forward_response, 12345, <<0, 1, 2, 3>>, {127, 0, 0, 1}})
+      Process.sleep(10)
+
+      assert_received {[:yellow_dog, :resolved, :forward, :malformed], ^ref, %{},
+                       %{upstream: {127, 0, 0, 1}, reason: :parse_error}}
+
+      GenServer.stop(pid)
+    end
+
     test "handles malformed response data without crashing" do
       config = %{
         upstreams: [{127, 0, 0, 1}],
