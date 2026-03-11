@@ -66,6 +66,20 @@ defmodule YellowDog.Resolved.Forwarder do
   end
 
   @impl true
+  def handle_cast({:update_config, config}, state) do
+    Logger.info("[Resolved] Forwarder config updated")
+
+    {:noreply,
+     %{
+       state
+       | upstreams: Map.get(config, :upstreams, state.upstreams),
+         timeout_ms: Map.get(config, :upstream_timeout_ms, state.timeout_ms),
+         failure_threshold: Map.get(config, :upstream_failure_threshold, state.failure_threshold),
+         failure_counts: %{}
+     }}
+  end
+
+  @impl true
   def handle_info({:forward_response, txn_id, response_data, upstream}, state) do
     case DNS.Message.from_iodata(response_data) do
       %DNS.Message{} = response ->

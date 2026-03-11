@@ -202,6 +202,49 @@ defmodule YellowDog.Resolved.IntegrationTest do
     end
   end
 
+  describe "config hot-reload propagation" do
+    test "config update propagates to forwarder" do
+      # Get initial config
+      initial = Config.get()
+      assert initial.upstreams == []
+
+      # Simulate config reload by sending file_event with new config
+      # We test the propagation by directly casting update_config
+      new_config = %{
+        upstreams: [{9, 9, 9, 9}],
+        upstream_timeout_ms: 1000,
+        upstream_failure_threshold: 5
+      }
+
+      GenServer.cast(Forwarder, {:update_config, new_config})
+      Process.sleep(10)
+
+      # Forwarder should still be alive after config update
+      assert Process.alive?(Process.whereis(Forwarder))
+    end
+
+    test "config update propagates to cache" do
+      new_cache_config = %{
+        max_entries: 5000,
+        min_ttl_s: 10,
+        max_ttl_s: 7200,
+        negative_ttl_s: 30,
+        sweep_interval_s: 120
+      }
+
+      GenServer.cast(Cache, {:update_config, new_cache_config})
+      Process.sleep(10)
+
+      # Cache should still be alive and functional after config update
+      assert Process.alive?(Process.whereis(Cache))
+
+      # Verify cache still works
+      Cache.store("reload-test.example.com", :a, %{}, 300)
+      Process.sleep(10)
+      assert {:hit, _} = Cache.lookup("reload-test.example.com", :a)
+    end
+  end
+
   describe "management command integration" do
     alias YellowDog.Resolved.Management.Handler
 

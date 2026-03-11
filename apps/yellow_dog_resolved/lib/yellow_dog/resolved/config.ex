@@ -104,6 +104,7 @@ defmodule YellowDog.Resolved.Config do
 
       case load_from_file(path) do
         config when is_map(config) ->
+          propagate_config(config, state.config)
           {:noreply, %{state | config: config}}
 
         _ ->
@@ -225,6 +226,24 @@ defmodule YellowDog.Resolved.Config do
   end
 
   defp parse_upstreams(_), do: [{1, 1, 1, 1}, {8, 8, 8, 8}]
+
+  defp propagate_config(new_config, old_config) do
+    # Notify Forwarder if upstream settings changed
+    if new_config.upstreams != old_config.upstreams or
+         new_config.upstream_timeout_ms != old_config.upstream_timeout_ms or
+         new_config.upstream_failure_threshold != old_config.upstream_failure_threshold do
+      if Process.whereis(YellowDog.Resolved.Forwarder) do
+        GenServer.cast(YellowDog.Resolved.Forwarder, {:update_config, new_config})
+      end
+    end
+
+    # Notify Cache if cache settings changed
+    if new_config.cache != old_config.cache do
+      if Process.whereis(YellowDog.Resolved.Cache) do
+        GenServer.cast(YellowDog.Resolved.Cache, {:update_config, new_config.cache})
+      end
+    end
+  end
 
   defp maybe_start_watcher(%{config_path: nil} = state), do: state
 

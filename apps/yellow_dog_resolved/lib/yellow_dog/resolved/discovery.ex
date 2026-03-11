@@ -29,12 +29,19 @@ defmodule YellowDog.Resolved.Discovery do
   def init(config) do
     uuid = generate_uuid()
 
+    ws_config = get_in(config, [:discovery, :websocket]) || %{}
+    reconnect_base = Map.get(ws_config, :reconnect_base_s, 5) * 1000
+    reconnect_max = Map.get(ws_config, :reconnect_max_s, 60) * 1000
+
     state = %{
       instance_id: uuid,
       upstreams: Map.get(config, :upstreams, []),
-      ws_config: get_in(config, [:discovery, :websocket]) || %{},
+      ws_config: ws_config,
       management_pid: nil,
-      discovered_endpoint: nil
+      discovered_endpoint: nil,
+      reconnect_delay: reconnect_base,
+      reconnect_base: reconnect_base,
+      reconnect_max: reconnect_max
     }
 
     # Start discovery probe asynchronously
@@ -50,8 +57,14 @@ defmodule YellowDog.Resolved.Discovery do
 
   @impl true
   def handle_info(:probe, state) do
-    state = probe_upstreams(state)
-    {:noreply, state}
+    case probe_upstreams(state) do
+      %{management_pid: pid} = new_state when is_pid(pid) ->
+        # Successful connection — reset backoff
+        {:noreply, %{new_state | reconnect_delay: state.reconnect_base}}
+
+      new_state ->
+        {:noreply, new_state}
+    end
   end
 
   def handle_info({:management_down, reason}, state) do
@@ -63,11 +76,12 @@ defmodule YellowDog.Resolved.Discovery do
       %{reason: reason}
     )
 
-    # Re-discover after backoff
-    backoff = Map.get(state.ws_config, :reconnect_base_s, 5) * 1000
-    Process.send_after(self(), :probe, backoff)
+    # Re-discover after exponential backoff
+    Process.send_after(self(), :probe, state.reconnect_delay)
+    new_delay = min(state.reconnect_delay * 2, state.reconnect_max)
 
-    {:noreply, %{state | management_pid: nil, discovered_endpoint: nil}}
+    {:noreply,
+     %{state | management_pid: nil, discovered_endpoint: nil, reconnect_delay: new_delay}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}

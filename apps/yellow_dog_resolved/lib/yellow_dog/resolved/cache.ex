@@ -141,6 +141,22 @@ defmodule YellowDog.Resolved.Cache do
   end
 
   @impl true
+  def handle_cast({:update_config, cache_config}, state) do
+    Logger.info("[Resolved] Cache config updated")
+
+    new_sweep = Map.get(cache_config, :sweep_interval_s, 60) * 1000
+
+    {:noreply,
+     %{
+       state
+       | max_entries: Map.get(cache_config, :max_entries, state.max_entries),
+         min_ttl_s: Map.get(cache_config, :min_ttl_s, state.min_ttl_s),
+         max_ttl_s: Map.get(cache_config, :max_ttl_s, state.max_ttl_s),
+         negative_ttl_s: Map.get(cache_config, :negative_ttl_s, state.negative_ttl_s),
+         sweep_interval: new_sweep
+     }}
+  end
+
   def handle_cast({:store, domain, type, response, ttl}, state) do
     clamped_ttl = clamp_ttl(ttl, state.min_ttl_s, state.max_ttl_s)
     key = cache_key(domain, type)
