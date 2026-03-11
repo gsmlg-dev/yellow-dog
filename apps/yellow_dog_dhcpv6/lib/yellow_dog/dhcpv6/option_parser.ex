@@ -30,6 +30,7 @@ defmodule YellowDog.Dhcpv6.OptionParser do
   @option_ia_na 3
   @option_ia_ta 4
   @option_ia_addr 5
+  @option_rapid_commit 14
   @option_ia_pd 25
   @option_ia_prefix 26
 
@@ -56,7 +57,8 @@ defmodule YellowDog.Dhcpv6.OptionParser do
           server_id: binary() | nil,
           ia_na: ia_na() | nil,
           ia_ta: ia_ta() | nil,
-          ia_pd: ia_pd() | nil
+          ia_pd: ia_pd() | nil,
+          rapid_commit: boolean()
         }
 
   @doc """
@@ -80,7 +82,8 @@ defmodule YellowDog.Dhcpv6.OptionParser do
       server_id: nil,
       ia_na: nil,
       ia_ta: nil,
-      ia_pd: nil
+      ia_pd: nil,
+      rapid_commit: false
     }
 
     # Single pass through options, extracting all relevant values
@@ -97,6 +100,9 @@ defmodule YellowDog.Dhcpv6.OptionParser do
 
         @option_ia_ta ->
           %{acc | ia_ta: parse_ia_ta(option.option_data)}
+
+        @option_rapid_commit ->
+          %{acc | rapid_commit: true}
 
         @option_ia_pd ->
           %{acc | ia_pd: parse_ia_pd(option.option_data)}

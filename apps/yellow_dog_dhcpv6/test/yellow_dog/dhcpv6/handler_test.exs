@@ -10,6 +10,12 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     LeaseStorage.init(storage_type: :ram_copies)
     LeaseStorage.clear_all()
 
+    # Stop any existing LeaseManager so each test starts with a clean pool
+    case GenServer.whereis(LeaseManager) do
+      nil -> :ok
+      pid -> GenServer.stop(pid, :normal)
+    end
+
     # Configure a default test pool
     test_pool = %{
       name: "default",
@@ -21,12 +27,7 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       valid_lifetime: 7200
     }
 
-    # Start LeaseManager if not already started
-    case GenServer.whereis(LeaseManager) do
-      nil -> {:ok, _pid} = LeaseManager.start_link(pools: [test_pool])
-      _pid -> :ok
-    end
-
+    {:ok, _pid} = LeaseManager.start_link(pools: [test_pool])
     :ok
   end
 
@@ -201,12 +202,80 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     end
   end
 
+  # RFC 3315 §17.2.1: SOLICIT with Rapid Commit must receive REPLY (not ADVERTISE)
+  describe "RFC 3315 §17.2.1 — Rapid Commit SOLICIT skips ADVERTISE" do
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-rapid-commit-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :solicit, :completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "SOLICIT with Rapid Commit option triggers rapid_commit: true telemetry" do
+      # Option 14 (Rapid Commit) has empty data per RFC 3315
+      message = %DHCPv6.Message{
+        msg_type: 1,
+        transaction_id: <<0x11, 0x22, 0x33>>,
+        options: [
+          DHCPv6.Message.Option.new(1, <<0xCA, 0xFE, 0xBA, 0xBE>>),
+          # Rapid Commit (option 14, empty)
+          DHCPv6.Message.Option.new(14, <<>>),
+          # IA_NA with IAID=99
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 99, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 5}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :solicit, :completed], _,
+                      %{rapid_commit: true}},
+                     500
+    end
+
+    test "SOLICIT without Rapid Commit option has rapid_commit: false telemetry" do
+      message = %DHCPv6.Message{
+        msg_type: 1,
+        transaction_id: <<0x44, 0x55, 0x66>>,
+        options: [
+          DHCPv6.Message.Option.new(1, <<0xDE, 0xAD, 0xBE, 0xEF>>),
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 6}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :solicit, :completed], _,
+                      %{rapid_commit: false}},
+                     500
+    end
+  end
+
   # RFC 3315 §18.2.2: REQUEST when pool is exhausted must receive REPLY with NoAddrsAvail
   describe "RFC 3315 §18.2.2 — NoAddrsAvail on pool exhaustion" do
     @server_duid <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
 
     setup do
-      # Stop LeaseManager and restart it with a single-address pool
+      # Replace the default pool (started by outer setup) with a single-address pool
       case GenServer.whereis(LeaseManager) do
         nil -> :ok
         pid -> GenServer.stop(pid, :normal)

@@ -35,8 +35,8 @@ defmodule YellowDog.Dhcpv6.Handler do
   # @option_oro 6
   @option_preference 7
   # @option_elapsed_time 8
-  # @option_status_code 13
-  # @option_rapid_commit 14
+  @option_status_code 13
+  @option_rapid_commit 14
   @option_dns_servers 23
   @option_domain_list 24
   @option_ia_pd 25
@@ -270,14 +270,26 @@ defmodule YellowDog.Dhcpv6.Handler do
           end
 
         if leases != [] do
-          advertise = create_advertise_multi(message, leases, parsed_opts)
-          send_dhcpv6_response(advertise, client_ip, client_port, state)
+          # RFC 3315 §17.2.1: if client included Rapid Commit, respond with REPLY not ADVERTISE
+          response =
+            if parsed_opts.rapid_commit do
+              create_rapid_commit_reply(message, leases, parsed_opts)
+            else
+              create_advertise_multi(message, leases, parsed_opts)
+            end
 
           :telemetry.execute(
             [:yellow_dog, :dhcpv6, :solicit, :completed],
             %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-            %{client_ip: client_ip, client_duid: duid, ia_count: length(leases)}
+            %{
+              client_ip: client_ip,
+              client_duid: duid,
+              ia_count: length(leases),
+              rapid_commit: parsed_opts.rapid_commit
+            }
           )
+
+          send_dhcpv6_response(response, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -338,6 +350,11 @@ defmodule YellowDog.Dhcpv6.Handler do
               %{count: 1},
               %{reason: inspect(reason), client_duid: duid}
             )
+
+            # RFC 3315 §18.2.2: must send REPLY with NoAddrsAvail status code
+            # inside the IA_NA, not silently drop the request.
+            reply = create_no_addrs_avail_reply(message, iaid, parsed_opts)
+            send_dhcpv6_response(reply, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -583,6 +600,39 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
   end
 
+  # RFC 3315 §18.2.2: builds a REPLY carrying NoAddrsAvail (status 2) inside
+  # the IA_NA option so the client knows the pool is exhausted.
+  defp create_no_addrs_avail_reply(request, iaid, parsed_opts) do
+    client_id = parsed_opts.client_id
+
+    # StatusCode option (13): 2-byte status value = 2 (NoAddrsAvail)
+    status_option_data = <<2::16>>
+
+    status_option = %DHCPv6.Message.Option{
+      option_code: @option_status_code,
+      option_data: status_option_data
+    }
+
+    # Empty IA_NA wrapping the StatusCode option
+    ia_na_data =
+      <<iaid::32, 0::32, 0::32>> <> DHCP.Parameter.to_iodata(status_option)
+
+    ia_na_option = %DHCPv6.Message.Option{
+      option_code: @option_ia_na,
+      option_data: ia_na_data
+    }
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
+      transaction_id: request.transaction_id,
+      options: [
+        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+        %DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id},
+        ia_na_option
+      ]
+    }
+  end
+
   defp create_information_reply(request, parsed_opts) do
     pool = get_default_pool()
 
@@ -769,6 +819,39 @@ defmodule YellowDog.Dhcpv6.Handler do
 
     %DHCPv6.Message{
       msg_type: @msg_type_advertise,
+      transaction_id: solicit.transaction_id,
+      options: options ++ ia_options ++ config_options
+    }
+  end
+
+  # RFC 3315 §17.2.1: REPLY with Rapid Commit option for clients that sent Rapid Commit in SOLICIT
+  defp create_rapid_commit_reply(solicit, leases, parsed_opts) do
+    pool = get_default_pool()
+    client_id = parsed_opts.client_id
+
+    options = [
+      %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+      %DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id},
+      # Echo back the Rapid Commit option (empty data, option 14)
+      %DHCPv6.Message.Option{option_code: @option_rapid_commit, option_data: <<>>}
+    ]
+
+    ia_options =
+      Enum.flat_map(leases, fn lease ->
+        case lease.ia_type do
+          :ia_na -> [create_ia_na_option(lease)]
+          :ia_ta -> [create_ia_ta_option(lease)]
+          :ia_pd -> [create_ia_pd_option(lease)]
+          _ -> []
+        end
+      end)
+
+    config_options =
+      [create_dns_servers_option(pool.dns_servers)] ++
+        add_domain_list_option([], pool.domain_name)
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
       transaction_id: solicit.transaction_id,
       options: options ++ ia_options ++ config_options
     }
