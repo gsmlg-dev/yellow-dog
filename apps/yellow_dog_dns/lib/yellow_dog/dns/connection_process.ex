@@ -201,7 +201,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
           })
 
           notimp = build_notimp_response(query)
-          send(state.handler_pid, {:dns_raw_response, :notimp, DNS.to_iodata(notimp)})
+          send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(notimp)})
           {:reply, :ok, state}
         else
           case submit_query_internal(state, query, raw: true) do

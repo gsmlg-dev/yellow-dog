@@ -282,8 +282,8 @@ defmodule YellowDog.Dns.ConnectionProcessTest do
 
       assert :ok = ConnectionProcess.submit_raw_data(pid, raw_data)
 
-      # Should receive a NOTIMP response (rcode=4) — NOT enqueued as an active query
-      assert_receive {:dns_raw_response, :notimp, response_data}, 500
+      # Should receive a NOTIMP response (rcode=4) with the original query ID
+      assert_receive {:dns_raw_response, 203, response_data}, 500
       parsed = DNS.Message.from_iodata(response_data)
       assert parsed.header.qr == 1
       assert rcode_value(parsed.header.rcode) == 4
