@@ -10,7 +10,7 @@ defmodule YellowDog.Mdns.ServiceRegistry do
   use YellowDog.Data.Collection
 
   alias YellowDog.Data.Store
-  alias YellowDog.Mdns.ServiceStore
+  alias YellowDog.Mdns.{Client, RecordBuilder, ServiceStore}
 
   defcollection(:mdns_services,
     key_field: :id,
@@ -290,7 +290,12 @@ defmodule YellowDog.Mdns.ServiceRegistry do
       nil ->
         {:reply, {:error, :not_found}, state}
 
-      _service ->
+      service ->
+        # RFC 6762 §10.1: Send goodbye records (TTL=0) before removing the
+        # service so that other mDNS hosts can immediately invalidate their
+        # caches rather than waiting for the original TTL to expire.
+        Task.start(fn -> send_goodbye_records(service) end)
+
         {:ok, store} = Store.delete(state.store, service_id)
         state = update_store(state, store)
 
@@ -389,6 +394,28 @@ defmodule YellowDog.Mdns.ServiceRegistry do
 
   # Private functions
 
+  defp send_goodbye_records(service) do
+    goodbye_records = RecordBuilder.build_goodbye_records(service)
+    base = DNS.Message.new()
+
+    message = %{
+      base
+      | header: %{
+          base.header
+          | id: 0,
+            qr: 1,
+            aa: 1,
+            rd: 0,
+            ra: 0,
+            qdcount: 0,
+            ancount: length(goodbye_records)
+        },
+        anlist: goodbye_records
+    }
+
+    Client.announce(message)
+  end
+
   defp store_state do
     :persistent_term.get({__MODULE__, :store})
   end
@@ -484,18 +511,20 @@ defmodule YellowDog.Mdns.ServiceRegistry do
     service_fqdn = normalize_name(service.fqdn)
     service_type = normalize_name("#{service.type}.#{service.domain}")
     service_host = normalize_name(service.host)
+    # Normalize qtype to string so both atom (:PTR) and ResourceRecordType struct compare cleanly
+    qtype_str = to_string(qtype)
 
     cond do
       # Direct service name query
-      qname == service_fqdn and qtype in [:ANY, :SRV, :TXT] ->
+      qname == service_fqdn and qtype_str in ["ANY", "SRV", "TXT"] ->
         true
 
       # Service type enumeration (PTR query)
-      qname == service_type and qtype == :PTR ->
+      qname == service_type and qtype_str == "PTR" ->
         true
 
       # Host address query
-      qname == service_host and qtype in [:A, :AAAA, :ANY] ->
+      qname == service_host and qtype_str in ["A", "AAAA", "ANY"] ->
         true
 
       true ->

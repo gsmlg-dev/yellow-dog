@@ -138,21 +138,37 @@ defmodule YellowDog.Mdns.Responder do
 
   defp records_match?(record1, record2) do
     normalize_name(record1.name) == normalize_name(record2.name) and
-      record1.type == record2.type and
-      record1.class == record2.class and
+      to_string(record1.type) == to_string(record2.type) and
+      to_string(record1.class) == to_string(record2.class) and
       normalize_data(record1.data, record1.type) == normalize_data(record2.data, record2.type)
   end
 
   defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
-  defp normalize_data(data, :PTR), do: normalize_name(data)
-  defp normalize_data(data, :TXT) when is_list(data), do: Enum.sort(data)
+  defp normalize_data(data, type) when is_binary(data) or is_struct(data) do
+    case to_string(type) do
+      "PTR" -> normalize_name(to_string(data))
+      "SRV" -> normalize_srv_data(data)
+      "TXT" -> normalize_txt_data(data)
+      _ -> data
+    end
+  end
 
-  defp normalize_data(%{target: target} = data, :SRV) do
-    %{data | target: normalize_name(target)}
+  defp normalize_data(data, type) when is_list(data) do
+    case to_string(type) do
+      "TXT" -> Enum.sort(data)
+      _ -> data
+    end
   end
 
   defp normalize_data(data, _type), do: data
+
+  defp normalize_srv_data(%{target: target} = data), do: %{data | target: normalize_name(target)}
+  defp normalize_srv_data(data), do: data
+
+  defp normalize_txt_data(%{data: list}) when is_list(list), do: Enum.sort(list)
+  defp normalize_txt_data(data) when is_list(data), do: Enum.sort(data)
+  defp normalize_txt_data(data), do: data
 
   defp deduplicate_records(records) do
     records

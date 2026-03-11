@@ -7,6 +7,9 @@ defmodule YellowDog.Mdns.RecordBuilder do
   """
 
   alias DNS.Message.{Record, Question}
+  alias DNS.Message.Record.Data
+  alias DNS.Class
+  alias DNS.ResourceRecordType
 
   @type service :: YellowDog.Mdns.ServiceRegistry.service()
 
@@ -63,10 +66,10 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
     %Record{
       name: name,
-      type: :PTR,
-      class: :IN,
+      type: ResourceRecordType.new(:ptr),
+      class: Class.internet(),
       ttl: service.ttl || @default_service_ttl,
-      data: data
+      data: Data.PTR.new(data)
     }
   end
 
@@ -83,15 +86,10 @@ defmodule YellowDog.Mdns.RecordBuilder do
   def build_srv_record(service) do
     %Record{
       name: service.fqdn,
-      type: :SRV,
-      class: :IN,
+      type: ResourceRecordType.new(:srv),
+      class: Class.internet(),
       ttl: service.ttl || @default_service_ttl,
-      data: %{
-        priority: service.priority,
-        weight: service.weight,
-        port: service.port,
-        target: service.host
-      }
+      data: Data.SRV.new({service.priority, service.weight, service.port, service.host})
     }
   end
 
@@ -119,10 +117,10 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
     %Record{
       name: service.fqdn,
-      type: :TXT,
-      class: :IN,
+      type: ResourceRecordType.new(:txt),
+      class: Class.internet(),
       ttl: service.ttl || @default_service_ttl,
-      data: txt_data
+      data: Data.TXT.new(txt_data)
     }
   end
 
@@ -137,7 +135,13 @@ defmodule YellowDog.Mdns.RecordBuilder do
   @spec build_a_records(service()) :: [Record.t()]
   def build_a_records(service) do
     for ip <- service.addresses, is_ipv4?(ip) do
-      %Record{name: service.host, type: :A, class: :IN, ttl: @default_host_ttl, data: ip}
+      %Record{
+        name: service.host,
+        type: ResourceRecordType.new(:a),
+        class: Class.internet(),
+        ttl: @default_host_ttl,
+        data: Data.A.new(ip)
+      }
     end
   end
 
@@ -152,7 +156,13 @@ defmodule YellowDog.Mdns.RecordBuilder do
   @spec build_aaaa_records(service()) :: [Record.t()]
   def build_aaaa_records(service) do
     for ip <- service.addresses, is_ipv6?(ip) do
-      %Record{name: service.host, type: :AAAA, class: :IN, ttl: @default_host_ttl, data: ip}
+      %Record{
+        name: service.host,
+        type: ResourceRecordType.new(:aaaa),
+        class: Class.internet(),
+        ttl: @default_host_ttl,
+        data: Data.AAAA.new(ip)
+      }
     end
   end
 
@@ -171,7 +181,8 @@ defmodule YellowDog.Mdns.RecordBuilder do
   @spec build_records_for_question(service(), Question.t()) :: map()
   def build_records_for_question(service, question) do
     qname = normalize_name(question.name)
-    qtype = question.type
+    # Normalize to string so both atom (:PTR) and ResourceRecordType struct work
+    qtype = to_string(question.type)
 
     service_fqdn = normalize_name(service.fqdn)
     service_type = normalize_name("#{service.type}.#{service.domain}")
@@ -179,7 +190,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
 
     cond do
       # PTR query for service type enumeration
-      qname == service_type and qtype == :PTR ->
+      qname == service_type and qtype == "PTR" ->
         ptr = build_ptr_record(service)
         srv = build_srv_record(service)
         txt = build_txt_record(service)
@@ -193,7 +204,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # SRV query for specific service instance
-      qname == service_fqdn and qtype in [:SRV, :ANY] ->
+      qname == service_fqdn and qtype in ["SRV", "ANY"] ->
         srv = build_srv_record(service)
         txt = build_txt_record(service)
         a_records = build_a_records(service)
@@ -206,7 +217,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # TXT query for specific service instance
-      qname == service_fqdn and qtype == :TXT ->
+      qname == service_fqdn and qtype == "TXT" ->
         txt = build_txt_record(service)
         srv = build_srv_record(service)
         a_records = build_a_records(service)
@@ -219,7 +230,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # A record query for host
-      qname == service_host and qtype in [:A, :ANY] ->
+      qname == service_host and qtype in ["A", "ANY"] ->
         a_records = build_a_records(service)
 
         %{
@@ -229,7 +240,7 @@ defmodule YellowDog.Mdns.RecordBuilder do
         }
 
       # AAAA record query for host
-      qname == service_host and qtype in [:AAAA, :ANY] ->
+      qname == service_host and qtype in ["AAAA", "ANY"] ->
         aaaa_records = build_aaaa_records(service)
 
         %{

@@ -62,14 +62,14 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       record = RecordBuilder.build_ptr_record(@test_service)
 
       assert record.name == "_http._tcp.local"
-      assert record.type == :PTR
-      assert record.class == :IN
+      assert to_string(record.type) == "PTR"
+      assert to_string(record.class) == "IN"
     end
 
     test "PTR data points to service FQDN" do
       record = RecordBuilder.build_ptr_record(@test_service)
 
-      assert record.data == "Test Web Server._http._tcp.local"
+      assert String.trim_trailing(to_string(record.data), ".") == "Test Web Server._http._tcp.local"
     end
 
     test "uses service TTL" do
@@ -91,25 +91,28 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       record = RecordBuilder.build_srv_record(@test_service)
 
       assert record.name == "Test Web Server._http._tcp.local"
-      assert record.type == :SRV
-      assert record.class == :IN
+      assert to_string(record.type) == "SRV"
+      assert to_string(record.class) == "IN"
     end
 
     test "SRV data contains correct fields" do
       record = RecordBuilder.build_srv_record(@test_service)
+      # SRV data is stored as raw binary; decode priority, weight, port
+      <<priority::16, weight::16, port::16, _::binary>> = record.data.raw
 
-      assert record.data.priority == 0
-      assert record.data.weight == 0
-      assert record.data.port == 8080
-      assert record.data.target == "myhost.local"
+      assert priority == 0
+      assert weight == 0
+      assert port == 8080
+      assert String.ends_with?(String.trim_trailing(to_string(record.data), "."), "myhost.local")
     end
 
     test "uses service priority and weight" do
       service = %{@test_service | priority: 10, weight: 5}
       record = RecordBuilder.build_srv_record(service)
+      <<priority::16, weight::16, _::binary>> = record.data.raw
 
-      assert record.data.priority == 10
-      assert record.data.weight == 5
+      assert priority == 10
+      assert weight == 5
     end
   end
 
@@ -118,22 +121,22 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       record = RecordBuilder.build_txt_record(@test_service)
 
       assert record.name == "Test Web Server._http._tcp.local"
-      assert record.type == :TXT
-      assert record.class == :IN
+      assert to_string(record.type) == "TXT"
+      assert to_string(record.class) == "IN"
     end
 
     test "TXT data contains key=value pairs" do
       record = RecordBuilder.build_txt_record(@test_service)
 
-      assert is_list(record.data)
+      assert is_list(record.data.data)
       # Check that both key=value pairs exist
-      assert "path=/api" in record.data or "version=1.0" in record.data
+      assert "path=/api" in record.data.data or "version=1.0" in record.data.data
     end
 
     test "empty TXT records contain single empty string" do
       record = RecordBuilder.build_txt_record(@service_no_txt)
 
-      assert record.data == [""]
+      assert record.data.data == [""]
     end
   end
 
@@ -142,8 +145,8 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       records = RecordBuilder.build_a_records(@test_service)
 
       assert length(records) == 1
-      assert hd(records).type == :A
-      assert hd(records).data == {192, 168, 1, 100}
+      assert to_string(hd(records).type) == "A"
+      assert hd(records).data.data == {192, 168, 1, 100}
     end
 
     test "A records use host name" do
@@ -177,8 +180,8 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       records = RecordBuilder.build_aaaa_records(@test_service)
 
       assert length(records) == 1
-      assert hd(records).type == :AAAA
-      assert hd(records).data == {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+      assert to_string(hd(records).type) == "AAAA"
+      assert hd(records).data.data == {0xFE80, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "AAAA records use host name" do
@@ -206,7 +209,7 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       result = RecordBuilder.build_records_for_question(@test_service, question)
 
       assert length(result.answers) == 1
-      assert hd(result.answers).type == :PTR
+      assert to_string(hd(result.answers).type) == "PTR"
       # SRV, TXT, and address records in additional
       assert length(result.additional) >= 2
     end
@@ -216,7 +219,7 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       result = RecordBuilder.build_records_for_question(@test_service, question)
 
       assert length(result.answers) == 1
-      assert hd(result.answers).type == :SRV
+      assert to_string(hd(result.answers).type) == "SRV"
     end
 
     test "TXT query returns TXT in answers" do
@@ -224,7 +227,7 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       result = RecordBuilder.build_records_for_question(@test_service, question)
 
       assert length(result.answers) == 1
-      assert hd(result.answers).type == :TXT
+      assert to_string(hd(result.answers).type) == "TXT"
     end
 
     test "A query returns A records in answers" do
@@ -232,7 +235,7 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       result = RecordBuilder.build_records_for_question(@test_service, question)
 
       assert length(result.answers) >= 1
-      assert Enum.all?(result.answers, fn r -> r.type == :A end)
+      assert Enum.all?(result.answers, fn r -> to_string(r.type) == "A" end)
     end
 
     test "AAAA query returns AAAA records in answers" do
@@ -240,7 +243,7 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
       result = RecordBuilder.build_records_for_question(@test_service, question)
 
       assert length(result.answers) >= 1
-      assert Enum.all?(result.answers, fn r -> r.type == :AAAA end)
+      assert Enum.all?(result.answers, fn r -> to_string(r.type) == "AAAA" end)
     end
 
     test "ANY query on host returns address records" do
@@ -289,19 +292,19 @@ defmodule YellowDog.Mdns.RecordBuilderTest do
 
     test "includes PTR, SRV, TXT records" do
       records = RecordBuilder.build_goodbye_records(@test_service)
-      types = Enum.map(records, & &1.type)
+      types = Enum.map(records, &to_string(&1.type))
 
-      assert :PTR in types
-      assert :SRV in types
-      assert :TXT in types
+      assert "PTR" in types
+      assert "SRV" in types
+      assert "TXT" in types
     end
 
     test "includes address records" do
       records = RecordBuilder.build_goodbye_records(@test_service)
-      types = Enum.map(records, & &1.type)
+      types = Enum.map(records, &to_string(&1.type))
 
-      assert :A in types
-      assert :AAAA in types
+      assert "A" in types
+      assert "AAAA" in types
     end
   end
 
