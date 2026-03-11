@@ -95,6 +95,18 @@ defmodule YellowDog.Resolved.CountersTest do
     end
   end
 
+  describe "started_at/0" do
+    test "returns an integer" do
+      assert is_integer(Counters.started_at())
+    end
+
+    test "started_at is not in the future" do
+      # Monotonic time has an arbitrary epoch and may be negative.
+      # started_at must be <= now (the GenServer started before this assertion).
+      assert Counters.started_at() <= System.monotonic_time(:second)
+    end
+  end
+
   describe "reset/0" do
     test "resets all counters to zero" do
       Counters.increment(:intercepted)

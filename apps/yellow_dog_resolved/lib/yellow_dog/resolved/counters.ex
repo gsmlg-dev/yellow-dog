@@ -62,10 +62,20 @@ defmodule YellowDog.Resolved.Counters do
     :ok
   end
 
+  @doc """
+  Returns the monotonic second at which this Counters GenServer started.
+  Used to compute resolver uptime independently of the BEAM VM's wall-clock age.
+  """
+  @spec started_at() :: integer()
+  def started_at do
+    :persistent_term.get({__MODULE__, :started_at}, System.monotonic_time(:second))
+  end
+
   # Server callbacks
 
   @impl true
   def init(_opts) do
+    :persistent_term.put({__MODULE__, :started_at}, System.monotonic_time(:second))
     table = :ets.new(@table, [:named_table, :set, :public, write_concurrency: true])
 
     :ets.insert(table, [

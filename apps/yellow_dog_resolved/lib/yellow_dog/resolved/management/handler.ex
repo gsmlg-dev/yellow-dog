@@ -144,9 +144,7 @@ defmodule YellowDog.Resolved.Management.Handler do
   # Private
 
   defp uptime_seconds do
-    case :erlang.statistics(:wall_clock) do
-      {total_ms, _since_last} -> div(total_ms, 1000)
-    end
+    System.monotonic_time(:second) - Counters.started_at()
   end
 
   defp hostname do

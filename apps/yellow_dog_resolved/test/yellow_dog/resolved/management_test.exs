@@ -94,12 +94,29 @@ defmodule YellowDog.Resolved.ManagementTest do
       assert result["type"] == "pong"
       assert result["id"] == "req-004"
       assert is_integer(result["data"]["uptime_s"])
+      assert result["data"]["uptime_s"] >= 0
       assert is_integer(result["data"]["queries_total"])
       assert is_integer(result["data"]["queries_intercepted"])
       assert is_integer(result["data"]["queries_cached"])
       assert is_integer(result["data"]["queries_forwarded"])
       assert is_integer(result["data"]["queries_error"])
       assert is_integer(result["data"]["queries_rate_limited"])
+    end
+
+    test "uptime_s is bounded by BEAM wall-clock age" do
+      # The resolver started after (or at the same time as) the BEAM, so its
+      # uptime must be <= the BEAM's own wall_clock total.
+      {beam_uptime_ms, _} = :erlang.statistics(:wall_clock)
+      beam_uptime_s = div(beam_uptime_ms, 1000)
+
+      result =
+        Handler.handle_command(%{
+          "type" => "ping",
+          "id" => "req-uptime",
+          "data" => %{}
+        })
+
+      assert result["data"]["uptime_s"] <= beam_uptime_s
     end
 
     test "ping queries_total equals sum of routing counters" do

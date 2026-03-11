@@ -41,22 +41,10 @@ defmodule YellowDog.Resolved.Management.Client do
   def handle_info(:connect, state) do
     case connect(state) do
       {:ok, state} ->
-        Logger.info("[Resolved] Management WebSocket connected to #{state.endpoint}")
-
-        :telemetry.execute(
-          [:yellow_dog, :resolved, :management, :connected],
-          %{},
-          %{endpoint: state.endpoint}
-        )
-
-        # Send connected event
-        connected_msg = Handler.connected_event(state.instance_id)
-        state = send_message(state, connected_msg)
-
-        # Start heartbeat
-        timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
-
-        {:noreply, %{state | connected: true, heartbeat_timer: timer}}
+        # Upgrade request sent; the connected event is emitted after the
+        # 101 Switching Protocols response arrives on the TCP socket.
+        Logger.debug("[Resolved] Management upgrade request sent to #{state.endpoint}")
+        {:noreply, state}
 
       {:error, reason} ->
         Logger.warning("[Resolved] Management connection failed: #{inspect(reason)}")
@@ -74,16 +62,57 @@ defmodule YellowDog.Resolved.Management.Client do
 
   def handle_info(:heartbeat, state), do: {:noreply, state}
 
-  def handle_info({:tcp, _socket, data}, state) do
-    case Mint.WebSocket.decode(state.websocket, data) do
-      {:ok, websocket, frames} ->
+  # Complete the WebSocket handshake when the HTTP 101 response arrives.
+  # websocket is nil until Mint.WebSocket.new/3 succeeds.
+  def handle_info({:tcp, _socket, _data} = msg, %{websocket: nil} = state) do
+    case Mint.HTTP.stream(state.conn, msg) do
+      {:ok, conn, responses} ->
+        case Mint.WebSocket.new(conn, state.ref, responses) do
+          {:ok, conn, websocket} ->
+            Logger.info("[Resolved] Management WebSocket connected to #{state.endpoint}")
+
+            :telemetry.execute(
+              [:yellow_dog, :resolved, :management, :connected],
+              %{},
+              %{endpoint: state.endpoint}
+            )
+
+            state = %{state | conn: conn, websocket: websocket, connected: true}
+            connected_msg = Handler.connected_event(state.instance_id)
+            state = send_message(state, connected_msg)
+            timer = Process.send_after(self(), :heartbeat, state.heartbeat_interval)
+            {:noreply, %{state | heartbeat_timer: timer}}
+
+          {:error, conn, reason} ->
+            Logger.warning("[Resolved] WebSocket upgrade failed: #{inspect(reason)}")
+            handle_disconnect(%{state | conn: conn}, {:upgrade_failed, reason})
+        end
+
+      {:error, _conn, reason, _responses} ->
+        Logger.warning("[Resolved] HTTP stream error during upgrade: #{inspect(reason)}")
+        handle_disconnect(state, {:upgrade_error, reason})
+
+      :unknown ->
+        {:noreply, state}
+    end
+  end
+
+  # Receive WebSocket frames via Mint.HTTP.stream → Mint.WebSocket.decode.
+  def handle_info({:tcp, _socket, _data} = msg, state) do
+    case Mint.HTTP.stream(state.conn, msg) do
+      {:ok, conn, responses} ->
+        state = %{state | conn: conn}
+        {websocket, frames} = extract_ws_frames(responses, state.ref, state.websocket)
         state = %{state | websocket: websocket}
         state = handle_frames(frames, state)
         {:noreply, state}
 
-      {:error, _websocket, reason} ->
-        Logger.warning("[Resolved] WebSocket decode error: #{inspect(reason)}")
+      {:error, _conn, reason, _responses} ->
+        Logger.warning("[Resolved] WebSocket stream error: #{inspect(reason)}")
         handle_disconnect(state, reason)
+
+      :unknown ->
+        {:noreply, state}
     end
   end
 
@@ -221,6 +250,19 @@ defmodule YellowDog.Resolved.Management.Client do
         send(self(), {:send_failed, reason})
         state
     end
+  end
+
+  defp extract_ws_frames(responses, ref, websocket) do
+    Enum.reduce(responses, {websocket, []}, fn
+      {:data, ^ref, data}, {ws, frames} ->
+        case Mint.WebSocket.decode(ws, data) do
+          {:ok, ws, new_frames} -> {ws, frames ++ new_frames}
+          {:error, ws, _reason} -> {ws, frames}
+        end
+
+      _other, acc ->
+        acc
+    end)
   end
 
   defp handle_disconnect(state, reason) do
