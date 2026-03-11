@@ -58,14 +58,41 @@ defmodule YellowDog.Resolved.Discovery do
 
   @impl true
   def handle_info(:probe, state) do
-    case probe_upstreams(state) do
-      %{management_pid: pid} = new_state when is_pid(pid) ->
-        # Successful connection — reset backoff
-        {:noreply, %{new_state | reconnect_delay: state.reconnect_base}}
+    # Run probe in a Task so the GenServer stays responsive during the
+    # potentially multi-second Abyss.Client.send_recv calls.
+    discovery = self()
 
-      new_state ->
-        {:noreply, new_state}
+    Task.start(fn ->
+      result = find_endpoint(state.upstreams, state.instance_id)
+      send(discovery, {:probe_result, result})
+    end)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:probe_result, {:ok, endpoint}}, state) do
+    Logger.info("[Resolved] Discovered YellowDog DNS at #{endpoint}")
+
+    management_config = %{
+      endpoint: endpoint,
+      instance_id: state.instance_id,
+      ws_config: state.ws_config,
+      parent: self()
+    }
+
+    case YellowDog.Resolved.Management.Client.start_link(management_config) do
+      {:ok, pid} ->
+        {:noreply,
+         %{state | management_pid: pid, discovered_endpoint: endpoint, reconnect_delay: state.reconnect_base}}
+
+      {:error, reason} ->
+        Logger.warning("[Resolved] Failed to start management client: #{inspect(reason)}")
+        {:noreply, state}
     end
+  end
+
+  def handle_info({:probe_result, :not_found}, state) do
+    {:noreply, state}
   end
 
   def handle_info({:management_down, reason}, state) do
@@ -89,40 +116,25 @@ defmodule YellowDog.Resolved.Discovery do
 
   # Private
 
-  defp probe_upstreams(state) do
-    Enum.reduce_while(state.upstreams, state, fn upstream, acc ->
+  # Probe each upstream until one responds with a YellowDog endpoint.
+  # Returns {:ok, endpoint} or :not_found. Designed to run in a Task.
+  defp find_endpoint(upstreams, instance_id) do
+    Enum.reduce_while(upstreams, :not_found, fn upstream, _acc ->
       :telemetry.execute(
         [:yellow_dog, :resolved, :discovery, :probe],
         %{},
         %{upstream: upstream}
       )
 
-      case probe_upstream(upstream, state.instance_id) do
+      case probe_upstream(upstream, instance_id) do
         {:ok, endpoint} ->
-          Logger.info("[Resolved] Discovered YellowDog DNS at #{endpoint}")
-
           :telemetry.execute(
             [:yellow_dog, :resolved, :discovery, :found],
             %{},
             %{upstream: upstream, ws_endpoint: endpoint}
           )
 
-          # Start management connection
-          management_config = %{
-            endpoint: endpoint,
-            instance_id: state.instance_id,
-            ws_config: state.ws_config,
-            parent: self()
-          }
-
-          case YellowDog.Resolved.Management.Client.start_link(management_config) do
-            {:ok, pid} ->
-              {:halt, %{acc | management_pid: pid, discovered_endpoint: endpoint}}
-
-            {:error, reason} ->
-              Logger.warning("[Resolved] Failed to start management client: #{inspect(reason)}")
-              {:cont, acc}
-          end
+          {:halt, {:ok, endpoint}}
 
         :not_yellowdog ->
           :telemetry.execute(
@@ -131,14 +143,14 @@ defmodule YellowDog.Resolved.Discovery do
             %{upstream: upstream}
           )
 
-          {:cont, acc}
+          {:cont, :not_found}
 
         {:error, reason} ->
           Logger.debug(
             "[Resolved] Discovery probe to #{:inet.ntoa(upstream)} failed: #{inspect(reason)}"
           )
 
-          {:cont, acc}
+          {:cont, :not_found}
       end
     end)
   end
