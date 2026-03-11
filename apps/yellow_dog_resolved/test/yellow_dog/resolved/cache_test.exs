@@ -358,5 +358,41 @@ defmodule YellowDog.Resolved.CacheTest do
       stats = Cache.stats()
       assert stats.evictions >= 1
     end
+
+    test "sweep leaves LRU index consistent with main table" do
+      stop_supervised!(Cache)
+
+      sweep_config = %{
+        @cache_config
+        | sweep_interval_s: 1,
+          min_ttl_s: 1,
+          max_ttl_s: 3600
+      }
+
+      start_supervised!({Cache, sweep_config})
+
+      # Store several entries with short TTL
+      for i <- 1..5 do
+        Cache.store("lru-expire#{i}.test", :a, %{i: i}, 2)
+      end
+
+      # Store one with long TTL
+      Cache.store("lru-keep.test", :a, %{keep: true}, 3600)
+      Process.sleep(50)
+
+      # Wait for expiry + sweep
+      Process.sleep(3500)
+
+      # After sweep, all expired entries should be gone
+      for i <- 1..5 do
+        assert :miss = Cache.lookup("lru-expire#{i}.test", :a)
+      end
+
+      assert {:hit, _, _} = Cache.lookup("lru-keep.test", :a)
+
+      # entries count should match exactly what's alive
+      stats = Cache.stats()
+      assert stats.entries == 1
+    end
   end
 end

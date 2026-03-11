@@ -173,6 +173,16 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
 
       assert response.header.ra == 0
     end
+
+    test "REFUSED rcode is set correctly for rate-limited responses" do
+      query = build_query("example.com")
+      response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.refused())
+
+      assert response.header.rcode == DNS.Message.RCode.refused()
+      assert response.header.qr == 1
+      assert response.header.id == query.header.id
+      assert response.anlist == []
+    end
   end
 
   describe "build_record/4" do

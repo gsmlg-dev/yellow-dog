@@ -281,14 +281,30 @@ defmodule YellowDog.Resolved.Cache do
   end
 
   defp sweep_expired(now) do
-    # Collect expired entries to clean up LRU index
-    select_spec = [{{:"$1", :_, :"$2", :"$3"}, [{:<, :"$2", now}], [{{:"$3", :"$1"}}]}]
-    expired_lru_keys = :ets.select(@table, select_spec)
-    Enum.each(expired_lru_keys, &:ets.delete(@lru_table, &1))
-
     # Delete expired entries from main table
     delete_spec = [{{:_, :_, :"$1", :_}, [{:<, :"$1", now}], [true]}]
-    :ets.select_delete(@table, delete_spec)
+    count = :ets.select_delete(@table, delete_spec)
+
+    # Remove any LRU index entries whose main-table key was deleted above.
+    # A concurrent lookup can update an entry's access timestamp between the
+    # main-table delete and the LRU cleanup, leaving an orphaned LRU entry
+    # with the new timestamp. Scanning the LRU table and filtering against
+    # the main table catches these orphans regardless of timestamp.
+    if count > 0 do
+      :ets.foldl(
+        fn {{_access_time, key} = lru_key}, _acc ->
+          if :ets.lookup(@table, key) == [] do
+            :ets.delete(@lru_table, lru_key)
+          end
+
+          :ok
+        end,
+        :ok,
+        @lru_table
+      )
+    end
+
+    count
   end
 
   defp flush_domain_entries(domain) do

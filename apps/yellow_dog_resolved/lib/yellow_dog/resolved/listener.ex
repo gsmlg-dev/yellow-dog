@@ -51,7 +51,7 @@ defmodule YellowDog.Resolved.Handler do
 
   require Logger
 
-  alias YellowDog.Resolved.{Counters, RateLimiter, Router}
+  alias YellowDog.Resolved.{Counters, RateLimiter, ResponseBuilder, Router}
 
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
@@ -67,6 +67,8 @@ defmodule YellowDog.Resolved.Handler do
           %{},
           %{client: client_ip}
         )
+
+        send_refused(client_ip, client_port, data, state)
     end
 
     {:close, state}
@@ -87,6 +89,24 @@ defmodule YellowDog.Resolved.Handler do
       _ -> emit_malformed_packet(client_ip)
     catch
       :throw, _ -> emit_malformed_packet(client_ip)
+    end
+  end
+
+  defp send_refused(client_ip, client_port, data, state) do
+    try do
+      case DNS.Message.from_iodata(data) do
+        %DNS.Message{} = query ->
+          response = ResponseBuilder.build_response(query, [], DNS.Message.RCode.refused())
+          response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+          Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
+
+        _ ->
+          :ok
+      end
+    rescue
+      _ -> :ok
+    catch
+      :throw, _ -> :ok
     end
   end
 
