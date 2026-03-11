@@ -62,18 +62,30 @@ defmodule YellowDog.Resolved.PropertyTest do
     member_of([:a, :aaaa, :cname, :mx, :txt, :srv, :ns, :ptr, :soa])
   end
 
+  defp dns_opcode do
+    # Mix QUERY (0) with other opcodes to exercise NOTIMP path.
+    # Weight QUERY at 5× to keep most runs through the full pipeline.
+    frequency([
+      {5, constant(DNS.Message.OpCode.query())},
+      {1, constant(DNS.Message.OpCode.new(1))},
+      {1, constant(DNS.Message.OpCode.new(2))}
+    ])
+  end
+
   defp dns_query do
     gen all(
           domain <- dns_domain(),
           type <- dns_type(),
-          id <- integer(0..65535)
+          id <- integer(0..65535),
+          rd <- member_of([0, 1]),
+          opcode <- dns_opcode()
         ) do
       query = DNS.Message.new()
       question = DNS.Message.Question.new(domain, type, :in)
 
       %{
         query
-        | header: %{query.header | id: id, rd: 1, qdcount: 1},
+        | header: %{query.header | id: id, rd: rd, opcode: opcode, qdcount: 1},
           qdlist: [question]
       }
     end
@@ -107,7 +119,9 @@ defmodule YellowDog.Resolved.PropertyTest do
                DNS.Message.RCode.no_error(),
                DNS.Message.RCode.serv_fail(),
                DNS.Message.RCode.nx_domain(),
-               DNS.Message.RCode.refused()
+               DNS.Message.RCode.refused(),
+               # non-QUERY opcodes return NOTIMP (RFC 1035 §4.1.1)
+               DNS.Message.RCode.not_imp()
              ]
 
       # RFC 1035 §4.1.1: RA=1 for locally-built responses from a recursive resolver
