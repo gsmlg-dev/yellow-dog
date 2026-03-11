@@ -103,7 +103,7 @@ defmodule YellowDog.Resolved.ForwarderTest do
 
   describe "successful forwarding" do
     test "forwards query and returns response with original txn_id" do
-      {socket, port} = start_mock_upstream()
+      {socket, _port} = start_mock_upstream()
 
       # Spawn a responder that echoes back a valid DNS response
       responder =
@@ -147,7 +147,7 @@ defmodule YellowDog.Resolved.ForwarderTest do
 
       original_id = 12345
       query = build_query("example.com")
-      query = %{query | header: %{query.header | id: original_id}}
+      _query = %{query | header: %{query.header | id: original_id}}
 
       # The forwarder sends to port 53 by default, not our mock port.
       # This test validates the timeout path with real upstreams.
