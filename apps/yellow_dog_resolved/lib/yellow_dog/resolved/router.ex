@@ -152,11 +152,13 @@ defmodule YellowDog.Resolved.Router do
             negative_ttl = Map.get(cache_config, :negative_ttl_s, 60)
             Cache.store(domain, type, response, negative_ttl)
 
-          # Positive response with answers — cache with answer TTL
-          ttl > 0 ->
+          # Positive response — only cache NOERROR with answers.
+          # SERVFAIL / REFUSED responses must NOT be cached, even if they
+          # happen to carry records with TTL > 0 (RFC 2308 §7).
+          response.header.rcode == DNS.Message.RCode.no_error() and ttl > 0 ->
             Cache.store(domain, type, response, ttl)
 
-          # No answers and not NXDOMAIN (e.g. NOERROR with 0 records) — don't cache
+          # NOERROR with no answers (NODATA), SERVFAIL, REFUSED, etc. — don't cache
           true ->
             :ok
         end
