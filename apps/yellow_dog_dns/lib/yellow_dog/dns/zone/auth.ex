@@ -867,7 +867,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   defp in_zone?(zone_name, qname) do
     zone_suffix = normalize_name(zone_name)
-    String.ends_with?(qname, zone_suffix) or qname == zone_suffix
+    qname == zone_suffix or String.ends_with?(qname, "." <> zone_suffix)
   end
 
   defp insert_records(table, records) do

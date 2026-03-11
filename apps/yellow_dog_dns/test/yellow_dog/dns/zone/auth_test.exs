@@ -1065,6 +1065,16 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       query = build_query("www.unrelated.com", :a)
       {:error, :refused} = Auth.resolve(pid, query)
     end
+
+    test "refuses queries for domains that share a suffix but differ at label boundary", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # e.g. zone is "example.com" — "notexample.com" must NOT match
+      fake_name = "not#{zone_name}"
+      query = build_query(fake_name, :a)
+      {:error, :refused} = Auth.resolve(pid, query)
+    end
   end
 
   describe "start_link/1 options" do
