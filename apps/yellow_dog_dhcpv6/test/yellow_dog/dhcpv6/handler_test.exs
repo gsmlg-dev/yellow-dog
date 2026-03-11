@@ -201,6 +201,79 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     end
   end
 
+  # RFC 3315 §18.2.2: REQUEST when pool is exhausted must receive REPLY with NoAddrsAvail
+  describe "RFC 3315 §18.2.2 — NoAddrsAvail on pool exhaustion" do
+    @server_duid <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      # Stop LeaseManager and restart it with a single-address pool
+      case GenServer.whereis(LeaseManager) do
+        nil -> :ok
+        pid -> GenServer.stop(pid, :normal)
+      end
+
+      LeaseStorage.clear_all()
+
+      tiny_pool = %{
+        name: "default",
+        range_start: "fd00::1000",
+        range_end: "fd00::1000",
+        dns_servers: [],
+        domain_name: "",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      {:ok, _pid} = LeaseManager.start_link(pools: [tiny_pool])
+
+      test_pid = self()
+      handler_id = "test-dhcpv6-no-addrs-avail-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "REQUEST with exhausted pool receives NoAddrsAvail telemetry event" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xAA, 0xAA, 0xAA>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 1)
+
+      # Build REQUEST from client B with correct server DUID
+      client_b_duid = <<0xBB, 0xBB, 0xBB, 0xBB>>
+
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xDE, 0xAD, 0xBE>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          DHCPv6.Message.Option.new(2, @server_duid),
+          # IA_NA with IAID=2, T1=0, T2=0
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 2}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :allocation_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+  end
+
   # RFC 3315 §18.2.1: REQUEST with wrong Server Identifier must be silently discarded
   describe "RFC 3315 §18.2.1 — Server Identifier validation" do
     setup do
