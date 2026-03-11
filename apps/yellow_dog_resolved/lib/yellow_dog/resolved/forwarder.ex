@@ -54,9 +54,7 @@ defmodule YellowDog.Resolved.Forwarder do
       failure_threshold: Map.get(config, :upstream_failure_threshold, 3),
       failure_counts: %{},
       latencies: %{},
-      pending: %{},
-      # :rand.uniform(65_536) - 1 gives uniform 0..65535 (all valid DNS IDs)
-      next_txn_id: :rand.uniform(65_536) - 1
+      pending: %{}
     }
 
     {:ok, state}
@@ -217,9 +215,22 @@ defmodule YellowDog.Resolved.Forwarder do
 
   # Private
 
+  # RFC 5452: transaction IDs must be unpredictable to resist spoofed responses.
+  # Use a random ID for each query, retrying on the rare collision with a pending ID.
+  # With at most a few hundred concurrent queries the retry probability is < 1%.
   defp allocate_txn_id(state) do
-    txn_id = rem(state.next_txn_id, 65_536)
-    {txn_id, %{state | next_txn_id: txn_id + 1}}
+    txn_id = find_unused_txn_id(state.pending)
+    {txn_id, state}
+  end
+
+  defp find_unused_txn_id(pending) do
+    id = :rand.uniform(65_536) - 1
+
+    if Map.has_key?(pending, id) do
+      find_unused_txn_id(pending)
+    else
+      id
+    end
   end
 
   defp send_to_upstream(query, upstream, upstream_index, txn_id, from, state) do
