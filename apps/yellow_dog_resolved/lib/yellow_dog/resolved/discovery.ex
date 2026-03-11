@@ -236,7 +236,7 @@ defmodule YellowDog.Resolved.Discovery do
          <<@edns_option_code::16, length::16, data::binary-size(length), _rest::binary>>
        ) do
     case data do
-      <<@edns_version::8, ws_path::binary>> ->
+      <<@edns_version::8, ws_path::binary>> when byte_size(ws_path) > 0 ->
         {:ok, ws_path}
 
       _ ->
@@ -260,7 +260,7 @@ defmodule YellowDog.Resolved.Discovery do
     Enum.find_value(anlist, :not_found, fn record ->
       if to_string(record.type) == "SRV" do
         case record.data do
-          {_priority, _weight, port, target} ->
+          {_priority, _weight, port, target} when port >= 1 and port <= 65535 ->
             {:ok, to_string(target), port}
 
           _ ->

@@ -165,6 +165,12 @@ defmodule YellowDog.Resolved.Config do
     min_ttl = clamp_int(Map.get(cache, "min_ttl_s", 30), 0, 86_400)
     max_ttl = clamp_int(Map.get(cache, "max_ttl_s", 86_400), 1, 604_800)
 
+    if min_ttl > max_ttl do
+      Logger.warning(
+        "[Resolved] Cache min_ttl_s (#{min_ttl}) exceeds max_ttl_s (#{max_ttl}); clamping min_ttl_s to #{max_ttl}"
+      )
+    end
+
     %{
       enabled: Map.get(cache, "enabled", true),
       max_entries: clamp_int(Map.get(cache, "max_entries", 10_000), 1, 1_000_000),

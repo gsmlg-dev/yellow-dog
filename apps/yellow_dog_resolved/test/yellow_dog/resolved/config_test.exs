@@ -217,6 +217,28 @@ defmodule YellowDog.Resolved.ConfigTest do
       assert config.cache.min_ttl_s <= config.cache.max_ttl_s
     end
 
+    test "cache min_ttl_s > max_ttl_s emits a warning log" do
+      toml = %{
+        "resolved" => %{
+          "upstreams" => [],
+          "cache" => %{
+            "min_ttl_s" => 500,
+            "max_ttl_s" => 100
+          }
+        }
+      }
+
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          Config.parse_toml_for_test(toml)
+        end)
+
+      assert log =~ "min_ttl_s"
+      assert log =~ "max_ttl_s"
+    end
+
     test "cache max_entries is at least 1" do
       toml = %{
         "resolved" => %{

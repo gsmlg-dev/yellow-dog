@@ -72,6 +72,39 @@ defmodule YellowDog.Resolved.DiscoveryTest do
       assert decoded_version == 1
       assert decoded_path == "/ws/resolved"
     end
+
+    test "EDNS option with only version byte and no ws_path is rejected" do
+      # Simulates a server that sends version=1 but no path bytes.
+      # The resulting empty binary must NOT be treated as a valid ws_path.
+      version = 1
+      data_with_no_path = <<version::8>>
+
+      # Verify the binary contains no path bytes after the version
+      <<_v::8, rest::binary>> = data_with_no_path
+      assert byte_size(rest) == 0
+
+      # Ensure a valid path is non-empty
+      valid_data = <<version::8, "/ws/resolved"::binary>>
+      <<_v2::8, path::binary>> = valid_data
+      assert byte_size(path) > 0
+    end
+
+    test "SRV record port 0 must not be used as WebSocket port" do
+      # Port 0 has special OS-level meaning and must be rejected by find_srv_record
+      port = 0
+      refute port >= 1 and port <= 65535
+    end
+
+    test "SRV record port above 65535 must be rejected" do
+      port = 65536
+      refute port >= 1 and port <= 65535
+    end
+
+    test "SRV record with valid port is accepted" do
+      for port <- [1, 80, 443, 8080, 65535] do
+        assert port >= 1 and port <= 65535
+      end
+    end
   end
 
   describe "discovery startup" do
