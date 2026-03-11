@@ -19,7 +19,7 @@ defmodule YellowDog.Resolved.Management.Handler do
       %{type: :cache_flush}
     )
 
-    pattern = Map.get(data, "pattern")
+    pattern = if is_map(data), do: Map.get(data, "pattern"), else: nil
 
     flushed =
       case pattern do
@@ -148,7 +148,9 @@ defmodule YellowDog.Resolved.Management.Handler do
   end
 
   defp hostname do
-    {:ok, name} = :inet.gethostname()
-    to_string(name)
+    case :inet.gethostname() do
+      {:ok, name} -> to_string(name)
+      {:error, _} -> "unknown"
+    end
   end
 end

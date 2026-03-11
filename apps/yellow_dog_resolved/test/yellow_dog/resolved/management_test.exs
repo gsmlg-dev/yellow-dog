@@ -161,6 +161,19 @@ defmodule YellowDog.Resolved.ManagementTest do
                        %{type: :cache_flush}}
     end
 
+    test "cache_flush with null data field does not crash" do
+      # JSON clients may send {"data": null} instead of {"data": {}}
+      result =
+        Handler.handle_command(%{
+          "type" => "cache_flush",
+          "id" => "req-null-data",
+          "data" => nil
+        })
+
+      assert result["type"] == "cache_flush_result"
+      assert is_integer(result["data"]["flushed"])
+    end
+
     test "unknown command returns nil" do
       assert nil == Handler.handle_command(%{"type" => "unknown"})
     end
