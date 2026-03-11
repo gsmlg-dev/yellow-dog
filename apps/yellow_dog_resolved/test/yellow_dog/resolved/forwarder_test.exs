@@ -228,6 +228,67 @@ defmodule YellowDog.Resolved.ForwarderTest do
     end
   end
 
+  describe "pending queue telemetry" do
+    test "pending count telemetry emitted when query is queued" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 500,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :pending]
+        ])
+
+      query = build_query("pending-telem.example.com")
+      Forwarder.forward(query, 2000)
+
+      # Should receive pending event with count >= 0 (could be 1 when queued, 0 when done)
+      assert_received {[:yellow_dog, :resolved, :forward, :pending], ^ref, %{count: count}, %{}}
+      assert is_integer(count)
+      assert count >= 0
+
+      GenServer.stop(pid)
+    end
+
+    test "pending count drops to 0 after timeout" do
+      config = %{
+        upstreams: [{127, 0, 0, 1}],
+        upstream_timeout_ms: 200,
+        upstream_failure_threshold: 3
+      }
+
+      {:ok, pid} = Forwarder.start_link(config)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:yellow_dog, :resolved, :forward, :pending]
+        ])
+
+      query = build_query("pending-drain.example.com")
+      Forwarder.forward(query, 2000)
+
+      # Flush all pending messages to find the last count=0 event
+      counts =
+        Enum.reduce_while(1..10, [], fn _, acc ->
+          receive do
+            {[:yellow_dog, :resolved, :forward, :pending], ^ref, %{count: c}, %{}} ->
+              {:cont, [c | acc]}
+          after
+            50 -> {:halt, acc}
+          end
+        end)
+
+      # After all timeouts, final pending count should be 0
+      assert 0 in counts
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "telemetry events" do
     test "forward start telemetry emitted when forwarding" do
       config = %{

@@ -74,6 +74,13 @@ defmodule YellowDog.Resolved.Forwarder do
 
       [upstream | _] ->
         state = send_to_upstream(query, upstream, 0, txn_id, from, state)
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :forward, :pending],
+          %{count: map_size(state.pending)},
+          %{}
+        )
+
         {:noreply, state}
     end
   end
@@ -154,6 +161,12 @@ defmodule YellowDog.Resolved.Forwarder do
           # All upstreams failed
           GenServer.reply(pending.from, {:error, :timeout})
           state = %{state | pending: Map.delete(state.pending, txn_id)}
+
+          :telemetry.execute(
+            [:yellow_dog, :resolved, :forward, :pending],
+            %{count: map_size(state.pending)},
+            %{}
+          )
 
           :telemetry.execute(
             [:yellow_dog, :resolved, :forward, :exception],
@@ -243,7 +256,15 @@ defmodule YellowDog.Resolved.Forwarder do
         )
 
         GenServer.reply(pending.from, {:ok, response})
-        {:noreply, %{state | pending: Map.delete(state.pending, txn_id)}}
+        new_state = %{state | pending: Map.delete(state.pending, txn_id)}
+
+        :telemetry.execute(
+          [:yellow_dog, :resolved, :forward, :pending],
+          %{count: map_size(new_state.pending)},
+          %{}
+        )
+
+        {:noreply, new_state}
     end
   end
 
