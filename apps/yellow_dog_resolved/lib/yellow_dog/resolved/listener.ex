@@ -53,6 +53,11 @@ defmodule YellowDog.Resolved.Handler do
 
   alias YellowDog.Resolved.{Counters, RateLimiter, ResponseBuilder, Router}
 
+  # RFC 1035 §4.2.1: UDP messages are limited to 512 bytes unless EDNS0 is used.
+  @udp_max_default 512
+  # DNS OPT RR type code (EDNS0, RFC 6891)
+  @opt_rr_type 41
+
   @impl Abyss.Handler
   def handle_data({client_ip, client_port, data}, state) do
     case RateLimiter.allow?(client_ip) do
@@ -79,7 +84,7 @@ defmodule YellowDog.Resolved.Handler do
       case DNS.Message.from_iodata(data) do
         %DNS.Message{header: %{qr: 0, opcode: %DNS.Message.OpCode{value: <<0::4>>}}} = query ->
           response = Router.resolve(query)
-          response_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+          response_data = maybe_truncate_response(response, query)
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
 
         %DNS.Message{header: %{qr: 0}} = query ->
@@ -120,6 +125,58 @@ defmodule YellowDog.Resolved.Handler do
       _ -> :ok
     catch
       :throw, _ -> :ok
+    end
+  end
+
+  # RFC 1035 §4.2.1: if the encoded response exceeds the negotiated UDP limit,
+  # truncate the answer section and set TC=1 so the client can retry over TCP.
+  defp maybe_truncate_response(response, query) do
+    max_size = edns0_max_size(query)
+    data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+
+    if byte_size(data) <= max_size do
+      data
+    else
+      :telemetry.execute(
+        [:yellow_dog, :resolved, :response, :truncated],
+        %{original_size: byte_size(data), max_size: max_size},
+        %{ancount: length(response.anlist)}
+      )
+
+      truncate_response(response, max_size)
+    end
+  end
+
+  defp edns0_max_size(query) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+
+    case Enum.find(query.arlist, fn rec -> rec.type == opt_type end) do
+      nil ->
+        @udp_max_default
+
+      opt_rec ->
+        <<udp_payload::16>> = opt_rec.class.value
+        max(udp_payload, @udp_max_default)
+    end
+  end
+
+  defp truncate_response(response, max_size) do
+    do_truncate(response.anlist, response, max_size)
+  end
+
+  defp do_truncate([], response, _max_size) do
+    truncated = %{response | anlist: [], header: %{response.header | tc: 1, ancount: 0}}
+    DNS.to_iodata(truncated) |> IO.iodata_to_binary()
+  end
+
+  defp do_truncate(answers, response, max_size) do
+    truncated = %{response | anlist: answers, header: %{response.header | tc: 1, ancount: length(answers)}}
+    data = DNS.to_iodata(truncated) |> IO.iodata_to_binary()
+
+    if byte_size(data) <= max_size do
+      data
+    else
+      do_truncate(Enum.drop(answers, -1), response, max_size)
     end
   end
 

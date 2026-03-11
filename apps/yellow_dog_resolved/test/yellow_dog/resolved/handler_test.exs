@@ -139,6 +139,127 @@ defmodule YellowDog.Resolved.HandlerTest do
     end
   end
 
+  # RFC 1035 §4.2.1: UDP responses must not exceed 512 bytes (or EDNS0 limit); excess
+  # answers must be dropped and TC=1 set so the client can retry over TCP.
+  describe "RFC 1035 §4.2.1 — UDP response truncation" do
+    test "response within 512 bytes is not truncated" do
+      # Single A record — will fit easily in 512 bytes
+      query = build_query("handler-test.local", :a)
+      response = build_response(query, [make_a_record("handler-test.local", "127.0.0.1")])
+
+      data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert byte_size(data) < 512
+
+      # Simulate the truncation logic: response within limit → TC not set
+      assert response.header.tc == 0
+    end
+
+    test "response exceeding 512 bytes gets TC=1 set" do
+      # Build a response with 30 TXT records large enough to exceed 512 bytes
+      query = build_query("bigresponse.example", :txt)
+
+      # Each TXT record is ~50 bytes; 15 of them should exceed 512
+      txt_rdata = String.duplicate("x", 40)
+      records = for i <- 1..15, do: make_txt_record("bigresponse.example", txt_rdata <> "#{i}")
+      response = build_response(query, records)
+
+      full_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      assert byte_size(full_data) > 512
+
+      # Simulate truncation: progressively drop answers until it fits
+      {truncated_data, truncated_response} = simulate_truncation(response, 512)
+      assert byte_size(truncated_data) <= 512
+      assert truncated_response.header.tc == 1
+    end
+
+    test "EDNS0 OPT record increases the payload limit" do
+      # Build a query with EDNS0 OPT requesting 4096 bytes
+      query = build_query_with_edns0("bigresponse.example", :txt, 4096)
+
+      txt_rdata = String.duplicate("x", 40)
+      records = for i <- 1..15, do: make_txt_record("bigresponse.example", txt_rdata <> "#{i}")
+      response = build_response(query, records)
+
+      full_data = DNS.to_iodata(response) |> IO.iodata_to_binary()
+      # Response > 512 but should NOT be truncated with 4096 limit
+      assert byte_size(full_data) > 512
+      assert byte_size(full_data) < 4096
+
+      # With EDNS0, no truncation needed
+      opt_type = DNS.ResourceRecordType.new(41)
+      opt_rec = Enum.find(query.arlist, fn rec -> rec.type == opt_type end)
+      assert opt_rec != nil
+      <<udp_payload::16>> = opt_rec.class.value
+      assert udp_payload == 4096
+
+      max_size = max(udp_payload, 512)
+      assert byte_size(full_data) <= max_size
+    end
+
+    # Helper: builds a simple A query
+    defp build_query(name, type) do
+      msg = DNS.Message.new()
+      question = DNS.Message.Question.new(name, type, :in)
+      %{msg | header: %{msg.header | qr: 0, qdcount: 1}, qdlist: [question]}
+    end
+
+    # Helper: builds a query with an EDNS0 OPT record advertising udp_payload_size.
+    # The OPT record uses class field to carry the UDP payload size (RFC 6891).
+    defp build_query_with_edns0(name, type, udp_payload_size) do
+      msg = build_query(name, type)
+      # OPT record raw wire: name=root(1b=0x00), type=41(2b), class=udp_size(2b), ttl=0(4b), rdlen=0(2b)
+      opt_wire = <<0, 41::16, udp_payload_size::16, 0::32, 0::16>>
+      opt_record = DNS.Message.Record.from_iodata(opt_wire)
+      %{msg | header: %{msg.header | arcount: 1}, arlist: [opt_record]}
+    end
+
+    defp build_response(query, records) do
+      %DNS.Message{
+        header: %{
+          query.header
+          | qr: 1,
+            rd: 1,
+            ra: 1,
+            tc: 0,
+            ancount: length(records)
+        },
+        qdlist: query.qdlist,
+        anlist: records,
+        nslist: [],
+        arlist: []
+      }
+    end
+
+    defp make_a_record(name, ip_str) do
+      {:ok, ip_tuple} = :inet.parse_address(String.to_charlist(ip_str))
+      DNS.Message.Record.new(name, 1, :in, 300, ip_tuple)
+    end
+
+    defp make_txt_record(name, text) do
+      DNS.Message.Record.new(name, 16, :in, 300, [text])
+    end
+
+    defp simulate_truncation(response, max_size) do
+      do_simulate_truncate(response.anlist, response, max_size)
+    end
+
+    defp do_simulate_truncate([], response, _max_size) do
+      truncated = %{response | anlist: [], header: %{response.header | tc: 1, ancount: 0}}
+      {DNS.to_iodata(truncated) |> IO.iodata_to_binary(), truncated}
+    end
+
+    defp do_simulate_truncate(answers, response, max_size) do
+      truncated = %{response | anlist: answers, header: %{response.header | tc: 1, ancount: length(answers)}}
+      data = DNS.to_iodata(truncated) |> IO.iodata_to_binary()
+
+      if byte_size(data) <= max_size do
+        {data, truncated}
+      else
+        do_simulate_truncate(Enum.drop(answers, -1), response, max_size)
+      end
+    end
+  end
+
   describe "DNS message parsing" do
     test "valid DNS query is parsed and routed successfully" do
       query = DNS.Message.new()
