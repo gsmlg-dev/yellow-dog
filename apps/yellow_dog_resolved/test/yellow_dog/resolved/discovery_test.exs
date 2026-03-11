@@ -97,6 +97,48 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "SRV record extraction from wire-format response" do
+    test "SRV record.data is a struct after DNS.Message.from_iodata parse" do
+      # ex_dns type 33 (SRV) IS registered, so record.data is a
+      # %DNS.Message.Record.Data.SRV{data: {pri, wt, port, domain_struct}}.
+      # find_srv_record must unwrap via record.data.data rather than
+      # pattern-matching record.data directly as a tuple.
+      srv_rr = DNS.Message.Record.Data.SRV.new({10, 0, 8080, "server.local"})
+
+      assert %DNS.Message.Record.Data.SRV{data: {10, 0, 8080, _domain}} = srv_rr
+
+      # Simulate what record.data looks like after from_iodata round-trip:
+      # the struct form must be handled by find_srv_record.
+      record = %DNS.Message.Record{
+        name: %DNS.Message.Domain{value: "_yellowdog._tcp.local", size: 23},
+        type: DNS.ResourceRecordType.new(33),
+        class: DNS.Class.new(1),
+        ttl: 0,
+        rdlength: srv_rr.rdlength,
+        data: srv_rr
+      }
+
+      # Place in a DNS message anlist and do a wire-format round-trip
+      query = DNS.Message.new()
+
+      msg = %{
+        query
+        | anlist: [record],
+          header: %{query.header | qr: 1, ancount: 1}
+      }
+
+      packet = DNS.to_iodata(msg) |> IO.iodata_to_binary()
+      parsed = DNS.Message.from_iodata(packet)
+      [parsed_srv] = parsed.anlist
+
+      # After round-trip, record.data is the SRV struct with an inner data tuple.
+      assert %{data: {10, 0, 8080, domain}} = parsed_srv.data
+      # The host string must be extractable via to_string/1 on the domain.
+      host = domain |> to_string() |> String.trim_trailing(".")
+      assert host == "server.local"
+    end
+  end
+
   describe "EDNS option extraction from wire-format response" do
     test "OPT record.data is a struct with raw field after DNS.Message.from_iodata parse" do
       # ex_dns stores type 41 (OPT) using the generic DNS.Message.Record.Data fallback

@@ -299,7 +299,17 @@ defmodule YellowDog.Resolved.Discovery do
   defp find_srv_record(anlist) do
     Enum.find_value(anlist, :not_found, fn record ->
       if to_string(record.type) == "SRV" do
-        case record.data do
+        # ex_dns parses SRV records into %DNS.Message.Record.Data.SRV{data: {pri, wt, port, domain}}.
+        # Extract the inner tuple whether the record came from the wire (struct form)
+        # or was built directly in tests (raw tuple form).
+        srv_tuple =
+          case record.data do
+            %{data: {_, _, _, _} = tuple} -> tuple
+            {_, _, _, _} = tuple -> tuple
+            _ -> nil
+          end
+
+        case srv_tuple do
           {_priority, _weight, port, target} when port >= 1 and port <= 65535 ->
             # DNS domain names in wire-format responses include a trailing dot (FQDN);
             # strip it before embedding in the WebSocket URL.
