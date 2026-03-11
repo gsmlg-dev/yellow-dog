@@ -121,6 +121,17 @@ defmodule YellowDog.Resolved.ResponseBuilderTest do
       response = ResponseBuilder.intercept_response(query, rule)
       assert response.header.rd == 0
     end
+
+    test "returns SERVFAIL for query with empty question list" do
+      query = build_query("myapp.test", :a)
+      query = %{query | qdlist: [], header: %{query.header | qdcount: 0}}
+      rule = %{match: {:exact, "myapp.test"}, type: :a, value: "127.0.0.1", ttl: 300}
+
+      response = ResponseBuilder.intercept_response(query, rule)
+      assert response.header.qr == 1
+      assert response.header.rcode == DNS.Message.RCode.serv_fail()
+      assert response.anlist == []
+    end
   end
 
   describe "servfail_response/1" do

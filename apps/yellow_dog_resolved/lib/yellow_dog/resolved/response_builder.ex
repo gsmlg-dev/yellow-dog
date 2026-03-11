@@ -8,21 +8,26 @@ defmodule YellowDog.Resolved.ResponseBuilder do
   """
   @spec intercept_response(DNS.Message.t(), map()) :: DNS.Message.t()
   def intercept_response(query, rule) do
-    question = List.first(query.qdlist)
-    query_type = question_type(question)
+    case query.qdlist do
+      [] ->
+        build_response(query, [], DNS.Message.RCode.serv_fail())
 
-    if query_type == rule.type do
-      case build_record(to_string(question.name), rule.type, rule.value, rule.ttl) do
-        {:ok, record} ->
-          build_response(query, [record], DNS.Message.RCode.no_error())
+      [question | _] ->
+        query_type = question_type(question)
 
-        :error ->
-          # Malformed rule value — return SERVFAIL rather than crash
-          build_response(query, [], DNS.Message.RCode.serv_fail())
-      end
-    else
-      # Query type doesn't match rule type — NOERROR with 0 answers
-      build_response(query, [], DNS.Message.RCode.no_error())
+        if query_type == rule.type do
+          case build_record(to_string(question.name), rule.type, rule.value, rule.ttl) do
+            {:ok, record} ->
+              build_response(query, [record], DNS.Message.RCode.no_error())
+
+            :error ->
+              # Malformed rule value — return SERVFAIL rather than crash
+              build_response(query, [], DNS.Message.RCode.serv_fail())
+          end
+        else
+          # Query type doesn't match rule type — NOERROR with 0 answers
+          build_response(query, [], DNS.Message.RCode.no_error())
+        end
     end
   end
 
