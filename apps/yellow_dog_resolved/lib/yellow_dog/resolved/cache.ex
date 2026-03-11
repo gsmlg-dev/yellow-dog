@@ -23,7 +23,7 @@ defmodule YellowDog.Resolved.Cache do
     now = System.monotonic_time(:second)
 
     case :ets.lookup(@table, key) do
-      [{^key, response, expires_at, last_access}] when expires_at > now ->
+      [{^key, response, expires_at, last_access, _stored_at}] when expires_at > now ->
         :ets.update_counter(@stats_table, :hits, 1)
         # Update last access time for LRU
         :ets.delete(@lru_table, {last_access, key})
@@ -40,7 +40,7 @@ defmodule YellowDog.Resolved.Cache do
 
         {:hit, response, remaining_ttl}
 
-      [{^key, _response, _expires_at, last_access}] ->
+      [{^key, _response, _expires_at, last_access, _stored_at}] ->
         # Expired - lazy eviction
         :ets.delete(@table, key)
         :ets.delete(@lru_table, {last_access, key})
@@ -101,14 +101,14 @@ defmodule YellowDog.Resolved.Cache do
 
     oldest =
       :ets.foldl(
-        fn {_key, _response, _expires_at, inserted_at}, min_inserted_at ->
-          min(inserted_at, min_inserted_at)
+        fn {_key, _response, _expires_at, _last_access, stored_at}, min_stored_at ->
+          min(stored_at, min_stored_at)
         end,
         now,
         @table
       )
-      |> then(fn min_inserted_at ->
-        if min_inserted_at == now, do: 0, else: max(now - min_inserted_at, 0)
+      |> then(fn min_stored_at ->
+        if min_stored_at == now, do: 0, else: max(now - min_stored_at, 0)
       end)
 
     %{
@@ -177,7 +177,7 @@ defmodule YellowDog.Resolved.Cache do
     # Remove old LRU entry if key already exists; track if this is a new key
     is_new_key =
       case :ets.lookup(@table, key) do
-        [{^key, _, _, old_access}] ->
+        [{^key, _, _, old_access, _stored_at}] ->
           :ets.delete(@lru_table, {old_access, key})
           false
 
@@ -190,7 +190,7 @@ defmodule YellowDog.Resolved.Cache do
       evict_lru()
     end
 
-    :ets.insert(@table, {key, response, expires_at, now})
+    :ets.insert(@table, {key, response, expires_at, now, now})
     :ets.insert(@lru_table, {{now, key}})
 
     :telemetry.execute(
@@ -282,7 +282,7 @@ defmodule YellowDog.Resolved.Cache do
 
   defp sweep_expired(now) do
     # Delete expired entries from main table
-    delete_spec = [{{:_, :_, :"$1", :_}, [{:<, :"$1", now}], [true]}]
+    delete_spec = [{{:_, :_, :"$1", :_, :_}, [{:<, :"$1", now}], [true]}]
     count = :ets.select_delete(@table, delete_spec)
 
     # Remove any LRU index entries whose main-table key was deleted above.
@@ -310,9 +310,9 @@ defmodule YellowDog.Resolved.Cache do
   defp flush_domain_entries(domain) do
     normalized = String.downcase(String.trim_trailing(domain, "."))
 
-    entries = :ets.match_object(@table, {{normalized, :_}, :_, :_, :_})
+    entries = :ets.match_object(@table, {{normalized, :_}, :_, :_, :_, :_})
 
-    Enum.each(entries, fn {key, _, _, access_time} ->
+    Enum.each(entries, fn {key, _, _, access_time, _stored_at} ->
       :ets.delete(@lru_table, {access_time, key})
       :ets.delete(@table, key)
     end)
@@ -324,7 +324,7 @@ defmodule YellowDog.Resolved.Cache do
     normalized_suffix = String.downcase(suffix)
 
     :ets.foldl(
-      fn {{domain, _type} = key, _, _, access_time}, count ->
+      fn {{domain, _type} = key, _, _, access_time, _stored_at}, count ->
         if domain == normalized_suffix or String.ends_with?(domain, "." <> normalized_suffix) do
           :ets.delete(@lru_table, {access_time, key})
           :ets.delete(@table, key)

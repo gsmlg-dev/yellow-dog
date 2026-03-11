@@ -191,6 +191,24 @@ defmodule YellowDog.Resolved.CacheTest do
       assert stats.oldest_entry_age_s < 60
     end
 
+    test "oldest_entry_age_s tracks insertion time, not last-access time" do
+      # Store an entry and wait 1 second
+      Cache.store("age-track.test", :a, %{}, 300)
+      Process.sleep(1100)
+
+      stats_before_access = Cache.stats()
+      age_before = stats_before_access.oldest_entry_age_s
+
+      # Access the entry (updates last_access but NOT stored_at)
+      assert {:hit, _, _} = Cache.lookup("age-track.test", :a)
+
+      stats_after_access = Cache.stats()
+      age_after = stats_after_access.oldest_entry_age_s
+
+      # Age should NOT reset to 0 after access — it tracks insertion time
+      assert age_after >= age_before
+    end
+
     test "oldest_entry_age_s is 0 when cache is empty" do
       stats = Cache.stats()
       assert stats.oldest_entry_age_s == 0
