@@ -62,14 +62,24 @@ defmodule YellowDog.Resolved.Handler do
           Abyss.Transport.UDP.send(state.socket, client_ip, client_port, response_data)
 
         _ ->
-          Logger.debug("[Resolved] Received malformed DNS packet")
+          emit_malformed_packet(client_ip)
       end
     rescue
-      _ -> Logger.debug("[Resolved] Received malformed DNS packet")
+      _ -> emit_malformed_packet(client_ip)
     catch
-      :throw, _ -> Logger.debug("[Resolved] Received malformed DNS packet")
+      :throw, _ -> emit_malformed_packet(client_ip)
     end
 
     {:close, state}
+  end
+
+  defp emit_malformed_packet(client_ip) do
+    Logger.debug("[Resolved] Received malformed DNS packet")
+
+    :telemetry.execute(
+      [:yellow_dog, :resolved, :query, :malformed],
+      %{},
+      %{client: client_ip}
+    )
   end
 end
