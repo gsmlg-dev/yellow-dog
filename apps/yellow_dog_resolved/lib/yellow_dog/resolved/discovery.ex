@@ -62,12 +62,23 @@ defmodule YellowDog.Resolved.Discovery do
     # potentially multi-second Abyss.Client.send_recv calls.
     discovery = self()
 
+    # Read upstreams from Config at probe time (not from cached state) so
+    # that a hot-reloaded config with new or changed upstream servers is
+    # picked up on the next re-probe without restarting Discovery.
+    upstreams =
+      try do
+        YellowDog.Resolved.Config.get(:upstreams) || state.upstreams
+      rescue
+        # Config not yet started (e.g. in unit tests) — fall back to state.
+        ArgumentError -> state.upstreams
+      end
+
     Task.start(fn ->
       # Wrap in try/rescue so any unexpected exception still delivers
       # {:probe_result, :not_found} rather than crashing the task silently.
       result =
         try do
-          find_endpoint(state.upstreams, state.instance_id)
+          find_endpoint(upstreams, state.instance_id)
         rescue
           _ -> :not_found
         catch
