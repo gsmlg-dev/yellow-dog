@@ -49,9 +49,21 @@ defmodule YellowDog.Resolved.CountersTest do
       counters = Counters.get()
 
       assert counters.total ==
-               counters.intercepted + counters.cached + counters.forwarded + counters.error
+               counters.intercepted + counters.cached + counters.forwarded +
+                 counters.error + counters.rate_limited
 
       assert counters.total == 4
+    end
+
+    test "total includes rate_limited queries" do
+      Counters.increment(:intercepted)
+      Counters.increment(:rate_limited)
+      Counters.increment(:rate_limited)
+
+      counters = Counters.get()
+
+      assert counters.total == 3
+      assert counters.rate_limited == 2
     end
   end
 
@@ -209,7 +221,8 @@ defmodule YellowDog.Resolved.CountersTest do
       counters = Counters.get()
 
       assert counters.total ==
-               counters.intercepted + counters.cached + counters.forwarded + counters.error
+               counters.intercepted + counters.cached + counters.forwarded +
+                 counters.error + counters.rate_limited
 
       assert counters.total == 3
     end

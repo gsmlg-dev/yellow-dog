@@ -45,7 +45,7 @@ defmodule YellowDog.Resolved.Counters do
       forwarded: forwarded,
       error: error,
       rate_limited: rate_limited,
-      total: intercepted + cached + forwarded + error
+      total: intercepted + cached + forwarded + error + rate_limited
     }
   end
 
