@@ -285,26 +285,27 @@ defmodule YellowDog.Resolved.Cache do
     delete_spec = [{{:_, :_, :"$1", :_, :_}, [{:<, :"$1", now}], [true]}]
     count = :ets.select_delete(@table, delete_spec)
 
-    # Remove any LRU index entries whose main-table key was deleted above.
-    # A concurrent lookup can update an entry's access timestamp between the
-    # main-table delete and the LRU cleanup, leaving an orphaned LRU entry
-    # with the new timestamp. Scanning the LRU table and filtering against
-    # the main table catches these orphans regardless of timestamp.
-    if count > 0 do
-      :ets.foldl(
-        fn {{_access_time, key} = lru_key}, _acc ->
-          if :ets.lookup(@table, key) == [] do
-            :ets.delete(@lru_table, lru_key)
-          end
-
-          :ok
-        end,
-        :ok,
-        @lru_table
-      )
-    end
+    if count > 0, do: sweep_lru_orphans()
 
     count
+  end
+
+  # Scan the LRU index for entries whose main-table key no longer exists.
+  # This handles the race where a concurrent lookup updates last_access between
+  # a main-table delete and the corresponding LRU delete, leaving an orphan
+  # at the new timestamp that the original delete could not know about.
+  defp sweep_lru_orphans do
+    :ets.foldl(
+      fn {{_access_time, key} = lru_key}, _acc ->
+        if :ets.lookup(@table, key) == [] do
+          :ets.delete(@lru_table, lru_key)
+        end
+
+        :ok
+      end,
+      :ok,
+      @lru_table
+    )
   end
 
   defp flush_domain_entries(domain) do
@@ -312,10 +313,15 @@ defmodule YellowDog.Resolved.Cache do
 
     entries = :ets.match_object(@table, {{normalized, :_}, :_, :_, :_, :_})
 
+    # Delete from main table first (best-effort LRU cleanup using snapshot access_time).
+    # A concurrent lookup may have already updated last_access, leaving an orphaned
+    # LRU entry — sweep_lru_orphans/0 handles those after.
     Enum.each(entries, fn {key, _, _, access_time, _stored_at} ->
       :ets.delete(@lru_table, {access_time, key})
       :ets.delete(@table, key)
     end)
+
+    if length(entries) > 0, do: sweep_lru_orphans()
 
     length(entries)
   end
@@ -323,19 +329,23 @@ defmodule YellowDog.Resolved.Cache do
   defp do_flush_pattern("*." <> suffix) do
     normalized_suffix = String.downcase(suffix)
 
-    :ets.foldl(
-      fn {{domain, _type} = key, _, _, access_time, _stored_at}, count ->
-        if domain == normalized_suffix or String.ends_with?(domain, "." <> normalized_suffix) do
-          :ets.delete(@lru_table, {access_time, key})
-          :ets.delete(@table, key)
-          count + 1
-        else
-          count
-        end
-      end,
-      0,
-      @table
-    )
+    count =
+      :ets.foldl(
+        fn {{domain, _type} = key, _, _, access_time, _stored_at}, count ->
+          if domain == normalized_suffix or String.ends_with?(domain, "." <> normalized_suffix) do
+            :ets.delete(@lru_table, {access_time, key})
+            :ets.delete(@table, key)
+            count + 1
+          else
+            count
+          end
+        end,
+        0,
+        @table
+      )
+
+    if count > 0, do: sweep_lru_orphans()
+    count
   end
 
   defp do_flush_pattern(domain) do
