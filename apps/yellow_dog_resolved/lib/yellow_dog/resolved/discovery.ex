@@ -252,13 +252,25 @@ defmodule YellowDog.Resolved.Discovery do
   defp find_edns_option(arlist) do
     Enum.find_value(arlist, :not_found, fn record ->
       if to_string(record.type) == "OPT" do
-        case parse_edns_options(record.data) do
+        # ex_dns stores unregistered record types (including OPT/41) as
+        # %DNS.Message.Record.Data{raw: rdata_bytes}. Extract the raw binary
+        # so parse_edns_options/1 can apply binary pattern matching.
+        rdata = extract_rdata(record.data)
+
+        case parse_edns_options(rdata) do
           {:ok, ws_path} -> {:ok, ws_path}
           _ -> nil
         end
       end
     end)
   end
+
+  # Extracts raw RDATA bytes from whatever representation ex_dns uses.
+  # Handles both the generic %DNS.Message.Record.Data{raw: binary} fallback
+  # (when the record type has no registered parser) and a plain binary.
+  defp extract_rdata(%{raw: raw}) when is_binary(raw), do: raw
+  defp extract_rdata(raw) when is_binary(raw), do: raw
+  defp extract_rdata(_), do: <<>>
 
   defp parse_edns_options(
          <<@edns_option_code::16, length::16, data::binary-size(length), _rest::binary>>

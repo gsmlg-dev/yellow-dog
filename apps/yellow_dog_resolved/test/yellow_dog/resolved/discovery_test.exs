@@ -97,6 +97,48 @@ defmodule YellowDog.Resolved.DiscoveryTest do
     end
   end
 
+  describe "EDNS option extraction from wire-format response" do
+    test "OPT record.data is a struct with raw field after DNS.Message.from_iodata parse" do
+      # ex_dns stores type 41 (OPT) using the generic DNS.Message.Record.Data fallback
+      # because OPT is not registered in its type registry. find_edns_option must
+      # call extract_rdata/1 to get the binary from the struct instead of passing the
+      # struct directly to parse_edns_options/1.
+      ws_path = "/ws/resolved"
+      edns_data = <<1::8, ws_path::binary>>
+      edns_options = <<65321::16, byte_size(edns_data)::16, edns_data::binary>>
+      rdlen = byte_size(edns_options)
+
+      opt_rr = %DNS.Message.Record{
+        name: %DNS.Message.Domain{value: ".", size: 1},
+        type: DNS.ResourceRecordType.new(41),
+        class: DNS.Class.new(4096),
+        ttl: 0,
+        rdlength: rdlen,
+        data: %DNS.Message.Record.Data{rdlength: rdlen, raw: edns_options}
+      }
+
+      query = DNS.Message.new()
+      msg = %{query | arlist: [opt_rr], header: %{query.header | arcount: 1}}
+      packet = DNS.to_iodata(msg) |> IO.iodata_to_binary()
+      parsed = DNS.Message.from_iodata(packet)
+
+      [parsed_opt] = parsed.arlist
+
+      # After round-trip, record.data is a struct with a raw binary field, NOT a plain binary.
+      # extract_rdata/1 is required to obtain the bytes.
+      assert %{raw: rdata} = parsed_opt.data
+      assert is_binary(rdata)
+      assert byte_size(rdata) == rdlen
+
+      # The raw bytes must preserve the EDNS option intact for the discovery parser.
+      <<option_code::16, option_len::16, option_data::binary-size(option_len)>> = rdata
+      assert option_code == 65321
+      <<version::8, path::binary>> = option_data
+      assert version == 1
+      assert path == ws_path
+    end
+  end
+
   describe "EDNS response parsing" do
     test "response option data structure" do
       ws_path = "/ws/resolved"
