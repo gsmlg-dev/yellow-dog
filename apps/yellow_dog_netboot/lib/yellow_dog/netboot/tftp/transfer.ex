@@ -79,12 +79,12 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   @impl true
   def handle_info({:udp, _socket, _addr, _port, packet}, state) do
     case Protocol.decode(packet) do
-      {:ok, {:ack, block}} when block == state.current_block ->
+      {:ok, {:ack, block}} when block == rem(state.current_block, 65536) ->
         if transfer_complete?(state) do
           emit_telemetry(:stop, state)
           {:stop, :normal, state}
         else
-          state = %{state | current_block: block + 1, retries: 0}
+          state = %{state | current_block: state.current_block + 1, retries: 0}
           send_next_block(state)
           {:noreply, state, @timeout_ms}
         end
@@ -133,7 +133,8 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
     if chunk_size >= 0 do
       chunk = binary_part(state.file_data, offset, max(chunk_size, 0))
-      packet = Protocol.encode({:data, state.current_block, chunk})
+      wire_block = rem(state.current_block, 65536)
+      packet = Protocol.encode({:data, wire_block, chunk})
       Abyss.Transport.UDP.send(state.socket, state.client_addr, state.client_port, packet)
     end
   end

@@ -326,6 +326,42 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
     end
   end
 
+  describe "block number rollover" do
+    test "ACK 0 is accepted when current_block has rolled over past 65535", %{
+      file_path: file_path
+    } do
+      # Construct state as if we just sent block 65536 (wire block 0)
+      {:ok, state, _} =
+        Transfer.init([
+          client_addr: @client_addr,
+          client_port: @client_port,
+          file_path: file_path,
+          block_size: 512
+        ])
+
+      state = %{state | current_block: 65536}
+
+      # Client sends ACK 0 (which is the wire representation of logical block 65536)
+      ack_packet = Protocol.encode({:ack, 0})
+      msg = {:udp, state.socket, @client_addr, @client_port, ack_packet}
+
+      # Must be accepted — transfer_complete? is true for this tiny file,
+      # so we expect {:stop, :normal, _} rather than an ignored noreply
+      assert {:stop, :normal, _new_state} = Transfer.handle_info(msg, state)
+
+      :gen_udp.close(state.socket)
+    end
+
+    test "wire block number wraps to 0 when logical block is 65536", _ctx do
+      # Verify Protocol.encode uses rem-wrapped block, not raw logical block
+      # encode({:data, 65536, data}) must produce the same bytes as encode({:data, 0, data})
+      data = "x"
+      packet_0 = Protocol.encode({:data, 0, data})
+      packet_overflow = Protocol.encode({:data, 65536, data})
+      assert packet_0 == packet_overflow
+    end
+  end
+
   describe "terminate/2" do
     test "closes socket on termination", %{file_path: file_path} do
       args = [
