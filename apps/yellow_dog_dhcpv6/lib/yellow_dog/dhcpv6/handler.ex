@@ -259,21 +259,12 @@ defmodule YellowDog.Dhcpv6.Handler do
           end
 
         # Handle IA_PD if present
+        # NOTE: When PrefixPool integration replaces the placeholder, change this
+        # to a full case with {:error, reason} handling (matching IA_NA/IA_TA).
         leases =
           if ia_pd do
-            case allocate_prefix_delegation(duid, ia_pd.iaid) do
-              {:ok, pd_lease} ->
-                [pd_lease | leases]
-
-              {:error, reason} ->
-                :telemetry.execute(
-                  [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
-                  %{count: 1},
-                  %{reason: inspect(reason), ia_type: :ia_pd, client_duid: duid}
-                )
-
-                leases
-            end
+            {:ok, pd_lease} = allocate_prefix_delegation(duid, ia_pd.iaid)
+            [pd_lease | leases]
           else
             leases
           end
