@@ -29,6 +29,10 @@ defmodule YellowDog.Resolved.Config do
         reconnect_max_s: 60
       }
     },
+    rate_limit: %{
+      burst: 50,
+      rate: 20
+    },
     intercept_rules: []
   }
 
@@ -152,6 +156,7 @@ defmodule YellowDog.Resolved.Config do
         clamp_int(Map.get(resolved, "upstream_failure_threshold", 3), 1, 100),
       cache: parse_cache_config(Map.get(resolved, "cache", %{})),
       discovery: parse_discovery_config(Map.get(resolved, "discovery", %{})),
+      rate_limit: parse_rate_limit_config(Map.get(resolved, "rate_limit", %{})),
       intercept_rules: parse_intercept_rules(Map.get(resolved, "intercept", []))
     }
   end
@@ -180,6 +185,13 @@ defmodule YellowDog.Resolved.Config do
         reconnect_base_s: clamp_int(Map.get(ws, "reconnect_base_s", 5), 1, 60),
         reconnect_max_s: clamp_int(Map.get(ws, "reconnect_max_s", 60), 5, 600)
       }
+    }
+  end
+
+  defp parse_rate_limit_config(rl) do
+    %{
+      burst: clamp_int(Map.get(rl, "burst", 50), 1, 10_000),
+      rate: clamp_int(Map.get(rl, "rate", 20), 1, 10_000)
     }
   end
 
