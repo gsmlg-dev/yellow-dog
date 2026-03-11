@@ -529,7 +529,7 @@ defmodule DHCPv4.Message.Option.Types do
       0 ->
         {"Non-hardware", identifier}
 
-      1 ->
+      1 when byte_size(identifier) >= 6 ->
         mac =
           identifier
           |> :binary.part(0, 6)
@@ -538,6 +538,10 @@ defmodule DHCPv4.Message.Option.Types do
           |> String.trim_trailing(":")
 
         {"Ethernet", mac}
+
+      1 ->
+        # Malformed: claimed Ethernet type but identifier is shorter than 6 bytes
+        {"Ethernet (truncated)", identifier}
 
       _ ->
         {type, identifier}
@@ -570,6 +574,10 @@ defmodule DHCPv4.Message.Option.Types do
         n when n >= 25 and n <= 32 ->
           <<a::8, b::8, c::8, d::8, router::binary-size(4), rest::binary>> = rest
           {{a, b, c, d}, router, rest, 9}
+
+        _ ->
+          # RFC 3442: prefix length > 32 is invalid; skip remaining data to avoid crash
+          {{0, 0, 0, 0}, <<0, 0, 0, 0>>, <<>>, len}
       end
 
     [{network, mask, router} | to_mask_network_route_list(rest, len - size)]
