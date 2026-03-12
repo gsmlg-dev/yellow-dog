@@ -316,6 +316,7 @@ defmodule YellowDog.Netman.Connection.FSM do
         Logger.info("DHCP failed for #{data.interface}, falling back to IPv6 SLAAC")
         {:keep_state, %{data | dhcp_retries: 0}}
       else
+        release_dhcp(data)
         transition(%{data | error: :dhcp_failed, dhcp_retries: 0}, :configuring, :failed)
       end
     end
@@ -620,13 +621,13 @@ defmodule YellowDog.Netman.Connection.FSM do
   ## State: failed
 
   def failed(:cast, :activate, data) do
-    data = %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0}
+    data = %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0}
 
     transition(data, :failed, :disconnected, [{:next_event, :internal, :auto_activate}])
   end
 
   def failed(:info, {:netman_event, _, {:link_update, %{carrier: true}}}, data) do
-    data = %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0}
+    data = %{data | error: nil, lease: nil, dhcp_retries: 0, ip_check_retries: 0}
 
     transition(data, :failed, :disconnected, [{:next_event, :internal, :auto_activate}])
   end
