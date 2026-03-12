@@ -113,8 +113,16 @@ defmodule YellowDog.Netman.ProfileStore do
   def handle_call({:delete, id}, _from, state) do
     if Map.has_key?(state.profiles, id) do
       profiles = Map.delete(state.profiles, id)
+
+      # Remove stale path_ids entries that point to the deleted profile ID,
+      # preventing resurrection if the file is later modified.
+      path_ids =
+        state.path_ids
+        |> Enum.reject(fn {_path, pid} -> pid == id end)
+        |> Map.new()
+
       EventBus.publish("netman:profile:changed", {:deleted, id})
-      {:reply, :ok, %{state | profiles: profiles}}
+      {:reply, :ok, %{state | profiles: profiles, path_ids: path_ids}}
     else
       {:reply, {:error, :not_found}, state}
     end

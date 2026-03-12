@@ -471,6 +471,20 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
+  # DHCP lease expired while waiting for addresses — fail immediately instead of
+  # waiting for ip_check retries to exhaust (up to 60s with 2s intervals)
+  def ip_check(:info, {:dhcp_lease_expired, reason}, data) do
+    Logger.warning("DHCP lease expired during ip_check for #{data.interface}: #{inspect(reason)}")
+    emit_dhcp_event(data, :lease_expired, %{reason: reason})
+    release_dhcp(data)
+
+    transition(
+      %{data | error: :dhcp_lease_expired, ip_check_retries: 0, lease: nil},
+      :ip_check,
+      :failed
+    )
+  end
+
   def ip_check(:cast, :deactivate, data) do
     transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
       {:next_event, :internal, :cleanup},

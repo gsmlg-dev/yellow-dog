@@ -5,6 +5,23 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
   alias YellowDog.Netman.{ProfileStore, Test.MockNetlink}
   alias YellowDog.Netman.Types.Profile
 
+  alias YellowDog.Netman.Connection.FSM
+
+  # Poll until FSM.get_state succeeds, up to 500ms
+  defp wait_for_fsm_ready(pid, attempts \\ 50) do
+    case FSM.get_state(pid) do
+      {:ok, _} ->
+        true
+
+      _ when attempts > 0 ->
+        Process.sleep(10)
+        wait_for_fsm_ready(pid, attempts - 1)
+
+      _ ->
+        false
+    end
+  end
+
   defp make_profile(iface) do
     id = "sup-test-#{iface}"
 
@@ -76,7 +93,9 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
 
     ProfileStore.put(profile_id, profile)
     {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
-    Process.sleep(30)
+
+    # Wait for FSM to be queryable (get_state must succeed)
+    assert wait_for_fsm_ready(pid), "FSM did not become ready in time"
 
     result = ConnSupervisor.find_connection_by_profile(profile_id)
     assert {:ok, ^pid} = result
@@ -95,8 +114,10 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
     MockNetlink.link_up(iface, carrier: false)
     Process.sleep(30)
 
-    {:ok, _pid} = ConnSupervisor.start_connection(iface, profile)
-    Process.sleep(30)
+    {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
+
+    # Wait for FSM to be queryable (get_state must succeed)
+    assert wait_for_fsm_ready(pid), "FSM did not become ready in time"
 
     connections = ConnSupervisor.list_connections()
     assert is_list(connections)
@@ -112,7 +133,7 @@ defmodule YellowDog.Netman.Connection.SupervisorTest do
     Process.sleep(30)
 
     {:ok, pid} = ConnSupervisor.start_connection(iface, profile)
-    Process.sleep(30)
+    assert wait_for_fsm_ready(pid), "FSM did not become ready in time"
 
     # Verify connection is listed before killing
     connections_before = ConnSupervisor.list_connections()

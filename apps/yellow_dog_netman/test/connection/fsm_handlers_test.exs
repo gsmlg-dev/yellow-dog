@@ -384,6 +384,14 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert state.state == :ip_check
     end
 
+    test "dhcp_lease_expired in ip_check transitions to failed immediately", %{data: data} do
+      result = FSM.ip_check(:info, {:dhcp_lease_expired, :timeout}, data)
+      assert {:next_state, :failed, new_data, _actions} = result
+      assert new_data.error == :dhcp_lease_expired
+      assert new_data.ip_check_retries == 0
+      assert new_data.lease == nil
+    end
+
     test "ip_check with disabled ipv4 method passes without address", %{iface: iface} do
       disabled_profile = %Profile{
         id: "ipc-disabled-#{iface}",
