@@ -77,6 +77,16 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
     ])
   end
 
+  defp ipv6_address_gen do
+    gen all(
+          group <- StreamData.integer(0x2001..0x2001),
+          suffix <- StreamData.integer(1..0xFFFF),
+          prefix <- StreamData.integer(48..64)
+        ) do
+      "#{Integer.to_string(group, 16)}:db8::#{Integer.to_string(suffix, 16)}/#{prefix}"
+    end
+  end
+
   defp valid_toml_gen do
     gen all(
           id <- profile_id_gen(),
@@ -86,6 +96,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
           priority <- StreamData.integer(0..1000),
           autoconnect <- StreamData.boolean(),
           ipv4_address <- ipv4_address_gen(),
+          ipv6_address <- ipv6_address_gen(),
           iface <- iface_gen(),
           zone <- zone_gen(),
           ipv4_gw <- gateway_gen(),
@@ -101,6 +112,13 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       ipv4 = if ipv4_gw, do: Map.put(ipv4, "gateway", ipv4_gw), else: ipv4
       ipv4 = if ipv4_dns != [], do: Map.put(ipv4, "dns", ipv4_dns), else: ipv4
 
+      ipv6 =
+        if ipv6_method == "manual" do
+          %{"method" => ipv6_method, "address" => ipv6_address}
+        else
+          %{"method" => ipv6_method}
+        end
+
       conn =
         %{
           "id" => id,
@@ -115,7 +133,7 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
       toml = %{
         "connection" => conn,
         "ipv4" => ipv4,
-        "ipv6" => %{"method" => ipv6_method}
+        "ipv6" => ipv6
       }
 
       if mtu do
@@ -506,11 +524,19 @@ defmodule YellowDog.Netman.Types.ProfilePropertyTest do
   property "valid IPv6 methods are accepted" do
     check all(
             id <- profile_id_gen(),
-            method <- StreamData.member_of(["auto", "manual", "disabled", "link-local"])
+            method <- StreamData.member_of(["auto", "manual", "disabled", "link-local"]),
+            ipv6_addr <- ipv6_address_gen()
           ) do
+      ipv6 =
+        if method == "manual" do
+          %{"method" => method, "address" => ipv6_addr}
+        else
+          %{"method" => method}
+        end
+
       toml = %{
         "connection" => %{"id" => id, "type" => "ethernet"},
-        "ipv6" => %{"method" => method}
+        "ipv6" => ipv6
       }
 
       assert {:ok, %Profile{}} = Profile.from_toml(toml)
