@@ -312,6 +312,36 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     assert "9.9.9.9" in server_strings
   end
 
+  test "push_dns calls reset_link_dns when no DNS servers configured", %{iface: iface} do
+    profile = %Profile{
+      id: "dns-push-#{iface}",
+      type: :ethernet,
+      interface: iface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :manual,
+        address: "10.70.0.70/24",
+        gateway: "10.70.0.1",
+        dns: []
+      },
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    MockNetlink.link_up(iface, carrier: true)
+    Process.sleep(50)
+
+    {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    MockNetlink.address_added(iface, "10.70.0.70/24")
+
+    # With no DNS servers in profile or lease, push_dns should call reset_link_dns
+    assert_receive {:resolved_reset_link_dns, ^iface}, 5_000
+  end
+
   defp flush_set_link_dns(iface) do
     receive do
       {:resolved_set_link_dns, ^iface, _} -> flush_set_link_dns(iface)

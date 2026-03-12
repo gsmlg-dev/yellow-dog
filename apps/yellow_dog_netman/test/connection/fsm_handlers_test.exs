@@ -1771,4 +1771,111 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert new_data.dhcp_retries == 0
     end
   end
+
+  # ----------------------------------------------------------------
+  # Activate idempotence
+  # ----------------------------------------------------------------
+
+  describe "activate idempotence" do
+    test "activate from disconnected returns prepare transition" do
+      iface = "hdlr_idemp_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:cast, :activate, data)
+      assert {:next_state, :prepare, _data, _actions} = result
+    end
+
+    test "activate in non-disconnected states is silently ignored" do
+      iface = "hdlr_idemp2_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      # activate in :activated state → catch-all keeps state
+      data = %FSM{interface: iface, profile: profile, current_state: :activated}
+      result = FSM.activated(:cast, :activate, data)
+      assert {:keep_state, ^data} = result
+
+      # activate in :configuring state → catch-all keeps state
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:cast, :activate, data)
+      assert {:keep_state, ^data} = result
+    end
+
+    test "activate from failed state clears error and re-activates" do
+      iface = "hdlr_idemp3_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+
+      data = %FSM{
+        interface: iface,
+        profile: profile,
+        current_state: :failed,
+        error: :dhcp_failed,
+        dhcp_retries: 3
+      }
+
+      result = FSM.failed(:cast, :activate, data)
+      assert {:next_state, :disconnected, new_data, actions} = result
+      assert new_data.error == nil
+      assert new_data.dhcp_retries == 0
+
+      assert Enum.any?(actions, fn
+               {:next_event, :internal, :auto_activate} -> true
+               _ -> false
+             end)
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # IPv6 SLAAC configuration path
+  # ----------------------------------------------------------------
+
+  describe "IPv6 SLAAC-only configuration" do
+    test "ipv4=disabled ipv6=auto stays in configuring (waits for SLAAC)" do
+      iface = "hdlr_slaac_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "slaac-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+      result = FSM.configuring(:internal, :configure_ip, data)
+
+      # IPv4 disabled + IPv6 auto → stays in configuring waiting for kernel SLAAC
+      assert {:keep_state, ^data} = result
+    end
+
+    test "global address event during configuring transitions to ip_check" do
+      iface = "hdlr_slaac2_#{:rand.uniform(65535)}"
+
+      profile = %Profile{
+        id: "slaac2-#{iface}",
+        type: :ethernet,
+        interface: iface,
+        autoconnect: false,
+        autoconnect_priority: 100,
+        ethernet: %{mtu: nil},
+        ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []},
+        ipv6: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: profile, current_state: :configuring}
+
+      # Simulate kernel SLAAC providing a global address
+      result =
+        FSM.configuring(
+          :info,
+          {:netman_event, "netman:address:#{iface}", {:add, %{scope: :global}}},
+          data
+        )
+
+      assert {:next_state, :ip_check, _data, _actions} = result
+    end
+  end
 end
