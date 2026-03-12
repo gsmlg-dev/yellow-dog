@@ -129,16 +129,17 @@ defmodule YellowDog.Netman.Kernel.AddressManager do
 
         unless Enum.any?(existing, &(&1.address == addr.address)) do
           :ets.insert(@table, {iface, [addr | existing]})
+          emit_address_change(iface, :add, addr)
         end
-
-        emit_address_change(iface, :add, addr)
 
       "del" ->
         existing = get_addresses(iface)
         updated = Enum.reject(existing, &(&1.address == addr.address))
-        :ets.insert(@table, {iface, updated})
 
-        emit_address_change(iface, :remove, addr)
+        if length(updated) < length(existing) do
+          :ets.insert(@table, {iface, updated})
+          emit_address_change(iface, :remove, addr)
+        end
 
       _ ->
         Logger.warning("Ignoring address event with unknown action #{inspect(action)}")

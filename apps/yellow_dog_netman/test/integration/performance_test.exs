@@ -194,17 +194,17 @@ defmodule YellowDog.Netman.Integration.PerformanceTest do
 
       EventBus.subscribe("netman:address:#{iface}")
 
-      event = %{
-        "type" => "address_change",
-        "action" => "add",
-        "interface" => iface,
-        "address" => "10.5.1.1/24",
-        "family" => "inet",
-        "scope" => "global"
-      }
-
       latencies =
-        for _ <- 1..5 do
+        for n <- 1..5 do
+          event = %{
+            "type" => "address_change",
+            "action" => "add",
+            "interface" => iface,
+            "address" => "10.5.1.#{n}/24",
+            "family" => "inet",
+            "scope" => "global"
+          }
+
           t0 = System.monotonic_time(:microsecond)
           send(YellowDog.Netman.Kernel.Netlink, {:mock_event, event})
 

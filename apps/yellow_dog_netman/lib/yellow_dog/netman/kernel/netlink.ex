@@ -216,5 +216,8 @@ defmodule YellowDog.Netman.Kernel.Netlink do
   defp parse_event(%{"type" => "route_change"} = e), do: {:route_change, e}
   defp parse_event(%{"type" => "rule_change"} = e), do: {:rule_change, e}
   defp parse_event(%{"type" => "neighbor_change"} = e), do: {:neighbor_change, e}
-  defp parse_event(e), do: {:unknown, e}
+  defp parse_event(e) do
+    Logger.warning("Unknown netlink event type: #{inspect(Map.get(e, "type"))}")
+    {:unknown, e}
+  end
 end
