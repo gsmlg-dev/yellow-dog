@@ -117,6 +117,23 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
     end
   end
 
+  describe "disconnected manual activate includes prepare timeout" do
+    test "activate cast includes state_timeout for prepare" do
+      iface = "hdlr_act_to_#{:rand.uniform(65535)}"
+      profile = base_profile(iface)
+      data = %FSM{interface: iface, profile: profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:cast, :activate, data)
+      assert {:next_state, :prepare, _new_data, actions} = result
+
+      assert Enum.any?(actions, fn
+               {:state_timeout, _, :setup_timeout} -> true
+               _ -> false
+             end),
+             "manual activate must include :setup_timeout to prevent stuck FSMs"
+    end
+  end
+
   # ----------------------------------------------------------------
   # prepare state handlers — direct invocation
   # ----------------------------------------------------------------
