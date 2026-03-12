@@ -82,6 +82,15 @@ defmodule YellowDog.Application do
     # Get the app module for this service
     app_module = service_app_module(service)
 
+    # Guard: module may not be available in all releases
+    if not Code.ensure_loaded?(app_module) do
+      {:error, :module_not_available}
+    else
+      start_service_supervisor_impl(service, app_module)
+    end
+  end
+
+  defp start_service_supervisor_impl(service, app_module) do
     # Get server options from current config
     config = YellowDog.Config.get_all()
     server_options = build_server_options(config, service)
@@ -363,6 +372,7 @@ defmodule YellowDog.Application do
     # Filter services based on configuration and pass server options
     enabled_services =
       for {module, service_name} <- services,
+          Code.ensure_loaded?(module),
           service_enabled?(config, service_name) do
         server_options = build_server_options(config, service_name)
         {module, server_options: server_options}
