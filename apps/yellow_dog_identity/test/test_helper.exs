@@ -25,8 +25,9 @@ defmodule YellowDogIdentity.TestHelper do
     # Terminate and delete identity from the core supervisor to prevent restart
     try do
       if Process.whereis(YellowDog.Supervisor) do
-        Supervisor.terminate_child(YellowDog.Supervisor, YellowDogIdentity)
-        Supervisor.delete_child(YellowDog.Supervisor, YellowDogIdentity)
+        # child_spec id is YellowDogIdentity.Supervisor (from `use Supervisor`)
+        Supervisor.terminate_child(YellowDog.Supervisor, YellowDogIdentity.Supervisor)
+        Supervisor.delete_child(YellowDog.Supervisor, YellowDogIdentity.Supervisor)
       end
     catch
       :exit, _ -> :ok
