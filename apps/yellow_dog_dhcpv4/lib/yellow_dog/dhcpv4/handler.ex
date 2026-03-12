@@ -927,6 +927,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       option_55: extract_raw_option_list(opts, 55),
       option_60: extract_raw_option_string(opts, 60),
       option_12: extract_raw_option_string(opts, 12),
+      # Option 39 = Client FQDN (RFC 4702); used as hostname fallback in observer.ex
+      # when option 12 (Hostname) is absent.
+      option_39: extract_raw_option_string(opts, 39),
       option_61: extract_raw_option_binary(opts, 61),
       option_57: extract_raw_option_binary(opts, 57),
       option_93: extract_raw_option_binary(opts, 93)
