@@ -42,7 +42,13 @@ defmodule YellowDog.Console.ToolsLive.WhoisLive do
             disabled={@loading}
             phx-disable-with="Looking up..."
           >
-            <span :if={@loading} class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5" role="status"></span> Lookup
+            <span
+              :if={@loading}
+              class="inline-block animate-spin rounded-full border-2 border-current border-t-transparent w-5 h-5"
+              role="status"
+            >
+            </span>
+            Lookup
           </button>
         </form>
 

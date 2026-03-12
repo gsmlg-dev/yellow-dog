@@ -20,6 +20,7 @@ YellowDog.Netman.Supervisor (rest_for_one)
 ├── ProfileStore (TOML profiles, file_system watcher)
 ├── Connection.Supervisor (DynamicSupervisor)
 │   └── Connection.FSM (gen_statem per interface)
+├── Connection.LeaseCoordinator (DHCP telemetry → FSM routing)
 ├── ReconciliationEngine (observe→diff→apply loop)
 └── API.Supervisor
     └── API.CLI (Unix socket JSON-RPC)
@@ -33,6 +34,7 @@ YellowDog.Netman.Supervisor (rest_for_one)
 - **ProfileStore** watches profile directory with `file_system` for hot-reload (200ms debounce)
 - **ReconciliationEngine** debounces events (100ms), subscribes to link/profile/connection events
 - **Netlink backend** is configurable: `:mock` for tests, `:port` for production
+- **LeaseCoordinator** bridges DHCP client telemetry events to FSM processes via Registry lookup
 
 ## Test Configuration
 
@@ -48,12 +50,13 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 
 - `YellowDog.DhcpClient.start_interface/2` — DHCP lease acquisition
 - `YellowDog.DhcpClient.release/1` — lease release
-- `yellow_dog_resolved` (planned) — per-link DNS configuration
+- DHCP telemetry events: `[:yellow_dog, :dhcp_client, :lease, :bound|:renewed|:expired]` → LeaseCoordinator → FSM
+- `YellowDog.Resolved.set_link_dns/2` / `reset_link_dns/1` — per-link DNS configuration
 
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 750 tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 760+ tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
