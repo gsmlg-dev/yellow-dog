@@ -13,7 +13,7 @@ apps/<app_name>/CLAUDE.md
 
 Yellow Dog is a distributed DNS/DHCP/mDNS/Netboot server written in Elixir using an umbrella project structure. Elixir 1.18 / OTP 27-28, Phoenix LiveView 1.0, DaisyUI 5.0.
 
-### Applications (16 total)
+### Applications (17 total)
 
 | App | Location | Purpose |
 |-----|----------|---------|
@@ -38,7 +38,7 @@ Module naming: `YellowDog.<AppName>.ModuleName`. Infrastructure libs use own nam
 
 ### Key Architecture Decisions
 
-- Protocol apps are **library applications** started/managed by core `YellowDog.Application` — they have no `Application` modules
+- Protocol apps are **library applications** started/managed by core `YellowDog.Application` — they have no `Application` modules. **Exception:** `yellow_dog_resolved` has its own `Application` module because it is a standalone client-side stub resolver, not a server-side protocol handler
 - Services are conditionally started via `YellowDog.Config.service_enabled?(:service_name)`
 - Infrastructure libs (abyss, ex_dns, ex_dhcp) are **in-umbrella** with shared build paths
 - All protocol servers follow the same pattern: `Server` (GenServer + Abyss) → `Handler` (Abyss.Handler behaviour) → `Supervisor` (conditional start)

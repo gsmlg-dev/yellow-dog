@@ -89,6 +89,10 @@ defmodule YellowDog.Resolved.RateLimiter do
 
   # Private
 
+  # Note: the ETS read-then-write here is intentionally non-atomic. Concurrent
+  # handler processes may slightly over-allow during bursts (two processes read
+  # the same token count, both consume). This is acceptable for a DNS rate limiter
+  # where throughput matters more than strict per-token accounting.
   defp refill_and_check(client_ip, tokens, last_refill, now) do
     elapsed_ms = now - last_refill
     refilled = tokens + elapsed_ms * rate() / 1000
@@ -108,14 +112,9 @@ defmodule YellowDog.Resolved.RateLimiter do
     now = System.monotonic_time(:millisecond)
     threshold = now - @stale_threshold_s * 1000
 
-    :ets.foldl(
-      fn {ip, _tokens, last_refill}, acc ->
-        if last_refill < threshold, do: :ets.delete(@table, ip)
-        acc
-      end,
-      :ok,
-      @table
-    )
+    # Use select_delete instead of foldl+delete — deleting during foldl traversal
+    # is undefined behaviour per Erlang docs (foldl iterates via first/next).
+    :ets.select_delete(@table, [{{:_, :_, :"$1"}, [{:<, :"$1", threshold}], [true]}])
   end
 
   defp schedule_sweep do

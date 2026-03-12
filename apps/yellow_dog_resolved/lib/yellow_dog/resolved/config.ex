@@ -337,16 +337,18 @@ defmodule YellowDog.Resolved.Config do
   defp parse_ip(_), do: {127, 0, 0, 1}
 
   defp parse_upstreams(upstreams) when is_list(upstreams) do
-    Enum.reduce(upstreams, [], fn upstream, acc ->
+    upstreams
+    |> Enum.reduce([], fn upstream, acc ->
       case parse_upstream_ip(upstream) do
         {:ok, ip} ->
-          acc ++ [ip]
+          [ip | acc]
 
         :error ->
           Logger.warning("[Resolved] Skipping invalid upstream address: #{inspect(upstream)}")
           acc
       end
     end)
+    |> Enum.reverse()
   end
 
   defp parse_upstreams(_), do: [{1, 1, 1, 1}, {8, 8, 8, 8}]
@@ -366,6 +368,10 @@ defmodule YellowDog.Resolved.Config do
   defp parse_upstream_ip(_), do: :error
 
   defp propagate_config(new_config, old_config) do
+    # Note: Discovery is not explicitly notified here because it reads
+    # Config.get(:upstreams) fresh on each :probe cycle, so upstream
+    # changes are picked up automatically on the next probe interval.
+
     # Notify Forwarder if upstream settings changed
     if new_config.upstreams != old_config.upstreams or
          new_config.upstream_timeout_ms != old_config.upstream_timeout_ms or
