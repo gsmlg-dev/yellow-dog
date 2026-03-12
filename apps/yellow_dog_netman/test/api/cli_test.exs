@@ -520,10 +520,9 @@ defmodule YellowDog.Netman.API.CLITest do
       assert %{"error" => _} = result
     end
 
-    test "device.show without params key falls through to unknown method" do
+    test "device.show without params key returns missing parameter error" do
       result = CLI.handle_command(%{"method" => "device.show"})
-      # Matches %{"method" => method} catch-all since no "params"
-      assert %{"error" => "unknown method: device.show"} = result
+      assert %{"error" => "device.show requires 'interface' parameter"} = result
     end
 
     test "connection.show with empty params returns error" do

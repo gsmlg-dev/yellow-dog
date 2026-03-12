@@ -326,6 +326,14 @@ defmodule YellowDog.Netman.API.CLI do
     end
   end
 
+  def handle_command(%{"method" => "device.show"}) do
+    %{"error" => "device.show requires 'interface' parameter"}
+  end
+
+  def handle_command(%{"method" => "connection.show"}) do
+    %{"error" => "connection.show requires 'id' parameter"}
+  end
+
   def handle_command(%{"method" => method})
       when method in ["connection.up", "connection.down", "connection.delete"] do
     %{"error" => "#{method} requires 'id' parameter"}
