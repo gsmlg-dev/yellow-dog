@@ -118,7 +118,7 @@ defmodule YellowDog.Netman.ProfileStore do
       # preventing resurrection if the file is later modified.
       path_ids =
         state.path_ids
-        |> Enum.reject(fn {_path, pid} -> pid == id end)
+        |> Enum.reject(fn {_path, profile_id} -> profile_id == id end)
         |> Map.new()
 
       EventBus.publish("netman:profile:changed", {:deleted, id})
