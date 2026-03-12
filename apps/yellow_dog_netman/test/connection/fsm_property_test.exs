@@ -39,8 +39,10 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       :activate,
       :deactivate,
       :dhcp_lease_acquired,
+      :dhcp_lease_renewed,
       :dhcp_lease_failed,
       :dhcp_lease_expired,
+      :update_profile,
       :address_added,
       :address_removed
     ])
@@ -92,11 +94,27 @@ defmodule YellowDog.Netman.Connection.FSMPropertyTest do
       :dhcp_lease_acquired ->
         send(pid, {:dhcp_lease_acquired, %{address: "10.0.0.50", lease_time: 3600}})
 
+      :dhcp_lease_renewed ->
+        send(
+          pid,
+          {:dhcp_lease_renewed,
+           %{
+             ip: "10.0.0.50",
+             server: "10.0.0.1",
+             lease_time_s: 7200,
+             dns_servers: ["8.8.8.8"]
+           }}
+        )
+
       :dhcp_lease_failed ->
         send(pid, {:dhcp_lease_failed, :no_server})
 
       :dhcp_lease_expired ->
         send(pid, {:dhcp_lease_expired, :expired})
+
+      :update_profile ->
+        profile = make_profile(interface)
+        FSM.update_profile(pid, profile)
 
       :address_added ->
         MockNetlink.address_added(interface, "10.0.0.50/24")
