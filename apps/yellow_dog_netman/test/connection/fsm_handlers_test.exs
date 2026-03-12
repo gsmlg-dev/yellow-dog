@@ -1547,6 +1547,91 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       end)
     end
 
+    test "unavailable: update_profile caches new profile" do
+      iface = "hdlr_upd_u_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | autoconnect_priority: 300}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :unavailable}
+
+      result = FSM.unavailable(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 300
+    end
+
+    test "prepare: non-method change caches profile" do
+      iface = "hdlr_upd_p_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | autoconnect_priority: 400}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :prepare}
+
+      result = FSM.prepare(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 400
+    end
+
+    test "prepare: method change triggers deactivation with reactivate" do
+      iface = "hdlr_upd_pm_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :prepare}
+
+      result = FSM.prepare(:cast, {:update_profile, new_profile}, data)
+      assert {:next_state, :deactivating, new_data, _actions} = result
+      assert new_data.reactivate == true
+    end
+
+    test "ip_check: non-method change caches profile" do
+      iface = "hdlr_upd_ip_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | autoconnect_priority: 500}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :ip_check}
+
+      result = FSM.ip_check(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 500
+    end
+
+    test "ip_check: method change triggers deactivation with reactivate" do
+      iface = "hdlr_upd_ipm_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :ip_check}
+
+      result = FSM.ip_check(:cast, {:update_profile, new_profile}, data)
+      assert {:next_state, :deactivating, new_data, _actions} = result
+      assert new_data.reactivate == true
+      assert new_data.ip_check_retries == 0
+    end
+
+    test "deactivating: update_profile caches new profile" do
+      iface = "hdlr_upd_da_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | autoconnect_priority: 600}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :deactivating}
+
+      result = FSM.deactivating(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 600
+    end
+
+    test "failed: update_profile caches new profile" do
+      iface = "hdlr_upd_f_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+      new_profile = %{old_profile | autoconnect_priority: 700}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :failed}
+
+      result = FSM.failed(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 700
+    end
+
     test "activated: non-method priority change flushes routes before reinstall" do
       iface = "hdlr_route_#{:rand.uniform(65535)}"
       old_profile = base_profile(iface)

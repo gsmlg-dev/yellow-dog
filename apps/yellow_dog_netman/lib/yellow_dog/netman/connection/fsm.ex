@@ -143,6 +143,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :unavailable, :disconnected)
   end
 
+  def unavailable(:cast, {:update_profile, new_profile}, data) do
+    {:keep_state, %{data | profile: new_profile}}
+  end
+
   def unavailable({:call, from}, :get_state, data) do
     {:keep_state, data, [{:reply, from, {:ok, state_info(data, :unavailable)}}]}
   end
@@ -216,6 +220,19 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def prepare(:info, {:netman_event, _, {:removed, _}}, data) do
     transition(data, :prepare, :unavailable)
+  end
+
+  def prepare(:cast, {:update_profile, new_profile}, data) do
+    if methods_changed?(data.profile, new_profile) do
+      Logger.info("Profile #{data.profile.id} method changed during prepare, restarting")
+
+      transition(%{data | profile: new_profile, reactivate: true}, :prepare, :deactivating, [
+        {:next_event, :internal, :cleanup},
+        {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+      ])
+    else
+      {:keep_state, %{data | profile: new_profile}}
+    end
   end
 
   def prepare(:cast, :deactivate, data) do
@@ -410,6 +427,20 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(%{data | ip_check_retries: 0}, :ip_check, :unavailable)
   end
 
+  def ip_check(:cast, {:update_profile, new_profile}, data) do
+    if methods_changed?(data.profile, new_profile) do
+      Logger.info("Profile #{data.profile.id} method changed during ip_check, restarting")
+      release_dhcp(data)
+
+      transition(%{data | profile: new_profile, ip_check_retries: 0, reactivate: true}, :ip_check, :deactivating, [
+        {:next_event, :internal, :cleanup},
+        {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+      ])
+    else
+      {:keep_state, %{data | profile: new_profile}}
+    end
+  end
+
   def ip_check(:cast, :deactivate, data) do
     transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -545,6 +576,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     end
   end
 
+  def deactivating(:cast, {:update_profile, new_profile}, data) do
+    {:keep_state, %{data | profile: new_profile}}
+  end
+
   def deactivating(:state_timeout, :cleanup_timeout, data) do
     Logger.warning(
       "Deactivation timed out for #{data.interface}, forcing transition to disconnected"
@@ -572,6 +607,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     data = %{data | error: nil, dhcp_retries: 0, ip_check_retries: 0}
 
     transition(data, :failed, :disconnected, [{:next_event, :internal, :auto_activate}])
+  end
+
+  def failed(:cast, {:update_profile, new_profile}, data) do
+    {:keep_state, %{data | profile: new_profile}}
   end
 
   def failed(:cast, :deactivate, data) do

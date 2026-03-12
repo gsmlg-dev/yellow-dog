@@ -56,7 +56,7 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 787+ tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 794+ tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
@@ -87,4 +87,4 @@ cd apps/yellow_dog_netman && mix credo --strict
 - ReconciliationEngine intercepts profile events and pushes new profile to FSM via `FSM.update_profile/2`
 - Non-method changes (DNS, priority, MTU): applied in-place, DNS re-pushed
 - IP method changes (e.g., auto→manual): FSM deactivates then re-activates with new config
-- FSM `update_profile` handler exists in `:disconnected`, `:configuring`, and `:activated` states
+- FSM `update_profile` handler exists in ALL states — caches profile immediately, method changes trigger reactivation in active states
