@@ -120,6 +120,51 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     assert config.search == ["corp.example.com", "internal.local"]
   end
 
+  test "push_dns re-pushes DNS on DHCP lease renewal", %{iface: iface} do
+    profile = %Profile{
+      id: "dns-push-#{iface}",
+      type: :ethernet,
+      interface: iface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :manual,
+        address: "10.70.0.40/24",
+        gateway: "10.70.0.1",
+        dns: ["8.8.8.8"]
+      },
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    MockNetlink.link_up(iface, carrier: true)
+    Process.sleep(50)
+
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    MockNetlink.address_added(iface, "10.70.0.40/24")
+
+    # Wait for initial push_dns on activation
+    assert_receive {:resolved_set_link_dns, ^iface, _config}, 5_000
+
+    # Simulate DHCP lease renewal with updated DNS servers
+    send(
+      pid,
+      {:dhcp_lease_renewed,
+       %{
+         ip: "10.70.0.40",
+         server: "10.70.0.1",
+         lease_time_s: 7200,
+         dns_servers: ["1.1.1.1", "9.9.9.9"]
+       }}
+    )
+
+    # push_dns should be called again with the renewed data
+    assert_receive {:resolved_set_link_dns, ^iface, _renewed_config}, 5_000
+  end
+
   test "reset_dns calls YellowDog.Resolved.reset_link_dns on deactivation", %{iface: iface} do
     profile = %Profile{
       id: "dns-push-#{iface}",

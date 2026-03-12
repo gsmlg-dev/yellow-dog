@@ -510,7 +510,10 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def activated(:info, {:dhcp_lease_renewed, lease}, data) do
     emit_dhcp_event(data, :lease_renewed, %{lease: lease})
-    {:keep_state, %{data | lease: lease}}
+    data = %{data | lease: lease}
+    # Re-push DNS in case the DHCP server provided updated servers on renewal
+    push_dns(data)
+    {:keep_state, data}
   end
 
   def activated(:info, {:dhcp_lease_expired, reason}, data) do
