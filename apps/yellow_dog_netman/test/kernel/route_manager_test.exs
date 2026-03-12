@@ -347,4 +347,45 @@ defmodule YellowDog.Netman.Kernel.RouteManagerTest do
 
     assert result == :ok or match?({:error, _}, result)
   end
+
+  test "0.0.0.0/0 destination is normalized to 'default' for consistent keys" do
+    iface = "test_rt_norm_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "0.0.0.0/0",
+      gateway: "10.50.0.1",
+      interface: iface,
+      metric: 100
+    )
+
+    Process.sleep(50)
+
+    routes = RouteManager.get_routes(iface)
+    assert Enum.any?(routes, &(&1.destination == "default" and &1.gateway == "10.50.0.1"))
+    refute Enum.any?(routes, &(&1.destination == "0.0.0.0/0"))
+  end
+
+  test "route added as 0.0.0.0/0 can be removed as 0.0.0.0/0 (normalized keys match)" do
+    iface = "test_rt_normdel_#{:rand.uniform(65535)}"
+
+    MockNetlink.route_added(
+      destination: "0.0.0.0/0",
+      gateway: "10.51.0.1",
+      interface: iface,
+      metric: 100
+    )
+
+    Process.sleep(50)
+    assert Enum.any?(RouteManager.get_routes(iface), &(&1.gateway == "10.51.0.1"))
+
+    # Remove with same destination — normalized key should match
+    MockNetlink.route_removed(
+      destination: "0.0.0.0/0",
+      gateway: "10.51.0.1",
+      interface: iface
+    )
+
+    Process.sleep(50)
+    refute Enum.any?(RouteManager.get_routes(iface), &(&1.gateway == "10.51.0.1"))
+  end
 end

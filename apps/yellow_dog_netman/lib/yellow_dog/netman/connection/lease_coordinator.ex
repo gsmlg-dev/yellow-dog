@@ -90,7 +90,7 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinator do
         send(pid, message)
 
       [] ->
-        Logger.debug(
+        Logger.warning(
           "LeaseCoordinator: no FSM for interface #{interface}, dropping #{inspect(elem(message, 0))}"
         )
     end

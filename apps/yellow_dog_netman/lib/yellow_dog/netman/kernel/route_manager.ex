@@ -160,7 +160,7 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
 
   defp parse_route(event) do
     %{
-      destination: Map.get(event, "destination", "default"),
+      destination: normalize_destination(Map.get(event, "destination", "default")),
       gateway: Map.get(event, "gateway"),
       interface: Map.get(event, "interface", ""),
       metric: Map.get(event, "metric", 0),
@@ -170,6 +170,12 @@ defmodule YellowDog.Netman.Kernel.RouteManager do
       scope: parse_scope(Map.get(event, "scope", "universe"))
     }
   end
+
+  # Normalize route destinations so "0.0.0.0/0" and "::/0" match "default"
+  # when used as ETS keys (prevents stale entries from key mismatch on delete)
+  defp normalize_destination("0.0.0.0/0"), do: "default"
+  defp normalize_destination("::/0"), do: "default"
+  defp normalize_destination(dest), do: dest
 
   defp parse_family("inet"), do: :inet
   defp parse_family("inet6"), do: :inet6
