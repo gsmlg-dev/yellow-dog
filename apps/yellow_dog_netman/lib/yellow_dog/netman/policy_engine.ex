@@ -33,7 +33,10 @@ defmodule YellowDog.Netman.PolicyEngine do
     [best | _] =
       Enum.sort_by(active_connections, &{-effective_priority(&1), &1[:profile_id] || &1[:id]})
 
-    {:ok, best[:profile_id] || best[:id]}
+    case best[:profile_id] || best[:id] do
+      nil -> :none
+      id -> {:ok, id}
+    end
   end
 
   @doc """

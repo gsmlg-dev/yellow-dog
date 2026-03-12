@@ -79,6 +79,11 @@ defmodule YellowDog.Netman.PolicyEngineTest do
       # Alphabetically first ID wins
       assert {:ok, "alpha"} = PolicyEngine.default_route(connections_order1)
     end
+
+    test "returns :none when connections have no profile_id or id" do
+      connections = [%{type: :ethernet, autoconnect_priority: 0}]
+      assert PolicyEngine.default_route(connections) == :none
+    end
   end
 
   describe "route_metrics/1" do
