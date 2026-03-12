@@ -812,13 +812,21 @@ defmodule YellowDog.Netman.Connection.FSM do
   defp install_ipv4_route(data, metric) do
     case data.profile.ipv4 do
       %{gateway: gw} when is_binary(gw) ->
-        RouteManager.add_route(%{
-          destination: "default",
-          gateway: gw,
-          interface: data.interface,
-          metric: metric,
-          family: :inet
-        })
+        case RouteManager.add_route(%{
+               destination: "default",
+               gateway: gw,
+               interface: data.interface,
+               metric: metric,
+               family: :inet
+             }) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to install IPv4 route on #{data.interface}: #{inspect(reason)}"
+            )
+        end
 
       _ ->
         :ok
@@ -828,13 +836,21 @@ defmodule YellowDog.Netman.Connection.FSM do
   defp install_ipv6_route(data, metric) do
     case data.profile.ipv6 do
       %{gateway: gw} when is_binary(gw) ->
-        RouteManager.add_route(%{
-          destination: "default",
-          gateway: gw,
-          interface: data.interface,
-          metric: metric,
-          family: :inet6
-        })
+        case RouteManager.add_route(%{
+               destination: "default",
+               gateway: gw,
+               interface: data.interface,
+               metric: metric,
+               family: :inet6
+             }) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to install IPv6 route on #{data.interface}: #{inspect(reason)}"
+            )
+        end
 
       _ ->
         :ok
@@ -885,16 +901,21 @@ defmodule YellowDog.Netman.Connection.FSM do
     servers = profile_servers ++ lease_dns
     servers = Enum.uniq(servers)
 
-    if servers != [] and Code.ensure_loaded?(YellowDog.Resolved) do
+    if Code.ensure_loaded?(YellowDog.Resolved) do
       try do
-        apply(YellowDog.Resolved, :set_link_dns, [
-          data.interface,
-          %{
-            servers: servers,
-            search: collect_dns_search(data),
-            priority: data.profile.autoconnect_priority
-          }
-        ])
+        if servers != [] do
+          apply(YellowDog.Resolved, :set_link_dns, [
+            data.interface,
+            %{
+              servers: servers,
+              search: collect_dns_search(data),
+              priority: data.profile.autoconnect_priority
+            }
+          ])
+        else
+          # No DNS servers — clear any previously configured DNS for this link
+          apply(YellowDog.Resolved, :reset_link_dns, [data.interface])
+        end
       rescue
         e ->
           Logger.warning("Failed to push DNS for #{data.interface}: #{inspect(e)}")
