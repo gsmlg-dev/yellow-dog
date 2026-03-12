@@ -496,8 +496,16 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Try to allocate/renew lease
     case LeaseManager.allocate_lease(request.chaddr, requested_ip, hostname, "default", client_id) do
       {:ok, lease} ->
-        ack = build_dhcp_ack(request, lease)
-        {:ok, ack}
+        # RFC 2131 §4.3.2: for RENEWING/REBINDING, if the server's binding has a different
+        # IP than the client's ciaddr, the binding is inconsistent — send DHCPNAK.
+        # This also guards SELECTING: if the allocated IP differs from the requested IP,
+        # NAK instead of silently assigning a different address.
+        if requested_ip != nil and lease.ip_address != requested_ip do
+          {:nak, "Binding mismatch"}
+        else
+          ack = build_dhcp_ack(request, lease)
+          {:ok, ack}
+        end
 
       {:error, :pool_exhausted} ->
         :telemetry.execute(
