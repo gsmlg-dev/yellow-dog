@@ -192,6 +192,11 @@ defmodule YellowDog.Netman.ProfileStore do
   @impl true
   def terminate(_reason, state) do
     if state.debounce_ref, do: Process.cancel_timer(state.debounce_ref)
+
+    if state.watcher_pid && Process.alive?(state.watcher_pid) do
+      GenServer.stop(state.watcher_pid, :normal, 1_000)
+    end
+
     :ok
   end
 
