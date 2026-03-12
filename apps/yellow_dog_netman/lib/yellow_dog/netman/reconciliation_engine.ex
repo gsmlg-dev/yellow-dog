@@ -402,7 +402,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
           connection_active?(conn.interface),
           conn.ipv4.method == :manual,
           conn.ipv4[:gateway] != nil,
-          not route_present?(observed.routes, "default", conn.ipv4.gateway) do
+          not route_present?(observed.routes, "default", conn.ipv4.gateway, conn.interface) do
         metric =
           PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
 
@@ -425,7 +425,7 @@ defmodule YellowDog.Netman.ReconciliationEngine do
           connection_active?(conn.interface),
           conn.ipv6.method == :manual,
           conn.ipv6[:gateway] != nil,
-          not route_present?(observed.routes, "default", conn.ipv6.gateway) do
+          not route_present?(observed.routes, "default", conn.ipv6.gateway, conn.interface) do
         metric =
           PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
 
@@ -446,9 +446,9 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     ipv4_diffs ++ ipv6_diffs
   end
 
-  defp route_present?(routes, destination, gateway) do
+  defp route_present?(routes, destination, gateway, interface) do
     Enum.any?(routes, fn r ->
-      r.destination == destination and r.gateway == gateway
+      r.destination == destination and r.gateway == gateway and r.interface == interface
     end)
   end
 

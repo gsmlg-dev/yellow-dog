@@ -1979,6 +1979,110 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       ProfileStore.delete(profile_id)
       MockNetlink.link_removed(iface)
     end
+
+    test "diff generates :add_route per-interface even with same gateway" do
+      iface1 = "route_if1_#{:rand.uniform(65535)}"
+      iface2 = "route_if2_#{:rand.uniform(65535)}"
+      pid1 = "route-if1-#{iface1}"
+      pid2 = "route-if2-#{iface2}"
+
+      for {iface, pid, addr} <- [{iface1, pid1, "10.55.1.1/24"}, {iface2, pid2, "10.55.2.1/24"}] do
+        profile = %Profile{
+          id: pid,
+          type: :ethernet,
+          interface: iface,
+          autoconnect: true,
+          autoconnect_priority: 100,
+          ethernet: %{mtu: nil},
+          ipv4: %{method: :manual, address: addr, gateway: "10.55.0.1", dns: []},
+          ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        }
+
+        MockNetlink.link_up(iface, carrier: true)
+        ProfileStore.put(pid, profile)
+        Process.sleep(50)
+
+        {:ok, _} =
+          Connection.Supervisor.start_connection(iface, %{
+            profile
+            | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
+          })
+      end
+
+      Process.sleep(100)
+
+      desired = %DesiredState{
+        connections: %{
+          pid1 => %{
+            profile_id: pid1,
+            interface: iface1,
+            ipv4: %{method: :manual, address: "10.55.1.1/24", gateway: "10.55.0.1", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          },
+          pid2 => %{
+            profile_id: pid2,
+            interface: iface2,
+            ipv4: %{method: :manual, address: "10.55.2.1/24", gateway: "10.55.0.1", dns: []},
+            ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []},
+            mtu: nil,
+            priority: 100,
+            dns: []
+          }
+        }
+      }
+
+      # Only iface1 has the route — iface2 should still get one
+      observed = %ObservedState{
+        links: %{
+          iface1 => %{
+            interface: iface1,
+            index: 1,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          },
+          iface2 => %{
+            interface: iface2,
+            index: 2,
+            state: :up,
+            carrier: true,
+            mtu: 1500,
+            mac: nil,
+            kind: nil
+          }
+        },
+        addresses: %{},
+        routes: [
+          %{
+            destination: "default",
+            gateway: "10.55.0.1",
+            interface: iface1,
+            metric: 900,
+            table: 254,
+            protocol: :static,
+            scope: :global
+          }
+        ]
+      }
+
+      diffs = ReconciliationEngine.diff(desired, observed)
+      route_diffs = Enum.filter(diffs, &(&1.action == :add_route))
+
+      # iface1 already has the route; iface2 should get one
+      assert length(route_diffs) == 1
+      assert hd(route_diffs).interface == iface2
+
+      for {iface, pid} <- [{iface1, pid1}, {iface2, pid2}] do
+        Connection.Supervisor.stop_connection(iface)
+        ProfileStore.delete(pid)
+        MockNetlink.link_removed(iface)
+      end
+    end
   end
 
   describe "link state drift detection" do
