@@ -56,8 +56,8 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 794+ tests + 2055 properties (~25 min)
-cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
+cd apps/yellow_dog_netman && mix test     # 819+ tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~2 min)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
 
@@ -72,7 +72,9 @@ cd apps/yellow_dog_netman && mix credo --strict
 ## Profile Features
 
 - DNS search domains: `ipv4.dns_search` / `ipv6.dns_search` in TOML profiles
-- Search domains flow through DesiredState → ReconciliationEngine DNS diffs → FSM push_dns → Resolved
+- Search domains flow through DesiredState → FSM push_dns → Resolved (FSM is authoritative DNS source, not ReconciliationEngine)
+- FSM `push_dns` merges profile DNS + DHCP lease DNS servers, parses strings to IP tuples
+- Empty DNS server list triggers `reset_link_dns` to clear stale Resolved config
 
 ## IPv6 SLAAC Handling
 
@@ -83,7 +85,7 @@ cd apps/yellow_dog_netman && mix credo --strict
 
 ## Profile Hot-Reload
 
-- ProfileStore watches TOML files (200ms debounce) → publishes `:reloaded` event
+- ProfileStore watches TOML files (200ms debounce) → publishes `:reloaded` event; tracks path→ID mapping to clean up stale entries when profile ID changes
 - ReconciliationEngine intercepts profile events and pushes new profile to FSM via `FSM.update_profile/2`
 - Non-method changes (DNS, priority, MTU): applied in-place, DNS re-pushed
 - IP method changes (e.g., auto→manual): FSM deactivates then re-activates with new config
