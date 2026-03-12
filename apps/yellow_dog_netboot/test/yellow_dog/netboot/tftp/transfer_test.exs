@@ -72,15 +72,25 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       :gen_udp.close(listener)
     end
 
-    test "fails to start with non-existent file" do
+    test "fails to start with non-existent file and sends ERROR to client" do
+      # Use a real listener so we can verify the ERROR packet arrives
+      {:ok, listener} = :gen_udp.open(0, [:binary, active: false])
+      {:ok, listener_port} = :inet.port(listener)
+
       args = [
         client_addr: @client_addr,
-        client_port: @client_port,
+        client_port: listener_port,
         file_path: "/nonexistent/file.txt",
         block_size: 512
       ]
 
       assert {:stop, {:file_error, :enoent}} = Transfer.init(args)
+
+      # RFC 1350 §4: client must receive an ERROR packet (code 1 = File not found)
+      {:ok, {_addr, _port, packet}} = :gen_udp.recv(listener, 0, 1000)
+      assert {:ok, {:error, 1, _msg}} = Protocol.decode(packet)
+
+      :gen_udp.close(listener)
     end
 
     test "sends first data block when no options", %{file_path: file_path} do
@@ -140,8 +150,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       ack_packet = Protocol.encode({:ack, 1})
       :gen_udp.send(listener, @client_addr, port, ack_packet)
 
-      # Simulate receiving the ACK
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving the ACK — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:stop, :normal, _state} = Transfer.handle_info(msg, state)
     end
 
@@ -150,8 +160,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       ack_packet = Protocol.encode({:ack, 99})
       :gen_udp.send(listener, @client_addr, port, ack_packet)
 
-      # Simulate receiving the wrong ACK
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving the wrong ACK — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:noreply, _state, 30_000} = Transfer.handle_info(msg, state)
     end
 
@@ -170,15 +180,15 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
 
       {:ok, state, _timeout} = Transfer.init(args)
 
-      # Consume OACK
-      {:ok, {_addr, port, _packet}} = :gen_udp.recv(listener, 0, 1000)
+      # Consume OACK — capture server_port (transfer socket's ephemeral port)
+      {:ok, {_addr, server_port, _packet}} = :gen_udp.recv(listener, 0, 1000)
 
-      # Send ACK 0
+      # Send ACK 0 to the transfer socket
       ack_packet = Protocol.encode({:ack, 0})
-      :gen_udp.send(listener, @client_addr, port, ack_packet)
+      :gen_udp.send(listener, @client_addr, server_port, ack_packet)
 
-      # Simulate receiving ACK 0
-      msg = {:udp, state.socket, @client_addr, port, ack_packet}
+      # Simulate receiving ACK 0 — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, ack_packet}
       assert {:noreply, new_state, 30_000} = Transfer.handle_info(msg, state)
       assert new_state.current_block == 1
       assert new_state.retries == 0
@@ -198,8 +208,8 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       error_packet = Protocol.encode({:error, 1, "Client error"})
       :gen_udp.send(listener, @client_addr, port, error_packet)
 
-      # Simulate receiving the ERROR
-      msg = {:udp, state.socket, @client_addr, port, error_packet}
+      # Simulate receiving the ERROR — source port must be state.client_port (RFC 1350 §5 TID check)
+      msg = {:udp, state.socket, @client_addr, state.client_port, error_packet}
 
       assert {:stop, {:client_error, 1, "Client error"}, _state} =
                Transfer.handle_info(msg, state)
@@ -274,6 +284,41 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
     end
   end
 
+  describe "handle_info/2 - OACK timeout retry" do
+    test "timeout during OACK wait retransmits OACK (not a DATA block)", %{file_path: file_path} do
+      {:ok, listener} = :gen_udp.open(0, [:binary, active: false])
+      {:ok, listener_port} = :inet.port(listener)
+
+      args = [
+        client_addr: @client_addr,
+        client_port: listener_port,
+        file_path: file_path,
+        block_size: 512,
+        options: %{"blksize" => "512"}
+      ]
+
+      {:ok, state, _timeout} = Transfer.init(args)
+      assert state.current_block == 0
+
+      # Consume initial OACK
+      {:ok, {_addr, _port, initial_oack}} = :gen_udp.recv(listener, 0, 1000)
+      {:ok, {:oack, _}} = Protocol.decode(initial_oack)
+
+      # Simulate timeout while waiting for ACK 0 — must NOT crash (previous bug:
+      # send_next_block with current_block=0 computed negative offset for binary_part)
+      assert {:noreply, new_state, 30_000} = Transfer.handle_info(:timeout, state)
+      assert new_state.retries == 1
+
+      # Must resend OACK, not a DATA block
+      {:ok, {_addr, _port, retransmit}} = :gen_udp.recv(listener, 0, 1000)
+      assert {:ok, {:oack, opts}} = Protocol.decode(retransmit)
+      assert opts["blksize"] == "512"
+
+      :gen_udp.close(state.socket)
+      :gen_udp.close(listener)
+    end
+  end
+
   describe "multi-block transfer" do
     test "transfers file larger than block size" do
       # Create large file (1.5 blocks)
@@ -294,15 +339,15 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
 
       {:ok, state, _timeout} = Transfer.init(args)
 
-      # Receive block 1
-      {:ok, {_addr, port, packet1}} = :gen_udp.recv(listener, 0, 1000)
+      # Receive block 1 — capture server_port (transfer socket's ephemeral port)
+      {:ok, {_addr, server_port, packet1}} = :gen_udp.recv(listener, 0, 1000)
       {:ok, {:data, 1, data1}} = Protocol.decode(packet1)
       assert byte_size(data1) == 512
 
-      # Send ACK for block 1
+      # Send ACK for block 1 to the transfer socket; simulate as coming from client_port (RFC 1350 §5)
       ack1 = Protocol.encode({:ack, 1})
-      :gen_udp.send(listener, @client_addr, port, ack1)
-      msg1 = {:udp, state.socket, @client_addr, port, ack1}
+      :gen_udp.send(listener, @client_addr, server_port, ack1)
+      msg1 = {:udp, state.socket, @client_addr, state.client_port, ack1}
       {:noreply, state2, _} = Transfer.handle_info(msg1, state)
 
       # Receive block 2 (last block, smaller)
@@ -310,10 +355,10 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       {:ok, {:data, 2, data2}} = Protocol.decode(packet2)
       assert byte_size(data2) == 256
 
-      # Send ACK for block 2 - should complete transfer
+      # Send ACK for block 2 to the transfer socket; simulate as coming from client_port
       ack2 = Protocol.encode({:ack, 2})
-      :gen_udp.send(listener, @client_addr, port, ack2)
-      msg2 = {:udp, state2.socket, @client_addr, port, ack2}
+      :gen_udp.send(listener, @client_addr, server_port, ack2)
+      msg2 = {:udp, state2.socket, @client_addr, state2.client_port, ack2}
       assert {:stop, :normal, _} = Transfer.handle_info(msg2, state2)
 
       # Verify full content
@@ -323,6 +368,42 @@ defmodule YellowDog.Netboot.TFTP.TransferTest do
       :gen_udp.close(state.socket)
       :gen_udp.close(listener)
       File.rm(file_path)
+    end
+  end
+
+  describe "block number rollover" do
+    test "ACK 0 is accepted when current_block has rolled over past 65535", %{
+      file_path: file_path
+    } do
+      # Construct state as if we just sent block 65536 (wire block 0)
+      {:ok, state, _} =
+        Transfer.init(
+          client_addr: @client_addr,
+          client_port: @client_port,
+          file_path: file_path,
+          block_size: 512
+        )
+
+      state = %{state | current_block: 65536}
+
+      # Client sends ACK 0 (which is the wire representation of logical block 65536)
+      ack_packet = Protocol.encode({:ack, 0})
+      msg = {:udp, state.socket, @client_addr, @client_port, ack_packet}
+
+      # Must be accepted — transfer_complete? is true for this tiny file,
+      # so we expect {:stop, :normal, _} rather than an ignored noreply
+      assert {:stop, :normal, _new_state} = Transfer.handle_info(msg, state)
+
+      :gen_udp.close(state.socket)
+    end
+
+    test "wire block number wraps to 0 when logical block is 65536", _ctx do
+      # Verify Protocol.encode uses rem-wrapped block, not raw logical block
+      # encode({:data, 65536, data}) must produce the same bytes as encode({:data, 0, data})
+      data = "x"
+      packet_0 = Protocol.encode({:data, 0, data})
+      packet_overflow = Protocol.encode({:data, 65536, data})
+      assert packet_0 == packet_overflow
     end
   end
 

@@ -82,7 +82,8 @@ defmodule YellowDog.Dhcpv4.OptionParser do
           %{acc | message_type: decode_message_type(option.value)}
 
         @opt_hostname ->
-          %{acc | hostname: option.value}
+          # RFC 2132 §3.14: some clients include a null terminator; strip it.
+          %{acc | hostname: String.trim_trailing(option.value, <<0>>)}
 
         @opt_client_id ->
           %{acc | client_id: option.value}

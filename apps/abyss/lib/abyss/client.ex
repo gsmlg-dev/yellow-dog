@@ -140,17 +140,22 @@ defmodule Abyss.Client do
     socket_opts = [:binary, {:active, false} | build_socket_opts(opts, _broadcast = false)]
 
     result =
-      with {:ok, socket} <- :gen_udp.open(0, socket_opts),
-           :ok <- :gen_udp.send(socket, host, port, packet),
-           {:ok, {_from_ip, _from_port, response}} <- :gen_udp.recv(socket, 0, timeout) do
-        :gen_udp.close(socket)
-        {:ok, response}
-      else
+      case :gen_udp.open(0, socket_opts) do
+        {:ok, socket} ->
+          try do
+            with :ok <- :gen_udp.send(socket, host, port, packet),
+                 {:ok, {_from_ip, _from_port, response}} <- :gen_udp.recv(socket, 0, timeout) do
+              {:ok, response}
+            else
+              {:error, _reason} = error -> error
+              other -> {:error, other}
+            end
+          after
+            :gen_udp.close(socket)
+          end
+
         {:error, _reason} = error ->
           error
-
-        other ->
-          {:error, other}
       end
 
     emit_send_recv_telemetry(result, start_time, metadata)
@@ -215,11 +220,23 @@ defmodule Abyss.Client do
     ]
 
     result =
-      with {:ok, socket} <- :gen_udp.open(port, socket_opts),
-           :ok <- maybe_join_multicast(socket, broadcast_addr, opts) do
-        packets = collect_responses(socket, timeout, [])
-        :gen_udp.close(socket)
-        {:ok, packets}
+      case :gen_udp.open(port, socket_opts) do
+        {:ok, socket} ->
+          try do
+            case maybe_join_multicast(socket, broadcast_addr, opts) do
+              :ok ->
+                packets = collect_responses(socket, timeout, [])
+                {:ok, packets}
+
+              {:error, _reason} = error ->
+                error
+            end
+          after
+            :gen_udp.close(socket)
+          end
+
+        {:error, _reason} = error ->
+          error
       end
 
     emit_subscribe_telemetry(result, start_time, metadata)

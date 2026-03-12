@@ -11,13 +11,14 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   use Abyss.Handler
 
+  import Bitwise, only: [&&&: 2]
+
   require Logger
 
   alias YellowDog.Dhcpv4.{
     ACL,
     ConflictResolver,
     CustomOptions,
-    Ipv4Util,
     LeaseManager,
     OptionParser,
     RateLimiter
@@ -196,15 +197,11 @@ defmodule YellowDog.Dhcpv4.Handler do
           %{client_mac: message.chaddr, reason: reason}
         )
 
-        # Don't send a response - silently ignore denied clients
-        :ok
+      # Don't send a response - silently drop denied clients (RFC 2131 §3.2)
 
       {:allow, target_pool} ->
-        # Determine pool name from ACL or default
         pool_name = target_pool || "default"
 
-        # Generate a DHCPOFFER response (no custom option set for allow action)
-        # Pass pre-parsed options for efficiency
         case create_dhcp_offer(message, parsed_opts, pool_name, nil) do
           nil ->
             :telemetry.execute(
@@ -217,9 +214,13 @@ defmodule YellowDog.Dhcpv4.Handler do
             send_dhcp_response(offer, client_ip, client_port, state)
         end
 
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :discover_handled],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+
       {:custom_options, option_set_name} ->
-        # Apply custom options and allow the request
-        # Pass pre-parsed options for efficiency
         case create_dhcp_offer(message, parsed_opts, "default", option_set_name) do
           nil ->
             :telemetry.execute(
@@ -231,14 +232,13 @@ defmodule YellowDog.Dhcpv4.Handler do
           offer ->
             send_dhcp_response(offer, client_ip, client_port, state)
         end
-    end
 
-    # Emit telemetry event
-    :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :discover_handled],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
-      %{client_ip: client_ip, client_mac: message.chaddr}
-    )
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :discover_handled],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+    end
 
     {:continue, state}
   end
@@ -258,7 +258,7 @@ defmodule YellowDog.Dhcpv4.Handler do
       }
     )
 
-    # Generate a DHCPACK or DHCPNAK response based on state (using pre-parsed options)
+    # Generate a DHCPACK, DHCPNAK, or silent discard based on state (using pre-parsed options)
     case create_dhcp_ack(message, parsed_opts, client_ip, request_state) do
       {:ok, ack} ->
         send_dhcp_response(ack, client_ip, client_port, state)
@@ -278,6 +278,10 @@ defmodule YellowDog.Dhcpv4.Handler do
 
         nak = build_dhcp_nak(message, reason)
         send_dhcp_response(nak, client_ip, client_port, state)
+
+      :discard ->
+        # RFC 2131 §4.3.2: silently discard — no response sent
+        :ok
     end
 
     {:continue, state}
@@ -326,14 +330,34 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp handle_dhcp_release(message, client_ip, _client_port, state, start_time) do
-    :telemetry.execute(
-      [:yellow_dog, :dhcpv4, :lease, :released],
-      %{duration: System.monotonic_time(:microsecond) - start_time},
-      %{client_ip: client_ip, client_mac: message.chaddr}
-    )
+    # RFC 2131 §4.4.3: validate ciaddr against the allocated lease before releasing.
+    # If ciaddr is non-zero and does not match the allocated IP, silently ignore.
+    # ciaddr is stored as an IP tuple by ex_dhcp; treat {0,0,0,0} as "not supplied".
+    ciaddr =
+      if message.ciaddr == {0, 0, 0, 0}, do: nil, else: message.ciaddr
 
-    # Release the lease for this MAC address
-    LeaseManager.release_lease(message.chaddr)
+    case LeaseManager.get_lease(message.chaddr) do
+      {:ok, lease} when ciaddr != nil and lease.ip_address != ciaddr ->
+        Logger.warning(
+          "[DHCPv4] RELEASE from #{inspect(message.chaddr)} ciaddr=#{inspect(ciaddr)} " <>
+            "does not match allocated #{inspect(lease.ip_address)} — ignoring"
+        )
+
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :release_ignored],
+          %{count: 1},
+          %{client_ip: client_ip, client_mac: message.chaddr, reason: "ciaddr_mismatch"}
+        )
+
+      _ ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv4, :lease, :released],
+          %{duration: System.monotonic_time(:microsecond) - start_time},
+          %{client_ip: client_ip, client_mac: message.chaddr}
+        )
+
+        LeaseManager.release_lease(message.chaddr)
+    end
 
     {:continue, state}
   end
@@ -418,10 +442,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: discover.hlen,
       xid: discover.xid,
       flags: discover.flags,
-      ciaddr: 0,
-      yiaddr: ip_tuple_to_integer(lease.ip_address),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(discover.giaddr),
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: lease.ip_address,
+      siaddr: pool.gateway,
+      giaddr: discover.giaddr,
       chaddr: discover.chaddr,
       options: build_dhcp_options(2, pool, lease, context, option_set_name)
     })
@@ -437,12 +461,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     requested_ip =
       case request_state do
         :renewing ->
-          # For RENEWING, use ciaddr (client's current IP)
-          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
+          # For RENEWING, use ciaddr (client's current IP — already a tuple from parser)
+          if(request.ciaddr == {0, 0, 0, 0}, do: nil, else: request.ciaddr)
 
         :rebinding ->
-          # For REBINDING, use ciaddr (client's current IP)
-          if(request.ciaddr == 0, do: nil, else: Ipv4Util.from_integer(request.ciaddr))
+          # For REBINDING, use ciaddr (client's current IP — already a tuple from parser)
+          if(request.ciaddr == {0, 0, 0, 0}, do: nil, else: request.ciaddr)
 
         _ ->
           # For SELECTING and INIT-REBOOT, use pre-parsed Requested IP Address
@@ -457,14 +481,14 @@ defmodule YellowDog.Dhcpv4.Handler do
         allocate_and_respond(request, requested_ip, hostname, client_id)
 
       {:error, :wrong_server} ->
-        # Client is requesting from a different server, silently ignore
+        # RFC 2131 §4.3.2: must silently discard — do NOT send NAK
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :request, :ignored],
           %{count: 1},
           %{client_mac: request.chaddr, reason: "non-matching server identifier"}
         )
 
-        {:nak, "Wrong server identifier"}
+        :discard
     end
   end
 
@@ -472,8 +496,16 @@ defmodule YellowDog.Dhcpv4.Handler do
     # Try to allocate/renew lease
     case LeaseManager.allocate_lease(request.chaddr, requested_ip, hostname, "default", client_id) do
       {:ok, lease} ->
-        ack = build_dhcp_ack(request, lease)
-        {:ok, ack}
+        # RFC 2131 §4.3.2: for RENEWING/REBINDING, if the server's binding has a different
+        # IP than the client's ciaddr, the binding is inconsistent — send DHCPNAK.
+        # This also guards SELECTING: if the allocated IP differs from the requested IP,
+        # NAK instead of silently assigning a different address.
+        if requested_ip != nil and lease.ip_address != requested_ip do
+          {:nak, "Binding mismatch"}
+        else
+          ack = build_dhcp_ack(request, lease)
+          {:ok, ack}
+        end
 
       {:error, :pool_exhausted} ->
         :telemetry.execute(
@@ -523,18 +555,18 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: request.hlen,
       xid: request.xid,
       flags: request.flags,
-      ciaddr: ip_tuple_to_integer(request.ciaddr),
-      yiaddr: ip_tuple_to_integer(lease.ip_address),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(request.giaddr),
+      ciaddr: request.ciaddr,
+      yiaddr: lease.ip_address,
+      siaddr: pool.gateway,
+      giaddr: request.giaddr,
       chaddr: request.chaddr,
       options: build_dhcp_options(5, pool, lease, context)
     })
   end
 
   defp build_dhcp_nak(request, reason) do
-    # Get default pool for server identifier
-    pool = get_default_pool()
+    # Get pool for server identifier
+    pool = get_fallback_pool()
 
     # Build DHCPNAK message according to RFC 2131
     # RFC 2131: ciaddr, yiaddr, siaddr, and giaddr are set to 0
@@ -544,10 +576,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       hlen: request.hlen,
       xid: request.xid,
       flags: request.flags,
-      ciaddr: 0,
-      yiaddr: 0,
-      siaddr: 0,
-      giaddr: 0,
+      ciaddr: {0, 0, 0, 0},
+      yiaddr: {0, 0, 0, 0},
+      siaddr: {0, 0, 0, 0},
+      giaddr: {0, 0, 0, 0},
       chaddr: request.chaddr,
       options: build_dhcp_nak_options(pool, reason)
     })
@@ -589,7 +621,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     case LeaseManager.list_leases() do
       [] ->
         # No leases, use default pool
-        pool = get_default_pool()
+        pool = get_fallback_pool()
         build_dhcp_ack_inform(inform, client_ip, pool)
 
       [lease | _] ->
@@ -600,15 +632,19 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp build_dhcp_ack_inform(inform, client_ip, pool) do
+    dns_servers_binary = encode_dns_servers(pool.dns_servers)
+
     Map.merge(DHCPv4.Message.new(), %{
       op: 2,
       htype: inform.htype,
       hlen: inform.hlen,
       xid: inform.xid,
       flags: inform.flags,
-      ciaddr: ip_tuple_to_integer(client_ip),
-      siaddr: ip_tuple_to_integer(pool.gateway),
-      giaddr: ip_tuple_to_integer(inform.giaddr),
+      # RFC 2131 §4.3.5: unicast ACK to the address in ciaddr; fall back to
+      # the UDP source address only when ciaddr is zero (direct-on-link client).
+      ciaddr: if(inform.ciaddr != {0, 0, 0, 0}, do: inform.ciaddr, else: client_ip),
+      siaddr: pool.gateway,
+      giaddr: inform.giaddr,
       chaddr: inform.chaddr,
       options: [
         # DHCPACK = 5
@@ -619,33 +655,63 @@ defmodule YellowDog.Dhcpv4.Handler do
         %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
         # router
         %DHCPv4.Message.Option{type: 3, length: 4, value: ip_to_binary(pool.gateway)},
-        # DNS servers
-        %DHCPv4.Message.Option{type: 6, length: 4, value: encode_dns_servers(pool.dns_servers)},
+        # DNS servers — length must match encoded byte count (4 bytes per server)
+        %DHCPv4.Message.Option{
+          type: 6,
+          length: byte_size(dns_servers_binary),
+          value: dns_servers_binary
+        },
         # :end
         %DHCPv4.Message.Option{type: 255, length: 0, value: <<>>}
       ]
     })
   end
 
-  defp send_dhcp_response(response, client_ip, client_port, state) do
+  defp send_dhcp_response(response, _client_ip, _client_port, state) do
     data = DHCP.Parameter.to_iodata(response)
 
-    # Send response to client (port 67 for broadcast, 68 for unicast)
-    response_port = if client_port == 67, do: 68, else: client_port
+    # RFC 2131 §4.1: determine destination based on giaddr, ciaddr, yiaddr, and broadcast flag.
+    zero_ip = {0, 0, 0, 0}
 
-    case Abyss.Transport.UDP.send(state.socket, client_ip, response_port, data) do
+    dest_ip =
+      cond do
+        # Non-zero giaddr: forward to relay agent (port 67)
+        response.giaddr != zero_ip ->
+          response.giaddr
+
+        # Non-zero ciaddr: unicast directly to client's current address
+        response.ciaddr != zero_ip ->
+          response.ciaddr
+
+        # Broadcast bit set: client cannot receive unicast — broadcast to 255.255.255.255
+        (response.flags &&& 0x8000) != 0 ->
+          {255, 255, 255, 255}
+
+        # Broadcast bit not set and a yiaddr is assigned: unicast to offered address
+        response.yiaddr != zero_ip ->
+          response.yiaddr
+
+        # Fallback: broadcast
+        true ->
+          {255, 255, 255, 255}
+      end
+
+    # Responses always go to port 68 (DHCP client), except relay agents use port 67
+    dest_port = if response.giaddr != zero_ip, do: 67, else: 68
+
+    case Abyss.Transport.UDP.send(state.socket, dest_ip, dest_port, data) do
       :ok ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :response, :sent],
           %{count: 1, bytes: IO.iodata_length(data)},
-          %{client_ip: client_ip, client_port: response_port}
+          %{client_ip: dest_ip, client_port: dest_port}
         )
 
       {:error, reason} ->
         :telemetry.execute(
           [:yellow_dog, :dhcpv4, :response, :error],
           %{count: 1},
-          %{client_ip: client_ip, client_port: response_port, reason: inspect(reason)}
+          %{client_ip: dest_ip, client_port: dest_port, reason: inspect(reason)}
         )
     end
   end
@@ -656,6 +722,10 @@ defmodule YellowDog.Dhcpv4.Handler do
     lease_time_binary = <<lease.lease_time::32>>
     dns_servers_binary = encode_dns_servers(pool.dns_servers)
 
+    # RFC 2131 §4.3.1: T1 = 50% of lease time, T2 = 87.5% of lease time
+    t1 = div(lease.lease_time, 2)
+    t2 = div(lease.lease_time * 7, 8)
+
     base_options = [
       # Message type
       %DHCPv4.Message.Option{type: 53, length: 1, value: <<message_type>>},
@@ -663,6 +733,10 @@ defmodule YellowDog.Dhcpv4.Handler do
       %DHCPv4.Message.Option{type: 54, length: 4, value: ip_to_binary(pool.gateway)},
       # Lease time
       %DHCPv4.Message.Option{type: 51, length: 4, value: lease_time_binary},
+      # Renewal time (T1 = 50% of lease, option 58)
+      %DHCPv4.Message.Option{type: 58, length: 4, value: <<t1::32>>},
+      # Rebinding time (T2 = 87.5% of lease, option 59)
+      %DHCPv4.Message.Option{type: 59, length: 4, value: <<t2::32>>},
       # Subnet mask
       %DHCPv4.Message.Option{type: 1, length: 4, value: ip_to_binary(pool.subnet_mask)},
       # Router
@@ -737,6 +811,12 @@ defmodule YellowDog.Dhcpv4.Handler do
     end
   rescue
     e ->
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv4, :boot_options, :callback_error],
+        %{count: 1},
+        %{error: Exception.message(e)}
+      )
+
       Logger.warning("boot_options_fn failed: #{Exception.message(e)}")
       options
   end
@@ -747,25 +827,34 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp format_mac_for_boot(_), do: ""
 
-  defp get_pool_for_lease(_lease) do
-    # For now, use the first pool from LeaseManager state
-    # In a production system, you'd look up the pool by name from _lease.pool_name
-    get_default_pool()
+  defp get_pool_for_lease(lease) do
+    pool_name = Map.get(lease, :pool_name, "default") || "default"
+
+    case LeaseManager.get_pool_config(pool_name) do
+      {:ok, pool_config} -> pool_config
+      {:error, _} -> get_fallback_pool()
+    end
   end
 
-  defp get_default_pool do
-    # Return a default pool configuration
-    # This should be retrieved from configuration or LeaseManager state
-    %{
-      name: "default",
-      range_start: {192, 168, 1, 100},
-      range_end: {192, 168, 1, 200},
-      subnet_mask: {255, 255, 255, 0},
-      gateway: {192, 168, 1, 1},
-      dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
-      domain_name: "local",
-      lease_time: 86400
-    }
+  # Hard-coded last-resort pool used only when LeaseManager has no pools at all
+  # (e.g. during startup before pools are loaded).  Real pools come from config.
+  defp get_fallback_pool do
+    case LeaseManager.get_pools() do
+      [first_pool | _] ->
+        first_pool
+
+      [] ->
+        %{
+          name: "default",
+          range_start: {192, 168, 1, 100},
+          range_end: {192, 168, 1, 200},
+          subnet_mask: {255, 255, 255, 0},
+          gateway: {192, 168, 1, 1},
+          dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
+          domain_name: "local",
+          lease_time: 86400
+        }
+    end
   end
 
   defp encode_dns_servers(dns_servers) do
@@ -798,21 +887,23 @@ defmodule YellowDog.Dhcpv4.Handler do
     requested_ip = parsed_opts.requested_ip
     ciaddr = request.ciaddr
 
+    zero_ip = {0, 0, 0, 0}
+
     cond do
-      # SELECTING: Server Identifier and Requested IP present, ciaddr is 0
-      server_id != nil && requested_ip != nil && ciaddr == 0 ->
+      # SELECTING: Server Identifier and Requested IP present, ciaddr is 0.0.0.0
+      server_id != nil && requested_ip != nil && ciaddr == zero_ip ->
         :selecting
 
-      # INIT-REBOOT: Requested IP present, no Server Identifier, ciaddr is 0
-      requested_ip != nil && server_id == nil && ciaddr == 0 ->
+      # INIT-REBOOT: Requested IP present, no Server Identifier, ciaddr is 0.0.0.0
+      requested_ip != nil && server_id == nil && ciaddr == zero_ip ->
         :init_reboot
 
       # RENEWING: ciaddr filled in, no Requested IP or Server Identifier
-      ciaddr != 0 && requested_ip == nil && server_id == nil ->
+      ciaddr != zero_ip && requested_ip == nil && server_id == nil ->
         :renewing
 
       # REBINDING: ciaddr filled in, may have Requested IP but no Server Identifier
-      ciaddr != 0 && server_id == nil ->
+      ciaddr != zero_ip && server_id == nil ->
         :rebinding
 
       # Default to selecting if we can't determine
@@ -822,8 +913,9 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp get_server_identifier do
-    # Get the gateway IP from the default pool as our server identifier
-    pool = get_default_pool()
+    # Use the gateway of the first configured pool as our server identifier.
+    # RFC 2131 §4.3.1: the server identifier is the IP address of the DHCP server.
+    pool = get_fallback_pool()
     ip_to_binary(pool.gateway)
   end
 
@@ -838,6 +930,9 @@ defmodule YellowDog.Dhcpv4.Handler do
       option_55: extract_raw_option_list(opts, 55),
       option_60: extract_raw_option_string(opts, 60),
       option_12: extract_raw_option_string(opts, 12),
+      # Option 39 = Client FQDN (RFC 4702); used as hostname fallback in observer.ex
+      # when option 12 (Hostname) is absent.
+      option_39: extract_raw_option_string(opts, 39),
       option_61: extract_raw_option_binary(opts, 61),
       option_57: extract_raw_option_binary(opts, 57),
       option_93: extract_raw_option_binary(opts, 93)
@@ -888,16 +983,6 @@ defmodule YellowDog.Dhcpv4.Handler do
 
     <<0, 0, 0, 0>>
   end
-
-  # Convert IP tuple to 32-bit integer for DHCPv4 message fields
-  defp ip_tuple_to_integer({a, b, c, d})
-       when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
-    <<integer::32>> = <<a, b, c, d>>
-    integer
-  end
-
-  defp ip_tuple_to_integer(integer) when is_integer(integer), do: integer
-  defp ip_tuple_to_integer(_), do: 0
 
   # Note: build_client_info moved to OptionParser.build_client_info/2 for single-pass efficiency
   # Legacy option extraction functions removed to avoid duplication

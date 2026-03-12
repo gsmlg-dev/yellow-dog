@@ -24,7 +24,9 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     :current_block,
     :bytes_sent,
     :retries,
-    :started_at
+    :started_at,
+    # Negotiated options from the initial RRQ; kept so we can retransmit OACK on timeout.
+    negotiated_opts: %{}
   ]
 
   def start_link(args) do
@@ -39,10 +41,10 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
     block_size = Keyword.get(args, :block_size, Protocol.default_block_size())
     opts = Keyword.get(args, :options, %{})
 
+    {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
+
     case File.read(file_path) do
       {:ok, data} ->
-        {:ok, socket} = Abyss.Transport.UDP.open(0, active: true)
-
         state = %__MODULE__{
           socket: socket,
           client_addr: client_addr,
@@ -54,7 +56,8 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
           current_block: 0,
           bytes_sent: 0,
           retries: 0,
-          started_at: System.monotonic_time(:millisecond)
+          started_at: System.monotonic_time(:millisecond),
+          negotiated_opts: opts
         }
 
         emit_telemetry(:start, state)
@@ -72,19 +75,48 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
         {:ok, state, @timeout_ms}
 
       {:error, reason} ->
+        # RFC 1350 §4: send ERROR before closing — file was in the index but
+        # became unreadable between the server's lookup and this read.
+        error_code = if reason == :enoent, do: 1, else: 2
+        packet = Protocol.error_packet(error_code)
+        Abyss.Transport.UDP.send(socket, client_addr, client_port, packet)
+        Abyss.Transport.UDP.close(socket)
         {:stop, {:file_error, reason}}
     end
   end
 
   @impl true
-  def handle_info({:udp, _socket, _addr, _port, packet}, state) do
+  def handle_info({:udp, _socket, addr, port, packet}, state) do
+    # RFC 1350 §5: discard packets from unexpected sources without disturbing
+    # the transfer.  The transfer ID (TID) is the client's ephemeral port; both
+    # IP and port must match the originator of the RRQ that started this session.
+    if addr == state.client_addr and port == state.client_port do
+      handle_client_packet(packet, state)
+    else
+      {:noreply, state, @timeout_ms}
+    end
+  end
+
+  def handle_info(:timeout, %{retries: retries} = state) when retries >= @max_retries do
+    emit_telemetry(:exception, state, %{error_message: "timeout after #{@max_retries} retries"})
+    {:stop, :timeout, state}
+  end
+
+  def handle_info(:timeout, state) do
+    state = %{state | retries: state.retries + 1}
+    resend_current_block(state)
+    {:noreply, state, @timeout_ms}
+  end
+
+  # Dispatch a validated (correct-source) UDP packet.
+  defp handle_client_packet(packet, state) do
     case Protocol.decode(packet) do
-      {:ok, {:ack, block}} when block == state.current_block ->
+      {:ok, {:ack, block}} when block == rem(state.current_block, 65536) ->
         if transfer_complete?(state) do
           emit_telemetry(:stop, state)
           {:stop, :normal, state}
         else
-          state = %{state | current_block: block + 1, retries: 0}
+          state = %{state | current_block: state.current_block + 1, retries: 0}
           send_next_block(state)
           {:noreply, state, @timeout_ms}
         end
@@ -104,19 +136,6 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
   end
 
   @impl true
-  def handle_info(:timeout, %{retries: retries} = state) when retries >= @max_retries do
-    emit_telemetry(:exception, state, %{error_message: "timeout after #{@max_retries} retries"})
-    {:stop, :timeout, state}
-  end
-
-  @impl true
-  def handle_info(:timeout, state) do
-    state = %{state | retries: state.retries + 1}
-    resend_current_block(state)
-    {:noreply, state, @timeout_ms}
-  end
-
-  @impl true
   def terminate(_reason, %{socket: socket}) when not is_nil(socket) do
     Abyss.Transport.UDP.close(socket)
   end
@@ -133,9 +152,17 @@ defmodule YellowDog.Netboot.TFTP.Transfer do
 
     if chunk_size >= 0 do
       chunk = binary_part(state.file_data, offset, max(chunk_size, 0))
-      packet = Protocol.encode({:data, state.current_block, chunk})
+      wire_block = rem(state.current_block, 65536)
+      packet = Protocol.encode({:data, wire_block, chunk})
       Abyss.Transport.UDP.send(state.socket, state.client_addr, state.client_port, packet)
     end
+  end
+
+  # current_block == 0 means we sent OACK but haven't received ACK 0 yet.
+  # Retransmit the OACK rather than calling send_next_block (which would
+  # compute a negative offset and crash with binary_part/3).
+  defp resend_current_block(%{current_block: 0} = state) do
+    send_oack(state, state.negotiated_opts)
   end
 
   defp resend_current_block(state) do

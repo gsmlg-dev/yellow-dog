@@ -108,6 +108,15 @@ defmodule YellowDog.Dns.Handler.UDP do
               {:dns_raw_response, _query_id, response_data} ->
                 send_raw_response(response_data, client_ip, client_port, new_state.socket)
                 {:close, new_state}
+
+              _other ->
+                # Stray message (e.g. from a crashed/restarted connection process).
+                # Discard and close cleanly rather than crash the handler.
+                Telemetry.warning("DNS UDP handler received unexpected message", %{
+                  client_ip: IpFormat.format(client_ip)
+                })
+
+                {:close, new_state}
             after
               10_000 ->
                 # Timeout waiting for response

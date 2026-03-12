@@ -214,6 +214,16 @@ defmodule YellowDog.Dhcpv4.AddressPoolTest do
       assert ip == {10, 0, 0, 50}
     end
 
+    test "returns pool_exhausted when static reservation IP is already allocated to another client" do
+      {:ok, pool} = AddressPool.new(@config_with_reservations)
+      # Simulate reserved IP 10.0.0.50 already allocated (e.g. to another MAC)
+      allocated_ips = MapSet.new([{10, 0, 0, 50}])
+      mac = <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>
+
+      assert {:error, :pool_exhausted} =
+               AddressPool.get_available_ip(pool, allocated_ips, mac)
+    end
+
     test "finds IP across multiple ranges" do
       {:ok, pool} = AddressPool.new(@ranges_config)
 

@@ -56,9 +56,6 @@ defmodule YellowDog.Config do
   @spec service_enabled?(service_name()) :: boolean()
   def service_enabled?(service) do
     case get("core") do
-      %{"core" => core_config} ->
-        Map.get(core_config, to_string(service), true)
-
       core_config when is_map(core_config) ->
         Map.get(core_config, to_string(service), true)
 

@@ -133,6 +133,32 @@ defmodule YellowDog.Mdns.ServiceRegistryTest do
       assert {:error, :not_found} =
                ServiceRegistry.unregister_service("nonexistent._http._tcp.local")
     end
+
+    test "goodbye records for the unregistered service all have TTL=0 (RFC 6762 §10.1)" do
+      # Verify that build_goodbye_records produces TTL=0 records for any
+      # registered service — these are the records that ServiceRegistry sends
+      # to the multicast group before removing the service from the registry.
+      service_def = %{
+        name: "Goodbye Test",
+        type: "_http._tcp",
+        port: 9090,
+        addresses: ["127.0.0.1"]
+      }
+
+      {:ok, service_id} = ServiceRegistry.register_service(service_def)
+      service = ServiceRegistry.get_service(service_id)
+
+      goodbye_records = YellowDog.Mdns.RecordBuilder.build_goodbye_records(service)
+      assert goodbye_records != [], "Expected at least one goodbye record"
+
+      for record <- goodbye_records do
+        assert record.ttl == 0, "Expected TTL=0, got #{record.ttl} for #{inspect(record.name)}"
+      end
+
+      # Service is removed from registry after unregister
+      assert :ok = ServiceRegistry.unregister_service(service_id)
+      assert ServiceRegistry.get_service(service_id) == nil
+    end
   end
 
   describe "update_service/3" do

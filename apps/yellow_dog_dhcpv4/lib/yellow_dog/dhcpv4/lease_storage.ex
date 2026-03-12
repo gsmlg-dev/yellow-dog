@@ -281,8 +281,9 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
   ## Returns
 
   - `:ok` - Successfully deleted or didn't exist
+  - `{:error, reason}` - Mnesia transaction aborted
   """
-  @spec delete(mac_address()) :: :ok
+  @spec delete(mac_address()) :: :ok | {:error, term()}
   def delete(mac_address) do
     transaction = fn ->
       :mnesia.delete(@table_name, mac_address, :write)
@@ -602,17 +603,30 @@ defmodule YellowDog.Dhcpv4.LeaseStorage do
         index: [:ip_address, :state, :pool_name]
       ] ++ [{storage_type, nodes}]
 
-    case :mnesia.create_table(@table_name, table_opts) do
-      {:atomic, :ok} ->
-        :ok
+    result =
+      case :mnesia.create_table(@table_name, table_opts) do
+        {:atomic, :ok} ->
+          :ok
 
-      {:aborted, {:already_exists, @table_name}} ->
-        # Table exists, ensure it has the right properties
-        ensure_indices()
-        :ok
+        {:aborted, {:already_exists, @table_name}} ->
+          # Table exists, ensure it has the right properties
+          ensure_indices()
+          :ok
 
-      {:aborted, reason} ->
-        {:error, reason}
+        {:aborted, reason} ->
+          {:error, reason}
+      end
+
+    case result do
+      :ok ->
+        case :mnesia.wait_for_tables([@table_name], 5000) do
+          :ok -> :ok
+          {:timeout, _} -> {:error, :table_timeout}
+          {:error, reason} -> {:error, reason}
+        end
+
+      error ->
+        error
     end
   end
 

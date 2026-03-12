@@ -82,6 +82,20 @@ defmodule DNS.Class do
   def internet() do
     new(1)
   end
+
+  @doc """
+  Returns class IN with the mDNS cache-flush bit set (0x8001).
+
+  Per RFC 6762 §11.3, unique resource records in mDNS responses
+  should have the top bit of the rrclass field set to signal that
+  receiving hosts must replace any cached records with the same name
+  and type.  Only use this for uniquely-owned records (SRV, TXT, A,
+  AAAA); shared records such as PTR should use `internet/0` (0x0001).
+  """
+  @spec internet_flush() :: t()
+  def internet_flush() do
+    new(0x8001)
+  end
 end
 
 defimpl DNS.Parameter, for: DNS.Class do

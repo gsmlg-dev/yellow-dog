@@ -122,8 +122,10 @@ defmodule YellowDog.Mdns.Responder do
     # Check if any of our records are in the query's answer section
     Enum.any?(our_records, fn our_record ->
       Enum.any?(query.anlist, fn known_answer ->
+        # RFC 6762 §7.1: suppress if known-answer TTL >= half the record's TTL
+        # ("at least half of their original TTL remaining")
         records_match?(our_record, known_answer) and
-          known_answer.ttl > our_record.ttl / 2
+          known_answer.ttl >= div(our_record.ttl, 2)
       end)
     end)
   end
@@ -138,21 +140,37 @@ defmodule YellowDog.Mdns.Responder do
 
   defp records_match?(record1, record2) do
     normalize_name(record1.name) == normalize_name(record2.name) and
-      record1.type == record2.type and
-      record1.class == record2.class and
+      to_string(record1.type) == to_string(record2.type) and
+      to_string(record1.class) == to_string(record2.class) and
       normalize_data(record1.data, record1.type) == normalize_data(record2.data, record2.type)
   end
 
   defp normalize_name(name), do: YellowDog.Mdns.normalize_name(name)
 
-  defp normalize_data(data, :PTR), do: normalize_name(data)
-  defp normalize_data(data, :TXT) when is_list(data), do: Enum.sort(data)
+  defp normalize_data(data, type) when is_binary(data) or is_struct(data) do
+    case to_string(type) do
+      "PTR" -> normalize_name(to_string(data))
+      "SRV" -> normalize_srv_data(data)
+      "TXT" -> normalize_txt_data(data)
+      _ -> data
+    end
+  end
 
-  defp normalize_data(%{target: target} = data, :SRV) do
-    %{data | target: normalize_name(target)}
+  defp normalize_data(data, type) when is_list(data) do
+    case to_string(type) do
+      "TXT" -> Enum.sort(data)
+      _ -> data
+    end
   end
 
   defp normalize_data(data, _type), do: data
+
+  defp normalize_srv_data(%{target: target} = data), do: %{data | target: normalize_name(target)}
+  defp normalize_srv_data(data), do: data
+
+  defp normalize_txt_data(%{data: list}) when is_list(list), do: Enum.sort(list)
+  defp normalize_txt_data(data) when is_list(data), do: Enum.sort(data)
+  defp normalize_txt_data(data), do: data
 
   defp deduplicate_records(records) do
     records
@@ -208,12 +226,12 @@ defmodule YellowDog.Mdns.Responder do
     fixed_size = 10
 
     data_size =
-      case {type, data} do
-        {:A, {_, _, _, _}} -> 4
-        {:AAAA, {_, _, _, _, _, _, _, _}} -> 16
-        {:PTR, target} -> byte_size(to_string(target))
-        {:TXT, list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
-        {:SRV, %{target: target}} -> byte_size(to_string(target)) + 6
+      case {to_string(type), data} do
+        {"A", {_, _, _, _}} -> 4
+        {"AAAA", {_, _, _, _, _, _, _, _}} -> 16
+        {"PTR", target} -> byte_size(to_string(target))
+        {"TXT", list} when is_list(list) -> Enum.sum_by(list, &byte_size/1)
+        {"SRV", %{target: target}} -> byte_size(to_string(target)) + 6
         _ -> 20
       end
 
@@ -243,9 +261,9 @@ defmodule YellowDog.Mdns.Responder do
       service_type = normalize_name("#{service.type}.#{service.domain}")
       service_host = normalize_name(service.host)
 
-      (qtype == :PTR and qname == service_type) or
-        (qtype in [:SRV, :TXT, :ANY] and qname == service_fqdn) or
-        (qtype in [:A, :AAAA, :ANY] and qname == service_host)
+      (to_string(qtype) == "PTR" and qname == service_type) or
+        (to_string(qtype) in ["SRV", "TXT", "ANY"] and qname == service_fqdn) or
+        (to_string(qtype) in ["A", "AAAA", "ANY"] and qname == service_host)
     end)
   end
 

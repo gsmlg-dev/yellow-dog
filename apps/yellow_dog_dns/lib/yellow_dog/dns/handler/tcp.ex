@@ -67,13 +67,27 @@ defmodule YellowDog.Dns.Handler.TCP do
     end
   end
 
+  # RFC 1035 §4.1: minimum DNS message is a 12-byte header
+  @dns_min_message_size 12
+  # RFC 1035 §4.2.2: 2-byte length field upper bound; cap at 64 KB
+  @dns_max_message_size 65_535
+  # Prevent unbounded buffer growth: reject connections that send junk
+  @max_buffer_size 131_072
+
   @impl ThousandIsland.Handler
   def handle_data(data, socket, state) do
-    # Append new data to buffer
     buffer = state.buffer <> data
 
-    # Process complete messages from buffer
-    process_buffer(buffer, socket, state)
+    if byte_size(buffer) > @max_buffer_size do
+      Telemetry.warning("DNS TCP buffer overflow — closing connection", %{
+        client_ip: IpFormat.format(state.client_ip),
+        buffer_size: byte_size(buffer)
+      })
+
+      {:close, state}
+    else
+      process_buffer(buffer, socket, state)
+    end
   end
 
   @impl ThousandIsland.Handler
@@ -126,18 +140,23 @@ defmodule YellowDog.Dns.Handler.TCP do
   defp process_buffer(buffer, socket, state) do
     case extract_framed_message(buffer) do
       {:ok, message_data, remaining} ->
-        # Handle the raw message
         handle_raw_message(message_data, state)
-        # Continue processing remaining buffer
         process_buffer(remaining, socket, %{state | buffer: <<>>})
 
       {:incomplete, _} ->
-        # Need more data - save buffer and wait
         {:continue, %{state | buffer: buffer}}
+
+      {:error, reason} ->
+        Telemetry.warning("DNS TCP framing error — closing connection", %{
+          client_ip: IpFormat.format(state.client_ip),
+          reason: reason
+        })
+
+        {:close, state}
     end
   end
 
-  # Extract framed message (2-byte length prefix per RFC 1035)
+  # Extract framed message (2-byte length prefix per RFC 1035 §4.2.2)
   # Does NOT parse DNS content - just extracts the raw bytes
   defp extract_framed_message(<<>>) do
     {:incomplete, :need_length}
@@ -145,6 +164,11 @@ defmodule YellowDog.Dns.Handler.TCP do
 
   defp extract_framed_message(<<_partial::binary-size(1)>>) do
     {:incomplete, :need_length}
+  end
+
+  defp extract_framed_message(<<length::16, _rest::binary>>)
+       when length < @dns_min_message_size or length > @dns_max_message_size do
+    {:error, {:invalid_length, length}}
   end
 
   defp extract_framed_message(<<length::16, rest::binary>>) when byte_size(rest) < length do

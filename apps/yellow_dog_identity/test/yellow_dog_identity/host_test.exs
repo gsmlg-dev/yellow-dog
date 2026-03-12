@@ -24,6 +24,26 @@ defmodule YellowDogIdentity.HostTest do
     test "rejects invalid key" do
       assert {:error, :invalid_pubkey} = Host.validate_pubkey("bad-key")
     end
+
+    test "rejects unknown key type" do
+      # A key whose type token is not in the allowlist must be rejected
+      # regardless of whether the base64 is otherwise valid.
+      fake_key = "ssh-unknown AAAAC3NzaC1lZDI1NTE5AAAAIHUzjC6gKCLjRoHMvMXBx3cCe49wjm69r9B7YBcFcAv1"
+      assert {:error, :invalid_pubkey} = Host.validate_pubkey(fake_key)
+    end
+
+    test "rejects key whose wire-format type does not match declared type" do
+      # Take a real ed25519 base64 blob but label it as a different type.
+      # The embedded wire-format type string is "ssh-ed25519", but the label says "ssh-rsa".
+      # The validation must detect the mismatch.
+      [_type, b64 | _] = String.split(@valid_ssh_pubkey, " ", parts: 3)
+      mismatched = "ssh-rsa " <> b64 <> " test@host"
+      assert {:error, :invalid_pubkey} = Host.validate_pubkey(mismatched)
+    end
+
+    test "rejects key with valid type token but invalid wire-format (truncated base64)" do
+      assert {:error, :invalid_pubkey} = Host.validate_pubkey("ssh-ed25519 bm90YmFzZTY0 comment")
+    end
   end
 
   describe "validate_age_recipient/1" do

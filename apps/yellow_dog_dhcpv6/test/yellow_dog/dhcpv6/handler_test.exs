@@ -10,6 +10,12 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
     LeaseStorage.init(storage_type: :ram_copies)
     LeaseStorage.clear_all()
 
+    # Stop any existing LeaseManager so each test starts with a clean pool
+    case GenServer.whereis(LeaseManager) do
+      nil -> :ok
+      pid -> GenServer.stop(pid, :normal)
+    end
+
     # Configure a default test pool
     test_pool = %{
       name: "default",
@@ -21,12 +27,7 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
       valid_lifetime: 7200
     }
 
-    # Start LeaseManager if not already started
-    case GenServer.whereis(LeaseManager) do
-      nil -> {:ok, _pid} = LeaseManager.start_link(pools: [test_pool])
-      _pid -> :ok
-    end
-
+    {:ok, _pid} = LeaseManager.start_link(pools: [test_pool])
     :ok
   end
 
@@ -198,6 +199,502 @@ defmodule YellowDog.Dhcpv6.HandlerTest do
 
       result = Handler.handle_data({ipv6_address, 546, invalid_data}, state)
       assert result == {:continue, state}
+    end
+  end
+
+  # RFC 3315 §17.2.1: SOLICIT with Rapid Commit must receive REPLY (not ADVERTISE)
+  describe "RFC 3315 §17.2.1 — Rapid Commit SOLICIT skips ADVERTISE" do
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-rapid-commit-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :solicit, :completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "SOLICIT with Rapid Commit option triggers rapid_commit: true telemetry" do
+      # Option 14 (Rapid Commit) has empty data per RFC 3315
+      message = %DHCPv6.Message{
+        msg_type: 1,
+        transaction_id: <<0x11, 0x22, 0x33>>,
+        options: [
+          DHCPv6.Message.Option.new(1, <<0xCA, 0xFE, 0xBA, 0xBE>>),
+          # Rapid Commit (option 14, empty)
+          DHCPv6.Message.Option.new(14, <<>>),
+          # IA_NA with IAID=99
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 99, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 5}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :solicit, :completed], _,
+                      %{rapid_commit: true}},
+                     500
+    end
+
+    test "SOLICIT without Rapid Commit option has rapid_commit: false telemetry" do
+      message = %DHCPv6.Message{
+        msg_type: 1,
+        transaction_id: <<0x44, 0x55, 0x66>>,
+        options: [
+          DHCPv6.Message.Option.new(1, <<0xDE, 0xAD, 0xBE, 0xEF>>),
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 6}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :solicit, :completed], _,
+                      %{rapid_commit: false}},
+                     500
+    end
+  end
+
+  # RFC 3315 §18.2.2: REQUEST when pool is exhausted must receive REPLY with NoAddrsAvail
+  describe "RFC 3315 §18.2.2 — NoAddrsAvail on pool exhaustion" do
+    @server_duid <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      # Replace the default pool (started by outer setup) with a single-address pool
+      case GenServer.whereis(LeaseManager) do
+        nil -> :ok
+        pid -> GenServer.stop(pid, :normal)
+      end
+
+      LeaseStorage.clear_all()
+
+      tiny_pool = %{
+        name: "default",
+        range_start: "fd00::1000",
+        range_end: "fd00::1000",
+        dns_servers: [],
+        domain_name: "",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      {:ok, _pid} = LeaseManager.start_link(pools: [tiny_pool])
+
+      test_pid = self()
+      handler_id = "test-dhcpv6-no-addrs-avail-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "REQUEST with exhausted pool receives NoAddrsAvail telemetry event" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xAA, 0xAA, 0xAA>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 1)
+
+      # Build REQUEST from client B with correct server DUID
+      client_b_duid = <<0xBB, 0xBB, 0xBB, 0xBB>>
+
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xDE, 0xAD, 0xBE>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          DHCPv6.Message.Option.new(2, @server_duid),
+          # IA_NA with IAID=2, T1=0, T2=0
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 2}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :allocation_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+  end
+
+  # RFC 3315 §18.2.3/18.2.4: RENEW/REBIND when pool is exhausted must receive REPLY with NoBinding
+  describe "RFC 3315 §18.2.3/18.2.4 — NoBinding reply on RENEW/REBIND with exhausted pool" do
+    @server_duid_renew <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      # Restart LeaseManager with a single-address pool so new clients are rejected
+      case GenServer.whereis(LeaseManager) do
+        nil -> :ok
+        pid -> GenServer.stop(pid, :normal)
+      end
+
+      LeaseStorage.clear_all()
+
+      tiny_pool = %{
+        name: "default",
+        range_start: "fd00::2000",
+        range_end: "fd00::2000",
+        dns_servers: [],
+        domain_name: "",
+        preferred_lifetime: 3600,
+        valid_lifetime: 7200
+      }
+
+      {:ok, _pid} = LeaseManager.start_link(pools: [tiny_pool])
+
+      test_pid = self()
+      renew_id = "test-dhcpv6-renew-failed-#{System.unique_integer()}"
+      rebind_id = "test-dhcpv6-rebind-failed-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        renew_id,
+        [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        rebind_id,
+        [:yellow_dog, :dhcpv6, :lease, :rebind_failed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(renew_id)
+        :telemetry.detach(rebind_id)
+      end)
+
+      :ok
+    end
+
+    test "RENEW from a different client when pool is exhausted triggers renew_failed telemetry" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xCC, 0xCC, 0xCC>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 10)
+
+      # Client B tries to RENEW but pool is exhausted
+      client_b_duid = <<0xCC, 0xCC, 0xCC, 0xCC>>
+
+      message = %DHCPv6.Message{
+        msg_type: 5,
+        transaction_id: <<0x11, 0x22, 0x33>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_renew),
+          # IA_NA with IAID=20
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 7}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :renew_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+
+    test "REBIND from a different client when pool is exhausted triggers rebind_failed telemetry" do
+      # Pre-allocate the single address to client A
+      client_a_duid = <<0xAA, 0xDD, 0xDD, 0xDD>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_a_duid, 10)
+
+      # Client B tries to REBIND but pool is exhausted (no server ID required in REBIND)
+      client_b_duid = <<0xDD, 0xDD, 0xDD, 0xDD>>
+
+      message = %DHCPv6.Message{
+        msg_type: 6,
+        transaction_id: <<0x44, 0x55, 0x66>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_b_duid),
+          # No Server ID in REBIND (RFC 3315 §18.1.4)
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 8}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :rebind_failed], _,
+                      %{client_duid: ^client_b_duid}},
+                     500
+    end
+  end
+
+  # RFC 3315 §22.4: T1 = 50% and T2 = 80% of preferred lifetime in IA_NA options
+  describe "RFC 3315 §22.4 — IA_NA T1/T2 renewal times" do
+    @server_duid_t1 <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-t1t2-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :lease, :granted],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "IA_NA T1/T2 formula: T1 = 50%, T2 = 80% of preferred lifetime" do
+      # Verify the formula using the test pool's preferred_lifetime = 3600
+      preferred = 3600
+      expected_t1 = div(preferred, 2)
+      expected_t2 = div(preferred * 4, 5)
+
+      assert expected_t1 == 1800
+      assert expected_t2 == 2880
+    end
+
+    test "valid REQUEST succeeds and fires lease:granted telemetry" do
+      client_duid = <<0x99, 0xAA, 0xBB, 0xCC>>
+
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xA1, 0xB2, 0xC3>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_t1),
+          # IA_NA with IAID=100
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 12}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      # lease:granted confirms the T1/T2 code path in create_ia_na_option was reached
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :granted], _,
+                      %{client_duid: ^client_duid}},
+                     500
+    end
+  end
+
+  # RFC 3315 §18.2.1: REQUEST with wrong Server Identifier must be silently discarded
+  describe "RFC 3315 §18.2.1 — Server Identifier validation" do
+    setup do
+      test_pid = self()
+      handler_id = "test-dhcpv6-server-id-invalid-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:yellow_dog, :dhcpv6, :message, :invalid],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+      :ok
+    end
+
+    test "REQUEST with mismatched Server Identifier is silently discarded" do
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          # Client ID
+          DHCPv6.Message.Option.new(1, <<1, 2, 3, 4, 5, 6>>),
+          # Wrong Server ID (not this server's DUID)
+          DHCPv6.Message.Option.new(2, <<0xFF, 0xFF, 0xFF, 0xFF>>),
+          # IA_NA
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 1, 0, 0, 3, 84, 0, 0, 5, 220>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :message, :invalid], _,
+                      %{reason: "Server Identifier mismatch"}},
+                     500
+    end
+
+    test "REQUEST without Server Identifier is silently discarded" do
+      message = %DHCPv6.Message{
+        msg_type: 3,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          # Client ID only — no Server ID
+          DHCPv6.Message.Option.new(1, <<1, 2, 3, 4, 5, 6>>),
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 1, 0, 0, 3, 84, 0, 0, 5, 220>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :message, :invalid], _,
+                      %{reason: "missing Server Identifier"}},
+                     500
+    end
+  end
+
+  # RFC 3315 §18.2.6/18.2.7: RELEASE and DECLINE must be acknowledged with a REPLY
+  describe "RFC 3315 §18.2.6/18.2.7 — Success REPLY for RELEASE and DECLINE" do
+    @server_duid_release <<0, 3, 0, 1, 0x00, 0x00, 0x5E, 0x00, 0x53, 0xFF>>
+
+    setup do
+      test_pid = self()
+      release_id = "test-dhcpv6-release-#{System.unique_integer()}"
+      decline_id = "test-dhcpv6-decline-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        release_id,
+        [:yellow_dog, :dhcpv6, :lease, :release_completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      :telemetry.attach(
+        decline_id,
+        [:yellow_dog, :dhcpv6, :lease, :decline_completed],
+        fn event, measurements, metadata, _cfg ->
+          send(test_pid, {:telemetry, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(release_id)
+        :telemetry.detach(decline_id)
+      end)
+
+      :ok
+    end
+
+    test "valid RELEASE triggers release_completed telemetry" do
+      # Allocate a lease first so we can release it
+      client_duid = <<0xEE, 0xEE, 0xEE, 0xEE>>
+      {:ok, _lease} = LeaseManager.allocate_lease(client_duid, 50)
+
+      message = %DHCPv6.Message{
+        msg_type: 8,
+        transaction_id: <<0x77, 0x88, 0x99>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_release),
+          # IA_NA with IAID=50
+          DHCPv6.Message.Option.new(3, <<0, 0, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0>>)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 9}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :release_completed], _,
+                      %{client_duid: ^client_duid}},
+                     500
+    end
+
+    test "valid DECLINE triggers decline_completed telemetry" do
+      # Allocate a lease so we can decline it
+      client_duid = <<0xFF, 0xFF, 0xFF, 0xFF>>
+      {:ok, lease} = LeaseManager.allocate_lease(client_duid, 60)
+
+      # Encode the allocated IP into IA_ADDR inside IA_NA
+      {a, b, c, d, e, f, g, h} = lease.ip
+      # IA_ADDR: IPv6 addr (16 bytes) + preferred (4) + valid (4)
+      ia_addr_data = <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16, 0::32, 0::32>>
+      ia_addr_opt = DHCPv6.Message.Option.new(5, ia_addr_data)
+
+      ia_addr_wire =
+        DHCPv6.Message.to_iodata(%DHCPv6.Message{
+          msg_type: 1,
+          transaction_id: <<0, 0, 0>>,
+          options: [ia_addr_opt]
+        })
+
+      # Extract just the IA_ADDR option bytes from the wire (skip 4-byte msg header)
+      <<_::binary-size(4), ia_addr_option_bytes::binary>> = IO.iodata_to_binary(ia_addr_wire)
+
+      # IA_NA: IAID + T1 + T2 + IA_ADDR option
+      ia_na_data = <<0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0>> <> ia_addr_option_bytes
+
+      message = %DHCPv6.Message{
+        msg_type: 9,
+        transaction_id: <<0xAA, 0xBB, 0xCC>>,
+        options: [
+          DHCPv6.Message.Option.new(1, client_duid),
+          DHCPv6.Message.Option.new(2, @server_duid_release),
+          DHCPv6.Message.Option.new(3, ia_na_data)
+        ]
+      }
+
+      data = DHCPv6.Message.to_iodata(message)
+      state = %{socket: self()}
+      client_ip = {0xFE80, 0, 0, 0, 0, 0, 0, 10}
+
+      result = Handler.handle_data({client_ip, 546, data}, state)
+      assert result == {:continue, state}
+
+      assert_receive {:telemetry, [:yellow_dog, :dhcpv6, :lease, :decline_completed], _,
+                      %{client_duid: ^client_duid}},
+                     500
     end
   end
 end

@@ -773,12 +773,14 @@ defmodule YellowDog.DhcpClient.Integration.HandshakeTest do
       mock_pid = start_mock_server(nak_requests: true)
       fsm_pid = start_fsm(mock_pid, %{selection_window_ms: 50})
 
-      # Wait for NAK cycle to complete - FSM will be in :init after DORA REQUEST is NAKed
+      # Wait for the first REQUEST (which gets NAKed)
       assert_receive {:intercepted, :request, _xid}, 5_000
-      wait_for_state(fsm_pid, :init, 5_000)
 
-      # FSM never bound so can't test renewal NAK directly here;
-      # instead verify FSM cycles back to INIT (same behavior in RENEWING on NAK)
+      # After the NAK, FSM cycles back through :init and sends a second DISCOVER.
+      # Receiving the second DISCOVER confirms the NAK was processed and FSM reset.
+      assert_receive {:intercepted, :discover, _second_xid}, 5_000
+
+      # FSM is still alive and cycling
       {state, _data} = StateMachine.status(fsm_pid)
       assert state in [:init, :selecting, :requesting]
     end

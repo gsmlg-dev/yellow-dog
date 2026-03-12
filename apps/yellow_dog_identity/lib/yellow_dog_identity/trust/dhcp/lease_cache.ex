@@ -84,6 +84,13 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
 
   def handle_info(_msg, state), do: {:noreply, state}
 
+  @impl true
+  def terminate(_reason, _state) do
+    # Detach telemetry handler so that a supervisor restart can re-register it
+    # without hitting "handler with ID identity-lease-cache already exists".
+    :telemetry.detach("identity-lease-cache")
+  end
+
   # Telemetry handlers
 
   defp attach_telemetry_handlers do
@@ -95,6 +102,9 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
       [:yellow_dog, :dhcpv4, :lease, :allocated],
       [:yellow_dog, :dhcpv4, :lease, :renewed]
     ]
+
+    # Detach any stale handler first (e.g., from a :kill that bypassed terminate/2)
+    :telemetry.detach("identity-lease-cache")
 
     :telemetry.attach_many(
       "identity-lease-cache",

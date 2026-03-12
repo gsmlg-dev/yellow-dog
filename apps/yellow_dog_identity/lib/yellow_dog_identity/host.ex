@@ -67,6 +67,7 @@ defmodule YellowDogIdentity.Host do
     created_at: nil
   ]
 
+  @valid_ssh_key_types ~w(ssh-ed25519 ssh-rsa ecdsa-sha2-nistp256 ecdsa-sha2-nistp384 ecdsa-sha2-nistp521)
   @valid_statuses ~w(pending approved revoked)a
   @valid_trust_levels ~w(cloud_verified netboot_verified network_verified network_partial token_verified unverified)a
   @valid_trust_providers ~w(dhcp netboot aws gcp azure token none)a
@@ -228,14 +229,34 @@ defmodule YellowDogIdentity.Host do
     parts = String.split(ssh_pubkey, " ", parts: 3)
 
     case parts do
-      [_type, base64_data | _] ->
+      [type, base64_data | _] when type in @valid_ssh_key_types ->
         case Base.decode64(base64_data) do
-          {:ok, data} -> {:ok, data}
-          :error -> :error
+          {:ok, data} ->
+            # Verify the wire-format type string matches the declared type token
+            # (RFC 4253): the blob starts with a 4-byte length-prefixed type name.
+            if valid_ssh_wire_type?(type, data), do: {:ok, data}, else: :error
+
+          :error ->
+            :error
         end
 
       _ ->
         :error
+    end
+  end
+
+  # Verifies the decoded SSH public key binary starts with the declared type name
+  # encoded as a 4-byte length-prefixed string, per the SSH wire format (RFC 4253).
+  # This prevents accepting a key whose base64 payload does not match its type label.
+  defp valid_ssh_wire_type?(declared_type, data) do
+    type_len = byte_size(declared_type)
+
+    case data do
+      <<^type_len::32, rest::binary>> when byte_size(rest) >= type_len ->
+        binary_part(rest, 0, type_len) == declared_type
+
+      _ ->
+        false
     end
   end
 

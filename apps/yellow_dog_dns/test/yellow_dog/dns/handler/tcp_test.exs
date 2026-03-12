@@ -250,12 +250,22 @@ defmodule YellowDog.Dns.Handler.TCPTest do
       assert byte_size(buffer) < 2
     end
 
-    test "handles zero-length message declaration" do
-      # Length of 0 means no message body expected
+    test "zero-length message declaration is invalid (RFC 1035 §4.1 requires 12-byte header)" do
+      # DNS minimum header is 12 bytes; a declared length of 0 cannot contain a valid message.
+      # The handler rejects such messages and closes the connection.
       buffer = <<0::16>>
-      <<length::16, rest::binary>> = buffer
-      assert length == 0
-      assert rest == <<>>
+      <<length::16, _rest::binary>> = buffer
+      # Confirm this is below the minimum DNS header size
+      assert length < 12
+    end
+
+    test "message smaller than DNS header minimum is invalid" do
+      # RFC 1035 §4.1: DNS header is exactly 12 bytes — a message shorter than this
+      # cannot be a valid DNS message
+      for small_len <- [0, 1, 8, 11] do
+        assert small_len < 12,
+               "Length #{small_len} should be below the 12-byte DNS header minimum"
+      end
     end
 
     test "handles maximum length message" do

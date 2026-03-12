@@ -17,9 +17,13 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
   alias DNS.Message.Header
 
   setup do
-    # Start registries if not already running
-    ensure_registry(YellowDog.Dns.ZoneRegistry)
-    ensure_registry(YellowDog.Dns.ViewRegistry)
+    # Stop any externally-owned registries and start fresh ones under ExUnit supervision.
+    # This eliminates the TOCTOU race where ensure_registry sees a registry owned by
+    # another test's supervisor, which may be killed between the check and our start_zone call.
+    for name <- [YellowDog.Dns.ZoneRegistry, YellowDog.Dns.ViewRegistry] do
+      if pid = Process.whereis(name), do: GenServer.stop(pid, :normal, 500)
+      start_supervised!({Registry, keys: :unique, name: name})
+    end
 
     # Start the global ZoneController (View.resolve_in_zone uses ZoneController module name)
     zc_pid =
@@ -339,12 +343,5 @@ defmodule YellowDog.Dns.DelegationIntegrationTest do
       nslist: [],
       arlist: []
     }
-  end
-
-  defp ensure_registry(name) do
-    case Process.whereis(name) do
-      nil -> Registry.start_link(keys: :unique, name: name)
-      _pid -> {:ok, name}
-    end
   end
 end

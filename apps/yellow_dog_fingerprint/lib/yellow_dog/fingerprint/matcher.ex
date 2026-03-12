@@ -15,11 +15,11 @@ defmodule YellowDog.Fingerprint.Matcher do
   alias YellowDog.Fingerprint.Types.{DeviceProfile, Fingerprint}
 
   @vendor_class_patterns [
-    {~r/^MSFT 5\.0$/, "windows-generic", 40},
-    {~r/^android-dhcp-/, "android-generic", 40},
-    {~r/^udhcp/, "embedded-linux", 35},
-    {~r/^dhcpcd-/, "linux-generic", 35},
-    {~r/^APPLE/, "apple-generic", 40}
+    {"^MSFT 5\\.0$", "windows-generic", 40},
+    {"^android-dhcp-", "android-generic", 40},
+    {"^udhcp", "embedded-linux", 35},
+    {"^dhcpcd-", "linux-generic", 35},
+    {"^APPLE", "apple-generic", 40}
   ]
 
   @doc """
@@ -152,8 +152,8 @@ defmodule YellowDog.Fingerprint.Matcher do
   defp check_vendor_class(%Fingerprint{vendor_class: nil}), do: :not_found
 
   defp check_vendor_class(%Fingerprint{vendor_class: vc}) do
-    Enum.find_value(@vendor_class_patterns, :not_found, fn {regex, profile_id, confidence} ->
-      if Regex.match?(regex, vc) do
+    Enum.find_value(@vendor_class_patterns, :not_found, fn {pattern, profile_id, confidence} ->
+      if Regex.match?(Regex.compile!(pattern), vc) do
         {:ok, profile_id, confidence, :local}
       end
     end)

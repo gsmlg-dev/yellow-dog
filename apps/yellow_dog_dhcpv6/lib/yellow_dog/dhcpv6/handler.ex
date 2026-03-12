@@ -35,8 +35,8 @@ defmodule YellowDog.Dhcpv6.Handler do
   # @option_oro 6
   @option_preference 7
   # @option_elapsed_time 8
-  # @option_status_code 13
-  # @option_rapid_commit 14
+  @option_status_code 13
+  @option_rapid_commit 14
   @option_dns_servers 23
   @option_domain_list 24
   @option_ia_pd 25
@@ -44,6 +44,10 @@ defmodule YellowDog.Dhcpv6.Handler do
 
   # RFC 1035 §2.3.4: Maximum DNS label length
   @max_dns_label_length 63
+  # RFC 3315 §24.4: Status codes
+  @status_success 0
+  @status_no_addrs_avail 2
+  @status_no_binding 3
   # DHCPv6 temporary address lifetimes (seconds)
   @ta_preferred_lifetime 600
   @ta_valid_lifetime 1200
@@ -259,6 +263,8 @@ defmodule YellowDog.Dhcpv6.Handler do
           end
 
         # Handle IA_PD if present
+        # NOTE: When PrefixPool integration replaces the placeholder, change this
+        # to a full case with {:error, reason} handling (matching IA_NA/IA_TA).
         leases =
           if ia_pd do
             {:ok, pd_lease} = allocate_prefix_delegation(duid, ia_pd.iaid)
@@ -268,14 +274,26 @@ defmodule YellowDog.Dhcpv6.Handler do
           end
 
         if leases != [] do
-          advertise = create_advertise_multi(message, leases, parsed_opts)
-          send_dhcpv6_response(advertise, client_ip, client_port, state)
+          # RFC 3315 §17.2.1: if client included Rapid Commit, respond with REPLY not ADVERTISE
+          response =
+            if parsed_opts.rapid_commit do
+              create_rapid_commit_reply(message, leases, parsed_opts)
+            else
+              create_advertise_multi(message, leases, parsed_opts)
+            end
 
           :telemetry.execute(
             [:yellow_dog, :dhcpv6, :solicit, :completed],
             %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-            %{client_ip: client_ip, client_duid: duid, ia_count: length(leases)}
+            %{
+              client_ip: client_ip,
+              client_duid: duid,
+              ia_count: length(leases),
+              rapid_commit: parsed_opts.rapid_commit
+            }
           )
+
+          send_dhcpv6_response(response, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -293,47 +311,60 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {nil, _} ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "REQUEST missing client DUID", client_ip: client_ip}
-        )
-
+    # RFC 3315 §18.2.1: Server Identifier must be present and match this server's DUID
+    case validate_server_id(parsed_opts.server_id, client_ip) do
+      :error ->
         {:continue, state}
 
-      {_, nil} ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "REQUEST missing IA_NA option", client_ip: client_ip}
-        )
-
-        {:continue, state}
-
-      {duid, %{iaid: iaid}} ->
-        # Allocate or renew lease
-        case LeaseManager.allocate_lease(duid, iaid) do
-          {:ok, lease} ->
-            reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
-
+      :ok ->
+        case {client_duid, ia_na} do
+          {nil, _} ->
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :granted],
-              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, client_duid: duid}
-            )
-
-          {:error, reason} ->
-            :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+              [:yellow_dog, :dhcpv6, :message, :invalid],
               %{count: 1},
-              %{reason: inspect(reason), client_duid: duid}
+              %{reason: "REQUEST missing client DUID", client_ip: client_ip}
             )
-        end
 
-        {:continue, state}
+            {:continue, state}
+
+          {_, nil} ->
+            :telemetry.execute(
+              [:yellow_dog, :dhcpv6, :message, :invalid],
+              %{count: 1},
+              %{reason: "REQUEST missing IA_NA option", client_ip: client_ip}
+            )
+
+            {:continue, state}
+
+          {duid, %{iaid: iaid}} ->
+            # Allocate or renew lease
+            case LeaseManager.allocate_lease(duid, iaid) do
+              {:ok, lease} ->
+                reply = create_reply(message, lease, parsed_opts)
+
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :granted],
+                  %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+                  %{client_ip: client_ip, client_duid: duid}
+                )
+
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+
+              {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :allocation_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), client_duid: duid}
+                )
+
+                # RFC 3315 §18.2.2: must send REPLY with NoAddrsAvail status code
+                # inside the IA_NA, not silently drop the request.
+                reply = create_no_addrs_avail_reply(message, iaid, parsed_opts)
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+            end
+
+            {:continue, state}
+        end
     end
   end
 
@@ -348,38 +379,51 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {duid, %{iaid: iaid}} when duid != nil ->
-        # Renew existing lease
-        case LeaseManager.allocate_lease(duid, iaid) do
-          {:ok, lease} ->
-            reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
+    # RFC 3315 §18.2.3: Server Identifier must be present and match this server's DUID
+    case validate_server_id(parsed_opts.server_id, client_ip) do
+      :error ->
+        {:continue, state}
 
-            :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :granted],
-              %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-              %{client_ip: client_ip, client_duid: duid}
-            )
+      :ok ->
+        case {client_duid, ia_na} do
+          {duid, %{iaid: iaid}} when duid != nil ->
+            # Renew existing lease
+            case LeaseManager.allocate_lease(duid, iaid) do
+              {:ok, lease} ->
+                reply = create_reply(message, lease, parsed_opts)
 
-          {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :granted],
+                  %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+                  %{client_ip: client_ip, client_duid: duid}
+                )
+
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+
+              {:error, reason} ->
+                :telemetry.execute(
+                  [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+                  %{count: 1},
+                  %{reason: inspect(reason), client_duid: duid}
+                )
+
+                # RFC 3315 §18.2.3: must send REPLY with NoBinding status when
+                # unable to find or extend the lease — client must not be left waiting.
+                reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
+                send_dhcpv6_response(reply, client_ip, client_port, state)
+            end
+
+            {:continue, state}
+
+          _ ->
             :telemetry.execute(
-              [:yellow_dog, :dhcpv6, :lease, :renew_failed],
+              [:yellow_dog, :dhcpv6, :message, :invalid],
               %{count: 1},
-              %{reason: inspect(reason), client_duid: duid}
+              %{reason: "RENEW missing required options", client_ip: client_ip}
             )
+
+            {:continue, state}
         end
-
-        {:continue, state}
-
-      _ ->
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :message, :invalid],
-          %{count: 1},
-          %{reason: "RENEW missing required options", client_ip: client_ip}
-        )
-
-        {:continue, state}
     end
   end
 
@@ -399,7 +443,6 @@ defmodule YellowDog.Dhcpv6.Handler do
         case LeaseManager.allocate_lease(duid, iaid) do
           {:ok, lease} ->
             reply = create_reply(message, lease, parsed_opts)
-            send_dhcpv6_response(reply, client_ip, client_port, state)
 
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease, :granted],
@@ -407,12 +450,19 @@ defmodule YellowDog.Dhcpv6.Handler do
               %{client_ip: client_ip, client_duid: duid}
             )
 
+            send_dhcpv6_response(reply, client_ip, client_port, state)
+
           {:error, reason} ->
             :telemetry.execute(
               [:yellow_dog, :dhcpv6, :lease, :rebind_failed],
               %{count: 1},
               %{reason: inspect(reason), client_duid: duid}
             )
+
+            # RFC 3315 §18.2.4: must send REPLY with NoBinding status when
+            # unable to find or extend the lease — client must not be left waiting.
+            reply = create_ia_na_error_reply(message, iaid, parsed_opts, @status_no_binding)
+            send_dhcpv6_response(reply, client_ip, client_port, state)
         end
 
         {:continue, state}
@@ -428,7 +478,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     end
   end
 
-  defp handle_release(_message, parsed_opts, client_ip, client_port, state, start_time) do
+  defp handle_release(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :released],
       %{count: 1},
@@ -439,15 +489,23 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {duid, %{iaid: iaid}} when duid != nil ->
-        LeaseManager.release_lease(duid, iaid)
+    # RFC 3315 §18.2.6: Server Identifier must be present and match this server's DUID
+    with :ok <- validate_server_id(parsed_opts.server_id, client_ip),
+         {duid, %{iaid: iaid}} when duid != nil <- {client_duid, ia_na} do
+      LeaseManager.release_lease(duid, iaid)
 
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :lease, :release_completed],
-          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_duid: duid}
-        )
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease, :release_completed],
+        %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+        %{client_ip: client_ip, client_duid: duid}
+      )
+
+      # RFC 3315 §18.2.6: server MUST respond with REPLY containing Success status
+      reply = create_success_reply(message, parsed_opts)
+      send_dhcpv6_response(reply, client_ip, client_port, state)
+    else
+      :error ->
+        :ok
 
       _ ->
         :telemetry.execute(
@@ -460,7 +518,7 @@ defmodule YellowDog.Dhcpv6.Handler do
     {:continue, state}
   end
 
-  defp handle_decline(_message, parsed_opts, client_ip, client_port, state, start_time) do
+  defp handle_decline(message, parsed_opts, client_ip, client_port, state, start_time) do
     :telemetry.execute(
       [:yellow_dog, :dhcpv6, :lease, :declined],
       %{count: 1},
@@ -471,15 +529,23 @@ defmodule YellowDog.Dhcpv6.Handler do
     client_duid = parsed_opts.client_id
     ia_na = parsed_opts.ia_na
 
-    case {client_duid, ia_na} do
-      {duid, %{ia_addr: ia_addr}} when duid != nil and ia_addr != nil ->
-        LeaseManager.decline_ip(ia_addr, duid)
+    # RFC 3315 §18.2.7: Server Identifier must be present and match this server's DUID
+    with :ok <- validate_server_id(parsed_opts.server_id, client_ip),
+         {duid, %{ia_addr: ia_addr}} when duid != nil and ia_addr != nil <- {client_duid, ia_na} do
+      LeaseManager.decline_ip(ia_addr, duid)
 
-        :telemetry.execute(
-          [:yellow_dog, :dhcpv6, :lease, :decline_completed],
-          %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
-          %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
-        )
+      :telemetry.execute(
+        [:yellow_dog, :dhcpv6, :lease, :decline_completed],
+        %{count: 1, duration: System.monotonic_time(:microsecond) - start_time},
+        %{client_ip: client_ip, client_duid: duid, declined_ip: ia_addr}
+      )
+
+      # RFC 3315 §18.2.7: server MUST respond with REPLY containing Success status
+      reply = create_success_reply(message, parsed_opts)
+      send_dhcpv6_response(reply, client_ip, client_port, state)
+    else
+      :error ->
+        :ok
 
       _ ->
         :telemetry.execute(
@@ -561,6 +627,68 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
   end
 
+  # RFC 3315 §18.2.6/18.2.7: REPLY with top-level Success status for RELEASE and DECLINE.
+  defp create_success_reply(request, parsed_opts) do
+    client_id = parsed_opts.client_id
+
+    options =
+      [
+        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+        %DHCPv6.Message.Option{
+          option_code: @option_status_code,
+          option_data: <<@status_success::16>>
+        }
+      ]
+      |> then(fn opts ->
+        if client_id do
+          [%DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id} | opts]
+        else
+          opts
+        end
+      end)
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
+      transaction_id: request.transaction_id,
+      options: options
+    }
+  end
+
+  # RFC 3315 §18.2.2: builds a REPLY carrying NoAddrsAvail (status 2) inside
+  # the IA_NA option so the client knows the pool is exhausted.
+  defp create_no_addrs_avail_reply(request, iaid, parsed_opts) do
+    create_ia_na_error_reply(request, iaid, parsed_opts, @status_no_addrs_avail)
+  end
+
+  # Generic IA_NA error REPLY builder — wraps a StatusCode option inside IA_NA.
+  # RFC 3315 §24.4 status codes: 2=NoAddrsAvail, 3=NoBinding, 4=NotOnLink.
+  defp create_ia_na_error_reply(request, iaid, parsed_opts, status_code) do
+    client_id = parsed_opts.client_id
+
+    status_option = %DHCPv6.Message.Option{
+      option_code: @option_status_code,
+      option_data: <<status_code::16>>
+    }
+
+    ia_na_data =
+      <<iaid::32, 0::32, 0::32>> <> DHCP.Parameter.to_iodata(status_option)
+
+    ia_na_option = %DHCPv6.Message.Option{
+      option_code: @option_ia_na,
+      option_data: ia_na_data
+    }
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
+      transaction_id: request.transaction_id,
+      options: [
+        %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+        %DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id},
+        ia_na_option
+      ]
+    }
+  end
+
   defp create_information_reply(request, parsed_opts) do
     pool = get_default_pool()
 
@@ -600,9 +728,14 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
 
     # IA_NA option (option 3) - contains IA_ADDR
-    # IAID + T1 + T2 (0 = server decides)
+    # RFC 3315 §22.4: T1 = 50% of preferred lifetime, T2 = 80% of preferred lifetime.
+    # Zero means "server decides" — but since we never send an updated value,
+    # clients would never enter RENEW state. Set explicit values so clients renew.
+    t1 = div(lease.preferred_lifetime, 2)
+    t2 = div(lease.preferred_lifetime * 4, 5)
+
     ia_na_data =
-      <<lease.iaid::32, 0::32, 0::32>> <>
+      <<lease.iaid::32, t1::32, t2::32>> <>
         DHCP.Parameter.to_iodata(ia_addr_option)
 
     %DHCPv6.Message.Option{
@@ -752,6 +885,39 @@ defmodule YellowDog.Dhcpv6.Handler do
     }
   end
 
+  # RFC 3315 §17.2.1: REPLY with Rapid Commit option for clients that sent Rapid Commit in SOLICIT
+  defp create_rapid_commit_reply(solicit, leases, parsed_opts) do
+    pool = get_default_pool()
+    client_id = parsed_opts.client_id
+
+    options = [
+      %DHCPv6.Message.Option{option_code: @option_server_id, option_data: get_server_duid()},
+      %DHCPv6.Message.Option{option_code: @option_client_id, option_data: client_id},
+      # Echo back the Rapid Commit option (empty data, option 14)
+      %DHCPv6.Message.Option{option_code: @option_rapid_commit, option_data: <<>>}
+    ]
+
+    ia_options =
+      Enum.flat_map(leases, fn lease ->
+        case lease.ia_type do
+          :ia_na -> [create_ia_na_option(lease)]
+          :ia_ta -> [create_ia_ta_option(lease)]
+          :ia_pd -> [create_ia_pd_option(lease)]
+          _ -> []
+        end
+      end)
+
+    config_options =
+      [create_dns_servers_option(pool.dns_servers)] ++
+        add_domain_list_option([], pool.domain_name)
+
+    %DHCPv6.Message{
+      msg_type: @msg_type_reply,
+      transaction_id: solicit.transaction_id,
+      options: options ++ ia_options ++ config_options
+    }
+  end
+
   defp create_ia_ta_option(lease) do
     # IA_ADDR option (option 5) - IPv6 address + lifetimes
     ia_addr_data =
@@ -796,6 +962,33 @@ defmodule YellowDog.Dhcpv6.Handler do
       option_code: @option_ia_pd,
       option_data: ia_pd_data
     }
+  end
+
+  # RFC 3315 §18.2.1/3/6/7: REQUEST, RENEW, RELEASE, DECLINE must include a Server
+  # Identifier that matches this server's DUID; if absent or mismatched, discard silently.
+  defp validate_server_id(server_id, client_ip) do
+    cond do
+      server_id == nil ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "missing Server Identifier", client_ip: client_ip}
+        )
+
+        :error
+
+      server_id != get_server_duid() ->
+        :telemetry.execute(
+          [:yellow_dog, :dhcpv6, :message, :invalid],
+          %{count: 1},
+          %{reason: "Server Identifier mismatch", client_ip: client_ip}
+        )
+
+        :error
+
+      true ->
+        :ok
+    end
   end
 
   defp get_server_duid do

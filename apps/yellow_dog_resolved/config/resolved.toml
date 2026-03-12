@@ -1,0 +1,75 @@
+[resolved]
+# Listen address and port
+listen = "127.0.0.1"
+port = 53
+
+# Upstream DNS servers (tried in order)
+upstreams = ["192.168.1.1", "1.1.1.1", "8.8.8.8"]
+
+# Upstream query timeout
+upstream_timeout_ms = 3000
+
+# Consecutive failures before deprioritizing an upstream
+upstream_failure_threshold = 3
+
+[resolved.cache]
+enabled = true
+max_entries = 10000
+min_ttl_s = 30
+max_ttl_s = 86400
+negative_ttl_s = 60
+sweep_interval_s = 60
+
+[resolved.discovery]
+enabled = true
+
+[resolved.discovery.websocket]
+heartbeat_interval_s = 30
+reconnect_base_s = 5
+reconnect_max_s = 60
+
+# Intercept rules (evaluated in order, first match wins)
+[[resolved.intercept]]
+match = "*.local.dev"
+type = "A"
+value = "127.0.0.1"
+ttl = 300
+
+[[resolved.intercept]]
+match = "*.local.dev"
+type = "AAAA"
+value = "::1"
+ttl = 300
+
+[[resolved.intercept]]
+match = "myapp.test"
+type = "A"
+value = "192.168.1.100"
+ttl = 600
+
+[[resolved.intercept]]
+match = "db.internal"
+type = "CNAME"
+value = "postgres.local.dev"
+ttl = 300
+
+# TXT record example (SPF, verification, etc.)
+[[resolved.intercept]]
+match = "info.local.dev"
+type = "TXT"
+value = "v=spf1 include:_spf.local.dev ~all"
+ttl = 300
+
+# MX record example (format: "priority exchange")
+[[resolved.intercept]]
+match = "*.local.dev"
+type = "MX"
+value = "10 mail.local.dev"
+ttl = 300
+
+# SRV record example (format: "priority weight port target")
+[[resolved.intercept]]
+match = "_sip._tcp.local.dev"
+type = "SRV"
+value = "10 60 5060 sip.local.dev"
+ttl = 300

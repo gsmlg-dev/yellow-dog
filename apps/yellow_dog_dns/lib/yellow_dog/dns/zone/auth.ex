@@ -20,6 +20,9 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @behaviour Behaviour
 
+  # RFC 1034 §3.6.2: limit CNAME chain depth to prevent infinite loops.
+  @max_cname_depth 10
+
   alias YellowDog.Telemetry
   alias DNS.Message
   alias DNS.Message.RCode
@@ -368,7 +371,7 @@ defmodule YellowDog.Dns.Zone.Auth do
 
   @impl true
   def handle_call({:remove_record, name, type}, _from, state) do
-    :ets.delete(state.table, {normalize_name(name), type})
+    :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
 
     new_state = %{
       state
@@ -438,7 +441,7 @@ defmodule YellowDog.Dns.Zone.Auth do
   @impl true
   def handle_call({:remove_record_versioned, name, type, expected_version}, _from, state) do
     if state.version == expected_version do
-      :ets.delete(state.table, {normalize_name(name), type})
+      :ets.delete(state.table, {normalize_name(name), normalize_type(type)})
       new_version = state.version + 1
 
       new_state = %{
@@ -657,6 +660,56 @@ defmodule YellowDog.Dns.Zone.Auth do
   defp build_record(:soa, _name, _ttl, _data), do: nil
   defp build_record(_type, _name, _ttl, _data), do: nil
 
+  # Build a DNS.Message.Record for SOA from zone.soa, which may be:
+  #   - %DNS.Zone.Parser.SOARecord{primary_ns:, admin_email:, ...}  (AST-based parser)
+  #   - %{mname:, rname:, serial:, ...}                             (FileParser, legacy)
+  # Returns nil when no SOA data is present so callers can filter it out safely.
+  defp build_soa_from_zone(%DNS.Zone{soa: nil}, _zone_name, _default_ttl), do: nil
+
+  defp build_soa_from_zone(
+         %DNS.Zone{soa: %DNS.Zone.Parser.SOARecord{} = soa, origin: origin},
+         zone_name,
+         default_ttl
+       ) do
+    name = normalize_origin(origin) || normalize_origin(zone_name)
+    ttl = soa.minimum || default_ttl
+    mname = trim_trailing_dot(to_string(soa.primary_ns))
+    rname = trim_trailing_dot(to_string(soa.admin_email))
+
+    Message.Record.new(
+      name,
+      :soa,
+      :in,
+      ttl,
+      {mname, rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum}
+    )
+  end
+
+  defp build_soa_from_zone(%DNS.Zone{soa: soa, origin: origin}, zone_name, default_ttl)
+       when is_map(soa) do
+    name = normalize_origin(origin) || normalize_origin(zone_name)
+    mname = trim_trailing_dot(to_string(Map.get(soa, :mname, "ns1.#{name}")))
+    rname = trim_trailing_dot(to_string(Map.get(soa, :rname, "hostmaster.#{name}")))
+    serial = Map.get(soa, :serial, 1)
+    refresh = Map.get(soa, :refresh, 3600)
+    retry = Map.get(soa, :retry, 1800)
+    expire = Map.get(soa, :expire, 604_800)
+    minimum = Map.get(soa, :minimum, 86_400)
+    ttl = minimum || default_ttl
+
+    Message.Record.new(
+      name,
+      :soa,
+      :in,
+      ttl,
+      {mname, rname, serial, refresh, retry, expire, minimum}
+    )
+  end
+
+  defp build_soa_from_zone(_zone, _zone_name, _default_ttl), do: nil
+
+  defp trim_trailing_dot(s), do: String.trim_trailing(s, ".")
+
   defp resolve_name(nil, origin), do: normalize_origin(origin)
   defp resolve_name("@", origin), do: normalize_origin(origin)
 
@@ -832,13 +885,47 @@ defmodule YellowDog.Dns.Zone.Auth do
           {:ok, build_response(query, records, state)}
 
         Enum.any?(cname_records) ->
-          {:ok, build_response(query, cname_records, state)}
+          # RFC 1034 §3.6.2: follow the CNAME chain within the zone and include
+          # target records in the same answer section. Stops at the zone boundary
+          # (out-of-zone targets are left for the client/resolver to pursue) and
+          # at @max_cname_depth to prevent loops.
+          all_answers = chase_cname_chain(state, cname_records, qtype, 0)
+          {:ok, build_response(query, all_answers, state)}
 
         name_exists?(state.table, qname) ->
           {:ok, build_nodata_response(query, state)}
 
         true ->
-          {:ok, build_nxdomain_response(query, state)}
+          # RFC 1034 §4.3.3 / RFC 4592: try wildcard expansion before NXDOMAIN.
+          # The wildcard candidate is the query name with the leftmost label
+          # replaced by "*" (e.g., "a.example.com" → "*.example.com").
+          wildcard = wildcard_candidate(qname)
+
+          wildcard_records =
+            if wildcard, do: lookup_records(state.table, wildcard, qtype), else: []
+
+          wildcard_cnames =
+            if wildcard, do: lookup_records(state.table, wildcard, :cname), else: []
+
+          cond do
+            Enum.any?(wildcard_records) ->
+              # Substitute the query name as the owner (RFC 4592 §2.2.2)
+              expanded = Enum.map(wildcard_records, &%{&1 | name: qname})
+              {:ok, build_response(query, expanded, state)}
+
+            Enum.any?(wildcard_cnames) ->
+              expanded_cnames = Enum.map(wildcard_cnames, &%{&1 | name: qname})
+              all_answers = chase_cname_chain(state, expanded_cnames, qtype, 0)
+              {:ok, build_response(query, all_answers, state)}
+
+            wildcard != nil and name_exists?(state.table, wildcard) ->
+              # RFC 4592 §2.2.2: the wildcard "exists" but has no records of
+              # the requested type → NODATA (not NXDOMAIN).
+              {:ok, build_nodata_response(query, state)}
+
+            true ->
+              {:ok, build_nxdomain_response(query, state)}
+          end
       end
     else
       {:error, :refused}
@@ -858,6 +945,54 @@ defmodule YellowDog.Dns.Zone.Auth do
     end
   end
 
+  # Follow the CNAME chain within the zone, accumulating all records.
+  # Returns the accumulated list of records (CNAMEs + final target records).
+  # Stops when the depth limit is reached, the target is out-of-zone, or
+  # the target has records of the requested type (end of chain).
+  defp chase_cname_chain(_state, _cname_records, _qtype, depth)
+       when depth >= @max_cname_depth,
+       do: []
+
+  defp chase_cname_chain(state, cname_records, qtype, depth) do
+    cname_records ++
+      Enum.flat_map(cname_records, fn cname_record ->
+        target_name = cname_target_name(cname_record)
+
+        if target_name != nil and in_zone?(state.name, target_name) do
+          target_records = lookup_records(state.table, target_name, qtype)
+          target_cnames = lookup_records(state.table, target_name, :cname)
+
+          cond do
+            Enum.any?(target_records) ->
+              target_records
+
+            Enum.any?(target_cnames) ->
+              chase_cname_chain(state, target_cnames, qtype, depth + 1)
+
+            true ->
+              []
+          end
+        else
+          # Target is out-of-zone — stop here; client resolves the rest.
+          []
+        end
+      end)
+  end
+
+  # Extract the target domain name from a CNAME record.
+  # Handles both plain maps (from add_record) and DNS.Message.Record structs.
+  defp cname_target_name(record) do
+    target =
+      cond do
+        is_binary(Map.get(record, :rdata)) -> Map.get(record, :rdata)
+        is_binary(Map.get(record, "rdata")) -> Map.get(record, "rdata")
+        is_map(record) and Map.get(record, :data) != nil -> to_string(record.data)
+        true -> nil
+      end
+
+    if is_binary(target) and target != "", do: normalize_name(target), else: nil
+  end
+
   defp name_exists?(table, name) do
     normalized = normalize_name(name)
 
@@ -865,9 +1000,21 @@ defmodule YellowDog.Dns.Zone.Auth do
     |> Enum.any?()
   end
 
+  # RFC 1034 §4.3.3 / RFC 4592: build the wildcard candidate for qname by
+  # replacing the leftmost label with "*".
+  # "a.example.com"   → "*.example.com"
+  # "a.b.example.com" → "*.b.example.com"
+  # Returns nil for apex queries (no label to strip).
+  defp wildcard_candidate(qname) do
+    case String.split(qname, ".", parts: 2) do
+      [_first, rest] when rest != "" -> "*.#{rest}"
+      _ -> nil
+    end
+  end
+
   defp in_zone?(zone_name, qname) do
     zone_suffix = normalize_name(zone_name)
-    String.ends_with?(qname, zone_suffix) or qname == zone_suffix
+    qname == zone_suffix or String.ends_with?(qname, "." <> zone_suffix)
   end
 
   defp insert_records(table, records) do
@@ -942,7 +1089,11 @@ defmodule YellowDog.Dns.Zone.Auth do
     }
   end
 
-  defp build_nodata_response(query, _state) do
+  # RFC 2308 §2: negative responses SHOULD include the zone SOA in the
+  # authority section so that resolvers can cache negative results.
+  defp build_nodata_response(query, state) do
+    authority = if state.soa, do: [state.soa], else: []
+
     %Message{
       header: %{
         query.header
@@ -950,17 +1101,19 @@ defmodule YellowDog.Dns.Zone.Auth do
           aa: 1,
           rcode: RCode.no_error(),
           ancount: 0,
-          nscount: 0,
+          nscount: length(authority),
           arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: [],
+      nslist: authority,
       arlist: []
     }
   end
 
-  defp build_nxdomain_response(query, _state) do
+  defp build_nxdomain_response(query, state) do
+    authority = if state.soa, do: [state.soa], else: []
+
     %Message{
       header: %{
         query.header
@@ -968,12 +1121,12 @@ defmodule YellowDog.Dns.Zone.Auth do
           aa: 1,
           rcode: RCode.nx_domain(),
           ancount: 0,
-          nscount: 0,
+          nscount: length(authority),
           arcount: 0
       },
       qdlist: query.qdlist,
       anlist: [],
-      nslist: [],
+      nslist: authority,
       arlist: []
     }
   end
@@ -1009,7 +1162,16 @@ defmodule YellowDog.Dns.Zone.Auth do
 
     case DNS.Zone.Loader.load_zone_from_file(state.name, zone_file) do
       {:ok, zone} ->
-        load_zone_data(state, zone.records)
+        # DNS.Zone.Loader returns DNS.Zone.RRSet structs in zone.records, but the
+        # auth zone ETS table and response builder expect DNS.Message.Record structs
+        # (which implement DNS.Parameter for wire-format serialization). Use
+        # rrsets_to_records/1 to convert non-SOA records. SOA is stored separately
+        # in zone.soa by the file parser and must be built explicitly because
+        # build_record(:soa, ...) returns nil to avoid double-storing it.
+        records = rrsets_to_records(zone)
+        soa = build_soa_from_zone(zone, state.name, state.ttl)
+        all_records = if soa, do: [soa | records], else: records
+        load_zone_data(state, all_records)
 
       {:error, reason} ->
         Telemetry.error("Failed to load zone file", %{

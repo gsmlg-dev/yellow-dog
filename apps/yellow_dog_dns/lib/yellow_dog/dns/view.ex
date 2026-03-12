@@ -591,35 +591,32 @@ defmodule YellowDog.Dns.View do
   defp find_zone_for_name(zones, query_name) do
     normalized = normalize_name(query_name)
 
-    # Handle both simple zone names and {type, name} tuples
-    Enum.find_value(zones, fn
-      {_type, zone_name} ->
-        zone_suffix = normalize_name(zone_name)
-
-        if String.ends_with?(normalized, zone_suffix) or normalized == zone_suffix do
-          zone_name
-        else
-          nil
-        end
-
-      zone_name when is_binary(zone_name) ->
-        zone_suffix = normalize_name(zone_name)
-
-        if String.ends_with?(normalized, zone_suffix) or normalized == zone_suffix do
-          zone_name
-        else
-          nil
-        end
+    # RFC 1034 §3.6: select the most specific (longest) matching zone.
+    # Use label-boundary matching to prevent "e.com" from matching "example.com".
+    zones
+    |> Enum.map(fn
+      {_type, zone_name} -> zone_name
+      zone_name when is_binary(zone_name) -> zone_name
     end)
+    |> Enum.filter(fn zone_name ->
+      zone_suffix = normalize_name(zone_name)
+      normalized == zone_suffix or String.ends_with?(normalized, "." <> zone_suffix)
+    end)
+    |> Enum.max_by(&String.length/1, fn -> nil end)
   end
 
   defp check_cache(state, name, type) do
     key = {normalize_name(name), type}
+    now = System.system_time(:second)
 
     case :ets.lookup(state.cache_table, key) do
       [{^key, {response, expires_at}}] ->
-        if expires_at > System.system_time(:second) do
-          {:ok, response}
+        remaining_ttl = expires_at - now
+
+        if remaining_ttl > 0 do
+          # RFC 1034 §4.3.4: adjust record TTLs to remaining cache time so
+          # downstream resolvers and clients don't cache beyond actual expiry.
+          {:ok, set_response_ttls(response, remaining_ttl)}
         else
           :ets.delete(state.cache_table, key)
           :miss
@@ -630,16 +627,35 @@ defmodule YellowDog.Dns.View do
     end
   end
 
-  defp cache_response(state, query, response) do
-    case query.qdlist do
-      [question | _] ->
-        ttl = get_min_ttl(response)
-        key = {normalize_name(question.name), question.type}
-        expires_at = System.system_time(:second) + ttl
-        :ets.insert(state.cache_table, {key, {response, expires_at}})
+  defp set_response_ttls(response, remaining_ttl) do
+    adjust = fn records ->
+      Enum.map(records, fn r -> %{r | ttl: min(r.ttl, remaining_ttl)} end)
+    end
 
-      [] ->
-        :ok
+    %{
+      response
+      | anlist: adjust.(response.anlist),
+        nslist: adjust.(response.nslist),
+        arlist: adjust.(response.arlist)
+    }
+  end
+
+  defp cache_response(state, query, response) do
+    # RFC 2308 §7: SERVFAIL and REFUSED responses must not be cached —
+    # they are transient errors, not authoritative answers.
+    if response.header.rcode in [DNS.Message.RCode.serv_fail(), DNS.Message.RCode.refused()] do
+      :ok
+    else
+      case query.qdlist do
+        [question | _] ->
+          ttl = get_min_ttl(response)
+          key = {normalize_name(question.name), question.type}
+          expires_at = System.system_time(:second) + ttl
+          :ets.insert(state.cache_table, {key, {response, expires_at}})
+
+        [] ->
+          :ok
+      end
     end
   end
 

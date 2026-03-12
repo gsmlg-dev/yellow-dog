@@ -42,7 +42,7 @@ defmodule YellowDog.Dns.ConnectionProcess do
   alias YellowDog.Dns.{IpFormat, QueryLogger}
   alias YellowDog.Telemetry
   alias DNS.Message
-  alias DNS.Message.RCode
+  alias DNS.Message.{OpCode, RCode}
 
   # DNS module used for to_iodata/1
   require DNS
@@ -80,9 +80,15 @@ defmodule YellowDog.Dns.ConnectionProcess do
       view: nil,
       zone: nil,
       metadata: %{},
-      raw: false
+      raw: false,
+      # Maximum UDP payload size: 512 (RFC 1035) unless the query includes an
+      # EDNS0 OPT record advertising a larger buffer (RFC 6891 §6.2.3).
+      max_udp_payload: 512
     ]
   end
+
+  # RFC 6891 §6.1.2 OPT pseudo-RR type value
+  @opt_rr_type 41
 
   # Client API
 
@@ -182,12 +188,36 @@ defmodule YellowDog.Dns.ConnectionProcess do
     try do
       query = Message.from_iodata(data)
 
-      case submit_query_internal(state, query, raw: true) do
-        {:ok, new_state} ->
-          {:reply, :ok, new_state}
+      # RFC 1035 §4.1.1: QR=1 means this is a DNS response, not a query.
+      # Silently discard — replying to a response would be incorrect and
+      # could participate in reflection amplification attacks.
+      if query.header.qr == 1 do
+        Telemetry.debug("Discarding DNS response packet on query port", %{
+          id: query.header.id
+        })
 
-        {:error, _reason} = error ->
-          {:reply, error, state}
+        {:reply, {:error, :not_a_query}, state}
+      else
+        # RFC 1035 §4.1.1: Only OPCODE 0 (QUERY) is supported.
+        # Return NOTIMP for any other opcode (IQUERY, STATUS, Notify, Update, etc.).
+        if query.header.opcode != OpCode.query() do
+          Telemetry.debug("Unsupported DNS opcode — returning NOTIMP", %{
+            id: query.header.id,
+            opcode: to_string(query.header.opcode)
+          })
+
+          notimp = build_notimp_response(query)
+          send(state.handler_pid, {:dns_raw_response, query.header.id, DNS.to_iodata(notimp)})
+          {:reply, :ok, state}
+        else
+          case submit_query_internal(state, query, raw: true) do
+            {:ok, new_state} ->
+              {:reply, :ok, new_state}
+
+            {:error, _reason} = error ->
+              {:reply, error, state}
+          end
+        end
       end
     rescue
       error in [ArgumentError, MatchError, FunctionClauseError, RuntimeError] ->
@@ -348,7 +378,8 @@ defmodule YellowDog.Dns.ConnectionProcess do
         timer_ref: timer_ref,
         started_at: System.monotonic_time(:millisecond),
         phase: @phase_received,
-        raw: raw
+        raw: raw,
+        max_udp_payload: extract_edns0_payload_size(query)
       }
 
       # Update state
@@ -372,23 +403,36 @@ defmodule YellowDog.Dns.ConnectionProcess do
     # Capture the connection process PID before spawning
     connection_pid = self()
 
-    # Send resolution request to ViewManager with connection process PID for response routing
+    # Send resolution request to ViewManager with connection process PID for response routing.
+    # Rescue any unexpected exception so it is reported immediately as a SERVFAIL rather
+    # than silently killing the worker and leaving the query hanging until the 5-second
+    # timeout fires.  Process exits (e.g. ViewManager restarting) are intentionally NOT
+    # caught here so the query falls through to the normal timeout path.
     spawn(fn ->
-      result =
-        YellowDog.Dns.ViewManager.resolve(
-          connection_pid,
-          state.client_ip,
-          query_id,
-          query
-        )
+      try do
+        result =
+          YellowDog.Dns.ViewManager.resolve(
+            connection_pid,
+            state.client_ip,
+            query_id,
+            query
+          )
 
-      # Send result back to connection process
-      case result do
-        {:ok, response} ->
-          send(connection_pid, {:resolution_complete, query_id, response})
+        case result do
+          {:ok, response} ->
+            send(connection_pid, {:resolution_complete, query_id, response})
 
-        {:error, reason} ->
-          send(connection_pid, {:resolution_error, query_id, reason})
+          {:error, reason} ->
+            send(connection_pid, {:resolution_error, query_id, reason})
+        end
+      rescue
+        e ->
+          Telemetry.error("ViewManager resolution raised exception", %{
+            query_id: query_id,
+            error: Exception.message(e)
+          })
+
+          send(connection_pid, {:resolution_error, query_id, :exception})
       end
     end)
   end
@@ -440,7 +484,9 @@ defmodule YellowDog.Dns.ConnectionProcess do
 
         # Send response to handler (raw binary or parsed message)
         if qs.raw do
-          response_data = DNS.to_iodata(response)
+          # RFC 1035 §4.2.1: truncate UDP responses that exceed the client's
+          # declared buffer size (default 512, larger with EDNS0).
+          response_data = DNS.to_iodata(maybe_truncate(response, qs.max_udp_payload))
           send(state.handler_pid, {:dns_raw_response, query_id, response_data})
         else
           send(state.handler_pid, {:dns_response, query_id, response})
@@ -490,6 +536,26 @@ defmodule YellowDog.Dns.ConnectionProcess do
           :ok
       end
     end
+  end
+
+  defp build_notimp_response(query) do
+    %Message{
+      header: %{
+        query.header
+        | qr: 1,
+          aa: 0,
+          tc: 0,
+          ra: 0,
+          rcode: RCode.not_imp(),
+          ancount: 0,
+          nscount: 0,
+          arcount: 0
+      },
+      qdlist: query.qdlist,
+      anlist: [],
+      nslist: [],
+      arlist: []
+    }
   end
 
   defp create_error_response(query, reason) do
@@ -632,5 +698,58 @@ defmodule YellowDog.Dns.ConnectionProcess do
       answer_count: 0,
       error: reason
     })
+  end
+
+  # RFC 1035 §4.2.1 / RFC 6891 §6.2.3 — UDP truncation helpers
+
+  # Extract the client's advertised UDP payload size from its EDNS0 OPT record.
+  # Defaults to 512 (the RFC 1035 limit) when no OPT record is present.
+  defp extract_edns0_payload_size(%Message{arlist: arlist}) when is_list(arlist) do
+    opt_type = DNS.ResourceRecordType.new(@opt_rr_type)
+
+    case Enum.find(arlist, fn r -> r.type == opt_type end) do
+      nil ->
+        512
+
+      opt_rec ->
+        # RFC 6891 §6.2.3: the class field of the OPT record holds the UDP
+        # payload size as a 16-bit unsigned integer.
+        try do
+          <<udp_payload::16>> = opt_rec.class.value
+          max(udp_payload, 512)
+        rescue
+          _ -> 512
+        end
+    end
+  end
+
+  defp extract_edns0_payload_size(_), do: 512
+
+  # If the serialized response would exceed `max_bytes`, return a truncated
+  # response with TC=1 and an empty answer section.  Per RFC 1035 §4.2.1,
+  # truncation starts at the end of the message, but the simplest compliant
+  # approach (widely used) is to return an empty answer with TC=1 so the
+  # resolver falls back to TCP.
+  defp maybe_truncate(%Message{} = response, max_bytes) do
+    wire = DNS.to_iodata(response)
+
+    if IO.iodata_length(wire) > max_bytes do
+      truncated = %Message{
+        response
+        | header: %{response.header | tc: 1, ancount: 0, nscount: 0, arcount: 0},
+          anlist: [],
+          nslist: [],
+          arlist: []
+      }
+
+      Telemetry.debug("DNS response truncated for UDP", %{
+        original_bytes: IO.iodata_length(wire),
+        max_bytes: max_bytes
+      })
+
+      truncated
+    else
+      response
+    end
   end
 end

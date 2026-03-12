@@ -63,8 +63,7 @@ config :yellow_dog_resolved, start_services: false
 
 # DHCP client NIF: skip Rust compilation in test (cargo may not be available).
 # Tests use DhcpSocket.UdpFallback configured via :socket_impl env key.
-config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native,
-  skip_compilation?: true
+config :yellow_dog_dhcp_client, YellowDog.DhcpClient.DhcpSocket.Native, skip_compilation?: true
 
 # Use the gen_udp fallback socket in tests — the Rust NIF requires cargo + capabilities.
 config :yellow_dog_dhcp_client, :socket_impl, YellowDog.DhcpClient.DhcpSocket.UdpFallback

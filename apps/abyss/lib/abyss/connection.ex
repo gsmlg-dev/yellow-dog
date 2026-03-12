@@ -158,8 +158,6 @@ defmodule Abyss.Connection do
           )
         end)
 
-        {:retry, :connection_limit}
-
         :ok
 
       {:error, :max_children} ->
@@ -304,8 +302,6 @@ defmodule Abyss.Connection do
             retries - 1
           )
         end)
-
-        {:retry, :connection_limit}
 
         :ok
 

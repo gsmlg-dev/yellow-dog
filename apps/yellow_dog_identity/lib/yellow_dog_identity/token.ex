@@ -79,7 +79,8 @@ defmodule YellowDogIdentity.Token do
   @spec verify(t(), String.t(), String.t()) :: :ok | {:error, term()}
   def verify(%__MODULE__{} = token, raw_token, hostname) do
     cond do
-      hash_token(raw_token) != token.token_hash ->
+      # Use constant-time comparison to prevent timing-based token enumeration.
+      not :crypto.hash_equals(hash_token(raw_token), token.token_hash) ->
         {:error, :invalid_token}
 
       DateTime.compare(DateTime.utc_now(), token.expires_at) == :gt ->

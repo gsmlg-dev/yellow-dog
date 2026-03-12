@@ -88,11 +88,41 @@ defmodule Abyss.Listener do
   @doc """
   Stop a listener process gracefully.
 
+  Closes the listener socket first to unblock any pending recv(:infinity)
+  call, then stops the GenServer. Without closing the socket first,
+  GenServer.stop/1 would time out because the process cannot handle
+  system messages while blocked in recv.
+
   ## Parameters
   - `server` - The listener process PID or name
   """
   @spec stop(GenServer.server()) :: :ok
-  def stop(server), do: GenServer.stop(server)
+  def stop(server) do
+    # Close the socket to unblock recv(:infinity). The listener then stops
+    # itself with :normal reason. We monitor and wait for the DOWN signal
+    # rather than calling GenServer.stop/1 (which would fail if the process
+    # is already dead after the socket close).
+    pid = if is_pid(server), do: server, else: Process.whereis(server)
+
+    if pid && Process.alive?(pid) do
+      ref = Process.monitor(pid)
+
+      case :ets.lookup(@listener_info_table, pid) do
+        [{^pid, _local_info, socket}] -> :gen_udp.close(socket)
+        _ -> GenServer.stop(server)
+      end
+
+      receive do
+        {:DOWN, ^ref, :process, ^pid, _} -> :ok
+      after
+        5000 ->
+          Process.demonitor(ref, [:flush])
+          :ok
+      end
+    else
+      :ok
+    end
+  end
 
   @doc """
   Get information about the listener's local socket endpoint.
@@ -124,6 +154,7 @@ defmodule Abyss.Listener do
     ensure_info_table_exists()
 
     case :ets.lookup(@listener_info_table, listener_pid) do
+      [{^listener_pid, local_info, _socket}] -> {:ok, local_info}
       [{^listener_pid, local_info}] -> {:ok, local_info}
       [] -> :error
     end
@@ -144,10 +175,10 @@ defmodule Abyss.Listener do
     end
   end
 
-  # Store listener info in ETS cache
-  defp cache_listener_info(listener_pid, local_info) do
+  # Store listener info and socket in ETS cache
+  defp cache_listener_info(listener_pid, local_info, socket) do
     ensure_info_table_exists()
-    :ets.insert(@listener_info_table, {listener_pid, local_info})
+    :ets.insert(@listener_info_table, {listener_pid, local_info, socket})
   end
 
   # Remove listener info from ETS cache
@@ -232,8 +263,9 @@ defmodule Abyss.Listener do
         transport: transport
       }
 
-      # Cache listener info in ETS for queries while blocked in recv
-      cache_listener_info(self(), {ip, port})
+      # Cache listener info and socket in ETS for queries while blocked in recv.
+      # The socket is stored so stop/1 can close it to unblock recv(:infinity).
+      cache_listener_info(self(), {ip, port}, listener_socket)
 
       # Start listening immediately for non-broadcast mode
       unless broadcast do
@@ -268,6 +300,11 @@ defmodule Abyss.Listener do
 
         {:ok, [active: true]} ->
           {:noreply, state}
+
+        {:error, reason} ->
+          # Socket was closed externally (e.g., stop/1 called before :start_listening ran).
+          # :einval = closed socket; treat as normal shutdown to avoid propagating to linked processes.
+          {:stop, if(reason == :einval, do: :normal, else: reason), state}
       end
     end
   end
@@ -428,7 +465,8 @@ defmodule Abyss.Listener do
           listener_socket: listener_socket
         })
 
-        {:stop, reason, state}
+        # :einval = socket closed by stop/1; treat as normal shutdown.
+        {:stop, if(reason == :einval, do: :normal, else: reason), state}
     end
   end
 
@@ -508,7 +546,8 @@ defmodule Abyss.Listener do
           listener_socket: listener_socket
         })
 
-        {:stop, reason, state}
+        # :einval = socket closed by stop/1; treat as normal shutdown.
+        {:stop, if(reason == :einval, do: :normal, else: reason), state}
     end
   end
 

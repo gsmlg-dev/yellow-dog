@@ -299,6 +299,27 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert length(records) == 1
       assert hd(records).type == :txt
     end
+
+    test "removes record when type is a DNS.ResourceRecordType struct", %{zone: pid} do
+      # add_record normalises to atom; remove_record must also normalise so the
+      # ETS key matches — previously remove_record used the raw struct, causing
+      # a silent no-op deletion.
+      Auth.add_record(pid, %{
+        name: "srv.example.com",
+        type: :a,
+        class: :in,
+        ttl: 3600,
+        rdata: {10, 0, 0, 1}
+      })
+
+      assert length(Auth.get_all_records(pid)) == 1
+
+      # Pass type as a ResourceRecordType struct (as it arrives from wire-format parsing)
+      rr_type_struct = DNS.ResourceRecordType.new(1)
+      :ok = Auth.remove_record(pid, "srv.example.com", rr_type_struct)
+
+      assert Auth.get_all_records(pid) == []
+    end
   end
 
   describe "name normalization" do
@@ -604,6 +625,48 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert response.anlist == []
     end
 
+    test "NXDOMAIN includes SOA in authority section (RFC 2308 §2)" do
+      zone_name = "soa-nxd-#{System.unique_integer([:positive])}.com"
+
+      {:ok, pid} =
+        Auth.start_link(
+          name: zone_name,
+          zone_data: [
+            %{
+              name: zone_name,
+              type: :soa,
+              class: :in,
+              ttl: 3600,
+              rdata: %{
+                mname: "ns1.#{zone_name}.",
+                rname: "admin.#{zone_name}.",
+                serial: 1,
+                refresh: 3600,
+                retry: 600,
+                expire: 604_800,
+                minimum: 86400
+              }
+            }
+          ]
+        )
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      query = build_query("nonexistent.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.nscount == 1
+      assert length(response.nslist) == 1
+      [soa] = response.nslist
+      assert soa.type == :soa
+    end
+
     test "returns NODATA for existing name with no matching type", %{
       zone: pid,
       zone_name: zone_name
@@ -626,6 +689,49 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       assert response.anlist == []
     end
 
+    test "NODATA includes SOA in authority section (RFC 2308 §2)" do
+      zone_name = "soa-nodata-#{System.unique_integer([:positive])}.com"
+
+      {:ok, pid} =
+        Auth.start_link(
+          name: zone_name,
+          zone_data: [
+            %{
+              name: zone_name,
+              type: :soa,
+              class: :in,
+              ttl: 3600,
+              rdata: %{
+                mname: "ns1.#{zone_name}.",
+                rname: "admin.#{zone_name}.",
+                serial: 1,
+                refresh: 3600,
+                retry: 600,
+                expire: 604_800,
+                minimum: 86400
+              }
+            },
+            %{name: "www.#{zone_name}", type: :a, class: :in, ttl: 3600, rdata: {192, 168, 1, 1}}
+          ]
+        )
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      query = build_query("www.#{zone_name}", :aaaa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.nscount == 1
+      assert length(response.nslist) == 1
+      [soa] = response.nslist
+      assert soa.type == :soa
+    end
+
     test "returns CNAME for CNAME records", %{zone: pid, zone_name: zone_name} do
       Auth.add_record(pid, %{
         name: "alias.#{zone_name}",
@@ -639,6 +745,94 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       {:ok, response} = Auth.resolve(pid, query)
 
       # Should return CNAME in answer
+      assert length(response.anlist) == 1
+      [answer] = response.anlist
+      assert answer.type == :cname
+    end
+
+    test "follows CNAME and includes target A records in answer (RFC 1034 §3.6.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "www.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {1, 2, 3, 4}
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Answer must contain both the CNAME and the target A record
+      assert length(response.anlist) == 2
+      types = Enum.map(response.anlist, & &1.type) |> Enum.sort()
+      assert :a in types
+      assert :cname in types
+    end
+
+    test "follows multi-hop CNAME chain within zone (RFC 1034 §3.6.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # alias → alias2 → www
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "alias2.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "alias2.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.#{zone_name}"
+      })
+
+      Auth.add_record(pid, %{
+        name: "www.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 1}
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Should contain alias → alias2 CNAME, alias2 → www CNAME, and www A record
+      assert length(response.anlist) == 3
+      types = Enum.map(response.anlist, & &1.type)
+      assert Enum.count(types, &(&1 == :cname)) == 2
+      assert Enum.count(types, &(&1 == :a)) == 1
+    end
+
+    test "stops CNAME chasing at zone boundary", %{zone: pid, zone_name: zone_name} do
+      # CNAME pointing to out-of-zone target — must NOT chase
+      Auth.add_record(pid, %{
+        name: "alias.#{zone_name}",
+        type: :cname,
+        class: :in,
+        ttl: 3600,
+        rdata: "www.external.com"
+      })
+
+      query = build_query("alias.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # Only the CNAME record itself, no external records
       assert length(response.anlist) == 1
       [answer] = response.anlist
       assert answer.type == :cname
@@ -971,6 +1165,16 @@ defmodule YellowDog.Dns.Zone.AuthTest do
       query = build_query("www.unrelated.com", :a)
       {:error, :refused} = Auth.resolve(pid, query)
     end
+
+    test "refuses queries for domains that share a suffix but differ at label boundary", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # e.g. zone is "example.com" — "notexample.com" must NOT match
+      fake_name = "not#{zone_name}"
+      query = build_query(fake_name, :a)
+      {:error, :refused} = Auth.resolve(pid, query)
+    end
   end
 
   describe "start_link/1 options" do
@@ -1126,6 +1330,191 @@ defmodule YellowDog.Dns.Zone.AuthTest do
 
       assert exported =~ "192.168.1.100"
       assert exported =~ "192.168.1.200"
+    end
+  end
+
+  # RFC 1034 §4.3.3 / RFC 4592 wildcard record expansion
+  describe "RFC 1034 §4.3.3 — wildcard record expansion" do
+    test "wildcard A record matches one-label-deep query", %{zone: pid, zone_name: zone_name} do
+      # Add *.zone_name A record
+      Auth.add_record(pid, %{
+        name: "*.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 1}
+      })
+
+      # Query for any.zone_name should match the wildcard
+      query = build_query("any.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.qr == 1
+      assert length(response.anlist) == 1
+      [answer] = response.anlist
+      assert answer.type == :a
+      # Owner name must be substituted with the actual query name (RFC 4592 §2.2.2)
+      assert to_string(answer.name) |> String.downcase() |> String.trim_trailing(".") ==
+               "any.#{zone_name}"
+    end
+
+    test "wildcard does not match two-label-deep query", %{zone: pid, zone_name: zone_name} do
+      # *.zone_name matches only one level deep
+      Auth.add_record(pid, %{
+        name: "*.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 2}
+      })
+
+      # a.b.zone_name is two levels deep — must NOT match *.zone_name
+      query = build_query("a.b.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      nxdomain = DNS.Message.RCode.nx_domain()
+      assert response.header.rcode == nxdomain
+      assert response.anlist == []
+    end
+
+    test "exact match takes precedence over wildcard", %{zone: pid, zone_name: zone_name} do
+      # Add wildcard
+      Auth.add_record(pid, %{
+        name: "*.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 99}
+      })
+
+      # Add exact match for www
+      Auth.add_record(pid, %{
+        name: "www.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {192, 168, 1, 1}
+      })
+
+      query = build_query("www.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert length(response.anlist) == 1
+      [answer] = response.anlist
+      assert answer.type == :a
+      # Must use exact match record, not wildcard
+      assert answer.rdata == {192, 168, 1, 1}
+    end
+
+    test "wildcard NODATA when query type has no wildcard record (RFC 4592 §2.2.2)", %{
+      zone: pid,
+      zone_name: zone_name
+    } do
+      # Wildcard A exists, query for AAAA → NODATA (name "exists" via wildcard but has
+      # no AAAA record). RFC 4592 §2.2.2 requires NODATA, not NXDOMAIN.
+      Auth.add_record(pid, %{
+        name: "*.#{zone_name}",
+        type: :a,
+        class: :in,
+        ttl: 300,
+        rdata: {10, 0, 0, 3}
+      })
+
+      query = build_query("x.#{zone_name}", :aaaa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # NODATA: RCODE=0, empty answer section
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert response.anlist == []
+    end
+  end
+
+  describe "zone loaded from file" do
+    # Regression test: DNS.Zone.Loader returns DNS.Zone.RRSet structs in zone.records,
+    # but the auth zone and response builder expect DNS.Message.Record structs (which
+    # implement DNS.Parameter for wire-format serialization). Loading a zone file used
+    # to crash with Protocol.UndefinedError when DNS.to_iodata/1 was called on a response.
+    test "resolves queries and response is wire-serializable" do
+      tmp_dir = System.tmp_dir!()
+      ref = :erlang.unique_integer([:positive])
+      zone_name = "filezone-#{ref}.test"
+      zone_file = Path.join(tmp_dir, "#{zone_name}.zone")
+
+      File.write!(zone_file, """
+      $TTL 3600
+      $ORIGIN #{zone_name}.
+      @   IN  SOA  ns1.#{zone_name}. hostmaster.#{zone_name}. (
+              1 3600 1800 604800 86400 )
+      @   IN  NS   ns1.#{zone_name}.
+      www IN  A    198.51.100.1
+      """)
+
+      {:ok, pid} = Auth.start_link(name: zone_name, zone_file: zone_file)
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+
+        File.rm(zone_file)
+      end)
+
+      query = build_query("www.#{zone_name}", :a)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      # The answer should contain an A record
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert length(response.anlist) == 1
+
+      # Each answer record must be a DNS.Message.Record (not a DNS.Zone.RRSet).
+      # DNS.Message.Record implements DNS.Parameter; DNS.Zone.RRSet does not.
+      # Serializing individual records must not raise Protocol.UndefinedError.
+      for rec <- response.anlist do
+        assert %DNS.Message.Record{} = rec
+        assert is_binary(IO.iodata_to_binary(DNS.to_iodata(rec)))
+      end
+    end
+
+    test "SOA record from file is wire-serializable" do
+      tmp_dir = System.tmp_dir!()
+      ref = :erlang.unique_integer([:positive])
+      zone_name = "filezone-soa-#{ref}.test"
+      zone_file = Path.join(tmp_dir, "#{zone_name}.zone")
+
+      File.write!(zone_file, """
+      $TTL 3600
+      $ORIGIN #{zone_name}.
+      @   IN  SOA  ns1.#{zone_name}. hostmaster.#{zone_name}. (
+              42 3600 1800 604800 86400 )
+      @   IN  NS   ns1.#{zone_name}.
+      """)
+
+      {:ok, pid} = Auth.start_link(name: zone_name, zone_file: zone_file)
+
+      on_exit(fn ->
+        try do
+          if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+
+        File.rm(zone_file)
+      end)
+
+      # Query SOA directly
+      query = build_query(zone_name, :soa)
+      {:ok, response} = Auth.resolve(pid, query)
+
+      assert response.header.rcode == DNS.Message.RCode.no_error()
+      assert length(response.anlist) >= 1
+      [soa_rec | _] = response.anlist
+      assert to_string(soa_rec.type) == "SOA"
+
+      # SOA record must be a DNS.Message.Record serializable to wire format
+      assert %DNS.Message.Record{} = soa_rec
+      assert is_binary(IO.iodata_to_binary(DNS.to_iodata(soa_rec)))
     end
   end
 end
