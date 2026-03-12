@@ -24,8 +24,8 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
         autoconnect: true,
         autoconnect_priority: priority,
         ethernet: %{mtu: mtu},
-        ipv4: %{method: :auto, address: nil, gateway: nil, dns: dns},
-        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+        ipv4: %{method: :auto, address: nil, gateway: nil, dns: dns, dns_search: []},
+        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: [], dns_search: []}
       }
     end
   end
@@ -178,7 +178,7 @@ defmodule YellowDog.Netman.Types.DesiredStatePropertyTest do
       conn = desired.connections[profile.id]
       assert conn != nil
 
-      for key <- [:profile_id, :interface, :ipv4, :ipv6, :mtu, :priority, :dns] do
+      for key <- [:profile_id, :interface, :ipv4, :ipv6, :mtu, :priority, :dns, :dns_search] do
         assert Map.has_key?(conn, key), "Connection missing required key: #{key}"
       end
     end

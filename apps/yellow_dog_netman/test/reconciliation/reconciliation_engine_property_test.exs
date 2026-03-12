@@ -692,7 +692,6 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
         :remove_route,
         :activate_connection,
         :deactivate_connection,
-        :update_dns,
         :set_mtu,
         :set_link_up,
         :set_link_down
@@ -806,7 +805,6 @@ defmodule YellowDog.Netman.ReconciliationEnginePropertyTest do
         :remove_route,
         :activate_connection,
         :deactivate_connection,
-        :update_dns,
         :set_mtu,
         :set_link_up,
         :set_link_down

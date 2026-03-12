@@ -1112,7 +1112,7 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
   describe "DNS push detection" do
     alias YellowDog.Netman.Types.{DesiredState, ObservedState}
 
-    test "diff generates :update_dns when active connection has DNS servers" do
+    test "diff does NOT generate :update_dns (DNS is FSM-only)" do
       iface = "dns_drift_#{:rand.uniform(65535)}"
       profile_id = "dns-drift-#{iface}"
 
@@ -1201,13 +1201,11 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
 
       diffs = ReconciliationEngine.diff(desired, observed)
 
-      dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns and &1.interface == iface))
-      assert length(dns_diffs) == 1
-
-      diff = hd(dns_diffs)
-      assert length(diff.params.servers) == 2
-      assert diff.params.priority == 100
-      assert diff.params.search == []
+      # DNS diffs are no longer produced by the reconciliation engine.
+      # DNS is exclusively managed by the FSM's push_dns/1 to avoid
+      # overwriting DHCP-provided DNS servers.
+      dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns))
+      assert dns_diffs == [], "Reconciliation should not produce DNS diffs"
 
       Connection.Supervisor.stop_connection(iface)
       ProfileStore.delete(profile_id)
@@ -1318,157 +1316,6 @@ defmodule YellowDog.Netman.ReconciliationCoverageTest do
       diffs = ReconciliationEngine.diff(desired, observed)
       dns_diffs = Enum.filter(diffs, &(&1.action == :update_dns))
       assert dns_diffs == [], "Inactive connections should not generate DNS diffs"
-    end
-
-    test "apply_diff(:update_dns) calls YellowDog.Resolved.set_link_dns when loaded" do
-      iface = "dns_apply_#{:rand.uniform(65535)}"
-      profile_id = "dns-apply-#{iface}"
-      recon_pid = Process.whereis(ReconciliationEngine)
-      test_pid = self()
-
-      # Define YellowDog.Resolved dynamically if not already loaded
-      resolved_created = not Code.ensure_loaded?(YellowDog.Resolved)
-
-      if resolved_created do
-        Module.create(
-          YellowDog.Resolved,
-          quote do
-            def set_link_dns(interface, config) do
-              pid = :persistent_term.get(:dns_apply_test_pid, nil)
-              if pid, do: send(pid, {:resolved_set_link_dns, interface, config})
-              :ok
-            end
-
-            def reset_link_dns(interface) do
-              pid = :persistent_term.get(:dns_apply_test_pid, nil)
-              if pid, do: send(pid, {:resolved_reset_link_dns, interface})
-              :ok
-            end
-          end,
-          Macro.Env.location(__ENV__)
-        )
-      end
-
-      :persistent_term.put(:dns_apply_test_pid, test_pid)
-
-      profile = %Profile{
-        id: profile_id,
-        type: :ethernet,
-        interface: iface,
-        autoconnect: true,
-        autoconnect_priority: 100,
-        ethernet: %{mtu: nil},
-        ipv4: %{method: :manual, address: "10.43.0.1/24", gateway: nil, dns: ["8.8.8.8"]},
-        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
-      }
-
-      # Insert link and profile directly into ETS
-      :ets.insert(
-        :netman_links,
-        {iface,
-         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
-      )
-
-      ProfileStore.put(profile_id, profile)
-
-      # Start connection FSM with :disabled so it activates immediately
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
-
-      Process.sleep(100)
-
-      on_exit(fn ->
-        :ets.delete(:netman_links, iface)
-        Connection.Supervisor.stop_connection(iface)
-        ProfileStore.delete(profile_id)
-        :persistent_term.erase(:dns_apply_test_pid)
-
-        if resolved_created do
-          :code.delete(YellowDog.Resolved)
-          :code.purge(YellowDog.Resolved)
-        end
-      end)
-
-      # Trigger reconciliation — should detect DNS config and call set_link_dns
-      send(recon_pid, :periodic_reconcile)
-
-      assert_receive {:resolved_set_link_dns, ^iface, config}, 5_000
-      assert is_list(config.servers)
-      assert length(config.servers) == 1
-      assert config.priority == 100
-      assert config.search == []
-
-      assert Process.alive?(recon_pid)
-    end
-
-    test "apply_diff(:update_dns) returns :ok when YellowDog.Resolved not loaded" do
-      iface = "dns_nores_#{:rand.uniform(65535)}"
-      profile_id = "dns-nores-#{iface}"
-      recon_pid = Process.whereis(ReconciliationEngine)
-      test_pid = self()
-
-      # Ensure YellowDog.Resolved is NOT loaded
-      if Code.ensure_loaded?(YellowDog.Resolved) do
-        :code.delete(YellowDog.Resolved)
-        :code.purge(YellowDog.Resolved)
-      end
-
-      profile = %Profile{
-        id: profile_id,
-        type: :ethernet,
-        interface: iface,
-        autoconnect: true,
-        autoconnect_priority: 100,
-        ethernet: %{mtu: nil},
-        ipv4: %{method: :manual, address: "10.45.0.1/24", gateway: nil, dns: ["8.8.4.4"]},
-        ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
-      }
-
-      :ets.insert(
-        :netman_links,
-        {iface,
-         %{interface: iface, index: 0, state: :up, carrier: true, mtu: 1500, mac: nil, kind: nil}}
-      )
-
-      ProfileStore.put(profile_id, profile)
-
-      {:ok, _pid} =
-        Connection.Supervisor.start_connection(iface, %{
-          profile
-          | ipv4: %{method: :disabled, address: nil, gateway: nil, dns: []}
-        })
-
-      Process.sleep(100)
-
-      on_exit(fn ->
-        :ets.delete(:netman_links, iface)
-        Connection.Supervisor.stop_connection(iface)
-        ProfileStore.delete(profile_id)
-      end)
-
-      handler_id = {__MODULE__, :dns_nores, :rand.uniform(1_000_000)}
-
-      :telemetry.attach(
-        handler_id,
-        [:yellow_dog, :netman, :reconciliation, :stop],
-        fn _event, measurements, _meta, _config ->
-          send(test_pid, {:recon_done, measurements})
-        end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(handler_id) end)
-
-      # Trigger reconciliation — apply_diff(:update_dns) should return :ok (no Resolved module)
-      send(recon_pid, :periodic_reconcile)
-
-      assert_receive {:recon_done, %{diffs_count: count}}, 2000
-      assert count >= 1, "Expected at least 1 diff (DNS update) but got #{count}"
-
-      assert Process.alive?(recon_pid)
     end
 
     test "diff filters out invalid DNS strings (parse_dns_servers error branch)" do

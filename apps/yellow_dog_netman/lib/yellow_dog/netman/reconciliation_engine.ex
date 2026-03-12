@@ -320,12 +320,11 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     address_diffs = compute_address_diffs(desired, observed)
     mtu_diffs = compute_mtu_diffs(desired, observed)
     route_diffs = compute_route_diffs(desired, observed)
-    dns_diffs = compute_dns_diffs(desired, observed)
     link_state_diffs = compute_link_state_diffs(desired, observed)
 
     activate_diffs ++
       deactivate_diffs ++
-      address_diffs ++ mtu_diffs ++ route_diffs ++ dns_diffs ++ link_state_diffs
+      address_diffs ++ mtu_diffs ++ route_diffs ++ link_state_diffs
   end
 
   defp compute_activation_diffs(desired, observed) do
@@ -453,29 +452,11 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     end)
   end
 
-  defp compute_dns_diffs(desired, _observed) do
-    for {_id, conn} <- desired.connections,
-        connection_active?(conn.interface),
-        conn.dns != nil,
-        conn.dns != [],
-        servers = parse_dns_servers(conn.dns),
-        servers != [] do
-      Diff.new(:update_dns, conn.interface, %{
-        servers: servers,
-        search: Map.get(conn, :dns_search, []),
-        priority: conn.priority
-      })
-    end
-  end
-
-  defp parse_dns_servers(dns_strings) do
-    Enum.flat_map(dns_strings, fn s ->
-      case :inet.parse_address(String.to_charlist(s)) do
-        {:ok, addr} -> [addr]
-        _ -> []
-      end
-    end)
-  end
+  # DNS diffs are intentionally not computed by the reconciliation engine.
+  # The FSM's push_dns/1 is the authoritative DNS source because it merges both
+  # profile-configured DNS and DHCP-provided DNS servers. If we pushed profile-only
+  # DNS here, we'd overwrite the DHCP servers that the FSM already applied.
+  # DNS is pushed by the FSM on: activation, profile update, and lease renewal.
 
   defp compute_link_state_diffs(desired, observed) do
     for {_id, conn} <- desired.connections,
@@ -542,14 +523,6 @@ defmodule YellowDog.Netman.ReconciliationEngine do
 
   defp apply_diff(%Diff{action: :remove_route, params: params}) do
     RouteManager.remove_route(params)
-  end
-
-  defp apply_diff(%Diff{action: :update_dns, interface: iface, params: params}) do
-    if Code.ensure_loaded?(YellowDog.Resolved) do
-      apply(YellowDog.Resolved, :set_link_dns, [iface, params])
-    else
-      :ok
-    end
   end
 
   defp apply_diff(%Diff{action: :set_mtu, interface: iface, params: %{mtu: mtu}}) do
