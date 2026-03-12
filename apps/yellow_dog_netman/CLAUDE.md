@@ -32,7 +32,7 @@ YellowDog.Netman.Supervisor (rest_for_one)
 - **Kernel monitors** store state in named ETS tables for concurrent reads
 - **EventBus** uses Registry with `:duplicate` keys for topic-based PubSub
 - **ProfileStore** watches profile directory with `file_system` for hot-reload (200ms debounce)
-- **ReconciliationEngine** debounces events (100ms), subscribes to link/profile/connection events; auto-deactivates orphaned FSMs when profiles are deleted
+- **ReconciliationEngine** debounces events (100ms), subscribes to link/profile/connection events; auto-deactivates orphaned FSMs when profiles are deleted; pushes updated profiles to running FSMs on hot-reload
 - **Netlink backend** is configurable: `:mock` for tests, `:port` for production
 - **LeaseCoordinator** bridges DHCP client telemetry events to FSM processes via Registry lookup
 
@@ -56,7 +56,7 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 777+ tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 782+ tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~30s)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
@@ -80,3 +80,11 @@ cd apps/yellow_dog_netman && mix credo --strict
 - `ip_check` only bypasses address verification when BOTH IPv4 and IPv6 are disabled/link-local
 - `activated` state monitors global address removal for both IPv4 and IPv6 protocols
 - In tests: mock netlink doesn't auto-populate ETS from `add_address` commands — must call `MockNetlink.address_added` to simulate kernel events
+
+## Profile Hot-Reload
+
+- ProfileStore watches TOML files (200ms debounce) → publishes `:reloaded` event
+- ReconciliationEngine intercepts profile events and pushes new profile to FSM via `FSM.update_profile/2`
+- Non-method changes (DNS, priority, MTU): applied in-place, DNS re-pushed
+- IP method changes (e.g., auto→manual): FSM deactivates then re-activates with new config
+- FSM `update_profile` handler exists in `:disconnected`, `:configuring`, and `:activated` states
