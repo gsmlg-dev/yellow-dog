@@ -392,8 +392,10 @@ defmodule YellowDog.Netman.Types.Profile do
   defp put_ethernet(map, %{mtu: mtu}), do: Map.put(map, "ethernet", %{"mtu" => mtu})
 
   defp put_ipv4(map, ipv4) do
+    dns_search = Map.get(ipv4, :dns_search, [])
+
     if ipv4.method == :auto and ipv4.address == nil and ipv4.gateway == nil and
-         ipv4.dns == [] and Map.get(ipv4, :dns_search, []) == [] do
+         ipv4.dns == [] and dns_search == [] do
       map
     else
       section =
@@ -401,15 +403,17 @@ defmodule YellowDog.Netman.Types.Profile do
         |> maybe_put("address", ipv4.address)
         |> maybe_put("gateway", ipv4.gateway)
         |> maybe_put_list("dns", ipv4.dns)
-        |> maybe_put_list("dns_search", Map.get(ipv4, :dns_search, []))
+        |> maybe_put_list("dns_search", dns_search)
 
       Map.put(map, "ipv4", section)
     end
   end
 
   defp put_ipv6(map, ipv6) do
+    dns_search = Map.get(ipv6, :dns_search, [])
+
     if ipv6.method == :auto and ipv6.address == nil and ipv6.gateway == nil and
-         ipv6.dns == [] and Map.get(ipv6, :dns_search, []) == [] do
+         ipv6.dns == [] and dns_search == [] do
       map
     else
       section =
@@ -417,7 +421,7 @@ defmodule YellowDog.Netman.Types.Profile do
         |> maybe_put("address", ipv6.address)
         |> maybe_put("gateway", ipv6.gateway)
         |> maybe_put_list("dns", ipv6.dns)
-        |> maybe_put_list("dns_search", Map.get(ipv6, :dns_search, []))
+        |> maybe_put_list("dns_search", dns_search)
 
       Map.put(map, "ipv6", section)
     end
