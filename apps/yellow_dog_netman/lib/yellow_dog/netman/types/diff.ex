@@ -14,6 +14,7 @@ defmodule YellowDog.Netman.Types.Diff do
           | :set_mtu
           | :set_link_up
           | :set_link_down
+          | :update_profile
 
   @type t :: %__MODULE__{
           action: action(),
@@ -31,7 +32,8 @@ defmodule YellowDog.Netman.Types.Diff do
     :update_dns,
     :set_mtu,
     :set_link_up,
-    :set_link_down
+    :set_link_down,
+    :update_profile
   ]
 
   @enforce_keys [:action]

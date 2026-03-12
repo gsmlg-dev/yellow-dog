@@ -95,6 +95,12 @@ defmodule YellowDog.Netman.Connection.FSM do
     :gen_statem.cast(pid, :deactivate)
   end
 
+  @doc "Update the cached profile. Triggers reconfiguration if IP method changed."
+  @spec update_profile(pid(), YellowDog.Netman.Types.Profile.t()) :: :ok
+  def update_profile(pid, new_profile) do
+    :gen_statem.cast(pid, {:update_profile, new_profile})
+  end
+
   ## gen_statem callbacks
 
   @impl true
@@ -153,6 +159,10 @@ defmodule YellowDog.Netman.Connection.FSM do
     else
       {:keep_state, data}
     end
+  end
+
+  def disconnected(:cast, {:update_profile, new_profile}, data) do
+    {:keep_state, %{data | profile: new_profile}}
   end
 
   def disconnected(:cast, :activate, data) do
@@ -315,6 +325,20 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(data, :configuring, :unavailable)
   end
 
+  def configuring(:cast, {:update_profile, new_profile}, data) do
+    if methods_changed?(data.profile, new_profile) do
+      Logger.info("Profile #{data.profile.id} method changed during configuring, restarting")
+      release_dhcp(data)
+
+      transition(%{data | profile: new_profile}, :configuring, :deactivating, [
+        {:next_event, :internal, :cleanup},
+        {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+      ])
+    else
+      {:keep_state, %{data | profile: new_profile}}
+    end
+  end
+
   def configuring(:cast, :deactivate, data) do
     transition(data, :configuring, :deactivating, [
       {:next_event, :internal, :cleanup},
@@ -462,6 +486,26 @@ defmodule YellowDog.Netman.Connection.FSM do
     RouteManager.flush(data.interface)
     AddressManager.flush(data.interface)
     transition(%{data | lease: nil}, :activated, :unavailable)
+  end
+
+  def activated(:cast, {:update_profile, new_profile}, data) do
+    old = data.profile
+
+    if methods_changed?(old, new_profile) do
+      # IP method changed — must reconfigure: deactivate then re-activate
+      Logger.info("Profile #{old.id} method changed, reconfiguring #{data.interface}")
+
+      transition(%{data | profile: new_profile}, :activated, :deactivating, [
+        {:next_event, :internal, :cleanup},
+        {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+      ])
+    else
+      # Non-method change (DNS, priority, gateway, etc.) — update in-place
+      data = %{data | profile: new_profile}
+      push_dns(data)
+      install_routes(data)
+      {:keep_state, data}
+    end
   end
 
   def activated(:cast, :deactivate, data) do
@@ -851,5 +895,10 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   defp default_prefix(addr) do
     if String.contains?(addr, ":"), do: 128, else: 32
+  end
+
+  defp methods_changed?(old_profile, new_profile) do
+    old_profile.ipv4.method != new_profile.ipv4.method or
+      old_profile.ipv6.method != new_profile.ipv6.method
   end
 end

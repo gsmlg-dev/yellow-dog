@@ -171,6 +171,14 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     {:noreply, %{state | debounce_ref: nil, reconciling: false}}
   end
 
+  def handle_info({:netman_event, "netman:profile:changed", {event, profile_id}}, state)
+      when event in [:updated, :reloaded] do
+    # Push updated profile directly to running FSM (avoids stale cached profile)
+    push_profile_to_fsm(profile_id)
+    state = schedule_debounced_reconcile(state)
+    {:noreply, state}
+  end
+
   def handle_info({:netman_event, _topic, _message}, state) do
     state = schedule_debounced_reconcile(state)
     {:noreply, state}
@@ -510,6 +518,11 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     Connection.Supervisor.stop_connection(iface)
   end
 
+  defp apply_diff(%Diff{action: :update_profile, params: %{profile: profile, pid: pid}}) do
+    Connection.FSM.update_profile(pid, profile)
+    :ok
+  end
+
   defp apply_diff(%Diff{action: :add_address, interface: iface, params: params}) do
     AddressManager.add_address(iface, params.address, params.prefix_len)
   end
@@ -600,6 +613,15 @@ defmodule YellowDog.Netman.ReconciliationEngine do
     |> case do
       nil -> nil
       link -> link.interface
+    end
+  end
+
+  defp push_profile_to_fsm(profile_id) do
+    with {:ok, profile} <- ProfileStore.get(profile_id),
+         {:ok, pid} <- Connection.Supervisor.find_connection_by_profile(profile_id) do
+      Connection.FSM.update_profile(pid, profile)
+    else
+      _ -> :ok
     end
   end
 

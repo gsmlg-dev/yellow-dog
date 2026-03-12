@@ -1426,4 +1426,83 @@ defmodule YellowDog.Netman.Connection.FSMHandlersTest do
       assert state.state == :activated
     end
   end
+
+  describe "update_profile" do
+    test "activated: non-method change updates cached profile in-place" do
+      iface = "hdlr_upd_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{
+        old_profile
+        | autoconnect_priority: 200,
+          ipv4: %{old_profile.ipv4 | dns: ["8.8.8.8"]}
+      }
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :activated}
+
+      result = FSM.activated(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 200
+      assert new_data.profile.ipv4.dns == ["8.8.8.8"]
+    end
+
+    test "activated: method change triggers deactivation" do
+      iface = "hdlr_upd_m_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{
+        old_profile
+        | ipv4: %{method: :auto, address: nil, gateway: nil, dns: []}
+      }
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :activated}
+
+      result = FSM.activated(:cast, {:update_profile, new_profile}, data)
+      assert {:next_state, :deactivating, new_data, _actions} = result
+      assert new_data.profile.ipv4.method == :auto
+    end
+
+    test "disconnected: update_profile replaces cached profile" do
+      iface = "hdlr_upd_d_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{old_profile | autoconnect: false, autoconnect_priority: 50}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :disconnected}
+
+      result = FSM.disconnected(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect == false
+      assert new_data.profile.autoconnect_priority == 50
+    end
+
+    test "configuring: method change triggers deactivation" do
+      iface = "hdlr_upd_c_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{
+        old_profile
+        | ipv6: %{method: :auto, address: nil, gateway: nil, dns: [], dns_search: []}
+      }
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :configuring}
+
+      result = FSM.configuring(:cast, {:update_profile, new_profile}, data)
+      assert {:next_state, :deactivating, new_data, _actions} = result
+      assert new_data.profile.ipv6.method == :auto
+    end
+
+    test "configuring: non-method change keeps state" do
+      iface = "hdlr_upd_cn_#{:rand.uniform(65535)}"
+      old_profile = base_profile(iface)
+
+      new_profile = %{old_profile | autoconnect_priority: 999}
+
+      data = %FSM{interface: iface, profile: old_profile, current_state: :configuring}
+
+      result = FSM.configuring(:cast, {:update_profile, new_profile}, data)
+      assert {:keep_state, new_data} = result
+      assert new_data.profile.autoconnect_priority == 999
+    end
+  end
 end
