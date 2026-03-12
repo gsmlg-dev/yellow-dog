@@ -102,6 +102,7 @@ defmodule GeoIpDb.Database do
 
   @impl true
   def init(_opts) do
+    try do: :ets.delete(@table_name), catch: (_, _ -> :ok)
     table = :ets.new(@table_name, [:named_table, :set, :public, read_concurrency: true])
 
     # Load default databases on startup

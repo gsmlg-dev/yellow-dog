@@ -59,12 +59,9 @@ defmodule YellowDogIdentity.Trust.DHCP.LeaseCache do
 
   @impl true
   def init(opts) do
-    table =
-      if Keyword.get(opts, :name) do
-        :ets.new(Keyword.get(opts, :name), [:set, :public, :named_table])
-      else
-        :ets.new(@table, [:set, :public, :named_table])
-      end
+    table_name = Keyword.get(opts, :name) || @table
+    try do: :ets.delete(table_name), catch: (_, _ -> :ok)
+    table = :ets.new(table_name, [:set, :public, :named_table])
 
     # Attach telemetry handlers for DHCP lease events
     attach_telemetry_handlers()
