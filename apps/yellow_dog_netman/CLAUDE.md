@@ -56,7 +56,7 @@ Use `MockNetlink` from `test/support/mock_netlink.ex` to simulate kernel events.
 ## Commands
 
 ```bash
-cd apps/yellow_dog_netman && mix test     # 819+ tests + 2055 properties (~25 min)
+cd apps/yellow_dog_netman && mix test     # 830+ tests + 2055 properties (~25 min)
 cd apps/yellow_dog_netman && mix test --exclude property  # Unit/integration only (~2 min)
 cd apps/yellow_dog_netman && mix credo --strict
 ```
@@ -82,6 +82,12 @@ cd apps/yellow_dog_netman && mix credo --strict
 - `ip_check` only bypasses address verification when BOTH IPv4 and IPv6 are disabled/link-local
 - `activated` state monitors global address removal for both IPv4 and IPv6 protocols
 - In tests: mock netlink doesn't auto-populate ETS from `add_address` commands — must call `MockNetlink.address_added` to simulate kernel events
+
+## Dual-Stack DHCP Late Arrival
+
+- When `ipv4=auto, ipv6=auto`, IPv6 SLAAC may activate before DHCP completes
+- FSM handles `dhcp_lease_acquired` in both `:ip_check` and `:activated` states
+- Late lease stored in FSM data + DNS re-pushed to merge DHCP DNS with profile DNS
 
 ## Profile Hot-Reload
 
