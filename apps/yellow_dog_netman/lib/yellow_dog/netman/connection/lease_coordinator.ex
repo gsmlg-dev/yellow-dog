@@ -52,6 +52,7 @@ defmodule YellowDog.Netman.Connection.LeaseCoordinator do
   end
 
   @doc false
+  @spec handle_telemetry([atom()], map(), map(), term()) :: term()
   def handle_telemetry(
         [:yellow_dog, :dhcp_client, :lease, event_type],
         measurements,
