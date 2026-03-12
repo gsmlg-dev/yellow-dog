@@ -161,19 +161,21 @@ defmodule YellowDog.Resolved.Router do
 
           # NXDOMAIN — cache using min(SOA TTL, SOA MINIMUM) per RFC 2308 §2.2.
           # Fall back to configured negative_ttl_s if authority section has no SOA.
+          # RFC 2308 §2.1: SOA MINIMUM of 0 means "do not cache negative responses".
           response.header.rcode == DNS.Message.RCode.nx_domain() ->
             fallback_ttl = Map.get(cache_config, :negative_ttl_s, 60)
             negative_ttl = extract_soa_negative_ttl(response, fallback_ttl)
-            Cache.store(domain, type, response, negative_ttl)
+            if negative_ttl > 0, do: Cache.store(domain, type, response, negative_ttl)
 
           # NODATA — NOERROR with no matching answers. Cache with SOA MINIMUM per RFC 2308 §2.1.
           # Fall back to configured negative_ttl_s if authority section has no SOA.
           # Use anlist == [] (not ttl == 0) to avoid mis-classifying TTL=0 positive
           # responses as NODATA — RFC 1035 §3.2.1 says TTL=0 records must not be cached.
+          # RFC 2308 §2.1: SOA MINIMUM of 0 means "do not cache negative responses".
           response.header.rcode == DNS.Message.RCode.no_error() and response.anlist == [] ->
             fallback_ttl = Map.get(cache_config, :negative_ttl_s, 60)
             negative_ttl = extract_soa_negative_ttl(response, fallback_ttl)
-            Cache.store(domain, type, response, negative_ttl)
+            if negative_ttl > 0, do: Cache.store(domain, type, response, negative_ttl)
 
           # Positive response — only cache NOERROR with answers.
           # SERVFAIL / REFUSED responses must NOT be cached, even if they
