@@ -333,14 +333,27 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   defp compute_address_diffs(desired, observed) do
-    for {_id, conn} <- desired.connections,
-        connection_active?(conn.interface),
-        conn.ipv4.method == :manual,
-        conn.ipv4.address != nil,
-        {addr, prefix_len} = parse_desired_cidr(conn.ipv4.address),
-        not address_present?(observed.addresses, conn.interface, addr) do
-      Diff.new(:add_address, conn.interface, %{address: addr, prefix_len: prefix_len})
-    end
+    ipv4_diffs =
+      for {_id, conn} <- desired.connections,
+          connection_active?(conn.interface),
+          conn.ipv4.method == :manual,
+          conn.ipv4.address != nil,
+          {addr, prefix_len} = parse_desired_cidr(conn.ipv4.address),
+          not address_present?(observed.addresses, conn.interface, addr) do
+        Diff.new(:add_address, conn.interface, %{address: addr, prefix_len: prefix_len})
+      end
+
+    ipv6_diffs =
+      for {_id, conn} <- desired.connections,
+          connection_active?(conn.interface),
+          conn.ipv6.method == :manual,
+          conn.ipv6[:address] != nil,
+          {addr, prefix_len} = parse_desired_cidr(conn.ipv6.address),
+          not address_present?(observed.addresses, conn.interface, addr) do
+        Diff.new(:add_address, conn.interface, %{address: addr, prefix_len: prefix_len})
+      end
+
+    ipv4_diffs ++ ipv6_diffs
   end
 
   defp parse_desired_cidr(cidr) do
@@ -363,26 +376,53 @@ defmodule YellowDog.Netman.ReconciliationEngine do
   end
 
   defp compute_route_diffs(desired, observed) do
-    for {_id, conn} <- desired.connections,
-        connection_active?(conn.interface),
-        conn.ipv4.method == :manual,
-        conn.ipv4[:gateway] != nil,
-        not route_present?(observed.routes, "default", conn.ipv4.gateway) do
-      metric =
-        PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
+    ipv4_diffs =
+      for {_id, conn} <- desired.connections,
+          connection_active?(conn.interface),
+          conn.ipv4.method == :manual,
+          conn.ipv4[:gateway] != nil,
+          not route_present?(observed.routes, "default", conn.ipv4.gateway) do
+        metric =
+          PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
 
-      conn_metric = Map.get(metric, conn.profile_id, 100)
+        conn_metric = Map.get(metric, conn.profile_id, 100)
 
-      Diff.new(:add_route, conn.interface, %{
-        destination: "default",
-        gateway: conn.ipv4.gateway,
-        interface: conn.interface,
-        metric: conn_metric,
-        table: 254,
-        protocol: :static,
-        scope: :global
-      })
-    end
+        Diff.new(:add_route, conn.interface, %{
+          destination: "default",
+          gateway: conn.ipv4.gateway,
+          interface: conn.interface,
+          metric: conn_metric,
+          table: 254,
+          protocol: :static,
+          scope: :global,
+          family: :inet
+        })
+      end
+
+    ipv6_diffs =
+      for {_id, conn} <- desired.connections,
+          connection_active?(conn.interface),
+          conn.ipv6.method == :manual,
+          conn.ipv6[:gateway] != nil,
+          not route_present?(observed.routes, "default", conn.ipv6.gateway) do
+        metric =
+          PolicyEngine.route_metrics([%{profile_id: conn.profile_id, priority: conn.priority}])
+
+        conn_metric = Map.get(metric, conn.profile_id, 100)
+
+        Diff.new(:add_route, conn.interface, %{
+          destination: "default",
+          gateway: conn.ipv6.gateway,
+          interface: conn.interface,
+          metric: conn_metric,
+          table: 254,
+          protocol: :static,
+          scope: :global,
+          family: :inet6
+        })
+      end
+
+    ipv4_diffs ++ ipv6_diffs
   end
 
   defp route_present?(routes, destination, gateway) do
