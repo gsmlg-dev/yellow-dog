@@ -1,5 +1,5 @@
 defmodule YellowDog.Console.Plugs.BasicAuthTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Plug.Test
   import Plug.Conn
 
