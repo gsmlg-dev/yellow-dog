@@ -1003,14 +1003,26 @@ defmodule YellowDog.Netman.Connection.FSM do
   defp parse_cidr(cidr) do
     case String.split(cidr, "/") do
       [addr, prefix] ->
+        max_prefix = if String.contains?(addr, ":"), do: 128, else: 32
+
         case Integer.parse(prefix) do
-          {n, ""} when n >= 0 and n <= 128 ->
-            {:ok, addr, n}
+          {n, ""} when n >= 0 ->
+            if n <= max_prefix do
+              {:ok, addr, n}
+            else
+              Logger.warning(
+                "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
+              )
+
+              {:ok, addr, max_prefix}
+            end
 
           _ ->
-            default = default_prefix(addr)
-            Logger.warning("Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{default}")
-            {:ok, addr, default}
+            Logger.warning(
+              "Invalid CIDR prefix in #{inspect(cidr)}, defaulting to /#{max_prefix}"
+            )
+
+            {:ok, addr, max_prefix}
         end
 
       [addr] ->
