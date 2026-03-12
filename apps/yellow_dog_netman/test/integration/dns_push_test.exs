@@ -89,6 +89,37 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     assert config.search == []
   end
 
+  test "push_dns includes dns_search domains", %{iface: iface} do
+    profile = %Profile{
+      id: "dns-push-#{iface}",
+      type: :ethernet,
+      interface: iface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :manual,
+        address: "10.70.0.30/24",
+        gateway: "10.70.0.1",
+        dns: ["8.8.8.8"],
+        dns_search: ["corp.example.com", "internal.local"]
+      },
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: [], dns_search: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    MockNetlink.link_up(iface, carrier: true)
+    Process.sleep(50)
+
+    {:ok, _pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    MockNetlink.address_added(iface, "10.70.0.30/24")
+
+    assert_receive {:resolved_set_link_dns, ^iface, config}, 5_000
+    assert config.search == ["corp.example.com", "internal.local"]
+  end
+
   test "reset_dns calls YellowDog.Resolved.reset_link_dns on deactivation", %{iface: iface} do
     profile = %Profile{
       id: "dns-push-#{iface}",
