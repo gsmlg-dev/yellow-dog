@@ -163,6 +163,32 @@ defmodule YellowDog.Netman.Connection.FSMEdgeCasesTest do
     end
   end
 
+  describe "carrier loss during prepare" do
+    test "carrier false in prepare transitions to deactivating" do
+      data = make_data(%{state: :prepare})
+
+      event = {:netman_event, "netman:link:#{data.interface}", {:link_update, %{carrier: false}}}
+      result = FSM.prepare(:info, event, data)
+
+      assert {:next_state, :deactivating, _, actions} = result
+      assert {:next_event, :internal, :cleanup} in actions
+    end
+  end
+
+  describe "carrier loss during ip_check" do
+    test "carrier false in ip_check transitions to deactivating and resets retries" do
+      data = make_data(%{state: :ip_check})
+      data = %{data | ip_check_retries: 5}
+
+      event = {:netman_event, "netman:link:#{data.interface}", {:link_update, %{carrier: false}}}
+      result = FSM.ip_check(:info, event, data)
+
+      assert {:next_state, :deactivating, new_data, actions} = result
+      assert new_data.ip_check_retries == 0
+      assert {:next_event, :internal, :cleanup} in actions
+    end
+  end
+
   describe "configuring state: IPv4 disabled method" do
     test "disabled IPv4 method skips DHCP and goes to ip_check" do
       data = make_data(%{state: :configuring})

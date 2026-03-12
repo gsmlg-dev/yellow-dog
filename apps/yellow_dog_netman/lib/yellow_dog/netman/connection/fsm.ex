@@ -194,6 +194,15 @@ defmodule YellowDog.Netman.Connection.FSM do
     transition(%{data | error: :setup_timeout}, :prepare, :failed)
   end
 
+  def prepare(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    Logger.warning("Carrier lost during prepare for #{data.interface}")
+
+    transition(data, :prepare, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
+  end
+
   def prepare(:info, {:netman_event, _, {:removed, _}}, data) do
     transition(data, :prepare, :unavailable)
   end
@@ -345,6 +354,15 @@ defmodule YellowDog.Netman.Connection.FSM do
 
   def ip_check(:state_timeout, :retry_check, data) do
     {:keep_state, data, [{:next_event, :internal, :check_ip}]}
+  end
+
+  def ip_check(:info, {:netman_event, _, {:link_update, %{carrier: false}}}, data) do
+    Logger.warning("Carrier lost during ip_check for #{data.interface}")
+
+    transition(%{data | ip_check_retries: 0}, :ip_check, :deactivating, [
+      {:next_event, :internal, :cleanup},
+      {:state_timeout, @deactivating_timeout_ms, :cleanup_timeout}
+    ])
   end
 
   def ip_check(:info, {:netman_event, _, {:removed, _}}, data) do
