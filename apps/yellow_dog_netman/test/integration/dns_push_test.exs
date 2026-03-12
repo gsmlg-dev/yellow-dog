@@ -255,6 +255,63 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     assert_receive {:resolved_reset_link_dns, ^iface}, 5_000
   end
 
+  test "push_dns called on late dhcp_lease_acquired in activated state", %{iface: iface} do
+    profile = %Profile{
+      id: "dns-push-#{iface}",
+      type: :ethernet,
+      interface: iface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :manual,
+        address: "10.70.0.60/24",
+        gateway: "10.70.0.1",
+        dns: ["8.8.8.8"]
+      },
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    MockNetlink.link_up(iface, carrier: true)
+    Process.sleep(50)
+
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    MockNetlink.address_added(iface, "10.70.0.60/24")
+
+    # Wait for initial push_dns on activation
+    assert_receive {:resolved_set_link_dns, ^iface, _config}, 5_000
+
+    # Drain any queued set_link_dns messages
+    Process.sleep(200)
+    flush_set_link_dns(iface)
+
+    # Simulate a late DHCP lease acquisition (as if dual-stack SLAAC arrived first)
+    send(
+      pid,
+      {:dhcp_lease_acquired,
+       %{
+         ip: "10.70.0.60",
+         server: "10.70.0.1",
+         lease_time_s: 3600,
+         dns_servers: ["1.1.1.1", "9.9.9.9"]
+       }}
+    )
+
+    # push_dns should be called with the DHCP-provided DNS servers merged
+    assert_receive {:resolved_set_link_dns, ^iface, config}, 5_000
+
+    # Should include both profile DNS and DHCP DNS
+    server_strings =
+      Enum.map(config.servers, fn ip -> ip |> :inet.ntoa() |> List.to_string() end)
+
+    assert "8.8.8.8" in server_strings
+    assert "1.1.1.1" in server_strings
+    assert "9.9.9.9" in server_strings
+  end
+
   defp flush_set_link_dns(iface) do
     receive do
       {:resolved_set_link_dns, ^iface, _} -> flush_set_link_dns(iface)
