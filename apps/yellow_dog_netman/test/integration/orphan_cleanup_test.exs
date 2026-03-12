@@ -165,4 +165,32 @@ defmodule YellowDog.Netman.Integration.OrphanCleanupTest do
     # Cleanup
     Connection.Supervisor.stop_connection(iface2)
   end
+
+  test "disconnected FSM for deleted profile is cleaned up (not left blocking interface)", %{
+    iface: iface,
+    profile: profile
+  } do
+    # Start FSM and let it reach activated
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    # Deactivate — FSM goes to :disconnected state
+    Connection.FSM.deactivate(pid)
+    Process.sleep(200)
+
+    {:ok, state} = Connection.FSM.get_state(pid)
+    assert state.state == :disconnected
+
+    # Delete the profile — FSM is now an orphan in :disconnected state
+    ProfileStore.delete(profile.id)
+    Process.sleep(50)
+
+    # Before the fix, disconnected FSMs were skipped by compute_deactivation_diffs,
+    # permanently blocking the interface from being used by new profiles.
+    send(ReconciliationEngine, :debounced_reconcile)
+    Process.sleep(300)
+
+    assert :error == Connection.Supervisor.find_connection(iface),
+           "Disconnected FSM for deleted profile should be cleaned up"
+  end
 end

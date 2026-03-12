@@ -54,14 +54,18 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
 
     test "idempotency - same state produces no new diffs when connections exist" do
       # When no connections need activation, diff should return empty
+      # (deactivation diffs from concurrent tests' FSMs are filtered out)
       desired = %DesiredState{connections: %{}}
       observed = %ObservedState{}
 
       diffs1 = ReconciliationEngine.diff(desired, observed)
       diffs2 = ReconciliationEngine.diff(desired, observed)
 
-      assert diffs1 == diffs2
-      assert diffs1 == []
+      non_deact1 = Enum.reject(diffs1, &(&1.action == :deactivate_connection))
+      non_deact2 = Enum.reject(diffs2, &(&1.action == :deactivate_connection))
+
+      assert non_deact1 == non_deact2
+      assert non_deact1 == []
     end
   end
 
@@ -1073,7 +1077,7 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
     end
 
     @tag :capture_log
-    test "disconnected FSM with deleted profile is NOT deactivated" do
+    test "disconnected FSM with deleted profile IS deactivated (prevents interface blocking)" do
       iface = "recon_disc_deact_#{:rand.uniform(65535)}"
       profile_id = "disc-deact-#{iface}"
 
@@ -1106,8 +1110,8 @@ defmodule YellowDog.Netman.ReconciliationEngineTest do
       deact_diffs =
         Enum.filter(diffs, &(&1.action == :deactivate_connection and &1.interface == iface))
 
-      assert deact_diffs == [],
-             "Disconnected FSM should not produce deactivation diff"
+      assert length(deact_diffs) == 1,
+             "Disconnected FSM for deleted profile should produce deactivation diff"
 
       # Cleanup
       Connection.Supervisor.stop_connection(iface)
