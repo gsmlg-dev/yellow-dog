@@ -557,8 +557,8 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp build_dhcp_nak(request, reason) do
-    # Get default pool for server identifier
-    pool = get_default_pool()
+    # Get pool for server identifier
+    pool = get_fallback_pool()
 
     # Build DHCPNAK message according to RFC 2131
     # RFC 2131: ciaddr, yiaddr, siaddr, and giaddr are set to 0
@@ -613,7 +613,7 @@ defmodule YellowDog.Dhcpv4.Handler do
     case LeaseManager.list_leases() do
       [] ->
         # No leases, use default pool
-        pool = get_default_pool()
+        pool = get_fallback_pool()
         build_dhcp_ack_inform(inform, client_ip, pool)
 
       [lease | _] ->
@@ -819,25 +819,31 @@ defmodule YellowDog.Dhcpv4.Handler do
 
   defp format_mac_for_boot(_), do: ""
 
-  defp get_pool_for_lease(_lease) do
-    # For now, use the first pool from LeaseManager state
-    # In a production system, you'd look up the pool by name from _lease.pool_name
-    get_default_pool()
+  defp get_pool_for_lease(lease) do
+    pool_name = Map.get(lease, :pool_name, "default") || "default"
+
+    case LeaseManager.get_pool_config(pool_name) do
+      {:ok, pool_config} -> pool_config
+      {:error, _} -> get_fallback_pool()
+    end
   end
 
-  defp get_default_pool do
-    # Return a default pool configuration
-    # This should be retrieved from configuration or LeaseManager state
-    %{
-      name: "default",
-      range_start: {192, 168, 1, 100},
-      range_end: {192, 168, 1, 200},
-      subnet_mask: {255, 255, 255, 0},
-      gateway: {192, 168, 1, 1},
-      dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
-      domain_name: "local",
-      lease_time: 86400
-    }
+  # Hard-coded last-resort pool used only when LeaseManager has no pools at all
+  # (e.g. during startup before pools are loaded).  Real pools come from config.
+  defp get_fallback_pool do
+    case LeaseManager.get_pools() do
+      [first_pool | _] -> first_pool
+      [] -> %{
+        name: "default",
+        range_start: {192, 168, 1, 100},
+        range_end: {192, 168, 1, 200},
+        subnet_mask: {255, 255, 255, 0},
+        gateway: {192, 168, 1, 1},
+        dns_servers: [{192, 168, 1, 1}, {8, 8, 8, 8}],
+        domain_name: "local",
+        lease_time: 86400
+      }
+    end
   end
 
   defp encode_dns_servers(dns_servers) do
@@ -896,8 +902,9 @@ defmodule YellowDog.Dhcpv4.Handler do
   end
 
   defp get_server_identifier do
-    # Get the gateway IP from the default pool as our server identifier
-    pool = get_default_pool()
+    # Use the gateway of the first configured pool as our server identifier.
+    # RFC 2131 §4.3.1: the server identifier is the IP address of the DHCP server.
+    pool = get_fallback_pool()
     ip_to_binary(pool.gateway)
   end
 

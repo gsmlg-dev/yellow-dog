@@ -403,23 +403,36 @@ defmodule YellowDog.Dns.ConnectionProcess do
     # Capture the connection process PID before spawning
     connection_pid = self()
 
-    # Send resolution request to ViewManager with connection process PID for response routing
+    # Send resolution request to ViewManager with connection process PID for response routing.
+    # Rescue any unexpected exception so it is reported immediately as a SERVFAIL rather
+    # than silently killing the worker and leaving the query hanging until the 5-second
+    # timeout fires.  Process exits (e.g. ViewManager restarting) are intentionally NOT
+    # caught here so the query falls through to the normal timeout path.
     spawn(fn ->
-      result =
-        YellowDog.Dns.ViewManager.resolve(
-          connection_pid,
-          state.client_ip,
-          query_id,
-          query
-        )
+      try do
+        result =
+          YellowDog.Dns.ViewManager.resolve(
+            connection_pid,
+            state.client_ip,
+            query_id,
+            query
+          )
 
-      # Send result back to connection process
-      case result do
-        {:ok, response} ->
-          send(connection_pid, {:resolution_complete, query_id, response})
+        case result do
+          {:ok, response} ->
+            send(connection_pid, {:resolution_complete, query_id, response})
 
-        {:error, reason} ->
-          send(connection_pid, {:resolution_error, query_id, reason})
+          {:error, reason} ->
+            send(connection_pid, {:resolution_error, query_id, reason})
+        end
+      rescue
+        e ->
+          Telemetry.error("ViewManager resolution raised exception", %{
+            query_id: query_id,
+            error: Exception.message(e)
+          })
+
+          send(connection_pid, {:resolution_error, query_id, :exception})
       end
     end)
   end
