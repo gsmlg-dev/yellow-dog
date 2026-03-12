@@ -937,7 +937,15 @@ defmodule YellowDog.Netman.Connection.FSM do
   defp collect_dns_search(data) do
     ipv4_search = Map.get(data.profile.ipv4, :dns_search, []) || []
     ipv6_search = Map.get(data.profile.ipv6, :dns_search, []) || []
-    Enum.uniq(ipv4_search ++ ipv6_search)
+
+    # Include DHCP Option 15 (Domain Name) as a search domain if present
+    lease_domain =
+      case data.lease do
+        %{domain_name: name} when is_binary(name) and name != "" -> [name]
+        _ -> []
+      end
+
+    Enum.uniq(ipv4_search ++ ipv6_search ++ lease_domain)
   end
 
   defp emit_dhcp_event(data, action, metadata) do

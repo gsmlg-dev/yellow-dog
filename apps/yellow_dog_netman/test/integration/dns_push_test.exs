@@ -165,6 +165,60 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     assert_receive {:resolved_set_link_dns, ^iface, _renewed_config}, 5_000
   end
 
+  test "push_dns includes DHCP domain_name in search domains", %{iface: iface} do
+    profile = %Profile{
+      id: "dns-push-#{iface}",
+      type: :ethernet,
+      interface: iface,
+      autoconnect: true,
+      autoconnect_priority: 100,
+      ethernet: %{mtu: nil},
+      ipv4: %{
+        method: :manual,
+        address: "10.70.0.50/24",
+        gateway: "10.70.0.1",
+        dns: ["8.8.8.8"],
+        dns_search: ["profile.local"]
+      },
+      ipv6: %{method: :disabled, address: nil, gateway: nil, dns: [], dns_search: []}
+    }
+
+    ProfileStore.put(profile.id, profile)
+    MockNetlink.link_up(iface, carrier: true)
+    Process.sleep(50)
+
+    {:ok, pid} = Connection.Supervisor.start_connection(iface, profile)
+    Process.sleep(100)
+
+    MockNetlink.address_added(iface, "10.70.0.50/24")
+
+    # Wait for initial push_dns on activation (no DHCP domain yet)
+    assert_receive {:resolved_set_link_dns, ^iface, initial_config}, 5_000
+    assert initial_config.search == ["profile.local"]
+
+    # Drain any queued set_link_dns messages from reconciliation engine
+    Process.sleep(200)
+    flush_set_link_dns(iface)
+
+    # Now simulate DHCP lease renewal with domain_name (Option 15)
+    send(
+      pid,
+      {:dhcp_lease_renewed,
+       %{
+         ip: "10.70.0.50",
+         server: "10.70.0.1",
+         lease_time_s: 3600,
+         dns_servers: ["8.8.8.8"],
+         domain_name: "dhcp.example.com"
+       }}
+    )
+
+    # push_dns should be called again with domain_name in search
+    assert_receive {:resolved_set_link_dns, ^iface, config}, 5_000
+    assert "profile.local" in config.search
+    assert "dhcp.example.com" in config.search
+  end
+
   test "reset_dns calls YellowDog.Resolved.reset_link_dns on deactivation", %{iface: iface} do
     profile = %Profile{
       id: "dns-push-#{iface}",
@@ -199,5 +253,13 @@ defmodule YellowDog.Netman.Integration.DnsPushTest do
     Connection.FSM.deactivate(pid)
 
     assert_receive {:resolved_reset_link_dns, ^iface}, 5_000
+  end
+
+  defp flush_set_link_dns(iface) do
+    receive do
+      {:resolved_set_link_dns, ^iface, _} -> flush_set_link_dns(iface)
+    after
+      0 -> :ok
+    end
   end
 end
